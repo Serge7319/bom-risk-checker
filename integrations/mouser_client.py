@@ -1,15 +1,12 @@
-import os
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
+import streamlit as st
 
 
 def search_mouser_by_part_number(part_number: str) -> dict:
-    api_key = os.getenv("MOUSER_API_KEY")
+    api_key = st.secrets.get("MOUSER_API_KEY")
 
     if not api_key:
-        raise ValueError("Missing MOUSER_API_KEY in .env file")
+        raise ValueError("Missing MOUSER_API_KEY in Streamlit secrets")
 
     url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
 
@@ -24,9 +21,6 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     response.raise_for_status()
 
     data = response.json()
-
-   # print("MOUSER RAW RESPONSE:")
-   # print(data)
 
     search_results = data.get("SearchResults") or {}
     parts = search_results.get("Parts") or []
