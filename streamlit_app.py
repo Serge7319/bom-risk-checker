@@ -102,6 +102,11 @@ def analyze_bom(df):
                 "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
                 "Product URL": part_data.get("product_detail_url", ""),
 
+                # Alternatives
+                "Has Alternates": part_data.get("has_alternates", False),
+                "Alternate Count": part_data.get("alternate_count", 0),
+                "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
+
                 # Risk scoring
                 "Risk Score": risk_result["risk_score"],
                 "Risk Level": risk_result["risk_level"],
