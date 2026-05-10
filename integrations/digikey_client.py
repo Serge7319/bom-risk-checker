@@ -1,17 +1,16 @@
-import os
 import requests
-from dotenv import load_dotenv
+import streamlit as st
 from urllib.parse import quote
-
-load_dotenv()
 
 
 def get_digikey_access_token() -> str:
-    client_id = os.getenv("DIGIKEY_CLIENT_ID")
-    client_secret = os.getenv("DIGIKEY_CLIENT_SECRET")
+    client_id = st.secrets.get("DIGIKEY_CLIENT_ID")
+    client_secret = st.secrets.get("DIGIKEY_CLIENT_SECRET")
 
     if not client_id or not client_secret:
-        raise ValueError("Missing DIGIKEY_CLIENT_ID or DIGIKEY_CLIENT_SECRET in .env file")
+        raise ValueError(
+            "Missing DIGIKEY_CLIENT_ID or DIGIKEY_CLIENT_SECRET in Streamlit secrets"
+        )
 
     url = "https://api.digikey.com/v1/oauth2/token"
 
@@ -28,10 +27,10 @@ def get_digikey_access_token() -> str:
 
 
 def search_digikey_by_part_number(part_number: str) -> dict:
-    client_id = os.getenv("DIGIKEY_CLIENT_ID")
+    client_id = st.secrets.get("DIGIKEY_CLIENT_ID")
 
     if not client_id:
-        raise ValueError("Missing DIGIKEY_CLIENT_ID in .env file")
+        raise ValueError("Missing DIGIKEY_CLIENT_ID in Streamlit secrets")
 
     access_token = get_digikey_access_token()
 
@@ -57,7 +56,11 @@ def search_digikey_by_part_number(part_number: str) -> dict:
 
 def normalize_digikey_product(product: dict) -> dict:
     manufacturer = product.get("Manufacturer", {})
-    manufacturer_name = manufacturer.get("Name", "") if isinstance(manufacturer, dict) else str(manufacturer)
+    manufacturer_name = (
+        manufacturer.get("Name", "")
+        if isinstance(manufacturer, dict)
+        else str(manufacturer)
+    )
 
     stock_total = product.get("QuantityAvailable", 0) or 0
 
@@ -69,9 +72,11 @@ def normalize_digikey_product(product: dict) -> dict:
         "has_alternates": False,
         "source": "DigiKey",
         "manufacturer": manufacturer_name,
-        "description": product.get("Description", {}).get("ProductDescription", "")
-        if isinstance(product.get("Description"), dict)
-        else str(product.get("Description", "")),
+        "description": (
+            product.get("Description", {}).get("ProductDescription", "")
+            if isinstance(product.get("Description"), dict)
+            else str(product.get("Description", ""))
+        ),
         "mouser_part_number": "",
         "manufacturer_part_number": product.get("ManufacturerProductNumber", ""),
         "product_detail_url": product.get("ProductUrl", ""),
