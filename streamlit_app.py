@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-
+from src.alternative_engine import suggest_alternatives_v2
 from src.bom_parser import normalize_bom_columns, validate_bom, clean_bom_data
 from src.risk_engine import calculate_risk
 from src.report_generator import save_results_to_excel
@@ -52,8 +52,16 @@ st.set_page_config(
 
 def get_part_data(row):
     part_number = row["mpn_normalized"]
+
     part_data = get_best_part_data(part_number)
     part_data["quantity"] = row.get("quantity", 0)
+
+    alternative_part_numbers = suggest_alternatives_v2(part_number)
+
+    part_data["has_alternates"] = len(alternative_part_numbers) > 0
+    part_data["alternate_count"] = len(alternative_part_numbers)
+    part_data["alternative_part_numbers"] = ", ".join(alternative_part_numbers)
+
     return part_data
 
 
