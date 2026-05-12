@@ -171,6 +171,43 @@ def show_dashboard_summary(results_df):
         ],
         use_container_width=True,
     )
+    st.divider()
+
+    st.subheader("✅ Recommended Actions")
+
+    recommended_actions = []
+
+    if high_risk > 0:
+        recommended_actions.append(
+            "Review high-risk parts immediately and confirm whether they are acceptable for production."
+        )
+
+    single_source_count = len(results_df[results_df["Supplier Count"] <= 1])
+    if single_source_count > 0:
+        recommended_actions.append(
+            f"Investigate {single_source_count} single-source parts and identify secondary suppliers or alternates."
+        )
+
+    no_stock_count = len(results_df[results_df["Stock Available"] == 0])
+    if no_stock_count > 0:
+        recommended_actions.append(
+            f"Prioritize sourcing review for {no_stock_count} parts with no available stock."
+        )
+
+    unknown_lifecycle_count = len(results_df[results_df["Lifecycle Status"] == "Unknown"])
+    if unknown_lifecycle_count > 0:
+        recommended_actions.append(
+            f"Verify lifecycle status for {unknown_lifecycle_count} parts marked as Unknown."
+        )
+
+    if not recommended_actions:
+        recommended_actions.append(
+            "No immediate sourcing risks detected. Continue monitoring lifecycle and stock availability."
+        )
+
+    for action in recommended_actions:
+        st.write(f"• {action}")
+
 
 def risk_badge(level):
     if level == "High":
