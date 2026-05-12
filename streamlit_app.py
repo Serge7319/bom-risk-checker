@@ -1173,7 +1173,7 @@ if app_mode == "BOM Analyzer":
             "Has Alternates",
             "Risk Score",
             "Risk Level Display",
-            "Risk Reasons",
+            
         ]
 
 
