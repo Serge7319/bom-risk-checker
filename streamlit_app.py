@@ -212,9 +212,11 @@ def show_dashboard_summary(results_df):
 def risk_badge(level):
     if level == "High":
         return "🔴 High"
-    if level == "Medium":
+    elif level == "Medium":
         return "🟡 Medium"
-    return "🟢 Low"
+    elif level == "Low":
+        return "🟢 Low"
+    return "⚪ Unknown"
 
 
 st.markdown(
@@ -1172,10 +1174,14 @@ if app_mode == "BOM Analyzer":
         "Lifecycle Status",
         "Stock Available",
         "Lead Time Weeks",
+        "Has Alternates",
+        "Alternate Count",
+        "Alternative Part Numbers",
         "Risk Score",
         "Risk Level Display",
         "Risk Reasons",
-        ]
+        "Product URL",
+    ]
 
 
         st.dataframe(
