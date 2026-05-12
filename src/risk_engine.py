@@ -43,23 +43,23 @@ def calculate_risk(part_data: dict) -> dict:
         reasons.append("Stock is below required BOM quantity")
 
     if lead_time_weeks is not None:
-    try:
-        lead_time = float(lead_time_weeks)
+        try:
+            lead_time = float(lead_time_weeks)
 
-        if lead_time >= 52:
-            score += 35
-            reasons.append("Extremely long lead time")
+            if lead_time >= 52:
+                score += 35
+                reasons.append("Extremely long lead time")
 
-        elif lead_time >= 26:
-            score += 25
-            reasons.append("Very long lead time")
+            elif lead_time >= 26:
+                score += 25
+                reasons.append("Very long lead time")
 
-        elif lead_time >= 12:
-            score += 15
-            reasons.append("Moderate lead time risk")
+            elif lead_time >= 12:
+                score += 15
+                reasons.append("Moderate lead time risk")
 
-    except:
-        pass
+        except:
+            pass
 
     if supplier_count <= 1:
         score += 20
