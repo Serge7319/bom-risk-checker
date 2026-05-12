@@ -168,7 +168,7 @@ def show_dashboard_summary(results_df):
                 "Supplier Count",
                 "Risk Reasons",
             ]
-        ],
+        ].reset_index(drop=True),
         use_container_width=True,
     )
     st.divider()
@@ -1181,7 +1181,34 @@ if app_mode == "BOM Analyzer":
             filtered_df[display_columns],
             use_container_width=True,
             hide_index=True,
+            column_config={
+                "Risk Reasons": st.column_config.TextColumn(
+                    "Risk Reasons",
+                    width="large",
+                ),
+            },
         )
+
+
+        st.subheader("Part Details")
+
+        for _, row in filtered_df.iterrows():
+            with st.expander(f"{row['MPN']} — {row['Risk Level']} Risk"):
+                st.write(f"**Manufacturer:** {row.get('Manufacturer', '')}")
+                st.write(f"**Lifecycle Status:** {row.get('Lifecycle Status', '')}")
+                st.write(f"**Stock Available:** {row.get('Stock Available', 0)}")
+                st.write(f"**Supplier Count:** {row.get('Supplier Count', 0)}")
+                st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")
+                st.write(f"**Risk Reasons:** {row.get('Risk Reasons', '')}")
+
+                if row.get("Has Alternates", False):
+                    st.write(f"**Candidate Alternatives:** {row.get('Alternative Part Numbers', '')}")
+                else:
+                    st.write("**Candidate Alternatives:** None found")
+
+                if row.get("Product URL", ""):
+                    st.markdown(f"[Open supplier product page]({row.get('Product URL')})")
+
 
         output_path = "reports/bom_risk_report.xlsx"
 
