@@ -1182,6 +1182,15 @@ if app_mode == "BOM Analyzer":
             use_container_width=True,
             hide_index=True,
             column_config={
+                "MPN": st.column_config.TextColumn(width="medium"),
+                "Manufacturer": st.column_config.TextColumn(width="medium"),
+                "Best Source": st.column_config.TextColumn(width="small"),
+                "Supplier Count": st.column_config.NumberColumn(width="small"),
+                "Stock Available": st.column_config.NumberColumn(width="small"),
+                "Lifecycle Status": st.column_config.TextColumn(width="medium"),
+                "Has Alternates": st.column_config.CheckboxColumn(width="small"),
+                "Risk Score": st.column_config.NumberColumn(width="small"),
+                "Risk Level Display": st.column_config.TextColumn(width="small"),
                 "Risk Reasons": st.column_config.TextColumn(
                     "Risk Reasons",
                     width="large",
