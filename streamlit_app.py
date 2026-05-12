@@ -1100,50 +1100,7 @@ if app_mode == "BOM Analyzer":
 
         results_df["Risk Level Display"] = results_df["Risk Level"].apply(risk_badge)
 
-        high_count = len(results_df[results_df["Risk Level"] == "High"])
-        medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
-        low_count = len(results_df[results_df["Risk Level"] == "Low"])
-        total_parts = len(results_df)
-        health_data = calculate_bom_health_score(results_df)
-        executive_bullets = generate_executive_summary(results_df)
-
-        st.subheader("Risk Summary")
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Parts", total_parts)
-        col2.metric("High Risk", high_count)
-        col3.metric("Medium Risk", medium_count)
-        col4.metric("Low Risk", low_count)
         
-        st.subheader("BOM Health Score")
-
-        st.metric(
-            "Overall BOM Health",
-            f"{health_data['health_score']} / 100",
-            health_data["health_status"],
-        )
-
-        st.write(health_data["summary_message"])
-
-        st.subheader("Executive Summary")
-
-        for bullet in executive_bullets:
-            st.write(f"• {bullet}")
-
-        st.subheader("BOM Health Overview")
-        st.write(f"🔴 {high_count} critical components need immediate attention.")
-        st.write(f"🟡 {medium_count} components should be monitored.")
-        st.write(f"🟢 {low_count} components are currently healthy.")
-
-        chart_data = pd.DataFrame(
-            {
-                "Risk Level": ["High", "Medium", "Low"],
-                "Count": [high_count, medium_count, low_count],
-            }
-        )
-
-        st.bar_chart(chart_data, x="Risk Level", y="Count")
-
         st.subheader("Detailed Risk Report")
 
         risk_filter = st.selectbox(
