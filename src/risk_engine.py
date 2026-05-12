@@ -25,7 +25,7 @@ def calculate_risk(part_data: dict) -> dict:
         reasons.append("Lifecycle status is unknown")
 
     if stock_total == 0:
-        score += 30
+        score += 45
         reasons.append("No stock available")
 
     elif stock_total < part_data.get("quantity", 0):
