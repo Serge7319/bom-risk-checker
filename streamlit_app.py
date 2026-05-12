@@ -1088,7 +1088,8 @@ if app_mode == "BOM Analyzer":
         else:
             st.success(message)
 
-            st.session_state["results_df"] = analyze_bom(bom_df)
+            with st.spinner("Analyzing BOM... fetching supplier data, checking lifecycle status, and calculating risk scores."):
+                st.session_state["results_df"] = analyze_bom(bom_df)
 
             results_df = st.session_state["results_df"]
 
@@ -1163,25 +1164,17 @@ if app_mode == "BOM Analyzer":
         filtered_df = filtered_df.sort_values(by="Risk Score", ascending=False)
 
         display_columns = [
-        "MPN",
-        "Manufacturer",
-        "Manufacturer Part Number",
-        "Best Source",
-        "Supplier Count",
-        "Total Market Stock",
-        "Sources Available",
-        "Quantity",
-        "Lifecycle Status",
-        "Stock Available",
-        "Lead Time Weeks",
-        "Has Alternates",
-        "Alternate Count",
-        "Alternative Part Numbers",
-        "Risk Score",
-        "Risk Level Display",
-        "Risk Reasons",
-        "Product URL",
-    ]
+            "MPN",
+            "Manufacturer",
+            "Best Source",
+            "Supplier Count",
+            "Stock Available",
+            "Lifecycle Status",
+            "Has Alternates",
+            "Risk Score",
+            "Risk Level Display",
+            "Risk Reasons",
+        ]
 
 
         st.dataframe(
