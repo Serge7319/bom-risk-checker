@@ -1194,20 +1194,31 @@ if app_mode == "BOM Analyzer":
 
         for _, row in filtered_df.iterrows():
             with st.expander(f"{row['MPN']} — {row['Risk Level']} Risk"):
-                st.write(f"**Manufacturer:** {row.get('Manufacturer', '')}")
-                st.write(f"**Lifecycle Status:** {row.get('Lifecycle Status', '')}")
-                st.write(f"**Stock Available:** {row.get('Stock Available', 0)}")
-                st.write(f"**Supplier Count:** {row.get('Supplier Count', 0)}")
-                st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")
-                st.write(f"**Risk Reasons:** {row.get('Risk Reasons', '')}")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.write(f"**Manufacturer:** {row.get('Manufacturer', '')}")
+                    st.write(f"**Lifecycle Status:** {row.get('Lifecycle Status', '')}")
+                    st.write(f"**Stock Available:** {row.get('Stock Available', 0)}")
+                    st.write(f"**Supplier Count:** {row.get('Supplier Count', 0)}")
+
+                with col2:
+                    st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")
+                    st.write(f"**Risk Level:** {row.get('Risk Level', '')}")
+                    st.write(f"**Has Alternates:** {row.get('Has Alternates', False)}")
+
+                st.write("**Risk Reasons:**")
+                st.info(row.get("Risk Reasons", ""))
 
                 if row.get("Has Alternates", False):
-                    st.write(f"**Candidate Alternatives:** {row.get('Alternative Part Numbers', '')}")
+                    st.write("**Candidate Alternatives:**")
+                    st.success(row.get("Alternative Part Numbers", ""))
                 else:
                     st.write("**Candidate Alternatives:** None found")
 
                 if row.get("Product URL", ""):
-                    st.markdown(f"[Open supplier product page]({row.get('Product URL')})")
+                    st.markdown(f"[🔗 Open supplier product page]({row.get('Product URL')})")
 
 
         output_path = "reports/bom_risk_report.xlsx"
