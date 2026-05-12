@@ -1053,7 +1053,7 @@ if app_mode == "BOM Analyzer":
 
             results_df = st.session_state["results_df"]
 
-            show_dashboard_summary(results_df)
+            
 
             high_count = len(results_df[results_df["Risk Level"] == "High"])
             medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
