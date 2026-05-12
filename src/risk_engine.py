@@ -50,9 +50,9 @@ def calculate_risk(part_data: dict) -> dict:
 
     score = min(score, 100)
 
-    if score >= 66:
+    if score >= 60:
         risk_level = "High"
-    elif score >= 31:
+    elif score >= 30:
         risk_level = "Medium"
     else:
         risk_level = "Low"
