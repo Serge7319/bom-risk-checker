@@ -116,6 +116,61 @@ def analyze_bom(df):
 
     return pd.DataFrame(results)
 
+def show_dashboard_summary(results_df):
+    st.subheader("📊 BOM Risk Dashboard")
+
+    total_parts = len(results_df)
+    high_risk = (results_df["Risk Level"] == "High").sum()
+    medium_risk = (results_df["Risk Level"] == "Medium").sum()
+    low_risk = (results_df["Risk Level"] == "Low").sum()
+
+    avg_risk_score = results_df["Risk Score"].mean()
+    bom_health_score = max(0, round(100 - avg_risk_score))
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("BOM Health Score", f"{bom_health_score}/100")
+    col2.metric("Total Parts", total_parts)
+    col3.metric("High Risk", high_risk)
+    col4.metric("Medium Risk", medium_risk)
+
+    st.divider()
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.subheader("Risk Breakdown")
+        risk_counts = results_df["Risk Level"].value_counts()
+        st.bar_chart(risk_counts)
+
+    with col_b:
+        st.subheader("Lifecycle Breakdown")
+        lifecycle_counts = results_df["Lifecycle Status"].value_counts()
+        st.bar_chart(lifecycle_counts)
+
+    st.divider()
+
+    st.subheader("🚨 Top Critical Parts")
+
+    top_risks = results_df.sort_values(
+        by="Risk Score",
+        ascending=False
+    ).head(5)
+
+    st.dataframe(
+        top_risks[
+            [
+                "MPN",
+                "Manufacturer",
+                "Risk Score",
+                "Risk Level",
+                "Stock Available",
+                "Supplier Count",
+                "Risk Reasons",
+            ]
+        ],
+        use_container_width=True,
+    )
 
 def risk_badge(level):
     if level == "High":
@@ -998,6 +1053,13 @@ if app_mode == "BOM Analyzer":
 
             results_df = st.session_state["results_df"]
 
+            show_dashboard_summary(results_df)
+
+            high_count = len(results_df[results_df["Risk Level"] == "High"])
+            medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
+            low_count = len(results_df[results_df["Risk Level"] == "Low"])
+            total_parts = len(results_df)
+
             high_count = len(results_df[results_df["Risk Level"] == "High"])
             medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
             low_count = len(results_df[results_df["Risk Level"] == "Low"])
@@ -1033,6 +1095,8 @@ if app_mode == "BOM Analyzer":
 
     if "results_df" in st.session_state:
         results_df = st.session_state["results_df"]
+
+        show_dashboard_summary(results_df)
 
         results_df["Risk Level Display"] = results_df["Risk Level"].apply(risk_badge)
 
