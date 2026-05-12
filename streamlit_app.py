@@ -342,9 +342,9 @@ st.sidebar.write(
     f"{selected_plan['monthly_bom_limit']}"
 )
 
-st.sidebar.write(
+""" st.sidebar.write(
     f"**BOMs used this month:** {monthly_upload_count} / {selected_plan['monthly_bom_limit']}"
-)
+) """
 
 
 
@@ -1173,7 +1173,7 @@ if app_mode == "BOM Analyzer":
             "Has Alternates",
             "Risk Score",
             "Risk Level Display",
-            
+
         ]
 
 
