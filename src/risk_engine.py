@@ -12,15 +12,25 @@ def calculate_risk(part_data: dict) -> dict:
     lead_time_weeks = part_data.get("lead_time_weeks", None)
     has_alternates = part_data.get("has_alternates", False)
 
-    if lifecycle_status in ["EOL", "Obsolete"]:
-        score += 45
+    lifecycle_text = str(lifecycle_status).lower()
+
+    if "obsolete" in lifecycle_text or "eol" in lifecycle_text:
+        score += 50
         reasons.append("Part is end-of-life or obsolete")
 
-    elif lifecycle_status == "NRND":
-        score += 30
+    elif "not recommended" in lifecycle_text or "nrnd" in lifecycle_text:
+        score += 35
         reasons.append("Part is not recommended for new designs")
 
-    elif lifecycle_status == "Unknown":
+    elif "replacement suggested" in lifecycle_text:
+        score += 20
+        reasons.append("Supplier suggests a replacement part")
+
+    elif "factory special order" in lifecycle_text:
+        score += 20
+        reasons.append("Part requires factory special order")
+
+    elif "unknown" in lifecycle_text:
         score += 15
         reasons.append("Lifecycle status is unknown")
 
