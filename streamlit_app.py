@@ -1066,6 +1066,16 @@ if app_mode == "BOM Analyzer":
     else:
         st.info("No previous BOM analyses found.")
 
+        else:
+        st.info("No previous BOM analyses found.")
+
+    project_name = st.text_input(
+        "Project / BOM Name",
+        placeholder="Example: Motor Controller Rev A"
+    )
+
+    uploaded_file = st.file_uploader("Upload your BOM file", type=["csv", "xlsx"])
+
     uploaded_file = st.file_uploader("Upload your BOM file", type=["csv", "xlsx"])
 
     if uploaded_file is None:
@@ -1145,6 +1155,7 @@ if app_mode == "BOM Analyzer":
             supabase.table("analyses").insert(
                 {
                     "user_id": current_user["id"],
+                    "project_name": project_name or uploaded_file.name,
                     "filename": uploaded_file.name,
                     "total_parts": total_parts,
                     "high_risk_count": high_count,
