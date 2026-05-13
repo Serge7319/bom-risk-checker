@@ -1170,7 +1170,6 @@ if app_mode == "BOM Analyzer":
             "Supplier Count",
             "Stock Available",
             "Lifecycle Status",
-            "Has Alternates",
             "Risk Score",
             "Risk Level Display",
 
