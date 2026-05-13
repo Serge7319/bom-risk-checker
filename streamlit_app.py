@@ -39,6 +39,15 @@ if "user" not in st.session_state:
 
 current_user = load_user_data()
 
+analysis_history = (
+    supabase.table("analyses")
+    .select("*")
+    .eq("user_id", current_user["id"])
+    .order("created_at", desc=True)
+    .limit(10)
+    .execute()
+)
+
 
 st.set_page_config(
     page_title="BOM Risk Checker",
@@ -1031,6 +1040,35 @@ if app_mode == "BOM Analyzer":
     """,
     unsafe_allow_html=True,
     )
+
+    st.subheader("📈 Recent BOM Analyses")
+
+    history_data = analysis_history.data
+
+    if history_data:
+
+        history_df = pd.DataFrame(history_data)
+
+        display_history = history_df[
+            [
+                "filename",
+                "health_score",
+                "high_risk_count",
+                "medium_risk_count",
+                "low_risk_count",
+                "created_at",
+            ]
+        ]
+
+        st.dataframe(
+            display_history,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    else:
+        st.info("No previous BOM analyses found.")
+
     uploaded_file = st.file_uploader("Upload your BOM file", type=["csv", "xlsx"])
 
     if uploaded_file is None:
