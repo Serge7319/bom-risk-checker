@@ -1215,7 +1215,10 @@ if app_mode == "BOM Analyzer":
                 with col2:
                     st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")
                     st.write(f"**Risk Level:** {row.get('Risk Level', '')}")
-                    st.write(f"**Has Alternates:** {row.get('Has Alternates', False)}")
+                    has_alternates = row.get("Has Alternates", False)
+                    st.write(
+                        f"**Has Alternates:** {'✅ Yes' if has_alternates else '❌ No'}"
+                    )
 
                 st.write("**Risk Reasons:**")
                 st.info(row.get("Risk Reasons", ""))
