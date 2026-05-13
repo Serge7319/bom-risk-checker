@@ -1066,8 +1066,6 @@ if app_mode == "BOM Analyzer":
     else:
         st.info("No previous BOM analyses found.")
 
-        else:
-        st.info("No previous BOM analyses found.")
 
     project_name = st.text_input(
         "Project / BOM Name",
