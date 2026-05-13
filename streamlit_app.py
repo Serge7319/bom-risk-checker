@@ -1049,6 +1049,7 @@ if app_mode == "BOM Analyzer":
 
         display_history = history_df[
             [
+                "project_name"
                 "filename",
                 "health_score",
                 "high_risk_count",
@@ -1072,13 +1073,20 @@ if app_mode == "BOM Analyzer":
         placeholder="Example: Motor Controller Rev A"
     )
 
-    uploaded_file = st.file_uploader("Upload your BOM file", type=["csv", "xlsx"])
+    uploaded_file = st.file_uploader(
+        "Upload your BOM file", 
+        type=["csv", "xlsx"],
+        key="bom_file_uploader",
+    )
 
 
     if uploaded_file is None:
         st.info("Upload a CSV or Excel BOM to begin.")
         st.stop()
 
+    if not project_name.strip():
+        st.warning("Please enter a Project / BOM Name before analyzing")
+        st.stop()
 
     if uploaded_file.name.endswith(".csv"):
         bom_df = pd.read_csv(uploaded_file)
