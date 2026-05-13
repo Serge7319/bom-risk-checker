@@ -1074,7 +1074,6 @@ if app_mode == "BOM Analyzer":
 
     uploaded_file = st.file_uploader("Upload your BOM file", type=["csv", "xlsx"])
 
-    uploaded_file = st.file_uploader("Upload your BOM file", type=["csv", "xlsx"])
 
     if uploaded_file is None:
         st.info("Upload a CSV or Excel BOM to begin.")
