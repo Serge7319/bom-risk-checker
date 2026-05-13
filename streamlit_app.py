@@ -1046,10 +1046,12 @@ if app_mode == "BOM Analyzer":
     if history_data:
 
         history_df = pd.DataFrame(history_data)
+        if "project_name" not in history_df.columns:
+            history_df["project_name"] = history_df["filename"]
 
         display_history = history_df[
             [
-                "project_name"
+                "project_name",
                 "filename",
                 "health_score",
                 "high_risk_count",
