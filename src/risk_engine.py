@@ -34,13 +34,28 @@ def calculate_risk(part_data: dict) -> dict:
         score += 15
         reasons.append("Lifecycle status is unknown")
 
+
+    required_quantity = part_data.get("quantity", 0)
+
     if stock_total == 0:
         score += 45
         reasons.append("No stock available")
 
-    elif stock_total < part_data.get("quantity", 0):
-        score += 20
-        reasons.append("Stock is below required BOM quantity")
+    elif stock_total < required_quantity:
+
+        shortage_ratio = stock_total / max(required_quantity, 1)
+
+        if shortage_ratio < 0.25:
+            score += 35
+            reasons.append("Severe stock shortage relative to BOM quantity")
+
+        elif shortage_ratio < 0.5:
+            score += 25
+            reasons.append("Moderate stock shortage relative to BOM quantity")
+
+        else:
+            score += 15
+            reasons.append("Stock is below required BOM quantity")
 
     if lead_time_weeks is not None:
         try:
@@ -62,8 +77,18 @@ def calculate_risk(part_data: dict) -> dict:
             pass
 
     if supplier_count <= 1:
-        score += 20
+        score += 25
         reasons.append("Single-source supply risk")
+
+    elif supplier_count == 2:
+
+        if stock_total < required_quantity:
+            score += 15
+            reasons.append("Limited supplier diversity with constrained inventory")
+
+        else:
+            score += 5
+            reasons.append("Limited supplier diversity")
 
     if lead_time_weeks is not None:
         if lead_time_weeks > 16:
