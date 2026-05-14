@@ -1194,6 +1194,9 @@ if app_mode == "BOM Analyzer":
                 )
 
             if part_records:
+                st.write("Current user ID:", current_user["id"])
+                st.write("Number of part records:", len(part_records))
+                st.write("First part record:", part_records[0] if part_records else "No records")
                 supabase.table("analysis_parts").insert(part_records).execute()
 
             new_upload_count = monthly_upload_count + 1
