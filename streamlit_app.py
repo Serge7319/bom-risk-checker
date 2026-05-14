@@ -1159,7 +1159,7 @@ if app_mode == "BOM Analyzer":
 
             health_data = calculate_bom_health_score(results_df)
 
-            supabase.table("analyses").insert(
+            analysis_response = supabase.table("analyses").insert(
                 {
                     "user_id": current_user["id"],
                     "project_name": project_name or uploaded_file.name,
@@ -1171,6 +1171,30 @@ if app_mode == "BOM Analyzer":
                     "health_score": health_data["health_score"],
                 }
             ).execute()
+
+            analysis_id = analysis_response.data[0]["id"]
+
+            part_records = []
+
+            for _, part_row in results_df.iterrows():
+                part_records.append(
+                    {
+                        "analysis_id": analysis_id,
+                        "user_id": current_user["id"],
+                        "project_name": project_name or uploaded_file.name,
+                        "mpn": part_row.get("MPN", ""),
+                        "manufacturer": part_row.get("Manufacturer", ""),
+                        "risk_score": part_row.get("Risk Score", 0),
+                        "risk_level": part_row.get("Risk Level", ""),
+                        "risk_reasons": part_row.get("Risk Reasons", ""),
+                        "lifecycle_status": part_row.get("Lifecycle Status", ""),
+                        "stock_available": part_row.get("Stock Available", 0),
+                        "supplier_count": part_row.get("Supplier Count", 0),
+                    }
+                )
+
+            if part_records:
+                supabase.table("analysis_parts").insert(part_records).execute()
 
             new_upload_count = monthly_upload_count + 1
 
