@@ -328,9 +328,7 @@ if "user" in st.session_state:
         f"Logged in as:\n{st.session_state['user'].email}"
     )
 
-    if st.sidebar.button("Logout"):
-        st.session_state.pop("user")
-        st.rerun()
+    
 st.sidebar.write("Component lifecycle and supply chain risk analysis.")
 st.sidebar.divider()
 st.sidebar.write("Supported files: CSV, XLSX")
