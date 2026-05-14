@@ -653,19 +653,32 @@ if app_mode == "Dashboard":
             st.success("Saved analysis deleted.")
             st.rerun()
 
+        filtered_display_df = filtered_parts[
+            [
+                "mpn",
+                "manufacturer",
+                "risk_score",
+                "risk_level",
+                "risk_reasons",
+                "lifecycle_status",
+                "stock_available",
+                "supplier_count",
+            ]
+        ].rename(
+            columns={
+                "mpn": "Part Number",
+                "manufacturer": "Manufacturer",
+                "risk_score": "Risk Score",
+                "risk_level": "Risk Level",
+                "risk_reasons": "Risk Reasons",
+                "lifecycle_status": "Lifecycle Status",
+                "stock_available": "Stock Available",
+                "supplier_count": "Supplier Count",
+            }
+        )
+
         st.dataframe(
-            filtered_parts[
-                [
-                    "mpn",
-                    "manufacturer",
-                    "risk_score",
-                    "risk_level",
-                    "risk_reasons",
-                    "lifecycle_status",
-                    "stock_available",
-                    "supplier_count",
-                ]
-            ],
+            filtered_display_df,
             use_container_width=True,
         )
 
