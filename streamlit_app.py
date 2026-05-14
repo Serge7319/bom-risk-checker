@@ -15,6 +15,13 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
+if st.button("Log out / reset session"):
+    st.session_state.clear()
+    st.rerun()
+
+def load_user_data():
+
 def load_user_data():
     user = st.session_state["user"]
     user_id = user.id
@@ -36,6 +43,12 @@ def load_user_data():
 if "user" not in st.session_state:
     show_auth_ui(supabase)
     st.stop()
+
+if "access_token" in st.session_state and "refresh_token" in st.session_state:
+    supabase.auth.set_session(
+        st.session_state["access_token"],
+        st.session_state["refresh_token"]
+    )
 
 current_user = load_user_data()
 
