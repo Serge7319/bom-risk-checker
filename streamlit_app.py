@@ -639,6 +639,28 @@ if app_mode == "Dashboard":
             use_container_width=True,
         )
 
+        download_df = selected_parts[
+            [
+                "mpn",
+                "manufacturer",
+                "risk_score",
+                "risk_level",
+                "risk_reasons",
+                "lifecycle_status",
+                "stock_available",
+                "supplier_count",
+            ]
+        ]
+
+        csv_data = download_df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download Analysis CSV",
+            data=csv_data,
+            file_name=f"{selected_analysis_label}.csv",
+            mime="text/csv",
+        )
+
     # ---------- Charts ----------
     chart_col1, chart_col2 = st.columns(2)
 
