@@ -578,17 +578,28 @@ if app_mode == "Dashboard":
             .sort_values("created_at", ascending=False)
         )
 
+        summary_display_df = summary_df[
+            [
+                "project_name",
+                "created_at",
+                "total_parts",
+                "high_risk_parts",
+                "medium_risk_parts",
+                "low_risk_parts",
+            ]
+        ].rename(
+            columns={
+                "project_name": "Project Name",
+                "created_at": "Created At",
+                "total_parts": "Total Parts",
+                "high_risk_parts": "High Risk Parts",
+                "medium_risk_parts": "Medium Risk Parts",
+                "low_risk_parts": "Low Risk Parts",
+            }
+        )
+
         st.dataframe(
-            summary_df[
-                [
-                    "project_name",
-                    "created_at",
-                    "total_parts",
-                    "high_risk_parts",
-                    "medium_risk_parts",
-                    "low_risk_parts",
-                ]
-            ],
+            summary_display_df,
             use_container_width=True,
         )
 
@@ -794,8 +805,19 @@ if app_mode == "Dashboard":
             "Created At",
         ]
 
+        recent_display_df = recent_df[display_cols].rename(
+            columns={
+                "project_name": "Project Name",
+                "health_score": "Health Score",
+                "high_risk_count": "High Risk Parts",
+                "medium_risk_count": "Medium Risk Parts",
+                "low_risk_count": "Low Risk Parts",
+                "created_at": "Created At",
+            }
+        )
+
         st.dataframe(
-            recent_df[display_cols],
+            recent_display_df,
             use_container_width=True,
             hide_index=True,
         )
