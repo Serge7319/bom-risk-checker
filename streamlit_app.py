@@ -611,6 +611,36 @@ if app_mode == "Dashboard":
             history_df["analysis_id"] == selected_analysis_id
         ]
 
+        st.subheader("Filter Saved Parts")
+
+        search_query = st.text_input("Search by MPN, manufacturer, or risk reason")
+
+        risk_filter = st.multiselect(
+            "Filter by risk level",
+            options=sorted(selected_parts["risk_level"].dropna().unique()),
+            default=sorted(selected_parts["risk_level"].dropna().unique()),
+        )
+
+        lifecycle_filter = st.multiselect(
+            "Filter by lifecycle status",
+            options=sorted(selected_parts["lifecycle_status"].dropna().unique()),
+            default=sorted(selected_parts["lifecycle_status"].dropna().unique()),
+        )
+
+        filtered_parts = selected_parts.copy()
+
+        if search_query:
+            filtered_parts = filtered_parts[
+                filtered_parts["mpn"].astype(str).str.contains(search_query, case=False, na=False)
+                | filtered_parts["manufacturer"].astype(str).str.contains(search_query, case=False, na=False)
+                | filtered_parts["risk_reasons"].astype(str).str.contains(search_query, case=False, na=False)
+            ]
+
+        filtered_parts = filtered_parts[
+            filtered_parts["risk_level"].isin(risk_filter)
+            & filtered_parts["lifecycle_status"].isin(lifecycle_filter)
+        ]
+
         if st.button("Delete this saved analysis"):
             supabase.table("analysis_parts").delete().eq(
                 "analysis_id",
@@ -624,7 +654,7 @@ if app_mode == "Dashboard":
             st.rerun()
 
         st.dataframe(
-            selected_parts[
+            filtered_parts[
                 [
                     "mpn",
                     "manufacturer",
@@ -639,7 +669,7 @@ if app_mode == "Dashboard":
             use_container_width=True,
         )
 
-        download_df = selected_parts[
+        download_df = filtered_parts[
             [
                 "mpn",
                 "manufacturer",
