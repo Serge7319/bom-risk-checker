@@ -20,7 +20,7 @@ if st.button("Log out / reset session"):
     st.session_state.clear()
     st.rerun()
 
-def load_user_data():
+
 
 def load_user_data():
     user = st.session_state["user"]
