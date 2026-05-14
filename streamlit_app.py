@@ -45,7 +45,12 @@ if "access_token" in st.session_state and "refresh_token" in st.session_state:
         st.session_state["access_token"],
         st.session_state["refresh_token"]
     )
-
+with st.sidebar:
+    if st.button("Log out"):
+        supabase.auth.sign_out()
+        st.session_state.clear()
+        st.rerun()
+        
 current_user = load_user_data()
 
 analysis_history = (
