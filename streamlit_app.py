@@ -16,10 +16,6 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-if st.button("Log out / reset session"):
-    st.session_state.clear()
-    st.rerun()
-
 
 
 def load_user_data():
@@ -1207,29 +1203,11 @@ if app_mode == "BOM Analyzer":
                 )
 
             if part_records:
-
-                st.write("Current user ID:", current_user["id"])
-                st.write("Number of part records:", len(part_records))
-                st.write("First part record:", part_records[0] if part_records else "No records")
-
                 try:
-                    user_response = supabase.auth.get_user()
-                    st.write("Supabase auth user:", user_response)
-                except Exception as e:
-                    st.write("Could not get Supabase auth user:", e)
-
-                try:
-                    response = supabase.table("analysis_parts").insert(part_records).execute()
-                    st.write("Insert successful:", response.data)
+                    supabase.table("analysis_parts").insert(part_records).execute()
 
                 except Exception as e:
-                    st.error("Insert failed")
-                    st.write("Error type:", type(e))
-                    st.write("Error details:", e)
-
-                    if hasattr(e, "args"):
-                        st.write("Error args:", e.args)
-
+                    st.error(f"Could not save BOM parts: {e}")
                     st.stop()
 
             new_upload_count = monthly_upload_count + 1
