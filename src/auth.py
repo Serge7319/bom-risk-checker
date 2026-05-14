@@ -24,7 +24,10 @@ def show_auth_ui(supabase):
                 )
 
                 st.success("Account created. Please check your email if confirmation is required.")
+
                 st.session_state["user"] = response.user
+                st.session_state["access_token"] = response.session.access_token
+                st.session_state["refresh_token"] = response.session.refresh_token
                 st.rerun()
                 
             except Exception as error:
@@ -42,6 +45,8 @@ def show_auth_ui(supabase):
 
                 st.success("Logged in successfully.")
                 st.session_state["user"] = response.user
+                st.session_state["access_token"] = response.session.access_token
+                st.session_state["refresh_token"] = response.session.refresh_token
                 st.rerun()
 
             except Exception as error:
