@@ -1197,7 +1197,20 @@ if app_mode == "BOM Analyzer":
                 st.write("Current user ID:", current_user["id"])
                 st.write("Number of part records:", len(part_records))
                 st.write("First part record:", part_records[0] if part_records else "No records")
-                supabase.table("analysis_parts").insert(part_records).execute()
+                
+                try:
+                    response = supabase.table("analysis_parts").insert(part_records).execute()
+                    st.write("Insert successful:", response.data)
+
+                except Exception as e:
+                    st.error("Insert failed")
+                    st.write("Error type:", type(e))
+                    st.write("Error details:", e)
+
+                    if hasattr(e, "args"):
+                        st.write("Error args:", e.args)
+
+                    st.stop()
 
             new_upload_count = monthly_upload_count + 1
 
