@@ -22,7 +22,6 @@ def load_user_data():
     user = st.session_state["user"]
     user_id = user.id
 
-
     response = (
         supabase.table("users")
         .select("*")
@@ -36,6 +35,17 @@ def load_user_data():
     st.error("User profile not found. Please log out and create a new account.")
     st.stop()
 
+def load_analysis_history(user_id):
+    response = (
+        supabase.table("analysis_parts")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return response.data if response.data else []
+
 if "user" not in st.session_state:
     show_auth_ui(supabase)
     st.stop()
@@ -45,13 +55,16 @@ if "access_token" in st.session_state and "refresh_token" in st.session_state:
         st.session_state["access_token"],
         st.session_state["refresh_token"]
     )
+
 with st.sidebar:
     if st.button("Log out"):
         supabase.auth.sign_out()
         st.session_state.clear()
         st.rerun()
-        
+
 current_user = load_user_data()
+
+
 
 analysis_history = (
     supabase.table("analyses")
@@ -542,6 +555,44 @@ if app_mode == "Dashboard":
         )
 
     st.divider()
+
+    st.subheader("Saved BOM Analyses")
+
+    history = load_analysis_history(current_user["id"])
+
+    if not history:
+        st.info("No saved BOM analyses yet.")
+
+    else:
+        history_df = pd.DataFrame(history)
+
+        summary_df = (
+            history_df.groupby(
+                ["analysis_id", "project_name", "created_at"]
+            )
+            .agg(
+                total_parts=("mpn", "count"),
+                high_risk_parts=("risk_level", lambda x: (x == "High").sum()),
+                medium_risk_parts=("risk_level", lambda x: (x == "Medium").sum()),
+                low_risk_parts=("risk_level", lambda x: (x == "Low").sum()),
+            )
+            .reset_index()
+            .sort_values("created_at", ascending=False)
+        )
+
+        st.dataframe(
+            summary_df[
+                [
+                    "project_name",
+                    "created_at",
+                    "total_parts",
+                    "high_risk_parts",
+                    "medium_risk_parts",
+                    "low_risk_parts",
+                ]
+            ],
+            use_container_width=True,
+        )
 
     # ---------- Charts ----------
     chart_col1, chart_col2 = st.columns(2)
