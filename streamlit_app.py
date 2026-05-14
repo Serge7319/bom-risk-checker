@@ -592,6 +592,53 @@ if app_mode == "Dashboard":
             use_container_width=True,
         )
 
+        st.warning("DEBUG: Saved analysis details section reached")
+        st.subheader("View Saved Analysis Details")
+
+        analysis_options = {
+            f"{row['project_name']} — {row['created_at']}": row["analysis_id"]
+            for _, row in summary_df.iterrows()
+        }
+
+        selected_analysis_label = st.selectbox(
+            "Choose an analysis to view",
+            list(analysis_options.keys())
+        )
+
+        selected_analysis_id = analysis_options[selected_analysis_label]
+
+        selected_parts = history_df[
+            history_df["analysis_id"] == selected_analysis_id
+        ]
+
+        if st.button("Delete this saved analysis"):
+            supabase.table("analysis_parts").delete().eq(
+                "analysis_id",
+                selected_analysis_id
+            ).eq(
+                "user_id",
+                current_user["id"]
+            ).execute()
+
+            st.success("Saved analysis deleted.")
+            st.rerun()
+
+        st.dataframe(
+            selected_parts[
+                [
+                    "mpn",
+                    "manufacturer",
+                    "risk_score",
+                    "risk_level",
+                    "risk_reasons",
+                    "lifecycle_status",
+                    "stock_available",
+                    "supplier_count",
+                ]
+            ],
+            use_container_width=True,
+        )
+
     # ---------- Charts ----------
     chart_col1, chart_col2 = st.columns(2)
 
