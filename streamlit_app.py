@@ -705,31 +705,51 @@ if app_mode == "Dashboard":
         insight_col1, insight_col2, insight_col3, insight_col4 = st.columns(4)
 
         with insight_col1:
-            st.metric(
-                label="High-Risk Parts",
-                value=high_risk_count,
-                help="Components marked as High risk across saved analyses."
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">High-Risk Parts</div>
+                    <div class="kpi-value">{high_risk_count}</div>
+                    <div class="kpi-note">Across saved analyses</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
         with insight_col2:
-            st.metric(
-                label="Top Manufacturer",
-                value=top_manufacturer,
-                help="Manufacturer appearing most often across saved analyses."
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">Top Manufacturer</div>
+                    <div class="kpi-value">{top_manufacturer}</div>
+                    <div class="kpi-note">Most analyzed supplier</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
         with insight_col3:
-            st.metric(
-                label="Obsolete / EOL Parts",
-                value=obsolete_count,
-                help="Components flagged as obsolete or potentially end-of-life."
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">Obsolete / EOL</div>
+                    <div class="kpi-value">{obsolete_count}</div>
+                    <div class="kpi-note">Potential redesign targets</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
         with insight_col4:
-            st.metric(
-                label="Recommended Action",
-                value="Review",
-                help="Review high-risk and obsolete components for redesign or sourcing mitigation."
+            st.markdown(
+                """
+                <div class="kpi-card">
+                    <div class="kpi-label">Recommended Action</div>
+                    <div class="kpi-value">Review</div>
+                    <div class="kpi-note">Mitigate sourcing risks</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
         st.subheader("View Saved Analysis Details")
