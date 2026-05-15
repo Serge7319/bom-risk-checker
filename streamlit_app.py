@@ -1271,6 +1271,10 @@ if app_mode == "BOM Analyzer":
         if "project_name" not in history_df.columns:
             history_df["project_name"] = history_df["filename"]
 
+        history_df["created_at"] = pd.to_datetime(
+            history_df["created_at"]
+        ).dt.strftime("%Y-%m-%d")
+
         display_history = history_df[
             [
                 "project_name",
