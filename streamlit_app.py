@@ -968,10 +968,24 @@ if app_mode == "Dashboard":
 
             manufacturer_chart_data.columns = ["Manufacturer", "Part Count"]
 
+            manufacturer_chart_data["Portfolio %"] = (
+                manufacturer_chart_data["Part Count"]
+                / manufacturer_chart_data["Part Count"].sum()
+                * 100
+            ).round(1)
+
             st.bar_chart(
                 manufacturer_chart_data,
                 x="Manufacturer",
                 y="Part Count",
+            )
+
+            st.subheader("Top Manufacturers")
+
+            st.dataframe(
+                manufacturer_chart_data.head(5),
+                use_container_width=True,
+                hide_index=True,
             )
         else:
             st.info("No manufacturer data yet.")
