@@ -709,6 +709,7 @@ if app_mode == "Dashboard":
                     ylabel="",
                     figsize=(2, 2),
                 ).figure
+                st.pyplot(fig, use_container_width=False)
             )
 
         with chart_col2:
