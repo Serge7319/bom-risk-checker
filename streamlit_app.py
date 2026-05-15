@@ -760,7 +760,7 @@ if app_mode == "Dashboard":
             )
 
         st.divider()
-        
+
         st.subheader("View Saved Analysis Details")
 
 
@@ -913,28 +913,24 @@ if app_mode == "Dashboard":
             st.info("No trend data yet.")
 
     with chart_col2:
-        st.subheader("Risk Distribution")
+        st.subheader("Manufacturer Concentration")
 
-        total_medium_risk = sum(
-            item["medium_risk_count"] for item in analysis_data
-        )
+        if history:
+            manufacturer_chart_data = (
+                history_df["manufacturer"]
+                .value_counts()
+                .reset_index()
+            )
 
-        total_low_risk = sum(
-            item["low_risk_count"] for item in analysis_data
-        )
+            manufacturer_chart_data.columns = ["Manufacturer", "Part Count"]
 
-        risk_chart_data = pd.DataFrame(
-            {
-                "Risk Level": ["High", "Medium", "Low"],
-                "Count": [
-                    total_high_risk,
-                    total_medium_risk,
-                    total_low_risk,
-                ],
-            }
-        )
-
-        st.bar_chart(risk_chart_data, x="Risk Level", y="Count")
+            st.bar_chart(
+                manufacturer_chart_data,
+                x="Manufacturer",
+                y="Part Count",
+            )
+        else:
+            st.info("No manufacturer data yet.")
 
     st.divider()
 
