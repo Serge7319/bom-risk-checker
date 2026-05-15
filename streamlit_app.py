@@ -35,6 +35,20 @@ def load_user_data():
     st.error("User profile not found. Please log out and create a new account.")
     st.stop()
 
+
+def load_alternative_history(user_id):
+    response = (
+        supabase.table("alternative_recommendations")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return response.data if response.data else []
+
+
+
 def load_analysis_history(user_id):
     response = (
         supabase.table("analysis_parts")
@@ -1030,6 +1044,44 @@ if app_mode == "Dashboard":
             file_name=f"{selected_analysis_label}.csv",
             mime="text/csv",
         )
+
+        st.divider()
+        st.subheader("Alternative Recommendation History")
+
+        alternative_history = load_alternative_history(current_user["id"])
+
+        if not alternative_history:
+            st.info("No alternative recommendations saved yet.")
+        else:
+            alternative_history_df = pd.DataFrame(alternative_history)
+
+            alternative_history_df["created_at"] = pd.to_datetime(
+                alternative_history_df["created_at"]
+            ).dt.strftime("%Y-%m-%d")
+
+            alternative_display_df = alternative_history_df[
+                [
+                    "original_part",
+                    "alternative_part",
+                    "recommendation_score",
+                    "estimated_risk",
+                    "created_at",
+                ]
+            ].rename(
+                columns={
+                    "original_part": "Original Part",
+                    "alternative_part": "Alternative Part",
+                    "recommendation_score": "Recommendation Score",
+                    "estimated_risk": "Estimated Risk",
+                    "created_at": "Created At",
+                }
+            )
+
+            st.dataframe(
+                alternative_display_df,
+                use_container_width=True,
+                hide_index=True,
+            )
 
     # ---------- Charts ----------
     chart_col1, chart_col2 = st.columns(2)
