@@ -580,6 +580,22 @@ if app_mode == "Dashboard":
 
         lifecycle_distribution.columns = ["Lifecycle Status", "Part Count"]
 
+        top_manufacturer = (
+            history_df["manufacturer"]
+            .value_counts()
+            .idxmax()
+        )
+
+        high_risk_count = (
+            history_df["risk_level"] == "High"
+        ).sum()
+
+        obsolete_count = (
+            history_df["lifecycle_status"]
+            .astype(str)
+            .str.contains("obsolete", case=False, na=False)
+        ).sum()
+
         top_risk_parts = (
             history_df.sort_values("risk_score", ascending=False)
             .head(5)
@@ -683,6 +699,21 @@ if app_mode == "Dashboard":
             x="Lifecycle Status",
             y="Part Count",
         )
+
+        st.subheader("Executive Insights")
+
+        st.info(
+            f"""
+            • {high_risk_count} high-risk components detected across saved analyses.
+
+            • Most frequently analyzed manufacturer: {top_manufacturer}
+
+            • {obsolete_count} components may be obsolete or approaching end-of-life.
+
+            • Review high-risk and obsolete components for redesign or sourcing mitigation.
+            """
+        )
+
         st.subheader("View Saved Analysis Details")
 
 
