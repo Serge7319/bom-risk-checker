@@ -697,6 +697,19 @@ if app_mode == "Dashboard":
                 x="Risk Level",
                 y="Part Count",
             )
+            st.subheader("Risk Composition")
+
+            risk_pie_data = risk_distribution.set_index("Risk Level")
+
+            st.pyplot(
+                risk_pie_data.plot.pie(
+                    y="Part Count",
+                    autopct="%1.1f%%",
+                    legend=False,
+                    ylabel="",
+                    figsize=(4, 4),
+                ).figure
+            )
 
         with chart_col2:
             st.subheader("Lifecycle Status Distribution")
