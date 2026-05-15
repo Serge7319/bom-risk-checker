@@ -885,6 +885,21 @@ if app_mode == "Dashboard":
 
                 if alternatives:
                     alternatives_df = pd.DataFrame(alternatives)
+
+                    best_alternative = max(
+                        alternatives,
+                        key=lambda x: x.get("Recommendation Score", 0)
+                    )
+
+                    st.success(
+                        f"""
+                        🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
+
+                        Recommendation Score: {best_alternative['Recommendation Score']}
+
+                        Recommendation: {best_alternative['Recommendation']}
+                        """
+                    )
                     recommendation_records = []
 
                     for alt in alternatives:
