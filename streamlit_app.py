@@ -675,6 +675,8 @@ if app_mode == "Dashboard":
             use_container_width=True,
         )
 
+        st.divider()
+
         st.subheader("Top 5 Critical Parts")
 
         st.dataframe(
@@ -683,22 +685,27 @@ if app_mode == "Dashboard":
             hide_index=True,
         )
 
-        st.subheader("Risk Level Distribution")
+        st.divider()
 
+        chart_col1, chart_col2 = st.columns(2)
 
-        st.bar_chart(
-            risk_distribution,
-            x="Risk Level",
-            y="Part Count",
-        )
+        with chart_col1:
+            st.subheader("Risk Level Distribution")
 
-        st.subheader("Lifecycle Status Distribution")
+            st.bar_chart(
+                risk_distribution,
+                x="Risk Level",
+                y="Part Count",
+            )
 
-        st.bar_chart(
-            lifecycle_distribution,
-            x="Lifecycle Status",
-            y="Part Count",
-        )
+        with chart_col2:
+            st.subheader("Lifecycle Status Distribution")
+
+            st.bar_chart(
+                lifecycle_distribution,
+                x="Lifecycle Status",
+                y="Part Count",
+            )
 
         st.subheader("Executive Insights")
 
@@ -752,6 +759,8 @@ if app_mode == "Dashboard":
                 unsafe_allow_html=True,
             )
 
+        st.divider()
+        
         st.subheader("View Saved Analysis Details")
 
 
