@@ -1109,6 +1109,24 @@ if app_mode == "Dashboard":
                 hide_index=True,
             )
 
+            alternative_csv = alternative_display_df.to_csv(index=False).encode("utf-8")
+
+            st.download_button(
+                label="Download Alternative History CSV",
+                data=alternative_csv,
+                file_name="alternative_recommendation_history.csv",
+                mime="text/csv",
+            )
+
+            if st.button("Clear Alternative Recommendation History"):
+                supabase.table("alternative_recommendations").delete().eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                st.success("Alternative recommendation history cleared.")
+                st.rerun()
+
     # ---------- Charts ----------
     chart_col1, chart_col2 = st.columns(2)
 
