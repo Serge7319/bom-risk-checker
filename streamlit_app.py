@@ -851,6 +851,36 @@ if app_mode == "Dashboard":
                 hide_index=True,
             )
 
+            st.subheader("Suggested Alternatives")
+
+            attention_part_options = attention_parts["mpn"].dropna().unique().tolist()
+
+            selected_attention_part = st.selectbox(
+                "Choose a risky part to find alternatives",
+                attention_part_options,
+            )
+
+            selected_part_row = attention_parts[
+                attention_parts["mpn"] == selected_attention_part
+            ].iloc[0]
+
+            if st.button("Find Alternatives for Selected Part"):
+                alternatives = suggest_alternatives_v2(
+                    selected_part_row.to_dict()
+                )
+
+                if alternatives:
+                    alternatives_df = pd.DataFrame(alternatives)
+
+                    st.dataframe(
+                        alternatives_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                else:
+                    st.info("No alternatives found for this part yet.")
+
         else:
             st.success("No critical parts detected in this BOM.")
 
