@@ -98,27 +98,37 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             {
                 "Alternative Part": "ATMEGA328P-AU",
                 "Category": "Direct AVR Alternative",
-                "Reason": "Same MCU family with alternate package",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Best Drop-In",
             },
             {
                 "Alternative Part": "ATMEGA168PA-PU",
                 "Category": "Lower Feature AVR",
-                "Reason": "Compatible AVR family with reduced resources",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Reduced resources",
             },
             {
                 "Alternative Part": "ATMEGA32U4-AU",
                 "Category": "USB AVR Upgrade",
-                "Reason": "Enhanced AVR with native USB support",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "USB-capable upgrade",
             },
             {
                 "Alternative Part": "PIC16F877A-I/P",
                 "Category": "Microchip Alternative",
-                "Reason": "Alternative microcontroller platform",
+                "Lifecycle": "Mature",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Firmware redesign needed",
             },
             {
                 "Alternative Part": "STM32F103C8T6",
                 "Category": "ARM Cortex-M Alternative",
-                "Reason": "Higher-performance ARM MCU option",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Higher-performance option",
             },
         ]
     # Future: add more families here
