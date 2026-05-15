@@ -92,6 +92,15 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "ICM7555IPA"
         ]
 
+    # AVR microcontroller family detection
+    elif "atmega328" in original_part_number.lower():
+        candidates = [
+            "ATMEGA328P-AU",
+            "ATMEGA168PA-PU",
+            "ATMEGA32U4-AU",
+            "PIC16F877A-I/P",
+            "STM32F103C8T6",
+        ]
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
 
