@@ -66,7 +66,7 @@ def load_analysis_history(user_id):
 
     return response.data if response.data else []
 
-def generate_bom_pdf_report(project_name, selected_parts, attention_parts):
+def generate_bom_pdf_report(project_name, selected_parts, attention_parts, alternative_history=None):
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -144,7 +144,46 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts):
         )
 
         story.append(table)
+    story.append(Spacer(1, 16))
+    story.append(Paragraph("Suggested Alternatives", styles["Heading2"]))
 
+    if alternative_history is None or alternative_history.empty:
+        story.append(Paragraph("No saved alternative recommendations for this BOM.", styles["Normal"]))
+
+    else:
+        alt_table_data = [
+            [
+                "Original Part",
+                "Alternative Part",
+                "Score",
+                "Estimated Risk",
+            ]
+        ]
+
+        for _, row in alternative_history.head(10).iterrows():
+            alt_table_data.append(
+                [
+                    str(row.get("original_part", "")),
+                    str(row.get("alternative_part", "")),
+                    str(row.get("recommendation_score", "")),
+                    str(row.get("estimated_risk", "")),
+                ]
+            )
+
+        alt_table = Table(alt_table_data)
+
+        alt_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+
+        story.append(alt_table)
     doc.build(story)
 
     buffer.seek(0)
@@ -1162,10 +1201,20 @@ if app_mode == "Dashboard":
             mime="text/csv",
         )
 
+        selected_alt_history = pd.DataFrame(
+            load_alternative_history(current_user["id"])
+        )
+
+        if not selected_alt_history.empty:
+            selected_alt_history = selected_alt_history[
+                selected_alt_history["analysis_id"] == selected_analysis_id
+            ]
+
         pdf_buffer = generate_bom_pdf_report(
             selected_analysis_label,
             selected_parts,
             attention_parts,
+            selected_alt_history,
         )
 
         st.download_button(
