@@ -1077,11 +1077,23 @@ if app_mode == "Admin":
             "Created At",
         ]
 
+        activity_display_df = activity_df[display_cols].rename(
+            columns={
+                "project_name": "Project Name",
+                "health_score": "Health Score",
+                "high_risk_count": "High Risk Parts",
+                "medium_risk_count": "Medium Risk Parts",
+                "low_risk_count": "Low Risk Parts",
+                "created_at": "Created At",
+            }
+        )
+
         st.dataframe(
-            activity_df[display_cols],
+            activity_display_df,
             use_container_width=True,
             hide_index=True,
         )
+
     else:
         st.info("No users found.")
 
@@ -1190,8 +1202,21 @@ if app_mode == "Alternative Finder":
                     "Product URL",
                 ]
 
+                comparison_display_df = comparison_df[display_cols].rename(
+                    columns={
+                        "mpn": "Part Number",
+                        "manufacturer": "Manufacturer",
+                        "risk_score": "Risk Score",
+                        "risk_level": "Risk Level",
+                        "risk_reasons": "Risk Reasons",
+                        "lifecycle_status": "Lifecycle Status",
+                        "stock_available": "Stock Available",
+                        "supplier_count": "Supplier Count",
+                    }
+                )
+
                 st.dataframe(
-                    comparison_df[display_cols],
+                    comparison_display_df,
                     use_container_width=True,
                     hide_index=True,
                 )
@@ -1255,7 +1280,16 @@ if app_mode == "BOM Analyzer":
                 "medium_risk_count",
                 "created_at",
             ]
-        ]
+        ].rename(
+            columns={
+                "project_name": "Project Name",
+                "filename": "Uploaded File",
+                "health_score": "Health Score",
+                "high_risk_count": "High Risk Parts",
+                "medium_risk_count": "Medium Risk Parts",
+                "created_at": "Created At",
+            }
+        )
 
         st.dataframe(
             display_history,
