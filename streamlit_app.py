@@ -572,6 +572,14 @@ if app_mode == "Dashboard":
 
         risk_distribution.columns = ["Risk Level", "Part Count"]
 
+        lifecycle_distribution = (
+            history_df["lifecycle_status"]
+            .value_counts()
+            .reset_index()
+        )
+
+        lifecycle_distribution.columns = ["Lifecycle Status", "Part Count"]
+
         top_risk_parts = (
             history_df.sort_values("risk_score", ascending=False)
             .head(5)
@@ -653,7 +661,14 @@ if app_mode == "Dashboard":
 
         st.subheader("Top 5 Critical Parts")
 
+        st.dataframe(
+            top_risk_display,
+            use_container_width=True,
+            hide_index=True,
+        )
+
         st.subheader("Risk Level Distribution")
+
 
         st.bar_chart(
             risk_distribution,
@@ -661,13 +676,16 @@ if app_mode == "Dashboard":
             y="Part Count",
         )
 
-        st.dataframe(
-            top_risk_display,
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.subheader("Lifecycle Status Distribution")
 
+        st.bar_chart(
+            lifecycle_distribution,
+            x="Lifecycle Status",
+            y="Part Count",
+        )
         st.subheader("View Saved Analysis Details")
+
+
 
         analysis_options = {
             f"{row['project_name']} — {row['created_at']}": row["analysis_id"]
