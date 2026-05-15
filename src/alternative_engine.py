@@ -95,11 +95,31 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
-            "ATMEGA328P-AU",
-            "ATMEGA168PA-PU",
-            "ATMEGA32U4-AU",
-            "PIC16F877A-I/P",
-            "STM32F103C8T6",
+            {
+                "Alternative Part": "ATMEGA328P-AU",
+                "Category": "Direct AVR Alternative",
+                "Reason": "Same MCU family with alternate package",
+            },
+            {
+                "Alternative Part": "ATMEGA168PA-PU",
+                "Category": "Lower Feature AVR",
+                "Reason": "Compatible AVR family with reduced resources",
+            },
+            {
+                "Alternative Part": "ATMEGA32U4-AU",
+                "Category": "USB AVR Upgrade",
+                "Reason": "Enhanced AVR with native USB support",
+            },
+            {
+                "Alternative Part": "PIC16F877A-I/P",
+                "Category": "Microchip Alternative",
+                "Reason": "Alternative microcontroller platform",
+            },
+            {
+                "Alternative Part": "STM32F103C8T6",
+                "Category": "ARM Cortex-M Alternative",
+                "Reason": "Higher-performance ARM MCU option",
+            },
         ]
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
