@@ -66,7 +66,7 @@ def load_analysis_history(user_id):
 
     return response.data if response.data else []
 
-def generate_bom_pdf_report(project_name, selected_parts, attention_parts, alternative_history=None):
+def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_health_score, alternative_history=None):
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -85,6 +85,29 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, alter
     story.append(Spacer(1, 12))
 
     story.append(Paragraph(f"Project: {project_name}", styles["Heading2"]))
+    risk_status = "Low Risk"
+
+    if bom_health_score < 50:
+        risk_status = "High Risk"
+    elif bom_health_score < 80:
+        risk_status = "Moderate Risk"
+
+    story.append(
+        Paragraph(
+            f"BOM Health Score: {bom_health_score} / 100",
+            styles["Heading2"]
+        )
+    )
+
+    story.append(
+        Paragraph(
+            f"Overall Status: {risk_status}",
+            styles["Normal"]
+        )
+    )
+
+    story.append(Spacer(1, 12))
+
     story.append(
         Paragraph(
             f"Total Parts: {len(selected_parts)}",
@@ -1214,6 +1237,7 @@ if app_mode == "Dashboard":
             selected_analysis_label,
             selected_parts,
             attention_parts,
+            int(selected_parts["risk_score"].mean()),
             selected_alt_history,
         )
 
