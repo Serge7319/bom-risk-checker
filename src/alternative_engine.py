@@ -101,6 +101,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Lifecycle": "Active",
                 "Estimated Risk": "Low",
                 "Recommendation": "Best Drop-In",
+                "Recommendation Score": 95,
             },
             {
                 "Alternative Part": "ATMEGA168PA-PU",
@@ -108,6 +109,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Lifecycle": "Active",
                 "Estimated Risk": "Medium",
                 "Recommendation": "Reduced resources",
+                "Recommendation Score": 80,
             },
             {
                 "Alternative Part": "ATMEGA32U4-AU",
@@ -115,6 +117,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Lifecycle": "Active",
                 "Estimated Risk": "Low",
                 "Recommendation": "USB-capable upgrade",
+                "Recommendation Score": 78,
             },
             {
                 "Alternative Part": "PIC16F877A-I/P",
@@ -122,6 +125,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Lifecycle": "Mature",
                 "Estimated Risk": "Medium",
                 "Recommendation": "Firmware redesign needed",
+                "Recommendation Score": 76,
             },
             {
                 "Alternative Part": "STM32F103C8T6",
@@ -129,12 +133,19 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Lifecycle": "Active",
                 "Estimated Risk": "Medium",
                 "Recommendation": "Higher-performance option",
+                "Recommendation Score": 72,
             },
         ]
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
 
-    return candidates[:5]  # limit results
+    sorted_candidates = sorted(
+        candidates,
+        key=lambda x: x["Recommendation Score"],
+        reverse=True,
+    )
+
+    return sorted_candidates[:5]
 
 def rank_alternatives(alternative_part_numbers: list) -> pd.DataFrame:
     """
