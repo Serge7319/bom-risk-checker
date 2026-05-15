@@ -702,17 +702,35 @@ if app_mode == "Dashboard":
 
         st.subheader("Executive Insights")
 
-        st.info(
-            f"""
-            • {high_risk_count} high-risk components detected across saved analyses.
+        insight_col1, insight_col2, insight_col3, insight_col4 = st.columns(4)
 
-            • Most frequently analyzed manufacturer: {top_manufacturer}
+        with insight_col1:
+            st.metric(
+                label="High-Risk Parts",
+                value=high_risk_count,
+                help="Components marked as High risk across saved analyses."
+            )
 
-            • {obsolete_count} components may be obsolete or approaching end-of-life.
+        with insight_col2:
+            st.metric(
+                label="Top Manufacturer",
+                value=top_manufacturer,
+                help="Manufacturer appearing most often across saved analyses."
+            )
 
-            • Review high-risk and obsolete components for redesign or sourcing mitigation.
-            """
-        )
+        with insight_col3:
+            st.metric(
+                label="Obsolete / EOL Parts",
+                value=obsolete_count,
+                help="Components flagged as obsolete or potentially end-of-life."
+            )
+
+        with insight_col4:
+            st.metric(
+                label="Recommended Action",
+                value="Review",
+                help="Review high-risk and obsolete components for redesign or sourcing mitigation."
+            )
 
         st.subheader("View Saved Analysis Details")
 
