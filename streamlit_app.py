@@ -589,6 +589,17 @@ if app_mode == "Dashboard":
             }
         )
 
+        top_risk_display["Risk Level"] = (
+            top_risk_display["Risk Level"]
+            .replace(
+                {
+                    "High": "🔴 High",
+                    "Medium": "🟠 Medium",
+                    "Low": "🟢 Low",
+                }
+            )
+        )
+
         summary_df = (
             history_df.groupby(
                 ["analysis_id", "project_name", "created_at"]
@@ -722,6 +733,17 @@ if app_mode == "Dashboard":
                 "stock_available": "Stock Available",
                 "supplier_count": "Supplier Count",
             }
+        )
+
+        filtered_display_df["Risk Level"] = (
+            filtered_display_df["Risk Level"]
+            .replace(
+                {
+                    "High": "🔴 High",
+                    "Medium": "🟠 Medium",
+                    "Low": "🟢 Low",
+                }
+            )
         )
 
         st.dataframe(
