@@ -871,6 +871,24 @@ if app_mode == "Dashboard":
 
                 if alternatives:
                     alternatives_df = pd.DataFrame(alternatives)
+                    recommendation_records = []
+
+                    for alt in alternatives:
+                        recommendation_records.append(
+                            {
+                                "user_id": current_user["id"],
+                                "analysis_id": selected_analysis_id,
+                                "original_part": selected_attention_part,
+                                "alternative_part": alt.get("Alternative Part", ""),
+                                "recommendation_score": alt.get("Recommendation Score", 0),
+                                "estimated_risk": alt.get("Estimated Risk", "Unknown"),
+                            }
+                        )
+
+                    if recommendation_records:
+                        supabase.table("alternative_recommendations").insert(
+                            recommendation_records
+                        ).execute()
 
                 if "Estimated Risk" in alternatives_df.columns:
                     alternatives_df["Estimated Risk"] = alternatives_df["Estimated Risk"].replace(
