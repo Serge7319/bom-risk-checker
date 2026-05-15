@@ -701,16 +701,15 @@ if app_mode == "Dashboard":
 
             risk_pie_data = risk_distribution.set_index("Risk Level")
 
-            st.pyplot(
-                risk_pie_data.plot.pie(
-                    y="Part Count",
-                    autopct="%1.1f%%",
-                    legend=False,
-                    ylabel="",
-                    figsize=(2, 2),
-                ).figure
-                st.pyplot(fig, use_container_width=False)
-            )
+            fig = risk_pie_data.plot.pie(
+                y="Part Count",
+                autopct="%1.1f%%",
+                legend=False,
+                ylabel="",
+                figsize=(2, 2),
+            ).figure
+
+            st.pyplot(fig, use_container_width=False)
 
         with chart_col2:
             st.subheader("Lifecycle Status Distribution")
