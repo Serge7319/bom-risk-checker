@@ -10,6 +10,12 @@ from src.plans import PLANS, get_plan, validate_bom_against_plan
 from src.alternative_engine import compare_parts, suggest_alternatives_v2, rank_alternatives
 from src.auth import show_auth_ui
 from supabase import create_client
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -59,6 +65,91 @@ def load_analysis_history(user_id):
     )
 
     return response.data if response.data else []
+
+def generate_bom_pdf_report(project_name, selected_parts, attention_parts):
+    buffer = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=40,
+        bottomMargin=40,
+    )
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("Executive BOM Risk Report", styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph(f"Project: {project_name}", styles["Heading2"]))
+    story.append(
+        Paragraph(
+            f"Total Parts: {len(selected_parts)}",
+            styles["Normal"]
+        )
+    )
+
+    story.append(
+        Paragraph(
+            f"High-Risk Parts: {(selected_parts['risk_level'] == 'High').sum()}",
+            styles["Normal"]
+        )
+    )
+
+    story.append(Spacer(1, 16))
+
+    story.append(
+        Paragraph("Parts Requiring Attention", styles["Heading2"])
+    )
+
+    if attention_parts.empty:
+        story.append(
+            Paragraph("No critical parts detected.", styles["Normal"])
+        )
+
+    else:
+        table_data = [
+            [
+                "Part Number",
+                "Manufacturer",
+                "Risk Level",
+                "Lifecycle Status",
+            ]
+        ]
+
+        for _, row in attention_parts.head(10).iterrows():
+            table_data.append(
+                [
+                    str(row.get("mpn", "")),
+                    str(row.get("manufacturer", "")),
+                    str(row.get("risk_level", "")),
+                    str(row.get("lifecycle_status", "")),
+                ]
+            )
+
+        table = Table(table_data)
+
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+
+        story.append(table)
+
+    doc.build(story)
+
+    buffer.seek(0)
+
+    return buffer
 
 if "user" not in st.session_state:
     show_auth_ui(supabase)
@@ -1069,6 +1160,19 @@ if app_mode == "Dashboard":
             data=csv_data,
             file_name=f"{selected_analysis_label}.csv",
             mime="text/csv",
+        )
+
+        pdf_buffer = generate_bom_pdf_report(
+            selected_analysis_label,
+            selected_parts,
+            attention_parts,
+        )
+
+        st.download_button(
+            label="Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{selected_analysis_label}_executive_report.pdf",
+            mime="application/pdf",
         )
 
         st.divider()
