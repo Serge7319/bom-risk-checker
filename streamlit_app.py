@@ -564,6 +564,31 @@ if app_mode == "Dashboard":
     else:
         history_df = pd.DataFrame(history)
 
+        top_risk_parts = (
+            history_df.sort_values("risk_score", ascending=False)
+            .head(5)
+        )
+
+        top_risk_display = top_risk_parts[
+            [
+                "mpn",
+                "manufacturer",
+                "risk_score",
+                "risk_level",
+                "risk_reasons",
+                "lifecycle_status",
+            ]
+        ].rename(
+            columns={
+                "mpn": "Part Number",
+                "manufacturer": "Manufacturer",
+                "risk_score": "Risk Score",
+                "risk_level": "Risk Level",
+                "risk_reasons": "Risk Reasons",
+                "lifecycle_status": "Lifecycle Status",
+            }
+        )
+
         summary_df = (
             history_df.groupby(
                 ["analysis_id", "project_name", "created_at"]
@@ -607,7 +632,14 @@ if app_mode == "Dashboard":
             use_container_width=True,
         )
 
-        
+        st.subheader("Top 5 Critical Parts")
+
+        st.dataframe(
+            top_risk_display,
+            use_container_width=True,
+            hide_index=True,
+        )
+
         st.subheader("View Saved Analysis Details")
 
         analysis_options = {
