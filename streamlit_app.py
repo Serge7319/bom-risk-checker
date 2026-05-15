@@ -564,6 +564,14 @@ if app_mode == "Dashboard":
     else:
         history_df = pd.DataFrame(history)
 
+        risk_distribution = (
+            history_df["risk_level"]
+            .value_counts()
+            .reset_index()
+        )
+
+        risk_distribution.columns = ["Risk Level", "Part Count"]
+
         top_risk_parts = (
             history_df.sort_values("risk_score", ascending=False)
             .head(5)
@@ -644,6 +652,14 @@ if app_mode == "Dashboard":
         )
 
         st.subheader("Top 5 Critical Parts")
+
+        st.subheader("Risk Level Distribution")
+
+        st.bar_chart(
+            risk_distribution,
+            x="Risk Level",
+            y="Part Count",
+        )
 
         st.dataframe(
             top_risk_display,
