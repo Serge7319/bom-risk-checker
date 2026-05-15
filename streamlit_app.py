@@ -872,6 +872,15 @@ if app_mode == "Dashboard":
                 if alternatives:
                     alternatives_df = pd.DataFrame(alternatives)
 
+                if "Estimated Risk" in alternatives_df.columns:
+                    alternatives_df["Estimated Risk"] = alternatives_df["Estimated Risk"].replace(
+                        {
+                            "Low": "🟢 Low",
+                            "Medium": "🟠 Medium",
+                            "High": "🔴 High",
+                        }
+                    )
+
                     st.dataframe(
                         alternatives_df,
                         use_container_width=True,
