@@ -781,7 +781,38 @@ if app_mode == "Dashboard":
             history_df["analysis_id"] == selected_analysis_id
         ]
 
+        selected_total_parts = len(selected_parts)
+
+        selected_high_risk = (
+            selected_parts["risk_level"] == "High"
+        ).sum()
+
+        selected_obsolete = (
+            selected_parts["lifecycle_status"]
+            .astype(str)
+            .str.contains("obsolete", case=False, na=False)
+        ).sum()
+
+        selected_avg_risk = int(
+            selected_parts["risk_score"].mean()
+        )
         st.subheader("Filter Saved Parts")
+
+        st.subheader("Selected BOM Summary")
+
+        bom_col1, bom_col2, bom_col3, bom_col4 = st.columns(4)
+
+        with bom_col1:
+            st.metric("Total Parts", selected_total_parts)
+
+        with bom_col2:
+            st.metric("High-Risk Parts", selected_high_risk)
+
+        with bom_col3:
+            st.metric("Obsolete / EOL Parts", selected_obsolete)
+
+        with bom_col4:
+            st.metric("Average Risk Score", selected_avg_risk)
 
         search_query = st.text_input("Search by MPN, manufacturer, or risk reason")
 
