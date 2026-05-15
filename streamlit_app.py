@@ -108,6 +108,35 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     story.append(Spacer(1, 12))
 
+    executive_summary = (
+    "This BOM shows moderate supply-chain risk due to obsolete "
+    "components, replacement-suggested parts, and limited supplier "
+    "availability. Priority should be given to obsolete and high-risk "
+    "components before production release."
+    )
+
+    if risk_status == "High Risk":
+        executive_summary = (
+            "This BOM contains significant supply-chain and lifecycle risk. "
+            "Immediate review of obsolete, high-risk, and low-availability "
+            "components is strongly recommended before manufacturing."
+        )
+
+    elif risk_status == "Low Risk":
+        executive_summary = (
+            "This BOM currently demonstrates healthy lifecycle and sourcing "
+            "status with relatively low supply-chain risk exposure."
+        )
+
+    story.append(
+        Paragraph(
+            f"<b>Executive Summary:</b> {executive_summary}",
+            styles["BodyText"]
+        )
+    )
+
+    story.append(Spacer(1, 16))
+
     story.append(
         Paragraph(
             f"Total Parts: {len(selected_parts)}",
