@@ -915,6 +915,17 @@ if app_mode == "Dashboard":
                         )
 
                     if recommendation_records:
+                        supabase.table("alternative_recommendations").delete().eq(
+                            "user_id",
+                            current_user["id"]
+                        ).eq(
+                            "analysis_id",
+                            selected_analysis_id
+                        ).eq(
+                            "original_part",
+                            selected_attention_part
+                        ).execute()
+
                         supabase.table("alternative_recommendations").insert(
                             recommendation_records
                         ).execute()
