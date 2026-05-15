@@ -794,6 +794,19 @@ if app_mode == "Dashboard":
             history_df["analysis_id"] == selected_analysis_id
         ]
 
+        attention_parts = selected_parts[
+            (selected_parts["risk_level"] == "High")
+            |
+            (
+                selected_parts["lifecycle_status"]
+                .astype(str)
+                .str.contains(
+                    "obsolete|not recommended|replacement",
+                    case=False,
+                    na=False,
+                )
+            )
+        ]
         selected_total_parts = len(selected_parts)
 
         selected_high_risk = (
@@ -809,6 +822,38 @@ if app_mode == "Dashboard":
         selected_avg_risk = int(
             selected_parts["risk_score"].mean()
         )
+
+        st.subheader("Parts Requiring Attention")
+
+        if not attention_parts.empty:
+
+            attention_display = attention_parts[
+                [
+                    "mpn",
+                    "manufacturer",
+                    "risk_level",
+                    "lifecycle_status",
+                    "risk_reasons",
+                ]
+            ].rename(
+                columns={
+                    "mpn": "Part Number",
+                    "manufacturer": "Manufacturer",
+                    "risk_level": "Risk Level",
+                    "lifecycle_status": "Lifecycle Status",
+                    "risk_reasons": "Risk Reasons",
+                }
+            )
+
+            st.dataframe(
+                attention_display,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        else:
+            st.success("No critical parts detected in this BOM.")
+
         st.subheader("Filter Saved Parts")
 
         st.subheader("Selected BOM Summary")
