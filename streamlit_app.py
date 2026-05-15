@@ -866,7 +866,7 @@ if app_mode == "Dashboard":
 
             if st.button("Find Alternatives for Selected Part"):
                 alternatives = suggest_alternatives_v2(
-                    selected_part_row.to_dict()
+                    selected_attention_part
                 )
 
                 if alternatives:
