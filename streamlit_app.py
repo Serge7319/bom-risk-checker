@@ -707,7 +707,7 @@ if app_mode == "Dashboard":
                     autopct="%1.1f%%",
                     legend=False,
                     ylabel="",
-                    figsize=(4, 4),
+                    figsize=(2.5, 2.5),
                 ).figure
             )
 
