@@ -578,6 +578,10 @@ if app_mode == "Dashboard":
             .sort_values("created_at", ascending=False)
         )
 
+        summary_df["created_at"] = pd.to_datetime(
+            summary_df["created_at"]
+        ).dt.strftime("%Y-%m-%d")
+
         summary_display_df = summary_df[
             [
                 "project_name",
