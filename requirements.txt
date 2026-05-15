@@ -5,3 +5,4 @@ requests
 matplotlib
 supabase
 python-dotenv
+reportlab
