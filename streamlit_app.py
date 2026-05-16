@@ -1068,20 +1068,31 @@ if app_mode == "Dashboard":
                 if alternatives:
                     alternatives_df = pd.DataFrame(alternatives)
 
-                    best_alternative = max(
-                        alternatives,
-                        key=lambda x: x.get("Recommendation Score", 0)
-                    )
+                    true_alternatives = [
+                        alt for alt in alternatives
+                        if alt.get("Alternative Part", "") != selected_attention_part
+                    ]
 
-                    st.success(
-                        f"""
-                        🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
+                    if true_alternatives:
+                        best_alternative = max(
+                            true_alternatives,
+                            key=lambda x: x.get("Recommendation Score", 0)
+                        )
 
-                        Recommendation Score: {best_alternative['Recommendation Score']}
+                        st.success(
+                            f"""
+                            🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
 
-                        Recommendation: {best_alternative['Recommendation']}
-                        """
-                    )
+                            Recommendation Score: {best_alternative['Recommendation Score']}
+
+                            Recommendation: {best_alternative['Recommendation']}
+                            """
+                        )
+
+                    else:
+                        st.info(
+                            "Supplier verification found for the selected part, but no true alternative recommendations were identified yet."
+                        )
                     recommendation_records = []
 
                     for alt in alternatives:
