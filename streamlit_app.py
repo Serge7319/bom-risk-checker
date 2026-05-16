@@ -197,10 +197,65 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
         story.append(table)
     story.append(Spacer(1, 16))
+
+if alternative_history is None or alternative_history.empty:
+    story.append(Paragraph("Supplier Verification", styles["Heading2"]))
+    story.append(Paragraph("No saved supplier verification or alternative recommendations for this BOM.", styles["Normal"]))
+
+else:
+    verification_history = alternative_history[
+        alternative_history["original_part"] == alternative_history["alternative_part"]
+    ]
+
+    true_alternative_history = alternative_history[
+        alternative_history["original_part"] != alternative_history["alternative_part"]
+    ]
+
+    story.append(Paragraph("Supplier Verification", styles["Heading2"]))
+
+    if verification_history.empty:
+        story.append(Paragraph("No supplier verification records saved for this BOM.", styles["Normal"]))
+
+    else:
+        verification_table_data = [
+            [
+                "Part Number",
+                "Supplier",
+                "Risk",
+                "Stock",
+            ]
+        ]
+
+        for _, row in verification_history.head(10).iterrows():
+            verification_table_data.append(
+                [
+                    str(row.get("original_part", "")),
+                    str(row.get("supplier", "")),
+                    str(row.get("estimated_risk", "")),
+                    str(row.get("stock", "")),
+                ]
+            )
+
+        verification_table = Table(verification_table_data)
+
+        verification_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+
+        story.append(verification_table)
+
+    story.append(Spacer(1, 16))
     story.append(Paragraph("Suggested Alternatives", styles["Heading2"]))
 
-    if alternative_history is None or alternative_history.empty:
-        story.append(Paragraph("No saved alternative recommendations for this BOM.", styles["Normal"]))
+    if true_alternative_history.empty:
+        story.append(Paragraph("No true alternative recommendations saved for this BOM.", styles["Normal"]))
 
     else:
         alt_table_data = [
@@ -214,7 +269,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
             ]
         ]
 
-        for _, row in alternative_history.head(10).iterrows():
+        for _, row in true_alternative_history.head(10).iterrows():
             alt_table_data.append(
                 [
                     str(row.get("original_part", "")),
@@ -227,6 +282,19 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
             )
 
         alt_table = Table(alt_table_data)
+
+        alt_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+
+        story.append(alt_table)
 
         alt_table.setStyle(
             TableStyle(
