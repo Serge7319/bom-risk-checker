@@ -223,6 +223,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                     "Supplier",
                     "Risk",
                     "Stock",
+                    "Unit Price",
                 ]
             ]
 
@@ -233,6 +234,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                         str(row.get("supplier", "")),
                         str(row.get("estimated_risk", "")),
                         str(row.get("stock", "")),
+                        str(row.get("unit_price", "")),
                     ]
                 )
 
@@ -266,6 +268,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                     "Risk",
                     "Supplier",
                     "Stock",
+                    "Unit Price",
                 ]
             ]
 
@@ -278,6 +281,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                         str(row.get("estimated_risk", "")),
                         str(row.get("supplier", "")),
                         str(row.get("stock", "")),
+                        str(row.get("unit_price", "")),
                     ]
                 )
 
