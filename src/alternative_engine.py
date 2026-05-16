@@ -144,14 +144,14 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             candidates.append(
                 {
                     "Alternative Part": result.get("Part Number", ""),
-                    "Category": "Live Supplier Result",
+                    "Category": "Live Supplier Verification",
                     "Lifecycle": result.get("Lifecycle", "Unknown"),
                     "Estimated Risk": (
                         "Low"
                         if result.get("Stock", 0) > 1000
                         else "Medium"
                     ),
-                    "Recommendation": "Supplier availability verified",
+                    "Recommendation": "Current part verified through supplier data",
                     "Recommendation Score": (
                         90
                         if result.get("Stock", 0) > 1000
