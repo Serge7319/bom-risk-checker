@@ -1047,7 +1047,7 @@ if app_mode == "Dashboard":
                 hide_index=True,
             )
 
-            st.subheader("Suggested Alternatives")
+            st.subheader("Supplier Verification & Suggested Alternatives")
 
             attention_part_options = attention_parts["mpn"].dropna().unique().tolist()
 
