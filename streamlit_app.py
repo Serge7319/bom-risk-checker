@@ -1221,6 +1221,7 @@ if app_mode == "Dashboard":
                                 "estimated_risk": alt.get("Estimated Risk", "Unknown"),
                                 "supplier": alt.get("Supplier", ""),
                                 "stock": alt.get("Stock", 0),
+                                "unit_price": alt.get("Unit Price", 0.0),
                             }
                         )
 
@@ -1427,6 +1428,7 @@ if app_mode == "Dashboard":
                     "estimated_risk",
                     "supplier",
                     "stock",
+                    "unit_price",
                     "created_at",
                 ]
             ].rename(
@@ -1437,6 +1439,7 @@ if app_mode == "Dashboard":
                     "estimated_risk": "Estimated Risk",
                     "supplier": "Supplier",
                     "stock": "Stock",
+                    "unit_price": "Unit Price",
                     "created_at": "Created At",
                 }
             )
