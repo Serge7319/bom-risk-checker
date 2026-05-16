@@ -1200,7 +1200,8 @@ if app_mode == "Dashboard":
                     lifecycle_col1, lifecycle_col2 = st.columns([1, 3])
 
                     with lifecycle_col1:
-                        st.metric("Lifecycle Status", best_lifecycle)
+                        st.markdown("**Lifecycle Status**")
+                        st.info(best_lifecycle)
 
                     with lifecycle_col2:
                         st.caption(
