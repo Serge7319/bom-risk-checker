@@ -163,6 +163,22 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             )
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
+    for candidate in candidates:
+        alt_part_number = candidate.get("Alternative Part", "")
+
+        if not alt_part_number:
+            continue
+
+        supplier_matches = search_supplier_alternatives(alt_part_number)
+
+        if supplier_matches:
+            best_match = supplier_matches[0]
+
+            candidate["Supplier"] = best_match.get("Supplier", "")
+            candidate["Stock"] = best_match.get("Stock", 0)
+
+            if best_match.get("Lifecycle"):
+                candidate["Lifecycle"] = best_match.get("Lifecycle")
 
     sorted_candidates = sorted(
         candidates,
