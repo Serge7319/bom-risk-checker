@@ -296,18 +296,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
             story.append(alt_table)
 
-            alt_table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ]
-                )
-            )
-
-            story.append(alt_table)
+           
         doc.build(story)
 
         buffer.seek(0)
