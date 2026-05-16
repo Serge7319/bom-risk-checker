@@ -26,6 +26,7 @@ def search_supplier_alternatives(part_number):
                     "Manufacturer": mouser_data.get("manufacturer", ""),
                     "Lifecycle": mouser_data.get("lifecycle_status", "Unknown"),
                     "Stock": mouser_data.get("stock_total", 0),
+                    "Unit Price": mouser_data.get("unit_price", 0.0),
                     "Description": mouser_data.get("description", ""),
                     "Product URL": mouser_data.get("product_detail_url", ""),
                 }
@@ -46,6 +47,7 @@ def search_supplier_alternatives(part_number):
                     "Manufacturer": digikey_data.get("manufacturer", ""),
                     "Lifecycle": digikey_data.get("lifecycle_status", "Unknown"),
                     "Stock": digikey_data.get("stock_total", 0),
+                    "Unit Price": digikey_data.get("unit_price", 0.0),
                     "Description": digikey_data.get("description", ""),
                     "Product URL": digikey_data.get("product_detail_url", ""),
                 }
