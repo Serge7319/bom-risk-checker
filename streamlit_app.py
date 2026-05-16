@@ -1068,6 +1068,16 @@ if app_mode == "Dashboard":
                 if alternatives:
                     alternatives_df = pd.DataFrame(alternatives)
 
+                    supplier_count = alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique() if "Supplier" in alternatives_df.columns else 0
+
+                    total_stock = alternatives_df["Stock"].sum() if "Stock" in alternatives_df.columns else 0
+
+                    best_lifecycle = (
+                        alternatives_df["Lifecycle"].dropna().iloc[0]
+                        if "Lifecycle" in alternatives_df.columns and not alternatives_df["Lifecycle"].dropna().empty
+                        else "Unknown"
+                    )
+
                     true_alternatives = [
                         alt for alt in alternatives
                         if alt.get("Alternative Part", "") != selected_attention_part
@@ -1093,6 +1103,18 @@ if app_mode == "Dashboard":
                         st.info(
                             "Supplier verification found for the selected part, but no true alternative recommendations were identified yet."
                         )
+
+                    verify_col1, verify_col2, verify_col3 = st.columns(3)
+
+                    with verify_col1:
+                        st.metric("Suppliers Found", supplier_count)
+
+                    with verify_col2:
+                        st.metric("Total Stock", int(total_stock))
+
+                    with verify_col3:
+                        st.metric("Lifecycle Status", best_lifecycle)
+                        
                     recommendation_records = []
 
                     for alt in alternatives:
