@@ -36,6 +36,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     return {
         "lifecycle_status": infer_lifecycle_status(part),
         "stock_total": stock_total,
+        "unit_price": extract_mouser_price(part),
         "supplier_count": 1,
         "lead_time_weeks": None,
         "has_alternates": False,
@@ -52,6 +53,7 @@ def default_part_result() -> dict:
     return {
         "lifecycle_status": "Unknown",
         "stock_total": 0,
+        "unit_price": 0.0,
         "supplier_count": 0,
         "lead_time_weeks": None,
         "has_alternates": False,
@@ -75,6 +77,26 @@ def extract_stock_number(availability: str) -> int:
 
     return int(digits) if digits else 0
 
+    
+def extract_mouser_price(part: dict) -> float:
+    price_breaks = part.get("PriceBreaks", [])
+
+    if not price_breaks:
+        return 0.0
+
+    first_break = price_breaks[0]
+
+    price = (
+        str(first_break.get("Price", ""))
+        .replace("$", "")
+        .replace(",", "")
+        .strip()
+    )
+
+    try:
+        return float(price)
+    except ValueError:
+        return 0.0
 
 def infer_lifecycle_status(part: dict) -> str:
     lifecycle = part.get("LifecycleStatus")
