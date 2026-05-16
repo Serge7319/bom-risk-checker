@@ -1299,6 +1299,8 @@ if app_mode == "Dashboard":
                     "alternative_part",
                     "recommendation_score",
                     "estimated_risk",
+                    "supplier",
+                    "stock",
                     "created_at",
                 ]
             ].rename(
@@ -1307,6 +1309,8 @@ if app_mode == "Dashboard":
                     "alternative_part": "Alternative Part",
                     "recommendation_score": "Recommendation Score",
                     "estimated_risk": "Estimated Risk",
+                    "supplier": "Supplier",
+                    "stock": "Stock",
                     "created_at": "Created At",
                 }
             )
