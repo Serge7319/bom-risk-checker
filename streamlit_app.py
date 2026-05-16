@@ -208,7 +208,9 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                 "Original Part",
                 "Alternative Part",
                 "Score",
-                "Estimated Risk",
+                "Risk",
+                "Supplier",
+                "Stock",
             ]
         ]
 
@@ -219,6 +221,8 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                     str(row.get("alternative_part", "")),
                     str(row.get("recommendation_score", "")),
                     str(row.get("estimated_risk", "")),
+                    str(row.get("supplier", "")),
+                    str(row.get("stock", "")),
                 ]
             )
 
@@ -1072,6 +1076,24 @@ if app_mode == "Dashboard":
 
                     total_stock = alternatives_df["Stock"].sum() if "Stock" in alternatives_df.columns else 0
 
+                    highest_stock_row = (
+                        alternatives_df.loc[alternatives_df["Stock"].idxmax()]
+                        if "Stock" in alternatives_df.columns and not alternatives_df.empty
+                        else None
+                    )
+
+                    best_supplier = (
+                        highest_stock_row["Supplier"]
+                        if highest_stock_row is not None
+                        else "Unknown"
+                    )
+
+                    highest_stock = (
+                        int(highest_stock_row["Stock"])
+                        if highest_stock_row is not None
+                        else 0
+                    )
+
                     best_lifecycle = (
                         alternatives_df["Lifecycle"].dropna().iloc[0]
                         if "Lifecycle" in alternatives_df.columns and not alternatives_df["Lifecycle"].dropna().empty
@@ -1104,7 +1126,7 @@ if app_mode == "Dashboard":
                             "Supplier verification found for the selected part, but no true alternative recommendations were identified yet."
                         )
 
-                    verify_col1, verify_col2, verify_col3 = st.columns(3)
+                    verify_col1, verify_col2, verify_col3, verify_col4 = st.columns(4)
 
                     with verify_col1:
                         st.metric("Suppliers Found", supplier_count)
@@ -1113,8 +1135,21 @@ if app_mode == "Dashboard":
                         st.metric("Total Stock", int(total_stock))
 
                     with verify_col3:
+                        st.metric("Best Supplier", best_supplier)
+
+                    with verify_col4:
+                        st.metric("Highest Stock", highest_stock)
+
+                    lifecycle_col1, lifecycle_col2 = st.columns([1, 3])
+
+                    with lifecycle_col1:
                         st.metric("Lifecycle Status", best_lifecycle)
-                        
+
+                    with lifecycle_col2:
+                        st.caption(
+                            "Lifecycle status is based on the first available supplier response and may differ across suppliers."
+                        )
+
                     recommendation_records = []
 
                     for alt in alternatives:
