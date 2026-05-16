@@ -145,6 +145,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 {
                     "Alternative Part": result.get("Part Number", ""),
                     "Category": "Live Supplier Verification",
+                    "Supplier": result.get("Supplier", ""),
+                    "Stock": result.get("Stock", 0),
                     "Lifecycle": result.get("Lifecycle", "Unknown"),
                     "Estimated Risk": (
                         "Low"
