@@ -1093,6 +1093,8 @@ if app_mode == "Dashboard":
                                 "alternative_part": alt.get("Alternative Part", ""),
                                 "recommendation_score": alt.get("Recommendation Score", 0),
                                 "estimated_risk": alt.get("Estimated Risk", "Unknown"),
+                                "supplier": alt.get("Supplier", ""),
+                                "stock": alt.get("Stock", 0),
                             }
                         )
 
