@@ -2,7 +2,7 @@ import pandas as pd
 
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
-
+from src.supplier_aggregator import search_supplier_alternatives
 
 def compare_parts(original_part_number: str, alternative_part_numbers: list) -> pd.DataFrame:
     """
@@ -82,6 +82,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     candidates = []
 
+    supplier_results = search_supplier_alternatives(original_part_number)
+
     # Timer family detection
     if "timer" in description or "555" in original_part_number.upper():
         candidates = [
@@ -136,6 +138,27 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Recommendation Score": 72,
             },
         ]
+
+    if supplier_results:
+        for result in supplier_results:
+            candidates.append(
+                {
+                    "Alternative Part": result.get("Part Number", ""),
+                    "Category": "Live Supplier Result",
+                    "Lifecycle": result.get("Lifecycle", "Unknown"),
+                    "Estimated Risk": (
+                        "Low"
+                        if result.get("Stock", 0) > 1000
+                        else "Medium"
+                    ),
+                    "Recommendation": "Supplier availability verified",
+                    "Recommendation Score": (
+                        90
+                        if result.get("Stock", 0) > 1000
+                        else 70
+                    ),
+                }
+            )
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
 
