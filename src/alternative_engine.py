@@ -176,6 +176,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
             candidate["Supplier"] = best_match.get("Supplier", "")
             candidate["Stock"] = best_match.get("Stock", 0)
+            candidate["Unit Price"] = best_match.get("Unit Price", 0.0)
 
             if best_match.get("Lifecycle"):
                 candidate["Lifecycle"] = best_match.get("Lifecycle")
