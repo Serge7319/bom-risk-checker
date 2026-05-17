@@ -206,10 +206,16 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
         verification_history = alternative_history[
             alternative_history["original_part"] == alternative_history["alternative_part"]
         ]
+        verification_history = verification_history.drop_duplicates(
+            subset=["original_part", "supplier", "stock", "unit_price"]
+        )
 
         true_alternative_history = alternative_history[
             alternative_history["original_part"] != alternative_history["alternative_part"]
         ]
+        true_alternative_history = true_alternative_history.drop_duplicates(
+            subset=["original_part", "alternative_part", "supplier", "stock", "unit_price"]
+        )
 
         story.append(Paragraph("Supplier Verification", styles["Heading2"]))
 
