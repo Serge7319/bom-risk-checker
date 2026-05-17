@@ -300,12 +300,35 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
             story.append(alt_table)
 
+            value_candidates = true_alternative_history[
+                true_alternative_history["stock"] > 0
+            ]
+
+            if not value_candidates.empty:
+                best_value_row = value_candidates.loc[
+                    value_candidates["unit_price"].astype(float).idxmin()
+                ]
+
+                story.append(Spacer(1, 12))
+
+                story.append(
+                    Paragraph(
+                        (
+                            f"<b>Best Value Alternative:</b> "
+                            f"{best_value_row['alternative_part']} "
+                            f"— ${float(best_value_row['unit_price']):.2f} "
+                            f"with available stock of {best_value_row['stock']} units."
+                        ),
+                        styles["BodyText"],
+                    )
+                )
+
            
-        doc.build(story)
+    doc.build(story)
 
-        buffer.seek(0)
+    buffer.seek(0)
 
-        return buffer
+    return buffer
 
 if "user" not in st.session_state:
     show_auth_ui(supabase)
