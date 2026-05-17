@@ -1139,177 +1139,179 @@ if app_mode == "Dashboard":
 
             attention_part_options = attention_parts["mpn"].dropna().unique().tolist()
 
-            selected_attention_part = st.selectbox(
-                "Choose a risky part to find alternatives",
+            selected_attention_parts = st.multiselect(
+                "Choose risky parts to find alternatives",
                 attention_part_options,
             )
 
-            selected_part_row = attention_parts[
-                attention_parts["mpn"] == selected_attention_part
-            ].iloc[0]
-
-            if st.button("Find Alternatives for Selected Part"):
-                alternatives = suggest_alternatives_v2(
-                    selected_attention_part
-                )
-
-                if alternatives:
-                    alternatives_df = pd.DataFrame(alternatives)
-
-                    supplier_count = alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique() if "Supplier" in alternatives_df.columns else 0
-
-                    total_stock = alternatives_df["Stock"].sum() if "Stock" in alternatives_df.columns else 0
-
-                    highest_stock_row = (
-                        alternatives_df.loc[alternatives_df["Stock"].idxmax()]
-                        if "Stock" in alternatives_df.columns and not alternatives_df.empty
-                        else None
-                    )
-
-                    best_supplier = (
-                        highest_stock_row["Supplier"]
-                        if highest_stock_row is not None
-                        else "Unknown"
-                    )
-
-                    highest_stock = (
-                        int(highest_stock_row["Stock"])
-                        if highest_stock_row is not None
-                        else 0
-                    )
-
-                    best_lifecycle = (
-                        alternatives_df["Lifecycle"].dropna().iloc[0]
-                        if "Lifecycle" in alternatives_df.columns and not alternatives_df["Lifecycle"].dropna().empty
-                        else "Unknown"
-                    )
-
-                    true_alternatives = [
-                        alt for alt in alternatives
-                        if alt.get("Alternative Part", "") != selected_attention_part
-                    ]
-
-                    if true_alternatives:
-                        best_alternative = max(
-                            true_alternatives,
-                            key=lambda x: x.get("Recommendation Score", 0)
-                        )
-
-                        st.success(
-                            f"""
-                            🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
-
-                            Recommendation Score: {best_alternative['Recommendation Score']}
-
-                            Recommendation: {best_alternative['Recommendation']}
-                            """
-                        )
-                        value_alternatives = [
-                            alt for alt in true_alternatives
-                            if alt.get("Stock", 0) > 0
-                        ]
-
-                        best_value_alternative = None
-
-                        if value_alternatives:
-                            best_value_alternative = min(
-                                value_alternatives,
-                                key=lambda x: float(x.get("Unit Price", 0.0))
-                            )
-                        if best_value_alternative:
-                                st.info(
-                                    f"""
-                                    💰 Best Value Alternative: {best_value_alternative['Alternative Part']}
-
-                                    Unit Price: ${float(best_value_alternative.get('Unit Price', 0.0)):.2f}
-
-                                    Available Stock: {best_value_alternative.get('Stock', 0)}
-                                    """
-                                )
-                        
-                            
-                            
-
-                    else:
-                        st.info(
-                            "Supplier verification found for the selected part, but no true alternative recommendations were identified yet."
-                        )
-
-                    verify_col1, verify_col2, verify_col3, verify_col4 = st.columns(4)
-
-                    with verify_col1:
-                        st.metric("Suppliers Found", supplier_count)
-
-                    with verify_col2:
-                        st.metric("Total Stock", int(total_stock))
-
-                    with verify_col3:
-                        st.metric("Best Supplier", best_supplier)
-
-                    with verify_col4:
-                        st.metric("Highest Stock", highest_stock)
-
-                    lifecycle_col1, lifecycle_col2 = st.columns([1, 3])
-
-                    with lifecycle_col1:
-                        st.markdown("**Lifecycle Status**")
-                        st.info(best_lifecycle)
-
-                    with lifecycle_col2:
-                        st.caption(
-                            "Lifecycle status is based on the first available supplier response and may differ across suppliers."
-                        )
-
-                    recommendation_records = []
-
-                    for alt in alternatives:
-                        recommendation_records.append(
-                            {
-                                "user_id": current_user["id"],
-                                "analysis_id": selected_analysis_id,
-                                "original_part": selected_attention_part,
-                                "alternative_part": alt.get("Alternative Part", ""),
-                                "recommendation_score": alt.get("Recommendation Score", 0),
-                                "estimated_risk": alt.get("Estimated Risk", "Unknown"),
-                                "supplier": alt.get("Supplier", ""),
-                                "stock": alt.get("Stock", 0),
-                                "unit_price": alt.get("Unit Price", 0.0),
-                            }
-                        )
-
-                    if recommendation_records:
-                        supabase.table("alternative_recommendations").delete().eq(
-                            "user_id",
-                            current_user["id"]
-                        ).eq(
-                            "analysis_id",
-                            selected_analysis_id
-                        ).eq(
-                            "original_part",
-                            selected_attention_part
-                        ).execute()
-
-                        supabase.table("alternative_recommendations").insert(
-                            recommendation_records
-                        ).execute()
-
-                if "Estimated Risk" in alternatives_df.columns:
-                    alternatives_df["Estimated Risk"] = alternatives_df["Estimated Risk"].replace(
-                        {
-                            "Low": "🟢 Low",
-                            "Medium": "🟠 Medium",
-                            "High": "🔴 High",
-                        }
-                    )
-
-                    st.dataframe(
-                        alternatives_df,
-                        use_container_width=True,
-                        hide_index=True,
-                    )
+            if st.button("Find Alternatives for Selected Parts"):
+                if not selected_attention_parts:
+                    st.warning("Please select at least one risky part.")
 
                 else:
-                    st.info("No alternatives found for this part yet.")
+                    for selected_attention_part in selected_attention_parts:
+                        st.markdown(f"### Results for {selected_attention_part}")
+
+                        alternatives = suggest_alternatives_v2(
+                            selected_attention_part
+                        )
+
+                        if alternatives:
+                            alternatives_df = pd.DataFrame(alternatives)
+
+                            supplier_count = alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique() if "Supplier" in alternatives_df.columns else 0
+
+                            total_stock = alternatives_df["Stock"].sum() if "Stock" in alternatives_df.columns else 0
+
+                            highest_stock_row = (
+                                alternatives_df.loc[alternatives_df["Stock"].idxmax()]
+                                if "Stock" in alternatives_df.columns and not alternatives_df.empty
+                                else None
+                            )
+
+                            best_supplier = (
+                                highest_stock_row["Supplier"]
+                                if highest_stock_row is not None
+                                else "Unknown"
+                            )
+
+                            highest_stock = (
+                                int(highest_stock_row["Stock"])
+                                if highest_stock_row is not None
+                                else 0
+                            )
+
+                            best_lifecycle = (
+                                alternatives_df["Lifecycle"].dropna().iloc[0]
+                                if "Lifecycle" in alternatives_df.columns and not alternatives_df["Lifecycle"].dropna().empty
+                                else "Unknown"
+                            )
+
+                            true_alternatives = [
+                                alt for alt in alternatives
+                                if alt.get("Alternative Part", "") != selected_attention_part
+                            ]
+
+                            if true_alternatives:
+                                best_alternative = max(
+                                    true_alternatives,
+                                    key=lambda x: x.get("Recommendation Score", 0)
+                                )
+
+                                st.success(
+                                    f"""
+                                    🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
+
+                                    Recommendation Score: {best_alternative['Recommendation Score']}
+
+                                    Recommendation: {best_alternative['Recommendation']}
+                                    """
+                                )
+
+                                value_alternatives = [
+                                    alt for alt in true_alternatives
+                                    if alt.get("Stock", 0) > 0
+                                ]
+
+                                best_value_alternative = None
+
+                                if value_alternatives:
+                                    best_value_alternative = min(
+                                        value_alternatives,
+                                        key=lambda x: float(x.get("Unit Price", 0.0))
+                                    )
+
+                                if best_value_alternative:
+                                    st.info(
+                                        f"""
+                                        💰 Best Value Alternative: {best_value_alternative['Alternative Part']}
+
+                                        Unit Price: ${float(best_value_alternative.get('Unit Price', 0.0)):.2f}
+
+                                        Available Stock: {best_value_alternative.get('Stock', 0)}
+                                        """
+                                    )
+
+                            else:
+                                st.info(
+                                    "Supplier verification found for the selected part, but no true alternative recommendations were identified yet."
+                                )
+
+                            verify_col1, verify_col2, verify_col3, verify_col4 = st.columns(4)
+
+                            with verify_col1:
+                                st.metric("Suppliers Found", supplier_count)
+
+                            with verify_col2:
+                                st.metric("Total Stock", int(total_stock))
+
+                            with verify_col3:
+                                st.metric("Best Supplier", best_supplier)
+
+                            with verify_col4:
+                                st.metric("Highest Stock", highest_stock)
+
+                            lifecycle_col1, lifecycle_col2 = st.columns([1, 3])
+
+                            with lifecycle_col1:
+                                st.markdown("**Lifecycle Status**")
+                                st.info(best_lifecycle)
+
+                            with lifecycle_col2:
+                                st.caption(
+                                    "Lifecycle status is based on the first available supplier response and may differ across suppliers."
+                                )
+
+                            recommendation_records = []
+
+                            for alt in alternatives:
+                                recommendation_records.append(
+                                    {
+                                        "user_id": current_user["id"],
+                                        "analysis_id": selected_analysis_id,
+                                        "original_part": selected_attention_part,
+                                        "alternative_part": alt.get("Alternative Part", ""),
+                                        "recommendation_score": alt.get("Recommendation Score", 0),
+                                        "estimated_risk": alt.get("Estimated Risk", "Unknown"),
+                                        "supplier": alt.get("Supplier", ""),
+                                        "stock": alt.get("Stock", 0),
+                                        "unit_price": alt.get("Unit Price", 0.0),
+                                    }
+                                )
+
+                            if recommendation_records:
+                                supabase.table("alternative_recommendations").delete().eq(
+                                    "user_id",
+                                    current_user["id"]
+                                ).eq(
+                                    "analysis_id",
+                                    selected_analysis_id
+                                ).eq(
+                                    "original_part",
+                                    selected_attention_part
+                                ).execute()
+
+                                supabase.table("alternative_recommendations").insert(
+                                    recommendation_records
+                                ).execute()
+
+                            if "Estimated Risk" in alternatives_df.columns:
+                                alternatives_df["Estimated Risk"] = alternatives_df["Estimated Risk"].replace(
+                                    {
+                                        "Low": "🟢 Low",
+                                        "Medium": "🟠 Medium",
+                                        "High": "🔴 High",
+                                    }
+                                )
+
+                            st.dataframe(
+                                alternatives_df,
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+
+                        else:
+                            st.info(f"No alternatives found for {selected_attention_part}.")
 
         else:
             st.success("No critical parts detected in this BOM.")
