@@ -1181,6 +1181,31 @@ if app_mode == "Dashboard":
                             Recommendation: {best_alternative['Recommendation']}
                             """
                         )
+                        value_alternatives = [
+                            alt for alt in true_alternatives
+                            if alt.get("Stock", 0) > 0
+                        ]
+
+                        best_value_alternative = None
+
+                        if value_alternatives:
+                            best_value_alternative = min(
+                                value_alternatives,
+                                key=lambda x: float(x.get("Unit Price", 0.0))
+                            )
+                        if best_value_alternative:
+                                st.info(
+                                    f"""
+                                    💰 Best Value Alternative: {best_value_alternative['Alternative Part']}
+
+                                    Unit Price: ${float(best_value_alternative.get('Unit Price', 0.0)):.2f}
+
+                                    Available Stock: {best_value_alternative.get('Stock', 0)}
+                                    """
+                                )
+                        
+                            
+                            
 
                     else:
                         st.info(
