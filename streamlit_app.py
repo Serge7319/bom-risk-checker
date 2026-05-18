@@ -306,6 +306,24 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
             story.append(alt_table)
 
+            best_engineering_row = true_alternative_history.loc[
+                true_alternative_history["recommendation_score"].astype(float).idxmax()
+            ]
+
+            story.append(Spacer(1, 12))
+
+            story.append(
+                Paragraph(
+                    (
+                        f"<b>Best Engineering Recommendation:</b> "
+                        f"{best_engineering_row['alternative_part']} "
+                        f"with recommendation score of "
+                        f"{best_engineering_row['recommendation_score']}."
+                    ),
+                    styles["BodyText"],
+                )
+            )
+
             value_candidates = true_alternative_history[
                 true_alternative_history["stock"] > 0
             ]
