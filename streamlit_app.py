@@ -266,45 +266,47 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
             story.append(Paragraph("No true alternative recommendations saved for this BOM.", styles["Normal"]))
 
         else:
-            alt_table_data = [
-                [
-                    "Original Part",
-                    "Alternative Part",
-                    "Score",
-                    "Risk",
-                    "Supplier",
-                    "Stock",
-                    "Unit Price",
+            for original_part, group_df in true_alternative_history.groupby("original_part"):
+                story.append(Paragraph(f"Alternatives for {original_part}", styles["Heading3"]))
+
+                alt_table_data = [
+                    [
+                        "Alternative Part",
+                        "Score",
+                        "Risk",
+                        "Supplier",
+                        "Stock",
+                        "Unit Price",
+                    ]
                 ]
-            ]
 
-            for _, row in true_alternative_history.head(10).iterrows():
-                alt_table_data.append(
-                    [
-                        str(row.get("original_part", "")),
-                        str(row.get("alternative_part", "")),
-                        str(row.get("recommendation_score", "")),
-                        str(row.get("estimated_risk", "")),
-                        str(row.get("supplier", "")),
-                        str(row.get("stock", "")),
-                        f"${float(row.get('unit_price', 0)):.2f}",
-                    ]
+                for _, row in group_df.head(5).iterrows():
+                    alt_table_data.append(
+                        [
+                            str(row.get("alternative_part", "")),
+                            str(row.get("recommendation_score", "")),
+                            str(row.get("estimated_risk", "")),
+                            str(row.get("supplier", "")),
+                            str(row.get("stock", "")),
+                            f"${float(row.get('unit_price', 0)):.2f}",
+                        ]
+                    )
+
+                alt_table = Table(alt_table_data)
+
+                alt_table.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                            ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ]
+                    )
                 )
 
-            alt_table = Table(alt_table_data)
-
-            alt_table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ]
-                )
-            )
-
-            story.append(alt_table)
+                story.append(alt_table)
+                story.append(Spacer(1, 10))
 
             best_engineering_row = true_alternative_history.loc[
                 true_alternative_history["recommendation_score"].astype(float).idxmax()
