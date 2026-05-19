@@ -307,47 +307,44 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
                 story.append(alt_table)
                 story.append(Spacer(1, 10))
-
-            best_engineering_row = true_alternative_history.loc[
-                true_alternative_history["recommendation_score"].astype(float).idxmax()
-            ]
-
-            story.append(Spacer(1, 12))
-
-            story.append(
-                Paragraph(
-                    (
-                        f"<b>Best Engineering Recommendation:</b> "
-                        f"{best_engineering_row['alternative_part']} "
-                        f"with recommendation score of "
-                        f"{best_engineering_row['recommendation_score']}."
-                    ),
-                    styles["BodyText"],
-                )
-            )
-
-            value_candidates = true_alternative_history[
-                true_alternative_history["stock"] > 0
-            ]
-
-            if not value_candidates.empty:
-                best_value_row = value_candidates.loc[
-                    value_candidates["unit_price"].astype(float).idxmin()
+                best_engineering_row = group_df.loc[
+                    group_df["recommendation_score"].astype(float).idxmax()
                 ]
-
-                story.append(Spacer(1, 12))
 
                 story.append(
                     Paragraph(
                         (
-                            f"<b>Best Value Alternative:</b> "
-                            f"{best_value_row['alternative_part']} "
-                            f"— ${float(best_value_row['unit_price']):.2f} "
-                            f"with available stock of {best_value_row['stock']} units."
+                            f"<b>Best Engineering Recommendation:</b> "
+                            f"{best_engineering_row['alternative_part']} "
+                            f"with recommendation score of "
+                            f"{best_engineering_row['recommendation_score']}."
                         ),
                         styles["BodyText"],
                     )
                 )
+
+                value_candidates = group_df[
+                    group_df["stock"] > 0
+                ]
+
+                if not value_candidates.empty:
+                    best_value_row = value_candidates.loc[
+                        value_candidates["unit_price"].astype(float).idxmin()
+                    ]
+
+                    story.append(
+                        Paragraph(
+                            (
+                                f"<b>Best Value Alternative:</b> "
+                                f"{best_value_row['alternative_part']} "
+                                f"— ${float(best_value_row['unit_price']):.2f} "
+                                f"with available stock of {best_value_row['stock']} units."
+                            ),
+                            styles["BodyText"],
+                        )
+                    )
+
+                story.append(Spacer(1, 14))
 
            
     doc.build(story)
