@@ -277,11 +277,6 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                         "Supplier",
                         "Stock",
                         "Unit Price",
-                        "Architecture",
-                        "Package",
-                        "Pin Count",
-                        "Voltage Range",
-                        "Compatibility Notes",
                     ]
                 ]
 
@@ -294,11 +289,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                             str(row.get("supplier", "")),
                             str(row.get("stock", "")),
                             f"${float(row.get('unit_price', 0)):.2f}",
-                            str(row.get("architecture", "")),
-                            str(row.get("package", "")),
-                            str(row.get("pin_count", "")),
-                            str(row.get("voltage_range", "")),
-                            str(row.get("compatibility_notes", "")),
+
                         ]
                     )
 
@@ -317,6 +308,26 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
                 story.append(alt_table)
                 story.append(Spacer(1, 10))
+
+                for _, row in group_df.head(5).iterrows():
+                    engineering_text = (
+                        f"<b>{row.get('alternative_part', '')}</b><br/>"
+                        f"Architecture: {row.get('architecture', '')}<br/>"
+                        f"Package: {row.get('package', '')}<br/>"
+                        f"Pin Count: {row.get('pin_count', '')}<br/>"
+                        f"Voltage Range: {row.get('voltage_range', '')}<br/>"
+                        f"Compatibility Notes: {row.get('compatibility_notes', '')}"
+                    )
+
+                    story.append(
+                        Paragraph(
+                            engineering_text,
+                            styles["BodyText"],
+                        )
+                    )
+
+                    story.append(Spacer(1, 8))
+
                 best_engineering_row = group_df.loc[
                     group_df["recommendation_score"].astype(float).idxmax()
                 ]
