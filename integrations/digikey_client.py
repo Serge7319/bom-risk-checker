@@ -67,6 +67,7 @@ def normalize_digikey_product(product: dict) -> dict:
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
         "stock_total": int(stock_total),
+        "unit_price": extract_digikey_price(product),
         "supplier_count": 1,
         "lead_time_weeks": None,
         "has_alternates": False,
@@ -82,6 +83,34 @@ def normalize_digikey_product(product: dict) -> dict:
         "product_detail_url": product.get("ProductUrl", ""),
     }
 
+def extract_digikey_price(product: dict) -> float:
+    price_breaks = product.get("UnitPrice") or product.get("StandardPricing") or []
+
+    if isinstance(price_breaks, (int, float)):
+        return float(price_breaks)
+
+    if isinstance(price_breaks, str):
+        try:
+            return float(price_breaks.replace("$", "").replace(",", "").strip())
+        except ValueError:
+            return 0.0
+
+    if isinstance(price_breaks, list) and price_breaks:
+        first_break = price_breaks[0]
+
+        price = (
+            str(first_break.get("UnitPrice", first_break.get("Price", "")))
+            .replace("$", "")
+            .replace(",", "")
+            .strip()
+        )
+
+        try:
+            return float(price)
+        except ValueError:
+            return 0.0
+
+    return 0.0
 
 def infer_digikey_lifecycle(product: dict) -> str:
     status = product.get("ProductStatus", "")
