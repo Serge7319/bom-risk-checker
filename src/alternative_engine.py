@@ -224,7 +224,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 candidate["Lifecycle"] = best_match.get("Lifecycle")
 
     for candidate in candidates:
-    candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+        candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
 
     sorted_candidates = sorted(
         candidates,
