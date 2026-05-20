@@ -1327,6 +1327,7 @@ if app_mode == "Dashboard":
                                         "supplier": alt.get("Supplier", ""),
                                         "stock": alt.get("Stock", 0),
                                         "unit_price": alt.get("Unit Price", 0.0),
+                                        "compatibility_notes": alt.get("Compatibility Notes", ""),
                                     }
                                 )
 
