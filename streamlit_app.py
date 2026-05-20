@@ -1535,6 +1535,7 @@ if app_mode == "Dashboard":
                     "supplier",
                     "stock",
                     "unit_price",
+                    "compatibility_notes",
                     "created_at",
                 ]
             ].rename(
@@ -1546,6 +1547,7 @@ if app_mode == "Dashboard":
                     "supplier": "Supplier",
                     "stock": "Stock",
                     "unit_price": "Unit Price",
+                    "compatibility_notes": "Compatibility Notes",
                     "created_at": "Created At",
                 }
             )
