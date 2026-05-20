@@ -314,7 +314,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                         f"<b>{row.get('alternative_part', '')}</b><br/>"
                         f"Architecture: {row.get('architecture', '')}<br/>"
                         f"Package: {row.get('package', '')}<br/>"
-                        f"Pin Count: {row.get('pin_count', '')}<br/>"
+                        f"Pin Count: {int(float(row.get('pin_count', 0) or 0))}<br/>"
                         f"Voltage Range: {row.get('voltage_range', '')}<br/>"
                         f"Compatibility Notes: {row.get('compatibility_notes', '')}"
                     )
