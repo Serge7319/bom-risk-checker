@@ -277,6 +277,10 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                         "Supplier",
                         "Stock",
                         "Unit Price",
+                        "Architecture",
+                        "Package",
+                        "Pin Count",
+                        "Voltage Range",
                         "Compatibility Notes",
                     ]
                 ]
@@ -290,6 +294,10 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                             str(row.get("supplier", "")),
                             str(row.get("stock", "")),
                             f"${float(row.get('unit_price', 0)):.2f}",
+                            str(row.get("architecture", "")),
+                            str(row.get("package", "")),
+                            str(row.get("pin_count", "")),
+                            str(row.get("voltage_range", "")),
                             str(row.get("compatibility_notes", "")),
                         ]
                     )
