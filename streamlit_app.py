@@ -1183,6 +1183,16 @@ if app_mode == "Dashboard":
 
                         if alternatives:
                             alternatives_df = pd.DataFrame(alternatives)
+                            engineering_cols = [
+                                "Architecture",
+                                "Package",
+                                "Pin Count",
+                                "Voltage Range",
+                            ]
+
+                            for col in engineering_cols:
+                                if col not in alternatives_df.columns:
+                                    alternatives_df[col] = ""
 
                             supplier_count = alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique() if "Supplier" in alternatives_df.columns else 0
 
