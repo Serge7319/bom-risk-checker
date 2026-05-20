@@ -1338,6 +1338,10 @@ if app_mode == "Dashboard":
                                         "stock": alt.get("Stock", 0),
                                         "unit_price": alt.get("Unit Price", 0.0),
                                         "compatibility_notes": alt.get("Compatibility Notes", ""),
+                                        "architecture": alt.get("Architecture", ""),
+                                        "package": alt.get("Package", ""),
+                                        "pin_count": alt.get("Pin Count", 0),
+                                        "voltage_range": alt.get("Voltage Range", ""),
                                     }
                                 )
 
