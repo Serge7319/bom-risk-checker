@@ -1550,6 +1550,10 @@ if app_mode == "Dashboard":
                     "stock",
                     "unit_price",
                     "compatibility_notes",
+                    "architecture",
+                    "package",
+                    "pin_count",
+                    "voltage_range",
                     "created_at",
                 ]
             ].rename(
@@ -1562,6 +1566,10 @@ if app_mode == "Dashboard":
                     "stock": "Stock",
                     "unit_price": "Unit Price",
                     "compatibility_notes": "Compatibility Notes",
+                    "architecture": "Architecture",
+                    "package": "Package",
+                    "pin_count": "Pin Count",
+                    "voltage_range": "Voltage Range",
                     "created_at": "Created At",
                 }
             )
