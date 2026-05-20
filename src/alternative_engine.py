@@ -155,6 +155,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Estimated Risk": "Low",
                 "Recommendation": "Best Drop-In",
                 "Recommendation Score": 95,
+                "Compatibility Notes": "Same AVR family; likely closest drop-in option.",
             },
             {
                 "Alternative Part": "ATMEGA168PA-PU",
@@ -163,6 +164,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Estimated Risk": "Medium",
                 "Recommendation": "Reduced resources",
                 "Recommendation Score": 80,
+                "Compatibility Notes": "Same AVR family but reduced memory/resources.",
             },
             {
                 "Alternative Part": "ATMEGA32U4-AU",
@@ -171,6 +173,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Estimated Risk": "Low",
                 "Recommendation": "USB-capable upgrade",
                 "Recommendation Score": 78,
+                "Compatibility Notes": "Same AVR ecosystem with USB support; board and firmware changes may be needed.",
             },
             {
                 "Alternative Part": "PIC16F877A-I/P",
@@ -179,6 +182,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Estimated Risk": "Medium",
                 "Recommendation": "Firmware redesign needed",
                 "Recommendation Score": 76,
+                "Compatibility Notes": "Different MCU architecture; firmware redesign required.",
             },
             {
                 "Alternative Part": "STM32F103C8T6",
@@ -187,6 +191,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Estimated Risk": "Medium",
                 "Recommendation": "Higher-performance option",
                 "Recommendation Score": 72,
+                "Compatibility Notes": "ARM Cortex-M migration; significant firmware and hardware review required.",
             },
         ]
 
