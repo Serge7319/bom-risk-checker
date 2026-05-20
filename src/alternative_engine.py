@@ -68,6 +68,7 @@ def suggest_alternatives_v1(original_part_number: str) -> list:
 
 def calculate_recommendation_score(candidate: dict) -> int:
     score = int(candidate.get("Recommendation Score", 70))
+    reasons = []
 
     lifecycle = str(candidate.get("Lifecycle", "")).lower()
     stock = int(candidate.get("Stock", 0))
@@ -77,31 +78,42 @@ def calculate_recommendation_score(candidate: dict) -> int:
     # Lifecycle scoring
     if "active" in lifecycle:
         score += 10
+        reasons.append("Active lifecycle")
 
     if "not recommended" in lifecycle or "nrnd" in lifecycle:
         score -= 15
+        reasons.append("Lifecycle caution")
 
     if "obsolete" in lifecycle:
         score -= 40
+        reasons.append("Obsolete lifecycle")
 
     # Stock scoring
     if stock > 10000:
         score += 10
+        reasons.append("High stock")
+
     elif stock > 1000:
         score += 5
+        reasons.append("Good stock")
+
     elif stock == 0:
         score -= 15
+        reasons.append("No stock")
 
     # Supplier availability bonus
     if supplier:
         score += 5
+        reasons.append("Supplier verified")
 
     # Price bonus
     if unit_price > 0 and unit_price < 3:
         score += 5
+        reasons.append("Low unit price")
 
-    # Clamp score
     score = max(0, min(score, 100))
+
+    candidate["Score Reasons"] = "; ".join(reasons)
 
     return score
 
