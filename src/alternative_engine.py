@@ -75,6 +75,10 @@ def calculate_recommendation_score(candidate: dict) -> int:
     supplier = str(candidate.get("Supplier", "")).strip()
     unit_price = float(candidate.get("Unit Price", 0.0))
 
+    architecture = str(candidate.get("Architecture", "")).lower()
+    package = str(candidate.get("Package", "")).lower()
+    pin_count = int(candidate.get("Pin Count", 0) or 0)
+
     # Lifecycle scoring
     if "active" in lifecycle:
         score += 10
@@ -110,6 +114,15 @@ def calculate_recommendation_score(candidate: dict) -> int:
     if unit_price > 0 and unit_price < 3:
         score += 5
         reasons.append("Low unit price")
+
+    # Engineering compatibility scoring
+    if "avr" in architecture:
+        score += 10
+        reasons.append("Compatible MCU architecture")
+
+    elif architecture:
+        score -= 10
+        reasons.append("Different MCU architecture")
 
     score = max(0, min(score, 100))
 
