@@ -66,6 +66,45 @@ def suggest_alternatives_v1(original_part_number: str) -> list:
 
     return known_alternatives.get(normalized_part, [])
 
+def calculate_recommendation_score(candidate: dict) -> int:
+    score = int(candidate.get("Recommendation Score", 70))
+
+    lifecycle = str(candidate.get("Lifecycle", "")).lower()
+    stock = int(candidate.get("Stock", 0))
+    supplier = str(candidate.get("Supplier", "")).strip()
+    unit_price = float(candidate.get("Unit Price", 0.0))
+
+    # Lifecycle scoring
+    if "active" in lifecycle:
+        score += 10
+
+    if "not recommended" in lifecycle or "nrnd" in lifecycle:
+        score -= 15
+
+    if "obsolete" in lifecycle:
+        score -= 40
+
+    # Stock scoring
+    if stock > 10000:
+        score += 10
+    elif stock > 1000:
+        score += 5
+    elif stock == 0:
+        score -= 15
+
+    # Supplier availability bonus
+    if supplier:
+        score += 5
+
+    # Price bonus
+    if unit_price > 0 and unit_price < 3:
+        score += 5
+
+    # Clamp score
+    score = max(0, min(score, 100))
+
+    return score
+
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
@@ -183,6 +222,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
             if best_match.get("Lifecycle"):
                 candidate["Lifecycle"] = best_match.get("Lifecycle")
+
+    for candidate in candidates:
+    candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
 
     sorted_candidates = sorted(
         candidates,
