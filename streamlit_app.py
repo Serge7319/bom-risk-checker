@@ -1204,6 +1204,29 @@ if app_mode == "Dashboard":
                                 else 0
                             )
 
+                            priced_rows = alternatives_df[
+                                (alternatives_df["Unit Price"] > 0)
+                                & (alternatives_df["Stock"] > 0)
+                            ] if "Unit Price" in alternatives_df.columns and "Stock" in alternatives_df.columns else pd.DataFrame()
+
+                            cheapest_row = (
+                                priced_rows.loc[priced_rows["Unit Price"].idxmin()]
+                                if not priced_rows.empty
+                                else None
+                            )
+
+                            cheapest_supplier = (
+                                cheapest_row["Supplier"]
+                                if cheapest_row is not None
+                                else "Unknown"
+                            )
+
+                            lowest_unit_price = (
+                                float(cheapest_row["Unit Price"])
+                                if cheapest_row is not None
+                                else 0.0
+                            )
+
                             best_lifecycle = (
                                 alternatives_df["Lifecycle"].dropna().iloc[0]
                                 if "Lifecycle" in alternatives_df.columns and not alternatives_df["Lifecycle"].dropna().empty
@@ -1260,7 +1283,7 @@ if app_mode == "Dashboard":
                                     "Supplier verification found for the selected part, but no true alternative recommendations were identified yet."
                                 )
 
-                            verify_col1, verify_col2, verify_col3, verify_col4 = st.columns(4)
+                            verify_col1, verify_col2, verify_col3, verify_col4, verify_col5 = st.columns(5)
 
                             with verify_col1:
                                 st.metric("Suppliers Found", supplier_count)
@@ -1273,6 +1296,9 @@ if app_mode == "Dashboard":
 
                             with verify_col4:
                                 st.metric("Highest Stock", highest_stock)
+                            
+                            with verify_col5:
+                                st.metric("Lowest Unit Price", f"${lowest_unit_price:.2f}")
 
                             lifecycle_col1, lifecycle_col2 = st.columns([1, 3])
 
