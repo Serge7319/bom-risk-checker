@@ -78,6 +78,7 @@ def calculate_recommendation_score(candidate: dict) -> int:
     architecture = str(candidate.get("Architecture", "")).lower()
     package = str(candidate.get("Package", "")).lower()
     pin_count = int(candidate.get("Pin Count", 0) or 0)
+    voltage_range = str(candidate.get("Voltage Range", "")).lower()
 
     # Lifecycle scoring
     if "active" in lifecycle:
@@ -132,6 +133,15 @@ def calculate_recommendation_score(candidate: dict) -> int:
     elif pin_count >= 40:
         score -= 5
         reasons.append("Higher pin-count migration")
+
+    # Voltage compatibility scoring
+    if "5.5v" in voltage_range:
+        score += 5
+        reasons.append("Wide voltage compatibility")
+
+    elif "3.6v" in voltage_range:
+        score -= 3
+        reasons.append("Lower voltage ceiling")
 
     score = max(0, min(score, 100))
 
