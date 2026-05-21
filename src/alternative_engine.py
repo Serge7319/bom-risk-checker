@@ -124,6 +124,15 @@ def calculate_recommendation_score(candidate: dict) -> int:
         score -= 10
         reasons.append("Different MCU architecture")
 
+    # Package / pin-count compatibility scoring
+    if pin_count in [28, 32]:
+        score += 5
+        reasons.append("Similar pin count")
+
+    elif pin_count >= 40:
+        score -= 5
+        reasons.append("Higher pin-count migration")
+
     score = max(0, min(score, 100))
 
     candidate["Score Reasons"] = "; ".join(reasons)
