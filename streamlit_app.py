@@ -1361,6 +1361,7 @@ if app_mode == "Dashboard":
                                         "package": alt.get("Package", ""),
                                         "pin_count": alt.get("Pin Count", 0),
                                         "voltage_range": alt.get("Voltage Range", ""),
+                                        "score_reasons": alt.get("Score Reasons", ""),
                                     }
                                 )
 
@@ -1573,6 +1574,7 @@ if app_mode == "Dashboard":
                     "package",
                     "pin_count",
                     "voltage_range",
+                    "score_reasons",
                     "created_at",
                 ]
             ].rename(
@@ -1589,6 +1591,7 @@ if app_mode == "Dashboard":
                     "package": "Package",
                     "pin_count": "Pin Count",
                     "voltage_range": "Voltage Range",
+                    "score_reasons": "Score Reasons",
                     "created_at": "Created At",
                 }
             )
