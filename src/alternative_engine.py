@@ -142,6 +142,15 @@ def calculate_recommendation_score(candidate: dict) -> int:
     elif "3.6v" in voltage_range:
         score -= 3
         reasons.append("Lower voltage ceiling")
+    
+    # Package compatibility scoring
+    if "tqfp" in package:
+        score += 5
+        reasons.append("Surface-mount package")
+
+    elif "dip" in package:
+        score -= 3
+        reasons.append("Package change likely")
 
     score = max(0, min(score, 100))
 
