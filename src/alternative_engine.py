@@ -166,7 +166,10 @@ def calculate_recommendation_score(candidate: dict) -> int:
         score -= 3
         reasons.append("Board/firmware changes likely")
 
-    score = max(0, min(score, 100))
+    score = max(0, min(score, 98))
+
+    if "best drop-in" in recommendation:
+        score = 100
 
     candidate["Score Reasons"] = "; ".join(reasons)
 
