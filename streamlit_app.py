@@ -316,7 +316,8 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                         f"Package: {row.get('package', '')}<br/>"
                         f"Pin Count: {int(float(row.get('pin_count', 0) or 0))}<br/>"
                         f"Voltage Range: {row.get('voltage_range', '')}<br/>"
-                        f"Compatibility Notes: {row.get('compatibility_notes', '')}"
+                        f"Compatibility Notes: {row.get('compatibility_notes', '')}<br/>"
+                        f"Score Reasons: {row.get('score_reasons', '')}"
                     )
 
                     story.append(
