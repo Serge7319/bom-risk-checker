@@ -117,12 +117,12 @@ def calculate_recommendation_score(candidate: dict) -> int:
         reasons.append("Low unit price")
 
     # Engineering compatibility scoring
-    if "avr" in architecture:
-        score += 10
+    if architecture == "avr":
+        score += 20
         reasons.append("Compatible MCU architecture")
 
     elif architecture:
-        score -= 10
+        score -= 20
         reasons.append("Different MCU architecture")
 
     # Package / pin-count compatibility scoring
