@@ -151,6 +151,20 @@ def calculate_recommendation_score(candidate: dict) -> int:
     elif "dip" in package:
         score -= 3
         reasons.append("Package change likely")
+    
+    recommendation = str(candidate.get("Recommendation", "")).lower()
+
+    if "best drop-in" in recommendation:
+        score += 15
+        reasons.append("Best drop-in candidate")
+
+    elif "reduced resources" in recommendation:
+        score -= 5
+        reasons.append("Reduced resource capacity")
+
+    elif "usb-capable" in recommendation:
+        score -= 3
+        reasons.append("Board/firmware changes likely")
 
     score = max(0, min(score, 100))
 
