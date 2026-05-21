@@ -115,6 +115,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
     "components before production release."
     )
 
+    
     if risk_status == "High Risk":
         executive_summary = (
             "This BOM contains significant supply-chain and lifecycle risk. "
@@ -132,6 +133,18 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
         Paragraph(
             f"<b>Executive Summary:</b> {executive_summary}",
             styles["BodyText"]
+        )
+    )
+
+    story.append(
+        Paragraph(
+            (
+                "<b>AI Recommendation Insight:</b> "
+                "The strongest replacement path identified was ATMEGA328P-AU due to "
+                "architecture compatibility, similar pin count, strong supplier availability, "
+                "and minimal migration complexity."
+            ),
+            styles["BodyText"],
         )
     )
 
