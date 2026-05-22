@@ -693,6 +693,7 @@ app_mode = st.sidebar.radio(
         "Dashboard",
         "BOM Analyzer",
         "Alternative Finder",
+        "Monitoring",
         "Reports",
         "Pricing",
         "About",
