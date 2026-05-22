@@ -1783,8 +1783,33 @@ if app_mode == "Monitoring":
 
     monitor_df = pd.DataFrame(monitor_history.data)
 
+    monitor_display_df = monitor_df.rename(
+        columns={
+            "part_number": "Part Number",
+            "supplier": "Supplier",
+            "lifecycle_status": "Lifecycle Status",
+            "stock": "Stock Available",
+            "unit_price": "Unit Price",
+            "risk_level": "Risk Level",
+            "created_at": "Last Checked",
+        }
+    )
+
     if not monitor_df.empty:
-        st.dataframe(monitor_df, use_container_width=True)
+        st.dataframe(
+            monitor_display_df[
+                [
+                    "Part Number",
+                    "Supplier",
+                    "Lifecycle Status",
+                    "Stock Available",
+                    "Unit Price",
+                    "Risk Level",
+                    "Last Checked",
+                ]
+            ],
+            use_container_width=True,
+        )
     else:
         st.info("No monitoring history available yet.")
 
