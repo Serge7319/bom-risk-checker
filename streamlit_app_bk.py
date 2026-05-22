@@ -273,6 +273,32 @@ if app_mode == "Dashboard":
 
     st.stop()
 
+# ---------- Monitoring ----------
+if app_mode == "Monitoring":
+    st.subheader("Monitoring Dashboard")
+
+    st.info(
+        "Track historical stock, pricing, and lifecycle changes across monitored parts."
+    )
+
+    monitor_history = (
+        supabase.table("part_monitor_history")
+        .select("*")
+        .eq("user_id", current_user["id"])
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+    )
+
+    monitor_df = pd.DataFrame(monitor_history.data)
+
+    if not monitor_df.empty:
+        st.dataframe(monitor_df, use_container_width=True)
+    else:
+        st.info("No monitoring history available yet.")
+
+    st.stop()
+
 
 # ---------- Reports ----------
 if app_mode == "Reports":
