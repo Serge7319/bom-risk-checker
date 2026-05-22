@@ -329,8 +329,23 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             if best_match.get("Lifecycle"):
                 candidate["Lifecycle"] = best_match.get("Lifecycle")
 
+    normalized_candidates = []
+
     for candidate in candidates:
+        if isinstance(candidate, str):
+            candidate = {
+                "Alternative Part": candidate,
+                "Category": "Suggested Alternative",
+                "Lifecycle": "Unknown",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Review compatibility",
+                "Recommendation Score": 70,
+            }
+
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+        normalized_candidates.append(candidate)
+
+    candidates = normalized_candidates
 
     sorted_candidates = sorted(
         candidates,
