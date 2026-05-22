@@ -438,7 +438,14 @@ def get_part_data(row):
 
     part_data["has_alternates"] = len(alternative_part_numbers) > 0
     part_data["alternate_count"] = len(alternative_part_numbers)
-    part_data["alternative_part_numbers"] = ", ".join(alternative_part_numbers)
+    part_data["alternative_part_numbers"] = ", ".join(
+        [
+            alt.get("Alternative Part", str(alt))
+            if isinstance(alt, dict)
+            else str(alt)
+            for alt in alternative_part_numbers
+        ]
+    )
 
     return part_data
 
