@@ -2374,7 +2374,7 @@ if app_mode == "BOM Analyzer":
 
             monitor_records = []
 
-            for _, row in selected_parts.iterrows():
+            for _, row in results_df.iterrows():
                 latest_monitor = (
                     supabase.table("part_monitor_history")
                     .select("*")
@@ -2435,12 +2435,12 @@ if app_mode == "BOM Analyzer":
                 monitor_records.append(
                     {
                         "user_id": current_user["id"],
-                        "part_number": row.get("part_number", ""),
-                        "supplier": row.get("supplier", ""),
-                        "lifecycle_status": row.get("lifecycle_status", ""),
-                        "stock": row.get("stock", 0),
-                        "unit_price": row.get("unit_price", 0.0),
-                        "risk_level": row.get("risk_level", ""),
+                        "part_number": row.get("Part Number", ""),
+                        "supplier": row.get("Supplier", ""),
+                        "lifecycle_status": row.get("Lifecycle Status", ""),
+                        "stock": row.get("Stock Available", 0),
+                        "unit_price": row.get("Unit Price", 0.0),
+                        "risk_level": row.get("Risk Level", ""),
                     }
                 )
 
