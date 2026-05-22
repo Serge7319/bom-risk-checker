@@ -2365,6 +2365,87 @@ if app_mode == "BOM Analyzer":
                     st.error(f"Could not save BOM parts: {e}")
                     st.stop()
 
+            monitor_records = []
+
+            for _, row in selected_parts.iterrows():
+                latest_monitor = (
+                    supabase.table("part_monitor_history")
+                    .select("*")
+                    .eq("user_id", current_user["id"])
+                    .eq("part_number", row.get("part_number", ""))
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+
+                latest_monitor_data = (
+                    latest_monitor.data[0]
+                    if latest_monitor.data
+                    else None
+                )
+
+                monitor_alerts = []
+
+                if latest_monitor_data:
+
+                    previous_stock = latest_monitor_data.get("stock", 0) or 0
+                    current_stock = row.get("stock", 0) or 0
+
+                    previous_price = float(latest_monitor_data.get("unit_price", 0) or 0)
+                    current_price = float(row.get("unit_price", 0) or 0)
+
+                    previous_lifecycle = str(
+                        latest_monitor_data.get("lifecycle_status", "")
+                    ).lower()
+
+                    current_lifecycle = str(
+                        row.get("lifecycle_status", "")
+                    ).lower()
+
+                    # Stock drop detection
+                    if previous_stock > 0 and current_stock < previous_stock * 0.5:
+                        monitor_alerts.append(
+                            f"⚠ Stock dropped from {previous_stock} to {current_stock}"
+                        )
+
+                    # Price increase detection
+                    if previous_price > 0 and current_price > previous_price * 1.5:
+                        monitor_alerts.append(
+                            f"⚠ Unit price increased from ${previous_price:.2f} to ${current_price:.2f}"
+                        )
+
+                    # Lifecycle deterioration detection
+                    if previous_lifecycle != current_lifecycle:
+                        monitor_alerts.append(
+                            f"⚠ Lifecycle changed from {previous_lifecycle} to {current_lifecycle}"
+                        )
+                    if monitor_alerts:
+                        st.warning(
+                            f"{row.get('part_number', '')}: "
+                            + " | ".join(monitor_alerts)
+                        )
+
+                monitor_records.append(
+                    {
+                        "user_id": current_user["id"],
+                        "part_number": row.get("part_number", ""),
+                        "supplier": row.get("supplier", ""),
+                        "lifecycle_status": row.get("lifecycle_status", ""),
+                        "stock": row.get("stock", 0),
+                        "unit_price": row.get("unit_price", 0.0),
+                        "risk_level": row.get("risk_level", ""),
+                    }
+                )
+
+            if monitor_records:
+                try:
+                    supabase.table("part_monitor_history").insert(
+                        monitor_records
+                    ).execute()
+
+                except Exception as e:
+                    st.error(f"Could not save monitoring history: {e}")
+
             new_upload_count = monthly_upload_count + 1
 
             supabase.table("users").update(
