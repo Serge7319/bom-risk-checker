@@ -1796,7 +1796,7 @@ if app_mode == "Monitoring":
     )
 
     if not monitor_df.empty:
-        st.dataframe(
+        st.data_editor(
             monitor_display_df[
                 [
                     "Part Number",
@@ -1807,7 +1807,8 @@ if app_mode == "Monitoring":
                     "Risk Level",
                     "Last Checked",
                 ]
-            ].reset_index(drop=True),
+            ],
+            hide_index=True,
             use_container_width=True,
         )
     else:
@@ -2485,8 +2486,8 @@ if app_mode == "BOM Analyzer":
                 monitor_records.append(
                     {
                         "user_id": current_user["id"],
-                        "part_number": row.get("Part Number", ""),
-                        "supplier": row.get("Supplier", ""),
+                        "part_number": row.get("MPN", ""),
+                        "supplier": row.get("Best Source", ""),
                         "lifecycle_status": row.get("Lifecycle Status", ""),
                         "stock": row.get("Stock Available", 0),
                         "unit_price": row.get("Unit Price", 0.0),
