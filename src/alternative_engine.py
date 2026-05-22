@@ -298,6 +298,17 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
     for candidate in candidates:
+
+        if isinstance(candidate, str):
+            candidate = {
+                "Alternative Part": candidate,
+                "Category": "Suggested Alternative",
+                "Lifecycle": "Unknown",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Review compatibility",
+                "Recommendation Score": 70,
+            }
+
         alt_part_number = candidate.get("Alternative Part", "")
 
         if not alt_part_number:
