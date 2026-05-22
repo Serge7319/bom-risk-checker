@@ -1807,7 +1807,7 @@ if app_mode == "Monitoring":
                     "Risk Level",
                     "Last Checked",
                 ]
-            ],
+            ].reset_index(drop=True),
             use_container_width=True,
         )
     else:
@@ -2423,7 +2423,7 @@ if app_mode == "BOM Analyzer":
                     st.stop()
 
             monitor_records = []
-
+            st.write(results_df.columns.tolist())
             for _, row in results_df.iterrows():
                 latest_monitor = (
                     supabase.table("part_monitor_history")
