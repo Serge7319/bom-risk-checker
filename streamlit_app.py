@@ -2712,6 +2712,13 @@ if app_mode == "BOM Analyzer":
 
         ]
 
+        filtered_df["Risk Level Display"] = filtered_df["Risk Level"].replace(
+            {
+                "High": "🔴 High",
+                "Medium": "🟡 Medium",
+                "Low": "🟢 Low",
+            }
+        )
 
         st.dataframe(
             filtered_df[display_columns],
