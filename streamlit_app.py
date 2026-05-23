@@ -1851,7 +1851,7 @@ if app_mode == "Monitoring":
             }
         )
 
-        st.data_editor(
+        st.dataframe(
             alert_display_df[
                 [
                     "Part Number",
@@ -1882,7 +1882,7 @@ if app_mode == "Monitoring":
     )
 
     if not monitor_df.empty:
-        st.data_editor(
+        st.dataframe(
             monitor_display_df[
                 [
                     "Part Number",
