@@ -16,6 +16,14 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 import resend
+from src.monitoring_engine import build_monitor_record
+from src.monitoring_engine import build_monitor_record, build_alert_record
+from src.monitoring_engine import (
+    build_monitor_record,
+    build_alert_record,
+    detect_monitor_alerts,
+)
+
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -2573,108 +2581,48 @@ if app_mode == "BOM Analyzer":
                 )
 
                 monitor_alerts = []
-                alert_records = []
+
+                current_snapshot = build_monitor_record(
+                    current_user["id"],
+                    row,
+                )
 
                 if latest_monitor_data:
+                    new_alert_records, monitor_alerts = detect_monitor_alerts(
+                        current_user["id"],
+                        row.get("MPN", ""),
+                        latest_monitor_data,
+                        current_snapshot,
+                    )
 
-                    previous_stock = latest_monitor_data.get("stock", 0) or 0
-                    current_stock = row.get("stock", 0) or 0
+                    alert_records.extend(new_alert_records)
 
-                    previous_price = float(latest_monitor_data.get("unit_price", 0) or 0)
-                    current_price = float(row.get("unit_price", 0) or 0)
+                    for alert in new_alert_records:
+                        if (
+                            alert.get("severity") == "High"
+                            and alert.get("alert_type") == "Stock Drop"
+                        ):
+                            try:
+                                send_monitor_alert_email(
+                                    to_email=current_user["email"],
+                                    subject="High Severity BOM Monitoring Alert",
+                                    message=(
+                                        f"{row.get('MPN', '')}: "
+                                        f"{alert.get('alert_message', '')}"
+                                    ),
+                                )
+                            except Exception as e:
+                                st.warning(
+                                    f"Alert was saved, but email could not be sent: {e}"
+                                )
 
-                    previous_lifecycle = str(
-                        latest_monitor_data.get("lifecycle_status", "")
-                    ).lower()
+                if monitor_alerts:
+                    st.warning(
+                        f"{row.get('MPN', '')}: "
+                        + " | ".join(monitor_alerts)
+                    )
 
-                    current_lifecycle = str(
-                        row.get("lifecycle_status", "")
-                    ).lower()
-
-                    # Stock drop detection
-                    if previous_stock > 0 and current_stock < previous_stock * 0.5:
-                        alert_message = f"Stock dropped from {previous_stock} to {current_stock}"
-
-                        monitor_alerts.append(f"⚠ {alert_message}")
-
-                        alert_records.append(
-                            {
-                                "user_id": current_user["id"],
-                                "part_number": row.get("MPN", ""),
-                                "alert_type": "Stock Drop",
-                                "alert_message": alert_message,
-                                "severity": "High",
-                                "previous_value": str(previous_stock),
-                                "current_value": str(current_stock),
-                            }
-                        )
-
-                        try:
-                            send_monitor_alert_email(
-                                to_email=current_user["email"],
-                                subject="High Severity BOM Monitoring Alert",
-                                message=f"{row.get('MPN', '')}: {alert_message}",
-                            )
-                        except Exception as e:
-                            st.warning(f"Alert was saved, but email could not be sent: {e}")
-
-                    # Price increase detection
-                    if previous_price > 0 and current_price > previous_price * 1.5:
-                        alert_message = (
-                            f"Unit price increased from ${previous_price:.2f} to ${current_price:.2f}"
-                        )
-
-                        monitor_alerts.append(f"⚠ {alert_message}")
-
-                        alert_records.append(
-                            {
-                                "user_id": current_user["id"],
-                                "part_number": row.get("MPN", ""),
-                                "alert_type": "Price Increase",
-                                "alert_message": alert_message,
-                                "severity": "Medium",
-                                "previous_value": f"{previous_price:.2f}",
-                                "current_value": f"{current_price:.2f}",
-                            }
-                        )
-
-                    # Lifecycle deterioration detection
-                    if previous_lifecycle != current_lifecycle:
-                        alert_message = (
-                            f"Lifecycle changed from {previous_lifecycle} to {current_lifecycle}"
-                        )
-
-                        monitor_alerts.append(f"⚠ {alert_message}")
-
-                        alert_records.append(
-                            {
-                                "user_id": current_user["id"],
-                                "part_number": row.get("MPN", ""),
-                                "alert_type": "Lifecycle Change",
-                                "alert_message": alert_message,
-                                "severity": "High",
-                                "previous_value": previous_lifecycle,
-                                "current_value": current_lifecycle,
-                            }
-                        )
-
-                    if monitor_alerts:
-                        st.warning(
-                            f"{row.get('MPN', '')}: "
-                            + " | ".join(monitor_alerts)
-                        )
-
-                monitor_records.append(
-                    {
-                        "user_id": current_user["id"],
-                        "part_number": row.get("MPN", ""),
-                        "supplier": row.get("Best Source", ""),
-                        "lifecycle_status": row.get("Lifecycle Status", ""),
-                        "stock": row.get("Stock Available", 0),
-                        "unit_price": row.get("Unit Price", 0.0),
-                        "risk_level": row.get("Risk Level", ""),
-                    }
-                )
+                monitor_records.append(current_snapshot)
 
             if monitor_records:
                 try:
