@@ -1773,6 +1773,50 @@ if app_mode == "Monitoring":
         "Track historical stock, pricing, and lifecycle changes across monitored parts."
     )
 
+    alert_history = (
+        supabase.table("monitor_alerts")
+        .select("*")
+        .eq("user_id", current_user["id"])
+        .order("created_at", desc=True)
+        .limit(50)
+        .execute()
+    )
+
+    alert_df = pd.DataFrame(alert_history.data)
+
+    st.subheader("Recent Monitoring Alerts")
+
+    if not alert_df.empty:
+        alert_display_df = alert_df.rename(
+            columns={
+                "part_number": "Part Number",
+                "alert_type": "Alert Type",
+                "alert_message": "Alert Message",
+                "severity": "Severity",
+                "previous_value": "Previous Value",
+                "current_value": "Current Value",
+                "created_at": "Detected At",
+            }
+        )
+
+        st.data_editor(
+            alert_display_df[
+                [
+                    "Part Number",
+                    "Alert Type",
+                    "Severity",
+                    "Alert Message",
+                    "Previous Value",
+                    "Current Value",
+                    "Detected At",
+                ]
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.info("No monitoring alerts detected yet.")
+
     monitor_history = (
         supabase.table("part_monitor_history")
         .select("*")
