@@ -15,6 +15,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
+import resend
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -449,7 +450,24 @@ def get_part_data(row):
 
     return part_data
 
+def send_monitor_alert_email(to_email: str, subject: str, message: str):
+    resend.api_key = st.secrets.get("RESEND_API_KEY")
+    from_email = st.secrets.get(
+        "ALERT_FROM_EMAIL",
+        "BOM Risk Checker <onboarding@resend.dev>",
+    )
 
+    if not resend.api_key:
+        raise ValueError("Missing RESEND_API_KEY in Streamlit secrets")
+
+    return resend.Emails.send(
+        {
+            "from": from_email,
+            "to": [to_email],
+            "subject": subject,
+            "html": f"<p>{message}</p>",
+        }
+    )
 
 def analyze_bom(df):
     df = normalize_bom_columns(df)
@@ -2590,6 +2608,15 @@ if app_mode == "BOM Analyzer":
                                 "current_value": str(current_stock),
                             }
                         )
+
+                        try:
+                            send_monitor_alert_email(
+                                to_email=current_user["email"],
+                                subject="High Severity BOM Monitoring Alert",
+                                message=f"{row.get('MPN', '')}: {alert_message}",
+                            )
+                        except Exception as e:
+                            st.warning(f"Alert was saved, but email could not be sent: {e}")
 
                     # Price increase detection
                     if previous_price > 0 and current_price > previous_price * 1.5:
