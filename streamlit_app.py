@@ -1784,6 +1784,58 @@ if app_mode == "Monitoring":
 
     alert_df = pd.DataFrame(alert_history.data)
 
+    monitor_history = (
+        supabase.table("part_monitor_history")
+        .select("*")
+        .eq("user_id", current_user["id"])
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+    )
+
+    monitor_df = pd.DataFrame(monitor_history.data)
+
+    alert_count = len(alert_df)
+
+    high_alert_count = (
+        alert_df["severity"]
+        .astype(str)
+        .str.contains("High", case=False, na=False)
+        .sum()
+        if not alert_df.empty
+        else 0
+    )
+
+    obsolete_count = (
+        monitor_df["lifecycle_status"]
+        .astype(str)
+        .str.contains("obsolete", case=False, na=False)
+        .sum()
+        if not monitor_df.empty
+        else 0
+    )
+
+    no_stock_count = (
+        (monitor_df["stock"] <= 0).sum()
+        if not monitor_df.empty
+        else 0
+    )
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+    with kpi1:
+        st.metric("Active Alerts", alert_count)
+
+    with kpi2:
+        st.metric("High Severity", high_alert_count)
+
+    with kpi3:
+        st.metric("Obsolete Parts", obsolete_count)
+
+    with kpi4:
+        st.metric("No Stock Parts", no_stock_count)
+
+
     st.subheader("Recent Monitoring Alerts")
 
     if not alert_df.empty:
@@ -1816,17 +1868,6 @@ if app_mode == "Monitoring":
         )
     else:
         st.info("No monitoring alerts detected yet.")
-
-    monitor_history = (
-        supabase.table("part_monitor_history")
-        .select("*")
-        .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
-        .limit(100)
-        .execute()
-    )
-
-    monitor_df = pd.DataFrame(monitor_history.data)
 
     monitor_display_df = monitor_df.rename(
         columns={
