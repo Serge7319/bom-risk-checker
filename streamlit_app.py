@@ -2324,7 +2324,11 @@ if app_mode == "BOM Analyzer":
 
 
     st.subheader("Uploaded BOM Preview")
-    st.dataframe(bom_df, use_container_width=True)
+    st.data_editor(
+        bom_df,
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
     if st.button("Analyze BOM", type="primary"):
