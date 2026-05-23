@@ -2448,6 +2448,7 @@ if app_mode == "BOM Analyzer":
                 )
 
                 monitor_alerts = []
+                alert_records = []
 
                 if latest_monitor_data:
 
@@ -2467,21 +2468,62 @@ if app_mode == "BOM Analyzer":
 
                     # Stock drop detection
                     if previous_stock > 0 and current_stock < previous_stock * 0.5:
-                        monitor_alerts.append(
-                            f"⚠ Stock dropped from {previous_stock} to {current_stock}"
+                        alert_message = f"Stock dropped from {previous_stock} to {current_stock}"
+
+                        monitor_alerts.append(f"⚠ {alert_message}")
+
+                        alert_records.append(
+                            {
+                                "user_id": current_user["id"],
+                                "part_number": row.get("MPN", ""),
+                                "alert_type": "Stock Drop",
+                                "alert_message": alert_message,
+                                "severity": "High",
+                                "previous_value": str(previous_stock),
+                                "current_value": str(current_stock),
+                            }
                         )
 
                     # Price increase detection
                     if previous_price > 0 and current_price > previous_price * 1.5:
-                        monitor_alerts.append(
-                            f"⚠ Unit price increased from ${previous_price:.2f} to ${current_price:.2f}"
+                        alert_message = (
+                            f"Unit price increased from ${previous_price:.2f} to ${current_price:.2f}"
+                        )
+
+                        monitor_alerts.append(f"⚠ {alert_message}")
+
+                        alert_records.append(
+                            {
+                                "user_id": current_user["id"],
+                                "part_number": row.get("MPN", ""),
+                                "alert_type": "Price Increase",
+                                "alert_message": alert_message,
+                                "severity": "Medium",
+                                "previous_value": f"{previous_price:.2f}",
+                                "current_value": f"{current_price:.2f}",
+                            }
                         )
 
                     # Lifecycle deterioration detection
                     if previous_lifecycle != current_lifecycle:
-                        monitor_alerts.append(
-                            f"⚠ Lifecycle changed from {previous_lifecycle} to {current_lifecycle}"
+                        alert_message = (
+                            f"Lifecycle changed from {previous_lifecycle} to {current_lifecycle}"
                         )
+
+                        monitor_alerts.append(f"⚠ {alert_message}")
+
+                        alert_records.append(
+                            {
+                                "user_id": current_user["id"],
+                                "part_number": row.get("MPN", ""),
+                                "alert_type": "Lifecycle Change",
+                                "alert_message": alert_message,
+                                "severity": "High",
+                                "previous_value": previous_lifecycle,
+                                "current_value": current_lifecycle,
+                            }
+                        )
+
                     if monitor_alerts:
                         st.warning(
                             f"{row.get('MPN', '')}: "
@@ -2508,6 +2550,15 @@ if app_mode == "BOM Analyzer":
 
                 except Exception as e:
                     st.error(f"Could not save monitoring history: {e}")
+
+            if alert_records:
+                try:
+                    supabase.table("monitor_alerts").insert(
+                        alert_records
+                    ).execute()
+
+                except Exception as e:
+                    st.error(f"Could not save monitor alerts: {e}")
 
             new_upload_count = monthly_upload_count + 1
 
