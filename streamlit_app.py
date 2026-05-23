@@ -1867,7 +1867,7 @@ if app_mode == "Monitoring":
                 [
                     "Part Number",
                     "Alert Type",
-                    "Severity",
+                    "Severity Display",
                     "Alert Message",
                     "Previous Value",
                     "Current Value",
