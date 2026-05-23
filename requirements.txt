@@ -6,3 +6,4 @@ matplotlib
 supabase
 python-dotenv
 reportlab
+resend
