@@ -2562,6 +2562,7 @@ if app_mode == "BOM Analyzer":
                     st.stop()
 
             monitor_records = []
+            alert_records = []
             
             for _, row in results_df.iterrows():
                 latest_monitor = (
