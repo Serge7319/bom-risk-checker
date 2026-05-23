@@ -1851,6 +1851,17 @@ if app_mode == "Monitoring":
             }
         )
 
+        alert_display_df["Severity Display"] = (
+            alert_display_df["Severity"]
+            .replace(
+                {
+                    "High": "🔴 High",
+                    "Medium": "🟡 Medium",
+                    "Low": "🟢 Low",
+                }
+            )
+        )
+
         st.dataframe(
             alert_display_df[
                 [
