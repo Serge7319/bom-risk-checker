@@ -41,6 +41,9 @@ def detect_monitor_alerts(user_id, part_number, previous_snapshot, current_snaps
     previous_lifecycle = str(previous_snapshot.get("lifecycle_status", "") or "Unknown").lower()
     current_lifecycle = str(current_snapshot.get("lifecycle_status", "") or "Unknown").lower()
 
+    if current_lifecycle in ["", "unknown", "none", "nan"]:
+        current_lifecycle = "unknown"
+
     if previous_stock > 0 and current_stock < previous_stock * 0.5:
         alert_message = f"Stock dropped from {previous_stock} to {current_stock}"
         messages.append(f"⚠ {alert_message}")
@@ -71,7 +74,10 @@ def detect_monitor_alerts(user_id, part_number, previous_snapshot, current_snaps
             )
         )
 
-    if previous_lifecycle != current_lifecycle:
+    if (
+        previous_lifecycle != current_lifecycle
+        and current_lifecycle != "unknown"
+    ):
         alert_message = f"Lifecycle changed from {previous_lifecycle} to {current_lifecycle}"
         messages.append(f"⚠ {alert_message}")
         alerts.append(
