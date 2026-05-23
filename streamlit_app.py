@@ -2424,13 +2424,13 @@ if app_mode == "BOM Analyzer":
                     st.stop()
 
             monitor_records = []
-            st.write(results_df.columns.tolist())
+            
             for _, row in results_df.iterrows():
                 latest_monitor = (
                     supabase.table("part_monitor_history")
                     .select("*")
                     .eq("user_id", current_user["id"])
-                    .eq("part_number", row.get("part_number", ""))
+                    .eq("part_number", row.get("MPN", ""))
                     .order("created_at", desc=True)
                     .limit(1)
                     .execute()
@@ -2479,7 +2479,7 @@ if app_mode == "BOM Analyzer":
                         )
                     if monitor_alerts:
                         st.warning(
-                            f"{row.get('part_number', '')}: "
+                            f"{row.get('MPN', '')}: "
                             + " | ".join(monitor_alerts)
                         )
 
