@@ -1023,6 +1023,7 @@ if app_mode == "Dashboard":
         st.dataframe(
             summary_display_df,
             use_container_width=True,
+            hide_index=True,
         )
 
         st.divider()
