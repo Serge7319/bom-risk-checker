@@ -1892,6 +1892,17 @@ if app_mode == "Monitoring":
         }
     )
 
+    monitor_display_df["Risk Level Display"] = (
+        monitor_display_df["Risk Level"]
+        .replace(
+            {
+                "High": "🔴 High",
+                "Medium": "🟡 Medium",
+                "Low": "🟢 Low",
+            }
+        )
+    )
+
     if not monitor_df.empty:
         st.dataframe(
             monitor_display_df[
@@ -1901,7 +1912,7 @@ if app_mode == "Monitoring":
                     "Lifecycle Status",
                     "Stock Available",
                     "Unit Price",
-                    "Risk Level",
+                    "Risk Level Display",
                     "Last Checked",
                 ]
             ],
