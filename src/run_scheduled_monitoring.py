@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 import resend
+from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
@@ -37,6 +38,25 @@ users_response = (
 )
 
 users = users_response.data or []
+
+def recently_alerted(user_id, part_number, alert_type, hours=24):
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    response = (
+        supabase.table("monitor_alerts")
+        .select("id, created_at")
+        .eq("user_id", user_id)
+        .eq("part_number", part_number)
+        .eq("alert_type", alert_type)
+        .gte("created_at", cutoff_time.isoformat())
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+
+    recent_alerts = response.data or []
+
+    return len(recent_alerts) > 0
 
 print(f"Found {len(users)} users for monitoring.")
 
@@ -89,6 +109,22 @@ for user in users:
             current_snapshot,
         )
 
+        filtered_alert_records = []
+
+        for alert in new_alert_records:
+            if recently_alerted(
+                user_id,
+                part_number,
+                alert.get("alert_type"),
+            ):
+                print(
+                    f"Skipping duplicate alert for {part_number}: "
+                    f"{alert.get('alert_type')}"
+                )
+            else:
+                filtered_alert_records.append(alert)
+
+        new_alert_records = filtered_alert_records
 
         if new_alert_records:
             supabase.table("monitor_alerts").insert(
