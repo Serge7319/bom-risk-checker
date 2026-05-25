@@ -76,3 +76,27 @@ with col4:
     )
 
     st.metric("Obsolete Parts", obsolete_parts)
+
+st.divider()
+
+st.subheader("🚨 Active Alerts")
+
+if alerts_df.empty:
+    st.info("No active alerts found.")
+else:
+    alert_columns = [
+        "part_number",
+        "alert_type",
+        "alert_message",
+        "severity",
+        "created_at",
+    ]
+
+    available_columns = [
+        col for col in alert_columns if col in alerts_df.columns
+    ]
+
+    st.dataframe(
+        alerts_df[available_columns],
+        use_container_width=True,
+    )
