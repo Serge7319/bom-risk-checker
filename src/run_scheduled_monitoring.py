@@ -1,5 +1,10 @@
 from supabase import create_client
 import os
+from integrations.supplier_aggregator import get_best_part_data
+from src.monitoring_engine import (
+    build_monitor_record,
+    detect_monitor_alerts,
+)
 
 print("Starting scheduled BOM monitoring...")
 
@@ -50,5 +55,25 @@ for user in users:
             unique_parts[part_number] = row
 
     print(f"Found {len(unique_parts)} unique monitored parts.")
+
+    for part_number, previous_snapshot in unique_parts.items():
+        print(f"Rechecking part: {part_number}")
+
+        fresh_data = get_best_part_data(part_number)
+
+        current_snapshot = {
+            "user_id": user_id,
+            "part_number": part_number,
+            "supplier": fresh_data.get("source", ""),
+            "lifecycle_status": fresh_data.get("lifecycle_status", ""),
+            "stock": fresh_data.get("stock_total", 0),
+            "unit_price": fresh_data.get("unit_price", 0.0),
+            "risk_level": previous_snapshot.get("risk_level", ""),
+        }
+
+        print(
+            f"{part_number}: stock={current_snapshot['stock']}, "
+            f"lifecycle={current_snapshot['lifecycle_status']}"
+        )
 
 print("Scheduled BOM monitoring completed.")
