@@ -95,10 +95,10 @@ for user in users:
         current_snapshot = {
             "user_id": user_id,
             "part_number": part_number,
-            "supplier": fresh_data.get("source", ""),
-            "lifecycle_status": fresh_data.get("lifecycle_status", ""),
-            "stock": fresh_data.get("stock_total", 0),
-            "unit_price": fresh_data.get("unit_price", 0.0),
+            "supplier": fresh_data.get("Best Source", ""),
+            "lifecycle_status": fresh_data.get("Lifecycle Status", ""),
+            "stock": fresh_data.get("Stock Available", 0),
+            "unit_price": fresh_data.get("Unit Price", 0.0),
             "risk_level": previous_snapshot.get("risk_level", ""),
         }
 
