@@ -22,6 +22,18 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
+            - name: Create Streamlit Secrets File
+        run: |
+          mkdir -p .streamlit
+          cat > .streamlit/secrets.toml <<EOF
+          SUPABASE_URL = "${{ secrets.SUPABASE_URL }}"
+          SUPABASE_KEY = "${{ secrets.SUPABASE_KEY }}"
+          RESEND_API_KEY = "${{ secrets.RESEND_API_KEY }}"
+          ALERT_FROM_EMAIL = "${{ secrets.ALERT_FROM_EMAIL }}"
+          MOUSER_API_KEY = "${{ secrets.MOUSER_API_KEY }}"
+          DIGIKEY_CLIENT_ID = "${{ secrets.DIGIKEY_CLIENT_ID }}"
+          DIGIKEY_CLIENT_SECRET = "${{ secrets.DIGIKEY_CLIENT_SECRET }}"
+          EOF
 
       - name: Run Monitoring Script
         env:
