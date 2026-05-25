@@ -12,11 +12,11 @@ supabase = create_client(
     SUPABASE_KEY,
 )
 
-if "current_user" not in st.session_state:
+if "user" not in st.session_state:
     st.warning("Please log in.")
     st.stop()
 
-current_user = st.session_state["current_user"]
+current_user = st.session_state["user"]
 
 user_id = current_user["id"]
 
