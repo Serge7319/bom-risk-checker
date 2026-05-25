@@ -79,6 +79,12 @@ for user in users:
             "risk_level": previous_snapshot.get("risk_level", ""),
         }
 
+        supabase.table("part_monitor_history").insert(
+            current_snapshot
+        ).execute()
+
+        print(f"Saved monitoring snapshot for {part_number}")
+
         print(
             f"{part_number}: stock={current_snapshot['stock']}, "
             f"lifecycle={current_snapshot['lifecycle_status']}"
