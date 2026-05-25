@@ -2,6 +2,7 @@ from supabase import create_client
 import os
 import sys
 from pathlib import Path
+import resend
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
@@ -24,6 +25,13 @@ supabase = create_client(
     SUPABASE_URL,
     SUPABASE_KEY,
 )
+
+resend.api_key = os.getenv("RESEND_API_KEY")
+ALERT_FROM_EMAIL = os.getenv(
+    "ALERT_FROM_EMAIL",
+    "BOM Risk Checker <onboarding@resend.dev>",
+)
+
 
 users_response = (
     supabase.table("users")
@@ -90,6 +98,27 @@ for user in users:
             ).execute()
 
             print(f"Saved {len(new_alert_records)} alerts for {part_number}")
+
+            for alert in new_alert_records:
+                if alert.get("severity") == "High":
+                    try:
+                        resend.Emails.send(
+                            {
+                                "from": ALERT_FROM_EMAIL,
+                                "to": [user_email],
+                                "subject": "High Severity BOM Monitoring Alert",
+                                "html": (
+                                    f"<p><strong>Part:</strong> {part_number}</p>"
+                                    f"<p><strong>Alert:</strong> {alert.get('alert_message')}</p>"
+                                    f"<p><strong>Severity:</strong> {alert.get('severity')}</p>"
+                                ),
+                            }
+                        )
+
+                        print(f"Sent alert email for {part_number} to {user_email}")
+
+                    except Exception as e:
+                        print(f"Could not send alert email for {part_number}: {e}")
 
         for message in alert_messages:
             print(f"{part_number}: {message}")
