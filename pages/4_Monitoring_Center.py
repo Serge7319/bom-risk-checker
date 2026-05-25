@@ -45,5 +45,34 @@ history_response = (
 
 history_df = pd.DataFrame(history_response.data or [])
 
-st.write("Alerts loaded:", len(alerts_df))
-st.write("Monitoring records loaded:", len(history_df))
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("Monitored Parts", len(history_df))
+
+with col2:
+    st.metric("Active Alerts", len(alerts_df))
+
+with col3:
+    high_alerts = (
+        len(alerts_df[alerts_df["severity"] == "High"])
+        if not alerts_df.empty and "severity" in alerts_df.columns
+        else 0
+    )
+
+    st.metric("High Severity", high_alerts)
+
+with col4:
+    obsolete_parts = (
+        len(
+            history_df[
+                history_df["lifecycle_status"]
+                .astype(str)
+                .str.contains("obsolete", case=False, na=False)
+            ]
+        )
+        if not history_df.empty and "lifecycle_status" in history_df.columns
+        else 0
+    )
+
+    st.metric("Obsolete Parts", obsolete_parts)
