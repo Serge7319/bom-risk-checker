@@ -92,6 +92,20 @@ for user in users:
             current_snapshot,
         )
 
+        if not new_alert_records:
+            new_alert_records = [
+                {
+                    "user_id": user_id,
+                    "part_number": part_number,
+                    "alert_type": "Test Alert",
+                    "alert_message": "This is a scheduled monitoring test alert.",
+                    "severity": "High",
+                    "previous_value": "test",
+                    "current_value": "test",
+                }
+            ]
+
+
         if new_alert_records:
             supabase.table("monitor_alerts").insert(
                 new_alert_records
