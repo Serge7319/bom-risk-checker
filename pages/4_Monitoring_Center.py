@@ -100,3 +100,36 @@ else:
         alerts_df[available_columns],
         use_container_width=True,
     )
+
+st.divider()
+
+st.subheader("📦 Latest Monitored Parts")
+
+if history_df.empty:
+    st.info("No monitored parts found.")
+else:
+    latest_parts = (
+        history_df
+        .sort_values("created_at", ascending=False)
+        .drop_duplicates(subset=["part_number"])
+    )
+
+    part_columns = [
+        "part_number",
+        "supplier",
+        "lifecycle_status",
+        "stock",
+        "unit_price",
+        "risk_level",
+        "created_at",
+    ]
+
+    available_part_columns = [
+        col for col in part_columns
+        if col in latest_parts.columns
+    ]
+
+    st.dataframe(
+        latest_parts[available_part_columns],
+        use_container_width=True,
+    )
