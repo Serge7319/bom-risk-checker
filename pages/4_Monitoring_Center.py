@@ -48,6 +48,10 @@ history_response = (
 
 history_df = pd.DataFrame(history_response.data or [])
 
+st.write(history_df)
+
+st.write(alerts_df)
+
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
