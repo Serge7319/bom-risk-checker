@@ -1,5 +1,11 @@
 from supabase import create_client
 import os
+import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT_DIR))
+
 from integrations.supplier_aggregator import get_best_part_data
 from src.monitoring_engine import (
     build_monitor_record,
