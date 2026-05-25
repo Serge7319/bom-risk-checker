@@ -79,6 +79,23 @@ for user in users:
             "risk_level": previous_snapshot.get("risk_level", ""),
         }
 
+        new_alert_records, alert_messages = detect_monitor_alerts(
+            user_id,
+            part_number,
+            previous_snapshot,
+            current_snapshot,
+        )
+
+        if new_alert_records:
+            supabase.table("monitor_alerts").insert(
+                new_alert_records
+            ).execute()
+
+            print(f"Saved {len(new_alert_records)} alerts for {part_number}")
+
+        for message in alert_messages:
+            print(f"{part_number}: {message}")
+
         supabase.table("part_monitor_history").insert(
             current_snapshot
         ).execute()
