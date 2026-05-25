@@ -8,10 +8,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
 from integrations.supplier_aggregator import get_best_part_data
-from src.monitoring_engine import (
-    build_monitor_record,
-    detect_monitor_alerts,
-)
+from src.monitoring_engine import detect_monitor_alerts
 
 print("Starting scheduled BOM monitoring...")
 
@@ -91,19 +88,6 @@ for user in users:
             previous_snapshot,
             current_snapshot,
         )
-
-        if not new_alert_records:
-            new_alert_records = [
-                {
-                    "user_id": user_id,
-                    "part_number": part_number,
-                    "alert_type": "Test Alert",
-                    "alert_message": "This is a scheduled monitoring test alert.",
-                    "severity": "High",
-                    "previous_value": "test",
-                    "current_value": "test",
-                }
-            ]
 
 
         if new_alert_records:
