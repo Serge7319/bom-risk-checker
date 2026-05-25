@@ -48,7 +48,13 @@ history_df = pd.DataFrame(history_response.data or [])
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Monitored Parts", len(history_df))
+    unique_monitored_parts = (
+    history_df["part_number"].nunique()
+    if not history_df.empty and "part_number" in history_df.columns
+    else 0
+)
+
+st.metric("Monitored Parts", unique_monitored_parts)
 
 with col2:
     st.metric("Active Alerts", len(alerts_df))
