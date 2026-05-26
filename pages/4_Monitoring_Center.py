@@ -21,7 +21,6 @@ current_user = st.session_state["user"]
 user_id = current_user.id
 user_email = current_user.email
 
-st.write("Current User ID:", user_id)
 
 st.success(f"Monitoring dashboard loaded for {user_email}")
 
@@ -47,9 +46,7 @@ history_response = (
 
 history_df = pd.DataFrame(history_response.data or [])
 
-st.write(history_df)
 
-st.write(alerts_df)
 
 col1, col2, col3, col4 = st.columns(4)
 
