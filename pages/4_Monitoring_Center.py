@@ -18,11 +18,10 @@ if "user" not in st.session_state:
 
 current_user = st.session_state["user"]
 
-user_id = current_user["id"]
-user_email = current_user["email"]
+user_id = current_user.id
+user_email = current_user.email
 
 st.write("Current User ID:", user_id)
-
 
 st.success(f"Monitoring dashboard loaded for {user_email}")
 
