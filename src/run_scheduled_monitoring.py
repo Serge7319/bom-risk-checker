@@ -92,6 +92,8 @@ for user in users:
 
         fresh_data = get_best_part_data(part_number)
 
+        print(fresh_data)
+
         current_snapshot = {
             "user_id": user_id,
             "part_number": part_number,
