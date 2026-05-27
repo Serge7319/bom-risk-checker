@@ -24,7 +24,7 @@ user_email = current_user.email
 
 st.success(f"Monitoring dashboard loaded for {user_email}")
 
-search_col1, search_col2 = st.columns([4, 1])
+search_col1, search_col2 = st.columns([6, 1])
 
 with search_col1:
     part_search_input = st.text_input(
@@ -33,7 +33,13 @@ with search_col1:
     )
 
 with search_col2:
-    search_clicked = st.button("Search")
+    st.write("")
+    st.write("")
+
+    search_clicked = st.button(
+        "Search",
+        use_container_width=True,
+    )
 
 if search_clicked:
     st.session_state["part_search"] = part_search_input
