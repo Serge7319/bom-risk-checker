@@ -24,11 +24,22 @@ user_email = current_user.email
 
 st.success(f"Monitoring dashboard loaded for {user_email}")
 
-alert_response = (
+show_acknowledged = st.checkbox(
+    "Show acknowledged alerts",
+    value=False,
+)
+
+alert_query = (
     supabase.table("monitor_alerts")
     .select("*")
     .eq("user_id", user_id)
-    .eq("acknowledged", False)
+)
+
+if not show_acknowledged:
+    alert_query = alert_query.eq("acknowledged", False)
+
+alert_response = (
+    alert_query
     .order("created_at", desc=True)
     .limit(100)
     .execute()
