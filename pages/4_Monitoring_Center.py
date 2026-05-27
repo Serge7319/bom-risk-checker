@@ -24,10 +24,21 @@ user_email = current_user.email
 
 st.success(f"Monitoring dashboard loaded for {user_email}")
 
-part_search = st.text_input(
-    "Search Part Number",
-    placeholder="e.g. STM32, ESP32, LM555...",
-)
+search_col1, search_col2 = st.columns([4, 1])
+
+with search_col1:
+    part_search_input = st.text_input(
+        "Search Part Number",
+        placeholder="e.g. STM32, ESP32, LM555...",
+    )
+
+with search_col2:
+    search_clicked = st.button("Search")
+
+if search_clicked:
+    st.session_state["part_search"] = part_search_input
+
+part_search = st.session_state.get("part_search", "")
 
 show_acknowledged = st.checkbox(
     "Show acknowledged alerts",
