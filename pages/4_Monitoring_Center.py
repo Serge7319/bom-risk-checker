@@ -24,6 +24,11 @@ user_email = current_user.email
 
 st.success(f"Monitoring dashboard loaded for {user_email}")
 
+part_search = st.text_input(
+    "Search Part Number",
+    placeholder="e.g. STM32, ESP32, LM555...",
+)
+
 show_acknowledged = st.checkbox(
     "Show acknowledged alerts",
     value=False,
@@ -124,6 +129,13 @@ else:
 
     filtered_alerts_df = alerts_df.copy()
 
+    if part_search:
+        filtered_alerts_df = filtered_alerts_df[
+            filtered_alerts_df["part_number"]
+            .astype(str)
+            .str.contains(part_search, case=False, na=False)
+        ]
+
     if severity_filter != "All":
         filtered_alerts_df = filtered_alerts_df[
             filtered_alerts_df["severity"] == severity_filter
@@ -195,6 +207,13 @@ else:
         .sort_values("created_at", ascending=False)
         .drop_duplicates(subset=["part_number"])
     )
+
+    if part_search:
+        latest_parts = latest_parts[
+            latest_parts["part_number"]
+            .astype(str)
+            .str.contains(part_search, case=False, na=False)
+        ]
 
     part_columns = [
         "part_number",
