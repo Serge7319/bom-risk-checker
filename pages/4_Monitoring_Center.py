@@ -117,8 +117,18 @@ else:
             filtered_alerts_df["severity"] == severity_filter
         ]
 
+    display_alerts_df = filtered_alerts_df[available_columns].rename(
+        columns={
+            "part_number": "Part Number",
+            "alert_type": "Alert Type",
+            "alert_message": "Alert Message",
+            "severity": "Severity",
+            "created_at": "Created At",
+        }
+    )
+
     st.dataframe(
-        filtered_alerts_df[available_columns],
+        display_alerts_df,
         use_container_width=True,
     )
 
@@ -150,7 +160,19 @@ else:
         if col in latest_parts.columns
     ]
 
+    display_parts_df = latest_parts[available_part_columns].rename(
+        columns={
+            "part_number": "Part Number",
+            "supplier": "Supplier",
+            "lifecycle_status": "Lifecycle Status",
+            "stock": "Stock",
+            "unit_price": "Unit Price",
+            "risk_level": "Risk Level",
+            "created_at": "Last Checked",
+        }
+    )
+
     st.dataframe(
-        latest_parts[available_part_columns],
+        display_parts_df,
         use_container_width=True,
     )
