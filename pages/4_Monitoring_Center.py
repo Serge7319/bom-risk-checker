@@ -28,6 +28,7 @@ alert_response = (
     supabase.table("monitor_alerts")
     .select("*")
     .eq("user_id", user_id)
+    .eq("acknowledged", False)
     .order("created_at", desc=True)
     .limit(100)
     .execute()
