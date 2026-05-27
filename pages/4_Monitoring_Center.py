@@ -127,8 +127,24 @@ else:
         }
     )
 
+    styled_alerts_df = display_alerts_df.style.map(
+        lambda value:
+            "color: red; font-weight: bold"
+            if value == "High"
+            else (
+                "color: orange; font-weight: bold"
+                if value == "Medium"
+                else (
+                    "color: lightgreen; font-weight: bold"
+                    if value == "Low"
+                    else ""
+                )
+            ),
+        subset=["Severity"],
+    )
+
     st.dataframe(
-        display_alerts_df,
+        styled_alerts_df,
         use_container_width=True,
     )
 
