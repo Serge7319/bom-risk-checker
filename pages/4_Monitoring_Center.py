@@ -90,6 +90,11 @@ st.divider()
 
 st.subheader("🚨 Active Alerts")
 
+severity_filter = st.selectbox(
+    "Filter by Severity",
+    ["All", "High", "Medium", "Low"],
+)
+
 if alerts_df.empty:
     st.info("No active alerts found.")
 else:
@@ -105,8 +110,15 @@ else:
         col for col in alert_columns if col in alerts_df.columns
     ]
 
+    filtered_alerts_df = alerts_df.copy()
+
+    if severity_filter != "All":
+        filtered_alerts_df = filtered_alerts_df[
+            filtered_alerts_df["severity"] == severity_filter
+        ]
+
     st.dataframe(
-        alerts_df[available_columns],
+        filtered_alerts_df[available_columns],
         use_container_width=True,
     )
 
