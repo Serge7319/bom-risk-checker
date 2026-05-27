@@ -75,8 +75,11 @@ def detect_monitor_alerts(user_id, part_number, previous_snapshot, current_snaps
         )
 
     if (
-        previous_lifecycle != current_lifecycle
+        previous_lifecycle
+        and current_lifecycle
+        and previous_lifecycle != "unknown"
         and current_lifecycle != "unknown"
+        and previous_lifecycle != current_lifecycle
     ):
         alert_message = f"Lifecycle changed from {previous_lifecycle} to {current_lifecycle}"
         messages.append(f"⚠ {alert_message}")
