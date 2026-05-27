@@ -149,6 +149,29 @@ else:
         use_container_width=True,
     )
 
+    if not filtered_alerts_df.empty:
+        alert_options = {
+            f"{row['part_number']} — {row['alert_type']} — {row['created_at']}": row["id"]
+            for _, row in filtered_alerts_df.iterrows()
+            if "id" in filtered_alerts_df.columns
+        }
+
+        selected_alert = st.selectbox(
+            "Select alert to acknowledge",
+            ["None"] + list(alert_options.keys()),
+        )
+
+        if selected_alert != "None":
+            if st.button("Acknowledge Selected Alert"):
+                supabase.table("monitor_alerts").update(
+                    {"acknowledged": True}
+                ).eq(
+                    "id", alert_options[selected_alert]
+                ).execute()
+
+                st.success("Alert acknowledged. Refreshing...")
+                st.rerun()
+
 st.divider()
 
 st.subheader("📦 Latest Monitored Parts")
