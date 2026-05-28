@@ -122,6 +122,38 @@ with col4:
 
 st.divider()
 
+st.subheader("📊 Lifecycle Status Distribution")
+
+if history_df.empty or "lifecycle_status" not in history_df.columns:
+    st.info("No lifecycle data available yet.")
+else:
+    latest_parts_for_chart = (
+        history_df
+        .sort_values("created_at", ascending=False)
+        .drop_duplicates(subset=["part_number"])
+    )
+
+    lifecycle_counts = (
+        latest_parts_for_chart["lifecycle_status"]
+        .fillna("Unknown")
+        .replace("", "Unknown")
+        .value_counts()
+        .reset_index()
+    )
+
+    lifecycle_counts.columns = ["Lifecycle Status", "Part Count"]
+
+    st.bar_chart(
+        lifecycle_counts,
+        x="Lifecycle Status",
+        y="Part Count",
+        use_container_width=True,
+    )
+
+
+
+st.divider()
+
 st.subheader("🚨 Active Alerts")
 
 severity_filter = st.selectbox(
