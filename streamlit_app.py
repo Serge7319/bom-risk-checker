@@ -753,11 +753,6 @@ st.sidebar.write(
 )
 
 
-
-
-
-
-
 if st.sidebar.button("Clear Analysis"):
     st.session_state.pop("results_df", None)
     st.session_state.pop("uploaded_filename", None)
@@ -1076,17 +1071,22 @@ if app_mode == "Dashboard":
             )
             st.subheader("Risk Composition")
 
-            risk_pie_data = risk_distribution.set_index("Risk Level")
-
-            fig = risk_pie_data.plot.pie(
-                y="Part Count",
-                autopct="%1.1f%%",
-                legend=False,
-                ylabel="",
-                figsize=(2, 2),
-            ).figure
-
-            st.pyplot(fig, use_container_width=False)
+            st.plotly_chart(
+                {
+                    "data": [
+                        {
+                            "labels": risk_distribution["Risk Level"],
+                            "values": risk_distribution["Part Count"],
+                            "type": "pie",
+                            "hole": 0.45,
+                        }
+                    ],
+                    "layout": {
+                        "margin": {"t": 20, "b": 20, "l": 20, "r": 20},
+                    },
+                },
+                use_container_width=True,
+            )
 
         with chart_col2:
             st.subheader("Lifecycle Status Distribution")
