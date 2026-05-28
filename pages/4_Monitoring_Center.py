@@ -168,6 +168,11 @@ else:
         }
     )
 
+    display_alerts_df["Created At"] = pd.to_datetime(
+        display_alerts_df["Created At"],
+        errors="coerce",
+    ).dt.strftime("%b %d, %Y %I:%M %p")
+
     styled_alerts_df = display_alerts_df.style.map(
         lambda value:
             "color: red; font-weight: bold"
@@ -258,6 +263,11 @@ else:
             "created_at": "Last Checked",
         }
     )
+
+    display_parts_df["Last Checked"] = pd.to_datetime(
+        display_parts_df["Last Checked"],
+        errors="coerce",
+    ).dt.strftime("%b %d, %Y %I:%M %p")
 
     st.dataframe(
         display_parts_df,
