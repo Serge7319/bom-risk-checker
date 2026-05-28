@@ -1088,6 +1088,73 @@ if app_mode == "Dashboard":
                 use_container_width=True,
             )
 
+            st.divider()
+
+            st.subheader("🧠 Executive Insights")
+
+            if history_df.empty:
+                st.info("No monitoring insights available yet.")
+            else:
+                latest_parts_for_insights = (
+                    history_df
+                    .sort_values("created_at", ascending=False)
+                    .drop_duplicates(subset=["part_number"])
+                )
+
+                obsolete_count = len(
+                    latest_parts_for_insights[
+                        latest_parts_for_insights["lifecycle_status"]
+                        .astype(str)
+                        .str.contains("obsolete", case=False, na=False)
+                    ]
+                )
+
+                high_risk_count = len(
+                    latest_parts_for_insights[
+                        latest_parts_for_insights["risk_level"]
+                        .astype(str)
+                        .str.contains("high", case=False, na=False)
+                    ]
+                )
+
+                zero_stock_count = len(
+                    latest_parts_for_insights[
+                        latest_parts_for_insights["stock"] <= 0
+                    ]
+                )
+
+                healthy_parts = len(
+                    latest_parts_for_insights[
+                        latest_parts_for_insights["risk_level"]
+                        .astype(str)
+                        .str.contains("low", case=False, na=False)
+                    ]
+                )
+
+                total_parts = len(latest_parts_for_insights)
+
+                healthy_percent = (
+                    round((healthy_parts / total_parts) * 100, 1)
+                    if total_parts > 0
+                    else 0
+                )
+
+                st.info(
+                    f"⚠️ {obsolete_count} obsolete components currently detected."
+                )
+
+                st.warning(
+                    f"🔥 {high_risk_count} high-risk components may require procurement review."
+                )
+
+                st.error(
+                    f"📉 {zero_stock_count} monitored parts currently show zero stock availability."
+                )
+
+                st.success(
+                    f"✅ {healthy_percent}% of monitored components are currently classified as low risk."
+                )
+
         with chart_col2:
             st.subheader("Lifecycle Status Distribution")
 
