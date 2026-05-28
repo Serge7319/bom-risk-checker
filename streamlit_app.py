@@ -1098,12 +1098,12 @@ if app_mode == "Dashboard":
                 latest_parts_for_insights = (
                     history_df
                     .sort_values("created_at", ascending=False)
-                    .drop_duplicates(subset=["part_number"])
+                    .drop_duplicates(subset=["MPN"])
                 )
 
                 obsolete_count = len(
                     latest_parts_for_insights[
-                        latest_parts_for_insights["lifecycle_status"]
+                        latest_parts_for_insights["Lifecycle Status"]
                         .astype(str)
                         .str.contains("obsolete", case=False, na=False)
                     ]
@@ -1111,7 +1111,7 @@ if app_mode == "Dashboard":
 
                 high_risk_count = len(
                     latest_parts_for_insights[
-                        latest_parts_for_insights["risk_level"]
+                        latest_parts_for_insights["Risk Level"]
                         .astype(str)
                         .str.contains("high", case=False, na=False)
                     ]
@@ -1125,7 +1125,7 @@ if app_mode == "Dashboard":
 
                 healthy_parts = len(
                     latest_parts_for_insights[
-                        latest_parts_for_insights["risk_level"]
+                        latest_parts_for_insights["Risk_Level"]
                         .astype(str)
                         .str.contains("low", case=False, na=False)
                     ]
