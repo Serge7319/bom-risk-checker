@@ -143,10 +143,20 @@ else:
 
     lifecycle_counts.columns = ["Lifecycle Status", "Part Count"]
 
-    st.bar_chart(
-        lifecycle_counts,
-        x="Lifecycle Status",
-        y="Part Count",
+    st.plotly_chart(
+        {
+            "data": [
+                {
+                    "labels": lifecycle_counts["Lifecycle Status"],
+                    "values": lifecycle_counts["Part Count"],
+                    "type": "pie",
+                    "hole": 0.45,
+                }
+            ],
+            "layout": {
+                "margin": {"t": 20, "b": 20, "l": 20, "r": 20},
+            },
+        },
         use_container_width=True,
     )
 
