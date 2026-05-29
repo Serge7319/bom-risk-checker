@@ -935,6 +935,14 @@ if app_mode == "Dashboard":
     else:
         history_df = pd.DataFrame(history)
 
+        latest_parts_df = (
+            history_df
+            .sort_values("created_at", ascending=False)
+            .drop_duplicates(subset=["mpn"])
+            if not history_df.empty and "mpn" in history_df.columns
+            else pd.DataFrame()
+        )
+
         risk_distribution = (
             history_df["risk_level"]
             .value_counts()
@@ -1102,11 +1110,7 @@ if app_mode == "Dashboard":
             if history_df.empty:
                 st.info("No monitoring insights available yet.")
             else:
-                latest_parts_for_insights = (
-                    history_df
-                    .sort_values("created_at", ascending=False)
-                    .drop_duplicates(subset=["mpn"])
-                )
+                latest_parts_for_insights = latest_parts_df
 
                 obsolete_count = len(
                     latest_parts_for_insights[
