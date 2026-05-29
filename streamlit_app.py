@@ -1079,6 +1079,13 @@ if app_mode == "Dashboard":
                             "values": risk_distribution["Part Count"],
                             "type": "pie",
                             "hole": 0.45,
+                            "marker": {
+                                "colors": [
+                                    "#ef4444",  # High → red
+                                    "#f59e0b",  # Medium → orange
+                                    "#22c55e",  # Low → green
+                                ]
+                            },
                         }
                     ],
                     "layout": {
