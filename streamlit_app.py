@@ -1180,10 +1180,22 @@ if app_mode == "Dashboard":
         with chart_col2:
             st.subheader("Lifecycle Status Distribution")
 
-            st.bar_chart(
-                lifecycle_distribution,
-                x="Lifecycle Status",
-                y="Part Count",
+            st.plotly_chart(
+                {
+                    "data": [
+                        {
+                            "x": lifecycle_distribution["Lifecycle Status"],
+                            "y": lifecycle_distribution["Part Count"],
+                            "type": "bar",
+                        }
+                    ],
+                    "layout": {
+                        "margin": {"t": 20, "b": 80, "l": 20, "r": 20},
+                        "xaxis": {"title": "Lifecycle Status"},
+                        "yaxis": {"title": "Part Count"},
+                    },
+                },
+                use_container_width=True,
             )
 
         
