@@ -1098,7 +1098,7 @@ if app_mode == "Dashboard":
                 latest_parts_for_insights = (
                     history_df
                     .sort_values("created_at", ascending=False)
-                    .drop_duplicates(subset=["part_number"])
+                    .drop_duplicates(subset=["mpn"])
                 )
 
                 obsolete_count = len(
