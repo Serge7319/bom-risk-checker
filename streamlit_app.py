@@ -1119,7 +1119,7 @@ if app_mode == "Dashboard":
 
                 zero_stock_count = len(
                     latest_parts_for_insights[
-                        latest_parts_for_insights["stock"] <= 0
+                        latest_parts_for_insights["stock_available"] <= 0
                     ]
                 )
 
