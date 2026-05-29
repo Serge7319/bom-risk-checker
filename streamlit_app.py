@@ -1098,12 +1098,12 @@ if app_mode == "Dashboard":
                 latest_parts_for_insights = (
                     history_df
                     .sort_values("created_at", ascending=False)
-                    .drop_duplicates(subset=["MPN"])
+                    .drop_duplicates(subset=["part_number"])
                 )
 
                 obsolete_count = len(
                     latest_parts_for_insights[
-                        latest_parts_for_insights["Lifecycle Status"]
+                        latest_parts_for_insights["lifecycle_status"]
                         .astype(str)
                         .str.contains("obsolete", case=False, na=False)
                     ]
@@ -1111,7 +1111,7 @@ if app_mode == "Dashboard":
 
                 high_risk_count = len(
                     latest_parts_for_insights[
-                        latest_parts_for_insights["Risk Level"]
+                        latest_parts_for_insights["risk_level"]
                         .astype(str)
                         .str.contains("high", case=False, na=False)
                     ]
@@ -1125,7 +1125,7 @@ if app_mode == "Dashboard":
 
                 healthy_parts = len(
                     latest_parts_for_insights[
-                        latest_parts_for_insights["Risk_Level"]
+                        latest_parts_for_insights["risk_level"]
                         .astype(str)
                         .str.contains("low", case=False, na=False)
                     ]
@@ -1164,57 +1164,9 @@ if app_mode == "Dashboard":
                 y="Part Count",
             )
 
-        st.subheader("Executive Insights")
+        
 
-        insight_col1, insight_col2, insight_col3, insight_col4 = st.columns(4)
-
-        with insight_col1:
-            st.markdown(
-                f"""
-                <div class="kpi-card">
-                    <div class="kpi-label">High-Risk Parts</div>
-                    <div class="kpi-value">{high_risk_count}</div>
-                    <div class="kpi-note">Across saved analyses</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with insight_col2:
-            st.markdown(
-                f"""
-                <div class="kpi-card">
-                    <div class="kpi-label">Top Manufacturer</div>
-                    <div class="kpi-value">{top_manufacturer}</div>
-                    <div class="kpi-note">Most analyzed supplier</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with insight_col3:
-            st.markdown(
-                f"""
-                <div class="kpi-card">
-                    <div class="kpi-label">Obsolete / EOL</div>
-                    <div class="kpi-value">{obsolete_count}</div>
-                    <div class="kpi-note">Potential redesign targets</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with insight_col4:
-            st.markdown(
-                """
-                <div class="kpi-card">
-                    <div class="kpi-label">Recommended Action</div>
-                    <div class="kpi-value">Review</div>
-                    <div class="kpi-note">Mitigate sourcing risks</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        
 
         st.divider()
 
