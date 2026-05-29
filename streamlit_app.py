@@ -2578,195 +2578,190 @@ if app_mode == "BOM Analyzer":
 
 
     if st.button("Analyze BOM", type="primary"):
-        allowed, message = validate_bom_against_plan(
-            bom_df,
-            selected_plan,
-            monthly_upload_count,
-        )
+        with st.spinner("Analyzing BOM and checking supplier risk..."):
+            allowed, message = validate_bom_against_plan(
+                bom_df,
+                selected_plan,
+                monthly_upload_count,
+            )
 
-        if not allowed:
-            st.error(message)
-            upgrade_plan = selected_plan.get("upgrade_to")
+            if not allowed:
+                st.error(message)
+                upgrade_plan = selected_plan.get("upgrade_to")
 
-            if upgrade_plan:
-                next_plan = get_plan(upgrade_plan)
+                if upgrade_plan:
+                    next_plan = get_plan(upgrade_plan)
 
-                st.markdown(
-                    f"""
-                ---
-                ### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
+                    st.markdown(
+                        f"""
+                    ---
+                    ### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
 
-                Unlock more power:
+                    Unlock more power:
 
-                - 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
-                - 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
-                - 🌐 Multi-supplier intelligence (Mouser + DigiKey)
-                - ⚡ Faster sourcing decisions
+                    - 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
+                    - 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
+                    - 🌐 Multi-supplier intelligence (Mouser + DigiKey)
+                    - ⚡ Faster sourcing decisions
 
-                👉 Upgrade now to continue your analysis
-                ---
-                """
-                )
-                if st.button("🚀 Upgrade Now", key="upgrade_button_main"):
-                    st.session_state["show_upgrade_modal"] = True
-        else:
-            st.success(message)
-
-            with st.spinner("Analyzing BOM... fetching supplier data, checking lifecycle status, and calculating risk scores."):
+                    👉 Upgrade now to continue your analysis
+                    ---
+                    """
+                    )
+                    if st.button("🚀 Upgrade Now", key="upgrade_button_main"):
+                        st.session_state["show_upgrade_modal"] = True
+            else:
+                st.success(message)
                 st.session_state["results_df"] = analyze_bom(bom_df)
 
-            results_df = st.session_state["results_df"]
+                results_df = st.session_state["results_df"]
 
-            
+                
 
-            high_count = len(results_df[results_df["Risk Level"] == "High"])
-            medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
-            low_count = len(results_df[results_df["Risk Level"] == "Low"])
-            total_parts = len(results_df)
+                high_count = len(results_df[results_df["Risk Level"] == "High"])
+                medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
+                low_count = len(results_df[results_df["Risk Level"] == "Low"])
+                total_parts = len(results_df)
 
-            high_count = len(results_df[results_df["Risk Level"] == "High"])
-            medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
-            low_count = len(results_df[results_df["Risk Level"] == "Low"])
-            total_parts = len(results_df)
 
-            health_data = calculate_bom_health_score(results_df)
+                health_data = calculate_bom_health_score(results_df)
 
-            analysis_response = supabase.table("analyses").insert(
-                {
-                    "user_id": current_user["id"],
-                    "project_name": project_name or uploaded_file.name,
-                    "filename": uploaded_file.name,
-                    "total_parts": total_parts,
-                    "high_risk_count": high_count,
-                    "medium_risk_count": medium_count,
-                    "low_risk_count": low_count,
-                    "health_score": health_data["health_score"],
-                }
-            ).execute()
-
-            analysis_id = analysis_response.data[0]["id"]
-
-            part_records = []
-
-            for _, part_row in results_df.iterrows():
-                part_records.append(
+                analysis_response = supabase.table("analyses").insert(
                     {
-                        "analysis_id": analysis_id,
                         "user_id": current_user["id"],
                         "project_name": project_name or uploaded_file.name,
-                        "mpn": part_row.get("MPN", ""),
-                        "manufacturer": part_row.get("Manufacturer", ""),
-                        "risk_score": part_row.get("Risk Score", 0),
-                        "risk_level": part_row.get("Risk Level", ""),
-                        "risk_reasons": part_row.get("Risk Reasons", ""),
-                        "lifecycle_status": part_row.get("Lifecycle Status", ""),
-                        "stock_available": part_row.get("Stock Available", 0),
-                        "supplier_count": part_row.get("Supplier Count", 0),
+                        "filename": uploaded_file.name,
+                        "total_parts": total_parts,
+                        "high_risk_count": high_count,
+                        "medium_risk_count": medium_count,
+                        "low_risk_count": low_count,
+                        "health_score": health_data["health_score"],
                     }
-                )
+                ).execute()
 
-            if part_records:
-                try:
-                    supabase.table("analysis_parts").insert(part_records).execute()
+                analysis_id = analysis_response.data[0]["id"]
 
-                except Exception as e:
-                    st.error(f"Could not save BOM parts: {e}")
-                    st.stop()
+                part_records = []
 
-            monitor_records = []
-            alert_records = []
+                for _, part_row in results_df.iterrows():
+                    part_records.append(
+                        {
+                            "analysis_id": analysis_id,
+                            "user_id": current_user["id"],
+                            "project_name": project_name or uploaded_file.name,
+                            "mpn": part_row.get("MPN", ""),
+                            "manufacturer": part_row.get("Manufacturer", ""),
+                            "risk_score": part_row.get("Risk Score", 0),
+                            "risk_level": part_row.get("Risk Level", ""),
+                            "risk_reasons": part_row.get("Risk Reasons", ""),
+                            "lifecycle_status": part_row.get("Lifecycle Status", ""),
+                            "stock_available": part_row.get("Stock Available", 0),
+                            "supplier_count": part_row.get("Supplier Count", 0),
+                        }
+                    )
+
+                if part_records:
+                    try:
+                        supabase.table("analysis_parts").insert(part_records).execute()
+
+                    except Exception as e:
+                        st.error(f"Could not save BOM parts: {e}")
+                        st.stop()
+
+                monitor_records = []
+                alert_records = []
             
-            for _, row in results_df.iterrows():
-                latest_monitor = (
-                    supabase.table("part_monitor_history")
-                    .select("*")
-                    .eq("user_id", current_user["id"])
-                    .eq("part_number", row.get("MPN", ""))
-                    .order("created_at", desc=True)
-                    .limit(1)
-                    .execute()
-                )
+                for _, row in results_df.iterrows():
+                    latest_monitor = (
+                        supabase.table("part_monitor_history")
+                        .select("*")
+                        .eq("user_id", current_user["id"])
+                        .eq("part_number", row.get("MPN", ""))
+                        .order("created_at", desc=True)
+                        .limit(1)
+                        .execute()
+                    )
 
-                latest_monitor_data = (
-                    latest_monitor.data[0]
-                    if latest_monitor.data
-                    else None
-                )
+                    latest_monitor_data = (
+                        latest_monitor.data[0]
+                        if latest_monitor.data
+                        else None
+                    )
 
-                monitor_alerts = []
+                    monitor_alerts = []
 
-                current_snapshot = build_monitor_record(
-                    current_user["id"],
-                    row,
-                )
-
-                if latest_monitor_data:
-                    new_alert_records, monitor_alerts = detect_monitor_alerts(
+                    current_snapshot = build_monitor_record(
                         current_user["id"],
-                        row.get("MPN", ""),
-                        latest_monitor_data,
-                        current_snapshot,
+                        row,
                     )
 
-                    alert_records.extend(new_alert_records)
+                    if latest_monitor_data:
+                        new_alert_records, monitor_alerts = detect_monitor_alerts(
+                            current_user["id"],
+                            row.get("MPN", ""),
+                            latest_monitor_data,
+                            current_snapshot,
+                        )
 
-                    for alert in new_alert_records:
-                        if (
-                            alert.get("severity") == "High"
-                            and alert.get("alert_type") == "Stock Drop"
-                        ):
-                            try:
-                                send_monitor_alert_email(
-                                    to_email=current_user["email"],
-                                    subject="High Severity BOM Monitoring Alert",
-                                    message=(
-                                        f"{row.get('MPN', '')}: "
-                                        f"{alert.get('alert_message', '')}"
-                                    ),
-                                )
-                            except Exception as e:
-                                st.warning(
-                                    f"Alert was saved, but email could not be sent: {e}"
-                                )
+                        alert_records.extend(new_alert_records)
 
-                if monitor_alerts:
-                    st.warning(
-                        f"{row.get('MPN', '')}: "
-                        + " | ".join(monitor_alerts)
-                    )
+                        for alert in new_alert_records:
+                            if (
+                                alert.get("severity") == "High"
+                                and alert.get("alert_type") == "Stock Drop"
+                            ):
+                                try:
+                                    send_monitor_alert_email(
+                                        to_email=current_user["email"],
+                                        subject="High Severity BOM Monitoring Alert",
+                                        message=(
+                                            f"{row.get('MPN', '')}: "
+                                            f"{alert.get('alert_message', '')}"
+                                        ),
+                                    )
+                                except Exception as e:
+                                    st.warning(
+                                        f"Alert was saved, but email could not be sent: {e}"
+                                    )
 
-                monitor_records.append(current_snapshot)
+                    if monitor_alerts:
+                        st.warning(
+                            f"{row.get('MPN', '')}: "
+                            + " | ".join(monitor_alerts)
+                        )
 
-            if monitor_records:
-                try:
-                    supabase.table("part_monitor_history").insert(
-                        monitor_records
-                    ).execute()
+                    monitor_records.append(current_snapshot)
 
-                except Exception as e:
-                    st.error(f"Could not save monitoring history: {e}")
+                if monitor_records:
+                    try:
+                        supabase.table("part_monitor_history").insert(
+                            monitor_records
+                        ).execute()
 
-            if alert_records:
-                try:
-                    supabase.table("monitor_alerts").insert(
-                        alert_records
-                    ).execute()
+                    except Exception as e:
+                        st.error(f"Could not save monitoring history: {e}")
 
-                except Exception as e:
-                    st.error(f"Could not save monitor alerts: {e}")
+                if alert_records:
+                    try:
+                        supabase.table("monitor_alerts").insert(
+                            alert_records
+                        ).execute()
 
-            new_upload_count = monthly_upload_count + 1
+                    except Exception as e:
+                        st.error(f"Could not save monitor alerts: {e}")
 
-            supabase.table("users").update(
-                {
-                    "monthly_upload_count": new_upload_count
-                }
-            ).eq(
-                "id",
-                current_user["id"]
-            ).execute()
+                new_upload_count = monthly_upload_count + 1
 
-            monthly_upload_count = new_upload_count
+                supabase.table("users").update(
+                    {
+                        "monthly_upload_count": new_upload_count
+                    }
+                ).eq(
+                    "id",
+                    current_user["id"]
+                ).execute()
+
+                monthly_upload_count = new_upload_count
 
 
     if "results_df" in st.session_state:
