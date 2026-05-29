@@ -1139,21 +1139,36 @@ if app_mode == "Dashboard":
                     else 0
                 )
 
-                st.info(
-                    f"⚠️ {obsolete_count} obsolete components currently detected."
-                )
+                insight_col1, insight_col2 = st.columns(2)
+                insight_col3, insight_col4 = st.columns(2)
 
-                st.warning(
-                    f"🔥 {high_risk_count} high-risk components may require procurement review."
-                )
+                with insight_col1:
+                    st.metric(
+                        "Obsolete Components",
+                        obsolete_count,
+                        "Needs lifecycle review",
+                    )
 
-                st.error(
-                    f"📉 {zero_stock_count} monitored parts currently show zero stock availability."
-                )
+                with insight_col2:
+                    st.metric(
+                        "High-Risk Components",
+                        high_risk_count,
+                        "Procurement review needed",
+                    )
 
-                st.success(
-                    f"✅ {healthy_percent}% of monitored components are currently classified as low risk."
-                )
+                with insight_col3:
+                    st.metric(
+                        "Zero-Stock Parts",
+                        zero_stock_count,
+                        "Sourcing risk",
+                    )
+
+                with insight_col4:
+                    st.metric(
+                        "Low-Risk Share",
+                        f"{healthy_percent}%",
+                        "Healthy monitored parts",
+                    )
 
         with chart_col2:
             st.subheader("Lifecycle Status Distribution")
