@@ -1208,6 +1208,51 @@ if app_mode == "Dashboard":
                 use_container_width=True,
             )
 
+            st.subheader("📈 High-Risk Trend Over Time")
+
+            if history_df.empty:
+                st.info("No trend data available yet.")
+            else:
+                trend_df = history_df.copy()
+
+                trend_df["created_at"] = pd.to_datetime(
+                    trend_df["created_at"],
+                    errors="coerce",
+                )
+
+                trend_df["date"] = trend_df["created_at"].dt.date
+
+                high_risk_trend = (
+                    trend_df[
+                        trend_df["risk_level"]
+                        .astype(str)
+                        .str.contains("high", case=False, na=False)
+                    ]
+                    .groupby("date")
+                    .size()
+                    .reset_index(name="High Risk Parts")
+                )
+
+                st.plotly_chart(
+                    {
+                        "data": [
+                            {
+                                "x": high_risk_trend["date"],
+                                "y": high_risk_trend["High Risk Parts"],
+                                "type": "scatter",
+                                "mode": "lines+markers",
+                                "line": {"shape": "spline"},
+                            }
+                        ],
+                        "layout": {
+                            "margin": {"t": 20, "b": 40, "l": 20, "r": 20},
+                            "xaxis": {"title": "Date"},
+                            "yaxis": {"title": "High-Risk Parts"},
+                        },
+                    },
+                    use_container_width=True,
+                )
+
         
 
         
