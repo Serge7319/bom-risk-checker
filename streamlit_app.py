@@ -1187,6 +1187,16 @@ if app_mode == "Dashboard":
                             "x": lifecycle_distribution["Lifecycle Status"],
                             "y": lifecycle_distribution["Part Count"],
                             "type": "bar",
+                            "marker": {
+                                "color": [
+                                    "#22c55e" if "active" in str(status).lower()
+                                    else "#ef4444" if "obsolete" in str(status).lower()
+                                    else "#f59e0b" if "replacement" in str(status).lower()
+                                    else "#facc15" if "not recommended" in str(status).lower()
+                                    else "#9ca3af"
+                                    for status in lifecycle_distribution["Lifecycle Status"]
+                                ]
+                            },
                         }
                     ],
                     "layout": {
