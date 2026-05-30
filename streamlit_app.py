@@ -2633,6 +2633,9 @@ if app_mode == "BOM Analyzer":
         st.session_state.pop("results_df", None)
         st.session_state["uploaded_filename"] = uploaded_file.name
 
+    
+    original_row_count = len(bom_df)
+
     bom_df["mpn"] = bom_df["mpn"].astype(str).str.strip()
 
     bom_df = (
@@ -2642,6 +2645,12 @@ if app_mode == "BOM Analyzer":
         })
     )
 
+    deduped_row_count = len(bom_df)
+
+    if deduped_row_count < original_row_count:
+        st.info(
+            f"Duplicate part numbers were merged: {original_row_count} rows reduced to {deduped_row_count} unique parts."
+        )
 
     bom_df["quantity"] = pd.to_numeric(
         bom_df["quantity"],
