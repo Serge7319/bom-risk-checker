@@ -459,7 +459,7 @@ def get_part_data(row):
 
     try:
        alternative_part_numbers = suggest_alternatives_v2(part_number)
-       
+
     except Exception:
         alternative_part_numbers = []
 
@@ -2746,7 +2746,14 @@ if app_mode == "BOM Analyzer":
             else:
 
                 st.success(message)
-                st.session_state["results_df"] = analyze_bom(bom_df)
+                try:
+                    st.session_state["results_df"] = analyze_bom(bom_df)
+
+                except Exception as e:
+                    st.error(
+                        f"BOM analysis failed unexpectedly: {e}"
+                    )
+                    st.stop()
 
                 results_df = st.session_state["results_df"]
 
