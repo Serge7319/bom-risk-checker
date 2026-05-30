@@ -275,6 +275,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     if supplier_results:
         for result in supplier_results:
+            result_part_number = result.get("Part Number", "")
+
+            if result_part_number.strip().lower() == original_part_number.strip().lower():
+                continue
             candidates.append(
                 {
                     "Alternative Part": result.get("Part Number", ""),
