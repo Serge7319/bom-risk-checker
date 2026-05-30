@@ -23,7 +23,8 @@ from src.monitoring_engine import (
     build_alert_record,
     detect_monitor_alerts,
 )
-
+import time
+start_time = time.time()
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -2611,8 +2612,16 @@ if app_mode == "BOM Analyzer":
                     if st.button("🚀 Upgrade Now", key="upgrade_button_main"):
                         st.session_state["show_upgrade_modal"] = True
             else:
+                import time
+
+                analysis_start = time.time()
+
                 st.success(message)
                 st.session_state["results_df"] = analyze_bom(bom_df)
+
+                st.write(
+                    f"Analysis time: {time.time() - analysis_start:.2f} seconds"
+                )
 
                 results_df = st.session_state["results_df"]
 
