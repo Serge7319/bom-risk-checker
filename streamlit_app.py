@@ -2568,10 +2568,35 @@ if app_mode == "BOM Analyzer":
         st.warning("Please enter a Project / BOM Name before analyzing")
         st.stop()
 
-    if uploaded_file.name.endswith(".csv"):
-        bom_df = pd.read_csv(uploaded_file)
-    else:
-        bom_df = pd.read_excel(uploaded_file)
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            bom_df = pd.read_csv(uploaded_file)
+        else:
+            bom_df = pd.read_excel(uploaded_file)
+
+    except Exception as e:
+        st.error(
+            f"Could not read the uploaded BOM file: {e}"
+        )
+        st.stop()
+
+    column_rename_map = {
+        "part number": "mpn",
+        "part_number": "mpn",
+        "manufacturer part number": "mpn",
+        "manufacturer_part_number": "mpn",
+        "qty": "quantity",
+    }
+
+    bom_df.columns = [
+        col.strip().lower()
+        for col in bom_df.columns
+    ]
+
+    bom_df.rename(
+        columns=column_rename_map,
+        inplace=True,
+    )
 
     required_columns = ["mpn", "quantity"]
 
@@ -2593,10 +2618,29 @@ if app_mode == "BOM Analyzer":
         )
         st.stop()
 
+    if bom_df.empty:
+        st.error("The uploaded BOM file is empty.")
+        st.stop()
+
+    if len(bom_df) == 0:
+        st.error("No BOM rows were detected in the uploaded file.")
+        st.stop()
+
+    
+
 
     if st.session_state.get("uploaded_filename") != uploaded_file.name:
         st.session_state.pop("results_df", None)
         st.session_state["uploaded_filename"] = uploaded_file.name
+
+    bom_df["mpn"] = bom_df["mpn"].astype(str).str.strip()
+
+    bom_df = (
+        bom_df.groupby("mpn", as_index=False)
+        .agg({
+            "quantity": "sum"
+        })
+    )
 
 
     st.subheader("Uploaded BOM Preview")
