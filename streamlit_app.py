@@ -2573,6 +2573,26 @@ if app_mode == "BOM Analyzer":
     else:
         bom_df = pd.read_excel(uploaded_file)
 
+    required_columns = ["mpn", "quantity"]
+
+    normalized_columns = [
+        col.strip().lower().replace(" ", "_")
+        for col in bom_df.columns
+    ]
+
+    missing_columns = [
+        col for col in required_columns
+        if col not in normalized_columns
+    ]
+
+    if missing_columns:
+        st.error(
+            "Your BOM is missing required columns: "
+            + ", ".join(missing_columns)
+            + ". Please include at least MPN and Quantity columns."
+        )
+        st.stop()
+
 
     if st.session_state.get("uploaded_filename") != uploaded_file.name:
         st.session_state.pop("results_df", None)
