@@ -1492,7 +1492,11 @@ if app_mode == "Dashboard":
                                     st.metric("Highest Stock", highest_stock)
                                 
                                 with verify_col5:
-                                    st.metric("Lowest Unit Price", f"${lowest_unit_price:.2f}")
+                                    st.metric(
+                                        "Lowest Price",
+                                        f"${lowest_unit_price:.2f}",
+                                        cheapest_supplier,
+                                    )
 
                                 lifecycle_col1, lifecycle_col2 = st.columns([1, 3])
 
@@ -2351,15 +2355,29 @@ if app_mode == "Alternative Finder":
 )
 
     st.markdown("### Step 1 — Search Original Component")
-    original_part = st.text_input("Enter original manufacturer part number")
-    if original_part:
-        suggested_alternatives = suggest_alternatives_v2(original_part)
 
-        if suggested_alternatives:
-            st.info(
-                "Suggested alternatives found: "
-                + ", ".join(suggested_alternatives)
-            )
+    original_part = st.text_input("Enter original manufacturer part number")
+
+    if st.button("Find Alternatives", type="primary"):
+        if not original_part:
+            st.warning("Please enter an original part number.")
+        else:
+            with st.spinner("Searching suppliers and finding alternatives..."):
+                suggested_alternatives = suggest_alternatives_v2(original_part)
+
+                if suggested_alternatives:
+                    alternatives_df = pd.DataFrame(suggested_alternatives)
+
+                    st.success("Suggested alternatives found.")
+
+                    st.dataframe(
+                        alternatives_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                else:
+                    st.warning("No suggested alternatives found.")
 
             st.caption("Click 'Compare Parts' to evaluate alternatives.")
 
