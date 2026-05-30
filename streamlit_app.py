@@ -2886,16 +2886,20 @@ if app_mode == "BOM Analyzer":
 
                 new_upload_count = monthly_upload_count + 1
 
-                supabase.table("users").update(
-                    {
-                        "monthly_upload_count": new_upload_count
-                    }
-                ).eq(
-                    "id",
-                    current_user["id"]
-                ).execute()
+                try:
+                    supabase.table("users").update(
+                        {
+                            "monthly_upload_count": new_upload_count
+                        }
+                    ).eq(
+                        "id",
+                        current_user["id"]
+                    ).execute()
 
-                monthly_upload_count = new_upload_count
+                    monthly_upload_count = new_upload_count
+
+                except Exception as e:
+                    st.warning(f"Analysis completed, but upload count could not be updated: {e}")
 
 
     if "results_df" in st.session_state:
