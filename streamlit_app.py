@@ -457,7 +457,11 @@ def get_part_data(row):
 
     part_data["quantity"] = row.get("quantity", 0)
 
-    alternative_part_numbers = suggest_alternatives_v2(part_number)
+    try:
+       alternative_part_numbers = suggest_alternatives_v2(part_number)
+       
+    except Exception:
+        alternative_part_numbers = []
 
     part_data["has_alternates"] = len(alternative_part_numbers) > 0
     part_data["alternate_count"] = len(alternative_part_numbers)
