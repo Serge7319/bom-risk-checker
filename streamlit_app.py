@@ -2643,6 +2643,19 @@ if app_mode == "BOM Analyzer":
     )
 
 
+    bom_df["quantity"] = pd.to_numeric(
+        bom_df["quantity"],
+        errors="coerce",
+    )
+
+    if bom_df["quantity"].isna().any():
+        st.error("Some quantity values are missing or invalid. Please use numeric quantities only.")
+        st.stop()
+
+    if (bom_df["quantity"] <= 0).any():
+        st.error("Quantity values must be greater than zero.")
+        st.stop()
+
     st.subheader("Uploaded BOM Preview")
     st.data_editor(
         bom_df,
