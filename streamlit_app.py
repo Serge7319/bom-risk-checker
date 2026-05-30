@@ -2358,6 +2358,8 @@ if app_mode == "Alternative Finder":
 
     original_part = st.text_input("Enter original manufacturer part number")
 
+    suggested_alternatives = []
+
     if st.button("Find Alternatives", type="primary"):
         if not original_part:
             st.warning("Please enter an original part number.")
