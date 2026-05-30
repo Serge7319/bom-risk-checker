@@ -2612,16 +2612,9 @@ if app_mode == "BOM Analyzer":
                     if st.button("🚀 Upgrade Now", key="upgrade_button_main"):
                         st.session_state["show_upgrade_modal"] = True
             else:
-                import time
-
-                analysis_start = time.time()
 
                 st.success(message)
                 st.session_state["results_df"] = analyze_bom(bom_df)
-
-                st.write(
-                    f"Analysis time: {time.time() - analysis_start:.2f} seconds"
-                )
 
                 results_df = st.session_state["results_df"]
 
@@ -2719,19 +2712,7 @@ if app_mode == "BOM Analyzer":
                                 alert.get("severity") == "High"
                                 and alert.get("alert_type") == "Stock Drop"
                             ):
-                                try:
-                                    send_monitor_alert_email(
-                                        to_email=current_user["email"],
-                                        subject="High Severity BOM Monitoring Alert",
-                                        message=(
-                                            f"{row.get('MPN', '')}: "
-                                            f"{alert.get('alert_message', '')}"
-                                        ),
-                                    )
-                                except Exception as e:
-                                    st.warning(
-                                        f"Alert was saved, but email could not be sent: {e}"
-                                    )
+                                pass  # Email disabled until Resend domain is verified
 
                     if monitor_alerts:
                         st.warning(
