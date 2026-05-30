@@ -441,7 +441,20 @@ st.set_page_config(
 def get_part_data(row):
     part_number = row["mpn_normalized"]
 
-    part_data = get_best_part_data(part_number)
+    try:
+        part_data = get_best_part_data(part_number)
+
+    except Exception as e:
+        part_data = {
+            "mpn": part_number,
+            "lifecycle_status": "Unknown",
+            "stock_available": 0,
+            "supplier_count": 0,
+            "risk_score": 100,
+            "risk_level": "High",
+            "risk_reasons": f"Supplier lookup failed: {e}",
+        }
+
     part_data["quantity"] = row.get("quantity", 0)
 
     alternative_part_numbers = suggest_alternatives_v2(part_number)
