@@ -2569,6 +2569,10 @@ if app_mode == "BOM Analyzer":
         mime="text/csv",
     )
 
+    st.caption(
+        "Required columns: mpn and quantity. Duplicate part numbers will be merged automatically."
+    )
+
     uploaded_file = st.file_uploader(
         "Upload your BOM file", 
         type=["csv", "xlsx"],
