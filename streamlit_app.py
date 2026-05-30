@@ -2553,6 +2553,22 @@ if app_mode == "BOM Analyzer":
         placeholder="Example: Motor Controller Rev A"
     )
 
+    sample_bom = pd.DataFrame(
+        {
+            "mpn": ["TPS5430DDAR", "LM555CN/NOPB"],
+            "quantity": [5, 2],
+        }
+    )
+
+    sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="Download Sample BOM Template",
+        data=sample_csv,
+        file_name="sample_bom_template.csv",
+        mime="text/csv",
+    )
+
     uploaded_file = st.file_uploader(
         "Upload your BOM file", 
         type=["csv", "xlsx"],
