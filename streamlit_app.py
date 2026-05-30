@@ -2358,17 +2358,22 @@ if app_mode == "Alternative Finder":
 
     original_part = st.text_input("Enter original manufacturer part number")
 
-    suggested_alternatives = []
+    if "suggested_alternatives" not in st.session_state:
+        st.session_state["suggested_alternatives"] = []
 
     if st.button("Find Alternatives", type="primary"):
         if not original_part:
             st.warning("Please enter an original part number.")
         else:
             with st.spinner("Searching suppliers and finding alternatives..."):
-                suggested_alternatives = suggest_alternatives_v2(original_part)
+                st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
+                    original_part
+                )
 
-                if suggested_alternatives:
-                    alternatives_df = pd.DataFrame(suggested_alternatives)
+                if st.session_state["suggested_alternatives"]:
+                    alternatives_df = pd.DataFrame(
+                        st.session_state["suggested_alternatives"]
+                    )
 
                     st.success("Suggested alternatives found.")
 
@@ -2381,14 +2386,12 @@ if app_mode == "Alternative Finder":
                 else:
                     st.warning("No suggested alternatives found.")
 
-            
-
     suggested_part_numbers = []
 
-    if suggested_alternatives:
+    if st.session_state["suggested_alternatives"]:
         suggested_part_numbers = [
             alt.get("Alternative Part", "")
-            for alt in suggested_alternatives
+            for alt in st.session_state["suggested_alternatives"]
             if isinstance(alt, dict)
         ]
 
