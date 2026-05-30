@@ -2767,20 +2767,25 @@ if app_mode == "BOM Analyzer":
 
                 health_data = calculate_bom_health_score(results_df)
 
-                analysis_response = supabase.table("analyses").insert(
-                    {
-                        "user_id": current_user["id"],
-                        "project_name": project_name or uploaded_file.name,
-                        "filename": uploaded_file.name,
-                        "total_parts": total_parts,
-                        "high_risk_count": high_count,
-                        "medium_risk_count": medium_count,
-                        "low_risk_count": low_count,
-                        "health_score": health_data["health_score"],
-                    }
-                ).execute()
+                try:
+                    analysis_response = supabase.table("analyses").insert(
+                        {
+                            "user_id": current_user["id"],
+                            "project_name": project_name or uploaded_file.name,
+                            "filename": uploaded_file.name,
+                            "total_parts": total_parts,
+                            "high_risk_count": high_count,
+                            "medium_risk_count": medium_count,
+                            "low_risk_count": low_count,
+                            "health_score": health_data["health_score"],
+                        }
+                    ).execute()
 
-                analysis_id = analysis_response.data[0]["id"]
+                    analysis_id = analysis_response.data[0]["id"]
+
+                except Exception as e:
+                    st.error(f"Could not save analysis summary: {e}")
+                    st.stop()
 
                 part_records = []
 
