@@ -2379,39 +2379,24 @@ if app_mode == "Alternative Finder":
                 else:
                     st.warning("No suggested alternatives found.")
 
-            st.caption("Click 'Compare Parts' to evaluate alternatives.")
+            
 
-            ranked_df = rank_alternatives(suggested_alternatives)
-
-            if not ranked_df.empty:
-                suggested_alternatives = ranked_df["MPN"].head(3).tolist()
-
-                st.markdown("### Step 2 — Ranked Alternative Candidates")
-                st.dataframe(ranked_df, use_container_width=True, hide_index=True)
-
-                best_candidate = ranked_df.iloc[0]
-
-                st.success(
-                    f"🏆 Recommended Alternative: **{best_candidate['Matched MPN']}** "
-                    f"(Risk: {best_candidate['Risk Level']}, "
-                    f"Stock: {best_candidate['Total Market Stock']})"
-                )
-                st.warning(
-                    "Recommendations are based on sourcing and availability. "
-                    "Engineers must verify form, fit, function, and datasheet compatibility."
-                )
-        else:
-            st.warning("No suggested alternatives found. You can still enter alternatives manually.")
-    else:
-        suggested_alternatives = []
+    suggested_part_numbers = []
 
     if suggested_alternatives:
+        suggested_part_numbers = [
+            alt.get("Alternative Part", "")
+            for alt in suggested_alternatives
+            if isinstance(alt, dict)
+        ]
+
+    if suggested_part_numbers:
         st.divider()
         st.subheader("Step 2: Compare Alternatives")
 
         alternatives_input = st.text_input(
             "Enter alternative part numbers (comma-separated)",
-            value=", ".join(suggested_alternatives),
+            value=", ".join(suggested_part_numbers),
         )
 
         if st.button("Compare Parts", type="primary"):
