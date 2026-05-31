@@ -1106,6 +1106,59 @@ if app_mode == "Dashboard":
             )
         )
 
+        analysis_options = {
+            f"{row['project_name']} — {row['created_at']}": row["analysis_id"]
+            for _, row in history_df.drop_duplicates(subset=["analysis_id"]).iterrows()
+        }
+        if analysis_options:
+            selected_saved_analysis_label = st.selectbox(
+                "Choose a saved analysis to open",
+                list(analysis_options.keys()),
+            )     
+            selected_saved_analysis_id = analysis_options[selected_saved_analysis_label]
+
+            if st.button("📂 Open Saved Analysis"):
+                saved_parts = (
+                    supabase.table("analysis_parts")
+                    .select("*")
+                    .eq("analysis_id", selected_saved_analysis_id)
+                    .eq("user_id", current_user["id"])
+                    .execute()
+                )
+
+                if not saved_parts.data:
+                    st.warning("No saved parts were found for this analysis.")
+                else:
+                    saved_results_df = pd.DataFrame(saved_parts.data)
+
+                    saved_results_df = saved_results_df.rename(
+                        columns={
+                            "mpn": "MPN",
+                            "manufacturer": "Manufacturer",
+                            "risk_score": "Risk Score",
+                            "risk_level": "Risk Level",
+                            "risk_reasons": "Risk Reasons",
+                            "lifecycle_status": "Lifecycle Status",
+                            "stock_available": "Stock Available",
+                            "supplier_count": "Supplier Count",
+                        }
+                    )
+
+                    saved_results_df["Best Source"] = ""
+                    saved_results_df["Total Market Stock"] = saved_results_df["Stock Available"]
+                    saved_results_df["Sources Available"] = ""
+                    saved_results_df["Lead Time Weeks"] = None
+                    saved_results_df["Product URL"] = ""
+                    saved_results_df["Has Alternates"] = False
+                    saved_results_df["Alternate Count"] = 0
+                    saved_results_df["Alternative Part Numbers"] = ""
+                    saved_results_df["Normalized MPN"] = saved_results_df["MPN"]
+
+                    st.session_state["results_df"] = saved_results_df
+                    st.success("Saved analysis loaded.")
+                    st.rerun()
+
+
         summary_df = (
             history_df.groupby(
                 ["analysis_id", "project_name", "created_at"]
