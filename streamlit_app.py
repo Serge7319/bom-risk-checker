@@ -567,6 +567,8 @@ def show_dashboard_summary(results_df):
     col3.metric("High Risk", high_risk)
     col4.metric("Medium Risk", medium_risk)
 
+    
+
     st.divider()
 
     col_a, col_b = st.columns(2)
@@ -666,6 +668,41 @@ def show_dashboard_summary(results_df):
 
     for action in recommended_actions:
         st.write(f"• {action}")
+    
+    st.subheader("🧾 Executive Summary")
+
+    summary_parts = []
+
+    summary_parts.append(
+        f"This BOM contains {total_parts} components with an overall health score of {health_score}/100, classified as {health_status}."
+    )
+
+    if high_risk > 0:
+        summary_parts.append(
+            f"{high_risk} high-risk components require immediate review before production release."
+        )
+
+    if no_stock_count > 0:
+        summary_parts.append(
+            f"{no_stock_count} components currently show no available stock, which may create procurement delays."
+        )
+
+    if single_source_count > 0:
+        summary_parts.append(
+            f"{single_source_count} components appear to rely on a single supplier, increasing sourcing risk."
+        )
+
+    if unknown_lifecycle_count > 0:
+        summary_parts.append(
+            f"{unknown_lifecycle_count} components have unknown lifecycle status and should be verified with the manufacturer or distributor."
+        )
+
+    if not recommended_actions:
+        summary_parts.append(
+            "No immediate sourcing risks were detected, but periodic monitoring is still recommended."
+        )
+
+    st.info(" ".join(summary_parts))
 
 
 def risk_badge(level):
