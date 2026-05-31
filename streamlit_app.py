@@ -553,6 +553,19 @@ def show_dashboard_summary(results_df):
     avg_risk_score = results_df["Risk Score"].mean()
     bom_health_score = max(0, round(100 - avg_risk_score))
 
+    health_score = bom_health_score
+
+    if health_score >= 90:
+        health_status = "🟢 Excellent"
+    elif health_score >= 75:
+        health_status = "🟢 Healthy"
+    elif health_score >= 60:
+        health_status = "🟡 Moderate Risk"
+    elif health_score >= 40:
+        health_status = "🟠 High Risk"
+    else:
+        health_status = "🔴 Critical"
+
     col1, col2, col3, col4 = st.columns(4)
 
     col1.metric(
@@ -2812,12 +2825,6 @@ if app_mode == "BOM Analyzer":
                 st.success(message)
                 try:
                     progress_status = st.empty()
-
-                    progress_status.info(
-                        f"Analyzing {len(bom_df)} unique parts. Checking supplier availability, lifecycle status, and sourcing risk..."
-                    )
-
-                    progress_status = st.empty()
                     progress_bar = st.progress(0)
 
                     st.session_state["results_df"] = analyze_bom(
@@ -2828,8 +2835,6 @@ if app_mode == "BOM Analyzer":
 
                     progress_status.success("BOM analysis completed successfully.")
                     progress_bar.progress(1.0)
-
-                    progress_status.success("BOM analysis completed successfully.")
 
                 except Exception as e:
                     st.error(
