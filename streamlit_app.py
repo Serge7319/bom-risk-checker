@@ -558,7 +558,11 @@ def show_dashboard_summary(results_df):
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("BOM Health Score", f"{bom_health_score}/100")
+    col1.metric(
+        "BOM Health Score",
+        f"{health_score}/100",
+        health_status,
+    )
     col2.metric("Total Parts", total_parts)
     col3.metric("High Risk", high_risk)
     col4.metric("Medium Risk", medium_risk)
@@ -2792,6 +2796,23 @@ if app_mode == "BOM Analyzer":
 
 
                 health_data = calculate_bom_health_score(results_df)
+
+                health_score = health_data["health_score"]
+
+                if health_score >= 90:
+                    health_status = "🟢 Excellent"
+
+                elif health_score >= 75:
+                    health_status = "🟢 Healthy"
+
+                elif health_score >= 60:
+                    health_status = "🟡 Moderate Risk"
+
+                elif health_score >= 40:
+                    health_status = "🟠 High Risk"
+
+                else:
+                    health_status = "🔴 Critical"
 
                 try:
                     analysis_response = supabase.table("analyses").insert(
