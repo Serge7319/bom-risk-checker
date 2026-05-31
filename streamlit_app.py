@@ -495,14 +495,23 @@ def send_monitor_alert_email(to_email: str, subject: str, message: str):
         }
     )
 
-def analyze_bom(df):
+def analyze_bom(df, progress_status=None, progress_bar=None):
     df = normalize_bom_columns(df)
     df = validate_bom(df)
     df = clean_bom_data(df)
 
     results = []
+    total_parts = len(df)
 
-    for _, row in df.iterrows():
+    for index, (_, row) in enumerate(df.iterrows(), start=1):
+        if progress_status:
+            progress_status.info(
+                f"Checking part {index} of {total_parts}: {row.get('mpn', '')}"
+            )
+
+        if progress_bar:
+            progress_bar.progress(index / total_parts)
+
         part_data = get_part_data(row)
         risk_result = calculate_risk(part_data)
 
@@ -510,36 +519,24 @@ def analyze_bom(df):
             {
                 "MPN": row["mpn"],
                 "Normalized MPN": row["mpn_normalized"],
-
-                # Supplier / part identity
                 "Manufacturer": part_data.get("manufacturer", ""),
                 "Manufacturer Part Number": part_data.get("manufacturer_part_number", ""),
                 "Description": part_data.get("description", ""),
-
-                # BOM input quantity
                 "Quantity": row.get("quantity", 0),
-
-                # Market data
                 "Best Source": part_data.get("source", ""),
                 "Supplier Count": part_data.get("supplier_count", 0),
                 "Total Market Stock": part_data.get("total_market_stock", 0),
-                "Sources Available": part_data.get("sources_available", ""),               
-                "Stock Available": part_data.get("stock_total", 0), 
+                "Sources Available": part_data.get("sources_available", ""),
+                "Stock Available": part_data.get("stock_total", 0),
                 "Lead Time Weeks": part_data.get("lead_time_weeks", None),
-
-                # Lifecycle / links
                 "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
                 "Product URL": part_data.get("product_detail_url", ""),
-
-                # Alternatives
                 "Has Alternates": part_data.get("has_alternates", False),
                 "Alternate Count": part_data.get("alternate_count", 0),
                 "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
-
-                # Risk scoring
                 "Risk Score": risk_result["risk_score"],
                 "Risk Level": risk_result["risk_level"],
-                "Risk Reasons": "; ".join(risk_result["risk_reasons"]) or "No major risk found",               
+                "Risk Reasons": "; ".join(risk_result["risk_reasons"]) or "No major risk found",
             }
         )
 
@@ -2820,7 +2817,17 @@ if app_mode == "BOM Analyzer":
                         f"Analyzing {len(bom_df)} unique parts. Checking supplier availability, lifecycle status, and sourcing risk..."
                     )
 
-                    st.session_state["results_df"] = analyze_bom(bom_df)
+                    progress_status = st.empty()
+                    progress_bar = st.progress(0)
+
+                    st.session_state["results_df"] = analyze_bom(
+                        bom_df,
+                        progress_status=progress_status,
+                        progress_bar=progress_bar,
+                    )
+
+                    progress_status.success("BOM analysis completed successfully.")
+                    progress_bar.progress(1.0)
 
                     progress_status.success("BOM analysis completed successfully.")
 
