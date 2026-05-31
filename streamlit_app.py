@@ -606,32 +606,58 @@ def show_dashboard_summary(results_df):
 
     recommended_actions = []
 
+    single_source_count = len(
+        results_df[results_df["Supplier Count"] <= 1]
+    )
+
+    no_stock_count = len(
+        results_df[results_df["Stock Available"] == 0]
+    )
+
+    unknown_lifecycle_count = len(
+        results_df[
+            results_df["Lifecycle Status"]
+            .astype(str)
+            .str.contains("unknown", case=False, na=False)
+        ]
+    )
+
+    replacement_suggested_count = len(
+        results_df[
+            results_df["Lifecycle Status"]
+            .astype(str)
+            .str.contains("replacement", case=False, na=False)
+        ]
+    )
+
     if high_risk > 0:
         recommended_actions.append(
-            "Review high-risk parts immediately and confirm whether they are acceptable for production."
+            f"🔴 Immediate review required for {high_risk} high-risk parts before production release."
         )
 
-    single_source_count = len(results_df[results_df["Supplier Count"] <= 1])
-    if single_source_count > 0:
-        recommended_actions.append(
-            f"Investigate {single_source_count} single-source parts and identify secondary suppliers or alternates."
-        )
-
-    no_stock_count = len(results_df[results_df["Stock Available"] == 0])
     if no_stock_count > 0:
         recommended_actions.append(
-            f"Prioritize sourcing review for {no_stock_count} parts with no available stock."
+            f"📦 {no_stock_count} parts currently have no available stock. Procurement escalation recommended."
         )
 
-    unknown_lifecycle_count = len(results_df[results_df["Lifecycle Status"] == "Unknown"])
+    if single_source_count > 0:
+        recommended_actions.append(
+            f"⚠️ {single_source_count} parts rely on a single supplier. Evaluate secondary sourcing options."
+        )
+
     if unknown_lifecycle_count > 0:
         recommended_actions.append(
-            f"Verify lifecycle status for {unknown_lifecycle_count} parts marked as Unknown."
+            f"❓ {unknown_lifecycle_count} parts have unknown lifecycle status and require manufacturer verification."
+        )
+
+    if replacement_suggested_count > 0:
+        recommended_actions.append(
+            f"🔄 Replacement candidates were identified for {replacement_suggested_count} components."
         )
 
     if not recommended_actions:
         recommended_actions.append(
-            "No immediate sourcing risks detected. Continue monitoring lifecycle and stock availability."
+            "✅ No immediate sourcing risks detected. Continue periodic monitoring of lifecycle and stock availability."
         )
 
     for action in recommended_actions:
