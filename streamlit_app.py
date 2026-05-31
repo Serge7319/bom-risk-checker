@@ -2814,7 +2814,15 @@ if app_mode == "BOM Analyzer":
 
                 st.success(message)
                 try:
+                    progress_status = st.empty()
+
+                    progress_status.info(
+                        f"Analyzing {len(bom_df)} unique parts. Checking supplier availability, lifecycle status, and sourcing risk..."
+                    )
+
                     st.session_state["results_df"] = analyze_bom(bom_df)
+
+                    progress_status.success("BOM analysis completed successfully.")
 
                 except Exception as e:
                     st.error(
