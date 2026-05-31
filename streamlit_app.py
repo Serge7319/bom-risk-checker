@@ -3061,7 +3061,36 @@ if app_mode == "BOM Analyzer":
         st.subheader("Part Details")
 
         for _, row in filtered_df.iterrows():
-            with st.expander(f"{row['MPN']} — {row['Risk Level']} Risk"):
+
+            risk_reasons = []
+
+            if row["Stock Available"] == 0:
+                risk_reasons.append("No stock available")
+
+            if row["Supplier Count"] <= 1:
+                risk_reasons.append("Single-source supplier")
+
+            lifecycle_text = str(row["Lifecycle Status"]).lower()
+
+            if "obsolete" in lifecycle_text:
+                risk_reasons.append("Component marked obsolete")
+
+            if "unknown" in lifecycle_text:
+                risk_reasons.append("Unknown lifecycle status")
+
+            if "replacement" in lifecycle_text:
+                risk_reasons.append("Replacement suggested")
+
+            with st.expander(
+                f"{row['MPN']} — {row['Risk Level']} Risk"
+            ):
+
+                if risk_reasons:
+                    st.markdown("### ⚠️ Risk Drivers")
+
+                    for reason in risk_reasons:
+                        st.write(f"• {reason}")
+
 
                 col1, col2 = st.columns(2)
 
