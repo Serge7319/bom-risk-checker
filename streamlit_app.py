@@ -1200,13 +1200,15 @@ if app_mode == "Dashboard":
                             current_user["id"]
                         ).execute()
 
-                        supabase.table("analyses").delete().eq(
+                        delete_analysis_response = supabase.table("analyses").delete().eq(
                             "id",
                             selected_saved_analysis_id
                         ).eq(
                             "user_id",
                             current_user["id"]
                         ).execute()
+
+                        st.write("Deleted analysis response:", delete_analysis_response.data)
 
                         st.session_state.pop("results_df", None)
 
