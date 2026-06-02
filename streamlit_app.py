@@ -1110,53 +1110,7 @@ if app_mode == "Dashboard":
             f"{row['project_name']} — {row['created_at']}": row["analysis_id"]
             for _, row in history_df.drop_duplicates(subset=["analysis_id"]).iterrows()
         }
-        if analysis_options:
-            selected_saved_analysis_label = st.selectbox(
-                "Choose a saved analysis to open",
-                list(analysis_options.keys()),
-            )     
-            selected_saved_analysis_id = analysis_options[selected_saved_analysis_label]
-
-            if st.button("📂 Open Saved Analysis"):
-                saved_parts = (
-                    supabase.table("analysis_parts")
-                    .select("*")
-                    .eq("analysis_id", selected_saved_analysis_id)
-                    .eq("user_id", current_user["id"])
-                    .execute()
-                )
-
-                if not saved_parts.data:
-                    st.warning("No saved parts were found for this analysis.")
-                else:
-                    saved_results_df = pd.DataFrame(saved_parts.data)
-
-                    saved_results_df = saved_results_df.rename(
-                        columns={
-                            "mpn": "MPN",
-                            "manufacturer": "Manufacturer",
-                            "risk_score": "Risk Score",
-                            "risk_level": "Risk Level",
-                            "risk_reasons": "Risk Reasons",
-                            "lifecycle_status": "Lifecycle Status",
-                            "stock_available": "Stock Available",
-                            "supplier_count": "Supplier Count",
-                        }
-                    )
-
-                    saved_results_df["Best Source"] = ""
-                    saved_results_df["Total Market Stock"] = saved_results_df["Stock Available"]
-                    saved_results_df["Sources Available"] = ""
-                    saved_results_df["Lead Time Weeks"] = None
-                    saved_results_df["Product URL"] = ""
-                    saved_results_df["Has Alternates"] = False
-                    saved_results_df["Alternate Count"] = 0
-                    saved_results_df["Alternative Part Numbers"] = ""
-                    saved_results_df["Normalized MPN"] = saved_results_df["MPN"]
-
-                    st.session_state["results_df"] = saved_results_df
-                    st.success("Saved analysis loaded.")
-                    st.rerun()
+ 
 
 
         summary_df = (
@@ -1763,16 +1717,54 @@ if app_mode == "Dashboard":
         ]
 
         if st.button("Delete this saved analysis"):
-            supabase.table("analysis_parts").delete().eq(
-                "analysis_id",
-                selected_analysis_id
-            ).eq(
-                "user_id",
-                current_user["id"]
-            ).execute()
+            try:
+                supabase.table("analysis_parts").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
 
-            st.success("Saved analysis deleted.")
-            st.rerun()
+                supabase.table("part_monitor_history").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                supabase.table("monitor_alerts").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                supabase.table("alternative_recommendations").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                supabase.table("analyses").delete().eq(
+                    "id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                st.session_state.pop("results_df", None)
+
+                st.success("Saved analysis deleted.")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Could not delete saved analysis: {e}")
 
         filtered_display_df = filtered_parts[
             [
@@ -2995,12 +2987,14 @@ if app_mode == "BOM Analyzer":
 
                     current_snapshot = build_monitor_record(
                         current_user["id"],
+                        analysis_id,
                         row,
                     )
 
                     if latest_monitor_data:
                         new_alert_records, monitor_alerts = detect_monitor_alerts(
                             current_user["id"],
+                            analysis_id,
                             row.get("MPN", ""),
                             latest_monitor_data,
                             current_snapshot,
