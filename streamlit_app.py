@@ -3033,7 +3033,7 @@ if app_mode == "BOM Analyzer":
 
                 if saved_analysis_total >= max_saved_boms:
                     st.error(
-                        f"You have reached your saved BOM limit ({max_saved_boms}) for the {user_plan} plan. "
+                        f"You have reached your saved BOM limit ({max_saved_boms}) for the {selected_plan_name} plan. "
                         "Please delete an existing BOM analysis or upgrade your plan."
                     )
                     st.stop()
