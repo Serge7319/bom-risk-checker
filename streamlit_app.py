@@ -26,6 +26,7 @@ from src.monitoring_engine import (
 import time
 start_time = time.time()
 
+
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -437,7 +438,7 @@ st.set_page_config(
 
 
 
-
+@st.cache_data(ttl=3600)
 def get_part_data(row):
     part_number = row["mpn_normalized"]
 
