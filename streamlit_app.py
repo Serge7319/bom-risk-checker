@@ -438,7 +438,7 @@ st.set_page_config(
 
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_part_data(row):
     part_number = row["mpn_normalized"]
 
@@ -3029,7 +3029,7 @@ if app_mode == "BOM Analyzer":
 
                 saved_analysis_total = saved_analysis_count.count or 0
 
-                max_saved_boms = current_plan.get("max_saved_boms", 0)
+                max_saved_boms = selected_plan.get("max_saved_boms", 0)
 
                 if saved_analysis_total >= max_saved_boms:
                     st.error(
