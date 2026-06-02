@@ -1,6 +1,7 @@
-def build_monitor_record(user_id, part_data):
+def build_monitor_record(user_id, analysis_id, part_data):
     return {
         "user_id": user_id,
+        "analysis_id": analysis_id,
         "part_number": part_data.get("MPN", ""),
         "supplier": part_data.get("Best Source", ""),
         "lifecycle_status": part_data.get("Lifecycle Status", ""),
@@ -11,6 +12,7 @@ def build_monitor_record(user_id, part_data):
 
 def build_alert_record(
     user_id,
+    analysis_id,
     part_number,
     alert_type,
     alert_message,
@@ -20,6 +22,7 @@ def build_alert_record(
 ):
     return {
         "user_id": user_id,
+        "analysis_id": analysis_id,
         "part_number": part_number,
         "alert_type": alert_type,
         "alert_message": alert_message,
@@ -28,7 +31,7 @@ def build_alert_record(
         "current_value": str(current_value),
     }
 
-def detect_monitor_alerts(user_id, part_number, previous_snapshot, current_snapshot):
+def detect_monitor_alerts(user_id, analysis_id, part_number, previous_snapshot, current_snapshot):
     alerts = []
     messages = []
 
@@ -50,6 +53,7 @@ def detect_monitor_alerts(user_id, part_number, previous_snapshot, current_snaps
         alerts.append(
             build_alert_record(
                 user_id,
+                analysis_id,
                 part_number,
                 "Stock Drop",
                 alert_message,
@@ -65,6 +69,7 @@ def detect_monitor_alerts(user_id, part_number, previous_snapshot, current_snaps
         alerts.append(
             build_alert_record(
                 user_id,
+                analysis_id,
                 part_number,
                 "Price Increase",
                 alert_message,
@@ -86,6 +91,7 @@ def detect_monitor_alerts(user_id, part_number, previous_snapshot, current_snaps
         alerts.append(
             build_alert_record(
                 user_id,
+                analysis_id,
                 part_number,
                 "Lifecycle Change",
                 alert_message,
