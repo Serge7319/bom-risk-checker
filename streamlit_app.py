@@ -2970,6 +2970,23 @@ if app_mode == "BOM Analyzer":
                     if st.button("🚀 Upgrade Now", key="upgrade_button_main"):
                         st.session_state["show_upgrade_modal"] = True
             else:
+                saved_analysis_count = (
+                    supabase.table("analyses")
+                    .select("id", count="exact")
+                    .eq("user_id", current_user["id"])
+                    .execute()
+                )
+
+                saved_analysis_total = saved_analysis_count.count or 0
+
+                max_saved_boms = selected_plan.get("max_saved_boms", 0)
+
+                if saved_analysis_total >= max_saved_boms:
+                    st.error(
+                        f"You have reached your saved BOM limit ({max_saved_boms}) for the {selected_plan_name} plan. "
+                        "Please delete an existing BOM analysis or upgrade your plan."
+                    )
+                    st.stop()
 
                 st.success(message)
                 try:
@@ -3020,23 +3037,7 @@ if app_mode == "BOM Analyzer":
                 else:
                     health_status = "🔴 Critical"
 
-                saved_analysis_count = (
-                    supabase.table("analyses")
-                    .select("id", count="exact")
-                    .eq("user_id", current_user["id"])
-                    .execute()
-                )
-
-                saved_analysis_total = saved_analysis_count.count or 0
-
-                max_saved_boms = selected_plan.get("max_saved_boms", 0)
-
-                if saved_analysis_total >= max_saved_boms:
-                    st.error(
-                        f"You have reached your saved BOM limit ({max_saved_boms}) for the {selected_plan_name} plan. "
-                        "Please delete an existing BOM analysis or upgrade your plan."
-                    )
-                    st.stop()
+                
 
                 try:
                     analysis_response = supabase.table("analyses").insert(
