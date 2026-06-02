@@ -1,6 +1,6 @@
 from integrations.mouser_client import search_mouser_by_part_number
 from integrations.digikey_client import search_digikey_by_part_number
-
+import streamlit as st
 
 def get_supplier_results(part_number: str) -> list:
     """
@@ -53,7 +53,7 @@ def get_supplier_results(part_number: str) -> list:
         })
     return results
 
-
+@st.cache_data(ttl=3600)
 def get_best_part_data(part_number: str) -> dict:
     """
     Returns the best supplier result for scoring/display.
