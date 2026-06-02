@@ -2,6 +2,7 @@ PLANS = {
     "Starter": {
         "monthly_bom_limit": 5,
         "max_parts_per_bom": 10,
+        "max_saved_boms": 10,
         "price": "$29/mo",
         "upgrade_to": "Pro",
         "description": "For small BOM checks and early users.",
@@ -9,6 +10,7 @@ PLANS = {
     "Pro": {
         "monthly_bom_limit": 10,
         "max_parts_per_bom": 20,
+        "max_saved_boms": 50,
         "price": "$99/mo",
         "upgrade_to": "Business",
         "description": "For engineers reviewing multiple BOMs.",
@@ -16,6 +18,7 @@ PLANS = {
     "Business": {
         "monthly_bom_limit": 25,
         "max_parts_per_bom": 100,
+        "max_saved_boms": 250,
         "price": "$299/mo",
         "upgrade_to": None,
         "description": "For teams reviewing larger BOMs.",
