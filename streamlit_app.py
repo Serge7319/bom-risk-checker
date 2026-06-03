@@ -1176,17 +1176,7 @@ if app_mode == "Dashboard":
             hide_index=True,
         )
 
-        st.divider()
-
-        st.subheader("Top 5 Critical Parts")
-
-        st.dataframe(
-            top_risk_display,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        st.divider()
+      
 
         chart_col1, chart_col2 = st.columns(2)
 
