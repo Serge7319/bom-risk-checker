@@ -1178,208 +1178,12 @@ if app_mode == "Dashboard":
 
       
 
-        chart_col1, chart_col2 = st.columns(2)
-
-        with chart_col1:
-            st.subheader("Risk Level Distribution")
-
-            st.bar_chart(
-                risk_distribution,
-                x="Risk Level",
-                y="Part Count",
-            )
-            st.subheader("Risk Composition")
-
-            st.plotly_chart(
-                {
-                    "data": [
-                        {
-                            "labels": risk_distribution["Risk Level"],
-                            "values": risk_distribution["Part Count"],
-                            "type": "pie",
-                            "hole": 0.45,
-                            "marker": {
-                                "colors": [
-                                    "#ef4444",  # High → red
-                                    "#f59e0b",  # Medium → orange
-                                    "#22c55e",  # Low → green
-                                ]
-                            },
-                        }
-                    ],
-                    "layout": {
-                        "margin": {"t": 20, "b": 20, "l": 20, "r": 20},
-                    },
-                },
-                use_container_width=True,
-            )
-
-            st.divider()
-
-            st.subheader("🧠 Executive Insights")
-
-            if history_df.empty:
-                st.info("No monitoring insights available yet.")
-            else:
-                latest_parts_for_insights = latest_parts_df
-
-                obsolete_count = len(
-                    latest_parts_for_insights[
-                        latest_parts_for_insights["lifecycle_status"]
-                        .astype(str)
-                        .str.contains("obsolete", case=False, na=False)
-                    ]
-                )
-
-                high_risk_count = len(
-                    latest_parts_for_insights[
-                        latest_parts_for_insights["risk_level"]
-                        .astype(str)
-                        .str.contains("high", case=False, na=False)
-                    ]
-                )
-
-                zero_stock_count = len(
-                    latest_parts_for_insights[
-                        latest_parts_for_insights["stock_available"] <= 0
-                    ]
-                )
-
-                healthy_parts = len(
-                    latest_parts_for_insights[
-                        latest_parts_for_insights["risk_level"]
-                        .astype(str)
-                        .str.contains("low", case=False, na=False)
-                    ]
-                )
-
-                total_parts = len(latest_parts_for_insights)
-
-                healthy_percent = (
-                    round((healthy_parts / total_parts) * 100, 1)
-                    if total_parts > 0
-                    else 0
-                )
-
-                insight_col1, insight_col2 = st.columns(2)
-                insight_col3, insight_col4 = st.columns(2)
-
-                with insight_col1:
-                    st.metric(
-                        "Obsolete Components",
-                        obsolete_count,
-                        "Needs lifecycle review",
-                    )
-
-                with insight_col2:
-                    st.metric(
-                        "High-Risk Components",
-                        high_risk_count,
-                        "Procurement review needed",
-                    )
-
-                with insight_col3:
-                    st.metric(
-                        "Zero-Stock Parts",
-                        zero_stock_count,
-                        "Sourcing risk",
-                    )
-
-                with insight_col4:
-                    st.metric(
-                        "Low-Risk Share",
-                        f"{healthy_percent}%",
-                        "Healthy monitored parts",
-                    )
-
-        with chart_col2:
-            st.subheader("Lifecycle Status Distribution")
-
-            st.plotly_chart(
-                {
-                    "data": [
-                        {
-                            "x": lifecycle_distribution["Lifecycle Status"],
-                            "y": lifecycle_distribution["Part Count"],
-                            "type": "bar",
-                            "marker": {
-                                "color": [
-                                    "#22c55e" if "active" in str(status).lower()
-                                    else "#ef4444" if "obsolete" in str(status).lower()
-                                    else "#f59e0b" if "replacement" in str(status).lower()
-                                    else "#facc15" if "not recommended" in str(status).lower()
-                                    else "#9ca3af"
-                                    for status in lifecycle_distribution["Lifecycle Status"]
-                                ]
-                            },
-                        }
-                    ],
-                    "layout": {
-                        "margin": {"t": 20, "b": 80, "l": 20, "r": 20},
-                        "xaxis": {"title": "Lifecycle Status"},
-                        "yaxis": {"title": "Part Count"},
-                    },
-                },
-                use_container_width=True,
-            )
-
-            st.subheader("📈 High-Risk Trend Over Time")
-
-            if history_df.empty:
-                st.info("No trend data available yet.")
-            else:
-                trend_df = history_df.copy()
-
-                trend_df["created_at"] = pd.to_datetime(
-                    trend_df["created_at"],
-                    errors="coerce",
-                )
-
-                trend_df["date"] = trend_df["created_at"].dt.date
-
-                high_risk_trend = (
-                    trend_df[
-                        trend_df["risk_level"]
-                        .astype(str)
-                        .str.contains("high", case=False, na=False)
-                    ]
-                    .groupby("date")
-                    .size()
-                    .reset_index(name="High Risk Parts")
-                )
-
-                st.plotly_chart(
-                    {
-                        "data": [
-                            {
-                                "x": high_risk_trend["date"],
-                                "y": high_risk_trend["High Risk Parts"],
-                                "type": "scatter",
-                                "mode": "lines+markers",
-                                "line": {"shape": "spline"},
-                            }
-                        ],
-                        "layout": {
-                            "margin": {"t": 20, "b": 40, "l": 20, "r": 20},
-                            "xaxis": {"title": "Date"},
-                            "yaxis": {"title": "High-Risk Parts"},
-                        },
-                    },
-                    use_container_width=True,
-                )
-
-        
-
-        
-
         st.divider()
 
         st.subheader("View Saved Analysis Details")
 
-
-
         analysis_options = {
-            f"{row['project_name']} — {row['created_at']}": row["analysis_id"]
+            f"{row['project_name']} — {row['created_at']}": row["id"]
             for _, row in summary_df.iterrows()
         }
 
@@ -1390,9 +1194,18 @@ if app_mode == "Dashboard":
 
         selected_analysis_id = analysis_options[selected_analysis_label]
 
-        selected_parts = history_df[
-            history_df["analysis_id"] == selected_analysis_id
-        ]
+        selected_parts_response = (
+            supabase.table("analysis_parts")
+            .select("*")
+            .eq("analysis_id", selected_analysis_id)
+            .eq("user_id", current_user["id"])
+            .execute()
+        )
+
+        selected_parts = pd.DataFrame(selected_parts_response.data)
+        if selected_parts.empty:
+            st.warning("No parts were found for this saved analysis.")
+            st.stop()
 
         attention_parts = selected_parts[
             (selected_parts["risk_level"] == "High")
