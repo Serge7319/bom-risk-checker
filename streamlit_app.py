@@ -68,7 +68,7 @@ def load_alternative_history(user_id):
 
 def load_analysis_history(user_id):
     response = (
-        supabase.table("analysis_parts")
+        supabase.table("analyses")
         .select("*")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
@@ -1200,15 +1200,13 @@ if app_mode == "Dashboard":
                             current_user["id"]
                         ).execute()
 
-                        delete_analysis_response = supabase.table("analyses").delete().eq(
+                        supabase.table("analyses").delete().eq(
                             "id",
                             selected_saved_analysis_id
                         ).eq(
                             "user_id",
                             current_user["id"]
                         ).execute()
-
-                        st.write("Deleted analysis response:", delete_analysis_response.data)
 
                         st.session_state.pop("results_df", None)
 
