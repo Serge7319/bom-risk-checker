@@ -1142,19 +1142,7 @@ if app_mode == "Dashboard":
                         st.error(f"Could not delete saved analysis: {e}")
 
 
-        summary_df = (
-            history_df.groupby(
-                ["analysis_id", "project_name", "created_at"]
-            )
-            .agg(
-                total_parts=("mpn", "count"),
-                high_risk_parts=("risk_level", lambda x: (x == "High").sum()),
-                medium_risk_parts=("risk_level", lambda x: (x == "Medium").sum()),
-                low_risk_parts=("risk_level", lambda x: (x == "Low").sum()),
-            )
-            .reset_index()
-            .sort_values("created_at", ascending=False)
-        )
+        summary_df = history_df.copy()
 
         summary_df["created_at"] = pd.to_datetime(
             summary_df["created_at"]
@@ -1165,18 +1153,20 @@ if app_mode == "Dashboard":
                 "project_name",
                 "created_at",
                 "total_parts",
-                "high_risk_parts",
-                "medium_risk_parts",
-                "low_risk_parts",
+                "high_risk_count",
+                "medium_risk_count",
+                "low_risk_count",
+                "health_score",
             ]
         ].rename(
             columns={
                 "project_name": "Project Name",
                 "created_at": "Created At",
                 "total_parts": "Total Parts",
-                "high_risk_parts": "High Risk Parts",
-                "medium_risk_parts": "Medium Risk Parts",
-                "low_risk_parts": "Low Risk Parts",
+                "high_risk_count": "High Risk Parts",
+                "medium_risk_count": "Medium Risk Parts",
+                "low_risk_count": "Low Risk Parts",
+                "health_score": "Health Score",
             }
         )
 
