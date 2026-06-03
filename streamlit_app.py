@@ -1031,85 +1031,10 @@ if app_mode == "Dashboard":
     else:
         history_df = pd.DataFrame(history)
 
-        latest_parts_df = (
-            history_df
-            .sort_values("created_at", ascending=False)
-            .drop_duplicates(subset=["mpn"])
-            if not history_df.empty and "mpn" in history_df.columns
-            else pd.DataFrame()
-        )
-
-        risk_distribution = (
-            history_df["risk_level"]
-            .value_counts()
-            .reset_index()
-        )
-
-        risk_distribution.columns = ["Risk Level", "Part Count"]
-
-        lifecycle_distribution = (
-            history_df["lifecycle_status"]
-            .value_counts()
-            .reset_index()
-        )
-
-        lifecycle_distribution.columns = ["Lifecycle Status", "Part Count"]
-
-        top_manufacturer = (
-            history_df["manufacturer"]
-            .value_counts()
-            .idxmax()
-        )
-
-        high_risk_count = (
-            history_df["risk_level"] == "High"
-        ).sum()
-
-        obsolete_count = (
-            history_df["lifecycle_status"]
-            .astype(str)
-            .str.contains("obsolete", case=False, na=False)
-        ).sum()
-
-        top_risk_parts = (
-            history_df.sort_values("risk_score", ascending=False)
-            .head(5)
-        )
-
-        top_risk_display = top_risk_parts[
-            [
-                "mpn",
-                "manufacturer",
-                "risk_score",
-                "risk_level",
-                "risk_reasons",
-                "lifecycle_status",
-            ]
-        ].rename(
-            columns={
-                "mpn": "Part Number",
-                "manufacturer": "Manufacturer",
-                "risk_score": "Risk Score",
-                "risk_level": "Risk Level",
-                "risk_reasons": "Risk Reasons",
-                "lifecycle_status": "Lifecycle Status",
-            }
-        )
-
-        top_risk_display["Risk Level"] = (
-            top_risk_display["Risk Level"]
-            .replace(
-                {
-                    "High": "🔴 High",
-                    "Medium": "🟠 Medium",
-                    "Low": "🟢 Low",
-                }
-            )
-        )
 
         analysis_options = {
-            f"{row['project_name']} — {row['created_at']}": row["analysis_id"]
-            for _, row in history_df.drop_duplicates(subset=["analysis_id"]).iterrows()
+            f"{row['project_name']} — {row['created_at']}": row["id"]
+            for _, row in history_df.drop_duplicates(subset=["id"]).iterrows()
         }
  
 
