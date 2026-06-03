@@ -1775,39 +1775,6 @@ if app_mode == "Dashboard":
         else:
             st.info("No trend data yet.")
 
-    with chart_col2:
-        st.subheader("Manufacturer Concentration")
-
-        if history:
-            manufacturer_chart_data = (
-                history_df["manufacturer"]
-                .value_counts()
-                .reset_index()
-            )
-
-            manufacturer_chart_data.columns = ["Manufacturer", "Part Count"]
-
-            manufacturer_chart_data["Portfolio %"] = (
-                manufacturer_chart_data["Part Count"]
-                / manufacturer_chart_data["Part Count"].sum()
-                * 100
-            ).round(1)
-
-            st.bar_chart(
-                manufacturer_chart_data,
-                x="Manufacturer",
-                y="Part Count",
-            )
-
-            st.subheader("Top Manufacturers")
-
-            st.dataframe(
-                manufacturer_chart_data.head(5),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.info("No manufacturer data yet.")
 
     st.divider()
 
