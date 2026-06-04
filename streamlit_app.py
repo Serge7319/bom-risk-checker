@@ -843,11 +843,25 @@ st.sidebar.write(
 st.sidebar.caption(selected_plan["description"])
 
 st.sidebar.write(
-    f"**BOMs used this month:** "
+    f"**BOM analyses used this month:** "
     f"{monthly_upload_count} / "
     f"{selected_plan['monthly_bom_limit']}"
 )
 
+saved_bom_count_response = (
+    supabase.table("analyses")
+    .select("id", count="exact")
+    .eq("user_id", current_user["id"])
+    .execute()
+)
+
+saved_bom_count = saved_bom_count_response.count or 0
+
+st.sidebar.write(
+    f"**Saved BOMs:** "
+    f"{saved_bom_count} / "
+    f"{selected_plan['max_saved_boms']}"
+)
 
 if st.sidebar.button("Clear Analysis"):
     st.session_state.pop("results_df", None)
