@@ -417,6 +417,8 @@ with st.sidebar:
 
 current_user = load_user_data()
 
+is_admin = current_user.get("role") == "admin"
+
 
 
 analysis_history = (
@@ -841,6 +843,8 @@ st.sidebar.write(
 )
 
 st.sidebar.caption(selected_plan["description"])
+if is_admin:
+    st.sidebar.success("🛠 Admin access enabled")
 
 st.sidebar.write(
     f"**BOM analyses used this month:** "
