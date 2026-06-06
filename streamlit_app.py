@@ -1225,6 +1225,33 @@ if app_mode == "Dashboard":
             st.warning("No parts were found for this saved analysis.")
             st.stop()
 
+        risk_distribution = (
+            selected_parts["risk_level"]
+            .value_counts()
+            .reset_index()
+        )
+
+        risk_distribution.columns = ["Risk Level", "Part Count"]
+
+        st.subheader("Risk Composition")
+
+        st.plotly_chart(
+            {
+                "data": [
+                    {
+                        "labels": risk_distribution["Risk Level"],
+                        "values": risk_distribution["Part Count"],
+                        "type": "pie",
+                        "hole": 0.45,
+                    }
+                ],
+                "layout": {
+                    "margin": {"t": 20, "b": 20, "l": 20, "r": 20},
+                },
+            },
+            use_container_width=True,
+        )
+
         attention_parts = selected_parts[
             (selected_parts["risk_level"] == "High")
             |
