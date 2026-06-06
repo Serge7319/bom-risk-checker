@@ -2765,8 +2765,16 @@ if app_mode == "BOM Analyzer":
                     ---
                     """
                     )
-                    if st.button("🚀 Upgrade Now", key="upgrade_button_main"):
-                        st.session_state["show_upgrade_modal"] = True
+                    if st.button("🚀 Upgrade to Pro", key="upgrade_button_main"):
+                        checkout_url = create_checkout_session(
+                            st.secrets["STRIPE_PRO_PRICE_ID"],
+                            current_user["email"],
+                            current_user["id"],
+                            success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                            cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+                        )
+
+                        st.link_button("Continue to Stripe Checkout", checkout_url)
             else:
                 saved_analysis_count = (
                     supabase.table("analyses")
