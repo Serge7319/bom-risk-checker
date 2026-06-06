@@ -2128,6 +2128,19 @@ if app_mode == "Pricing":
             """,
             unsafe_allow_html=True,
         )
+        if st.button("Upgrade to Pro"):
+            try:
+                checkout_url = create_checkout_session(
+                    st.secrets["STRIPE_PRO_PRICE_ID"],
+                    current_user["email"],
+                    current_user["id"],
+                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                    cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+                )
+                st.link_button("Continue to Stripe Checkout", checkout_url)
+            except Exception as e:
+                st.error(f"Unable to create checkout session: {e}")
+                
 
     with col3:
         st.markdown(
@@ -2145,6 +2158,18 @@ if app_mode == "Pricing":
             """,
             unsafe_allow_html=True,
         )
+        if st.button("Upgrade to Business"):
+            try:
+                checkout_url = create_checkout_session(
+                    st.secrets["STRIPE_BUSINESS_PRICE_ID"],
+                    current_user["email"],
+                    current_user["id"],
+                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                    cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+                )
+                st.link_button("Continue to Stripe Checkout", checkout_url)
+            except Exception as e:
+                st.error(f"Unable to create checkout session: {e}")
 
     st.stop()
 
