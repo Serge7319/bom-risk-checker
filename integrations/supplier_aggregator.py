@@ -53,7 +53,7 @@ def get_supplier_results(part_number: str) -> list:
         })
     return results
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner = False)
 def get_best_part_data(part_number: str) -> dict:
     """
     Returns the best supplier result for scoring/display.
