@@ -1970,30 +1970,30 @@ if app_mode == "Monitoring":
     else:
         st.info("No monitoring alerts detected yet.")
 
-    monitor_display_df = monitor_df.rename(
-        columns={
-            "part_number": "Part Number",
-            "supplier": "Supplier",
-            "lifecycle_status": "Lifecycle Status",
-            "stock": "Stock Available",
-            "unit_price": "Unit Price",
-            "risk_level": "Risk Level",
-            "created_at": "Last Checked",
-        }
-    )
-
-    monitor_display_df["Risk Level Display"] = (
-        monitor_display_df["Risk Level"]
-        .replace(
-            {
-                "High": "🔴 High",
-                "Medium": "🟡 Medium",
-                "Low": "🟢 Low",
+    if not monitor_df.empty:
+        monitor_display_df = monitor_df.rename(
+            columns={
+                "part_number": "Part Number",
+                "supplier": "Supplier",
+                "lifecycle_status": "Lifecycle Status",
+                "stock": "Stock Available",
+                "unit_price": "Unit Price",
+                "risk_level": "Risk Level",
+                "created_at": "Last Checked",
             }
         )
-    )
 
-    if not monitor_df.empty:
+        monitor_display_df["Risk Level Display"] = (
+            monitor_display_df["Risk Level"]
+            .replace(
+                {
+                    "High": "🔴 High",
+                    "Medium": "🟡 Medium",
+                    "Low": "🟢 Low",
+                }
+            )
+        )
+
         st.dataframe(
             monitor_display_df[
                 [
@@ -2012,7 +2012,6 @@ if app_mode == "Monitoring":
     else:
         st.info("No monitoring history available yet.")
 
-    st.stop()
 # ---------- Reports ----------
 if app_mode == "Reports":
     st.subheader("Reports")
