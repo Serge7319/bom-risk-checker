@@ -25,6 +25,7 @@ from src.monitoring_engine import (
 )
 import time
 start_time = time.time()
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -497,6 +498,32 @@ def send_monitor_alert_email(to_email: str, subject: str, message: str):
             "html": f"<p>{message}</p>",
         }
     )
+def analyze_single_part(row):
+    part_data = get_part_data(row)
+    risk_result = calculate_risk(part_data)
+
+    return {
+        "MPN": row["mpn"],
+        "Normalized MPN": row["mpn_normalized"],
+        "Manufacturer": part_data.get("manufacturer", ""),
+        "Manufacturer Part Number": part_data.get("manufacturer_part_number", ""),
+        "Description": part_data.get("description", ""),
+        "Quantity": row.get("quantity", 0),
+        "Best Source": part_data.get("source", ""),
+        "Supplier Count": part_data.get("supplier_count", 0),
+        "Total Market Stock": part_data.get("total_market_stock", 0),
+        "Sources Available": part_data.get("sources_available", ""),
+        "Stock Available": part_data.get("stock_total", 0),
+        "Lead Time Weeks": part_data.get("lead_time_weeks", None),
+        "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
+        "Product URL": part_data.get("product_detail_url", ""),
+        "Has Alternates": part_data.get("has_alternates", False),
+        "Alternate Count": part_data.get("alternate_count", 0),
+        "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
+        "Risk Score": risk_result["risk_score"],
+        "Risk Level": risk_result["risk_level"],
+        "Risk Reasons": "; ".join(risk_result["risk_reasons"]) or "No major risk found",
+    }
 
 def analyze_bom(df, progress_status=None, progress_bar=None):
     df = normalize_bom_columns(df)
@@ -506,42 +533,55 @@ def analyze_bom(df, progress_status=None, progress_bar=None):
     results = []
     total_parts = len(df)
 
-    for index, (_, row) in enumerate(df.iterrows(), start=1):
-        if progress_status:
-            progress_status.info(
-                f"Checking part {index} of {total_parts}: {row.get('mpn', '')}"
-            )
+    rows = [row for _, row in df.iterrows()]
+    completed = 0
 
-        if progress_bar:
-            progress_bar.progress(index / total_parts)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_row = {
+            executor.submit(analyze_single_part, row): row
+            for row in rows
+        }
 
-        part_data = get_part_data(row)
-        risk_result = calculate_risk(part_data)
+        for future in as_completed(future_to_row):
+            row = future_to_row[future]
+            completed += 1
 
-        results.append(
-            {
-                "MPN": row["mpn"],
-                "Normalized MPN": row["mpn_normalized"],
-                "Manufacturer": part_data.get("manufacturer", ""),
-                "Manufacturer Part Number": part_data.get("manufacturer_part_number", ""),
-                "Description": part_data.get("description", ""),
-                "Quantity": row.get("quantity", 0),
-                "Best Source": part_data.get("source", ""),
-                "Supplier Count": part_data.get("supplier_count", 0),
-                "Total Market Stock": part_data.get("total_market_stock", 0),
-                "Sources Available": part_data.get("sources_available", ""),
-                "Stock Available": part_data.get("stock_total", 0),
-                "Lead Time Weeks": part_data.get("lead_time_weeks", None),
-                "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
-                "Product URL": part_data.get("product_detail_url", ""),
-                "Has Alternates": part_data.get("has_alternates", False),
-                "Alternate Count": part_data.get("alternate_count", 0),
-                "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
-                "Risk Score": risk_result["risk_score"],
-                "Risk Level": risk_result["risk_level"],
-                "Risk Reasons": "; ".join(risk_result["risk_reasons"]) or "No major risk found",
-            }
-        )
+            if progress_status:
+                progress_status.info(
+                    f"Completed {completed} of {total_parts}: {row.get('mpn', '')}"
+                )
+
+            if progress_bar:
+                progress_bar.progress(completed / total_parts)
+
+            try:
+                results.append(future.result())
+
+            except Exception as e:
+                results.append(
+                    {
+                        "MPN": row.get("mpn", ""),
+                        "Normalized MPN": row.get("mpn_normalized", ""),
+                        "Manufacturer": "",
+                        "Manufacturer Part Number": "",
+                        "Description": "",
+                        "Quantity": row.get("quantity", 0),
+                        "Best Source": "",
+                        "Supplier Count": 0,
+                        "Total Market Stock": 0,
+                        "Sources Available": "",
+                        "Stock Available": 0,
+                        "Lead Time Weeks": None,
+                        "Lifecycle Status": "Unknown",
+                        "Product URL": "",
+                        "Has Alternates": False,
+                        "Alternate Count": 0,
+                        "Alternative Part Numbers": "",
+                        "Risk Score": 100,
+                        "Risk Level": "High",
+                        "Risk Reasons": f"Part analysis failed: {e}",
+                    }
+                )
 
     return pd.DataFrame(results)
 
