@@ -26,7 +26,7 @@ from src.monitoring_engine import (
 import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from src.stripe_helper import create_checkout_session
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
