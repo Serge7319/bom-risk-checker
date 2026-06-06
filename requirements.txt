@@ -8,3 +8,4 @@ python-dotenv
 reportlab
 resend
 plotly
+stripe
