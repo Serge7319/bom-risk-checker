@@ -2640,11 +2640,15 @@ if app_mode == "BOM Analyzer":
 
     if st.button("Analyze BOM", type="primary"):
         with st.spinner("Analyzing BOM and checking supplier risk..."):
-            allowed, message = validate_bom_against_plan(
-                bom_df,
-                selected_plan,
-                monthly_upload_count,
-            )
+            if is_admin:
+                allowed = True
+                message = "Admin account: plan limits bypassed."
+            else:
+                allowed, message = validate_bom_against_plan(
+                    bom_df,
+                    selected_plan,
+                    monthly_upload_count,
+                )
 
             if not allowed:
                 st.error(message)
@@ -2683,7 +2687,7 @@ if app_mode == "BOM Analyzer":
 
                 max_saved_boms = selected_plan.get("max_saved_boms", 0)
 
-                if saved_analysis_total >= max_saved_boms:
+                if not is_admin and saved_analysis_total >= max_saved_boms:
                     st.error(
                         f"You have reached your saved BOM limit ({max_saved_boms}) for the {selected_plan_name} plan. "
                         "Please delete an existing BOM analysis or upgrade your plan."
