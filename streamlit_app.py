@@ -555,7 +555,7 @@ def analyze_bom(df, progress_status=None, progress_bar=None):
                 progress_bar.progress(completed / total_parts)
 
             try:
-                results.append(future.result())
+                results.append(future.result(timeout=30))
 
             except Exception as e:
                 results.append(
