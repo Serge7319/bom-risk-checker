@@ -27,6 +27,7 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
+import extra_streamlit_components as stx
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -400,6 +401,16 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
+cookie_manager = stx.CookieManager()
+
+if "access_token" not in st.session_state:
+    access_token = cookie_manager.get("bom_access_token")
+    refresh_token = cookie_manager.get("bom_refresh_token")
+
+    if access_token and refresh_token:
+        st.session_state["access_token"] = access_token
+        st.session_state["refresh_token"] = refresh_token
+
 if "access_token" in st.session_state and "refresh_token" in st.session_state:
     try:
         supabase.auth.set_session(
@@ -421,8 +432,12 @@ if "user" not in st.session_state:
     show_auth_ui(supabase)
     st.stop()
 
+
 with st.sidebar:
     if st.button("Log out"):
+        cookie_manager.delete("bom_access_token")
+        cookie_manager.delete("bom_refresh_token")
+
         supabase.auth.sign_out()
         st.session_state.clear()
         st.rerun()
