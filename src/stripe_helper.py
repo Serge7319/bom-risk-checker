@@ -3,6 +3,7 @@ import streamlit as st
 
 stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
 
+
 def create_checkout_session(price_id, user_email, user_id, success_url, cancel_url):
     session = stripe.checkout.Session.create(
         mode="subscription",
@@ -18,6 +19,11 @@ def create_checkout_session(price_id, user_email, user_id, success_url, cancel_u
         cancel_url=cancel_url,
         metadata={
             "user_id": user_id,
+        },
+        subscription_data={
+            "metadata": {
+                "user_id": user_id,
+            }
         },
     )
 
