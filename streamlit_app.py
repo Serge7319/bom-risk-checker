@@ -2774,7 +2774,13 @@ if app_mode == "BOM Analyzer":
                             cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
                         )
 
-                        st.link_button("Continue to Stripe Checkout", checkout_url)
+                        st.session_state["checkout_url"] = checkout_url
+
+                    if "checkout_url" in st.session_state:
+                        st.link_button(
+                            "Continue to Stripe Checkout",
+                            st.session_state["checkout_url"],
+                        )
             else:
                 saved_analysis_count = (
                     supabase.table("analyses")
