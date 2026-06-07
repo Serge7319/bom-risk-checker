@@ -2750,31 +2750,15 @@ if app_mode == "BOM Analyzer":
                 )
 
             if not allowed:
-                st.error(message)
                 upgrade_plan = selected_plan.get("upgrade_to")
 
-                if upgrade_plan:
-                    next_plan = get_plan(upgrade_plan)
+                st.session_state["show_upgrade_checkout"] = True
+                st.session_state["upgrade_message"] = message
+                st.session_state["upgrade_plan_name"] = upgrade_plan
 
-                    st.markdown(
-                        f"""
----
-### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
-
-Unlock more power:
-
-- 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
-- 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
-- 🌐 Multi-supplier intelligence (Mouser + DigiKey)
-- ⚡ Faster sourcing decisions
-
-👉 Upgrade now to continue your analysis
----
-"""
-                    )
-                    st.session_state["show_upgrade_checkout"] = True
-
-                st.stop()
+                # Rerun so the persistent upgrade checkout section below can render.
+                # Using st.stop() here would show the text but prevent the button from appearing.
+                st.rerun()
 
             saved_analysis_count = (
                 supabase.table("analyses")
@@ -2811,6 +2795,8 @@ Unlock more power:
                 # If analysis succeeds, hide any old checkout prompt from a previous blocked attempt.
                 st.session_state.pop("show_upgrade_checkout", None)
                 st.session_state.pop("checkout_url", None)
+                st.session_state.pop("upgrade_message", None)
+                st.session_state.pop("upgrade_plan_name", None)
 
             except Exception as e:
                 st.error(f"BOM analysis failed unexpectedly: {e}")
@@ -2819,22 +2805,57 @@ Unlock more power:
             results_df = st.session_state["results_df"]
 
     if st.session_state.get("show_upgrade_checkout"):
-        if st.button("🚀 Upgrade to Pro", key="upgrade_button_main"):
-            checkout_url = create_checkout_session(
-                st.secrets["STRIPE_PRO_PRICE_ID"],
-                current_user["email"],
-                current_user["id"],
-                success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
-                cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+        upgrade_message = st.session_state.get(
+            "upgrade_message",
+            "Your current plan limit has been reached.",
+        )
+
+        upgrade_plan = st.session_state.get("upgrade_plan_name")
+        next_plan = get_plan(upgrade_plan) if upgrade_plan else None
+
+        st.error(upgrade_message)
+
+        if upgrade_plan and next_plan:
+            st.markdown(
+                f"""
+---
+### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
+
+Unlock more power:
+
+- 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
+- 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
+- 🌐 Multi-supplier intelligence (Mouser + DigiKey)
+- ⚡ Faster sourcing decisions
+
+👉 Upgrade now to continue your analysis
+---
+"""
             )
 
-            st.session_state["checkout_url"] = checkout_url
+            if st.button(f"🚀 Upgrade to {upgrade_plan}", key="upgrade_button_main"):
+                try:
+                    checkout_url = create_checkout_session(
+                        st.secrets["STRIPE_PRO_PRICE_ID"],
+                        current_user["email"],
+                        current_user["id"],
+                        success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                        cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+                    )
 
-        if "checkout_url" in st.session_state:
-            st.link_button(
-                "Continue to Stripe Checkout",
-                st.session_state["checkout_url"],
-            )
+                    st.session_state["checkout_url"] = checkout_url
+
+                except Exception as e:
+                    st.error(f"Unable to create checkout session: {e}")
+
+            if "checkout_url" in st.session_state:
+                st.link_button(
+                    "Continue to Stripe Checkout",
+                    st.session_state["checkout_url"],
+                )
+
+        else:
+            st.info("No upgrade plan is configured for your current subscription.")
 
     if "results_df" in st.session_state:
         results_df = st.session_state["results_df"]
