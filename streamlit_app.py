@@ -400,15 +400,26 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
+if "access_token" in st.session_state and "refresh_token" in st.session_state:
+    try:
+        supabase.auth.set_session(
+            st.session_state["access_token"],
+            st.session_state["refresh_token"],
+        )
+
+        user_response = supabase.auth.get_user()
+
+        if user_response and user_response.user:
+            st.session_state["user"] = user_response.user
+
+    except Exception:
+        st.session_state.pop("user", None)
+        st.session_state.pop("access_token", None)
+        st.session_state.pop("refresh_token", None)
+
 if "user" not in st.session_state:
     show_auth_ui(supabase)
     st.stop()
-
-if "access_token" in st.session_state and "refresh_token" in st.session_state:
-    supabase.auth.set_session(
-        st.session_state["access_token"],
-        st.session_state["refresh_token"]
-    )
 
 with st.sidebar:
     if st.button("Log out"):
@@ -2134,7 +2145,7 @@ if app_mode == "Pricing":
                     st.secrets["STRIPE_PRO_PRICE_ID"],
                     current_user["email"],
                     current_user["id"],
-                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
                     cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
                 )
                 st.link_button("Continue to Stripe Checkout", checkout_url)
@@ -2164,7 +2175,7 @@ if app_mode == "Pricing":
                     st.secrets["STRIPE_BUSINESS_PRICE_ID"],
                     current_user["email"],
                     current_user["id"],
-                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
                     cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
                 )
                 st.link_button("Continue to Stripe Checkout", checkout_url)
@@ -2839,7 +2850,7 @@ Unlock more power:
                         st.secrets["STRIPE_PRO_PRICE_ID"],
                         current_user["email"],
                         current_user["id"],
-                        success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                        success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
                         cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
                     )
 
