@@ -2732,6 +2732,13 @@ if app_mode == "BOM Analyzer":
 
     if st.button("Analyze BOM", type="primary"):
         with st.spinner("Analyzing BOM and checking supplier risk..."):
+            # A new analysis should be saved as a new database record.
+            # These flags prevent old session state from blocking the new save.
+            st.session_state.pop("analysis_saved", None)
+            st.session_state.pop("analysis_id", None)
+            st.session_state.pop("health_score", None)
+            st.session_state.pop("health_status", None)
+
             if is_admin:
                 allowed = True
                 message = "Admin account: plan limits bypassed."
@@ -2751,243 +2758,245 @@ if app_mode == "BOM Analyzer":
 
                     st.markdown(
                         f"""
-                    ---
-                    ### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
+---
+### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
 
-                    Unlock more power:
+Unlock more power:
 
-                    - 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
-                    - 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
-                    - 🌐 Multi-supplier intelligence (Mouser + DigiKey)
-                    - ⚡ Faster sourcing decisions
+- 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
+- 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
+- 🌐 Multi-supplier intelligence (Mouser + DigiKey)
+- ⚡ Faster sourcing decisions
 
-                    👉 Upgrade now to continue your analysis
-                    ---
-                    """
+👉 Upgrade now to continue your analysis
+---
+"""
                     )
-                    if st.button("🚀 Upgrade to Pro", key="upgrade_button_main"):
-                        checkout_url = create_checkout_session(
-                            st.secrets["STRIPE_PRO_PRICE_ID"],
-                            current_user["email"],
-                            current_user["id"],
-                            success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
-                            cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
-                        )
+                    st.session_state["show_upgrade_checkout"] = True
 
-                        st.session_state["checkout_url"] = checkout_url
+                st.stop()
 
-                    if "checkout_url" in st.session_state:
-                        st.link_button(
-                            "Continue to Stripe Checkout",
-                            st.session_state["checkout_url"],
-                        )
+            saved_analysis_count = (
+                supabase.table("analyses")
+                .select("id", count="exact")
+                .eq("user_id", current_user["id"])
+                .execute()
+            )
+
+            saved_analysis_total = saved_analysis_count.count or 0
+            max_saved_boms = selected_plan.get("max_saved_boms", 0)
+
+            if not is_admin and saved_analysis_total >= max_saved_boms:
+                st.error(
+                    f"You have reached your saved BOM limit ({max_saved_boms}) for the {selected_plan_name} plan. "
+                    "Please delete an existing BOM analysis or upgrade your plan."
+                )
+                st.stop()
+
+            st.success(message)
+
+            try:
+                progress_status = st.empty()
+                progress_bar = st.progress(0)
+
+                st.session_state["results_df"] = analyze_bom(
+                    bom_df,
+                    progress_status=progress_status,
+                    progress_bar=progress_bar,
+                )
+
+                progress_status.success("BOM analysis completed successfully.")
+                progress_bar.progress(1.0)
+
+                # If analysis succeeds, hide any old checkout prompt from a previous blocked attempt.
+                st.session_state.pop("show_upgrade_checkout", None)
+                st.session_state.pop("checkout_url", None)
+
+            except Exception as e:
+                st.error(f"BOM analysis failed unexpectedly: {e}")
+                st.stop()
+
+            results_df = st.session_state["results_df"]
+
+    if st.session_state.get("show_upgrade_checkout"):
+        if st.button("🚀 Upgrade to Pro", key="upgrade_button_main"):
+            checkout_url = create_checkout_session(
+                st.secrets["STRIPE_PRO_PRICE_ID"],
+                current_user["email"],
+                current_user["id"],
+                success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+            )
+
+            st.session_state["checkout_url"] = checkout_url
+
+        if "checkout_url" in st.session_state:
+            st.link_button(
+                "Continue to Stripe Checkout",
+                st.session_state["checkout_url"],
+            )
+
+    if "results_df" in st.session_state:
+        results_df = st.session_state["results_df"]
+
+        if not st.session_state.get("analysis_saved", False):
+            high_count = len(results_df[results_df["Risk Level"] == "High"])
+            medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
+            low_count = len(results_df[results_df["Risk Level"] == "Low"])
+            total_parts = len(results_df)
+
+            health_data = calculate_bom_health_score(results_df)
+            health_score = health_data["health_score"]
+
+            if health_score >= 90:
+                health_status = "🟢 Excellent"
+            elif health_score >= 75:
+                health_status = "🟢 Healthy"
+            elif health_score >= 60:
+                health_status = "🟡 Moderate Risk"
+            elif health_score >= 40:
+                health_status = "🟠 High Risk"
             else:
-                saved_analysis_count = (
-                    supabase.table("analyses")
-                    .select("id", count="exact")
+                health_status = "🔴 Critical"
+
+            st.session_state["health_score"] = health_score
+            st.session_state["health_status"] = health_status
+
+            try:
+                analysis_response = supabase.table("analyses").insert(
+                    {
+                        "user_id": current_user["id"],
+                        "project_name": project_name or uploaded_file.name,
+                        "filename": uploaded_file.name,
+                        "total_parts": total_parts,
+                        "high_risk_count": high_count,
+                        "medium_risk_count": medium_count,
+                        "low_risk_count": low_count,
+                        "health_score": health_score,
+                    }
+                ).execute()
+
+                analysis_id = analysis_response.data[0]["id"]
+                st.session_state["analysis_id"] = analysis_id
+
+            except Exception as e:
+                st.error(f"Could not save analysis summary: {e}")
+                st.stop()
+
+            part_records = []
+
+            for _, part_row in results_df.iterrows():
+                part_records.append(
+                    {
+                        "analysis_id": analysis_id,
+                        "user_id": current_user["id"],
+                        "project_name": project_name or uploaded_file.name,
+                        "mpn": part_row.get("MPN", ""),
+                        "manufacturer": part_row.get("Manufacturer", ""),
+                        "risk_score": part_row.get("Risk Score", 0),
+                        "risk_level": part_row.get("Risk Level", ""),
+                        "risk_reasons": part_row.get("Risk Reasons", ""),
+                        "lifecycle_status": part_row.get("Lifecycle Status", ""),
+                        "stock_available": part_row.get("Stock Available", 0),
+                        "supplier_count": part_row.get("Supplier Count", 0),
+                    }
+                )
+
+            if part_records:
+                try:
+                    supabase.table("analysis_parts").insert(part_records).execute()
+                except Exception as e:
+                    st.error(f"Could not save BOM parts: {e}")
+                    st.stop()
+
+            monitor_records = []
+            alert_records = []
+
+            for _, row in results_df.iterrows():
+                latest_monitor = (
+                    supabase.table("part_monitor_history")
+                    .select("*")
                     .eq("user_id", current_user["id"])
+                    .eq("part_number", row.get("MPN", ""))
+                    .order("created_at", desc=True)
+                    .limit(1)
                     .execute()
                 )
 
-                saved_analysis_total = saved_analysis_count.count or 0
+                latest_monitor_data = (
+                    latest_monitor.data[0]
+                    if latest_monitor.data
+                    else None
+                )
 
-                max_saved_boms = selected_plan.get("max_saved_boms", 0)
+                monitor_alerts = []
 
-                if not is_admin and saved_analysis_total >= max_saved_boms:
-                    st.error(
-                        f"You have reached your saved BOM limit ({max_saved_boms}) for the {selected_plan_name} plan. "
-                        "Please delete an existing BOM analysis or upgrade your plan."
-                    )
-                    st.stop()
+                current_snapshot = build_monitor_record(
+                    current_user["id"],
+                    analysis_id,
+                    row,
+                )
 
-                st.success(message)
-                try:
-                    progress_status = st.empty()
-                    progress_bar = st.progress(0)
-
-                    st.session_state["results_df"] = analyze_bom(
-                        bom_df,
-                        progress_status=progress_status,
-                        progress_bar=progress_bar,
-                    )
-
-                    progress_status.success("BOM analysis completed successfully.")
-                    progress_bar.progress(1.0)
-
-                except Exception as e:
-                    st.error(
-                        f"BOM analysis failed unexpectedly: {e}"
-                    )
-                    st.stop()
-
-                results_df = st.session_state["results_df"]
-
-                
-
-                high_count = len(results_df[results_df["Risk Level"] == "High"])
-                medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
-                low_count = len(results_df[results_df["Risk Level"] == "Low"])
-                total_parts = len(results_df)
-
-
-                health_data = calculate_bom_health_score(results_df)
-
-                health_score = health_data["health_score"]
-
-                if health_score >= 90:
-                    health_status = "🟢 Excellent"
-
-                elif health_score >= 75:
-                    health_status = "🟢 Healthy"
-
-                elif health_score >= 60:
-                    health_status = "🟡 Moderate Risk"
-
-                elif health_score >= 40:
-                    health_status = "🟠 High Risk"
-
-                else:
-                    health_status = "🔴 Critical"
-
-                
-
-                try:
-                    analysis_response = supabase.table("analyses").insert(
-                        {
-                            "user_id": current_user["id"],
-                            "project_name": project_name or uploaded_file.name,
-                            "filename": uploaded_file.name,
-                            "total_parts": total_parts,
-                            "high_risk_count": high_count,
-                            "medium_risk_count": medium_count,
-                            "low_risk_count": low_count,
-                            "health_score": health_data["health_score"],
-                        }
-                    ).execute()
-
-                    analysis_id = analysis_response.data[0]["id"]
-
-                except Exception as e:
-                    st.error(f"Could not save analysis summary: {e}")
-                    st.stop()
-
-                part_records = []
-
-                for _, part_row in results_df.iterrows():
-                    part_records.append(
-                        {
-                            "analysis_id": analysis_id,
-                            "user_id": current_user["id"],
-                            "project_name": project_name or uploaded_file.name,
-                            "mpn": part_row.get("MPN", ""),
-                            "manufacturer": part_row.get("Manufacturer", ""),
-                            "risk_score": part_row.get("Risk Score", 0),
-                            "risk_level": part_row.get("Risk Level", ""),
-                            "risk_reasons": part_row.get("Risk Reasons", ""),
-                            "lifecycle_status": part_row.get("Lifecycle Status", ""),
-                            "stock_available": part_row.get("Stock Available", 0),
-                            "supplier_count": part_row.get("Supplier Count", 0),
-                        }
-                    )
-
-                if part_records:
-                    try:
-                        supabase.table("analysis_parts").insert(part_records).execute()
-
-                    except Exception as e:
-                        st.error(f"Could not save BOM parts: {e}")
-                        st.stop()
-
-                monitor_records = []
-                alert_records = []
-            
-                for _, row in results_df.iterrows():
-                    latest_monitor = (
-                        supabase.table("part_monitor_history")
-                        .select("*")
-                        .eq("user_id", current_user["id"])
-                        .eq("part_number", row.get("MPN", ""))
-                        .order("created_at", desc=True)
-                        .limit(1)
-                        .execute()
-                    )
-
-                    latest_monitor_data = (
-                        latest_monitor.data[0]
-                        if latest_monitor.data
-                        else None
-                    )
-
-                    monitor_alerts = []
-
-                    current_snapshot = build_monitor_record(
+                if latest_monitor_data:
+                    new_alert_records, monitor_alerts = detect_monitor_alerts(
                         current_user["id"],
                         analysis_id,
-                        row,
+                        row.get("MPN", ""),
+                        latest_monitor_data,
+                        current_snapshot,
                     )
 
-                    if latest_monitor_data:
-                        new_alert_records, monitor_alerts = detect_monitor_alerts(
-                            current_user["id"],
-                            analysis_id,
-                            row.get("MPN", ""),
-                            latest_monitor_data,
-                            current_snapshot,
-                        )
+                    alert_records.extend(new_alert_records)
 
-                        alert_records.extend(new_alert_records)
+                    for alert in new_alert_records:
+                        if (
+                            alert.get("severity") == "High"
+                            and alert.get("alert_type") == "Stock Drop"
+                        ):
+                            pass  # Email disabled until Resend domain is verified
 
-                        for alert in new_alert_records:
-                            if (
-                                alert.get("severity") == "High"
-                                and alert.get("alert_type") == "Stock Drop"
-                            ):
-                                pass  # Email disabled until Resend domain is verified
+                if monitor_alerts:
+                    st.warning(
+                        f"{row.get('MPN', '')}: "
+                        + " | ".join(monitor_alerts)
+                    )
 
-                    if monitor_alerts:
-                        st.warning(
-                            f"{row.get('MPN', '')}: "
-                            + " | ".join(monitor_alerts)
-                        )
+                monitor_records.append(current_snapshot)
 
-                    monitor_records.append(current_snapshot)
-
-                if monitor_records:
-                    try:
-                        supabase.table("part_monitor_history").insert(
-                            monitor_records
-                        ).execute()
-
-                    except Exception as e:
-                        st.error(f"Could not save monitoring history: {e}")
-
-                if alert_records:
-                    try:
-                        supabase.table("monitor_alerts").insert(
-                            alert_records
-                        ).execute()
-
-                    except Exception as e:
-                        st.error(f"Could not save monitor alerts: {e}")
-
-                new_upload_count = monthly_upload_count + 1
-
+            if monitor_records:
                 try:
-                    supabase.table("users").update(
-                        {
-                            "monthly_upload_count": new_upload_count
-                        }
-                    ).eq(
-                        "id",
-                        current_user["id"]
+                    supabase.table("part_monitor_history").insert(
+                        monitor_records
                     ).execute()
-
-                    monthly_upload_count = new_upload_count
-
                 except Exception as e:
-                    st.warning(f"Analysis completed, but upload count could not be updated: {e}")
+                    st.error(f"Could not save monitoring history: {e}")
 
+            if alert_records:
+                try:
+                    supabase.table("monitor_alerts").insert(
+                        alert_records
+                    ).execute()
+                except Exception as e:
+                    st.error(f"Could not save monitor alerts: {e}")
 
+            new_upload_count = monthly_upload_count + 1
+
+            try:
+                supabase.table("users").update(
+                    {
+                        "monthly_upload_count": new_upload_count
+                    }
+                ).eq(
+                    "id",
+                    current_user["id"]
+                ).execute()
+
+                monthly_upload_count = new_upload_count
+
+            except Exception as e:
+                st.warning(f"Analysis completed, but upload count could not be updated: {e}")
+
+            st.session_state["analysis_saved"] = True
     if "results_df" in st.session_state:
         results_df = st.session_state["results_df"]
 
