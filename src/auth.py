@@ -1,10 +1,8 @@
 import streamlit as st
-import extra_streamlit_components as stx
 from datetime import datetime, timedelta
 
 
-def show_auth_ui(supabase):
-    cookie_manager = stx.CookieManager()
+def show_auth_ui(supabase, cookie_manager):
     st.subheader("Sign in to BOM Risk Checker")
 
     auth_mode = st.radio(
