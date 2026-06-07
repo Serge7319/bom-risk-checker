@@ -429,7 +429,7 @@ if "access_token" in st.session_state and "refresh_token" in st.session_state:
         st.session_state.pop("refresh_token", None)
 
 if "user" not in st.session_state:
-    show_auth_ui(supabase)
+    show_auth_ui(supabase, cookie_manager)
     st.stop()
 
 
