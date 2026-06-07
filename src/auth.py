@@ -1,7 +1,10 @@
 import streamlit as st
+import extra_streamlit_components as stx
+from datetime import datetime, timedelta
 
 
 def show_auth_ui(supabase):
+    cookie_manager = stx.CookieManager()
     st.subheader("Sign in to BOM Risk Checker")
 
     auth_mode = st.radio(
@@ -44,6 +47,20 @@ def show_auth_ui(supabase):
                 )
 
                 st.success("Logged in successfully.")
+                expires_at = datetime.now() + timedelta(days=7)
+
+                cookie_manager.set(
+                    "bom_access_token",
+                    response.session.access_token,
+                    expires_at=expires_at,
+                )
+
+                cookie_manager.set(
+                    "bom_refresh_token",
+                    response.session.refresh_token,
+                    expires_at=expires_at,
+                )
+
                 st.session_state["user"] = response.user
                 st.session_state["access_token"] = response.session.access_token
                 st.session_state["refresh_token"] = response.session.refresh_token
