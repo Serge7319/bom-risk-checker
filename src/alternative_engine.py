@@ -2,7 +2,7 @@ import pandas as pd
 
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
-from src.supplier_aggregator import search_supplier_alternatives
+from integrations.supplier_aggregator import search_supplier_alternatives
 
 def compare_parts(original_part_number: str, alternative_part_numbers: list) -> pd.DataFrame:
     """
@@ -201,6 +201,83 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "LMC555CN/NOPB",
             "NA555DR",
             "ICM7555IPA"
+        ]
+
+    # Voltage regulator family detection
+    elif (
+        "voltage regulator" in description
+        or "linear regulator" in description
+        or "7805" in original_part_number.lower()
+        or "lm1117" in original_part_number.lower()
+        or "ams1117" in original_part_number.lower()
+        or "lm317" in original_part_number.lower()
+    ):
+        candidates = [
+            {
+                "Alternative Part": "MC7805CTG",
+                "Category": "5V Linear Regulator",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Closest 7805-style replacement",
+                "Recommendation Score": 88,
+                "Architecture": "Linear Regulator",
+                "Package": "TO-220",
+                "Pin Count": 3,
+                "Voltage Range": "5V fixed output",
+                "Compatibility Notes": "Review pinout, current rating, thermal dissipation, and package fit before substitution.",
+            },
+            {
+                "Alternative Part": "L7805CV",
+                "Category": "5V Linear Regulator",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common 7805 alternative",
+                "Recommendation Score": 86,
+                "Architecture": "Linear Regulator",
+                "Package": "TO-220",
+                "Pin Count": 3,
+                "Voltage Range": "5V fixed output",
+                "Compatibility Notes": "Common 7805-family option; verify manufacturer pinout and thermal requirements.",
+            },
+            {
+                "Alternative Part": "LM1117T-5.0",
+                "Category": "5V LDO Regulator",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Lower-dropout alternative",
+                "Recommendation Score": 78,
+                "Architecture": "LDO Regulator",
+                "Package": "TO-220",
+                "Pin Count": 3,
+                "Voltage Range": "5V fixed output",
+                "Compatibility Notes": "May not be pin-compatible with 7805 parts. Review dropout voltage, capacitor requirements, and pinout.",
+            },
+            {
+                "Alternative Part": "AMS1117-5.0",
+                "Category": "5V LDO Regulator",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Board-level LDO alternative",
+                "Recommendation Score": 74,
+                "Architecture": "LDO Regulator",
+                "Package": "SOT-223",
+                "Pin Count": 3,
+                "Voltage Range": "5V fixed output",
+                "Compatibility Notes": "Useful for redesigns, but package and pinout differ from TO-220 regulators.",
+            },
+            {
+                "Alternative Part": "LM317T",
+                "Category": "Adjustable Linear Regulator",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Adjustable regulator option",
+                "Recommendation Score": 70,
+                "Architecture": "Adjustable Linear Regulator",
+                "Package": "TO-220",
+                "Pin Count": 3,
+                "Voltage Range": "Adjustable output",
+                "Compatibility Notes": "Not a direct fixed-output drop-in. Requires resistor network and design review.",
+            },
         ]
 
     # AVR microcontroller family detection
