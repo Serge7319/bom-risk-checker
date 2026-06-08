@@ -47,16 +47,16 @@ def show_auth_ui(supabase, cookie_manager):
                 st.success("Logged in successfully.")
                 expires_at = datetime.now() + timedelta(days=7)
 
-                cookie_manager.set(
-                    "bom_access_token",
-                    response.session.access_token,
-                    expires_at=expires_at,
-                )
+                auth_cookie_value = {
+                    "access_token": response.session.access_token,
+                    "refresh_token": response.session.refresh_token,
+                }
 
                 cookie_manager.set(
-                    "bom_refresh_token",
-                    response.session.refresh_token,
+                    cookie="bom_auth",
+                    val=auth_cookie_value,
                     expires_at=expires_at,
+                    key="login_set_bom_auth",
                 )
 
                 st.session_state["user"] = response.user
