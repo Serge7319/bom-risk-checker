@@ -401,15 +401,14 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
-cookie_manager = stx.CookieManager()
+cookie_manager = stx.CookieManager(key="bom_cookie_manager")
 
 if "access_token" not in st.session_state:
-    access_token = cookie_manager.get("bom_access_token")
-    refresh_token = cookie_manager.get("bom_refresh_token")
+    auth_cookie = cookie_manager.get(cookie="bom_auth")
 
-    if access_token and refresh_token:
-        st.session_state["access_token"] = access_token
-        st.session_state["refresh_token"] = refresh_token
+    if auth_cookie:
+        st.session_state["access_token"] = auth_cookie.get("access_token")
+        st.session_state["refresh_token"] = auth_cookie.get("refresh_token")
 
 if "access_token" in st.session_state and "refresh_token" in st.session_state:
     try:
@@ -435,8 +434,10 @@ if "user" not in st.session_state:
 
 with st.sidebar:
     if st.button("Log out"):
-        cookie_manager.delete("bom_access_token")
-        cookie_manager.delete("bom_refresh_token")
+        cookie_manager.delete(
+            cookie="bom_auth",
+            key="delete_bom_auth",
+        )
 
         supabase.auth.sign_out()
         st.session_state.clear()
