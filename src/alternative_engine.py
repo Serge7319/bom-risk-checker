@@ -280,6 +280,100 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Op-amp / comparator family detection
+    elif (
+        "operational amplifier" in description
+        or "op amp" in description
+        or "op-amp" in description
+        or "amplifier" in description
+        or "comparator" in description
+        or "lm358" in original_part_number.lower()
+        or "lm324" in original_part_number.lower()
+        or "tl072" in original_part_number.lower()
+        or "lm393" in original_part_number.lower()
+        or "lm339" in original_part_number.lower()
+    ):
+        candidates = [
+            {
+                "Alternative Part": "LM358N",
+                "Category": "Dual Op-Amp",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common dual op-amp alternative",
+                "Recommendation Score": 86,
+                "Architecture": "Operational Amplifier",
+                "Package": "DIP-8",
+                "Pin Count": 8,
+                "Voltage Range": "Single/Dual supply",
+                "Compatibility Notes": "Review supply voltage range, input common-mode range, output swing, bandwidth, and pinout.",
+            },
+            {
+                "Alternative Part": "LM358P",
+                "Category": "Dual Op-Amp",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common LM358-family option",
+                "Recommendation Score": 84,
+                "Architecture": "Operational Amplifier",
+                "Package": "PDIP-8",
+                "Pin Count": 8,
+                "Voltage Range": "Single/Dual supply",
+                "Compatibility Notes": "Similar LM358-family part; verify package, manufacturer pinout, and electrical specs.",
+            },
+            {
+                "Alternative Part": "LM324N",
+                "Category": "Quad Op-Amp",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Quad op-amp alternative",
+                "Recommendation Score": 76,
+                "Architecture": "Operational Amplifier",
+                "Package": "DIP-14",
+                "Pin Count": 14,
+                "Voltage Range": "Single/Dual supply",
+                "Compatibility Notes": "Not pin-compatible with dual op-amps. Useful when redesigning around a quad amplifier.",
+            },
+            {
+                "Alternative Part": "TL072CP",
+                "Category": "Dual JFET Op-Amp",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Higher-input-impedance option",
+                "Recommendation Score": 74,
+                "Architecture": "JFET Operational Amplifier",
+                "Package": "DIP-8",
+                "Pin Count": 8,
+                "Voltage Range": "Dual supply typical",
+                "Compatibility Notes": "JFET input device; verify supply rails, input range, offset, noise, and bandwidth before substitution.",
+            },
+            {
+                "Alternative Part": "LM393N",
+                "Category": "Dual Comparator",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Comparator-family option",
+                "Recommendation Score": 72,
+                "Architecture": "Comparator",
+                "Package": "DIP-8",
+                "Pin Count": 8,
+                "Voltage Range": "Single/Dual supply",
+                "Compatibility Notes": "Comparator, not an op-amp. Only use when the original function is comparator-based.",
+            },
+            {
+                "Alternative Part": "LM339N",
+                "Category": "Quad Comparator",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Quad comparator option",
+                "Recommendation Score": 70,
+                "Architecture": "Comparator",
+                "Package": "DIP-14",
+                "Pin Count": 14,
+                "Voltage Range": "Single/Dual supply",
+                "Compatibility Notes": "Quad comparator; not pin-compatible with dual comparators or op-amps. Requires design review.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
