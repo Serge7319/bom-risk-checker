@@ -49,6 +49,7 @@ def search_newark_by_part_number(part_number: str) -> dict:
         return default_newark_result(part_number)
 
     product = products[0]
+    
 
     return normalize_newark_product(product)
 
@@ -75,21 +76,35 @@ def normalize_newark_product(product: dict) -> dict:
 
 
 def extract_newark_stock(product: dict) -> int:
-    inv = product.get("inv", 0)
+    stock = product.get("stock", {})
 
-    if isinstance(inv, dict):
-        inv = inv.get("level", 0)
+    if isinstance(stock, dict):
+        level = stock.get("level", 0)
+    else:
+        level = 0
 
     try:
-        return int(inv)
+        return int(level)
     except (ValueError, TypeError):
         return 0
 
 
 def extract_newark_lead_time_weeks(product: dict):
-    # Newark/element14 fields vary by response group.
-    # Keeping None for now until we inspect live response.
-    return None
+    stock = product.get("stock", {})
+
+    if not isinstance(stock, dict):
+        return None
+
+    lead_days = stock.get("leastLeadTime")
+
+    try:
+        if lead_days is None:
+            return None
+
+        return round(float(lead_days) / 7, 1)
+
+    except (ValueError, TypeError):
+        return None
 
 
 def infer_newark_lifecycle(product: dict) -> str:
