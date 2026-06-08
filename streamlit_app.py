@@ -960,8 +960,8 @@ with col1:
         """
         <div class="kpi-card">
             <div class="kpi-label">Suppliers Integrated</div>
-            <div class="kpi-value">2</div>
-            <div class="kpi-note">+1 coming soon</div>
+            <div class="kpi-value">3</div>
+            <div class="kpi-note">Mouser, DigiKey, Newark</div>
         </div>
         """,
         unsafe_allow_html=True,
