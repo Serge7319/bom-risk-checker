@@ -8,17 +8,24 @@ load_dotenv()
 def search_newark_by_part_number(part_number: str) -> dict:
     api_key = os.getenv("NEWARK_API_KEY")
 
+    try:
+        import streamlit as st
+        api_key = api_key or st.secrets.get("NEWARK_API_KEY")
+    except Exception:
+        pass
+
     if not api_key:
-        raise ValueError("Missing NEWARK_API_KEY in .env file")
+        raise ValueError("Missing NEWARK_API_KEY in .env file or Streamlit secrets")
 
     url = "https://api.element14.com/catalog/products"
 
     params = {
         "callInfo.apiKey": api_key,
         "callInfo.responseDataFormat": "json",
-        "storeInfo.id": "us.newark.com",
+        "storeInfo.id": "www.newark.com",
         "resultsSettings.offset": 0,
         "resultsSettings.numberOfResults": 1,
+        "resultsSettings.responseGroup": "medium",
         "term": f"manuPartNum:{part_number}",
     }
 
