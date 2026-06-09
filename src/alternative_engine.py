@@ -467,7 +467,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         ]
     
     # MOSFET / transistor family detection
-        elif (
+    elif (
         "mosfet" in description
         or "field effect transistor" in description
         or "fet" in description
