@@ -2425,6 +2425,11 @@ if app_mode == "Alternative Finder":
     if "suggested_alternatives" not in st.session_state:
         st.session_state["suggested_alternatives"] = []
 
+    if st.session_state["suggested_alternatives"]:
+        if st.button("🔄 New Alternative Search"):
+            st.session_state["suggested_alternatives"] = []
+            st.rerun()
+
     if st.button("Find Alternatives", type="primary"):
         if not original_part:
             st.warning("Please enter an original part number.")
