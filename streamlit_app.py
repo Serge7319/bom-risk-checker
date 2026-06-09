@@ -2420,7 +2420,10 @@ if app_mode == "Alternative Finder":
 
     st.markdown("### Step 1 — Search Original Component")
 
-    original_part = st.text_input("Enter original manufacturer part number")
+    original_part = st.text_input(
+        "Enter original manufacturer part number",
+        key="alternative_search_part",
+    )
 
     if "suggested_alternatives" not in st.session_state:
         st.session_state["suggested_alternatives"] = []
@@ -2428,6 +2431,7 @@ if app_mode == "Alternative Finder":
     if st.session_state["suggested_alternatives"]:
         if st.button("🔄 New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
+            st.session_state["alternative_search_part"] = ""
             st.rerun()
 
     if st.button("Find Alternatives", type="primary"):
