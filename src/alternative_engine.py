@@ -467,17 +467,17 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         ]
     
     # MOSFET / transistor family detection
-    elif (
+        elif (
         "mosfet" in description
         or "field effect transistor" in description
         or "fet" in description
         or "transistor" in description
-        or "irlz44" in original_part_number.lower()
-        or "irf540" in original_part_number.lower()
-        or "irfz44" in original_part_number.lower()
-        or "ao3400" in original_part_number.lower()
-        or "2n7000" in original_part_number.lower()
-        or "bs170" in original_part_number.lower()
+        or "irlz44" in original_part_number.replace("-", "").lower()
+        or "irf540" in original_part_number.replace("-", "").lower()
+        or "irfz44" in original_part_number.replace("-", "").lower()
+        or "ao3400" in original_part_number.replace("-", "").lower()
+        or "2n7000" in original_part_number.replace("-", "").lower()
+        or "bs170" in original_part_number.replace("-", "").lower()
     ):
         candidates = [
             {
