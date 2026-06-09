@@ -465,6 +465,100 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Compatibility Notes": "Verify timing, output drive, latch behavior, package, and pinout.",
             },
         ]
+    
+    # MOSFET / transistor family detection
+    elif (
+        "mosfet" in description
+        or "field effect transistor" in description
+        or "fet" in description
+        or "transistor" in description
+        or "irlz44" in original_part_number.lower()
+        or "irf540" in original_part_number.lower()
+        or "irfz44" in original_part_number.lower()
+        or "ao3400" in original_part_number.lower()
+        or "2n7000" in original_part_number.lower()
+        or "bs170" in original_part_number.lower()
+    ):
+        candidates = [
+            {
+                "Alternative Part": "IRLZ44N",
+                "Category": "Logic-Level N-Channel MOSFET",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common logic-level power MOSFET",
+                "Recommendation Score": 86,
+                "Architecture": "N-Channel MOSFET",
+                "Package": "TO-220",
+                "Pin Count": 3,
+                "Voltage Range": "55V class",
+                "Compatibility Notes": "Verify Vds, Id, Rds(on), gate threshold, gate drive voltage, package, and thermal limits.",
+            },
+            {
+                "Alternative Part": "IRF540N",
+                "Category": "N-Channel Power MOSFET",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Common power MOSFET option",
+                "Recommendation Score": 78,
+                "Architecture": "N-Channel MOSFET",
+                "Package": "TO-220",
+                "Pin Count": 3,
+                "Voltage Range": "100V class",
+                "Compatibility Notes": "Not always logic-level. Verify gate drive voltage and Rds(on) at your actual gate voltage.",
+            },
+            {
+                "Alternative Part": "IRFZ44N",
+                "Category": "N-Channel Power MOSFET",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Power MOSFET alternative",
+                "Recommendation Score": 76,
+                "Architecture": "N-Channel MOSFET",
+                "Package": "TO-220",
+                "Pin Count": 3,
+                "Voltage Range": "55V class",
+                "Compatibility Notes": "Verify gate drive voltage, current rating, Rds(on), and thermal dissipation.",
+            },
+            {
+                "Alternative Part": "AO3400A",
+                "Category": "Small-Signal N-Channel MOSFET",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Compact SMD MOSFET option",
+                "Recommendation Score": 74,
+                "Architecture": "N-Channel MOSFET",
+                "Package": "SOT-23",
+                "Pin Count": 3,
+                "Voltage Range": "30V class",
+                "Compatibility Notes": "Not a TO-220 replacement. Useful for board redesigns or small-load switching.",
+            },
+            {
+                "Alternative Part": "2N7000",
+                "Category": "Small-Signal N-Channel MOSFET",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Low-current switching option",
+                "Recommendation Score": 72,
+                "Architecture": "N-Channel MOSFET",
+                "Package": "TO-92",
+                "Pin Count": 3,
+                "Voltage Range": "60V class",
+                "Compatibility Notes": "Low-current MOSFET. Not suitable for high-current power switching.",
+            },
+            {
+                "Alternative Part": "BS170",
+                "Category": "Small-Signal N-Channel MOSFET",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Small-signal MOSFET option",
+                "Recommendation Score": 70,
+                "Architecture": "N-Channel MOSFET",
+                "Package": "TO-92",
+                "Pin Count": 3,
+                "Voltage Range": "60V class",
+                "Compatibility Notes": "Verify current rating, package pinout, gate threshold, and switching requirements.",
+            },
+        ]
 
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
