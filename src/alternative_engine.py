@@ -948,6 +948,62 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Connector family detection
+    elif (
+        "connector" in description
+        or "header" in description
+        or "terminal block" in description
+        or "receptacle" in description
+        or "plug" in description
+        or original_part_number.upper().startswith("JST")
+        or original_part_number.upper().startswith("B")
+        or original_part_number.upper().startswith("MOLEX")
+        or original_part_number.upper().startswith("TE")
+        or original_part_number.upper().startswith("PHOENIX")
+        or original_part_number.upper().startswith("SAMTEC")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "B2B-PH-K-S",
+                "Category": "Wire-to-Board Connector",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common JST PH series connector",
+                "Recommendation Score": 86,
+                "Architecture": "Wire-to-Board Connector",
+                "Package": "Through-Hole",
+                "Pin Count": 2,
+                "Voltage Range": "Verify current and voltage rating",
+                "Compatibility Notes": "Verify pitch, mating connector, pin count, current rating, mounting style, and locking features.",
+            },
+            {
+                "Alternative Part": "22-23-2021",
+                "Category": "Board Header",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common Molex header",
+                "Recommendation Score": 84,
+                "Architecture": "Board Connector",
+                "Package": "Through-Hole",
+                "Pin Count": 2,
+                "Voltage Range": "Verify current and voltage rating",
+                "Compatibility Notes": "Verify pitch, mating compatibility, mounting style, and current rating.",
+            },
+            {
+                "Alternative Part": "1757242",
+                "Category": "Terminal Block",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Phoenix Contact terminal block",
+                "Recommendation Score": 80,
+                "Architecture": "Terminal Block",
+                "Package": "PCB Mount",
+                "Pin Count": 2,
+                "Voltage Range": "Verify voltage and current rating",
+                "Compatibility Notes": "Verify pitch, wire size, current rating, mounting style, and footprint.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
