@@ -1257,6 +1257,403 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Optocoupler / optoisolator family detection
+    elif (
+        "optocoupler" in description
+        or "optoisolator" in description
+        or "optical isolator" in description
+        or "phototransistor" in description
+        or original_part_number.upper().startswith("PC817")
+        or original_part_number.upper().startswith("LTV")
+        or original_part_number.upper().startswith("4N")
+        or original_part_number.upper().startswith("TLP")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "PC817",
+                "Category": "Phototransistor Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common general-purpose optocoupler",
+                "Recommendation Score": 84,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "DIP-4 / SMD variants",
+                "Pin Count": 4,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Verify CTR, isolation voltage, package, pinout, input current, output transistor rating, and creepage/clearance.",
+            },
+            {
+                "Alternative Part": "LTV-817",
+                "Category": "Phototransistor Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common PC817-style alternative",
+                "Recommendation Score": 82,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "DIP-4 / SMD variants",
+                "Pin Count": 4,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Review CTR rank, isolation voltage, input current, package, and safety approvals.",
+            },
+            {
+                "Alternative Part": "4N35",
+                "Category": "Phototransistor Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Legacy general-purpose optocoupler",
+                "Recommendation Score": 78,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "DIP-6",
+                "Pin Count": 6,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Not always pin-compatible with 4-pin optocouplers. Verify package, CTR, isolation, and speed.",
+            },
+            {
+                "Alternative Part": "TLP291",
+                "Category": "Transistor Output Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Compact transistor-output optocoupler",
+                "Recommendation Score": 76,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "SO-4",
+                "Pin Count": 4,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Verify CTR, isolation voltage, creepage, package footprint, and safety agency requirements.",
+            },
+        ]
+
+    # EEPROM / Flash memory family detection
+    elif (
+        "eeprom" in description
+        or "flash memory" in description
+        or "serial flash" in description
+        or "memory ic" in description
+        or original_part_number.upper().startswith("24LC")
+        or original_part_number.upper().startswith("AT24")
+        or original_part_number.upper().startswith("W25Q")
+        or original_part_number.upper().startswith("MX25")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "24LC256-I/P",
+                "Category": "I2C EEPROM",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common I2C EEPROM candidate",
+                "Recommendation Score": 84,
+                "Architecture": "I2C EEPROM",
+                "Package": "DIP-8 / SOIC-8 variants",
+                "Pin Count": 8,
+                "Voltage Range": "Verify operating voltage",
+                "Compatibility Notes": "Verify memory size, bus protocol, address pins, package, voltage range, write endurance, and timing.",
+            },
+            {
+                "Alternative Part": "AT24C256C-SSHL-T",
+                "Category": "I2C EEPROM",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common serial EEPROM option",
+                "Recommendation Score": 82,
+                "Architecture": "I2C EEPROM",
+                "Package": "SOIC-8",
+                "Pin Count": 8,
+                "Voltage Range": "Verify operating voltage",
+                "Compatibility Notes": "Confirm memory density, I2C address behavior, voltage range, package, and write-cycle timing.",
+            },
+            {
+                "Alternative Part": "W25Q64JVSSIQ",
+                "Category": "SPI NOR Flash",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common SPI flash option",
+                "Recommendation Score": 80,
+                "Architecture": "SPI NOR Flash",
+                "Package": "SOIC-8",
+                "Pin Count": 8,
+                "Voltage Range": "Verify operating voltage",
+                "Compatibility Notes": "Verify memory size, SPI mode, voltage range, package, erase sector size, and firmware compatibility.",
+            },
+            {
+                "Alternative Part": "MX25L6406EM2I-12G",
+                "Category": "SPI NOR Flash",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "SPI flash candidate",
+                "Recommendation Score": 76,
+                "Architecture": "SPI NOR Flash",
+                "Package": "SOIC-8",
+                "Pin Count": 8,
+                "Voltage Range": "Verify operating voltage",
+                "Compatibility Notes": "Verify capacity, voltage, command set, package, erase/write behavior, and firmware support.",
+            },
+        ]
+
+    # Sensor family detection
+    elif (
+        "sensor" in description
+        or "temperature sensor" in description
+        or "humidity sensor" in description
+        or "pressure sensor" in description
+        or "accelerometer" in description
+        or original_part_number.upper().startswith("TMP")
+        or original_part_number.upper().startswith("LM35")
+        or original_part_number.upper().startswith("BME")
+        or original_part_number.upper().startswith("MPU")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "TMP36GT9Z",
+                "Category": "Temperature Sensor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Analog temperature sensor candidate",
+                "Recommendation Score": 82,
+                "Architecture": "Analog Temperature Sensor",
+                "Package": "TO-92",
+                "Pin Count": 3,
+                "Voltage Range": "Verify supply/output range",
+                "Compatibility Notes": "Verify sensor type, output scaling, supply voltage, accuracy, package, and calibration requirements.",
+            },
+            {
+                "Alternative Part": "LM35DZ/NOPB",
+                "Category": "Temperature Sensor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common analog temperature sensor",
+                "Recommendation Score": 80,
+                "Architecture": "Analog Temperature Sensor",
+                "Package": "TO-92",
+                "Pin Count": 3,
+                "Voltage Range": "Verify supply/output range",
+                "Compatibility Notes": "Verify output scale, accuracy, supply voltage, operating range, and package pinout.",
+            },
+            {
+                "Alternative Part": "BME280",
+                "Category": "Environmental Sensor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Digital environmental sensor candidate",
+                "Recommendation Score": 76,
+                "Architecture": "I2C/SPI Environmental Sensor",
+                "Package": "LGA",
+                "Pin Count": 8,
+                "Voltage Range": "Verify interface voltage",
+                "Compatibility Notes": "Not a direct replacement for analog sensors. Verify interface, firmware, package, and measurement requirements.",
+            },
+            {
+                "Alternative Part": "MPU-6050",
+                "Category": "Motion Sensor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Common IMU candidate",
+                "Recommendation Score": 72,
+                "Architecture": "I2C IMU",
+                "Package": "QFN",
+                "Pin Count": 24,
+                "Voltage Range": "Verify interface voltage",
+                "Compatibility Notes": "Verify sensor axes, interface, register compatibility, voltage, package, and firmware support.",
+            },
+        ]
+
+    # Fuse family detection
+    elif (
+        "fuse" in description
+        or "resettable fuse" in description
+        or "polyfuse" in description
+        or "ptc" in description
+        or original_part_number.upper().startswith("MF")
+        or original_part_number.upper().startswith("SMD")
+        or original_part_number.upper().startswith("RXE")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "MF-R050",
+                "Category": "Resettable Fuse",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common resettable fuse candidate",
+                "Recommendation Score": 82,
+                "Architecture": "PTC Resettable Fuse",
+                "Package": "Radial",
+                "Pin Count": 2,
+                "Voltage Range": "Verify hold current and voltage",
+                "Compatibility Notes": "Verify hold current, trip current, voltage rating, resistance, package, and operating temperature.",
+            },
+            {
+                "Alternative Part": "MF-NSMF050-2",
+                "Category": "SMD Resettable Fuse",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "SMD resettable fuse candidate",
+                "Recommendation Score": 80,
+                "Architecture": "PTC Resettable Fuse",
+                "Package": "SMD",
+                "Pin Count": 2,
+                "Voltage Range": "Verify hold current and voltage",
+                "Compatibility Notes": "Verify footprint, hold current, trip current, voltage rating, resistance, and thermal behavior.",
+            },
+            {
+                "Alternative Part": "RXE050",
+                "Category": "Resettable Fuse",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Radial PTC fuse option",
+                "Recommendation Score": 78,
+                "Architecture": "PTC Resettable Fuse",
+                "Package": "Radial",
+                "Pin Count": 2,
+                "Voltage Range": "Verify hold current and voltage",
+                "Compatibility Notes": "Verify current ratings, voltage rating, package, resistance, and reset behavior.",
+            },
+        ]
+
+    # Fan family detection
+    elif (
+        "fan" in description
+        or "blower" in description
+        or "dc fan" in description
+        or "cooling fan" in description
+        or original_part_number.upper().startswith("AFB")
+        or original_part_number.upper().startswith("MF")
+        or original_part_number.upper().startswith("OD")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "AFB0412SHB",
+                "Category": "DC Cooling Fan",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common 40mm DC fan candidate",
+                "Recommendation Score": 80,
+                "Architecture": "Brushless DC Fan",
+                "Package": "40mm",
+                "Pin Count": 2,
+                "Voltage Range": "12V",
+                "Compatibility Notes": "Verify voltage, airflow, current, noise, connector, mounting holes, dimensions, and tach/PWM requirements.",
+            },
+            {
+                "Alternative Part": "MF40101V1-1000U-A99",
+                "Category": "DC Cooling Fan",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common 40mm cooling fan option",
+                "Recommendation Score": 78,
+                "Architecture": "Brushless DC Fan",
+                "Package": "40mm",
+                "Pin Count": 2,
+                "Voltage Range": "12V",
+                "Compatibility Notes": "Verify airflow, voltage, connector, dimensions, bearing type, noise, and current draw.",
+            },
+            {
+                "Alternative Part": "OD4010-12HB",
+                "Category": "DC Cooling Fan",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Cooling fan candidate",
+                "Recommendation Score": 76,
+                "Architecture": "Brushless DC Fan",
+                "Package": "40mm",
+                "Pin Count": 2,
+                "Voltage Range": "12V",
+                "Compatibility Notes": "Verify physical size, airflow, static pressure, voltage, connector, and mounting compatibility.",
+            },
+        ]
+
+    # Cable / harness family detection
+    elif (
+        "cable" in description
+        or "wire harness" in description
+        or "harness" in description
+        or "jumper wire" in description
+        or "ribbon cable" in description
+        or original_part_number.upper().startswith("A")
+        or original_part_number.upper().startswith("H")
+        or original_part_number.upper().startswith("WM")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "A02SR02SR30K152B",
+                "Category": "Wire Harness",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Harness candidate",
+                "Recommendation Score": 74,
+                "Architecture": "Wire Harness",
+                "Package": "Cable Assembly",
+                "Pin Count": 2,
+                "Voltage Range": "Verify wire/current rating",
+                "Compatibility Notes": "Verify connector series, pitch, pin count, cable length, wire gauge, current rating, latch style, and pinout.",
+            },
+            {
+                "Alternative Part": "WM2002-ND",
+                "Category": "Cable Assembly",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Cable assembly candidate",
+                "Recommendation Score": 70,
+                "Architecture": "Cable Assembly",
+                "Package": "Assembly",
+                "Pin Count": 2,
+                "Voltage Range": "Verify connector/current rating",
+                "Compatibility Notes": "Verify mating connector, wire length, pinout, gauge, insulation, current rating, and environmental requirements.",
+            },
+        ]
+
+    # Fastener family detection
+    elif (
+        "screw" in description
+        or "fastener" in description
+        or "standoff" in description
+        or "nut" in description
+        or "washer" in description
+        or "spacer" in description
+        or original_part_number.upper().startswith("M3")
+        or original_part_number.upper().startswith("M4")
+        or original_part_number.upper().startswith("932")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "M3X8MM-SCREW",
+                "Category": "Machine Screw",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Mechanical fastener candidate",
+                "Recommendation Score": 70,
+                "Architecture": "Fastener",
+                "Package": "Mechanical",
+                "Pin Count": 0,
+                "Voltage Range": "N/A",
+                "Compatibility Notes": "Verify thread size, length, head style, drive type, material, finish, strength grade, and clearance.",
+            },
+            {
+                "Alternative Part": "M3-STANDOFF-10MM",
+                "Category": "Standoff",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Mechanical spacing candidate",
+                "Recommendation Score": 68,
+                "Architecture": "Mechanical Hardware",
+                "Package": "Mechanical",
+                "Pin Count": 0,
+                "Voltage Range": "N/A",
+                "Compatibility Notes": "Verify thread, length, material, gender, diameter, installation method, and mechanical stackup.",
+            },
+            {
+                "Alternative Part": "M3-WASHER",
+                "Category": "Washer",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Mechanical hardware candidate",
+                "Recommendation Score": 66,
+                "Architecture": "Mechanical Hardware",
+                "Package": "Mechanical",
+                "Pin Count": 0,
+                "Voltage Range": "N/A",
+                "Compatibility Notes": "Verify inner diameter, outer diameter, thickness, material, finish, and mechanical requirements.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
