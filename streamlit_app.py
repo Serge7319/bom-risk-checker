@@ -2425,39 +2425,43 @@ if app_mode == "Alternative Finder":
         key="alternative_search_part",
     )
 
-    if "suggested_alternatives" not in st.session_state:
+if "suggested_alternatives" not in st.session_state:
+    st.session_state["suggested_alternatives"] = []
+
+if "alternative_search_attempted" not in st.session_state:
+    st.session_state["alternative_search_attempted"] = False
+
+if st.button("Find Alternatives", type="primary"):
+    if not original_part:
+        st.warning("Please enter an original part number.")
+    else:
+        with st.spinner("Searching suppliers and finding alternatives..."):
+            st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
+                original_part
+            )
+            st.session_state["alternative_search_attempted"] = True
+
+if st.session_state["suggested_alternatives"]:
+    alternatives_df = pd.DataFrame(
+        st.session_state["suggested_alternatives"]
+    )
+
+    st.success("Suggested alternatives found.")
+
+    st.dataframe(
+        alternatives_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    if st.button("🔄 New Alternative Search"):
         st.session_state["suggested_alternatives"] = []
+        st.session_state["alternative_search_attempted"] = False
+        st.session_state["alternative_search_part"] = ""
+        st.rerun()
 
-    if st.session_state["suggested_alternatives"]:
-        if st.button("🔄 New Alternative Search"):
-            st.session_state["suggested_alternatives"] = []
-            st.session_state["alternative_search_part"] = ""
-            st.rerun()
-
-    if st.button("Find Alternatives", type="primary"):
-        if not original_part:
-            st.warning("Please enter an original part number.")
-        else:
-            with st.spinner("Searching suppliers and finding alternatives..."):
-                st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
-                    original_part
-                )
-
-                if st.session_state["suggested_alternatives"]:
-                    alternatives_df = pd.DataFrame(
-                        st.session_state["suggested_alternatives"]
-                    )
-
-                    st.success("Suggested alternatives found.")
-
-                    st.dataframe(
-                        alternatives_df,
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-
-                else:
-                    st.warning("No suggested alternatives found.")
+elif st.session_state["alternative_search_attempted"]:
+    st.warning("No suggested alternatives found.")
 
     suggested_part_numbers = []
 
