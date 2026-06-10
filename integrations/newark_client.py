@@ -64,6 +64,7 @@ def normalize_newark_product(product: dict) -> dict:
         "stock_total": stock_total,
         "supplier_count": 1,
         "lead_time_weeks": extract_newark_lead_time_weeks(product),
+        "unit_price": extract_newark_price(product),
         "has_alternates": False,
         "source": "Newark",
         "manufacturer": manufacturer,
@@ -74,7 +75,18 @@ def normalize_newark_product(product: dict) -> dict:
         "product_detail_url": product.get("productUrl", ""),
     }
 
+def extract_newark_price(product: dict) -> float:
+    prices = product.get("prices", [])
 
+    if not prices:
+        return 0.0
+
+    try:
+        return float(prices[0].get("cost", 0))
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+
+        
 def extract_newark_stock(product: dict) -> int:
     stock = product.get("stock", {})
 
