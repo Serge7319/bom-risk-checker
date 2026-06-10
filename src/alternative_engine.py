@@ -667,6 +667,73 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Inductor family detection
+    elif (
+        "inductor" in description
+        or "power inductor" in description
+        or "chip inductor" in description
+        or "wirewound inductor" in description
+        or "shielded inductor" in description
+        or original_part_number.upper().startswith("LQH")
+        or original_part_number.upper().startswith("SRN")
+        or original_part_number.upper().startswith("IHLP")
+        or original_part_number.upper().startswith("744")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "LQH32CN100K53L",
+                "Category": "Chip Inductor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Spec-matched inductor candidate",
+                "Recommendation Score": 84,
+                "Architecture": "Wirewound Inductor",
+                "Package": "1210 / 3225",
+                "Pin Count": 2,
+                "Voltage Range": "Verify inductance and current rating",
+                "Compatibility Notes": "Verify inductance, tolerance, saturation current, rated current, DCR, shielding, and package size before substitution.",
+            },
+            {
+                "Alternative Part": "SRN4018-100M",
+                "Category": "Shielded Power Inductor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common shielded power inductor option",
+                "Recommendation Score": 82,
+                "Architecture": "Shielded Power Inductor",
+                "Package": "4.0mm x 4.0mm",
+                "Pin Count": 2,
+                "Voltage Range": "Verify inductance and current rating",
+                "Compatibility Notes": "Check saturation current, RMS current, DCR, height, footprint, and switching regulator requirements.",
+            },
+            {
+                "Alternative Part": "IHLP2525CZER100M01",
+                "Category": "Power Inductor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "High-current power inductor candidate",
+                "Recommendation Score": 80,
+                "Architecture": "Shielded Power Inductor",
+                "Package": "2525",
+                "Pin Count": 2,
+                "Voltage Range": "Verify inductance and current rating",
+                "Compatibility Notes": "Useful for DC-DC converters. Verify inductance, saturation current, RMS current, DCR, footprint, and thermal limits.",
+            },
+            {
+                "Alternative Part": "74438335100",
+                "Category": "Power Inductor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "Wurth power inductor candidate",
+                "Recommendation Score": 78,
+                "Architecture": "Shielded Power Inductor",
+                "Package": "Verify package",
+                "Pin Count": 2,
+                "Voltage Range": "Verify inductance and current rating",
+                "Compatibility Notes": "Verify footprint, inductance, rated current, saturation current, DCR, shielding, and height before substitution.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
