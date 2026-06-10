@@ -1,6 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import streamlit as st
+
 from integrations.mouser_client import search_mouser_by_part_number
 from integrations.digikey_client import search_digikey_by_part_number
-import streamlit as st
 
 try:
     from integrations.newark_client import search_newark_by_part_number
@@ -14,6 +17,17 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
             return {
                 "source": source_name,
                 "error": f"{source_name} client not available",
+                "lifecycle_status": "Unknown",
+                "stock_total": 0,
+                "supplier_count": 0,
+                "lead_time_weeks": None,
+                "unit_price": 0.0,
+                "has_alternates": False,
+                "manufacturer": "",
+                "description": "",
+                "mouser_part_number": "",
+                "manufacturer_part_number": "",
+                "product_detail_url": "",
             }
 
         result = lookup_func(part_number)
@@ -22,15 +36,37 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
             return {
                 "source": source_name,
                 "error": f"No result from {source_name}",
+                "lifecycle_status": "Unknown",
+                "stock_total": 0,
+                "supplier_count": 0,
+                "lead_time_weeks": None,
+                "unit_price": 0.0,
+                "has_alternates": False,
+                "manufacturer": "",
+                "description": "",
+                "mouser_part_number": "",
+                "manufacturer_part_number": "",
+                "product_detail_url": "",
             }
 
         result["source"] = source_name
         return result
 
-    except Exception as e:
+    except Exception as error:
         return {
             "source": source_name,
-            "error": str(e),
+            "error": str(error),
+            "lifecycle_status": "Unknown",
+            "stock_total": 0,
+            "supplier_count": 0,
+            "lead_time_weeks": None,
+            "unit_price": 0.0,
+            "has_alternates": False,
+            "manufacturer": "",
+            "description": "",
+            "mouser_part_number": "",
+            "manufacturer_part_number": "",
+            "product_detail_url": "",
         }
 
 
@@ -43,16 +79,25 @@ def get_supplier_results(part_number):
 
     results = []
 
-    for source_name, lookup_func in suppliers:
-        results.append(
-            _safe_supplier_lookup(source_name, lookup_func, part_number)
-        )
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_supplier = {
+            executor.submit(
+                _safe_supplier_lookup,
+                source_name,
+                lookup_func,
+                part_number,
+            ): source_name
+            for source_name, lookup_func in suppliers
+        }
+
+        for future in as_completed(future_to_supplier):
+            results.append(future.result())
 
     return results
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_best_part_data(part_number):
+def get_best_part_data(part_number: str) -> dict:
     supplier_results = get_supplier_results(part_number)
 
     valid_results = [
@@ -64,27 +109,25 @@ def get_best_part_data(part_number):
     if not valid_results:
         return default_aggregated_result(part_number, supplier_results)
 
-    total_market_stock = sum(
-        int(result.get("stock_total", 0) or 0)
-        for result in valid_results
-    )
-
-    sources_available = ", ".join(
-        result.get("source", "")
-        for result in valid_results
-        if result.get("source")
-    )
-
-    supplier_count = len(valid_results)
-
     best_result = max(
         valid_results,
         key=lambda result: int(result.get("stock_total", 0) or 0),
     )
 
-    best_result["supplier_count"] = supplier_count
+    total_market_stock = sum(
+        int(result.get("stock_total", 0) or 0)
+        for result in valid_results
+    )
+
+    source_names = [
+        result.get("source", "")
+        for result in valid_results
+        if result.get("source")
+    ]
+
+    best_result["supplier_count"] = len(valid_results)
     best_result["total_market_stock"] = total_market_stock
-    best_result["sources_available"] = sources_available
+    best_result["sources_available"] = ", ".join(source_names)
     best_result["all_supplier_results"] = supplier_results
 
     return best_result
@@ -116,7 +159,7 @@ def search_supplier_alternatives(part_number):
     return results
 
 
-def default_aggregated_result(part_number, supplier_results):
+def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
     return {
         "source": "No supplier match",
         "searched_part_number": part_number,
