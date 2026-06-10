@@ -107,12 +107,16 @@ def calculate_recommendation_score(candidate: dict) -> int:
         reasons.append("No stock")
 
     # Supplier availability bonus
-    if supplier:
+    if supplier and candidate.get("Category") != "Live Supplier Verification":
         score += 5
         reasons.append("Supplier verified")
 
     # Price bonus
-    if unit_price > 0 and unit_price < 3:
+    if (
+        unit_price > 0
+        and unit_price < 3
+        and candidate.get("Category") != "Live Supplier Verification"
+    ):
         score += 5
         reasons.append("Low unit price")
 
