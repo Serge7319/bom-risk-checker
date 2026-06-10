@@ -814,6 +814,88 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # BJT transistor family detection
+    elif (
+        "bjt" in description
+        or "bipolar transistor" in description
+        or "npn transistor" in description
+        or "pnp transistor" in description
+        or "small signal transistor" in description
+        or original_part_number.upper().startswith("2N2222")
+        or original_part_number.upper().startswith("2N3904")
+        or original_part_number.upper().startswith("2N3906")
+        or original_part_number.upper().startswith("BC547")
+        or original_part_number.upper().startswith("BC557")
+        or original_part_number.upper().startswith("MMBT")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "2N3904",
+                "Category": "NPN Small-Signal Transistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common NPN transistor candidate",
+                "Recommendation Score": 84,
+                "Architecture": "NPN BJT",
+                "Package": "TO-92 / SMD variants available",
+                "Pin Count": 3,
+                "Voltage Range": "Verify Vceo and current rating",
+                "Compatibility Notes": "Verify polarity, pinout, Vceo, collector current, gain range, power rating, package, and frequency response.",
+            },
+            {
+                "Alternative Part": "2N2222A",
+                "Category": "NPN Switching Transistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common NPN switching transistor",
+                "Recommendation Score": 82,
+                "Architecture": "NPN BJT",
+                "Package": "TO-92 / metal can / SMD variants",
+                "Pin Count": 3,
+                "Voltage Range": "Verify Vceo and current rating",
+                "Compatibility Notes": "Verify pinout, collector current, gain, saturation voltage, package, and power dissipation.",
+            },
+            {
+                "Alternative Part": "MMBT3904",
+                "Category": "NPN Small-Signal Transistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "SMD NPN transistor candidate",
+                "Recommendation Score": 80,
+                "Architecture": "NPN BJT",
+                "Package": "SOT-23",
+                "Pin Count": 3,
+                "Voltage Range": "Verify Vceo and current rating",
+                "Compatibility Notes": "SMD alternative; verify footprint, pinout, gain, voltage, current, and thermal limits.",
+            },
+            {
+                "Alternative Part": "2N3906",
+                "Category": "PNP Small-Signal Transistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common PNP transistor candidate",
+                "Recommendation Score": 78,
+                "Architecture": "PNP BJT",
+                "Package": "TO-92 / SMD variants available",
+                "Pin Count": 3,
+                "Voltage Range": "Verify Vceo and current rating",
+                "Compatibility Notes": "Only use for PNP applications. Verify polarity, pinout, gain, current rating, voltage rating, and package.",
+            },
+            {
+                "Alternative Part": "MMBT3906",
+                "Category": "PNP Small-Signal Transistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "SMD PNP transistor candidate",
+                "Recommendation Score": 76,
+                "Architecture": "PNP BJT",
+                "Package": "SOT-23",
+                "Pin Count": 3,
+                "Voltage Range": "Verify Vceo and current rating",
+                "Compatibility Notes": "SMD PNP option; verify footprint, pinout, gain, voltage, current, and power dissipation.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
