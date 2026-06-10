@@ -1070,6 +1070,127 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Switch family detection
+    elif (
+        "switch" in description
+        or "pushbutton" in description
+        or "tactile switch" in description
+        or "toggle switch" in description
+        or "slide switch" in description
+        or "dip switch" in description
+        or original_part_number.upper().startswith("TL")
+        or original_part_number.upper().startswith("PTS")
+        or original_part_number.upper().startswith("SK")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "TL1105SPF160Q",
+                "Category": "Tactile Switch",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common tactile switch option",
+                "Recommendation Score": 86,
+                "Architecture": "Momentary Pushbutton",
+                "Package": "Through-Hole",
+                "Pin Count": 4,
+                "Voltage Range": "Verify contact rating",
+                "Compatibility Notes": "Verify footprint, actuator height, operating force, contact rating, and mounting style.",
+            },
+            {
+                "Alternative Part": "PTS645SM43SMTR92",
+                "Category": "Tactile Switch",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common SMD tactile switch",
+                "Recommendation Score": 84,
+                "Architecture": "Momentary Pushbutton",
+                "Package": "SMD",
+                "Pin Count": 4,
+                "Voltage Range": "Verify contact rating",
+                "Compatibility Notes": "Verify footprint, height, travel, operating force, and actuator style.",
+            },
+            {
+                "Alternative Part": "SK12D07VG4",
+                "Category": "Slide Switch",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common slide switch option",
+                "Recommendation Score": 82,
+                "Architecture": "SPDT Slide Switch",
+                "Package": "Through-Hole",
+                "Pin Count": 3,
+                "Voltage Range": "Verify contact rating",
+                "Compatibility Notes": "Verify footprint, contact arrangement, travel, current rating, and mounting style.",
+            },
+        ]
+
+    # LED family detection
+    elif (
+        "led" in description
+        or "light emitting diode" in description
+        or "indicator" in description
+        or "rgb led" in description
+        or "smd led" in description
+        or original_part_number.upper().startswith("LTST")
+        or original_part_number.upper().startswith("APT")
+        or original_part_number.upper().startswith("WP")
+        or original_part_number.upper().startswith("CLM")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "LTST-C190KRKT",
+                "Category": "SMD Indicator LED",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common red SMD indicator LED",
+                "Recommendation Score": 86,
+                "Architecture": "LED Indicator",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify forward voltage and current",
+                "Compatibility Notes": "Verify color, wavelength, luminous intensity, forward voltage, current rating, polarity, and package size.",
+            },
+            {
+                "Alternative Part": "APT1608SURCK",
+                "Category": "SMD Indicator LED",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common red 0603 LED candidate",
+                "Recommendation Score": 84,
+                "Architecture": "LED Indicator",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify forward voltage and current",
+                "Compatibility Notes": "Check color, package size, forward voltage, brightness, viewing angle, and polarity.",
+            },
+            {
+                "Alternative Part": "WP710A10ID",
+                "Category": "Through-Hole Indicator LED",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common through-hole red LED",
+                "Recommendation Score": 80,
+                "Architecture": "LED Indicator",
+                "Package": "T-1 3/4",
+                "Pin Count": 2,
+                "Voltage Range": "Verify forward voltage and current",
+                "Compatibility Notes": "Verify lens size, color, brightness, forward voltage, current rating, and mounting style.",
+            },
+            {
+                "Alternative Part": "CLM3C-WKW-CWBYA453",
+                "Category": "White SMD LED",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "White SMD LED candidate",
+                "Recommendation Score": 76,
+                "Architecture": "LED Indicator",
+                "Package": "PLCC",
+                "Pin Count": 2,
+                "Voltage Range": "Verify forward voltage and current",
+                "Compatibility Notes": "Verify color temperature, luminous intensity, forward voltage, thermal behavior, package, and polarity.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
