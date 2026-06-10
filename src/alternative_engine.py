@@ -560,6 +560,59 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Resistor family detection
+    elif (
+        "resistor" in description
+        or "chip resistor" in description
+        or "thick film resistor" in description
+        or "thin film resistor" in description
+        or original_part_number.upper().startswith("RC")
+        or original_part_number.upper().startswith("CR")
+        or original_part_number.upper().startswith("ERJ")
+        or original_part_number.upper().startswith("RK")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "RC0603FR-0710KL",
+                "Category": "Chip Resistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Spec-matched candidate",
+                "Recommendation Score": 88,
+                "Architecture": "Thick Film Resistor",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify resistance and power rating",
+                "Compatibility Notes": "Verify resistance value, tolerance, power rating, temperature coefficient, and package size before substitution.",
+            },
+            {
+                "Alternative Part": "CRCW060310K0FKEA",
+                "Category": "Chip Resistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common Vishay alternative",
+                "Recommendation Score": 86,
+                "Architecture": "Thick Film Resistor",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify resistance and power rating",
+                "Compatibility Notes": "Check resistance value, package size, tolerance, and power rating.",
+            },
+            {
+                "Alternative Part": "ERJ-3EKF1002V",
+                "Category": "Chip Resistor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Panasonic resistor family",
+                "Recommendation Score": 84,
+                "Architecture": "Thick Film Resistor",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify resistance and power rating",
+                "Compatibility Notes": "Confirm package, value, tolerance, and power dissipation.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
