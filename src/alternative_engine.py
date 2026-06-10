@@ -471,7 +471,6 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         "mosfet" in description
         or "field effect transistor" in description
         or "fet" in description
-        or "transistor" in description
         or "irlz44" in original_part_number.replace("-", "").lower()
         or "irf540" in original_part_number.replace("-", "").lower()
         or "irfz44" in original_part_number.replace("-", "").lower()
@@ -1124,6 +1123,73 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Optocoupler / optoisolator family detection
+    elif (
+        "optocoupler" in description
+        or "optoisolator" in description
+        or "optical isolator" in description
+        or "phototransistor" in description
+        or original_part_number.upper().startswith("PC817")
+        or original_part_number.upper().startswith("LTV")
+        or original_part_number.upper().startswith("4N")
+        or original_part_number.upper().startswith("TLP")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "PC817",
+                "Category": "Phototransistor Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common general-purpose optocoupler",
+                "Recommendation Score": 84,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "DIP-4 / SMD variants",
+                "Pin Count": 4,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Verify CTR, isolation voltage, package, pinout, input current, output transistor rating, and creepage/clearance.",
+            },
+            {
+                "Alternative Part": "LTV-817",
+                "Category": "Phototransistor Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common PC817-style alternative",
+                "Recommendation Score": 82,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "DIP-4 / SMD variants",
+                "Pin Count": 4,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Review CTR rank, isolation voltage, input current, package, and safety approvals.",
+            },
+            {
+                "Alternative Part": "4N35",
+                "Category": "Phototransistor Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Legacy general-purpose optocoupler",
+                "Recommendation Score": 78,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "DIP-6",
+                "Pin Count": 6,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Not always pin-compatible with 4-pin optocouplers. Verify package, CTR, isolation, and speed.",
+            },
+            {
+                "Alternative Part": "TLP291",
+                "Category": "Transistor Output Optocoupler",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Compact transistor-output optocoupler",
+                "Recommendation Score": 76,
+                "Architecture": "Phototransistor Optocoupler",
+                "Package": "SO-4",
+                "Pin Count": 4,
+                "Voltage Range": "Verify isolation and CTR",
+                "Compatibility Notes": "Verify CTR, isolation voltage, creepage, package footprint, and safety agency requirements.",
+            },
+        ]
+
+
     # LED family detection
     elif (
         "led" in description
@@ -1191,138 +1257,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
-    # Optocoupler / optoisolator family detection
-    elif (
-        "optocoupler" in description
-        or "optoisolator" in description
-        or "optical isolator" in description
-        or "phototransistor" in description
-        or original_part_number.upper().startswith("PC817")
-        or original_part_number.upper().startswith("LTV")
-        or original_part_number.upper().startswith("4N")
-        or original_part_number.upper().startswith("TLP")
-    ):
-        candidates = [
-            {
-                "Alternative Part": "PC817",
-                "Category": "Phototransistor Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Common general-purpose optocoupler",
-                "Recommendation Score": 84,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "DIP-4 / SMD variants",
-                "Pin Count": 4,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Verify CTR, isolation voltage, package, pinout, input current, output transistor rating, and creepage/clearance.",
-            },
-            {
-                "Alternative Part": "LTV-817",
-                "Category": "Phototransistor Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Common PC817-style alternative",
-                "Recommendation Score": 82,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "DIP-4 / SMD variants",
-                "Pin Count": 4,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Review CTR rank, isolation voltage, input current, package, and safety approvals.",
-            },
-            {
-                "Alternative Part": "4N35",
-                "Category": "Phototransistor Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Legacy general-purpose optocoupler",
-                "Recommendation Score": 78,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "DIP-6",
-                "Pin Count": 6,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Not always pin-compatible with 4-pin optocouplers. Verify package, CTR, isolation, and speed.",
-            },
-            {
-                "Alternative Part": "TLP291",
-                "Category": "Transistor Output Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Compact transistor-output optocoupler",
-                "Recommendation Score": 76,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "SO-4",
-                "Pin Count": 4,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Verify CTR, isolation voltage, creepage, package footprint, and safety agency requirements.",
-            },
-        ]
 
-    # Optocoupler / optoisolator family detection
-    elif (
-        "optocoupler" in description
-        or "optoisolator" in description
-        or "optical isolator" in description
-        or "phototransistor" in description
-        or original_part_number.upper().startswith("PC817")
-        or original_part_number.upper().startswith("LTV")
-        or original_part_number.upper().startswith("4N")
-        or original_part_number.upper().startswith("TLP")
-    ):
-        candidates = [
-            {
-                "Alternative Part": "PC817",
-                "Category": "Phototransistor Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Common general-purpose optocoupler",
-                "Recommendation Score": 84,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "DIP-4 / SMD variants",
-                "Pin Count": 4,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Verify CTR, isolation voltage, package, pinout, input current, output transistor rating, and creepage/clearance.",
-            },
-            {
-                "Alternative Part": "LTV-817",
-                "Category": "Phototransistor Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Common PC817-style alternative",
-                "Recommendation Score": 82,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "DIP-4 / SMD variants",
-                "Pin Count": 4,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Review CTR rank, isolation voltage, input current, package, and safety approvals.",
-            },
-            {
-                "Alternative Part": "4N35",
-                "Category": "Phototransistor Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Legacy general-purpose optocoupler",
-                "Recommendation Score": 78,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "DIP-6",
-                "Pin Count": 6,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Not always pin-compatible with 4-pin optocouplers. Verify package, CTR, isolation, and speed.",
-            },
-            {
-                "Alternative Part": "TLP291",
-                "Category": "Transistor Output Optocoupler",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Compact transistor-output optocoupler",
-                "Recommendation Score": 76,
-                "Architecture": "Phototransistor Optocoupler",
-                "Package": "SO-4",
-                "Pin Count": 4,
-                "Voltage Range": "Verify isolation and CTR",
-                "Compatibility Notes": "Verify CTR, isolation voltage, creepage, package footprint, and safety agency requirements.",
-            },
-        ]
-
+    
     # EEPROM / Flash memory family detection
     elif (
         "eeprom" in description
