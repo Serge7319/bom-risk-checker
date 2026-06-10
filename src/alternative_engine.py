@@ -1667,9 +1667,22 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     if supplier_results:
         for result in supplier_results:
             result_part_number = result.get("Part Number", "")
+            
+            normalized_result = result_part_number.strip().upper()
+            normalized_original = original_part_number.strip().upper()
 
-            if result_part_number.strip().lower() == original_part_number.strip().lower():
+            if normalized_result == normalized_original:
                 continue
+
+            if normalized_original not in normalized_result and normalized_result not in normalized_original:
+                continue
+
+            if (
+                len(normalized_original) >= 5
+                and len(normalized_result) > len(normalized_original) * 3
+            ):
+                continue
+
             candidates.append(
                 {
                     "Alternative Part": result.get("Part Number", ""),
