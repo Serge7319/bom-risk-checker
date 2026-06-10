@@ -734,6 +734,86 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Diode family detection
+    elif (
+        "diode" in description
+        or "rectifier" in description
+        or "schottky" in description
+        or "zener" in description
+        or "tvs" in description
+        or original_part_number.upper().startswith("1N")
+        or original_part_number.upper().startswith("SS")
+        or original_part_number.upper().startswith("BAV")
+        or original_part_number.upper().startswith("BAT")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "1N4148",
+                "Category": "Signal Diode",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common small-signal diode candidate",
+                "Recommendation Score": 84,
+                "Architecture": "Signal Diode",
+                "Package": "DO-35 / SMD variants available",
+                "Pin Count": 2,
+                "Voltage Range": "Verify reverse voltage and current",
+                "Compatibility Notes": "Verify package, reverse voltage, forward current, forward voltage, switching speed, and power dissipation.",
+            },
+            {
+                "Alternative Part": "1N4007",
+                "Category": "Rectifier Diode",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common rectifier diode option",
+                "Recommendation Score": 82,
+                "Architecture": "Rectifier Diode",
+                "Package": "DO-41",
+                "Pin Count": 2,
+                "Voltage Range": "1000V class",
+                "Compatibility Notes": "Use for rectifier applications. Verify current rating, voltage rating, package, and recovery speed.",
+            },
+            {
+                "Alternative Part": "SS14",
+                "Category": "Schottky Diode",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common Schottky diode option",
+                "Recommendation Score": 80,
+                "Architecture": "Schottky Diode",
+                "Package": "SMA",
+                "Pin Count": 2,
+                "Voltage Range": "40V class",
+                "Compatibility Notes": "Verify reverse voltage, average current, forward voltage drop, leakage current, and package.",
+            },
+            {
+                "Alternative Part": "BAV99",
+                "Category": "Dual Switching Diode",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Dual small-signal diode candidate",
+                "Recommendation Score": 76,
+                "Architecture": "Switching Diode Array",
+                "Package": "SOT-23",
+                "Pin Count": 3,
+                "Voltage Range": "Verify reverse voltage and current",
+                "Compatibility Notes": "Dual diode configuration. Verify pinout, diode arrangement, package, and switching requirements.",
+            },
+            {
+                "Alternative Part": "BAT54",
+                "Category": "Schottky Signal Diode",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Small-signal Schottky option",
+                "Recommendation Score": 74,
+                "Architecture": "Schottky Diode",
+                "Package": "SOT-23",
+                "Pin Count": 3,
+                "Voltage Range": "Verify reverse voltage and current",
+                "Compatibility Notes": "Verify package, pinout, forward voltage, leakage current, and current rating.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
