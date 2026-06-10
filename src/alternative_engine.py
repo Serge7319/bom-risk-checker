@@ -613,6 +613,60 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Capacitor family detection
+    elif (
+        "capacitor" in description
+        or "ceramic capacitor" in description
+        or "mlcc" in description
+        or "tantalum capacitor" in description
+        or "aluminum electrolytic" in description
+        or original_part_number.upper().startswith("CL")
+        or original_part_number.upper().startswith("GRM")
+        or original_part_number.upper().startswith("CGA")
+        or original_part_number.upper().startswith("CC")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "GRM188R71H104KA93D",
+                "Category": "Ceramic Capacitor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Spec-matched MLCC candidate",
+                "Recommendation Score": 86,
+                "Architecture": "MLCC Ceramic Capacitor",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify capacitance and voltage rating",
+                "Compatibility Notes": "Verify capacitance, voltage rating, dielectric type, tolerance, temperature rating, and package size before substitution.",
+            },
+            {
+                "Alternative Part": "CL10B104KB8NNNC",
+                "Category": "Ceramic Capacitor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common Samsung MLCC option",
+                "Recommendation Score": 84,
+                "Architecture": "MLCC Ceramic Capacitor",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify capacitance and voltage rating",
+                "Compatibility Notes": "Confirm capacitance, voltage rating, dielectric, tolerance, and DC-bias behavior.",
+            },
+            {
+                "Alternative Part": "C0603C104K5RACTU",
+                "Category": "Ceramic Capacitor",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common KEMET MLCC option",
+                "Recommendation Score": 82,
+                "Architecture": "MLCC Ceramic Capacitor",
+                "Package": "0603",
+                "Pin Count": 2,
+                "Voltage Range": "Verify capacitance and voltage rating",
+                "Compatibility Notes": "Check package, capacitance, dielectric, voltage rating, tolerance, and temperature characteristics.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
