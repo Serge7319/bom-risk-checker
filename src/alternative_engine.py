@@ -896,6 +896,58 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Crystal / oscillator family detection
+    elif (
+        "crystal" in description
+        or "oscillator" in description
+        or "resonator" in description
+        or original_part_number.upper().startswith("ABM")
+        or original_part_number.upper().startswith("ECS")
+        or original_part_number.upper().startswith("NX")
+        or original_part_number.upper().startswith("CX")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "ABM8-16.000MHZ-B2-T",
+                "Category": "Crystal",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common 16 MHz crystal candidate",
+                "Recommendation Score": 84,
+                "Architecture": "Quartz Crystal",
+                "Package": "3225",
+                "Pin Count": 4,
+                "Voltage Range": "Verify frequency and load capacitance",
+                "Compatibility Notes": "Verify frequency, load capacitance, ESR, tolerance, package, and stability requirements.",
+            },
+            {
+                "Alternative Part": "ECS-160-20-5PXDU",
+                "Category": "Crystal",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common microcontroller crystal",
+                "Recommendation Score": 82,
+                "Architecture": "Quartz Crystal",
+                "Package": "HC49",
+                "Pin Count": 2,
+                "Voltage Range": "Verify frequency and load capacitance",
+                "Compatibility Notes": "Verify frequency, ESR, package, tolerance, and startup requirements.",
+            },
+            {
+                "Alternative Part": "NX3225SA-16MHZ",
+                "Category": "Crystal",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Compact SMD crystal option",
+                "Recommendation Score": 80,
+                "Architecture": "Quartz Crystal",
+                "Package": "3225",
+                "Pin Count": 4,
+                "Voltage Range": "Verify frequency and load capacitance",
+                "Compatibility Notes": "Check footprint, frequency, ESR, load capacitance, and stability specifications.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
