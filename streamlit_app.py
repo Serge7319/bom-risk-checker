@@ -2406,62 +2406,58 @@ if app_mode == "Admin":
 
 if app_mode == "Alternative Finder":
     st.markdown(
-    """
-    <div class="card">
-        <div class="card-title">🔎 Alternative Component Finder</div>
-        <div class="card-text">
-            Search for replacement parts, compare sourcing risk,
-            and identify lower-risk alternatives.
+        """
+        <div class="card">
+            <div class="card-title">🔎 Alternative Component Finder</div>
+            <div class="card-text">
+                Search for replacement parts, compare sourcing risk,
+                and identify lower-risk alternatives.
+            </div>
         </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### Step 1 — Search Original Component")
 
-    original_part = st.text_input(
-        "Enter original manufacturer part number",
-        key="alternative_search_part",
-    )
-
-if "suggested_alternatives" not in st.session_state:
-    st.session_state["suggested_alternatives"] = []
-
-if "alternative_search_attempted" not in st.session_state:
-    st.session_state["alternative_search_attempted"] = False
-
-if st.button("Find Alternatives", type="primary"):
-    if not original_part:
-        st.warning("Please enter an original part number.")
-    else:
-        with st.spinner("Searching suppliers and finding alternatives..."):
-            st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
-                original_part
-            )
-            st.session_state["alternative_search_attempted"] = True
-
-if st.session_state["suggested_alternatives"]:
-    alternatives_df = pd.DataFrame(
-        st.session_state["suggested_alternatives"]
-    )
-
-    st.success("Suggested alternatives found.")
-
-    st.dataframe(
-        alternatives_df,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    if st.button("🔄 New Alternative Search"):
+    if "suggested_alternatives" not in st.session_state:
         st.session_state["suggested_alternatives"] = []
-        st.session_state["alternative_search_attempted"] = False
-        st.session_state["alternative_search_part"] = ""
-        st.rerun()
 
-elif st.session_state["alternative_search_attempted"]:
-    st.warning("No suggested alternatives found.")
+    if "alternative_search_attempted" not in st.session_state:
+        st.session_state["alternative_search_attempted"] = False
+
+    original_part = st.text_input("Enter original manufacturer part number")
+
+    if st.button("Find Alternatives", type="primary"):
+        if not original_part:
+            st.warning("Please enter an original part number.")
+        else:
+            with st.spinner("Searching suppliers and finding alternatives..."):
+                st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
+                    original_part
+                )
+                st.session_state["alternative_search_attempted"] = True
+
+    if st.session_state["suggested_alternatives"]:
+        alternatives_df = pd.DataFrame(
+            st.session_state["suggested_alternatives"]
+        )
+
+        st.success("Suggested alternatives found.")
+
+        st.dataframe(
+            alternatives_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if st.button("🔄 New Alternative Search"):
+            st.session_state["suggested_alternatives"] = []
+            st.session_state["alternative_search_attempted"] = False
+            st.rerun()
+
+    elif st.session_state["alternative_search_attempted"]:
+        st.warning("No suggested alternatives found.")
 
     suggested_part_numbers = []
 
@@ -2500,7 +2496,9 @@ elif st.session_state["alternative_search_attempted"]:
                         return "🟡 Medium"
                     return "🟢 Low"
 
-                comparison_df["Risk Level Display"] = comparison_df["Risk Level"].apply(risk_badge)
+                comparison_df["Risk Level Display"] = comparison_df["Risk Level"].apply(
+                    risk_badge
+                )
 
                 comparison_df = comparison_df.sort_values(
                     by=["Risk Score", "Total Market Stock"],
@@ -2522,18 +2520,7 @@ elif st.session_state["alternative_search_attempted"]:
                     "Product URL",
                 ]
 
-                comparison_display_df = comparison_df[display_cols].rename(
-                    columns={
-                        "mpn": "Part Number",
-                        "manufacturer": "Manufacturer",
-                        "risk_score": "Risk Score",
-                        "risk_level": "Risk Level",
-                        "risk_reasons": "Risk Reasons",
-                        "lifecycle_status": "Lifecycle Status",
-                        "stock_available": "Stock Available",
-                        "supplier_count": "Supplier Count",
-                    }
-                )
+                comparison_display_df = comparison_df[display_cols]
 
                 st.dataframe(
                     comparison_display_df,
@@ -2541,7 +2528,9 @@ elif st.session_state["alternative_search_attempted"]:
                     hide_index=True,
                 )
 
-                alternatives_only = comparison_df[comparison_df["Role"] == "Alternative"]
+                alternatives_only = comparison_df[
+                    comparison_df["Role"] == "Alternative"
+                ]
 
                 if not alternatives_only.empty:
                     best_alt = alternatives_only.sort_values(
@@ -2551,7 +2540,8 @@ elif st.session_state["alternative_search_attempted"]:
 
                     st.success(
                         f"✅ Recommended Alternative: **{best_alt['Matched MPN']}** "
-                        f"(Risk: {best_alt['Risk Level']}, Stock: {best_alt['Total Market Stock']})"
+                        f"(Risk: {best_alt['Risk Level']}, "
+                        f"Stock: {best_alt['Total Market Stock']})"
                     )
 
                 csv = comparison_df.to_csv(index=False).encode("utf-8")
