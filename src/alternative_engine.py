@@ -1680,9 +1680,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                     ),
                     "Recommendation": "Current part verified through supplier data",
                     "Recommendation Score": (
-                        90
+                        65
                         if result.get("Stock", 0) > 1000
-                        else 70
+                        else 55
                     ),
                 }
             )
