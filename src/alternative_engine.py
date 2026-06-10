@@ -1004,6 +1004,72 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
+    # Relay family detection
+    elif (
+        "relay" in description
+        or "power relay" in description
+        or "signal relay" in description
+        or "electromechanical relay" in description
+        or original_part_number.upper().startswith("SRD")
+        or original_part_number.upper().startswith("G5LE")
+        or original_part_number.upper().startswith("G2R")
+        or original_part_number.upper().startswith("T9A")
+    ):
+        candidates = [
+            {
+                "Alternative Part": "SRD-05VDC-SL-C",
+                "Category": "General Purpose Relay",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Common PCB relay option",
+                "Recommendation Score": 86,
+                "Architecture": "Electromechanical Relay",
+                "Package": "PCB Through-Hole",
+                "Pin Count": 5,
+                "Voltage Range": "5V Coil",
+                "Compatibility Notes": "Verify coil voltage, contact arrangement, contact current, footprint, and isolation requirements.",
+            },
+            {
+                "Alternative Part": "G5LE-1-DC5",
+                "Category": "Power Relay",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Industrial power relay option",
+                "Recommendation Score": 84,
+                "Architecture": "Electromechanical Relay",
+                "Package": "PCB Through-Hole",
+                "Pin Count": 5,
+                "Voltage Range": "5V Coil",
+                "Compatibility Notes": "Verify coil voltage, contact rating, footprint, switching current, and mounting requirements.",
+            },
+            {
+                "Alternative Part": "G2R-1A-DC24",
+                "Category": "Industrial Relay",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Industrial control relay",
+                "Recommendation Score": 82,
+                "Architecture": "Electromechanical Relay",
+                "Package": "Socket / PCB",
+                "Pin Count": 5,
+                "Voltage Range": "24V Coil",
+                "Compatibility Notes": "Verify coil voltage, contact form, current rating, socket compatibility, and footprint.",
+            },
+            {
+                "Alternative Part": "T9AS1D12-5",
+                "Category": "High Current Relay",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Medium",
+                "Recommendation": "High-current switching relay",
+                "Recommendation Score": 80,
+                "Architecture": "Electromechanical Relay",
+                "Package": "PCB Through-Hole",
+                "Pin Count": 5,
+                "Voltage Range": "5V Coil",
+                "Compatibility Notes": "Verify contact current, coil power, isolation requirements, footprint, and operating environment.",
+            },
+        ]
+
     # AVR microcontroller family detection
     elif "atmega328" in original_part_number.lower():
         candidates = [
