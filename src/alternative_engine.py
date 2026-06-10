@@ -1742,8 +1742,15 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     candidates = normalized_candidates
 
+    filtered_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.get("Alternative Part", "").strip().lower()
+        != original_part_number.strip().lower()
+    ]
+
     sorted_candidates = sorted(
-        candidates,
+        filtered_candidates,
         key=lambda x: x["Recommendation Score"],
         reverse=True,
     )
