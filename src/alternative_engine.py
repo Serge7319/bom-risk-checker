@@ -180,25 +180,35 @@ def calculate_recommendation_score(candidate: dict) -> int:
     return score
 
 
-def calculate_drop_in_confidence(candidate: dict) -> int:
+def calculate_drop_in_confidence(original_data: dict, candidate: dict) -> int:
     score = 0
 
-    architecture = str(candidate.get("Architecture", "")).lower()
-    package = str(candidate.get("Package", "")).lower()
-    pin_count = int(candidate.get("Pin Count", 0) or 0)
-    voltage_range = str(candidate.get("Voltage Range", "")).lower()
+    original_architecture = str(original_data.get("architecture", "")).lower()
+    candidate_architecture = str(candidate.get("Architecture", "")).lower()
 
-    if architecture and architecture not in ["none", "n/a"]:
-        score += 35
+    original_package = str(original_data.get("package", "")).lower()
+    candidate_package = str(candidate.get("Package", "")).lower()
 
-    if package and package not in ["none", "n/a", "verify package"]:
-        score += 25
+    original_pin_count = int(original_data.get("pin_count", 0) or 0)
+    candidate_pin_count = int(candidate.get("Pin Count", 0) or 0)
 
-    if pin_count > 0:
+    candidate_voltage = str(candidate.get("Voltage Range", "")).lower()
+
+    if candidate_architecture and candidate_architecture not in ["none", "n/a"]:
+        score += 40
+
+    if original_package and candidate_package and original_package == candidate_package:
+        score += 30
+    elif candidate_package and candidate_package not in ["none", "n/a", "verify package"]:
+        score += 15
+
+    if original_pin_count and candidate_pin_count and original_pin_count == candidate_pin_count:
         score += 20
+    elif candidate_pin_count > 0:
+        score += 10
 
-    if voltage_range and voltage_range not in ["none", "n/a"]:
-        score += 20
+    if candidate_voltage and candidate_voltage not in ["none", "n/a"]:
+        score += 10
 
     return min(score, 100)
 
@@ -1776,7 +1786,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             }
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
-        candidate["Drop-In Confidence"] = calculate_drop_in_confidence(candidate)
+        candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
+            original_data,
+            candidate,
+        )
         normalized_candidates.append(candidate)
 
     candidates = normalized_candidates
