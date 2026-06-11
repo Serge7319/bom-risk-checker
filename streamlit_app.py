@@ -2461,19 +2461,68 @@ if app_mode == "Alternative Finder":
         ].iloc[0]
 
         original_data = get_best_part_data(original_part)
-        st.subheader("Original Part Data")
-        st.write({
-            "Part Number": original_part,
-            "Manufacturer": original_data.get("manufacturer", ""),
-            "Description": original_data.get("description", ""),
-            "Lifecycle": original_data.get("lifecycle_status", "Unknown"),
-            "Supplier": original_data.get("source", ""),
-            "Stock": original_data.get("stock_total", 0),
-            "Unit Price": original_data.get("unit_price", 0.0),
-        })
-        st.subheader("Selected Alternative")
+        comparison_df = pd.DataFrame(
+            [
+                {
+                    "Attribute": "Part Number",
+                    "Original": original_part,
+                    "Selected Alternative": selected_row.get("Alternative Part", ""),
+                },
+                {
+                    "Attribute": "Lifecycle",
+                    "Original": original_data.get("lifecycle_status", "Unknown"),
+                    "Selected Alternative": selected_row.get("Lifecycle", "Unknown"),
+                },
+                {
+                    "Attribute": "Supplier",
+                    "Original": original_data.get("source", ""),
+                    "Selected Alternative": selected_row.get("Supplier", ""),
+                },
+                {
+                    "Attribute": "Stock",
+                    "Original": original_data.get("stock_total", 0),
+                    "Selected Alternative": selected_row.get("Stock", 0),
+                },
+                {
+                    "Attribute": "Unit Price",
+                    "Original": original_data.get("unit_price", 0.0),
+                    "Selected Alternative": selected_row.get("Unit Price", 0.0),
+                },
+                {
+                    "Attribute": "Package",
+                    "Original": "Verify from original datasheet",
+                    "Selected Alternative": selected_row.get("Package", ""),
+                },
+                {
+                    "Attribute": "Pin Count",
+                    "Original": "Verify from original datasheet",
+                    "Selected Alternative": selected_row.get("Pin Count", ""),
+                },
+                {
+                    "Attribute": "Drop-In Confidence",
+                    "Original": "—",
+                    "Selected Alternative": selected_row.get("Drop-In Confidence", ""),
+                },
+                {
+                    "Attribute": "Drop-In Rating",
+                    "Original": "—",
+                    "Selected Alternative": selected_row.get("Drop-In Rating", ""),
+                },
+                {
+                    "Attribute": "Drop-In Reasons",
+                    "Original": "—",
+                    "Selected Alternative": selected_row.get("Drop-In Reasons", ""),
+                },
+            ]
+        )
 
-        st.write(selected_row)        
+        st.subheader("Side-by-Side Comparison")
+
+        st.dataframe(
+            comparison_df,
+            use_container_width=True,
+            hide_index=True,
+        )      
 
         if st.button("🔄 New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
