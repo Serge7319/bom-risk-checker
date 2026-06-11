@@ -282,12 +282,12 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         reasons.append("⚠ Architecture differs")
 
     if original_package == candidate_package:
-    reasons.append("✓ Package match")
+        reasons.append("✓ Package match")
     else:
         reasons.append("⚠ Package mismatch")
 
     if original_pin_count == candidate_pin_count:
-    reasons.append("✓ Pin count match")
+        reasons.append("✓ Pin count match")
     else:
         reasons.append("⚠ Pin count mismatch")
 
