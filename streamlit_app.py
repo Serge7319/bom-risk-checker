@@ -2451,6 +2451,11 @@ if app_mode == "Alternative Finder":
             hide_index=True,
         )
 
+        selected_alternative = st.selectbox(
+            "Select alternative to compare",
+            alternatives_df["Alternative Part"],
+        )
+
         if st.button("🔄 New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
             st.session_state["alternative_search_attempted"] = False
