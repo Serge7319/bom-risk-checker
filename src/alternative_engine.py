@@ -179,6 +179,29 @@ def calculate_recommendation_score(candidate: dict) -> int:
 
     return score
 
+
+def calculate_drop_in_confidence(candidate: dict) -> int:
+    score = 0
+
+    architecture = str(candidate.get("Architecture", "")).lower()
+    package = str(candidate.get("Package", "")).lower()
+    pin_count = int(candidate.get("Pin Count", 0) or 0)
+    voltage_range = str(candidate.get("Voltage Range", "")).lower()
+
+    if architecture and architecture not in ["none", "n/a"]:
+        score += 35
+
+    if package and package not in ["none", "n/a", "verify package"]:
+        score += 25
+
+    if pin_count > 0:
+        score += 20
+
+    if voltage_range and voltage_range not in ["none", "n/a"]:
+        score += 20
+
+    return min(score, 100)
+
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
@@ -1751,6 +1774,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             }
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+        candidate["Drop-In Confidence"] = calculate_drop_in_confidence(candidate)
         normalized_candidates.append(candidate)
 
     candidates = normalized_candidates
