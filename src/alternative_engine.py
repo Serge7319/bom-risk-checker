@@ -1786,8 +1786,18 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             }
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+        original_candidate = next(
+            (
+                c for c in candidates
+                if isinstance(c, dict)
+                and c.get("Alternative Part", "").strip().lower()
+                == original_part_number.strip().lower()
+            ),
+            {},
+        )
+
         candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
-            original_data,
+            original_candidate,
             candidate,
         )
         normalized_candidates.append(candidate)
