@@ -256,7 +256,28 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
     candidate_architecture = str(candidate.get("Architecture", "")).lower()
 
     if original_architecture == candidate_architecture:
-        reasons.append("✓ Architecture match")
+
+        if "optocoupler" in candidate_architecture:
+            reasons.append("✓ Optocoupler type match")
+
+        elif "mosfet" in candidate_architecture:
+            reasons.append("✓ MOSFET type match")
+
+        elif "logic" in candidate_architecture:
+            reasons.append("✓ Logic family match")
+
+        elif "regulator" in candidate_architecture:
+            reasons.append("✓ Regulator type match")
+
+        elif "connector" in candidate_architecture:
+            reasons.append("✓ Connector family match")
+
+        elif "relay" in candidate_architecture:
+            reasons.append("✓ Relay type match")
+
+        else:
+            reasons.append("✓ Architecture match")
+
     else:
         reasons.append("⚠ Architecture differs")
 
