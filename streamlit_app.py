@@ -2462,7 +2462,15 @@ if app_mode == "Alternative Finder":
 
         original_data = get_best_part_data(original_part)
         st.subheader("Original Part Data")
-        st.write(original_data)
+        st.write({
+            "Part Number": original_part,
+            "Manufacturer": original_data.get("manufacturer", ""),
+            "Description": original_data.get("description", ""),
+            "Lifecycle": original_data.get("lifecycle_status", "Unknown"),
+            "Supplier": original_data.get("source", ""),
+            "Stock": original_data.get("stock_total", 0),
+            "Unit Price": original_data.get("unit_price", 0.0),
+        })
         st.subheader("Selected Alternative")
 
         st.write(selected_row)        
