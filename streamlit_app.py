@@ -2516,6 +2516,9 @@ if app_mode == "Alternative Finder":
             ]
         )
 
+        st.success(
+            f"🏆 Recommended Alternative: {selected_row.get('Alternative Part', '')}"
+        )
         st.subheader("Side-by-Side Comparison")
 
         st.dataframe(
