@@ -2460,6 +2460,9 @@ if app_mode == "Alternative Finder":
             alternatives_df["Alternative Part"] == selected_alternative
         ].iloc[0]
 
+        original_data = get_best_part_data(original_part)
+        st.subheader("Original Part Data")
+        st.write(original_data)
         st.subheader("Selected Alternative")
 
         st.write(selected_row)        
