@@ -2490,12 +2490,12 @@ if app_mode == "Alternative Finder":
                 },
                 {
                     "Attribute": "Package",
-                    "Original": "Verify from original datasheet",
+                    "Original": "Not available from supplier data yet",
                     "Selected Alternative": selected_row.get("Package", ""),
                 },
                 {
                     "Attribute": "Pin Count",
-                    "Original": "Verify from original datasheet",
+                    "Original": "Not available from supplier data yet",
                     "Selected Alternative": selected_row.get("Pin Count", ""),
                 },
                 {
