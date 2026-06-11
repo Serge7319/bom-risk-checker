@@ -2456,6 +2456,14 @@ if app_mode == "Alternative Finder":
             alternatives_df["Alternative Part"],
         )
 
+        selected_row = alternatives_df[
+            alternatives_df["Alternative Part"] == selected_alternative
+        ].iloc[0]
+
+        st.subheader("Selected Alternative")
+
+        st.write(selected_row)        
+
         if st.button("🔄 New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
             st.session_state["alternative_search_attempted"] = False
