@@ -234,6 +234,15 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
 
     return min(score, 100)
 
+def get_drop_in_rating(confidence: int) -> str:
+    if confidence >= 90:
+        return "High"
+
+    elif confidence >= 70:
+        return "Medium"
+
+    return "Low"
+
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
@@ -1808,6 +1817,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             }
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+
         original_candidate = next(
             (
                 c for c in candidates
@@ -1822,6 +1832,11 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             original_candidate,
             candidate,
         )
+
+        candidate["Drop-In Rating"] = get_drop_in_rating(
+            candidate["Drop-In Confidence"]
+        )
+
         normalized_candidates.append(candidate)
 
     candidates = normalized_candidates
