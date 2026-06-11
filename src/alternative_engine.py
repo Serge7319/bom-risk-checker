@@ -243,6 +243,36 @@ def get_drop_in_rating(confidence: int) -> str:
 
     return "🔴 Low"
 
+def get_drop_in_reasons(original: dict, candidate: dict) -> str:
+    reasons = []
+
+    original_package = str(original.get("Package", "")).lower()
+    candidate_package = str(candidate.get("Package", "")).lower()
+
+    original_pin_count = int(original.get("Pin Count", 0) or 0)
+    candidate_pin_count = int(candidate.get("Pin Count", 0) or 0)
+
+    original_architecture = str(original.get("Architecture", "")).lower()
+    candidate_architecture = str(candidate.get("Architecture", "")).lower()
+
+    if original_architecture == candidate_architecture:
+        reasons.append("✓ Architecture match")
+    else:
+        reasons.append("⚠ Architecture differs")
+
+    if original_package == candidate_package:
+        reasons.append("✓ Package match")
+    else:
+        reasons.append("⚠ Package differs")
+
+    if original_pin_count == candidate_pin_count:
+        reasons.append("✓ Pin count match")
+    else:
+        reasons.append("⚠ Pin count differs")
+
+    return "; ".join(reasons)
+
+
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
@@ -1837,6 +1867,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             candidate["Drop-In Confidence"]
         )
 
+        candidate["Drop-In Reasons"] = get_drop_in_reasons(
+            original_candidate,
+            candidate,
+        )
         normalized_candidates.append(candidate)
 
     candidates = normalized_candidates
