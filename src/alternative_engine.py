@@ -180,32 +180,54 @@ def calculate_recommendation_score(candidate: dict) -> int:
     return score
 
 
-def calculate_drop_in_confidence(original_data: dict, candidate: dict) -> int:
+def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     score = 0
 
-    original_architecture = str(original_data.get("architecture", "")).lower()
-    candidate_architecture = str(candidate.get("Architecture", "")).lower()
+    original_architecture = str(
+        original.get("Architecture", original.get("architecture", ""))
+    ).lower()
 
-    original_package = str(original_data.get("package", "")).lower()
-    candidate_package = str(candidate.get("Package", "")).lower()
+    candidate_architecture = str(
+        candidate.get("Architecture", candidate.get("architecture", ""))
+    ).lower()
 
-    original_pin_count = int(original_data.get("pin_count", 0) or 0)
-    candidate_pin_count = int(candidate.get("Pin Count", 0) or 0)
+    original_package = str(
+        original.get("Package", original.get("package", ""))
+    ).lower()
 
-    candidate_voltage = str(candidate.get("Voltage Range", "")).lower()
+    candidate_package = str(
+        candidate.get("Package", candidate.get("package", ""))
+    ).lower()
 
-    if candidate_architecture and candidate_architecture not in ["none", "n/a"]:
-        score += 40
+    original_pin_count = int(
+        original.get("Pin Count", original.get("pin_count", 0)) or 0
+    )
 
-    if original_package and candidate_package and original_package == candidate_package:
-        score += 30
-    elif candidate_package and candidate_package not in ["none", "n/a", "verify package"]:
-        score += 15
+    candidate_pin_count = int(
+        candidate.get("Pin Count", candidate.get("pin_count", 0)) or 0
+    )
 
-    if original_pin_count and candidate_pin_count and original_pin_count == candidate_pin_count:
-        score += 20
-    elif candidate_pin_count > 0:
-        score += 10
+    candidate_voltage = str(
+        candidate.get("Voltage Range", candidate.get("voltage_range", ""))
+    ).lower()
+
+    if original_architecture and candidate_architecture:
+        if original_architecture == candidate_architecture:
+            score += 40
+        else:
+            score += 20
+
+    if original_package and candidate_package:
+        if original_package == candidate_package:
+            score += 30
+        else:
+            score += 10
+
+    if original_pin_count and candidate_pin_count:
+        if original_pin_count == candidate_pin_count:
+            score += 20
+        else:
+            score += 5
 
     if candidate_voltage and candidate_voltage not in ["none", "n/a"]:
         score += 10
