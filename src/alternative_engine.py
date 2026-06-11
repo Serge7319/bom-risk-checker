@@ -236,12 +236,12 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
 
 def get_drop_in_rating(confidence: int) -> str:
     if confidence >= 90:
-        return "High"
+        return "🟢 High"
 
     elif confidence >= 70:
-        return "Medium"
+        return "🟡 Medium"
 
-    return "Low"
+    return "🔴 Low"
 
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
