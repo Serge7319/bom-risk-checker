@@ -2461,6 +2461,24 @@ if app_mode == "Alternative Finder":
         ].iloc[0]
 
         original_data = get_best_part_data(original_part)
+
+        original_stock = float(original_data.get("stock_total", 0) or 0)
+        alternative_stock = float(selected_row.get("Stock", 0) or 0)
+
+        original_price = float(original_data.get("unit_price", 0.0) or 0.0)
+        alternative_price = float(selected_row.get("Unit Price", 0.0) or 0.0)
+
+        stock_delta = (
+            f"{((alternative_stock - original_stock) / original_stock) * 100:.1f}%"
+            if original_stock > 0
+            else "N/A"
+        )
+
+        price_delta = (
+            f"{((alternative_price - original_price) / original_price) * 100:.1f}%"
+            if original_price > 0
+            else "N/A"
+        )
         comparison_df = pd.DataFrame(
             [
                 {
@@ -2487,6 +2505,16 @@ if app_mode == "Alternative Finder":
                     "Attribute": "Unit Price",
                     "Original": original_data.get("unit_price", 0.0),
                     "Selected Alternative": selected_row.get("Unit Price", 0.0),
+                },
+                {
+                    "Attribute": "Stock Delta",
+                    "Original": "—",
+                    "Selected Alternative": stock_delta,
+                },
+                {
+                    "Attribute": "Price Delta",
+                    "Original": "—",
+                    "Selected Alternative": price_delta,
                 },
                 {
                     "Attribute": "Package",
