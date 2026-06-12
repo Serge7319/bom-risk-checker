@@ -82,6 +82,9 @@ def normalize_digikey_product(product: dict) -> dict:
         "mouser_part_number": "",
         "manufacturer_part_number": product.get("ManufacturerProductNumber", ""),
         "product_detail_url": product.get("ProductUrl", ""),
+        "package": "",
+        "pin_count": 0,
+        "mounting_style": "",
     }
 
 def extract_digikey_price(product: dict) -> float:
