@@ -1477,7 +1477,9 @@ if app_mode == "Dashboard":
                                         f"""
                                         🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
 
-                                        {best_alternative['Recommendation']}
+                                        Recommendation Score: {best_alternative['Recommendation Score']}
+
+                                        Recommendation: {best_alternative['Recommendation']}
                                         """
                                     )
 
@@ -2467,9 +2469,7 @@ if app_mode == "Alternative Finder":
             f"""
             🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
 
-            Recommendation Score: {best_alternative['Recommendation Score']}
-
-            Recommendation: {best_alternative['Recommendation']}
+            {best_alternative['Recommendation']}
             """
         )
 
