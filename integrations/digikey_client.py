@@ -49,11 +49,16 @@ def search_digikey_by_part_number(part_number: str) -> dict:
     response.raise_for_status()
 
     data = response.json()
-    import json
-
-    with open("digikey_raw_response.json", "w") as f:
-        json.dump(data, f, indent=2)
     product = data.get("Product", data)
+
+    print("DIGIKEY PRODUCT KEYS:", product.keys())
+
+    if "Parameters" in product:
+        print("DIGIKEY PARAMETERS:", product["Parameters"][:20])
+
+    if "ProductAttributes" in product:
+        print("DIGIKEY ATTRIBUTES:", product["ProductAttributes"][:20])
+    
 
     return normalize_digikey_product(product)
 
