@@ -51,14 +51,7 @@ def search_digikey_by_part_number(part_number: str) -> dict:
     data = response.json()
     product = data.get("Product", data)
 
-    print("DIGIKEY PRODUCT KEYS:", product.keys())
-
-    if "Parameters" in product:
-        print("DIGIKEY PARAMETERS:", product["Parameters"][:20])
-
-    if "ProductAttributes" in product:
-        print("DIGIKEY ATTRIBUTES:", product["ProductAttributes"][:20])
-    
+    raise Exception(f"DIGIKEY PRODUCT KEYS: {list(product.keys())}")
 
     return normalize_digikey_product(product)
 
