@@ -2564,7 +2564,30 @@ if app_mode == "Alternative Finder":
                 },
             ]
         )
+        summary_points = []
 
+        drop_in_reasons = selected_row.get("Drop-In Reasons", "")
+        stock_delta_text = stock_delta
+        price_delta_text = price_delta
+
+        if drop_in_reasons:
+            summary_points.append(drop_in_reasons)
+
+        if stock_delta_text != "N/A":
+            summary_points.append(stock_delta_text)
+
+        if price_delta_text != "N/A":
+            summary_points.append(price_delta_text)
+
+        st.info(
+            f"""
+            ### Why this alternative?
+
+            **{selected_row.get("Alternative Part", "")}**
+
+            {chr(10).join([f"- {point}" for point in summary_points])}
+            """
+        )
         
         st.subheader("Side-by-Side Comparison")
 
