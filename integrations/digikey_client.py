@@ -55,7 +55,10 @@ def search_digikey_by_part_number(part_number: str) -> dict:
 
 
 def normalize_digikey_product(product: dict) -> dict:
-    print(product)
+    import json
+
+    with open("digikey_sample.json", "w") as f:
+        json.dump(product, f, indent=2)
     manufacturer = product.get("Manufacturer", {})
     manufacturer_name = (
         manufacturer.get("Name", "")
