@@ -2460,6 +2460,21 @@ if app_mode == "Alternative Finder":
             alternatives_df["Alternative Part"] == selected_alternative
         ].iloc[0]
 
+        best_alternative = max(
+            st.session_state["suggested_alternatives"],
+            key=lambda x: x.get("Recommendation Score", 0),
+        )
+
+        st.success(
+            f"""
+            🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
+
+            Recommendation Score: {best_alternative['Recommendation Score']}
+
+            Recommendation: {best_alternative['Recommendation']}
+            """
+        )
+
         original_data = get_best_part_data(original_part)
 
         original_stock = float(original_data.get("stock_total", 0) or 0)
