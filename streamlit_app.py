@@ -2581,7 +2581,7 @@ if app_mode == "Alternative Finder":
         if price_delta != "N/A":
             summary_points.append(price_delta)
 
-        st.info("Why this alternative?")
+        st.subheader("Why this alternative?")
 
         st.markdown(
             f"**{selected_row.get('Alternative Part', '')}** is worth reviewing because:"
