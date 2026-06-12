@@ -2584,7 +2584,7 @@ if app_mode == "Alternative Finder":
         st.subheader("Why this alternative?")
 
         st.markdown(
-            f"**{selected_row.get('Alternative Part', '')}** is worth reviewing because:"
+            f"**{selected_row.get('Alternative Part', '')}** is recommended because:"
         )
 
         for point in summary_points:
