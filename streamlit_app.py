@@ -1477,9 +1477,7 @@ if app_mode == "Dashboard":
                                         f"""
                                         🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
 
-                                        Recommendation Score: {best_alternative['Recommendation Score']}
-
-                                        Recommendation: {best_alternative['Recommendation']}
+                                        {best_alternative['Recommendation']}
                                         """
                                     )
 
@@ -2567,9 +2565,7 @@ if app_mode == "Alternative Finder":
             ]
         )
 
-        st.success(
-            f"🏆 Recommended Alternative: {selected_row.get('Alternative Part', '')}"
-        )
+        
         st.subheader("Side-by-Side Comparison")
 
         st.dataframe(
