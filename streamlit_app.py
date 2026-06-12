@@ -2581,15 +2581,14 @@ if app_mode == "Alternative Finder":
         if price_delta != "N/A":
             summary_points.append(price_delta)
 
-        st.info(
-            f"""
-        ### Why this alternative?
+        st.info("Why this alternative?")
 
-        **{selected_row.get("Alternative Part", "")}** is worth reviewing because:
-
-        {chr(10).join([f"- {point}" for point in summary_points])}
-        """
+        st.markdown(
+            f"**{selected_row.get('Alternative Part', '')}** is worth reviewing because:"
         )
+
+        for point in summary_points:
+            st.markdown(f"- {point}")
         
         st.subheader("Side-by-Side Comparison")
 
