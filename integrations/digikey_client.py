@@ -51,7 +51,6 @@ def search_digikey_by_part_number(part_number: str) -> dict:
     data = response.json()
     product = data.get("Product", data)
 
-    raise Exception(f"DIGIKEY PRODUCT KEYS: {list(product.keys())}")
 
     return normalize_digikey_product(product)
 
