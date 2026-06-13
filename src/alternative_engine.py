@@ -235,8 +235,11 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         else:
             score += 10
 
-    if original_package and candidate_package:
-        if original_package == candidate_package:
+    normalized_original_package = normalize_package_name(original_package)
+    normalized_candidate_package = normalize_package_name(candidate_package)
+
+    if normalized_original_package and normalized_candidate_package:
+        if normalized_original_package == normalized_candidate_package:
             score += 25
         else:
             score -= 15
@@ -290,12 +293,17 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         else:
             reasons.append("⚠ Architecture differs")
 
-    if original_package and candidate_package:
-        if original_package.lower() == candidate_package.lower():
-            reasons.append(f"✓ Same package ({candidate_package})")
-        else:
-            reasons.append(f"⚠ Package differs: original {original_package}, alternative {candidate_package}")
+    normalized_original_package = normalize_package_name(original_package)
+    normalized_candidate_package = normalize_package_name(candidate_package)
 
+    if normalized_original_package and normalized_candidate_package:
+        if normalized_original_package == normalized_candidate_package:
+            reasons.append(f"✓ Same package ({normalized_candidate_package})")
+        else:
+            reasons.append(
+                f"⚠ Package differs: original {normalized_original_package}, alternative {normalized_candidate_package}"
+            )
+            
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
             reasons.append(f"✓ Same pin count ({candidate_pin_count})")
@@ -307,6 +315,37 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
 
     return "; ".join(reasons)
 
+def normalize_package_name(package: str) -> str:
+    package = str(package or "").upper().strip()
+
+    if not package:
+        return ""
+
+    if "DIP" in package and "16" in package:
+        return "DIP-16"
+
+    if "DIP" in package and "14" in package:
+        return "DIP-14"
+
+    if "DIP" in package and "8" in package:
+        return "DIP-8"
+
+    if "DIP" in package and "4" in package:
+        return "DIP-4"
+
+    if "TO-220" in package:
+        return "TO-220"
+
+    if "SOT-223" in package:
+        return "SOT-223"
+
+    if "SOIC" in package and "8" in package:
+        return "SOIC-8"
+
+    if "SOIC" in package and "14" in package:
+        return "SOIC-14"
+
+    return package
 
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
