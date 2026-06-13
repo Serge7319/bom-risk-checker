@@ -191,6 +191,14 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         candidate.get("Architecture", candidate.get("architecture", ""))
     ).lower()
 
+    original_function = str(
+        original.get("Function", original.get("function", ""))
+    ).lower()
+
+    candidate_function = str(
+        candidate.get("Function", candidate.get("function", ""))
+    ).lower()
+
     original_package = str(
         original.get("Package", original.get("package", ""))
     ).lower()
@@ -211,28 +219,38 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         candidate.get("Voltage Range", candidate.get("voltage_range", ""))
     ).lower()
 
-    if original_architecture and candidate_architecture:
+    # Function match is most important for logic ICs.
+    if "logic" in original_architecture or "logic" in candidate_architecture:
+        if original_function and candidate_function:
+            if original_function == candidate_function:
+                score += 50
+            else:
+                return 0
+        else:
+            score += 15
+
+    elif original_architecture and candidate_architecture:
         if original_architecture == candidate_architecture:
             score += 40
         else:
-            score += 20
+            score += 10
 
     if original_package and candidate_package:
         if original_package == candidate_package:
-            score += 30
+            score += 25
         else:
-            score += 10
+            score -= 15
 
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
             score += 20
         else:
-            score += 5
+            score -= 20
 
     if candidate_voltage and candidate_voltage not in ["none", "n/a"]:
-        score += 10
+        score += 5
 
-    return min(score, 100)
+    return max(0, min(score, 100))
 
 def get_drop_in_rating(confidence: int) -> str:
     if confidence >= 90:
