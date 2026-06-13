@@ -2580,13 +2580,20 @@ if app_mode == "Alternative Finder":
         ]
 
         recommendation_points = reason_list
+        advantage_points = []
         tradeoff_points = []
 
         if stock_delta != "N/A":
-            tradeoff_points.append(stock_delta)
+            if "more stock" in stock_delta.lower():
+                advantage_points.append(stock_delta)
+            else:
+                tradeoff_points.append(stock_delta)
 
         if price_delta != "N/A":
-            tradeoff_points.append(price_delta)
+            if "lower cost" in price_delta.lower():
+                advantage_points.append(price_delta)
+            else:
+                tradeoff_points.append(price_delta)
 
         st.subheader("Why this alternative?")
 
