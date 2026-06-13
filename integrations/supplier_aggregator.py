@@ -63,6 +63,8 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         return result
 
     except Exception as error:
+        print(f"{source_name} lookup failed:", error)
+        
         return {
             "source": source_name,
             "error": str(error),
