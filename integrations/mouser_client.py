@@ -1,3 +1,5 @@
+import re
+
 import requests
 import streamlit as st
 
@@ -33,6 +35,23 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     availability = part.get("Availability", "")
     stock_total = extract_stock_number(availability)
 
+    package = extract_mouser_attribute(
+        part,
+        ["Package / Case", "Package", "Supplier Device Package"],
+    )
+
+    mounting_style = extract_mouser_attribute(
+        part,
+        ["Mounting Style", "Mounting Type"],
+    )
+
+    pin_count_text = extract_mouser_attribute(
+        part,
+        ["Number of Pins", "Pin Count", "Package / Case", "Package"],
+    )
+
+    pin_count = extract_pin_count(pin_count_text)
+
     return {
         "lifecycle_status": infer_lifecycle_status(part),
         "stock_total": stock_total,
@@ -46,6 +65,9 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "mouser_part_number": part.get("MouserPartNumber", ""),
         "manufacturer_part_number": part.get("ManufacturerPartNumber", ""),
         "product_detail_url": part.get("ProductDetailUrl", ""),
+        "package": package,
+        "pin_count": pin_count,
+        "mounting_style": mounting_style,
     }
 
 
@@ -63,7 +85,33 @@ def default_part_result() -> dict:
         "mouser_part_number": "",
         "manufacturer_part_number": "",
         "product_detail_url": "",
+        "package": "",
+        "pin_count": 0,
+        "mounting_style": "",
     }
+
+
+def extract_mouser_attribute(part: dict, target_names: list) -> str:
+    attributes = part.get("ProductAttributes", [])
+
+    for attribute in attributes:
+        name = str(attribute.get("AttributeName", "")).lower()
+        value = str(attribute.get("AttributeValue", "")).strip()
+
+        for target in target_names:
+            if target.lower() in name:
+                return value
+
+    return ""
+
+
+def extract_pin_count(text: str) -> int:
+    match = re.search(r"\b(\d+)\b", str(text))
+
+    if match:
+        return int(match.group(1))
+
+    return 0
 
 
 def extract_stock_number(availability: str) -> int:
@@ -77,7 +125,7 @@ def extract_stock_number(availability: str) -> int:
 
     return int(digits) if digits else 0
 
-    
+
 def extract_mouser_price(part: dict) -> float:
     price_breaks = part.get("PriceBreaks", [])
 
@@ -97,6 +145,7 @@ def extract_mouser_price(part: dict) -> float:
         return float(price)
     except ValueError:
         return 0.0
+
 
 def infer_lifecycle_status(part: dict) -> str:
     lifecycle = part.get("LifecycleStatus")
