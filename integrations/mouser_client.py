@@ -31,6 +31,11 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         return default_part_result()
 
     part = parts[0]
+    import json
+
+    raise Exception(
+        json.dumps(part, indent=2)[:5000]
+    )
 
     availability = part.get("Availability", "")
     stock_total = extract_stock_number(availability)
