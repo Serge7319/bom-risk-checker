@@ -264,7 +264,17 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             reasons.append("✓ MOSFET type match")
 
         elif "logic" in candidate_architecture:
-            reasons.append("✓ Logic family match")
+            original_function = str(original.get("Function", "")).lower()
+            candidate_function = str(candidate.get("Function", "")).lower()
+
+            if (
+                original_function
+                and candidate_function
+                and original_function == candidate_function
+            ):
+                reasons.append("✓ Logic function match")
+            else:
+                reasons.append("⚠ Logic function mismatch")
 
         elif "regulator" in candidate_architecture:
             reasons.append("✓ Regulator type match")
@@ -504,6 +514,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             {
                 "Alternative Part": "SN74HC04N",
                 "Category": "Hex Inverter",
+                "Function": "Hex Inverter",
                 "Lifecycle": "Active",
                 "Estimated Risk": "Low",
                 "Recommendation": "Same-function hex inverter candidate",
@@ -517,6 +528,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             {
                 "Alternative Part": "CD74HC04E",
                 "Category": "Hex Inverter",
+                "Function": "Hex Inverter",
                 "Lifecycle": "Active",
                 "Estimated Risk": "Low",
                 "Recommendation": "Same-function 74HC04-family inverter",
@@ -530,6 +542,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             {
                 "Alternative Part": "M74HC04B1R",
                 "Category": "Hex Inverter",
+                "Function": "Hex Inverter",
                 "Lifecycle": "Active",
                 "Estimated Risk": "Low",
                 "Recommendation": "Same-function hex inverter option",
@@ -542,39 +555,41 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
-    elif (
-        "74hc595" in original_part_number.lower()
-        or "74hct595" in original_part_number.lower()
-        or "shift register" in description
-    ):
-        candidates = [
-            {
-                "Alternative Part": "SN74HC595N",
-                "Category": "8-Bit Shift Register",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Same-function serial-to-parallel shift register",
-                "Recommendation Score": 88,
-                "Architecture": "Shift Register Logic",
-                "Package": "DIP-16",
-                "Pin Count": 16,
-                "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Same shift-register function. Verify pinout, timing, latch behavior, voltage family, and output drive.",
-            },
-            {
-                "Alternative Part": "CD74HC595E",
-                "Category": "8-Bit Shift Register",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Same-function 74HC595-family shift register",
-                "Recommendation Score": 86,
-                "Architecture": "Shift Register Logic",
-                "Package": "DIP-16",
-                "Pin Count": 16,
-                "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Same function. Verify timing, pinout, package, latch behavior, and output drive.",
-            },
-        ]
+        elif (
+            "74hc595" in original_part_number.lower()
+            or "74hct595" in original_part_number.lower()
+            or "shift register" in description
+        ):
+            candidates = [
+                {
+                    "Alternative Part": "SN74HC595N",
+                    "Category": "8-Bit Shift Register",
+                    "Function": "Shift Register",
+                    "Lifecycle": "Active",
+                    "Estimated Risk": "Low",
+                    "Recommendation": "Same-function serial-to-parallel shift register",
+                    "Recommendation Score": 88,
+                    "Architecture": "Shift Register Logic",
+                    "Package": "DIP-16",
+                    "Pin Count": 16,
+                    "Voltage Range": "2V-6V",
+                    "Compatibility Notes": "Same shift-register function. Verify pinout, timing, latch behavior, voltage family, and output drive.",
+                },
+                {
+                    "Alternative Part": "CD74HC595E",
+                    "Category": "8-Bit Shift Register",
+                    "Function": "Shift Register",
+                    "Lifecycle": "Active",
+                    "Estimated Risk": "Low",
+                    "Recommendation": "Same-function 74HC595-family shift register",
+                    "Recommendation Score": 86,
+                    "Architecture": "Shift Register Logic",
+                    "Package": "DIP-16",
+                    "Pin Count": 16,
+                    "Voltage Range": "2V-6V",
+                    "Compatibility Notes": "Same function. Verify timing, pinout, package, latch behavior, and output drive.",
+                },
+            ]
     
     # MOSFET / transistor family detection
     elif (
