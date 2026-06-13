@@ -303,7 +303,7 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             reasons.append(f"⚠ Pin count differs: original {original_pin_count}, alternative {candidate_pin_count}")
 
     if candidate_voltage and candidate_voltage.lower() not in ["none", "n/a"]:
-        reasons.append(f"✓ Voltage range listed ({candidate_voltage})")
+        reasons.append(f"✓ Compatible operating voltage range ({candidate_voltage})")
 
     return "; ".join(reasons)
 
