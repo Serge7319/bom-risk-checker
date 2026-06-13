@@ -115,8 +115,7 @@ def get_supplier_results(part_number):
 def get_best_part_data(part_number: str) -> dict:
     supplier_results = get_supplier_results(part_number)
 
-    st.write("Supplier results debug:", supplier_results)
-    st.stop()
+
 
     valid_results = [
         result for result in supplier_results
