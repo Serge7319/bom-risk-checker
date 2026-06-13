@@ -2579,13 +2579,14 @@ if app_mode == "Alternative Finder":
             if reason.strip()
         ]
 
-        summary_points = reason_list
+        recommendation_points = reason_list
+        tradeoff_points = []
 
         if stock_delta != "N/A":
-            summary_points.append(stock_delta)
+            tradeoff_points.append(stock_delta)
 
         if price_delta != "N/A":
-            summary_points.append(price_delta)
+            tradeoff_points.append(price_delta)
 
         st.subheader("Why this alternative?")
 
@@ -2593,8 +2594,14 @@ if app_mode == "Alternative Finder":
             f"**{selected_row.get('Alternative Part', '')}** is recommended because:"
         )
 
-        for point in summary_points:
+        st.markdown("**Recommended because:**")
+        for point in recommendation_points:
             st.markdown(f"- {point}")
+
+        if tradeoff_points:
+            st.markdown("**Tradeoffs:**")
+            for point in tradeoff_points:
+                st.markdown(f"- {point}")
         
         st.subheader("Side-by-Side Comparison")
 
