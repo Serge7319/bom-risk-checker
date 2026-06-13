@@ -2605,6 +2605,11 @@ if app_mode == "Alternative Finder":
         for point in recommendation_points:
             st.markdown(f"- {point}")
 
+        if advantage_points:
+            st.markdown("**Advantages:**")
+            for point in advantage_points:
+                st.markdown(f"- {point}")
+
         if tradeoff_points:
             st.markdown("**Tradeoffs:**")
             for point in tradeoff_points:
