@@ -32,6 +32,9 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         return default_part_result()
 
     part = parts[0]
+    st.write("Mouser raw keys:", list(part.keys()))
+    st.write("Mouser raw part:", part)
+    st.stop()
 
     availability = part.get("Availability", "")
     stock_total = extract_stock_number(availability)
