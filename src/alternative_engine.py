@@ -493,95 +493,86 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
-    # Logic IC family detection
+    # Logic IC family detection — stricter functional matching
     elif (
-        "logic" in description
-        or "gate" in description
-        or "counter" in description
-        or "shift register" in description
-        or "74hc" in original_part_number.lower()
-        or "74ls" in original_part_number.lower()
-        or "74hct" in original_part_number.lower()
-        or "cd40" in original_part_number.lower()
+        "74hc04" in original_part_number.lower()
+        or "74hct04" in original_part_number.lower()
+        or "74ls04" in original_part_number.lower()
+        or "hex inverter" in description
     ):
         candidates = [
-            {
-                "Alternative Part": "SN74HC00N",
-                "Category": "Quad NAND Gate",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Common 74HC NAND logic option",
-                "Recommendation Score": 86,
-                "Architecture": "CMOS Logic",
-                "Package": "DIP-14",
-                "Pin Count": 14,
-                "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Verify logic family, voltage levels, propagation delay, package, and pinout.",
-            },
             {
                 "Alternative Part": "SN74HC04N",
                 "Category": "Hex Inverter",
                 "Lifecycle": "Active",
                 "Estimated Risk": "Low",
-                "Recommendation": "Common 74HC inverter option",
+                "Recommendation": "Same-function hex inverter candidate",
+                "Recommendation Score": 88,
+                "Architecture": "Hex Inverter Logic",
+                "Package": "DIP-14",
+                "Pin Count": 14,
+                "Voltage Range": "2V-6V",
+                "Compatibility Notes": "Same logic function. Verify package, pinout, voltage family, propagation delay, and drive current.",
+            },
+            {
+                "Alternative Part": "CD74HC04E",
+                "Category": "Hex Inverter",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Same-function 74HC04-family inverter",
+                "Recommendation Score": 86,
+                "Architecture": "Hex Inverter Logic",
+                "Package": "DIP-14",
+                "Pin Count": 14,
+                "Voltage Range": "2V-6V",
+                "Compatibility Notes": "Same logic function. Verify package, pinout, voltage family, timing, and manufacturer specs.",
+            },
+            {
+                "Alternative Part": "M74HC04B1R",
+                "Category": "Hex Inverter",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Same-function hex inverter option",
                 "Recommendation Score": 84,
-                "Architecture": "CMOS Logic",
+                "Architecture": "Hex Inverter Logic",
                 "Package": "DIP-14",
                 "Pin Count": 14,
                 "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Use only for inverter applications. Verify pinout and drive requirements.",
+                "Compatibility Notes": "Same inverter function. Verify pinout, package, supply voltage, timing, and output drive.",
             },
-            {
-                "Alternative Part": "SN74HC08N",
-                "Category": "Quad AND Gate",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Common 74HC AND gate option",
-                "Recommendation Score": 82,
-                "Architecture": "CMOS Logic",
-                "Package": "DIP-14",
-                "Pin Count": 14,
-                "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Use only for AND-gate replacement. Verify logic thresholds and pin compatibility.",
-            },
-            {
-                "Alternative Part": "SN74HC14N",
-                "Category": "Hex Schmitt-Trigger Inverter",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Useful for noisy digital inputs",
-                "Recommendation Score": 80,
-                "Architecture": "CMOS Logic",
-                "Package": "DIP-14",
-                "Pin Count": 14,
-                "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Schmitt-trigger inverter; not identical to a standard inverter. Verify input behavior.",
-            },
-            {
-                "Alternative Part": "SN74HC32N",
-                "Category": "Quad OR Gate",
-                "Lifecycle": "Active",
-                "Estimated Risk": "Low",
-                "Recommendation": "Common 74HC OR gate option",
-                "Recommendation Score": 80,
-                "Architecture": "CMOS Logic",
-                "Package": "DIP-14",
-                "Pin Count": 14,
-                "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Use only for OR-gate replacement. Verify logic thresholds and pinout.",
-            },
+        ]
+
+    elif (
+        "74hc595" in original_part_number.lower()
+        or "74hct595" in original_part_number.lower()
+        or "shift register" in description
+    ):
+        candidates = [
             {
                 "Alternative Part": "SN74HC595N",
                 "Category": "8-Bit Shift Register",
                 "Lifecycle": "Active",
                 "Estimated Risk": "Low",
-                "Recommendation": "Common serial-to-parallel shift register",
-                "Recommendation Score": 78,
-                "Architecture": "CMOS Logic",
+                "Recommendation": "Same-function serial-to-parallel shift register",
+                "Recommendation Score": 88,
+                "Architecture": "Shift Register Logic",
                 "Package": "DIP-16",
                 "Pin Count": 16,
                 "Voltage Range": "2V-6V",
-                "Compatibility Notes": "Verify timing, output drive, latch behavior, package, and pinout.",
+                "Compatibility Notes": "Same shift-register function. Verify pinout, timing, latch behavior, voltage family, and output drive.",
+            },
+            {
+                "Alternative Part": "CD74HC595E",
+                "Category": "8-Bit Shift Register",
+                "Lifecycle": "Active",
+                "Estimated Risk": "Low",
+                "Recommendation": "Same-function 74HC595-family shift register",
+                "Recommendation Score": 86,
+                "Architecture": "Shift Register Logic",
+                "Package": "DIP-16",
+                "Pin Count": 16,
+                "Voltage Range": "2V-6V",
+                "Compatibility Notes": "Same function. Verify timing, pinout, package, latch behavior, and output drive.",
             },
         ]
     
