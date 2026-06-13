@@ -5,6 +5,7 @@ import streamlit as st
 
 
 def search_mouser_by_part_number(part_number: str) -> dict:
+    raise Exception("Mouser function was called")
     api_key = st.secrets.get("MOUSER_API_KEY")
 
     if not api_key:
