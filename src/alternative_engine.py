@@ -264,60 +264,46 @@ def get_drop_in_rating(confidence: int) -> str:
 def get_drop_in_reasons(original: dict, candidate: dict) -> str:
     reasons = []
 
-    original_package = str(original.get("Package", "")).lower()
-    candidate_package = str(candidate.get("Package", "")).lower()
+    original_architecture = str(original.get("Architecture", original.get("architecture", ""))).lower()
+    candidate_architecture = str(candidate.get("Architecture", candidate.get("architecture", ""))).lower()
 
-    original_pin_count = int(original.get("Pin Count", 0) or 0)
-    candidate_pin_count = int(candidate.get("Pin Count", 0) or 0)
+    original_function = str(original.get("Function", original.get("function", ""))).strip()
+    candidate_function = str(candidate.get("Function", candidate.get("function", ""))).strip()
 
-    original_architecture = str(original.get("Architecture", "")).lower()
-    candidate_architecture = str(candidate.get("Architecture", "")).lower()
+    original_package = str(original.get("Package", original.get("package", ""))).strip()
+    candidate_package = str(candidate.get("Package", candidate.get("package", ""))).strip()
 
-    if original_architecture == candidate_architecture:
+    original_pin_count = int(original.get("Pin Count", original.get("pin_count", 0)) or 0)
+    candidate_pin_count = int(candidate.get("Pin Count", candidate.get("pin_count", 0)) or 0)
 
-        if "optocoupler" in candidate_architecture:
-            reasons.append("✓ Optocoupler type match")
+    candidate_voltage = str(candidate.get("Voltage Range", candidate.get("voltage_range", ""))).strip()
 
-        elif "mosfet" in candidate_architecture:
-            reasons.append("✓ MOSFET type match")
-
-        elif "logic" in candidate_architecture:
-            original_function = str(original.get("Function", "")).lower()
-            candidate_function = str(candidate.get("Function", "")).lower()
-
-            if (
-                original_function
-                and candidate_function
-                and original_function == candidate_function
-            ):
-                reasons.append("✓ Logic function match")
-            else:
-                reasons.append("⚠ Logic function mismatch")
-
-        elif "regulator" in candidate_architecture:
-            reasons.append("✓ Regulator type match")
-
-        elif "connector" in candidate_architecture:
-            reasons.append("✓ Connector family match")
-
-        elif "relay" in candidate_architecture:
-            reasons.append("✓ Relay type match")
-
+    if original_function and candidate_function:
+        if original_function.lower() == candidate_function.lower():
+            reasons.append(f"✓ Same function ({candidate_function})")
         else:
-            reasons.append("✓ Architecture match")
+            reasons.append(f"⚠ Function differs ({candidate_function})")
 
-    else:
-        reasons.append("⚠ Architecture differs")
+    elif original_architecture and candidate_architecture:
+        if original_architecture == candidate_architecture:
+            reasons.append(f"✓ Same architecture ({candidate.get('Architecture', '')})")
+        else:
+            reasons.append("⚠ Architecture differs")
 
-    if original_package == candidate_package:
-        reasons.append("✓ Package match")
-    else:
-        reasons.append("⚠ Package mismatch")
+    if original_package and candidate_package:
+        if original_package.lower() == candidate_package.lower():
+            reasons.append(f"✓ Same package ({candidate_package})")
+        else:
+            reasons.append(f"⚠ Package differs: original {original_package}, alternative {candidate_package}")
 
-    if original_pin_count == candidate_pin_count:
-        reasons.append("✓ Pin count match")
-    else:
-        reasons.append("⚠ Pin count mismatch")
+    if original_pin_count and candidate_pin_count:
+        if original_pin_count == candidate_pin_count:
+            reasons.append(f"✓ Same pin count ({candidate_pin_count})")
+        else:
+            reasons.append(f"⚠ Pin count differs: original {original_pin_count}, alternative {candidate_pin_count}")
+
+    if candidate_voltage and candidate_voltage.lower() not in ["none", "n/a"]:
+        reasons.append(f"✓ Voltage range listed ({candidate_voltage})")
 
     return "; ".join(reasons)
 
