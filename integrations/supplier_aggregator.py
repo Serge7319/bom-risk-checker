@@ -64,7 +64,7 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
 
     except Exception as error:
         print(f"{source_name} lookup failed:", error)
-        
+
         return {
             "source": source_name,
             "error": str(error),
@@ -114,6 +114,9 @@ def get_supplier_results(part_number):
 @st.cache_data(ttl=1, show_spinner=False)
 def get_best_part_data(part_number: str) -> dict:
     supplier_results = get_supplier_results(part_number)
+
+    st.write("Supplier results debug:", supplier_results)
+    st.stop()
 
     valid_results = [
         result for result in supplier_results
