@@ -2545,12 +2545,12 @@ if app_mode == "Alternative Finder":
                 },
                 {
                     "Attribute": "Package",
-                    "Original": original_data.get("package", "Unknown"),
+                    "Original": original_data.get("package") or "Not available from supplier data",
                     "Selected Alternative": selected_row.get("Package", ""),
                 },
                 {
                     "Attribute": "Pin Count",
-                    "Original": original_data.get("pin_count", "Unknown"),
+                    "Original": original_data.get("pin_count") or "Not available from supplier data",
                     "Selected Alternative": selected_row.get("Pin Count", ""),
                 },
                 {
