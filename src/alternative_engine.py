@@ -223,11 +223,11 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     if "logic" in original_architecture or "logic" in candidate_architecture:
         if original_function and candidate_function:
             if original_function == candidate_function:
-                score += 50
+                score += 60
             else:
                 return 0
         else:
-            score += 15
+            score += 10
 
     elif original_architecture and candidate_architecture:
         if original_architecture == candidate_architecture:
@@ -303,7 +303,7 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             reasons.append(
                 f"⚠ Package differs: original {normalized_original_package}, alternative {normalized_candidate_package}"
             )
-            
+
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
             reasons.append(f"✓ Same pin count ({candidate_pin_count})")
