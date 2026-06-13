@@ -146,6 +146,27 @@ def get_best_part_data(part_number: str) -> dict:
     best_result["total_market_stock"] = total_market_stock
     best_result["sources_available"] = ", ".join(source_names)
     best_result["all_supplier_results"] = supplier_results
+
+    # Borrow missing package / pin-count / mounting-style data
+    # from any other supplier that has it.
+    if not best_result.get("package"):
+        for result in valid_results:
+            if result.get("package"):
+                best_result["package"] = result.get("package")
+                break
+
+    if not best_result.get("pin_count"):
+        for result in valid_results:
+            if result.get("pin_count"):
+                best_result["pin_count"] = result.get("pin_count")
+                break
+
+    if not best_result.get("mounting_style"):
+        for result in valid_results:
+            if result.get("mounting_style"):
+                best_result["mounting_style"] = result.get("mounting_style")
+                break
+
     best_result.setdefault("package", "")
     best_result.setdefault("pin_count", 0)
     best_result.setdefault("mounting_style", "")
