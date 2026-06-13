@@ -56,11 +56,32 @@ def search_digikey_by_part_number(part_number: str) -> dict:
     return normalize_digikey_product(product)
 
 
-def normalize_digikey_product(product: dict) -> dict:
-    import json
+def extract_digikey_parameter(product: dict, target_names: list) -> str:
+    parameters = product.get("Parameters", [])
 
-    with open("digikey_sample.json", "w") as f:
-        json.dump(product, f, indent=2)
+    for param in parameters:
+        name = str(param.get("ParameterText", "")).lower()
+        value = str(param.get("ValueText", ""))
+
+        for target in target_names:
+            if target.lower() in name:
+                return value
+
+    return ""
+
+
+def extract_pin_count(text: str) -> int:
+    import re
+
+    match = re.search(r"\b(\d+)\b", str(text))
+
+    if match:
+        return int(match.group(1))
+
+    return 0
+
+
+def normalize_digikey_product(product: dict) -> dict:
     manufacturer = product.get("Manufacturer", {})
     manufacturer_name = (
         manufacturer.get("Name", "")
@@ -69,6 +90,23 @@ def normalize_digikey_product(product: dict) -> dict:
     )
 
     stock_total = product.get("QuantityAvailable", 0) or 0
+
+    package = extract_digikey_parameter(
+        product,
+        ["Package / Case", "Supplier Device Package"],
+    )
+
+    mounting_style = extract_digikey_parameter(
+        product,
+        ["Mounting Type"],
+    )
+
+    pin_count_text = extract_digikey_parameter(
+        product,
+        ["Number of Pins", "Supplier Device Package", "Package / Case"],
+    )
+
+    pin_count = extract_pin_count(pin_count_text)
 
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
@@ -87,9 +125,9 @@ def normalize_digikey_product(product: dict) -> dict:
         "mouser_part_number": "",
         "manufacturer_part_number": product.get("ManufacturerProductNumber", ""),
         "product_detail_url": product.get("ProductUrl", ""),
-        "package": "",
-        "pin_count": 0,
-        "mounting_style": "",
+        "package": package,
+        "pin_count": pin_count,
+        "mounting_style": mounting_style,
     }
 
 def extract_digikey_price(product: dict) -> float:
