@@ -2481,13 +2481,17 @@ if app_mode == "Alternative Finder":
         original_price = float(original_data.get("unit_price", 0.0) or 0.0)
         alternative_price = float(selected_row.get("Unit Price", 0.0) or 0.0)
 
-        if original_stock > 0:
-            stock_pct = ((alternative_stock - original_stock) / original_stock) * 100
+        if original_stock > 0 and alternative_stock > 0:
+            stock_ratio = alternative_stock / original_stock
 
-            if stock_pct > 0:
-                stock_delta = f"🟢 {stock_pct:.1f}% more stock"
+            if stock_ratio > 1:
+                stock_delta = f"🟢 {stock_ratio:.0f}× more stock available"
             else:
-                stock_delta = f"🔴 {abs(stock_pct):.1f}% less stock"
+                stock_delta = f"🔴 {(1 / stock_ratio):.1f}× less stock available"
+
+        elif original_stock > 0 and alternative_stock == 0:
+            stock_delta = "🔴 No stock available"
+
         else:
             stock_delta = "N/A"
 
@@ -2500,6 +2504,7 @@ if app_mode == "Alternative Finder":
                 price_delta = f"🔴 {price_pct:.1f}% higher cost"
         else:
             price_delta = "N/A"
+
         comparison_df = pd.DataFrame(
             [
                 {
