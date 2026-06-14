@@ -55,6 +55,8 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     )
 
     pin_count = extract_pin_count(pin_count_text)
+    description = part.get("Description", "")
+    architecture = infer_architecture_from_description(description)
 
     return {
         "lifecycle_status": infer_lifecycle_status(part),
@@ -65,7 +67,8 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "has_alternates": False,
         "source": "Mouser",
         "manufacturer": part.get("Manufacturer", ""),
-        "description": part.get("Description", ""),
+        "description": description,
+        "architecture": architecture,
         "mouser_part_number": part.get("MouserPartNumber", ""),
         "manufacturer_part_number": part.get("ManufacturerPartNumber", ""),
         "product_detail_url": part.get("ProductDetailUrl", ""),
@@ -171,3 +174,44 @@ def infer_lifecycle_status(part: dict) -> str:
         return "Replacement Suggested"
 
     return "Active"
+
+
+def default_newark_result(part_number: str) -> dict:
+    return {
+        "source": "Newark",
+        "searched_part_number": part_number,
+        "lifecycle_status": "Unknown",
+        "stock_total": 0,
+        "supplier_count": 0,
+        "lead_time_weeks": None,
+        "unit_price": 0.0,
+        "has_alternates": False,
+        "manufacturer": "",
+        "description": "",
+        "mouser_part_number": "",
+        "manufacturer_part_number": "",
+        "product_detail_url": "",
+        "package": "",
+        "pin_count": 0,
+        "mounting_style": "",
+    }
+
+def infer_architecture_from_description(description: str) -> str:
+    description = str(description).lower()
+
+    if "op amp" in description or "operational amplifier" in description:
+        return "Operational Amplifier"
+
+    if "comparator" in description:
+        return "Comparator"
+
+    if "shift register" in description:
+        return "Shift Register"
+
+    if "inverter" in description:
+        return "Hex Inverter"
+
+    if "voltage regulator" in description:
+        return "Voltage Regulator"
+
+    return ""
