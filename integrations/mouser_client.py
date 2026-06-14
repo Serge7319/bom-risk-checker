@@ -218,7 +218,7 @@ def infer_architecture_from_description(description: str) -> str:
 
     return ""
 
-    def infer_channel_count_from_description(description: str) -> int:
+def infer_channel_count_from_description(description: str) -> int:
     description = str(description or "").lower()
 
     if "dual" in description or "2 channels" in description or "2-channel" in description:
