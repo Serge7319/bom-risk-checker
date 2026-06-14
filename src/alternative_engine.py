@@ -352,6 +352,31 @@ def normalize_package_name(package: str) -> str:
 
     return package
 
+
+def infer_architecture_from_description(description: str) -> str:
+    description = str(description).lower()
+
+    if "op amp" in description or "operational amplifier" in description:
+        return "Operational Amplifier"
+
+    if "comparator" in description:
+        return "Comparator"
+
+    if "shift register" in description:
+        return "Shift Register"
+
+    if "inverter" in description:
+        return "Hex Inverter"
+
+    if "flip flop" in description:
+        return "Flip-Flop"
+
+    if "voltage regulator" in description:
+        return "Voltage Regulator"
+
+    return ""
+
+
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
