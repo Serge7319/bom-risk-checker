@@ -215,6 +215,14 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         candidate.get("Pin Count", candidate.get("pin_count", 0)) or 0
     )
 
+    original_channel_count = int(
+    original.get("Channel Count", original.get("channel_count", 0)) or 0
+    )
+
+    candidate_channel_count = int(
+        candidate.get("Channel Count", candidate.get("channel_count", 0)) or 0
+    )
+
     candidate_voltage = str(
         candidate.get("Voltage Range", candidate.get("voltage_range", ""))
     ).lower()
@@ -318,6 +326,16 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         else:
             reasons.append(f"⚠ Pin count differs: original {original_pin_count}, alternative {candidate_pin_count}")
 
+    if original_channel_count and candidate_channel_count:
+        if original_channel_count == candidate_channel_count:
+            reasons.append(
+                f"✓ Same channel count ({candidate_channel_count})"
+            )
+        else:
+            reasons.append(
+                f"⚠ Channel count differs: original {original_channel_count}, alternative {candidate_channel_count}"
+            )
+
     if candidate_voltage and candidate_voltage.lower() not in ["none", "n/a"]:
         reasons.append(f"✓ Compatible operating voltage range ({candidate_voltage})")
 
@@ -379,6 +397,19 @@ def infer_architecture_from_description(description: str) -> str:
 
     return ""
 
+def infer_channel_count_from_description(description: str) -> int:
+    description = str(description or "").lower()
+
+    if "dual" in description or "2 channels" in description or "2-channel" in description:
+        return 2
+
+    if "quad" in description or "4 channels" in description or "4-channel" in description:
+        return 4
+
+    if "single" in description or "1 channel" in description or "1-channel" in description:
+        return 1
+
+    return 0
 
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
