@@ -289,6 +289,14 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
     original_pin_count = int(original.get("Pin Count", original.get("pin_count", 0)) or 0)
     candidate_pin_count = int(candidate.get("Pin Count", candidate.get("pin_count", 0)) or 0)
 
+    original_channel_count = int(
+    original.get("Channel Count", original.get("channel_count", 0)) or 0
+    )
+
+    candidate_channel_count = int(
+        candidate.get("Channel Count", candidate.get("channel_count", 0)) or 0
+    )
+
     candidate_voltage = str(candidate.get("Voltage Range", candidate.get("voltage_range", ""))).strip()
 
     if original_function and candidate_function:
