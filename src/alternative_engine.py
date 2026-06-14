@@ -267,10 +267,6 @@ def get_drop_in_rating(confidence: int) -> str:
 
 def get_drop_in_reasons(original: dict, candidate: dict) -> str:
     reasons = []
-    import streamlit as st
-
-    st.write("ORIGINAL DEBUG", original)
-    st.write("CANDIDATE DEBUG", candidate)
 
 
     original_architecture = str(original.get("Architecture", original.get("architecture", ""))).lower()
@@ -1955,15 +1951,13 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
 
-        original_candidate = next(
-            (
-                c for c in candidates
-                if isinstance(c, dict)
-                and c.get("Alternative Part", "").strip().lower()
-                == original_part_number.strip().lower()
-            ),
-            {},
-        )
+        original_candidate = {
+            "Alternative Part": original_part_number,
+            "Architecture": original_data.get("architecture", ""),
+            "Package": original_data.get("package", ""),
+            "Pin Count": original_data.get("pin_count", 0),
+            "Voltage Range": original_data.get("voltage_range", ""),
+        }
 
         candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
             original_candidate,
