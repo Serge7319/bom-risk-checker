@@ -293,6 +293,9 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         else:
             reasons.append("⚠ Architecture differs")
 
+    if not original_function and not original_architecture:
+        reasons.append("⚠ Original architecture could not be verified")
+
     normalized_original_package = normalize_package_name(original_package)
     normalized_candidate_package = normalize_package_name(candidate_package)
 
@@ -303,6 +306,8 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             reasons.append(
                 f"⚠ Package differs: original {normalized_original_package}, alternative {normalized_candidate_package}"
             )
+    if not normalized_original_package:
+        reasons.append("⚠ Original package could not be verified")
 
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
