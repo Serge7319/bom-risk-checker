@@ -57,6 +57,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     pin_count = extract_pin_count(pin_count_text)
     description = part.get("Description", "")
     architecture = infer_architecture_from_description(description)
+    channel_count = infer_channel_count_from_description(description)
 
     return {
         "lifecycle_status": infer_lifecycle_status(part),
@@ -75,6 +76,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "package": package,
         "pin_count": pin_count,
         "mounting_style": mounting_style,
+        "channel_count": channel_count,
     }
 
 
@@ -215,3 +217,17 @@ def infer_architecture_from_description(description: str) -> str:
         return "Voltage Regulator"
 
     return ""
+
+    def infer_channel_count_from_description(description: str) -> int:
+    description = str(description or "").lower()
+
+    if "dual" in description or "2 channels" in description or "2-channel" in description:
+        return 2
+
+    if "quad" in description or "4 channels" in description or "4-channel" in description:
+        return 4
+
+    if "single" in description or "1 channel" in description or "1-channel" in description:
+        return 1
+
+    return 0
