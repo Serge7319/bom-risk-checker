@@ -287,7 +287,7 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         else:
             reasons.append(f"⚠ Function differs ({candidate_function})")
 
-    elif original_architecture and candidate_architecture:
+    if original_architecture and candidate_architecture:
         if original_architecture == candidate_architecture:
             reasons.append(
                 f"✓ Same architecture ({candidate.get('Architecture', candidate.get('architecture', ''))})")
