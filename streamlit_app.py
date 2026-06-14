@@ -2554,6 +2554,13 @@ if app_mode == "Alternative Finder":
                     "Selected Alternative": selected_row.get("Pin Count", ""),
                 },
                 {
+                    "Attribute": "Architecture",
+                    "Original": original_data.get("architecture")
+                    or original_data.get("Architecture")
+                    or "Not available from supplier data",
+                    "Selected Alternative": selected_row.get("Architecture", ""),
+                },
+                {
                     "Attribute": "Drop-In Confidence",
                     "Original": "—",
                     "Selected Alternative": selected_row.get("Drop-In Confidence", ""),
