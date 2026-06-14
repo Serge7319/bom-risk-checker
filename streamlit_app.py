@@ -2586,9 +2586,18 @@ if app_mode == "Alternative Finder":
             if reason.strip()
         ]
 
-        recommendation_points = reason_list
+        recommendation_points = []
+        warning_points = []
         advantage_points = []
         tradeoff_points = []
+
+        for reason in reason_list:
+            if "could not be verified" in reason.lower():
+                warning_points.append(reason)
+            elif reason.startswith("⚠"):
+                warning_points.append(reason)
+            else:
+                recommendation_points.append(reason)
 
         if stock_delta != "N/A":
             if "more stock" in stock_delta.lower():
@@ -2611,6 +2620,11 @@ if app_mode == "Alternative Finder":
         st.markdown("**Recommended because:**")
         for point in recommendation_points:
             st.markdown(f"- {point}")
+
+        if warning_points:
+            st.markdown("**Warnings:**")
+            for point in warning_points:
+                st.markdown(f"- {point}")
 
         if advantage_points:
             st.markdown("**Advantages:**")
