@@ -1,4 +1,6 @@
 import os
+import re
+
 import requests
 from dotenv import load_dotenv
 
@@ -10,6 +12,7 @@ def search_newark_by_part_number(part_number: str) -> dict:
 
     try:
         import streamlit as st
+
         api_key = api_key or st.secrets.get("NEWARK_API_KEY")
     except Exception:
         pass
@@ -34,22 +37,15 @@ def search_newark_by_part_number(part_number: str) -> dict:
 
     data = response.json()
 
-    products = (
-        data.get("manufacturerPartNumberSearchReturn", {})
-        .get("products", [])
-    )
+    products = data.get("manufacturerPartNumberSearchReturn", {}).get("products", [])
 
     if not products:
-        products = (
-            data.get("keywordSearchReturn", {})
-            .get("products", [])
-        )
+        products = data.get("keywordSearchReturn", {}).get("products", [])
 
     if not products:
         return default_newark_result(part_number)
 
     product = products[0]
-    
 
     return normalize_newark_product(product)
 
@@ -58,6 +54,10 @@ def normalize_newark_product(product: dict) -> dict:
     stock_total = extract_newark_stock(product)
     manufacturer = extract_nested_value(product, ["brandName"]) or ""
     description = extract_nested_value(product, ["displayName"]) or ""
+
+    package = extract_package_from_text(description)
+    pin_count = extract_pin_count_from_text(description)
+    mounting_style = extract_mounting_style_from_text(description)
 
     return {
         "lifecycle_status": infer_newark_lifecycle(product),
@@ -73,7 +73,11 @@ def normalize_newark_product(product: dict) -> dict:
         "manufacturer_part_number": product.get("translatedManufacturerPartNumber", "")
         or product.get("manufacturerPartNumber", ""),
         "product_detail_url": product.get("productUrl", ""),
+        "package": package,
+        "pin_count": pin_count,
+        "mounting_style": mounting_style,
     }
+
 
 def extract_newark_price(product: dict) -> float:
     prices = product.get("prices", [])
@@ -86,7 +90,7 @@ def extract_newark_price(product: dict) -> float:
     except (ValueError, TypeError, AttributeError):
         return 0.0
 
-        
+
 def extract_newark_stock(product: dict) -> int:
     stock = product.get("stock", {})
 
@@ -137,6 +141,81 @@ def infer_newark_lifecycle(product: dict) -> str:
     return "Active"
 
 
+def extract_package_from_text(text: str) -> str:
+    text = str(text or "").upper()
+
+    package_patterns = [
+        r"\bPDIP[-\s]?(\d+)\b",
+        r"\bDIP[-\s]?(\d+)\b",
+        r"\bSOIC[-\s]?(\d+)\b",
+        r"\bSOP[-\s]?(\d+)\b",
+        r"\bTSSOP[-\s]?(\d+)\b",
+        r"\bSOT[-\s]?223\b",
+        r"\bTO[-\s]?220\b",
+    ]
+
+    for pattern in package_patterns:
+        match = re.search(pattern, text)
+
+        if match:
+            matched_text = match.group(0)
+
+            if "SOT" in matched_text:
+                return "SOT-223"
+
+            if "TO" in matched_text:
+                return "TO-220"
+
+            number = match.group(1)
+            package_name = re.sub(r"[^A-Z]", "", matched_text)
+
+            if "PDIP" in package_name:
+                return f"PDIP-{number}"
+
+            if "DIP" in package_name:
+                return f"DIP-{number}"
+
+            if "SOIC" in package_name:
+                return f"SOIC-{number}"
+
+            if "SOP" in package_name:
+                return f"SOP-{number}"
+
+            if "TSSOP" in package_name:
+                return f"TSSOP-{number}"
+
+    return ""
+
+
+def extract_pin_count_from_text(text: str) -> int:
+    text = str(text or "")
+
+    match = re.search(r"\b(\d+)\s*Pins?\b", text, re.IGNORECASE)
+
+    if match:
+        return int(match.group(1))
+
+    package = extract_package_from_text(text)
+    match = re.search(r"(\d+)$", package)
+
+    if match:
+        return int(match.group(1))
+
+    return 0
+
+
+def extract_mounting_style_from_text(text: str) -> str:
+    text = str(text or "").upper()
+
+    if "SMD" in text or "SMT" in text or "SURFACE MOUNT" in text:
+        return "SMD"
+
+    if "THROUGH HOLE" in text or "DIP" in text or "PDIP" in text:
+        return "Through Hole"
+
+    return ""
+
+
 def extract_nested_value(data: dict, keys: list):
     for key in keys:
         if key in data:
@@ -152,10 +231,14 @@ def default_newark_result(part_number: str) -> dict:
         "stock_total": 0,
         "supplier_count": 0,
         "lead_time_weeks": None,
+        "unit_price": 0.0,
         "has_alternates": False,
         "manufacturer": "",
         "description": "",
         "mouser_part_number": "",
         "manufacturer_part_number": "",
         "product_detail_url": "",
+        "package": "",
+        "pin_count": 0,
+        "mounting_style": "",
     }
