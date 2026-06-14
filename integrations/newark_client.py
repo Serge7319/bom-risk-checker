@@ -55,6 +55,7 @@ def normalize_newark_product(product: dict) -> dict:
     manufacturer = extract_nested_value(product, ["brandName"]) or ""
     description = extract_nested_value(product, ["displayName"]) or ""
     architecture = infer_architecture_from_description(description)
+    channel_count = infer_channel_count_from_description(description)
     package = extract_package_from_text(description)
     pin_count = extract_pin_count_from_text(description)
     mounting_style = extract_mounting_style_from_text(description)
@@ -77,6 +78,7 @@ def normalize_newark_product(product: dict) -> dict:
         "pin_count": pin_count,
         "mounting_style": mounting_style,
         "architecture": architecture,
+        "channel_count": channel_count,
     }
 
 
@@ -263,3 +265,17 @@ def infer_architecture_from_description(description: str) -> str:
         return "Voltage Regulator"
 
     return ""
+
+def infer_channel_count_from_description(description: str) -> int:
+    description = str(description or "").lower()
+
+    if "dual" in description or "2 channels" in description or "2-channel" in description:
+        return 2
+
+    if "quad" in description or "4 channels" in description or "4-channel" in description:
+        return 4
+
+    if "single" in description or "1 channel" in description or "1-channel" in description:
+        return 1
+
+    return 0
