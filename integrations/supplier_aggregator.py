@@ -114,6 +114,9 @@ def get_supplier_results(part_number):
 @st.cache_data(ttl=1, show_spinner=False)
 def get_best_part_data(part_number: str) -> dict:
     supplier_results = get_supplier_results(part_number)
+    st.write("Original part debug:", part_number)
+    st.write("Supplier results debug:", supplier_results)
+    st.stop()
 
 
 
