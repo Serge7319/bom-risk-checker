@@ -264,8 +264,14 @@ def get_drop_in_rating(confidence: int) -> str:
 
     return "🔴 Low"
 
+
 def get_drop_in_reasons(original: dict, candidate: dict) -> str:
     reasons = []
+    import streamlit as st
+
+    st.write("ORIGINAL DEBUG", original)
+    st.write("CANDIDATE DEBUG", candidate)
+
 
     original_architecture = str(original.get("Architecture", original.get("architecture", ""))).lower()
     candidate_architecture = str(candidate.get("Architecture", candidate.get("architecture", ""))).lower()
