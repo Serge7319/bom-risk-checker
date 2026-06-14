@@ -54,7 +54,7 @@ def normalize_newark_product(product: dict) -> dict:
     stock_total = extract_newark_stock(product)
     manufacturer = extract_nested_value(product, ["brandName"]) or ""
     description = extract_nested_value(product, ["displayName"]) or ""
-
+    architecture = infer_architecture_from_description(description)
     package = extract_package_from_text(description)
     pin_count = extract_pin_count_from_text(description)
     mounting_style = extract_mounting_style_from_text(description)
@@ -76,6 +76,7 @@ def normalize_newark_product(product: dict) -> dict:
         "package": package,
         "pin_count": pin_count,
         "mounting_style": mounting_style,
+        "architecture": architecture,
     }
 
 
@@ -242,3 +243,23 @@ def default_newark_result(part_number: str) -> dict:
         "pin_count": 0,
         "mounting_style": "",
     }
+
+def infer_architecture_from_description(description: str) -> str:
+    description = str(description).lower()
+
+    if "op amp" in description or "operational amplifier" in description:
+        return "Operational Amplifier"
+
+    if "comparator" in description:
+        return "Comparator"
+
+    if "shift register" in description:
+        return "Shift Register"
+
+    if "inverter" in description:
+        return "Hex Inverter"
+
+    if "voltage regulator" in description:
+        return "Voltage Regulator"
+
+    return ""
