@@ -1988,6 +1988,19 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Recommendation Score": 70,
             }
 
+        description_for_channel = " ".join(
+            [
+                str(candidate.get("Category", "")),
+                str(candidate.get("Architecture", "")),
+                str(candidate.get("Recommendation", "")),
+                str(candidate.get("Compatibility Notes", "")),
+            ]
+        )
+
+        candidate["Channel Count"] = candidate.get(
+            "Channel Count", 0
+        ) or infer_channel_count_from_description(description_for_channel)
+
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
 
         original_candidate = {
