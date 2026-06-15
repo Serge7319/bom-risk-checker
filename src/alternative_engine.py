@@ -1996,6 +1996,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Package": original_data.get("package", ""),
             "Pin Count": original_data.get("pin_count", 0),
             "Voltage Range": original_data.get("voltage_range", ""),
+            "Channel Count": original_data.get("channel_count", 0),
         }
 
         candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
