@@ -258,6 +258,12 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         else:
             score -= 20
 
+    if original_channel_count and candidate_channel_count:
+        if original_channel_count == candidate_channel_count:
+            score += 15
+        else:
+            score -= 25
+
     if candidate_voltage and candidate_voltage not in ["none", "n/a"]:
         score += 5
 
