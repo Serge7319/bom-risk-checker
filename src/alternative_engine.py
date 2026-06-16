@@ -270,10 +270,10 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     return max(0, min(score, 100))
 
 def get_drop_in_rating(confidence: int) -> str:
-    if confidence >= 90:
+    if confidence >= 80:
         return "🟢 High"
 
-    elif confidence >= 70:
+    elif confidence >= 50:
         return "🟡 Medium"
 
     return "🔴 Low"
