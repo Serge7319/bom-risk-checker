@@ -216,7 +216,7 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     )
 
     original_channel_count = int(
-    original.get("Channel Count", original.get("channel_count", 0)) or 0
+        original.get("Channel Count", original.get("channel_count", 0)) or 0
     )
 
     candidate_channel_count = int(
