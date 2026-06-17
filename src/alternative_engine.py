@@ -2070,6 +2070,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
             if best_match.get("Lifecycle"):
                 candidate["Lifecycle"] = best_match.get("Lifecycle")
+                
+    st.write("ORIGINAL DATA DEBUG", original_data)
 
     normalized_candidates = []
 
@@ -2099,7 +2101,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
 
-        st.write("ORIGINAL DATA DEBUG", original_data)
+        
 
         original_candidate = {
             "Alternative Part": original_part_number,
