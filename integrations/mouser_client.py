@@ -32,9 +32,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         return default_part_result()
 
     part = parts[0]
-    st.write("Mouser raw keys:", list(part.keys()))
-    st.write("Mouser raw part:", part)
-    st.stop()
+    
 
     availability = part.get("Availability", "")
     stock_total = extract_stock_number(availability)
@@ -43,6 +41,9 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         part,
         ["Package / Case", "Package", "Supplier Device Package"],
     )
+
+    if not package:
+        package = extract_package_from_text(part.get("Description", ""))
 
     mounting_style = extract_mouser_attribute(
         part,
@@ -178,25 +179,6 @@ def infer_lifecycle_status(part: dict) -> str:
     return "Active"
 
 
-def default_newark_result(part_number: str) -> dict:
-    return {
-        "source": "Newark",
-        "searched_part_number": part_number,
-        "lifecycle_status": "Unknown",
-        "stock_total": 0,
-        "supplier_count": 0,
-        "lead_time_weeks": None,
-        "unit_price": 0.0,
-        "has_alternates": False,
-        "manufacturer": "",
-        "description": "",
-        "mouser_part_number": "",
-        "manufacturer_part_number": "",
-        "product_detail_url": "",
-        "package": "",
-        "pin_count": 0,
-        "mounting_style": "",
-    }
 
 def infer_architecture_from_description(description: str) -> str:
     description = str(description).lower()
@@ -231,3 +213,44 @@ def infer_channel_count_from_description(description: str) -> int:
         return 1
 
     return 0
+
+def extract_package_from_text(text: str) -> str:
+    text = str(text or "").upper()
+
+    package_patterns = [
+        r"\bPDIP[-\s]?(\d+)\b",
+        r"\bDIP[-\s]?(\d+)\b",
+        r"\bSOIC[-\s]?(\d+)\b",
+        r"\bSOP[-\s]?(\d+)\b",
+        r"\bTSSOP[-\s]?(\d+)\b",
+        r"\bSOT[-\s]?223\b",
+        r"\bTO[-\s]?220\b",
+    ]
+
+    for pattern in package_patterns:
+        match = re.search(pattern, text)
+
+        if match:
+            matched_text = match.group(0)
+
+            if "SOT" in matched_text:
+                return "SOT-223"
+
+            if "TO" in matched_text:
+                return "TO-220"
+
+            number = match.group(1)
+            package_name = re.sub(r"[^A-Z]", "", matched_text)
+
+            if "PDIP" in package_name:
+                return f"PDIP-{number}"
+            if "DIP" in package_name:
+                return f"DIP-{number}"
+            if "SOIC" in package_name:
+                return f"SOIC-{number}"
+            if "SOP" in package_name:
+                return f"SOP-{number}"
+            if "TSSOP" in package_name:
+                return f"TSSOP-{number}"
+
+    return ""
