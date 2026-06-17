@@ -2070,8 +2070,22 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
             if best_match.get("Lifecycle"):
                 candidate["Lifecycle"] = best_match.get("Lifecycle")
-                
-    st.write("ORIGINAL DATA DEBUG", original_data)
+
+    st.write(
+        "ORIGINAL DATA DEBUG",
+        {
+            "source": original_data.get("source"),
+            "manufacturer_part_number": original_data.get("manufacturer_part_number"),
+            "description": original_data.get("description"),
+            "package": original_data.get("package"),
+            "pin_count": original_data.get("pin_count"),
+            "architecture": original_data.get("architecture"),
+            "channel_count": original_data.get("channel_count"),
+            "voltage_range": original_data.get("voltage_range"),
+            "stock_total": original_data.get("stock_total"),
+            "unit_price": original_data.get("unit_price"),
+        },
+    )
 
     normalized_candidates = []
 
