@@ -59,6 +59,9 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         result.setdefault("package", "")
         result.setdefault("pin_count", 0)
         result.setdefault("mounting_style", "")
+        result.setdefault("voltage_range", "")
+        result.setdefault("architecture", "")
+        result.setdefault("channel_count", 0)
 
         return result
 
@@ -165,9 +168,30 @@ def get_best_part_data(part_number: str) -> dict:
                 best_result["mounting_style"] = result.get("mounting_style")
                 break
 
+    if not best_result.get("voltage_range"):
+        for result in valid_results:
+            if result.get("voltage_range"):
+                best_result["voltage_range"] = result.get("voltage_range")
+                break
+
+    if not best_result.get("architecture"):
+        for result in valid_results:
+            if result.get("architecture"):
+                best_result["architecture"] = result.get("architecture")
+                break
+
+    if not best_result.get("channel_count"):
+        for result in valid_results:
+            if result.get("channel_count"):
+                best_result["channel_count"] = result.get("channel_count")
+                break
+
     best_result.setdefault("package", "")
     best_result.setdefault("pin_count", 0)
     best_result.setdefault("mounting_style", "")
+    best_result.setdefault("voltage_range", "")
+    best_result.setdefault("architecture", "")
+    best_result.setdefault("channel_count", 0)
 
     return best_result
 
