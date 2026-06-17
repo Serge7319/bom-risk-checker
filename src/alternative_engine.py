@@ -252,6 +252,15 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         else:
             score -= 15
 
+    original_package_family = package_family(original_package)
+    candidate_package_family = package_family(candidate_package)
+
+    if original_package_family and candidate_package_family:
+        if original_package_family == candidate_package_family:
+            score += 10
+        else:
+            score -= 25
+
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
             score += 20
@@ -331,8 +340,23 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             reasons.append(
                 f"⚠ Package differs: original {normalized_original_package}, alternative {normalized_candidate_package}"
             )
+
+    original_package_family = package_family(original_package)
+    candidate_package_family = package_family(candidate_package)
+
+    if original_package_family and candidate_package_family:
+        if original_package_family == candidate_package_family:
+            reasons.append(
+                f"✓ Same package family ({candidate_package_family})"
+            )
+        else:
+            reasons.append(
+                f"⚠ Package mounting style differs: original {original_package_family}, alternative {candidate_package_family}"
+            )
+
+
     if not normalized_original_package:
-        reasons.append("⚠ Original package could not be verified")
+        reasons.append("ℹ Package compatibility could not be verified from supplier data")
 
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
@@ -350,8 +374,34 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
                 f"⚠ Channel count differs: original {original_channel_count}, alternative {candidate_channel_count}"
             )
 
-    if candidate_voltage and candidate_voltage.lower() not in ["none", "n/a"]:
-        reasons.append(f"✓ Compatible operating voltage range ({candidate_voltage})")
+    original_voltage = str(
+        original.get("Voltage Range", original.get("voltage_range", ""))
+    ).strip()
+
+    candidate_voltage = str(
+        candidate.get("Voltage Range", candidate.get("voltage_range", ""))
+    ).strip()
+
+    original_min_v, original_max_v = extract_voltage_limits(original_voltage)
+    candidate_min_v, candidate_max_v = extract_voltage_limits(candidate_voltage)
+
+    if original_min_v and original_max_v and candidate_min_v and candidate_max_v:
+        if candidate_min_v <= original_min_v and candidate_max_v >= original_max_v:
+            reasons.append(
+                f"✓ Supply voltage range covers original ({candidate_voltage})"
+            )
+        elif candidate_min_v <= original_max_v and candidate_max_v >= original_min_v:
+            reasons.append(
+                f"⚠ Supply voltage range partially overlaps original ({candidate_voltage})"
+            )
+        else:
+            reasons.append(
+                f"⚠ Supply voltage range may not be compatible ({candidate_voltage})"
+            )
+    elif candidate_voltage and candidate_voltage.lower() not in ["none", "n/a"]:
+        reasons.append(
+            f"ℹ Candidate voltage range listed; verify against original ({candidate_voltage})"
+        )
 
     return "; ".join(reasons)
 
@@ -424,6 +474,45 @@ def infer_channel_count_from_description(description: str) -> int:
         return 1
 
     return 0
+
+import re
+
+def extract_voltage_limits(voltage_text: str) -> tuple:
+    text = str(voltage_text or "").lower().replace(" ", "")
+
+    matches = re.findall(r"(\d+(?:\.\d+)?)v", text)
+
+    if len(matches) >= 2:
+        return float(matches[0]), float(matches[1])
+
+    if len(matches) == 1:
+        value = float(matches[0])
+        return value, value
+
+    return 0.0, 0.0
+
+def package_family(package: str) -> str:
+    normalized = normalize_package_name(package)
+
+    if not normalized:
+        return ""
+
+    if "DIP" in normalized or "TO-220" in normalized or "TO-92" in normalized:
+        return "Through-Hole"
+
+    if (
+        "SOIC" in normalized
+        or "SOT" in normalized
+        or "QFN" in normalized
+        or "TQFP" in normalized
+        or "LQFP" in normalized
+        or "SMD" in normalized
+        or "SMT" in normalized
+    ):
+        return "Surface-Mount"
+
+    return "Unknown"
+
 
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
