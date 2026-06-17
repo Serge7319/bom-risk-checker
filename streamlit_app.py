@@ -2594,7 +2594,7 @@ if app_mode == "Alternative Finder":
         for reason in reason_list:
             if "could not be verified" in reason.lower():
                 warning_points.append(reason)
-            elif reason.startswith("⚠"):
+            elif reason.startswith("⚠") or reason.startswith("ℹ"):
                 warning_points.append(reason)
             else:
                 recommendation_points.append(reason)
