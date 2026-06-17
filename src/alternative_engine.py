@@ -3,6 +3,7 @@ import pandas as pd
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
 from integrations.supplier_aggregator import search_supplier_alternatives
+import streamlit as st
 
 def compare_parts(original_part_number: str, alternative_part_numbers: list) -> pd.DataFrame:
     """
@@ -2097,6 +2098,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         ) or infer_channel_count_from_description(description_for_channel)
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+
+        st.write("ORIGINAL DATA DEBUG", original_data)
 
         original_candidate = {
             "Alternative Part": original_part_number,
