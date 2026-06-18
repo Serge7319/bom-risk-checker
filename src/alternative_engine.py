@@ -401,7 +401,7 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             )
     elif candidate_voltage and candidate_voltage.lower() not in ["none", "n/a"]:
         reasons.append(
-            f"ℹ Candidate voltage range listed; verify against original ({candidate_voltage})"
+            f"ℹ Candidate voltage range listed ({candidate_voltage}); verify against original requirements"
         )
 
     return "; ".join(reasons)
