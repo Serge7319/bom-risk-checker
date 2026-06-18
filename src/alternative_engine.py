@@ -239,8 +239,24 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
             score += 10
 
     elif original_architecture and candidate_architecture:
+        incompatible_pairs = [
+            ("operational amplifier", "comparator"),
+            ("comparator", "operational amplifier"),
+            ("linear regulator", "ldo regulator"),
+            ("ldo regulator", "linear regulator"),
+        ]
+
+        for original_type, candidate_type in incompatible_pairs:
+            if original_type in original_architecture and candidate_type in candidate_architecture:
+                return 0
+
         if original_architecture == candidate_architecture:
             score += 40
+        elif (
+            "operational amplifier" in original_architecture
+            and "operational amplifier" in candidate_architecture
+        ):
+            score += 25
         else:
             score += 10
 
