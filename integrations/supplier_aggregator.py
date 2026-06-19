@@ -53,6 +53,11 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
                 "package": "",
                 "pin_count": 0,
                 "mounting_style": "",
+                "voltage_range": "",
+                "architecture": "",
+                "channel_count": 0,
+                "supply_voltage_min": None,
+                "supply_voltage_max": None,
             }
 
         result["source"] = source_name
@@ -62,6 +67,8 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         result.setdefault("voltage_range", "")
         result.setdefault("architecture", "")
         result.setdefault("channel_count", 0)
+        result.setdefault("supply_voltage_min", None)
+        result.setdefault("supply_voltage_max", None)
 
         return result
 
@@ -174,6 +181,18 @@ def get_best_part_data(part_number: str) -> dict:
                 best_result["voltage_range"] = result.get("voltage_range")
                 break
 
+    if best_result.get("supply_voltage_min") is None:
+        for result in valid_results:
+            if result.get("supply_voltage_min") is not None:
+                best_result["supply_voltage_min"] = result.get("supply_voltage_min")
+                break
+
+    if best_result.get("supply_voltage_max") is None:
+        for result in valid_results:
+            if result.get("supply_voltage_max") is not None:
+                best_result["supply_voltage_max"] = result.get("supply_voltage_max")
+                break
+
     if not best_result.get("architecture"):
         for result in valid_results:
             if result.get("architecture"):
@@ -192,6 +211,8 @@ def get_best_part_data(part_number: str) -> dict:
     best_result.setdefault("voltage_range", "")
     best_result.setdefault("architecture", "")
     best_result.setdefault("channel_count", 0)
+    best_result.setdefault("supply_voltage_min", None)
+    best_result.setdefault("supply_voltage_max", None)
 
     return best_result
 
@@ -246,4 +267,9 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
         "total_market_stock": 0,
         "sources_available": "",
         "all_supplier_results": supplier_results,
+        "voltage_range": "",
+        "architecture": "",
+        "channel_count": 0,
+        "supply_voltage_min": None,
+        "supply_voltage_max": None,
     }
