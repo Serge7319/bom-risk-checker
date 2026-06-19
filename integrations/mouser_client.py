@@ -56,6 +56,24 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     )
 
     pin_count = extract_pin_count(pin_count_text)
+
+    voltage_text = extract_mouser_attribute(
+        part,
+        [
+            "Supply Voltage",
+            "Operating Supply Voltage",
+            "Operating Voltage",
+            "Voltage - Supply",
+            "Vcc",
+        ],
+    )
+
+    supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_text)
+
+    st.write("Voltage text:", voltage_text)
+    st.write("Voltage min:", supply_voltage_min)
+    st.write("Voltage max:", supply_voltage_max)
+
     description = part.get("Description", "")
     architecture = infer_architecture_from_description(description)
     channel_count = infer_channel_count_from_description(description)
@@ -78,6 +96,9 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "pin_count": pin_count,
         "mounting_style": mounting_style,
         "channel_count": channel_count,
+        "voltage_range": voltage_text,
+        "supply_voltage_min": supply_voltage_min,
+        "supply_voltage_max": supply_voltage_max,
     }
 
 
@@ -98,6 +119,11 @@ def default_part_result() -> dict:
         "package": "",
         "pin_count": 0,
         "mounting_style": "",
+        "architecture": "",
+        "channel_count": 0,
+        "voltage_range": "",
+        "supply_voltage_min": None,
+        "supply_voltage_max": None,
     }
 
 
@@ -122,6 +148,20 @@ def extract_pin_count(text: str) -> int:
         return int(match.group(1))
 
     return 0
+
+def extract_voltage_limits(voltage_text: str):
+    text = str(voltage_text or "").lower().replace(" ", "")
+
+    matches = re.findall(r"(\d+(?:\.\d+)?)v", text)
+
+    if len(matches) >= 2:
+        return float(matches[0]), float(matches[1])
+
+    if len(matches) == 1:
+        value = float(matches[0])
+        return value, value
+
+    return None, None
 
 
 def extract_stock_number(availability: str) -> int:
