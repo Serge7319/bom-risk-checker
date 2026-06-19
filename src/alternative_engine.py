@@ -587,8 +587,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     original_data = get_best_part_data(original_part_number)
 
-    st.error("ORIGINAL PART DATA")
-    st.write(original_data)
+    
 
     description = original_data.get("description", "").lower()
 
