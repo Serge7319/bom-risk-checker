@@ -35,6 +35,11 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
 
         result = lookup_func(part_number)
 
+        import streamlit as st
+
+        st.error(f"SUPPLIER LOOKUP RAN: {source_name}")
+        st.write("Supplier result:", result)
+
         if not result:
             return {
                 "source": source_name,
