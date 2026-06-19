@@ -70,6 +70,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
 
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_text)
 
+    st.error("MOUSER CLIENT VOLTAGE DEBUG RUNNING")
     st.write("Voltage text:", voltage_text)
     st.write("Voltage min:", supply_voltage_min)
     st.write("Voltage max:", supply_voltage_max)
