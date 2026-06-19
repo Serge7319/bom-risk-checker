@@ -37,8 +37,6 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
 
      
 
-        raise Exception(f"SUPPLIER LOOKUP RAN: {source_name}")
-
         if not result:
             return {
                 "source": source_name,
