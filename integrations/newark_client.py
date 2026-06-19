@@ -79,6 +79,9 @@ def normalize_newark_product(product: dict) -> dict:
         "mounting_style": mounting_style,
         "architecture": architecture,
         "channel_count": channel_count,
+        "voltage_range": "",
+        "supply_voltage_min": None,
+        "supply_voltage_max": None,
     }
 
 
@@ -244,6 +247,11 @@ def default_newark_result(part_number: str) -> dict:
         "package": "",
         "pin_count": 0,
         "mounting_style": "",
+        "architecture": "",
+        "channel_count": 0,
+        "voltage_range": "",
+        "supply_voltage_min": None,
+        "supply_voltage_max": None,
     }
 
 def infer_architecture_from_description(description: str) -> str:
