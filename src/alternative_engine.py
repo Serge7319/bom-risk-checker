@@ -329,6 +329,50 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         candidate.get("Channel Count", candidate.get("channel_count", 0)) or 0
     )
 
+    original_voltage_min = original.get(
+        "Supply Voltage Min",
+        original.get("supply_voltage_min"),
+    )
+
+    original_voltage_max = original.get(
+        "Supply Voltage Max",
+        original.get("supply_voltage_max"),
+    )
+
+    candidate_voltage_min = candidate.get(
+        "Supply Voltage Min",
+        candidate.get("supply_voltage_min"),
+    )
+
+    candidate_voltage_max = candidate.get(
+        "Supply Voltage Max",
+        candidate.get("supply_voltage_max"),
+    )
+
+    original_voltage_min = (
+        float(original_voltage_min)
+        if original_voltage_min is not None
+        else None
+    )
+
+    original_voltage_max = (
+        float(original_voltage_max)
+        if original_voltage_max is not None
+        else None
+    )
+
+    candidate_voltage_min = (
+        float(candidate_voltage_min)
+        if candidate_voltage_min is not None
+        else None
+    )
+
+    candidate_voltage_max = (
+        float(candidate_voltage_max)
+        if candidate_voltage_max is not None
+        else None
+    )
+
     candidate_voltage = str(candidate.get("Voltage Range", candidate.get("voltage_range", ""))).strip()
 
     if original_function and candidate_function:
@@ -2116,6 +2160,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
 
+        candidate.setdefault("Supply Voltage Min", None)
+        candidate.setdefault("Supply Voltage Max", None)
+
         
 
         original_candidate = {
@@ -2125,6 +2172,12 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Pin Count": original_data.get("pin_count", 0),
             "Voltage Range": original_data.get("voltage_range", ""),
             "Channel Count": original_data.get("channel_count", 0),
+            "Supply Voltage Min": original_data.get(
+                "supply_voltage_min"
+            ),
+            "Supply Voltage Max": original_data.get(
+                "supply_voltage_max"
+            ),
         }
 
         candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
