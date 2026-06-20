@@ -102,7 +102,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "voltage_range": voltage_text,
         "supply_voltage_min": supply_voltage_min,
         "supply_voltage_max": supply_voltage_max,
-        "debug_attributes": raw_attributes,
+
     }
 
 
