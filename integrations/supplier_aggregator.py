@@ -31,11 +31,14 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
                 "package": "",
                 "pin_count": 0,
                 "mounting_style": "",
+                "voltage_range": "",
+                "architecture": "",
+                "channel_count": 0,
+                "supply_voltage_min": None,
+                "supply_voltage_max": None,
             }
 
         result = lookup_func(part_number)
-
-     
 
         if not result:
             return {
@@ -94,6 +97,11 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
             "package": "",
             "pin_count": 0,
             "mounting_style": "",
+            "voltage_range": "",
+            "architecture": "",
+            "channel_count": 0,
+            "supply_voltage_min": None,
+            "supply_voltage_max": None,
         }
 
 
