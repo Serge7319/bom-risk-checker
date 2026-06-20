@@ -2236,7 +2236,13 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         original_candidate = {
             "Alternative Part": original_part_number,
             "Architecture": original_data.get("architecture", ""),
-            "Package": original_data.get("package", ""),
+            "Package": original_data.get("package", "")
+            or (
+                "SMD-8"
+                if original_data.get("mounting_style") == "SMD"
+                and original_data.get("pin_count") == 8
+                else ""
+            ),
             "Pin Count": original_data.get("pin_count", 0),
             "Voltage Range": original_data.get("voltage_range", ""),
             "Channel Count": original_data.get("channel_count", 0),
