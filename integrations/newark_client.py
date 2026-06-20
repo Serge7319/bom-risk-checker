@@ -46,6 +46,9 @@ def search_newark_by_part_number(part_number: str) -> dict:
         return default_newark_result(part_number)
 
     product = products[0]
+    
+    st.write("NEWARK PRODUCT DEBUG", product)
+    st.stop()
 
     return normalize_newark_product(product)
 
