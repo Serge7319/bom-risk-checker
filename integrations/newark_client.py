@@ -62,6 +62,8 @@ def normalize_newark_product(product: dict) -> dict:
     package = extract_package_from_text(description)
     pin_count = extract_pin_count_from_text(description)
     mounting_style = extract_mounting_style_from_text(description)
+    voltage_range = extract_voltage_range_from_text(description)
+    supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_range)
 
     return {
         "lifecycle_status": infer_newark_lifecycle(product),
@@ -82,9 +84,9 @@ def normalize_newark_product(product: dict) -> dict:
         "mounting_style": mounting_style,
         "architecture": architecture,
         "channel_count": channel_count,
-        "voltage_range": "",
-        "supply_voltage_min": None,
-        "supply_voltage_max": None,
+        "voltage_range": voltage_range,
+        "supply_voltage_min": supply_voltage_min,
+        "supply_voltage_max": supply_voltage_max,
         "debug_newark_product": product,
     }
 
@@ -291,3 +293,32 @@ def infer_channel_count_from_description(description: str) -> int:
         return 1
 
     return 0
+
+def extract_voltage_range_from_text(text: str) -> str:
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*V\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*V",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return f"{match.group(1)}V to {match.group(2)}V"
+
+    return ""
+
+
+def extract_voltage_limits(voltage_text: str):
+    text = str(voltage_text or "").lower().replace(" ", "")
+
+    matches = re.findall(r"(\d+(?:\.\d+)?)v", text)
+
+    if len(matches) >= 2:
+        return float(matches[0]), float(matches[1])
+
+    if len(matches) == 1:
+        value = float(matches[0])
+        return value, value
+
+    return None, None
