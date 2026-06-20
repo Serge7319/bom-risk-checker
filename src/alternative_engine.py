@@ -646,8 +646,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "debug_newark_product": result.get("debug_newark_product"),
             }
         )
-    st.error("SAFE SUPPLIER DEBUG IS RUNNING")
-    st.write("SAFE SUPPLIER DEBUG", safe_supplier_debug)
+    
 
     
 
@@ -2257,6 +2256,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Supply Voltage Max": original_data.get(
                 "supply_voltage_max"
             ),
+            "Bandwidth MHz": original_data.get("bandwidth_mhz"),
+            "Slew Rate V/us": original_data.get("slew_rate_v_us"),
         }
 
         candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
