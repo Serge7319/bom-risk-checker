@@ -2219,8 +2219,13 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
 
-        candidate.setdefault("Supply Voltage Min", None)
-        candidate.setdefault("Supply Voltage Max", None)
+        candidate_part_number = candidate.get("Alternative Part", "")
+
+        candidate_supplier_data = get_best_part_data(candidate_part_number)
+
+        candidate["Supply Voltage Min"] = candidate_supplier_data.get("supply_voltage_min")
+        candidate["Supply Voltage Max"] = candidate_supplier_data.get("supply_voltage_max")
+        candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
 
         
 
