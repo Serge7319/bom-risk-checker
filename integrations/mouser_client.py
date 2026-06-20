@@ -32,9 +32,8 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         return default_part_result()
 
     part = parts[0]
-    st.write("MOUSER ATTRIBUTES")
-    st.write(part.get("ProductAttributes", []))
-    st.stop()
+
+    raw_attributes = part.get("ProductAttributes", [])
     
 
     availability = part.get("Availability", "")
@@ -103,6 +102,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "voltage_range": voltage_text,
         "supply_voltage_min": supply_voltage_min,
         "supply_voltage_max": supply_voltage_max,
+        "debug_attributes": raw_attributes,
     }
 
 
