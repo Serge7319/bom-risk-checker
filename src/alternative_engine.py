@@ -249,6 +249,18 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     candidate_voltage_min = float(candidate_voltage_min) if candidate_voltage_min is not None else None
     candidate_voltage_max = float(candidate_voltage_max) if candidate_voltage_max is not None else None
 
+    original_bandwidth = original.get("Bandwidth MHz", original.get("bandwidth_mhz"))
+    candidate_bandwidth = candidate.get("Bandwidth MHz", candidate.get("bandwidth_mhz"))
+
+    original_slew_rate = original.get("Slew Rate V/us", original.get("slew_rate_v_us"))
+    candidate_slew_rate = candidate.get("Slew Rate V/us", candidate.get("slew_rate_v_us"))
+
+    original_bandwidth = float(original_bandwidth) if original_bandwidth is not None else None
+    candidate_bandwidth = float(candidate_bandwidth) if candidate_bandwidth is not None else None
+
+    original_slew_rate = float(original_slew_rate) if original_slew_rate is not None else None
+    candidate_slew_rate = float(candidate_slew_rate) if candidate_slew_rate is not None else None
+
     candidate_voltage = str(
         candidate.get("Voltage Range", candidate.get("voltage_range", ""))
     ).lower()
@@ -329,6 +341,18 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
             score -= 20
     elif candidate_voltage and candidate_voltage not in ["none", "n/a"]:
         score += 3
+
+    if original_bandwidth is not None and candidate_bandwidth is not None:
+        if candidate_bandwidth >= original_bandwidth:
+            score += 8
+        else:
+            score -= 8
+
+    if original_slew_rate is not None and candidate_slew_rate is not None:
+        if candidate_slew_rate >= original_slew_rate:
+            score += 8
+        else:
+            score -= 8
 
     return max(0, min(score, 100))
 
@@ -2236,12 +2260,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
         candidate["Bandwidth MHz"] = candidate_supplier_data.get("bandwidth_mhz")
         candidate["Slew Rate V/us"] = candidate_supplier_data.get("slew_rate_v_us")
-        if candidate.get("Alternative Part") == "LM358P":
-            st.write(
-                "LM358P DEBUG",
-                candidate.get("Bandwidth MHz"),
-                candidate.get("Slew Rate V/us"),
-            )
+        
 
         
 
