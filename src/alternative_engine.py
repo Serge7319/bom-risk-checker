@@ -763,7 +763,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Architecture": "Operational Amplifier",
                 "Package": "DIP-8",
                 "Pin Count": 8,
-                "Voltage Range": "Single/Dual supply",
+                "Voltage Range": "3V to 32V",
+                "Supply Voltage Min": 3.0,
+                "Supply Voltage Max": 32.0,
                 "Compatibility Notes": "Review supply voltage range, input common-mode range, output swing, bandwidth, and pinout.",
             },
             {
@@ -776,7 +778,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Architecture": "Operational Amplifier",
                 "Package": "PDIP-8",
                 "Pin Count": 8,
-                "Voltage Range": "Single/Dual supply",
+                "Voltage Range": "3V to 32V",
+                "Supply Voltage Min": 3.0,
+                "Supply Voltage Max": 32.0,
                 "Compatibility Notes": "Similar LM358-family part; verify package, manufacturer pinout, and electrical specs.",
             },
             {
