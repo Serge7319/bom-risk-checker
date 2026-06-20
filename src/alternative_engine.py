@@ -126,6 +126,14 @@ def calculate_recommendation_score(candidate: dict) -> int:
         score += 20
         reasons.append("Compatible MCU architecture")
 
+    elif "operational amplifier" in architecture:
+        score += 5
+        reasons.append("Operational amplifier candidate")
+
+    elif architecture:
+        score -= 10
+        reasons.append("Architecture requires review")
+
     elif architecture:
         score -= 20
         reasons.append("Different MCU architecture")
