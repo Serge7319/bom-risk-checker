@@ -223,6 +223,18 @@ def get_best_part_data(part_number: str) -> dict:
                 best_result["channel_count"] = result.get("channel_count")
                 break
 
+    if best_result.get("bandwidth_mhz") is None:
+        for result in valid_results:
+            if result.get("bandwidth_mhz") is not None:
+                best_result["bandwidth_mhz"] = result.get("bandwidth_mhz")
+                break
+
+    if best_result.get("slew_rate_v_us") is None:
+        for result in valid_results:
+            if result.get("slew_rate_v_us") is not None:
+                best_result["slew_rate_v_us"] = result.get("slew_rate_v_us")
+                break
+
     best_result.setdefault("package", "")
     best_result.setdefault("pin_count", 0)
     best_result.setdefault("mounting_style", "")
@@ -231,6 +243,8 @@ def get_best_part_data(part_number: str) -> dict:
     best_result.setdefault("channel_count", 0)
     best_result.setdefault("supply_voltage_min", None)
     best_result.setdefault("supply_voltage_max", None)
+    best_result.setdefault("bandwidth_mhz", None)
+    best_result.setdefault("slew_rate_v_us", None)
 
     return best_result
 
