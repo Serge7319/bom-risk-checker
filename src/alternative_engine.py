@@ -509,17 +509,17 @@ def normalize_package_name(package: str) -> str:
     if not package:
         return ""
 
-    if "DIP" in package and "16" in package:
-        return "DIP-16"
+    package = package.replace(" ", "-")
 
-    if "DIP" in package and "14" in package:
-        return "DIP-14"
-
-    if "DIP" in package and "8" in package:
-        return "DIP-8"
-
-    if "DIP" in package and "4" in package:
-        return "DIP-4"
+    if any(term in package for term in ["PDIP", "NPDIP", "DIP"]):
+        if "16" in package:
+            return "DIP-16"
+        if "14" in package:
+            return "DIP-14"
+        if "8" in package:
+            return "DIP-8"
+        if "4" in package:
+            return "DIP-4"
 
     if "TO-220" in package:
         return "TO-220"
