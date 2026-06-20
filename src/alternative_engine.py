@@ -587,8 +587,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     original_data = get_best_part_data(original_part_number)
     st.write(
-        "NEWARK DEBUG PRODUCT",
-        original_data.get("debug_newark_product"),
+        "ALL SUPPLIER RESULTS",
+        original_data.get("all_supplier_results"),
     )
 
    
