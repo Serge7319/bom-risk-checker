@@ -2234,6 +2234,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate["Supply Voltage Min"] = candidate_supplier_data.get("supply_voltage_min")
         candidate["Supply Voltage Max"] = candidate_supplier_data.get("supply_voltage_max")
         candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
+        candidate["Bandwidth MHz"] = candidate_supplier_data.get("bandwidth_mhz")
+        candidate["Slew Rate V/us"] = candidate_supplier_data.get("slew_rate_v_us")
 
         
 
