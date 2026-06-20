@@ -2236,6 +2236,12 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
         candidate["Bandwidth MHz"] = candidate_supplier_data.get("bandwidth_mhz")
         candidate["Slew Rate V/us"] = candidate_supplier_data.get("slew_rate_v_us")
+        if candidate.get("Alternative Part") == "LM358P":
+            st.write(
+                "LM358P DEBUG",
+                candidate.get("Bandwidth MHz"),
+                candidate.get("Slew Rate V/us"),
+            )
 
         
 
