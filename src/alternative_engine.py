@@ -625,6 +625,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     original_data = get_best_part_data(original_part_number)
     safe_supplier_debug = []
 
+
     for result in original_data.get("all_supplier_results", []):
         safe_supplier_debug.append(
             {
@@ -640,6 +641,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "voltage_range": result.get("voltage_range"),
                 "supply_voltage_min": result.get("supply_voltage_min"),
                 "supply_voltage_max": result.get("supply_voltage_max"),
+                "bandwidth_mhz": result.get("bandwidth_mhz"),
+                "slew_rate_v_us": result.get("slew_rate_v_us"),
                 "debug_newark_product": result.get("debug_newark_product"),
             }
         )
