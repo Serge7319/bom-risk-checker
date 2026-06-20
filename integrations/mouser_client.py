@@ -32,7 +32,9 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         return default_part_result()
 
     part = parts[0]
+    st.write("MOUSER ATTRIBUTES")
     st.write(part.get("ProductAttributes", []))
+    st.stop()
     
 
     availability = part.get("Availability", "")
