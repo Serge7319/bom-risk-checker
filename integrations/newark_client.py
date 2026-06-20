@@ -64,6 +64,8 @@ def normalize_newark_product(product: dict) -> dict:
     mounting_style = extract_mounting_style_from_text(description)
     voltage_range = extract_voltage_range_from_text(description)
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_range)
+    bandwidth_mhz = extract_bandwidth_mhz_from_text(description)
+    slew_rate_v_us = extract_slew_rate_from_text(description)
 
     return {
         "lifecycle_status": infer_newark_lifecycle(product),
@@ -87,6 +89,8 @@ def normalize_newark_product(product: dict) -> dict:
         "voltage_range": voltage_range,
         "supply_voltage_min": supply_voltage_min,
         "supply_voltage_max": supply_voltage_max,
+        "bandwidth_mhz": bandwidth_mhz,
+        "slew_rate_v_us": slew_rate_v_us,
         "debug_newark_product": product,
     }
 
@@ -322,3 +326,33 @@ def extract_voltage_limits(voltage_text: str):
         return value, value
 
     return None, None
+
+
+def extract_bandwidth_mhz_from_text(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*MHz",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    return None
+
+
+def extract_slew_rate_from_text(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*V\s*/\s*µs",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    return None
