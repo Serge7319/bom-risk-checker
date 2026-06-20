@@ -35,7 +35,7 @@ def search_digikey_by_part_number(part_number: str) -> dict:
     access_token = get_digikey_access_token()
 
     encoded_part_number = quote(part_number, safe="")
-    url = f"https://api.digikey.com/products/v4/search/{encoded_part_number}/productdetails"
+    url = "https://api.digikey.com/products/v4/search/keyword"
 
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -45,11 +45,23 @@ def search_digikey_by_part_number(part_number: str) -> dict:
         "X-DIGIKEY-Locale-Currency": "USD",
     }
 
-    response = requests.get(url, headers=headers, timeout=15)
+    payload = {
+        "Keywords": part_number,
+        "Limit": 1,
+        "Offset": 0,
+    }
+
+    response = requests.post(url, headers=headers, json=payload, timeout=15)
     response.raise_for_status()
 
     data = response.json()
-    product = data.get("Product", data)
+
+    products = data.get("Products", [])
+
+    if not products:
+        return default_digikey_result(part_number)
+
+    product = products[0]
 
 
     return normalize_digikey_product(product)
@@ -170,3 +182,31 @@ def infer_digikey_lifecycle(product: dict) -> str:
         return status_text
 
     return "Active"
+
+
+def default_digikey_result(part_number: str) -> dict:
+    return {
+        "source": "DigiKey",
+        "searched_part_number": part_number,
+        "lifecycle_status": "Unknown",
+        "stock_total": 0,
+        "supplier_count": 0,
+        "lead_time_weeks": None,
+        "unit_price": 0.0,
+        "has_alternates": False,
+        "manufacturer": "",
+        "description": "",
+        "mouser_part_number": "",
+        "manufacturer_part_number": "",
+        "product_detail_url": "",
+        "package": "",
+        "pin_count": 0,
+        "mounting_style": "",
+        "architecture": "",
+        "channel_count": 0,
+        "voltage_range": "",
+        "supply_voltage_min": None,
+        "supply_voltage_max": None,
+        "bandwidth_mhz": None,
+        "slew_rate_v_us": None,
+    }
