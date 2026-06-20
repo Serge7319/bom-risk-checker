@@ -525,6 +525,38 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             f"ℹ Candidate voltage range listed ({candidate_voltage}); verify against original requirements"
         )
 
+    original_bandwidth = original.get("Bandwidth MHz", original.get("bandwidth_mhz"))
+    candidate_bandwidth = candidate.get("Bandwidth MHz", candidate.get("bandwidth_mhz"))
+
+    original_slew_rate = original.get("Slew Rate V/us", original.get("slew_rate_v_us"))
+    candidate_slew_rate = candidate.get("Slew Rate V/us", candidate.get("slew_rate_v_us"))
+
+    if original_bandwidth is not None and candidate_bandwidth is not None:
+        original_bandwidth = float(original_bandwidth)
+        candidate_bandwidth = float(candidate_bandwidth)
+
+        if candidate_bandwidth >= original_bandwidth:
+            reasons.append(
+                f"✓ Bandwidth meets or exceeds original ({candidate_bandwidth} MHz vs {original_bandwidth} MHz)"
+            )
+        else:
+            reasons.append(
+                f"⚠ Bandwidth is lower than original ({candidate_bandwidth} MHz vs {original_bandwidth} MHz)"
+            )
+
+    if original_slew_rate is not None and candidate_slew_rate is not None:
+        original_slew_rate = float(original_slew_rate)
+        candidate_slew_rate = float(candidate_slew_rate)
+
+        if candidate_slew_rate >= original_slew_rate:
+            reasons.append(
+                f"✓ Slew rate meets or exceeds original ({candidate_slew_rate} V/µs vs {original_slew_rate} V/µs)"
+            )
+        else:
+            reasons.append(
+                f"⚠ Slew rate is lower than original ({candidate_slew_rate} V/µs vs {original_slew_rate} V/µs)"
+            )
+
     return "; ".join(reasons)
 
 def normalize_package_name(package: str) -> str:
