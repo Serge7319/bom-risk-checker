@@ -36,6 +36,10 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
                 "channel_count": 0,
                 "supply_voltage_min": None,
                 "supply_voltage_max": None,
+                "bandwidth_mhz": None,
+                "slew_rate_v_us": None,
+                "bandwidth_mhz": None,
+                "slew_rate_v_us": None,
             }
 
         result = lookup_func(part_number)
@@ -63,6 +67,8 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
                 "channel_count": 0,
                 "supply_voltage_min": None,
                 "supply_voltage_max": None,
+                "bandwidth_mhz": None,
+                "slew_rate_v_us": None,
             }
 
         result["source"] = source_name
@@ -102,6 +108,8 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
             "channel_count": 0,
             "supply_voltage_min": None,
             "supply_voltage_max": None,
+            "bandwidth_mhz": None,
+            "slew_rate_v_us": None,
         }
 
 
@@ -282,4 +290,6 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
         "channel_count": 0,
         "supply_voltage_min": None,
         "supply_voltage_max": None,
+        "bandwidth_mhz": None,
+        "slew_rate_v_us": None,
     }
