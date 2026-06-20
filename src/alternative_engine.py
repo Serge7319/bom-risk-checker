@@ -646,6 +646,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "debug_newark_product": result.get("debug_newark_product"),
             }
         )
+    st.error("SAFE SUPPLIER DEBUG IS RUNNING")
+    st.write("SAFE SUPPLIER DEBUG", safe_supplier_debug)
 
     
 
