@@ -128,6 +128,8 @@ def default_part_result() -> dict:
         "voltage_range": "",
         "supply_voltage_min": None,
         "supply_voltage_max": None,
+        "bandwidth_mhz": None,
+        "slew_rate_v_us": None,
     }
 
 
