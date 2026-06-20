@@ -303,6 +303,11 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     if normalized_original_package and normalized_candidate_package:
         if normalized_original_package == normalized_candidate_package:
             score += 25
+        elif (
+            normalized_original_package.endswith("-8")
+            and normalized_candidate_package.endswith("-8")
+        ):
+            score -= 8
         else:
             score -= 15
 
@@ -702,7 +707,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "debug_newark_product": result.get("debug_newark_product"),
             }
         )
-        st.write("SAFE SUPPLIER DEBUG", safe_supplier_debug)
+        
     
 
     
