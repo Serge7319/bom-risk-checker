@@ -587,7 +587,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     original_data = get_best_part_data(original_part_number)
 
-    st.write("ORIGINAL DEBUG ATTRIBUTES", original_data.get("debug_attributes"))
+   
 
     
 
