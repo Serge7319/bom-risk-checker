@@ -46,7 +46,7 @@ def search_newark_by_part_number(part_number: str) -> dict:
         return default_newark_result(part_number)
 
     product = products[0]
-    
+
     st.write("NEWARK PRODUCT DEBUG", product)
     st.stop()
 
@@ -85,6 +85,7 @@ def normalize_newark_product(product: dict) -> dict:
         "voltage_range": "",
         "supply_voltage_min": None,
         "supply_voltage_max": None,
+        "debug_newark_product": product,
     }
 
 
