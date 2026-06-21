@@ -188,6 +188,12 @@ def calculate_recommendation_score(candidate: dict) -> int:
         score -= 3
         reasons.append("Board/firmware changes likely")
 
+    drop_in_confidence = int(
+        candidate.get("Drop-In Confidence", 0) or 0
+    )
+
+    score += round(drop_in_confidence * 0.2)
+
     score = max(0, min(score, 98))
 
     if "best drop-in" in recommendation:
@@ -2304,7 +2310,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Channel Count", 0
         ) or infer_channel_count_from_description(description_for_channel)
 
-        candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+     
 
         candidate_part_number = candidate.get("Alternative Part", "")
 
@@ -2355,6 +2361,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             original_candidate,
             candidate,
         )
+
+        candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+        
         normalized_candidates.append(candidate)
 
     candidates = normalized_candidates
