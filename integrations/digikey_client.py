@@ -119,6 +119,43 @@ def normalize_digikey_product(product: dict) -> dict:
 
     pin_count = extract_pin_count(pin_count_text)
 
+    description = (
+        product.get("Description", {}).get("ProductDescription", "")
+        if isinstance(product.get("Description"), dict)
+        else str(product.get("Description", ""))
+    )
+
+    architecture = infer_architecture_from_description(description)
+    channel_count = infer_channel_count_from_description(description)
+
+    voltage_range = extract_digikey_parameter(
+        product,
+        ["Voltage - Supply", "Supply Voltage", "Operating Supply Voltage"],
+    )
+
+    supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_range)
+
+    bandwidth_text = extract_digikey_parameter(
+        product,
+        ["Gain Bandwidth Product", "Bandwidth", "GBW"],
+    )
+
+    bandwidth_mhz = extract_frequency_mhz(bandwidth_text)
+
+    slew_rate_text = extract_digikey_parameter(
+        product,
+        ["Slew Rate"],
+    )
+
+    slew_rate_v_us = extract_slew_rate_v_us(slew_rate_text)
+
+    input_offset_text = extract_digikey_parameter(
+        product,
+        ["Voltage - Input Offset", "Input Offset Voltage"],
+    )
+
+    input_offset_mv = extract_voltage_mv(input_offset_text)
+
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
         "stock_total": int(stock_total),
@@ -128,17 +165,26 @@ def normalize_digikey_product(product: dict) -> dict:
         "has_alternates": False,
         "source": "DigiKey",
         "manufacturer": manufacturer_name,
-        "description": (
-            product.get("Description", {}).get("ProductDescription", "")
-            if isinstance(product.get("Description"), dict)
-            else str(product.get("Description", ""))
-        ),
+
+        "description": description,
+        "architecture": architecture,
+        "channel_count": channel_count,
+
         "mouser_part_number": "",
         "manufacturer_part_number": product.get("ManufacturerProductNumber", ""),
         "product_detail_url": product.get("ProductUrl", ""),
+
         "package": package,
         "pin_count": pin_count,
         "mounting_style": mounting_style,
+
+        "voltage_range": voltage_range,
+        "supply_voltage_min": supply_voltage_min,
+        "supply_voltage_max": supply_voltage_max,
+
+        "bandwidth_mhz": bandwidth_mhz,
+        "slew_rate_v_us": slew_rate_v_us,
+        "input_offset_mv": input_offset_mv,
     }
 
 def extract_digikey_price(product: dict) -> float:
@@ -210,3 +256,47 @@ def default_digikey_result(part_number: str) -> dict:
         "bandwidth_mhz": None,
         "slew_rate_v_us": None,
     }
+
+
+def extract_frequency_mhz(text: str):
+    import re
+
+    text = str(text or "")
+
+    match = re.search(r"(\d+(?:\.\d+)?)\s*MHz", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+
+    match = re.search(r"(\d+(?:\.\d+)?)\s*kHz", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1)) / 1000
+
+    return None
+
+
+def extract_slew_rate_v_us(text: str):
+    import re
+
+    text = str(text or "")
+
+    match = re.search(r"(\d+(?:\.\d+)?)\s*V\s*/\s*µ?s", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+
+    return None
+
+
+def extract_voltage_mv(text: str):
+    import re
+
+    text = str(text or "")
+
+    match = re.search(r"(\d+(?:\.\d+)?)\s*mV", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+
+    match = re.search(r"(\d+(?:\.\d+)?)\s*V", text, re.IGNORECASE)
+    if match:
+        return float(match.group(1)) * 1000
+
+    return None
