@@ -335,3 +335,19 @@ def infer_channel_count_from_description(description: str) -> int:
         return 1
 
     return 0
+
+def extract_voltage_limits(voltage_text: str):
+    import re
+
+    text = str(voltage_text or "").lower().replace(" ", "")
+
+    matches = re.findall(r"(\d+(?:\.\d+)?)v", text)
+
+    if len(matches) >= 2:
+        return float(matches[0]), float(matches[1])
+
+    if len(matches) == 1:
+        value = float(matches[0])
+        return value, value
+
+    return None, None
