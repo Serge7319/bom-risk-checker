@@ -47,9 +47,6 @@ def search_newark_by_part_number(part_number: str) -> dict:
 
     product = products[0]
 
-    st.write("NEWARK PRODUCT DEBUG", product)
-    st.stop()
-
     return normalize_newark_product(product)
 
 
@@ -66,6 +63,10 @@ def normalize_newark_product(product: dict) -> dict:
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_range)
     bandwidth_mhz = extract_bandwidth_mhz_from_text(description)
     slew_rate_v_us = extract_slew_rate_from_text(description)
+    input_offset_mv = extract_input_offset_mv_from_text(description)
+    quiescent_current_ma = extract_quiescent_current_ma_from_text(description)
+    input_bias_na = extract_input_bias_na_from_text(description)
+    gbw_mhz = extract_gbw_mhz_from_text(description)
 
     return {
         "lifecycle_status": infer_newark_lifecycle(product),
@@ -91,7 +92,10 @@ def normalize_newark_product(product: dict) -> dict:
         "supply_voltage_max": supply_voltage_max,
         "bandwidth_mhz": bandwidth_mhz,
         "slew_rate_v_us": slew_rate_v_us,
-        "debug_newark_product": product,
+        "input_offset_mv": input_offset_mv,
+        "quiescent_current_ma": quiescent_current_ma,
+        "input_bias_na": input_bias_na,
+        "gbw_mhz": gbw_mhz,
     }
 
 
@@ -264,6 +268,10 @@ def default_newark_result(part_number: str) -> dict:
         "supply_voltage_max": None,
         "bandwidth_mhz": None,
         "slew_rate_v_us": None,
+        "input_offset_mv": None,
+        "quiescent_current_ma": None,
+        "input_bias_na": None,
+        "gbw_mhz": None,
     }
 
 def infer_architecture_from_description(description: str) -> str:
@@ -357,4 +365,53 @@ def extract_slew_rate_from_text(text: str):
     if match:
         return float(match.group(1))
 
+    return None
+
+
+def extract_input_offset_mv_from_text(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*mV",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    return None
+
+
+def extract_quiescent_current_ma_from_text(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*mA",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    return None
+
+
+def extract_input_bias_na_from_text(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*nA",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    return None
+
+
+def extract_gbw_mhz_from_text(text: str):
     return None
