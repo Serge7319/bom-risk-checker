@@ -732,7 +732,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         )
          
 
-    
+    st.write("SAFE SUPPLIER DEBUG", safe_supplier_debug)
 
     description = original_data.get("description", "").lower()
 
