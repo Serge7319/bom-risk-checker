@@ -168,6 +168,14 @@ def calculate_recommendation_score(candidate: dict) -> int:
     
     recommendation = str(candidate.get("Recommendation", "")).lower()
 
+    if "lm358-family" in recommendation:
+        score += 10
+        reasons.append("Same LM358 family")
+
+    elif "common dual op-amp alternative" in recommendation:
+        score += 5
+        reasons.append("General dual op-amp alternative")
+
     if "best drop-in" in recommendation:
         score += 15
         reasons.append("Best drop-in candidate")
