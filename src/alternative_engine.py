@@ -68,7 +68,8 @@ def suggest_alternatives_v1(original_part_number: str) -> list:
     return known_alternatives.get(normalized_part, [])
 
 def calculate_recommendation_score(candidate: dict) -> int:
-    score = int(candidate.get("Recommendation Score", 70))
+    base_score = int(candidate.get("Recommendation Score", 70))
+    score = round(base_score * 0.3)
     reasons = []
 
     lifecycle = str(candidate.get("Lifecycle", "")).lower()
