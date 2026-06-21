@@ -300,3 +300,38 @@ def extract_voltage_mv(text: str):
         return float(match.group(1)) * 1000
 
     return None
+
+def infer_architecture_from_description(description: str) -> str:
+    description = str(description).lower()
+
+    if "op amp" in description or "opamp" in description or "operational amplifier" in description:
+        return "Operational Amplifier"
+
+    if "comparator" in description:
+        return "Comparator"
+
+    if "shift register" in description:
+        return "Shift Register"
+
+    if "inverter" in description:
+        return "Hex Inverter"
+
+    if "voltage regulator" in description:
+        return "Voltage Regulator"
+
+    return ""
+
+
+def infer_channel_count_from_description(description: str) -> int:
+    description = str(description or "").lower()
+
+    if "2 circuit" in description or "dual" in description or "2 channels" in description or "2-channel" in description:
+        return 2
+
+    if "4 circuit" in description or "quad" in description or "4 channels" in description or "4-channel" in description:
+        return 4
+
+    if "1 circuit" in description or "single" in description or "1 channel" in description or "1-channel" in description:
+        return 1
+
+    return 0
