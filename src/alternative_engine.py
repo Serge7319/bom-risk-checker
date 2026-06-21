@@ -727,11 +727,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "supply_voltage_max": result.get("supply_voltage_max"),
                 "bandwidth_mhz": result.get("bandwidth_mhz"),
                 "slew_rate_v_us": result.get("slew_rate_v_us"),
-                "debug_newark_product": result.get("debug_newark_product"),
+                
             }
         )
-        
-    
+         
 
     
 
@@ -2363,7 +2362,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         )
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
-        
+
         normalized_candidates.append(candidate)
 
     candidates = normalized_candidates
