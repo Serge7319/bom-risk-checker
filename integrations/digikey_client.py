@@ -135,6 +135,10 @@ def normalize_digikey_product(product: dict) -> dict:
 
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_range)
 
+    if supply_voltage_min == supply_voltage_max:
+        supply_voltage_min = None
+        supply_voltage_max = None
+
     bandwidth_text = extract_digikey_parameter(
         product,
         ["Gain Bandwidth Product", "Bandwidth", "GBW"],
