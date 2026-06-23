@@ -2320,6 +2320,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
         candidate["Bandwidth MHz"] = candidate_supplier_data.get("bandwidth_mhz")
         candidate["Slew Rate V/us"] = candidate_supplier_data.get("slew_rate_v_us")
+        candidate["Input Offset mV"] = candidate_supplier_data.get("input_offset_mv")
+        candidate["Quiescent Current mA"] = candidate_supplier_data.get("quiescent_current_ma")
+        candidate["Input Bias nA"] = candidate_supplier_data.get("input_bias_na")
+        candidate["GBW MHz"] = candidate_supplier_data.get("gbw_mhz")
         
 
         
