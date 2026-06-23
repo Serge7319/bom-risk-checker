@@ -235,6 +235,30 @@ def get_best_part_data(part_number: str) -> dict:
                 best_result["slew_rate_v_us"] = result.get("slew_rate_v_us")
                 break
 
+    if best_result.get("input_offset_mv") is None:
+        for result in valid_results:
+            if result.get("input_offset_mv") is not None:
+                best_result["input_offset_mv"] = result.get("input_offset_mv")
+                break
+
+    if best_result.get("quiescent_current_ma") is None:
+        for result in valid_results:
+            if result.get("quiescent_current_ma") is not None:
+                best_result["quiescent_current_ma"] = result.get("quiescent_current_ma")
+                break
+
+    if best_result.get("input_bias_na") is None:
+        for result in valid_results:
+            if result.get("input_bias_na") is not None:
+                best_result["input_bias_na"] = result.get("input_bias_na")
+                break
+
+    if best_result.get("gbw_mhz") is None:
+        for result in valid_results:
+            if result.get("gbw_mhz") is not None:
+                best_result["gbw_mhz"] = result.get("gbw_mhz")
+                break
+
     best_result.setdefault("package", "")
     best_result.setdefault("pin_count", 0)
     best_result.setdefault("mounting_style", "")
@@ -245,6 +269,10 @@ def get_best_part_data(part_number: str) -> dict:
     best_result.setdefault("supply_voltage_max", None)
     best_result.setdefault("bandwidth_mhz", None)
     best_result.setdefault("slew_rate_v_us", None)
+    best_result.setdefault("input_offset_mv", None)
+    best_result.setdefault("quiescent_current_ma", None)
+    best_result.setdefault("input_bias_na", None)
+    best_result.setdefault("gbw_mhz", None)
 
     return best_result
 
