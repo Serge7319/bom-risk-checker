@@ -585,6 +585,29 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
                 f"⚠ Slew rate is lower than original ({candidate_slew_rate} V/µs vs {original_slew_rate} V/µs)"
             )
 
+    original_offset = original.get(
+        "Input Offset mV",
+        original.get("input_offset_mv"),
+    )
+
+    candidate_offset = candidate.get(
+        "Input Offset mV",
+        candidate.get("input_offset_mv"),
+    )
+
+    if original_offset is not None and candidate_offset is not None:
+        original_offset = float(original_offset)
+        candidate_offset = float(candidate_offset)
+
+        if candidate_offset <= original_offset:
+            reasons.append(
+                f"✓ Input offset voltage meets or improves original ({candidate_offset} mV vs {original_offset} mV)"
+            )
+        else:
+            reasons.append(
+                f"⚠ Higher input offset voltage ({candidate_offset} mV vs {original_offset} mV)"
+            )
+
     return "; ".join(reasons)
 
 def normalize_package_name(package: str) -> str:
