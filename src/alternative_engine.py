@@ -382,6 +382,25 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         else:
             score -= 8
 
+    original_offset = original.get(
+        "Input Offset mV",
+        original.get("input_offset_mv"),
+    )
+
+    candidate_offset = candidate.get(
+        "Input Offset mV",
+        candidate.get("input_offset_mv"),
+    )
+
+    if original_offset is not None and candidate_offset is not None:
+        original_offset = float(original_offset)
+        candidate_offset = float(candidate_offset)
+
+        if candidate_offset <= original_offset:
+            score += 5
+        else:
+            score -= 3
+
     return max(0, min(score, 100))
 
 def get_drop_in_rating(confidence: int) -> str:
