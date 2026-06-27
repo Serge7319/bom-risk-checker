@@ -50,6 +50,44 @@ ELECTRICAL_FIELDS = {
     },
 }
 
+FEATURE_TAGS = {
+    "rail_to_rail": {
+        "label": "Rail-to-rail",
+        "positive_weight": 8,
+        "mismatch_penalty": 6,
+    },
+    "low_noise": {
+        "label": "Low-noise",
+        "positive_weight": 6,
+        "mismatch_penalty": 4,
+    },
+    "low_power": {
+        "label": "Low-power",
+        "positive_weight": 5,
+        "mismatch_penalty": 4,
+    },
+    "jfet_input": {
+        "label": "JFET input",
+        "positive_weight": 5,
+        "mismatch_penalty": 5,
+    },
+    "cmos_input": {
+        "label": "CMOS input",
+        "positive_weight": 5,
+        "mismatch_penalty": 5,
+    },
+    "automotive_grade": {
+        "label": "Automotive-grade",
+        "positive_weight": 6,
+        "mismatch_penalty": 5,
+    },
+    "precision": {
+        "label": "Precision",
+        "positive_weight": 6,
+        "mismatch_penalty": 4,
+    },
+}
+
 def safe_float(value):
     try:
         if value is None or value == "":
@@ -57,6 +95,33 @@ def safe_float(value):
         return float(value)
     except (ValueError, TypeError):
         return None
+
+def infer_feature_tags(text: str) -> set:
+    text = str(text or "").lower()
+    tags = set()
+
+    if "rail-to-rail" in text or "rail to rail" in text or "rrio" in text:
+        tags.add("rail_to_rail")
+
+    if "low noise" in text or "low-noise" in text:
+        tags.add("low_noise")
+
+    if "low power" in text or "low-power" in text or "micropower" in text:
+        tags.add("low_power")
+
+    if "jfet" in text or "fet input" in text:
+        tags.add("jfet_input")
+
+    if "cmos" in text:
+        tags.add("cmos_input")
+
+    if "automotive" in text or "aec-q100" in text or "aec q100" in text:
+        tags.add("automotive_grade")
+
+    if "precision" in text or "low offset" in text:
+        tags.add("precision")
+
+    return tags
 
 def compare_parts(original_part_number: str, alternative_part_numbers: list) -> pd.DataFrame:
     """
@@ -434,6 +499,22 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
             else:
                 score -= config["weight"]
 
+    original_tags = original.get("Feature Tags", set()) or set()
+    candidate_tags = candidate.get("Feature Tags", set()) or set()
+
+    for tag_name, config in FEATURE_TAGS.items():
+        original_has_tag = tag_name in original_tags
+        candidate_has_tag = tag_name in candidate_tags
+
+        if original_has_tag and candidate_has_tag:
+            score += config["positive_weight"]
+
+        elif original_has_tag and not candidate_has_tag:
+            score -= config["mismatch_penalty"]
+
+        elif candidate_has_tag and not original_has_tag:
+            score += 2
+
     return max(0, min(score, 100))
 
     
@@ -761,6 +842,17 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     """
 
     original_data = get_best_part_data(original_part_number)
+
+    original_feature_text = " ".join(
+        [
+            str(original_data.get("manufacturer_part_number", "")),
+            str(original_data.get("architecture", "")),
+            str(original_data.get("description", "")),
+        ]
+    )
+
+    original_data["Feature Tags"] = infer_feature_tags(original_feature_text)
+
     safe_supplier_debug = []
 
 
@@ -2376,7 +2468,18 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         for field_name, config in ELECTRICAL_FIELDS.items():
             candidate[config["display_key"]] = candidate_supplier_data.get(field_name)
         
+        feature_text = " ".join(
+            [
+                str(candidate.get("Alternative Part", "")),
+                str(candidate.get("Category", "")),
+                str(candidate.get("Architecture", "")),
+                str(candidate.get("Recommendation", "")),
+                str(candidate.get("Compatibility Notes", "")),
+                str(candidate_supplier_data.get("description", "")),
+            ]
+        )
 
+        candidate["Feature Tags"] = infer_feature_tags(feature_text)
         
 
         original_candidate = {
@@ -2400,7 +2503,12 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             ),
             "Bandwidth MHz": original_data.get("bandwidth_mhz"),
             "Slew Rate V/us": original_data.get("slew_rate_v_us"),
-        }
+            "Input Offset mV": original_data.get("input_offset_mv"),
+            "Quiescent Current mA": original_data.get("quiescent_current_ma"),
+            "Input Bias nA": original_data.get("input_bias_na"),
+            "GBW MHz": original_data.get("gbw_mhz"),
+            "Feature Tags": original_data.get("Feature Tags", set()),
+           }
 
         candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
             original_candidate,
