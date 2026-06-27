@@ -720,6 +720,22 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
                     f"⚠ {label} is higher than original ({candidate_value} {unit} vs {original_value} {unit})"
                 )
 
+    original_tags = original.get("Feature Tags", set()) or set()
+    candidate_tags = candidate.get("Feature Tags", set()) or set()
+
+    for tag_name, config in FEATURE_TAGS.items():
+        original_has_tag = tag_name in original_tags
+        candidate_has_tag = tag_name in candidate_tags
+
+        if original_has_tag and candidate_has_tag:
+            reasons.append(f"✓ Shared feature: {config['label']}")
+
+        elif original_has_tag and not candidate_has_tag:
+            reasons.append(f"⚠ Original has {config['label']} feature, but candidate does not")
+
+        elif candidate_has_tag and not original_has_tag:
+            reasons.append(f"＋ Candidate adds {config['label']} capability")
+
     return "; ".join(reasons)
 
 def normalize_package_name(package: str) -> str:
