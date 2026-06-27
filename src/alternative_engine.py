@@ -606,60 +606,38 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
             f"ℹ Candidate voltage range listed ({candidate_voltage}); verify against original requirements"
         )
 
-    original_bandwidth = original.get("Bandwidth MHz", original.get("bandwidth_mhz"))
-    candidate_bandwidth = candidate.get("Bandwidth MHz", candidate.get("bandwidth_mhz"))
+    for field_name, config in ELECTRICAL_FIELDS.items():
+        original_value = safe_float(
+            original.get(config["display_key"], original.get(field_name))
+        )
+        candidate_value = safe_float(
+            candidate.get(config["display_key"], candidate.get(field_name))
+        )
 
-    original_slew_rate = original.get("Slew Rate V/us", original.get("slew_rate_v_us"))
-    candidate_slew_rate = candidate.get("Slew Rate V/us", candidate.get("slew_rate_v_us"))
+        if original_value is None or candidate_value is None:
+            continue
 
-    if original_bandwidth is not None and candidate_bandwidth is not None:
-        original_bandwidth = float(original_bandwidth)
-        candidate_bandwidth = float(candidate_bandwidth)
+        label = config["label"]
+        unit = config["unit"]
 
-        if candidate_bandwidth >= original_bandwidth:
-            reasons.append(
-                f"✓ Bandwidth meets or exceeds original ({candidate_bandwidth} MHz vs {original_bandwidth} MHz)"
-            )
+        if config["higher_is_better"]:
+            if candidate_value >= original_value:
+                reasons.append(
+                    f"✓ {label} meets or exceeds original ({candidate_value} {unit} vs {original_value} {unit})"
+                )
+            else:
+                reasons.append(
+                    f"⚠ {label} is lower than original ({candidate_value} {unit} vs {original_value} {unit})"
+                )
         else:
-            reasons.append(
-                f"⚠ Bandwidth is lower than original ({candidate_bandwidth} MHz vs {original_bandwidth} MHz)"
-            )
-
-    if original_slew_rate is not None and candidate_slew_rate is not None:
-        original_slew_rate = float(original_slew_rate)
-        candidate_slew_rate = float(candidate_slew_rate)
-
-        if candidate_slew_rate >= original_slew_rate:
-            reasons.append(
-                f"✓ Slew rate meets or exceeds original ({candidate_slew_rate} V/µs vs {original_slew_rate} V/µs)"
-            )
-        else:
-            reasons.append(
-                f"⚠ Slew rate is lower than original ({candidate_slew_rate} V/µs vs {original_slew_rate} V/µs)"
-            )
-
-    original_offset = original.get(
-        "Input Offset mV",
-        original.get("input_offset_mv"),
-    )
-
-    candidate_offset = candidate.get(
-        "Input Offset mV",
-        candidate.get("input_offset_mv"),
-    )
-
-    if original_offset is not None and candidate_offset is not None:
-        original_offset = float(original_offset)
-        candidate_offset = float(candidate_offset)
-
-        if candidate_offset <= original_offset:
-            reasons.append(
-                f"✓ Input offset voltage meets or improves original ({candidate_offset} mV vs {original_offset} mV)"
-            )
-        else:
-            reasons.append(
-                f"⚠ Higher input offset voltage ({candidate_offset} mV vs {original_offset} mV)"
-            )
+            if candidate_value <= original_value:
+                reasons.append(
+                    f"✓ {label} meets or improves original ({candidate_value} {unit} vs {original_value} {unit})"
+                )
+            else:
+                reasons.append(
+                    f"⚠ {label} is higher than original ({candidate_value} {unit} vs {original_value} {unit})"
+                )
 
     return "; ".join(reasons)
 
