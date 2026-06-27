@@ -5,6 +5,59 @@ from src.risk_engine import calculate_risk
 from integrations.supplier_aggregator import search_supplier_alternatives
 import streamlit as st
 
+ELECTRICAL_FIELDS = {
+    "bandwidth_mhz": {
+        "label": "Bandwidth",
+        "display_key": "Bandwidth MHz",
+        "unit": "MHz",
+        "higher_is_better": True,
+        "weight": 8,
+    },
+    "slew_rate_v_us": {
+        "label": "Slew rate",
+        "display_key": "Slew Rate V/us",
+        "unit": "V/µs",
+        "higher_is_better": True,
+        "weight": 8,
+    },
+    "input_offset_mv": {
+        "label": "Input offset voltage",
+        "display_key": "Input Offset mV",
+        "unit": "mV",
+        "higher_is_better": False,
+        "weight": 5,
+    },
+    "input_bias_na": {
+        "label": "Input bias current",
+        "display_key": "Input Bias nA",
+        "unit": "nA",
+        "higher_is_better": False,
+        "weight": 5,
+    },
+    "quiescent_current_ma": {
+        "label": "Quiescent current",
+        "display_key": "Quiescent Current mA",
+        "unit": "mA",
+        "higher_is_better": False,
+        "weight": 4,
+    },
+    "gbw_mhz": {
+        "label": "Gain bandwidth",
+        "display_key": "GBW MHz",
+        "unit": "MHz",
+        "higher_is_better": True,
+        "weight": 6,
+    },
+}
+
+def safe_float(value):
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
 def compare_parts(original_part_number: str, alternative_part_numbers: list) -> pd.DataFrame:
     """
     Compares an original component against user-provided alternative parts.
@@ -272,17 +325,6 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     candidate_voltage_min = float(candidate_voltage_min) if candidate_voltage_min is not None else None
     candidate_voltage_max = float(candidate_voltage_max) if candidate_voltage_max is not None else None
 
-    original_bandwidth = original.get("Bandwidth MHz", original.get("bandwidth_mhz"))
-    candidate_bandwidth = candidate.get("Bandwidth MHz", candidate.get("bandwidth_mhz"))
-
-    original_slew_rate = original.get("Slew Rate V/us", original.get("slew_rate_v_us"))
-    candidate_slew_rate = candidate.get("Slew Rate V/us", candidate.get("slew_rate_v_us"))
-
-    original_bandwidth = float(original_bandwidth) if original_bandwidth is not None else None
-    candidate_bandwidth = float(candidate_bandwidth) if candidate_bandwidth is not None else None
-
-    original_slew_rate = float(original_slew_rate) if original_slew_rate is not None else None
-    candidate_slew_rate = float(candidate_slew_rate) if candidate_slew_rate is not None else None
 
     candidate_voltage = str(
         candidate.get("Voltage Range", candidate.get("voltage_range", ""))
@@ -370,39 +412,31 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     elif candidate_voltage and candidate_voltage not in ["none", "n/a"]:
         score += 3
 
-    if original_bandwidth is not None and candidate_bandwidth is not None:
-        if candidate_bandwidth >= original_bandwidth:
-            score += 8
+    for field_name, config in ELECTRICAL_FIELDS.items():
+        original_value = safe_float(
+            original.get(config["display_key"], original.get(field_name))
+        )
+        candidate_value = safe_float(
+            candidate.get(config["display_key"], candidate.get(field_name))
+        )
+
+        if original_value is None or candidate_value is None:
+            continue
+
+        if config["higher_is_better"]:
+            if candidate_value >= original_value:
+                score += config["weight"]
+            else:
+                score -= config["weight"]
         else:
-            score -= 8
-
-    if original_slew_rate is not None and candidate_slew_rate is not None:
-        if candidate_slew_rate >= original_slew_rate:
-            score += 8
-        else:
-            score -= 8
-
-    original_offset = original.get(
-        "Input Offset mV",
-        original.get("input_offset_mv"),
-    )
-
-    candidate_offset = candidate.get(
-        "Input Offset mV",
-        candidate.get("input_offset_mv"),
-    )
-
-    if original_offset is not None and candidate_offset is not None:
-        original_offset = float(original_offset)
-        candidate_offset = float(candidate_offset)
-
-        if candidate_offset <= original_offset:
-            score += 5
-        else:
-            score -= 3
+            if candidate_value <= original_value:
+                score += config["weight"]
+            else:
+                score -= config["weight"]
 
     return max(0, min(score, 100))
 
+    
 def get_drop_in_rating(confidence: int) -> str:
     if confidence >= 80:
         return "🟢 High"
@@ -2360,12 +2394,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate["Supply Voltage Min"] = candidate_supplier_data.get("supply_voltage_min")
         candidate["Supply Voltage Max"] = candidate_supplier_data.get("supply_voltage_max")
         candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
-        candidate["Bandwidth MHz"] = candidate_supplier_data.get("bandwidth_mhz")
-        candidate["Slew Rate V/us"] = candidate_supplier_data.get("slew_rate_v_us")
-        candidate["Input Offset mV"] = candidate_supplier_data.get("input_offset_mv")
-        candidate["Quiescent Current mA"] = candidate_supplier_data.get("quiescent_current_ma")
-        candidate["Input Bias nA"] = candidate_supplier_data.get("input_bias_na")
-        candidate["GBW MHz"] = candidate_supplier_data.get("gbw_mhz")
+
+        for field_name, config in ELECTRICAL_FIELDS.items():
+            candidate[config["display_key"]] = candidate_supplier_data.get(field_name)
         
 
         
