@@ -73,13 +73,39 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_text)
 
     
-    st.write("Voltage text:", voltage_text)
-    st.write("Voltage min:", supply_voltage_min)
-    st.write("Voltage max:", supply_voltage_max)
 
     description = part.get("Description", "")
     architecture = infer_architecture_from_description(description)
     channel_count = infer_channel_count_from_description(description)
+
+    bandwidth_text = extract_mouser_attribute(
+        part,
+        ["Gain Bandwidth Product", "Bandwidth", "GBW"],
+    )
+    bandwidth_mhz = extract_frequency_mhz(bandwidth_text)
+
+    slew_rate_text = extract_mouser_attribute(part, ["Slew Rate"])
+    slew_rate_v_us = extract_slew_rate_v_us(slew_rate_text)
+
+    input_offset_text = extract_mouser_attribute(
+        part,
+        ["Input Offset Voltage", "Voltage - Input Offset"],
+    )
+    input_offset_mv = extract_voltage_mv(input_offset_text)
+
+    input_bias_text = extract_mouser_attribute(
+        part,
+        ["Input Bias Current", "Current - Input Bias"],
+    )
+    input_bias_na = extract_current_na(input_bias_text)
+
+    quiescent_current_text = extract_mouser_attribute(
+        part,
+        ["Supply Current", "Current - Supply", "Quiescent Current"],
+    )
+    quiescent_current_ma = extract_current_ma(quiescent_current_text)
+
+    gbw_mhz = None
 
     return {
         "lifecycle_status": infer_lifecycle_status(part),
@@ -102,6 +128,12 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "voltage_range": voltage_text,
         "supply_voltage_min": supply_voltage_min,
         "supply_voltage_max": supply_voltage_max,
+        "bandwidth_mhz": bandwidth_mhz,
+        "slew_rate_v_us": slew_rate_v_us,
+        "input_offset_mv": input_offset_mv,
+        "input_bias_na": input_bias_na,
+        "quiescent_current_ma": quiescent_current_ma,
+        "gbw_mhz": gbw_mhz,
 
     }
 
@@ -130,6 +162,10 @@ def default_part_result() -> dict:
         "supply_voltage_max": None,
         "bandwidth_mhz": None,
         "slew_rate_v_us": None,
+        "input_offset_mv": None,
+        "input_bias_na": None,
+        "quiescent_current_ma": None,
+        "gbw_mhz": None,
     }
 
 
@@ -246,6 +282,7 @@ def infer_architecture_from_description(description: str) -> str:
 
     return ""
 
+
 def infer_channel_count_from_description(description: str) -> int:
     description = str(description or "").lower()
 
@@ -300,3 +337,128 @@ def extract_package_from_text(text: str) -> str:
                 return f"TSSOP-{number}"
 
     return ""
+
+def extract_frequency_mhz(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*MHz",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*kHz",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1)) / 1000
+
+    return None
+
+def extract_slew_rate_v_us(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*V\s*/\s*(?:µ|u)s",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    return None
+
+def extract_voltage_mv(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*mV",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*µV",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1)) / 1000
+
+    return None
+
+def extract_current_na(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*nA",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:µ|u)A",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1)) * 1000
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*mA",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1)) * 1_000_000
+
+    return None
+
+def extract_current_ma(text: str):
+    text = str(text or "")
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*mA",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1))
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:µ|u)A",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1)) / 1000
+
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*nA",
+        text,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return float(match.group(1)) / 1_000_000
+
+    return None
+
