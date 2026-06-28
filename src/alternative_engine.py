@@ -2412,7 +2412,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             )
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
-    for candidate in candidates:
+
+    MAX_LIVE_SUPPLIER_LOOKUPS = 3
+
+    for index, candidate in enumerate(candidates):
 
         if isinstance(candidate, str):
             candidate = {
@@ -2475,14 +2478,20 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
         candidate_part_number = candidate.get("Alternative Part", "")
 
-        candidate_supplier_data = get_best_part_data(candidate_part_number)
+        if index < MAX_LIVE_SUPPLIER_LOOKUPS:
+            candidate_supplier_data = get_best_part_data(candidate_part_number)
+        else:
+            candidate_supplier_data = {}
 
-        candidate["Supply Voltage Min"] = candidate_supplier_data.get("supply_voltage_min")
-        candidate["Supply Voltage Max"] = candidate_supplier_data.get("supply_voltage_max")
+        candidate["Supply Voltage Min"] = candidate.get("Supply Voltage Min") or candidate_supplier_data.get("supply_voltage_min")
+        candidate["Supply Voltage Max"] = candidate.get("Supply Voltage Max") or candidate_supplier_data.get("supply_voltage_max")
         candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
 
         for field_name, config in ELECTRICAL_FIELDS.items():
-            candidate[config["display_key"]] = candidate_supplier_data.get(field_name)
+            candidate[config["display_key"]] = (
+                candidate.get(config["display_key"])
+                or candidate_supplier_data.get(field_name)
+            )
         
         feature_text = " ".join(
             [
