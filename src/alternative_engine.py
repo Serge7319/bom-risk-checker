@@ -2413,7 +2413,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     # Future: add more families here
     # e.g., op-amps, regulators, microcontrollers
 
-    MAX_LIVE_SUPPLIER_LOOKUPS = 3
+    MAX_LIVE_SUPPLIER_LOOKUPS = 2
 
     for index, candidate in enumerate(candidates):
 
