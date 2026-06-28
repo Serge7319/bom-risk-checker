@@ -139,7 +139,7 @@ def get_supplier_results(part_number):
     return results
 
 
-@st.cache_data(ttl=1, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_best_part_data(part_number: str) -> dict:
     supplier_results = get_supplier_results(part_number)
     
