@@ -1,6 +1,10 @@
 import os
 import re
-
+from src.parsing.electrical_extractors import (
+    extract_frequency_mhz,
+    extract_current_na,
+    extract_current_ma,
+)
 import requests
 from dotenv import load_dotenv
 
