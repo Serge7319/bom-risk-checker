@@ -1,6 +1,13 @@
 import requests
 import streamlit as st
 from urllib.parse import quote
+from src.parsing.electrical_extractors import (
+    extract_frequency_mhz,
+    extract_slew_rate_v_us,
+    extract_voltage_mv,
+    extract_current_na,
+    extract_current_ma,
+)
 
 
 def get_digikey_access_token() -> str:
@@ -160,6 +167,27 @@ def normalize_digikey_product(product: dict) -> dict:
 
     input_offset_mv = extract_voltage_mv(input_offset_text)
 
+    input_bias_text = extract_digikey_parameter(
+        product,
+        ["Current - Input Bias", "Input Bias Current"],
+    )
+
+    input_bias_na = extract_current_na(input_bias_text)
+
+    quiescent_current_text = extract_digikey_parameter(
+        product,
+        ["Current - Supply", "Supply Current", "Quiescent Current"],
+    )
+
+    quiescent_current_ma = extract_current_ma(quiescent_current_text)
+
+    gbw_text = extract_digikey_parameter(
+        product,
+        ["Gain Bandwidth Product", "Gain Bandwidth", "GBW"],
+    )
+
+    gbw_mhz = extract_frequency_mhz(gbw_text)
+
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
         "stock_total": int(stock_total),
@@ -189,6 +217,9 @@ def normalize_digikey_product(product: dict) -> dict:
         "bandwidth_mhz": bandwidth_mhz,
         "slew_rate_v_us": slew_rate_v_us,
         "input_offset_mv": input_offset_mv,
+        "input_bias_na": input_bias_na,
+        "quiescent_current_ma": quiescent_current_ma,
+        "gbw_mhz": gbw_mhz,
     }
 
 def extract_digikey_price(product: dict) -> float:
@@ -262,48 +293,6 @@ def default_digikey_result(part_number: str) -> dict:
     }
 
 
-def extract_frequency_mhz(text: str):
-    import re
-
-    text = str(text or "")
-
-    match = re.search(r"(\d+(?:\.\d+)?)\s*MHz", text, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
-
-    match = re.search(r"(\d+(?:\.\d+)?)\s*kHz", text, re.IGNORECASE)
-    if match:
-        return float(match.group(1)) / 1000
-
-    return None
-
-
-def extract_slew_rate_v_us(text: str):
-    import re
-
-    text = str(text or "")
-
-    match = re.search(r"(\d+(?:\.\d+)?)\s*V\s*/\s*µ?s", text, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
-
-    return None
-
-
-def extract_voltage_mv(text: str):
-    import re
-
-    text = str(text or "")
-
-    match = re.search(r"(\d+(?:\.\d+)?)\s*mV", text, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
-
-    match = re.search(r"(\d+(?:\.\d+)?)\s*V", text, re.IGNORECASE)
-    if match:
-        return float(match.group(1)) * 1000
-
-    return None
 
 def infer_architecture_from_description(description: str) -> str:
     description = str(description).lower()
@@ -355,3 +344,4 @@ def extract_voltage_limits(voltage_text: str):
         return value, value
 
     return None, None
+
