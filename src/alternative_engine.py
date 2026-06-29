@@ -479,15 +479,15 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
 
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
-            score += 20
+            score += SCORING_WEIGHTS["pin_count_match"]
         else:
-            score -= 20
+            score += SCORING_WEIGHTS["pin_count_mismatch_penalty"]
 
     if original_channel_count and candidate_channel_count:
         if original_channel_count == candidate_channel_count:
-            score += 15
+            score += SCORING_WEIGHTS["channel_count_match"]
         else:
-            score -= 25
+            score += SCORING_WEIGHTS["channel_count_mismatch_penalty"]
 
     if (
         original_voltage_min is not None
@@ -496,13 +496,13 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         and candidate_voltage_max is not None
     ):
         if candidate_voltage_min <= original_voltage_min and candidate_voltage_max >= original_voltage_max:
-            score += 15
+            score += SCORING_WEIGHTS["voltage_full_coverage"]
         elif candidate_voltage_min <= original_voltage_max and candidate_voltage_max >= original_voltage_min:
-            score += 5
+            score += SCORING_WEIGHTS["voltage_partial_overlap"]
         else:
-            score -= 20
-    elif candidate_voltage and candidate_voltage not in ["none", "n/a"]:
-        score += 3
+            score += SCORING_WEIGHTS["voltage_mismatch_penalty"]
+        elif candidate_voltage and candidate_voltage not in ["none", "n/a"]:
+            score += SCORING_WEIGHTS["voltage_available_bonus"]
 
     for field_name, config in ELECTRICAL_FIELDS.items():
         original_value = safe_float(
