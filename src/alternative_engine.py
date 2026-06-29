@@ -501,8 +501,8 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
             score += SCORING_WEIGHTS["voltage_partial_overlap"]
         else:
             score += SCORING_WEIGHTS["voltage_mismatch_penalty"]
-        elif candidate_voltage and candidate_voltage not in ["none", "n/a"]:
-            score += SCORING_WEIGHTS["voltage_available_bonus"]
+    elif candidate_voltage and candidate_voltage not in ["none", "n/a"]:
+        score += SCORING_WEIGHTS["voltage_available_bonus"]
 
     for field_name, config in ELECTRICAL_FIELDS.items():
         original_value = safe_float(
