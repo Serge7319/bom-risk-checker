@@ -459,23 +459,23 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
 
     if normalized_original_package and normalized_candidate_package:
         if normalized_original_package == normalized_candidate_package:
-            score += 25
+            score += SCORING_WEIGHTS["package_exact_match"]
         elif (
             normalized_original_package.endswith("-8")
             and normalized_candidate_package.endswith("-8")
         ):
-            score -= 8
+            score += SCORING_WEIGHTS["same_pin_package_penalty"]
         else:
-            score -= 15
+            score += SCORING_WEIGHTS["package_mismatch_penalty"]
 
     original_package_family = package_family(original_package)
     candidate_package_family = package_family(candidate_package)
 
     if original_package_family and candidate_package_family:
         if original_package_family == candidate_package_family:
-            score += 10
+            score += SCORING_WEIGHTS["package_family_match"]
         else:
-            score -= 25
+            score += SCORING_WEIGHTS["package_family_mismatch_penalty"]
 
     if original_pin_count and candidate_pin_count:
         if original_pin_count == candidate_pin_count:
