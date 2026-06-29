@@ -88,6 +88,33 @@ FEATURE_TAGS = {
     },
 }
 
+SCORING_WEIGHTS = {
+    "logic_function_match": 60,
+    "unknown_logic_function": 10,
+
+    "architecture_exact_match": 40,
+    "architecture_opamp_family_match": 25,
+    "architecture_partial_match": 10,
+
+    "package_exact_match": 25,
+    "same_pin_package_penalty": -8,
+    "package_mismatch_penalty": -15,
+
+    "package_family_match": 10,
+    "package_family_mismatch_penalty": -25,
+
+    "pin_count_match": 20,
+    "pin_count_mismatch_penalty": -20,
+
+    "channel_count_match": 15,
+    "channel_count_mismatch_penalty": -25,
+
+    "voltage_full_coverage": 15,
+    "voltage_partial_overlap": 5,
+    "voltage_mismatch_penalty": -20,
+    "voltage_available_bonus": 3,
+}
+
 def safe_float(value):
     try:
         if value is None or value == "":
@@ -399,11 +426,11 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     if "logic" in original_architecture or "logic" in candidate_architecture:
         if original_function and candidate_function:
             if original_function == candidate_function:
-                score += 60
+                score += SCORING_WEIGHTS["logic_function_match"]
             else:
                 return 0
         else:
-            score += 10
+            score += SCORING_WEIGHTS["unknown_logic_function"]
 
     elif original_architecture and candidate_architecture:
         incompatible_pairs = [
@@ -418,14 +445,14 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
                 return 0
 
         if original_architecture == candidate_architecture:
-            score += 40
+            score += SCORING_WEIGHTS["architecture_exact_match"]
         elif (
             "operational amplifier" in original_architecture
             and "operational amplifier" in candidate_architecture
         ):
-            score += 25
+            score += SCORING_WEIGHTS["architecture_opamp_family_match"]
         else:
-            score += 10
+            score += SCORING_WEIGHTS["architecture_partial_match"]
 
     normalized_original_package = normalize_package_name(original_package)
     normalized_candidate_package = normalize_package_name(candidate_package)
