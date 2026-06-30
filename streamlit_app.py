@@ -1628,6 +1628,50 @@ if app_mode == "Dashboard":
                                         }
                                     )
 
+                                st.markdown("## 📊 Alternative Search Summary")
+                                
+                                summary_col1, summary_col2, summary_col3 = st.columns(3)
+
+                                with summary_col1:
+                                    st.metric(
+                                        "Alternatives Found",
+                                        len(true_alternatives)
+                                    )
+
+                                    st.metric(
+                                        "Suppliers Verified",
+                                        supplier_count
+                                    )
+
+                                with summary_col2:
+                                    st.metric(
+                                        "Best Recommendation",
+                                        best_alternative["Alternative Part"]
+                                        if true_alternatives else "-"
+                                    )
+
+                                    st.metric(
+                                        "Lowest Price",
+                                        f"${lowest_unit_price:.2f}"
+                                    )
+
+                                with summary_col3:
+                                    avg_confidence = (
+                                        int(alternatives_df["Drop-In Confidence"].mean())
+                                        if "Drop-In Confidence" in alternatives_df.columns
+                                        else 0
+                                    )
+
+                                    st.metric(
+                                        "Average Compatibility",
+                                        f"{avg_confidence}%"
+                                    )
+
+                                    st.metric(
+                                        "Total Stock",
+                                        f"{int(total_stock):,}"
+                                    )    
+
                                 st.dataframe(
                                     alternatives_df,
                                     use_container_width=True,
