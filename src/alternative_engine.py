@@ -113,6 +113,7 @@ SCORING_WEIGHTS = {
     "voltage_partial_overlap": 5,
     "voltage_mismatch_penalty": -20,
     "voltage_available_bonus": 3,
+    "bonus_extra_feature": 2,
 }
 
 def safe_float(value):
@@ -540,7 +541,7 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
             score -= config["mismatch_penalty"]
 
         elif candidate_has_tag and not original_has_tag:
-            score += 2
+            score += SCORING_WEIGHTS["bonus_extra_feature"]
 
     return max(0, min(score, 100))
 
