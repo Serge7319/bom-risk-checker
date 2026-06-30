@@ -276,7 +276,7 @@ def get_best_part_data(part_number: str) -> dict:
 
     return best_result
 
-
+@st.cache_data(ttl=3600, show_spinner=False)
 def search_supplier_alternatives(part_number):
     supplier_results = get_supplier_results(part_number)
 
