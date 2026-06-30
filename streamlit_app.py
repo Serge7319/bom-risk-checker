@@ -1387,7 +1387,9 @@ if app_mode == "Dashboard":
             )
 
             if st.button("Find Alternatives for Selected Parts"):
-                with st.spinner("Searching suppliers and finding compatible alternatives..."):
+                with st.spinner(
+                    "🔍 Searching suppliers • ⚡ Comparing electrical specs • 🧠 Ranking alternatives..."
+                ):
                     if not selected_attention_parts:
                         st.warning("Please select at least one risky part.")
 
