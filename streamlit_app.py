@@ -1387,9 +1387,7 @@ if app_mode == "Dashboard":
             )
 
             if st.button("Find Alternatives for Selected Parts"):
-                with st.spinner(
-                    "🔍 Searching suppliers • ⚡ Comparing electrical specs • 🧠 Ranking alternatives..."
-                ):
+                with st.spinner("Searching suppliers and finding compatible alternatives..."):
                     if not selected_attention_parts:
                         st.warning("Please select at least one risky part.")
 
@@ -2470,7 +2468,9 @@ if app_mode == "Alternative Finder":
         if not original_part:
             st.warning("Please enter an original part number.")
         else:
-            with st.spinner("Searching suppliers and finding alternatives..."):
+            with st.spinner(
+                "🔍 Searching suppliers • ⚡ Comparing electrical specs • 🧠 Ranking alternatives..."
+            ):
                 st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
                     original_part
                 )
