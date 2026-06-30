@@ -1474,15 +1474,38 @@ if app_mode == "Dashboard":
                                         key=lambda x: x.get("Recommendation Score", 0)
                                     )
 
-                                    st.success(
-                                        f"""
-                                        🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
+                                    st.markdown("### 🏆 Best Recommended Alternative")
 
-                                        Recommendation Score: {best_alternative['Recommendation Score']}
+                                    best_col1, best_col2, best_col3 = st.columns(3)
 
-                                        Recommendation: {best_alternative['Recommendation']}
-                                        """
-                                    )
+                                    with best_col1:
+                                        st.metric(
+                                            "Part Number",
+                                            best_alternative.get("Alternative Part", "Unknown"),
+                                        )
+
+                                    with best_col2:
+                                        st.metric(
+                                            "Recommendation Score",
+                                            int(best_alternative.get("Recommendation Score", 0)),
+                                        )
+
+                                    with best_col3:
+                                        st.metric(
+                                            "Drop-In Confidence",
+                                            best_alternative.get("Drop-In Rating", "Unknown"),
+                                        )
+
+                                    st.info(best_alternative.get("Recommendation", "Review compatibility."))
+
+                                    drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
+
+                                    if drop_in_reasons:
+                                        with st.expander("Why this alternative?", expanded=True):
+                                            for reason in str(drop_in_reasons).split(";"):
+                                                reason = reason.strip()
+                                                if reason:
+                                                    st.write(reason)
 
                                     value_alternatives = [
                                         alt for alt in true_alternatives
@@ -1498,15 +1521,27 @@ if app_mode == "Dashboard":
                                         )
 
                                     if best_value_alternative:
-                                        st.info(
-                                            f"""
-                                            💰 Best Value Alternative: {best_value_alternative['Alternative Part']}
+                                        st.markdown("### 💰 Best Value Alternative")
 
-                                            Unit Price: ${float(best_value_alternative.get('Unit Price', 0.0)):.2f}
+                                        value_col1, value_col2, value_col3 = st.columns(3)
 
-                                            Available Stock: {best_value_alternative.get('Stock', 0)}
-                                            """
-                                        )
+                                        with value_col1:
+                                            st.metric(
+                                                "Part Number",
+                                                best_value_alternative.get("Alternative Part", "Unknown"),
+                                            )
+
+                                        with value_col2:
+                                            st.metric(
+                                                "Unit Price",
+                                                f"${float(best_value_alternative.get('Unit Price', 0.0)):.2f}",
+                                            )
+
+                                        with value_col3:
+                                            st.metric(
+                                                "Available Stock",
+                                                int(best_value_alternative.get("Stock", 0)),
+                                            )
 
                                 else:
                                     st.info(
