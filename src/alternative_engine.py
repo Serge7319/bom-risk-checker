@@ -875,6 +875,7 @@ def package_family(package: str) -> str:
     return "Unknown"
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
@@ -897,32 +898,6 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     original_data["Feature Tags"] = infer_feature_tags(original_feature_text)
 
-    safe_supplier_debug = []
-
-
-    for result in original_data.get("all_supplier_results", []):
-        safe_supplier_debug.append(
-            {
-                "source": result.get("source"),
-                "error": result.get("error"),
-                "manufacturer_part_number": result.get("manufacturer_part_number"),
-                "description": result.get("description"),
-                "package": result.get("package"),
-                "pin_count": result.get("pin_count"),
-                "mounting_style": result.get("mounting_style"),
-                "architecture": result.get("architecture"),
-                "channel_count": result.get("channel_count"),
-                "voltage_range": result.get("voltage_range"),
-                "supply_voltage_min": result.get("supply_voltage_min"),
-                "supply_voltage_max": result.get("supply_voltage_max"),
-                "bandwidth_mhz": result.get("bandwidth_mhz"),
-                "slew_rate_v_us": result.get("slew_rate_v_us"),
-                
-            }
-        )
-         
-
-    
 
     description = original_data.get("description", "").lower()
 
