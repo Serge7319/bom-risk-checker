@@ -28,7 +28,7 @@ start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
 import extra_streamlit_components as stx
-# st.cache_data.clear()  # Disabled for launch performance caching
+st.cache_data.clear()
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -1387,7 +1387,7 @@ if app_mode == "Dashboard":
             )
 
             if st.button("Find Alternatives for Selected Parts"):
-                with st.spinner("🔍 Searching suppliers • ⚡ Comparing electrical specs • 🧠 Ranking alternatives..."):
+                with st.spinner("Searching suppliers and finding compatible alternatives..."):
                     if not selected_attention_parts:
                         st.warning("Please select at least one risky part.")
 
@@ -1463,22 +1463,8 @@ if app_mode == "Dashboard":
                                     else "Unknown"
                                 )
 
-                                true_alternatives = [
-                                    alt for alt in alternatives
-                                    if alt.get("Alternative Part", "") != selected_attention_part
-                                ]
-
-                                best_alternative = (
-                                    max(
-                                        true_alternatives,
-                                        key=lambda x: x.get("Recommendation Score", 0),
-                                    )
-                                    if true_alternatives
-                                    else None
-                                )
-
                                 st.markdown("## 📊 Alternative Search Summary")
-
+                                
                                 summary_col1, summary_col2, summary_col3 = st.columns(3)
 
                                 with summary_col1:
@@ -1495,8 +1481,8 @@ if app_mode == "Dashboard":
                                 with summary_col2:
                                     st.metric(
                                         "Best Recommendation",
-                                        best_alternative.get("Alternative Part", "-")
-                                        if best_alternative else "-"
+                                        best_alternative["Alternative Part"]
+                                        if true_alternatives else "-"
                                     )
 
                                     st.metric(
@@ -1505,13 +1491,9 @@ if app_mode == "Dashboard":
                                     )
 
                                 with summary_col3:
-                                    true_df = alternatives_df[
-                                        alternatives_df["Alternative Part"] != selected_attention_part
-                                    ] if "Alternative Part" in alternatives_df.columns else alternatives_df
-
                                     avg_confidence = (
-                                        int(true_df["Drop-In Confidence"].mean())
-                                        if "Drop-In Confidence" in true_df.columns and not true_df.empty
+                                        int(alternatives_df["Drop-In Confidence"].mean())
+                                        if "Drop-In Confidence" in alternatives_df.columns
                                         else 0
                                     )
 
@@ -1525,7 +1507,17 @@ if app_mode == "Dashboard":
                                         f"{int(total_stock):,}"
                                     )
 
-                                if best_alternative:
+                                true_alternatives = [
+                                    alt for alt in alternatives
+                                    if alt.get("Alternative Part", "") != selected_attention_part
+                                ]
+
+                                if true_alternatives:
+                                    best_alternative = max(
+                                        true_alternatives,
+                                        key=lambda x: x.get("Recommendation Score", 0)
+                                    )
+
                                     st.markdown("### 🏆 Best Recommended Alternative")
 
                                     best_col1, best_col2, best_col3 = st.columns(3)
@@ -2574,17 +2566,21 @@ if app_mode == "Alternative Finder":
             else pd.DataFrame()
         )
 
-        lowest_unit_price = (
-            float(priced_rows["Unit Price"].min())
+        cheapest_row = (
+            priced_rows.loc[priced_rows["Unit Price"].idxmin()]
             if not priced_rows.empty
+            else None
+        )
+
+        lowest_unit_price = (
+            float(cheapest_row["Unit Price"])
+            if cheapest_row is not None
             else 0.0
         )
 
-        true_df = (
-            alternatives_df[alternatives_df["Alternative Part"] != original_part]
-            if "Alternative Part" in alternatives_df.columns
-            else alternatives_df
-        )
+        true_df = alternatives_df[
+            alternatives_df["Alternative Part"] != original_part
+        ] if "Alternative Part" in alternatives_df.columns else alternatives_df
 
         avg_confidence = (
             int(true_df["Drop-In Confidence"].mean())
@@ -2604,7 +2600,8 @@ if app_mode == "Alternative Finder":
             st.metric(
                 "Best Recommendation",
                 best_alternative.get("Alternative Part", "-")
-                if best_alternative else "-",
+                if best_alternative
+                else "-",
             )
             st.metric("Lowest Price", f"${lowest_unit_price:.2f}")
 
@@ -2757,79 +2754,16 @@ if app_mode == "Alternative Finder":
                     "Original": "—",
                     "Selected Alternative": selected_row.get("Drop-In Rating", ""),
                 },
-                {
-                    "Attribute": "Drop-In Reasons",
-                    "Original": "—",
-                    "Selected Alternative": selected_row.get("Drop-In Reasons", ""),
-                },
             ]
         )
-        summary_points = []
 
-        drop_in_reasons = selected_row.get("Drop-In Reasons", "")
-        reason_list = [
-            reason.strip()
-            for reason in drop_in_reasons.split(";")
-            if reason.strip()
-        ]
-
-        recommendation_points = []
-        warning_points = []
-        advantage_points = []
-        tradeoff_points = []
-
-        for reason in reason_list:
-            if "could not be verified" in reason.lower():
-                warning_points.append(reason)
-            elif reason.startswith("⚠") or reason.startswith("ℹ"):
-                warning_points.append(reason)
-            else:
-                recommendation_points.append(reason)
-
-        if stock_delta != "N/A":
-            if "more stock" in stock_delta.lower():
-                advantage_points.append(stock_delta)
-            else:
-                tradeoff_points.append(stock_delta)
-
-        if price_delta != "N/A":
-            if "lower cost" in price_delta.lower():
-                advantage_points.append(price_delta)
-            else:
-                tradeoff_points.append(price_delta)
-
-        st.subheader("Why this alternative?")
-
-        st.markdown(
-            f"**{selected_row.get('Alternative Part', '')}** is recommended because:"
-        )
-
-        st.markdown("**Recommended because:**")
-        for point in recommendation_points:
-            st.markdown(f"- {point}")
-
-        if warning_points:
-            st.markdown("**Warnings:**")
-            for point in warning_points:
-                st.markdown(f"- {point}")
-
-        if advantage_points:
-            st.markdown("**Advantages:**")
-            for point in advantage_points:
-                st.markdown(f"- {point}")
-
-        if tradeoff_points:
-            st.markdown("**Tradeoffs:**")
-            for point in tradeoff_points:
-                st.markdown(f"- {point}")
-        
         st.subheader("Side-by-Side Comparison")
 
         st.dataframe(
             comparison_df,
             use_container_width=True,
             hide_index=True,
-        )      
+        )
 
         if st.button("🔄 New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
