@@ -28,7 +28,7 @@ start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
 import extra_streamlit_components as stx
-# st.cache_data.clear()  # Disabled for launch performance: keep Streamlit caches between reruns.
+# st.cache_data.clear()  # Disabled for launch performance caching
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -1401,7 +1401,6 @@ if app_mode == "Dashboard":
 
                             if alternatives:
                                 alternatives_df = pd.DataFrame(alternatives)
-
                                 engineering_cols = [
                                     "Architecture",
                                     "Package",
@@ -1413,17 +1412,9 @@ if app_mode == "Dashboard":
                                     if col not in alternatives_df.columns:
                                         alternatives_df[col] = ""
 
-                                supplier_count = (
-                                    alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique()
-                                    if "Supplier" in alternatives_df.columns
-                                    else 0
-                                )
+                                supplier_count = alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique() if "Supplier" in alternatives_df.columns else 0
 
-                                total_stock = (
-                                    alternatives_df["Stock"].sum()
-                                    if "Stock" in alternatives_df.columns
-                                    else 0
-                                )
+                                total_stock = alternatives_df["Stock"].sum() if "Stock" in alternatives_df.columns else 0
 
                                 highest_stock_row = (
                                     alternatives_df.loc[alternatives_df["Stock"].idxmax()]
@@ -1443,15 +1434,10 @@ if app_mode == "Dashboard":
                                     else 0
                                 )
 
-                                priced_rows = (
-                                    alternatives_df[
-                                        (alternatives_df["Unit Price"] > 0)
-                                        & (alternatives_df["Stock"] > 0)
-                                    ]
-                                    if "Unit Price" in alternatives_df.columns
-                                    and "Stock" in alternatives_df.columns
-                                    else pd.DataFrame()
-                                )
+                                priced_rows = alternatives_df[
+                                    (alternatives_df["Unit Price"] > 0)
+                                    & (alternatives_df["Stock"] > 0)
+                                ] if "Unit Price" in alternatives_df.columns and "Stock" in alternatives_df.columns else pd.DataFrame()
 
                                 cheapest_row = (
                                     priced_rows.loc[priced_rows["Unit Price"].idxmin()]
@@ -1473,8 +1459,7 @@ if app_mode == "Dashboard":
 
                                 best_lifecycle = (
                                     alternatives_df["Lifecycle"].dropna().iloc[0]
-                                    if "Lifecycle" in alternatives_df.columns
-                                    and not alternatives_df["Lifecycle"].dropna().empty
+                                    if "Lifecycle" in alternatives_df.columns and not alternatives_df["Lifecycle"].dropna().empty
                                     else "Unknown"
                                 )
 
@@ -1497,23 +1482,32 @@ if app_mode == "Dashboard":
                                 summary_col1, summary_col2, summary_col3 = st.columns(3)
 
                                 with summary_col1:
-                                    st.metric("Alternatives Found", len(true_alternatives))
-                                    st.metric("Suppliers Verified", supplier_count)
+                                    st.metric(
+                                        "Alternatives Found",
+                                        len(true_alternatives)
+                                    )
+
+                                    st.metric(
+                                        "Suppliers Verified",
+                                        supplier_count
+                                    )
 
                                 with summary_col2:
                                     st.metric(
                                         "Best Recommendation",
                                         best_alternative.get("Alternative Part", "-")
-                                        if best_alternative
-                                        else "-",
+                                        if best_alternative else "-"
                                     )
 
-                                    st.metric("Lowest Price", f"${lowest_unit_price:.2f}")
+                                    st.metric(
+                                        "Lowest Price",
+                                        f"${lowest_unit_price:.2f}"
+                                    )
 
                                 with summary_col3:
                                     true_df = alternatives_df[
                                         alternatives_df["Alternative Part"] != selected_attention_part
-                                    ]
+                                    ] if "Alternative Part" in alternatives_df.columns else alternatives_df
 
                                     avg_confidence = (
                                         int(true_df["Drop-In Confidence"].mean())
@@ -1521,8 +1515,15 @@ if app_mode == "Dashboard":
                                         else 0
                                     )
 
-                                    st.metric("Average Compatibility", f"{avg_confidence}%")
-                                    st.metric("Total Stock", f"{int(total_stock):,}")
+                                    st.metric(
+                                        "Average Compatibility",
+                                        f"{avg_confidence}%"
+                                    )
+
+                                    st.metric(
+                                        "Total Stock",
+                                        f"{int(total_stock):,}"
+                                    )
 
                                 if best_alternative:
                                     st.markdown("### 🏆 Best Recommended Alternative")
@@ -1547,12 +1548,7 @@ if app_mode == "Dashboard":
                                             best_alternative.get("Drop-In Rating", "Unknown"),
                                         )
 
-                                    st.info(
-                                        best_alternative.get(
-                                            "Recommendation",
-                                            "Review compatibility.",
-                                        )
-                                    )
+                                    st.info(best_alternative.get("Recommendation", "Review compatibility."))
 
                                     drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
 
@@ -1573,7 +1569,7 @@ if app_mode == "Dashboard":
                                     if value_alternatives:
                                         best_value_alternative = min(
                                             value_alternatives,
-                                            key=lambda x: float(x.get("Unit Price", 0.0)),
+                                            key=lambda x: float(x.get("Unit Price", 0.0))
                                         )
 
                                     if best_value_alternative:
@@ -1617,7 +1613,7 @@ if app_mode == "Dashboard":
 
                                 with verify_col4:
                                     st.metric("Highest Stock", highest_stock)
-
+                                
                                 with verify_col5:
                                     st.metric(
                                         "Lowest Price",
@@ -2541,6 +2537,115 @@ if app_mode == "Alternative Finder":
 
         st.success("Suggested alternatives found.")
 
+        true_alternatives = [
+            alt for alt in st.session_state["suggested_alternatives"]
+            if isinstance(alt, dict)
+            and alt.get("Alternative Part", "") != original_part
+        ]
+
+        best_alternative = (
+            max(
+                true_alternatives,
+                key=lambda x: x.get("Recommendation Score", 0),
+            )
+            if true_alternatives
+            else None
+        )
+
+        supplier_count = (
+            alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique()
+            if "Supplier" in alternatives_df.columns
+            else 0
+        )
+
+        total_stock = (
+            alternatives_df["Stock"].sum()
+            if "Stock" in alternatives_df.columns
+            else 0
+        )
+
+        priced_rows = (
+            alternatives_df[
+                (alternatives_df["Unit Price"] > 0)
+                & (alternatives_df["Stock"] > 0)
+            ]
+            if "Unit Price" in alternatives_df.columns
+            and "Stock" in alternatives_df.columns
+            else pd.DataFrame()
+        )
+
+        lowest_unit_price = (
+            float(priced_rows["Unit Price"].min())
+            if not priced_rows.empty
+            else 0.0
+        )
+
+        true_df = (
+            alternatives_df[alternatives_df["Alternative Part"] != original_part]
+            if "Alternative Part" in alternatives_df.columns
+            else alternatives_df
+        )
+
+        avg_confidence = (
+            int(true_df["Drop-In Confidence"].mean())
+            if "Drop-In Confidence" in true_df.columns and not true_df.empty
+            else 0
+        )
+
+        st.markdown("## 📊 Alternative Search Summary")
+
+        summary_col1, summary_col2, summary_col3 = st.columns(3)
+
+        with summary_col1:
+            st.metric("Alternatives Found", len(true_alternatives))
+            st.metric("Suppliers Verified", supplier_count)
+
+        with summary_col2:
+            st.metric(
+                "Best Recommendation",
+                best_alternative.get("Alternative Part", "-")
+                if best_alternative else "-",
+            )
+            st.metric("Lowest Price", f"${lowest_unit_price:.2f}")
+
+        with summary_col3:
+            st.metric("Average Compatibility", f"{avg_confidence}%")
+            st.metric("Total Stock", f"{int(total_stock):,}")
+
+        if best_alternative:
+            st.markdown("### 🏆 Best Recommended Alternative")
+
+            best_col1, best_col2, best_col3 = st.columns(3)
+
+            with best_col1:
+                st.metric(
+                    "Part Number",
+                    best_alternative.get("Alternative Part", "Unknown"),
+                )
+
+            with best_col2:
+                st.metric(
+                    "Recommendation Score",
+                    int(best_alternative.get("Recommendation Score", 0)),
+                )
+
+            with best_col3:
+                st.metric(
+                    "Drop-In Confidence",
+                    best_alternative.get("Drop-In Rating", "Unknown"),
+                )
+
+            st.info(best_alternative.get("Recommendation", "Review compatibility."))
+
+            drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
+
+            if drop_in_reasons:
+                with st.expander("Why this alternative?", expanded=True):
+                    for reason in str(drop_in_reasons).split(";"):
+                        reason = reason.strip()
+                        if reason:
+                            st.write(reason)
+
         st.dataframe(
             alternatives_df,
             use_container_width=True,
@@ -2555,19 +2660,6 @@ if app_mode == "Alternative Finder":
         selected_row = alternatives_df[
             alternatives_df["Alternative Part"] == selected_alternative
         ].iloc[0]
-
-        best_alternative = max(
-            st.session_state["suggested_alternatives"],
-            key=lambda x: x.get("Recommendation Score", 0),
-        )
-
-        st.success(
-            f"""
-            🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
-
-            {best_alternative['Recommendation']}
-            """
-        )
 
         original_data = get_best_part_data(original_part)
 
