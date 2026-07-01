@@ -2861,8 +2861,8 @@ if app_mode == "Alternative Finder":
         st.markdown(
             f"""
             <div style="margin-top:24px;margin-bottom:10px;">
-                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Top Candidate Dashboard</div>
-                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Engineering decision dashboard summarizing fit, sourcing strength, and implementation impact.</div>
+                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Engineering Recommendation</div>
+                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Executive decision dashboard summarizing fit, sourcing strength, and implementation impact.</div>
             </div>
             <div style="
                 background:linear-gradient(135deg,#0B1220,#111827);
@@ -2938,7 +2938,7 @@ if app_mode == "Alternative Finder":
             with (v_col1 if idx % 2 == 0 else v_col2):
                 _render_validation_card(status, title, detail)
 
-        st.markdown("#### What Changes in My Design?")
+        st.markdown("#### Design Impact")
         impact_col1, impact_col2, impact_col3, impact_col4 = st.columns(4)
         for idx, (title, status, detail) in enumerate(_engineering_impact(candidate)):
             with [impact_col1, impact_col2, impact_col3, impact_col4][idx % 4]:
@@ -2947,7 +2947,10 @@ if app_mode == "Alternative Finder":
         with st.expander("Recommendation score breakdown", expanded=False):
             breakdown = _score_breakdown(candidate)
             for label, value, note in breakdown:
-                st.markdown(f"**{label}:** {value}/100 — {note}")
+                safe_value = max(0, min(int(value or 0), 100))
+                st.markdown(f"**{label}** — {safe_value}/100")
+                st.progress(safe_value)
+                st.caption(str(note))
 
     def _render_engineering_recommendation(original_part, candidate):
         """Compact executive decision card.
@@ -3165,7 +3168,7 @@ if app_mode == "Alternative Finder":
         )
 
         _render_section_title(
-            "Search Overview",
+            "Search Summary",
             "Ranked results based on compatibility, availability, lifecycle status, and sourcing risk.",
         )
 
@@ -3188,10 +3191,6 @@ if app_mode == "Alternative Finder":
             _render_kpi_card("Verified Suppliers", supplier_count, "Live supplier responses")
 
         st.divider()
-
-        if best_alternative:
-            _render_engineering_recommendation(original_part, best_alternative)
-            st.divider()
 
         if best_alternative:
             _render_engineering_decision_dashboard(original_part, best_alternative)
@@ -3257,7 +3256,7 @@ if app_mode == "Alternative Finder":
             default_index = alternative_options.index(best_alternative.get("Alternative Part"))
 
         selected_alternative = st.selectbox(
-            "Alternative to compare",
+            "Compare with recommended part",
             alternative_options,
             index=default_index,
         )
@@ -3407,6 +3406,16 @@ if app_mode == "Alternative Finder":
 
         display_df = alternatives_df[display_columns].copy()
 
+        if best_alternative and "Alternative Part" in display_df.columns:
+            best_part_number = best_alternative.get("Alternative Part", "")
+            display_df.insert(
+                0,
+                "Status",
+                display_df["Alternative Part"].apply(
+                    lambda value: "Recommended" if value == best_part_number else ""
+                ),
+            )
+
         if "Drop-In Rating" in display_df.columns:
             display_df["Drop-In Rating"] = (
                 display_df["Drop-In Rating"]
@@ -3442,7 +3451,7 @@ if app_mode == "Alternative Finder":
             hide_index=True,
         )
 
-        if st.button("New Alternative Search"):
+        if st.button("Analyze Another Component"):
             st.session_state["suggested_alternatives"] = []
             st.session_state["alternative_search_attempted"] = False
             st.session_state["alternative_original_part"] = ""
