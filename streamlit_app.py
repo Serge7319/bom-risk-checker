@@ -2489,10 +2489,10 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <div class="card">
-            <div class="card-title">🔎 Alternative Component Finder</div>
+            <div class="card-title">🔎 Alternative Component Finder 2.1</div>
             <div class="card-text">
-                Search for replacement parts, compare sourcing risk,
-                and identify lower-risk alternatives.
+                Search for replacement parts, compare engineering compatibility,
+                and identify lower-risk sourcing options.
             </div>
         </div>
         """,
@@ -2510,12 +2510,21 @@ if app_mode == "Alternative Finder":
     if "alternative_original_part" not in st.session_state:
         st.session_state["alternative_original_part"] = ""
 
-    original_part = st.text_input(
-        "Enter original manufacturer part number",
-        value=st.session_state.get("alternative_original_part", ""),
-    )
+    search_col1, search_col2 = st.columns([3, 1])
 
-    if st.button("Find Alternatives", type="primary"):
+    with search_col1:
+        original_part = st.text_input(
+            "Enter original manufacturer part number",
+            value=st.session_state.get("alternative_original_part", ""),
+            placeholder="Example: LM358, NE555, ATMEGA328P",
+        )
+
+    with search_col2:
+        st.write("")
+        st.write("")
+        search_clicked = st.button("Find Alternatives", type="primary", use_container_width=True)
+
+    if search_clicked:
         if not original_part:
             st.warning("Please enter an original part number.")
         else:
@@ -2532,8 +2541,6 @@ if app_mode == "Alternative Finder":
         alternatives = st.session_state["suggested_alternatives"]
         original_part = st.session_state.get("alternative_original_part", original_part)
         alternatives_df = pd.DataFrame(alternatives)
-
-        st.success("Suggested alternatives found.")
 
         if "Alternative Part" not in alternatives_df.columns:
             st.warning("Alternative results are missing part number data.")
@@ -2596,13 +2603,19 @@ if app_mode == "Alternative Finder":
         )
 
         lowest_unit_price = (
-            float(best_value_alternative.get("Unit Price", 0.0))
+            float(best_value_alternative.get("Unit Price", 0.0) or 0.0)
             if best_value_alternative
             else 0.0
         )
 
         top_score = (
-            int(best_alternative.get("Recommendation Score", 0))
+            int(best_alternative.get("Recommendation Score", 0) or 0)
+            if best_alternative
+            else 0
+        )
+
+        top_confidence = (
+            int(best_alternative.get("Drop-In Confidence", 0) or 0)
             if best_alternative
             else 0
         )
@@ -2613,66 +2626,84 @@ if app_mode == "Alternative Finder":
             else "Unknown"
         )
 
+        st.success("Suggested alternatives found.")
+
         st.markdown("## 📊 Alternative Search Summary")
 
-        summary_col1, summary_col2, summary_col3 = st.columns(3)
+        summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
 
         with summary_col1:
-            st.metric("Alternatives Found", len(true_alternatives))
-            st.metric("Suppliers Verified", supplier_count)
+            st.metric("Best Recommendation", best_alternative.get("Alternative Part", "-") if best_alternative else "-")
 
         with summary_col2:
-            st.metric(
-                "Best Recommendation",
-                best_alternative.get("Alternative Part", "-")
-                if best_alternative
-                else "-",
-            )
             st.metric("Top Score", f"{top_score} / 100")
 
         with summary_col3:
-            st.metric("Best Supplier", best_supplier or "Unknown")
-            st.metric("Total Stock", f"{total_stock:,}")
+            st.metric("Drop-In Match", f"{top_confidence}%")
 
-        if lowest_unit_price > 0:
-            st.caption(f"Lowest stocked unit price found: ${lowest_unit_price:.2f}")
+        with summary_col4:
+            st.metric("Suppliers Verified", supplier_count)
+
+        st.divider()
 
         if best_alternative:
-            st.markdown("### 🏆 Best Recommended Alternative")
+            st.markdown("## 🏆 Best Recommended Alternative")
 
-            best_col1, best_col2, best_col3 = st.columns(3)
+            best_card_col1, best_card_col2 = st.columns([2, 1])
 
-            with best_col1:
-                st.metric(
-                    "Part Number",
-                    best_alternative.get("Alternative Part", "Unknown"),
+            with best_card_col1:
+                st.markdown(
+                    f"""
+                    <div class="card">
+                        <div class="card-title">{best_alternative.get('Alternative Part', 'Unknown')}</div>
+                        <div class="card-text">
+                            {best_alternative.get('Recommendation', 'Review compatibility.')}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
 
-            with best_col2:
-                st.metric(
-                    "Recommendation Score",
-                    f"{int(best_alternative.get('Recommendation Score', 0))} / 100",
-                )
+                score_value = int(best_alternative.get("Recommendation Score", 0) or 0)
+                st.progress(min(score_value, 100) / 100)
+                st.caption(f"Recommendation score: {score_value} / 100")
 
-            with best_col3:
+            with best_card_col2:
+                st.metric("Drop-In Rating", best_alternative.get("Drop-In Rating", "Unknown"))
+                st.metric("Supplier", best_alternative.get("Supplier", "Unknown"))
+                st.metric("Stock", f"{int(best_alternative.get('Stock', 0) or 0):,}")
                 st.metric(
-                    "Drop-In Confidence",
-                    best_alternative.get("Drop-In Rating", "Unknown"),
+                    "Unit Price",
+                    f"${float(best_alternative.get('Unit Price', 0.0) or 0.0):.2f}",
                 )
-
-            st.info(best_alternative.get("Recommendation", "Review compatibility."))
 
             drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
 
+            st.markdown("### 🧪 Engineering Compatibility")
+
             if drop_in_reasons:
-                with st.expander("Why this alternative?", expanded=True):
-                    for reason in str(drop_in_reasons).split(";"):
-                        reason = reason.strip()
-                        if reason:
-                            st.write(reason)
+                reasons = [
+                    reason.strip()
+                    for reason in str(drop_in_reasons).split(";")
+                    if reason.strip()
+                ]
+
+                reason_col1, reason_col2 = st.columns(2)
+
+                for index, reason in enumerate(reasons):
+                    target_col = reason_col1 if index % 2 == 0 else reason_col2
+                    with target_col:
+                        if reason.startswith("✓"):
+                            st.success(reason)
+                        elif reason.startswith("⚠"):
+                            st.warning(reason)
+                        else:
+                            st.info(reason)
+            else:
+                st.info("No detailed compatibility explanation was returned for this candidate.")
 
         if best_value_alternative:
-            st.markdown("### 💰 Best Value Alternative")
+            st.markdown("## 💰 Best Value Alternative")
 
             value_col1, value_col2, value_col3 = st.columns(3)
 
@@ -2696,7 +2727,26 @@ if app_mode == "Alternative Finder":
 
         st.divider()
 
-        st.markdown("### 🧪 Engineering Comparison")
+        st.markdown("## 📦 Supplier Intelligence")
+
+        supplier_col1, supplier_col2, supplier_col3, supplier_col4 = st.columns(4)
+
+        with supplier_col1:
+            st.metric("Verified Suppliers", supplier_count)
+
+        with supplier_col2:
+            st.metric("Market Stock", f"{total_stock:,}")
+
+        with supplier_col3:
+            st.metric("Best Supplier", best_supplier or "Unknown")
+
+        with supplier_col4:
+            price_label = f"${lowest_unit_price:.2f}" if lowest_unit_price > 0 else "N/A"
+            st.metric("Lowest Price", price_label)
+
+        st.divider()
+
+        st.markdown("## 🔬 Side-by-Side Comparison")
 
         alternative_options = alternatives_df["Alternative Part"].dropna().tolist()
         default_index = 0
@@ -2705,7 +2755,7 @@ if app_mode == "Alternative Finder":
             default_index = alternative_options.index(best_alternative.get("Alternative Part"))
 
         selected_alternative = st.selectbox(
-            "Select alternative to compare",
+            "Select an alternative to compare against the original",
             alternative_options,
             index=default_index,
         )
@@ -2801,6 +2851,11 @@ if app_mode == "Alternative Finder":
                     "Selected Alternative": selected_row.get("Architecture", ""),
                 },
                 {
+                    "Attribute": "Voltage Range",
+                    "Original": original_data.get("voltage_range") or "Not available from supplier data",
+                    "Selected Alternative": selected_row.get("Voltage Range", ""),
+                },
+                {
                     "Attribute": "Drop-In Confidence",
                     "Original": "—",
                     "Selected Alternative": selected_row.get("Drop-In Confidence", ""),
@@ -2821,7 +2876,8 @@ if app_mode == "Alternative Finder":
 
         st.divider()
 
-        st.markdown("### 📋 All Suggested Alternatives")
+        st.markdown("## 📋 All Suggested Alternatives")
+        st.caption("Reference table for reviewing all ranked alternatives returned by the engine.")
 
         preferred_columns = [
             "Alternative Part",
@@ -2880,48 +2936,6 @@ if app_mode == "Alternative Finder":
 
     elif st.session_state["alternative_search_attempted"]:
         st.warning("No suggested alternatives found.")
-
-    suggested_part_numbers = []
-
-    if st.session_state["suggested_alternatives"]:
-        suggested_part_numbers = [
-            alt.get("Alternative Part", "")
-            for alt in st.session_state["suggested_alternatives"]
-            if isinstance(alt, dict)
-        ]
-
-    if suggested_part_numbers:
-        st.divider()
-        st.subheader("Step 2: Compare Alternatives")
-
-        alternatives_input = st.text_input(
-            "Enter alternative part numbers (comma-separated)",
-            value=", ".join(suggested_part_numbers),
-        )
-
-        if st.button("Compare Parts", type="primary"):
-            if original_part:
-                alternative_part_numbers = [
-                    part.strip()
-                    for part in alternatives_input.split(",")
-                    if part.strip()
-                ]
-
-                with st.spinner("Comparing parts..."):
-                    comparison_df = compare_parts(
-                        original_part,
-                        alternative_part_numbers,
-                    )
-
-                st.subheader("Detailed Supplier Risk Comparison")
-
-                st.dataframe(
-                    comparison_df,
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            else:
-                st.warning("Please enter an original part number first.")
 
     st.stop()
 
