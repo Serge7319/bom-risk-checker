@@ -2831,13 +2831,89 @@ if app_mode == "Alternative Finder":
             impacts.append(("Manufacturing", "PASS", "No assembly concern detected"))
 
         if "voltage" in warning_text or "architecture" in warning_text or "function" in warning_text:
-            impacts.append(("Electrical", "WARNING", "Electrical validation required"))
+            impacts.append(("Circuit Performance", "WARNING", "Electrical validation required"))
         else:
-            impacts.append(("Electrical", "PASS", "Primary electrical checks passed"))
+            impacts.append(("Circuit Performance", "PASS", "Primary electrical checks passed"))
 
-        impacts.append(("Firmware", "PASS", "No firmware impact expected for this component class"))
+        impacts.append(("Software/Firmware", "PASS", "No software or firmware impact expected for this component class"))
 
         return impacts
+
+
+    def _confidence_band(value):
+        value = int(value or 0)
+        if value >= 85:
+            return "High", "Strong engineering confidence"
+        if value >= 60:
+            return "Medium", "Promising candidate with review items"
+        if value >= 40:
+            return "Moderate", "Use only after engineering validation"
+        return "Low", "Treat as redesign candidate"
+
+    def _render_horizontal_score(label, value, note):
+        safe_value = max(0, min(int(value or 0), 100))
+        band, _ = _confidence_band(safe_value)
+        st.markdown(f"**{label}** — {safe_value}/100")
+        st.progress(safe_value)
+        st.caption(f"{band}: {note}")
+
+    def _compatibility_signal_summary(candidate):
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+        strength_text = " ".join(strengths).lower()
+        warning_text = " ".join(warnings).lower()
+
+        function_ok = (
+            "architecture" in strength_text
+            or "function" in strength_text
+            or "operational amplifier" in strength_text
+        )
+        pin_ok = "pin count" in strength_text
+        channel_ok = "channel count" in strength_text
+        voltage_ok = "voltage" in strength_text and "voltage" not in warning_text
+        package_warning = "package" in warning_text or "mounting" in warning_text
+        electrical_warning = any(
+            token in warning_text
+            for token in ["voltage", "bandwidth", "slew", "offset", "bias", "quiescent", "architecture", "function"]
+        )
+
+        if function_ok and voltage_ok and pin_ok and channel_ok and not electrical_warning:
+            electrical_status = "PASS"
+            electrical_detail = "Functional and primary electrical compatibility signals look acceptable."
+        elif electrical_warning:
+            electrical_status = "WARNING"
+            electrical_detail = "One or more electrical compatibility signals require datasheet validation."
+        else:
+            electrical_status = "INFO"
+            electrical_detail = "Electrical compatibility is partially verified; review datasheets before approval."
+
+        package_status = "WARNING" if package_warning else "PASS"
+        package_detail = (
+            "Package or mounting mismatch detected; PCB footprint and assembly review required."
+            if package_warning
+            else "No package mismatch detected by the current rules."
+        )
+
+        pin_status = "PASS" if pin_ok else "INFO"
+        pin_detail = "Pin count matches the original component." if pin_ok else "Pin compatibility requires datasheet review."
+
+        voltage_status = "PASS" if voltage_ok else "INFO"
+        voltage_detail = "Candidate supply range covers the original requirement." if voltage_ok else "Voltage compatibility requires datasheet validation."
+
+        return [
+            ("Functional/Electrical Fit", electrical_status, electrical_detail),
+            ("Pin / Channel Fit", pin_status, pin_detail),
+            ("Supply Voltage", voltage_status, voltage_detail),
+            ("Package / Footprint", package_status, package_detail),
+        ]
+
+    def _render_confidence_explanation(candidate):
+        st.markdown("#### Engineering Confidence Details")
+        st.caption("Compatibility signals interpreted from package, pin count, voltage range, architecture, and available electrical parameters.")
+
+        c1, c2 = st.columns(2)
+        for idx, (title, status, detail) in enumerate(_compatibility_signal_summary(candidate)):
+            with (c1 if idx % 2 == 0 else c2):
+                _render_validation_card(status, title, detail)
 
     def _render_engineering_decision_dashboard(original_part, candidate):
         if not candidate:
@@ -2920,6 +2996,8 @@ if app_mode == "Alternative Finder":
             """,
             unsafe_allow_html=True,
         )
+
+        _render_confidence_explanation(candidate)
 
         st.markdown("#### Engineering Validation Checklist")
         validation_items = []
