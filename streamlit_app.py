@@ -2551,10 +2551,9 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <div class="card">
-            <div class="card-title">🔎 Alternative Component Finder 2.3</div>
+            <div class="card-title">Alternative Component Finder</div>
             <div class="card-text">
-                Search for replacement parts, compare engineering compatibility,
-                and identify lower-risk sourcing options.
+                Verify supplier data, compare engineering compatibility, and rank replacement candidates.
             </div>
         </div>
         """,
@@ -2562,7 +2561,10 @@ if app_mode == "Alternative Finder":
     )
 
     st.markdown("### Step 1 — Search Original Component")
-    st.caption("Enter a manufacturer part number and BOM Risk Checker will verify supplier data, compare engineering characteristics, and rank replacement candidates.")
+    st.caption(
+        "Enter a manufacturer part number and BOM Risk Checker will verify supplier data, "
+        "compare engineering characteristics, and rank replacement candidates."
+    )
 
     if "suggested_alternatives" not in st.session_state:
         st.session_state["suggested_alternatives"] = []
@@ -2573,21 +2575,119 @@ if app_mode == "Alternative Finder":
     if "alternative_original_part" not in st.session_state:
         st.session_state["alternative_original_part"] = ""
 
-    # Use a form so pressing Find Alternatives submits the typed part number
-    # and runs the search in the same interaction. This avoids the double-click
-    # behavior caused by mixing a free text_input and a separate button.
+    def _format_currency(value):
+        try:
+            value = float(value or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        return f"${value:.2f}" if value > 0 else "N/A"
+
+    def _format_int(value):
+        try:
+            return f"{int(float(value or 0)):,}"
+        except (TypeError, ValueError):
+            return "0"
+
+    def _score_label(score):
+        try:
+            score = int(score or 0)
+        except (TypeError, ValueError):
+            score = 0
+
+        if score >= 85:
+            return "Excellent Match"
+        if score >= 70:
+            return "Strong Candidate"
+        if score >= 50:
+            return "Review Candidate"
+        return "Engineering Review Required"
+
+    def _render_kpi_card(label, value, note=""):
+        st.markdown(
+            f"""
+            <div style="
+                background-color:#111827;
+                border:1px solid #374151;
+                border-radius:14px;
+                padding:18px 20px;
+                min-height:122px;
+            ">
+                <div style="font-size:13px;color:#9CA3AF;font-weight:600;margin-bottom:8px;">{label}</div>
+                <div style="font-size:30px;color:#F9FAFB;font-weight:800;line-height:1.15;">{value}</div>
+                <div style="font-size:12px;color:#9CA3AF;margin-top:8px;">{note}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    def _render_section_title(title, subtitle=""):
+        st.markdown(f"## {title}")
+        if subtitle:
+            st.caption(subtitle)
+
+    def _render_compatibility_card(reason):
+        reason = str(reason or "").strip()
+
+        if reason.startswith("✓"):
+            title = "PASS"
+            body = reason.replace("✓", "", 1).strip()
+            border = "#14532D"
+            bg = "#052E1A"
+            color = "#86EFAC"
+        elif reason.startswith("⚠"):
+            title = "REVIEW"
+            body = reason.replace("⚠", "", 1).strip()
+            border = "#854D0E"
+            bg = "#422006"
+            color = "#FDE68A"
+        else:
+            title = "INFO"
+            body = reason
+            border = "#374151"
+            bg = "#111827"
+            color = "#D1D5DB"
+
+        st.markdown(
+            f"""
+            <div style="
+                background-color:{bg};
+                border:1px solid {border};
+                border-radius:12px;
+                padding:14px 16px;
+                min-height:96px;
+                margin-bottom:12px;
+            ">
+                <div style="font-size:12px;font-weight:800;letter-spacing:0.08em;color:{color};margin-bottom:8px;">{title}</div>
+                <div style="font-size:15px;color:#F9FAFB;line-height:1.45;">{body}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     with st.form("alternative_finder_search_form", clear_on_submit=False):
+        st.markdown(
+            """
+            <div style="
+                border:1px solid #374151;
+                border-radius:14px;
+                padding:18px 20px 14px 20px;
+                margin-bottom:8px;
+            ">
+            """,
+            unsafe_allow_html=True,
+        )
+
         original_part = st.text_input(
             "Manufacturer part number",
             value=st.session_state.get("alternative_original_part", ""),
             placeholder="Example: LM358, NE555, ATMEGA328P",
         )
 
-        search_button_col, search_hint_col = st.columns([0.16, 0.84])
+        search_button_col, search_hint_col = st.columns([0.14, 0.86])
 
         with search_button_col:
             search_clicked = st.form_submit_button(
-                "🔍 Find Alternatives",
+                "Find Alternatives",
                 type="primary",
                 use_container_width=False,
             )
@@ -2597,6 +2697,8 @@ if app_mode == "Alternative Finder":
                 "Supplier lookup • Electrical comparison • Ranked engineering recommendations"
             )
 
+        st.markdown("</div>", unsafe_allow_html=True)
+
     if search_clicked:
         original_part = str(original_part or "").strip()
 
@@ -2604,7 +2706,7 @@ if app_mode == "Alternative Finder":
             st.warning("Please enter an original part number.")
         else:
             with st.spinner(
-                "🔍 Searching suppliers • ⚡ Comparing electrical specs • 🧠 Ranking alternatives..."
+                "Searching suppliers, comparing electrical specs, and ranking alternatives..."
             ):
                 st.session_state["alternative_original_part"] = original_part
                 st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
@@ -2703,65 +2805,106 @@ if app_mode == "Alternative Finder":
 
         st.success("Suggested alternatives found.")
 
-        st.markdown("## 📊 Alternative Search Summary")
-        st.caption("Results are ranked by engineering compatibility, supplier availability, lifecycle status, and sourcing risk.")
+        _render_section_title(
+            "Alternative Search Summary",
+            "Results are ranked by engineering compatibility, supplier availability, lifecycle status, and sourcing risk.",
+        )
 
         summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
 
         with summary_col1:
-            st.metric("Best Recommendation", best_alternative.get("Alternative Part", "-") if best_alternative else "-")
+            _render_kpi_card(
+                "Best Recommendation",
+                best_alternative.get("Alternative Part", "-") if best_alternative else "-",
+                "Highest-ranked candidate",
+            )
 
         with summary_col2:
-            st.metric("Top Score", f"{top_score} / 100")
+            _render_kpi_card("Top Score", f"{top_score} / 100", _score_label(top_score))
 
         with summary_col3:
-            st.metric("Drop-In Match", f"{top_confidence}%")
+            _render_kpi_card("Drop-In Match", f"{top_confidence}%", "Engineering compatibility")
 
         with summary_col4:
-            st.metric("Suppliers Verified", supplier_count)
+            _render_kpi_card("Verified Suppliers", supplier_count, "Live supplier responses")
 
         st.divider()
 
         if best_alternative:
-            st.markdown("## 🏆 Best Recommended Alternative")
+            _render_section_title("Best Recommended Alternative")
 
             score_value = int(best_alternative.get("Recommendation Score", 0) or 0)
             stock_value = int(best_alternative.get("Stock", 0) or 0)
             price_value = float(best_alternative.get("Unit Price", 0.0) or 0.0)
+            part_number = best_alternative.get("Alternative Part", "Unknown")
+            recommendation_text = best_alternative.get("Recommendation", "Review compatibility.")
+            lifecycle_value = best_alternative.get("Lifecycle", "Unknown")
+            supplier_value = best_alternative.get("Supplier", "Unknown")
+            drop_in_rating = str(best_alternative.get("Drop-In Rating", "Unknown")).replace("🟢", "").replace("🟡", "").replace("🔴", "").strip()
 
             st.markdown(
                 f"""
-                <div class="recommendation-card">
-                    <div class="recommendation-part">{best_alternative.get('Alternative Part', 'Unknown')}</div>
-                    <div class="recommendation-subtitle">{best_alternative.get('Recommendation', 'Review compatibility.')}</div>
+                <div style="
+                    background:linear-gradient(135deg,#0B1220,#111827);
+                    border:1px solid #334155;
+                    border-radius:18px;
+                    padding:26px 28px;
+                    margin-bottom:18px;
+                ">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
+                        <div>
+                            <div style="font-size:44px;font-weight:900;color:#F9FAFB;letter-spacing:-0.03em;">{part_number}</div>
+                            <div style="font-size:15px;color:#93C5FD;margin-top:8px;">{recommendation_text}</div>
+                        </div>
+                        <div style="
+                            border:1px solid #1D4ED8;
+                            background-color:#0F172A;
+                            color:#BFDBFE;
+                            border-radius:999px;
+                            padding:8px 14px;
+                            font-size:13px;
+                            font-weight:800;
+                            letter-spacing:0.04em;
+                        ">
+                            BEST MATCH
+                        </div>
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-            best_card_col1, best_card_col2, best_card_col3, best_card_col4, best_card_col5 = st.columns(5)
+            best_card_col1, best_card_col2, best_card_col3, best_card_col4, best_card_col5, best_card_col6 = st.columns(6)
 
             with best_card_col1:
-                st.metric("Drop-In Match", f"{int(best_alternative.get('Drop-In Confidence', 0) or 0)}%")
+                st.metric("Match", f"{top_confidence}%")
 
             with best_card_col2:
                 st.metric("Score", f"{score_value} / 100")
 
             with best_card_col3:
-                st.metric("Lifecycle", best_alternative.get("Lifecycle", "Unknown"))
+                st.metric("Rating", drop_in_rating or "Unknown")
 
             with best_card_col4:
-                st.metric("Stock", f"{stock_value:,}")
+                st.metric("Lifecycle", lifecycle_value)
 
             with best_card_col5:
-                st.metric("Unit Price", f"${price_value:.2f}")
+                st.metric("Stock", f"{stock_value:,}")
+
+            with best_card_col6:
+                st.metric("Price", f"${price_value:.2f}" if price_value > 0 else "N/A")
 
             st.progress(min(score_value, 100) / 100)
-            st.caption("Recommendation score blends lifecycle, stock, supplier availability, cost, and engineering compatibility.")
+            st.caption(
+                f"Supplier: {supplier_value}. Recommendation score blends lifecycle, stock, supplier availability, cost, and engineering compatibility."
+            )
 
             drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
 
-            st.markdown("### 🧪 Engineering Compatibility")
+            _render_section_title(
+                "Engineering Compatibility",
+                "Pass/review checklist generated from package, pin count, architecture, voltage, and available electrical characteristics.",
+            )
 
             if drop_in_reasons:
                 reasons = [
@@ -2775,60 +2918,62 @@ if app_mode == "Alternative Finder":
                 for index, reason in enumerate(reasons):
                     target_col = reason_col1 if index % 2 == 0 else reason_col2
                     with target_col:
-                        if reason.startswith("✓"):
-                            st.success(reason)
-                        elif reason.startswith("⚠"):
-                            st.warning(reason)
-                        else:
-                            st.info(reason)
+                        _render_compatibility_card(reason)
             else:
                 st.info("No detailed compatibility explanation was returned for this candidate.")
 
         if best_value_alternative:
-            st.markdown("## 💰 Best Value Alternative")
+            st.divider()
+            _render_section_title("Best Value Alternative")
 
             value_col1, value_col2, value_col3 = st.columns(3)
 
             with value_col1:
-                st.metric(
+                _render_kpi_card(
                     "Part Number",
                     best_value_alternative.get("Alternative Part", "Unknown"),
+                    "Lowest-priced stocked candidate",
                 )
 
             with value_col2:
-                st.metric(
+                _render_kpi_card(
                     "Unit Price",
-                    f"${float(best_value_alternative.get('Unit Price', 0.0) or 0.0):.2f}",
+                    _format_currency(best_value_alternative.get("Unit Price", 0.0)),
+                    "Supplier-listed price",
                 )
 
             with value_col3:
-                st.metric(
+                _render_kpi_card(
                     "Available Stock",
-                    f"{int(best_value_alternative.get('Stock', 0) or 0):,}",
+                    _format_int(best_value_alternative.get("Stock", 0)),
+                    "Current supplier stock",
                 )
 
         st.divider()
 
-        st.markdown("## 📦 Supplier Intelligence")
+        _render_section_title("Supplier Intelligence")
 
         supplier_col1, supplier_col2, supplier_col3, supplier_col4 = st.columns(4)
 
         with supplier_col1:
-            st.metric("Verified Suppliers", supplier_count)
+            _render_kpi_card("Verified Suppliers", supplier_count, "Supplier records found")
 
         with supplier_col2:
-            st.metric("Market Stock", f"{total_stock:,}")
+            _render_kpi_card("Market Stock", f"{total_stock:,}", "Across returned candidates")
 
         with supplier_col3:
-            st.metric("Best Supplier", best_supplier or "Unknown")
+            _render_kpi_card("Best Supplier", best_supplier or "Unknown", "For the top recommendation")
 
         with supplier_col4:
             price_label = f"${lowest_unit_price:.2f}" if lowest_unit_price > 0 else "N/A"
-            st.metric("Lowest Price", price_label)
+            _render_kpi_card("Lowest Price", price_label, "Best stocked unit price")
 
         st.divider()
 
-        st.markdown("## 🔬 Side-by-Side Comparison")
+        _render_section_title(
+            "Side-by-Side Comparison",
+            "Select an alternative to compare directly against the searched original component.",
+        )
 
         alternative_options = alternatives_df["Alternative Part"].dropna().tolist()
         default_index = 0
@@ -2837,7 +2982,7 @@ if app_mode == "Alternative Finder":
             default_index = alternative_options.index(best_alternative.get("Alternative Part"))
 
         selected_alternative = st.selectbox(
-            "Select an alternative to compare against the original",
+            "Alternative to compare",
             alternative_options,
             index=default_index,
         )
@@ -2858,12 +3003,12 @@ if app_mode == "Alternative Finder":
             stock_ratio = alternative_stock / original_stock
 
             if stock_ratio > 1:
-                stock_delta = f"🟢 {stock_ratio:.0f}× more stock available"
+                stock_delta = f"Improved: {stock_ratio:.0f}x more stock available"
             else:
-                stock_delta = f"🔴 {(1 / stock_ratio):.1f}× less stock available"
+                stock_delta = f"Reduced: {(1 / stock_ratio):.1f}x less stock available"
 
         elif original_stock > 0 and alternative_stock == 0:
-            stock_delta = "🔴 No stock available"
+            stock_delta = "No stock available"
 
         else:
             stock_delta = "N/A"
@@ -2872,9 +3017,9 @@ if app_mode == "Alternative Finder":
             price_pct = ((alternative_price - original_price) / original_price) * 100
 
             if price_pct < 0:
-                price_delta = f"🟢 {abs(price_pct):.1f}% lower cost"
+                price_delta = f"Improved: {abs(price_pct):.1f}% lower cost"
             else:
-                price_delta = f"🔴 {price_pct:.1f}% higher cost"
+                price_delta = f"Tradeoff: {price_pct:.1f}% higher cost"
         else:
             price_delta = "N/A"
 
@@ -2945,7 +3090,7 @@ if app_mode == "Alternative Finder":
                 {
                     "Attribute": "Drop-In Rating",
                     "Original": "—",
-                    "Selected Alternative": selected_row.get("Drop-In Rating", ""),
+                    "Selected Alternative": str(selected_row.get("Drop-In Rating", "")).replace("🟢", "").replace("🟡", "").replace("🔴", "").strip(),
                 },
             ]
         )
@@ -2958,8 +3103,10 @@ if app_mode == "Alternative Finder":
 
         st.divider()
 
-        st.markdown("## 📋 All Suggested Alternatives")
-        st.caption("Reference table for reviewing all ranked alternatives returned by the engine.")
+        _render_section_title(
+            "All Suggested Alternatives",
+            "Reference table for reviewing all ranked alternatives returned by the engine.",
+        )
 
         preferred_columns = [
             "Alternative Part",
@@ -2985,12 +3132,22 @@ if app_mode == "Alternative Finder":
 
         display_df = alternatives_df[display_columns].copy()
 
+        if "Drop-In Rating" in display_df.columns:
+            display_df["Drop-In Rating"] = (
+                display_df["Drop-In Rating"]
+                .astype(str)
+                .str.replace("🟢", "", regex=False)
+                .str.replace("🟡", "", regex=False)
+                .str.replace("🔴", "", regex=False)
+                .str.strip()
+            )
+
         if "Estimated Risk" in display_df.columns:
             display_df["Estimated Risk"] = display_df["Estimated Risk"].replace(
                 {
-                    "Low": "🟢 Low",
-                    "Medium": "🟠 Medium",
-                    "High": "🔴 High",
+                    "Low": "Low",
+                    "Medium": "Medium",
+                    "High": "High",
                 }
             )
 
@@ -3010,7 +3167,7 @@ if app_mode == "Alternative Finder":
             hide_index=True,
         )
 
-        if st.button("🔄 New Alternative Search"):
+        if st.button("New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
             st.session_state["alternative_search_attempted"] = False
             st.session_state["alternative_original_part"] = ""
