@@ -2548,23 +2548,12 @@ if app_mode == "Admin":
     st.stop()
 
 if app_mode == "Alternative Finder":
-    st.markdown(
-        """
-        <div class="card">
-            <div class="card-title">Alternative Component Finder</div>
-            <div class="card-text">
-                Verify supplier data, compare engineering compatibility, and rank replacement candidates.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.markdown("## Alternative Component Finder")
+    st.caption(
+        "Verify supplier data, compare engineering compatibility, and rank replacement candidates."
     )
 
-    st.markdown("### Step 1 — Search Original Component")
-    st.caption(
-        "Enter a manufacturer part number and BOM Risk Checker will verify supplier data, "
-        "compare engineering characteristics, and rank replacement candidates."
-    )
+    st.markdown("#### Search Original Component")
 
     if "suggested_alternatives" not in st.session_state:
         st.session_state["suggested_alternatives"] = []
@@ -2608,22 +2597,28 @@ if app_mode == "Alternative Finder":
             <div style="
                 background-color:#111827;
                 border:1px solid #374151;
-                border-radius:14px;
-                padding:18px 20px;
-                min-height:122px;
+                border-radius:12px;
+                padding:14px 16px;
+                min-height:98px;
             ">
-                <div style="font-size:13px;color:#9CA3AF;font-weight:600;margin-bottom:8px;">{label}</div>
-                <div style="font-size:30px;color:#F9FAFB;font-weight:800;line-height:1.15;">{value}</div>
-                <div style="font-size:12px;color:#9CA3AF;margin-top:8px;">{note}</div>
+                <div style="font-size:12px;color:#9CA3AF;font-weight:700;margin-bottom:7px;letter-spacing:0.01em;">{label}</div>
+                <div style="font-size:26px;color:#F9FAFB;font-weight:800;line-height:1.12;">{value}</div>
+                <div style="font-size:11px;color:#9CA3AF;margin-top:7px;">{note}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     def _render_section_title(title, subtitle=""):
-        st.markdown(f"## {title}")
-        if subtitle:
-            st.caption(subtitle)
+        st.markdown(
+            f"""
+            <div style="margin-top:18px;margin-bottom:8px;">
+                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">{title}</div>
+                {f'<div style="font-size:14px;color:#9CA3AF;margin-top:6px;">{subtitle}</div>' if subtitle else ''}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     def _render_compatibility_card(reason):
         reason = str(reason or "").strip()
@@ -2635,7 +2630,7 @@ if app_mode == "Alternative Finder":
             bg = "#052E1A"
             color = "#86EFAC"
         elif reason.startswith("⚠"):
-            title = "REVIEW"
+            title = "WARNING"
             body = reason.replace("⚠", "", 1).strip()
             border = "#854D0E"
             bg = "#422006"
@@ -2665,25 +2660,13 @@ if app_mode == "Alternative Finder":
         )
 
     with st.form("alternative_finder_search_form", clear_on_submit=False):
-        st.markdown(
-            """
-            <div style="
-                border:1px solid #374151;
-                border-radius:14px;
-                padding:18px 20px 14px 20px;
-                margin-bottom:8px;
-            ">
-            """,
-            unsafe_allow_html=True,
-        )
-
         original_part = st.text_input(
             "Manufacturer part number",
             value=st.session_state.get("alternative_original_part", ""),
             placeholder="Example: LM358, NE555, ATMEGA328P",
         )
 
-        search_button_col, search_hint_col = st.columns([0.14, 0.86])
+        search_button_col, search_hint_col = st.columns([0.13, 0.87])
 
         with search_button_col:
             search_clicked = st.form_submit_button(
@@ -2696,8 +2679,6 @@ if app_mode == "Alternative Finder":
             st.caption(
                 "Supplier lookup • Electrical comparison • Ranked engineering recommendations"
             )
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
     if search_clicked:
         original_part = str(original_part or "").strip()
@@ -2803,11 +2784,9 @@ if app_mode == "Alternative Finder":
             else "Unknown"
         )
 
-        st.success("Suggested alternatives found.")
-
         _render_section_title(
-            "Alternative Search Summary",
-            "Results are ranked by engineering compatibility, supplier availability, lifecycle status, and sourcing risk.",
+            "Search Overview",
+            "Ranked results based on compatibility, availability, lifecycle status, and sourcing risk.",
         )
 
         summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
@@ -2820,7 +2799,7 @@ if app_mode == "Alternative Finder":
             )
 
         with summary_col2:
-            _render_kpi_card("Top Score", f"{top_score} / 100", _score_label(top_score))
+            _render_kpi_card("Recommendation Score", f"{top_score} / 100", _score_label(top_score))
 
         with summary_col3:
             _render_kpi_card("Drop-In Match", f"{top_confidence}%", "Engineering compatibility")
@@ -2840,21 +2819,24 @@ if app_mode == "Alternative Finder":
             recommendation_text = best_alternative.get("Recommendation", "Review compatibility.")
             lifecycle_value = best_alternative.get("Lifecycle", "Unknown")
             supplier_value = best_alternative.get("Supplier", "Unknown")
+            manufacturer_value = best_alternative.get("Manufacturer", "") or best_alternative.get("manufacturer", "") or "Manufacturer not listed"
             drop_in_rating = str(best_alternative.get("Drop-In Rating", "Unknown")).replace("🟢", "").replace("🟡", "").replace("🔴", "").strip()
+            match_badge = "BEST MATCH" if score_value >= 70 else "REVIEW CANDIDATE"
 
             st.markdown(
                 f"""
                 <div style="
                     background:linear-gradient(135deg,#0B1220,#111827);
                     border:1px solid #334155;
-                    border-radius:18px;
-                    padding:26px 28px;
-                    margin-bottom:18px;
+                    border-radius:16px;
+                    padding:22px 24px;
+                    margin-bottom:14px;
                 ">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
                         <div>
-                            <div style="font-size:44px;font-weight:900;color:#F9FAFB;letter-spacing:-0.03em;">{part_number}</div>
-                            <div style="font-size:15px;color:#93C5FD;margin-top:8px;">{recommendation_text}</div>
+                            <div style="font-size:40px;font-weight:900;color:#F9FAFB;letter-spacing:-0.03em;">{part_number}</div>
+                            <div style="font-size:13px;color:#9CA3AF;margin-top:4px;">{manufacturer_value} • {supplier_value}</div>
+                            <div style="font-size:15px;color:#93C5FD;margin-top:10px;">{recommendation_text}</div>
                         </div>
                         <div style="
                             border:1px solid #1D4ED8;
@@ -2862,11 +2844,12 @@ if app_mode == "Alternative Finder":
                             color:#BFDBFE;
                             border-radius:999px;
                             padding:8px 14px;
-                            font-size:13px;
+                            font-size:12px;
                             font-weight:800;
                             letter-spacing:0.04em;
+                            white-space:nowrap;
                         ">
-                            BEST MATCH
+                            {match_badge}
                         </div>
                     </div>
                 </div>
