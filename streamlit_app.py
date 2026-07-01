@@ -2659,26 +2659,32 @@ if app_mode == "Alternative Finder":
             unsafe_allow_html=True,
         )
 
-    with st.form("alternative_finder_search_form", clear_on_submit=False):
-        original_part = st.text_input(
-            "Manufacturer part number",
-            value=st.session_state.get("alternative_original_part", ""),
-            placeholder="Example: LM358, NE555, ATMEGA328P",
+    if "alternative_input_part" not in st.session_state:
+        st.session_state["alternative_input_part"] = st.session_state.get(
+            "alternative_original_part",
+            "",
         )
 
-        search_button_col, search_hint_col = st.columns([0.13, 0.87])
+    original_part = st.text_input(
+        "Manufacturer part number",
+        key="alternative_input_part",
+        placeholder="Example: LM358, NE555, ATMEGA328P",
+    )
 
-        with search_button_col:
-            search_clicked = st.form_submit_button(
-                "Find Alternatives",
-                type="primary",
-                use_container_width=False,
-            )
+    search_button_col, search_hint_col = st.columns([0.13, 0.87])
 
-        with search_hint_col:
-            st.caption(
-                "Supplier lookup • Electrical comparison • Ranked engineering recommendations"
-            )
+    with search_button_col:
+        search_clicked = st.button(
+            "Find Alternatives",
+            type="primary",
+            use_container_width=False,
+            key="alternative_search_button",
+        )
+
+    with search_hint_col:
+        st.caption(
+            "Supplier lookup • Electrical comparison • Ranked engineering recommendations"
+        )
 
     if search_clicked:
         original_part = str(original_part or "").strip()
@@ -2819,7 +2825,12 @@ if app_mode == "Alternative Finder":
             recommendation_text = best_alternative.get("Recommendation", "Review compatibility.")
             lifecycle_value = best_alternative.get("Lifecycle", "Unknown")
             supplier_value = best_alternative.get("Supplier", "Unknown")
-            manufacturer_value = best_alternative.get("Manufacturer", "") or best_alternative.get("manufacturer", "") or "Manufacturer not listed"
+            manufacturer_value = best_alternative.get("Manufacturer", "") or best_alternative.get("manufacturer", "")
+            supplier_context = (
+                f"{supplier_context}"
+                if manufacturer_value
+                else f"Supplier: {supplier_value}"
+            )
             drop_in_rating = str(best_alternative.get("Drop-In Rating", "Unknown")).replace("🟢", "").replace("🟡", "").replace("🔴", "").strip()
             match_badge = "BEST MATCH" if score_value >= 70 else "REVIEW CANDIDATE"
 
@@ -2835,7 +2846,7 @@ if app_mode == "Alternative Finder":
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
                         <div>
                             <div style="font-size:40px;font-weight:900;color:#F9FAFB;letter-spacing:-0.03em;">{part_number}</div>
-                            <div style="font-size:13px;color:#9CA3AF;margin-top:4px;">{manufacturer_value} • {supplier_value}</div>
+                            <div style="font-size:13px;color:#9CA3AF;margin-top:4px;">{supplier_context}</div>
                             <div style="font-size:15px;color:#93C5FD;margin-top:10px;">{recommendation_text}</div>
                         </div>
                         <div style="
@@ -2886,7 +2897,7 @@ if app_mode == "Alternative Finder":
 
             _render_section_title(
                 "Engineering Compatibility",
-                "Pass/review checklist generated from package, pin count, architecture, voltage, and available electrical characteristics.",
+                "Pass/warning checklist generated from package, pin count, architecture, voltage, and available electrical characteristics.",
             )
 
             if drop_in_reasons:
@@ -2945,7 +2956,7 @@ if app_mode == "Alternative Finder":
             _render_kpi_card("Market Stock", f"{total_stock:,}", "Across returned candidates")
 
         with supplier_col3:
-            _render_kpi_card("Best Supplier", best_supplier or "Unknown", "For the top recommendation")
+            _render_kpi_card("Supplier for Top Recommendation", best_supplier or "Unknown", "Matched supplier record")
 
         with supplier_col4:
             price_label = f"${lowest_unit_price:.2f}" if lowest_unit_price > 0 else "N/A"
