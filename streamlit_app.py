@@ -2659,6 +2659,224 @@ if app_mode == "Alternative Finder":
             unsafe_allow_html=True,
         )
 
+
+    def _split_drop_in_reasons(candidate):
+        raw_reasons = str(candidate.get("Drop-In Reasons", "") or "")
+        reasons = [reason.strip() for reason in raw_reasons.split(";") if reason.strip()]
+        strengths = []
+        warnings = []
+        informational = []
+
+        for reason in reasons:
+            if reason.startswith("✓"):
+                strengths.append(reason.replace("✓", "", 1).strip())
+            elif reason.startswith("⚠"):
+                warnings.append(reason.replace("⚠", "", 1).strip())
+            else:
+                informational.append(reason.replace("ℹ", "", 1).strip())
+
+        return strengths, warnings, informational
+
+    def _engineering_risk_label(candidate):
+        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+        architecture_warning = any("architecture" in warning.lower() for warning in warnings)
+        voltage_warning = any("voltage" in warning.lower() for warning in warnings)
+        package_warning = any("package" in warning.lower() or "mounting" in warning.lower() for warning in warnings)
+
+        if confidence >= 80 and not architecture_warning and not voltage_warning:
+            return "Low Risk", "Suitable for direct evaluation with normal validation."
+
+        if confidence >= 50 and not architecture_warning and not voltage_warning:
+            if package_warning:
+                return "Medium Risk", "Electrical fit looks reasonable, but package or PCB footprint review is required."
+            return "Medium Risk", "Candidate is promising, but engineering validation is still required."
+
+        if architecture_warning or voltage_warning:
+            return "High Risk", "Major electrical or functional differences require detailed redesign review."
+
+        return "High Risk", "Compatibility confidence is low; treat this as a redesign candidate."
+
+    def _recommendation_label(candidate):
+        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
+        score = int(candidate.get("Recommendation Score", 0) or 0)
+        risk_label, _ = _engineering_risk_label(candidate)
+
+        if risk_label == "Low Risk" and score >= 80:
+            return "Recommended for Evaluation"
+        if risk_label == "Medium Risk" and score >= 60:
+            return "Recommended with Engineering Review"
+        if score >= 50:
+            return "Review Before Use"
+        return "Not Recommended Without Redesign"
+
+    def _recommended_action(candidate):
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+        risk_label, _ = _engineering_risk_label(candidate)
+        warning_text = " ".join(warnings).lower()
+
+        actions = []
+
+        if risk_label == "Low Risk":
+            actions.append("Prototype evaluation recommended")
+        elif risk_label == "Medium Risk":
+            actions.append("Engineering review required before release")
+        else:
+            actions.append("Do not approve without redesign review")
+
+        if "package" in warning_text or "mounting" in warning_text:
+            actions.append("PCB footprint and assembly review required")
+
+        if "voltage" in warning_text:
+            actions.append("Electrical operating range validation required")
+
+        if "architecture" in warning_text or "function" in warning_text:
+            actions.append("Functional equivalence review required")
+
+        if not actions:
+            actions.append("Standard datasheet validation recommended")
+
+        return actions[:4]
+
+    def _render_engineering_recommendation(original_part, candidate):
+        if not candidate:
+            return
+
+        part_number = candidate.get("Alternative Part", "Unknown")
+        score = int(candidate.get("Recommendation Score", 0) or 0)
+        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
+        lifecycle = candidate.get("Lifecycle", "Unknown")
+        supplier = candidate.get("Supplier", "Unknown")
+        package = candidate.get("Package", "Unknown")
+        recommendation_status = _recommendation_label(candidate)
+        risk_label, risk_note = _engineering_risk_label(candidate)
+        strengths, warnings, informational = _split_drop_in_reasons(candidate)
+        actions = _recommended_action(candidate)
+
+        if risk_label == "Low Risk":
+            risk_color = "#86EFAC"
+            risk_border = "#14532D"
+            risk_bg = "#052E1A"
+        elif risk_label == "Medium Risk":
+            risk_color = "#FDE68A"
+            risk_border = "#854D0E"
+            risk_bg = "#422006"
+        else:
+            risk_color = "#FCA5A5"
+            risk_border = "#7F1D1D"
+            risk_bg = "#450A0A"
+
+        primary_strengths = strengths[:4] if strengths else ["Supplier data returned for evaluation"]
+        primary_warnings = warnings[:4] if warnings else ["No major compatibility warnings detected by the current rules"]
+        action_items = actions if actions else ["Perform standard datasheet validation"]
+
+        if warnings:
+            assessment = (
+                f"{part_number} is the highest-ranked candidate for {original_part}. "
+                f"It appears promising based on score, lifecycle, stock, and supplier availability, "
+                f"but the highlighted engineering warnings should be reviewed before production use."
+            )
+        else:
+            assessment = (
+                f"{part_number} is the highest-ranked candidate for {original_part}. "
+                f"No major compatibility warnings were detected by the current rules, but standard datasheet validation is still recommended."
+            )
+
+        st.markdown(
+            f"""
+            <div style="margin-top:24px;margin-bottom:10px;">
+                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Engineering Recommendation</div>
+                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Interpreted recommendation based on compatibility, sourcing, lifecycle, and risk signals.</div>
+            </div>
+            <div style="
+                background:linear-gradient(135deg,#0B1220,#111827);
+                border:1px solid #334155;
+                border-radius:16px;
+                padding:22px 24px;
+                margin-bottom:16px;
+            ">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;">
+                    <div>
+                        <div style="font-size:13px;color:#93C5FD;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{recommendation_status}</div>
+                        <div style="font-size:28px;color:#F9FAFB;font-weight:900;letter-spacing:-0.02em;">{part_number}</div>
+                        <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Candidate replacement for {original_part}</div>
+                    </div>
+                    <div style="
+                        background-color:{risk_bg};
+                        border:1px solid {risk_border};
+                        border-radius:999px;
+                        padding:9px 14px;
+                        color:{risk_color};
+                        font-size:12px;
+                        font-weight:900;
+                        letter-spacing:0.04em;
+                        text-transform:uppercase;
+                    ">{risk_label}</div>
+                </div>
+                <div style="font-size:15px;color:#D1D5DB;line-height:1.55;margin-top:16px;max-width:1100px;">{assessment}</div>
+                <div style="font-size:13px;color:#9CA3AF;margin-top:10px;">{risk_note}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        rec_col1, rec_col2, rec_col3 = st.columns(3)
+
+        with rec_col1:
+            st.markdown(
+                "<div style='font-size:15px;font-weight:800;color:#F9FAFB;margin-bottom:8px;'>Strengths</div>",
+                unsafe_allow_html=True,
+            )
+            for item in primary_strengths:
+                st.markdown(
+                    f"""
+                    <div style="background:#052E1A;border:1px solid #14532D;border-radius:10px;padding:10px 12px;margin-bottom:8px;color:#D1FAE5;font-size:13px;line-height:1.4;">
+                        {item}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        with rec_col2:
+            st.markdown(
+                "<div style='font-size:15px;font-weight:800;color:#F9FAFB;margin-bottom:8px;'>Review Items</div>",
+                unsafe_allow_html=True,
+            )
+            for item in primary_warnings:
+                st.markdown(
+                    f"""
+                    <div style="background:#422006;border:1px solid #854D0E;border-radius:10px;padding:10px 12px;margin-bottom:8px;color:#FEF3C7;font-size:13px;line-height:1.4;">
+                        {item}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        with rec_col3:
+            st.markdown(
+                "<div style='font-size:15px;font-weight:800;color:#F9FAFB;margin-bottom:8px;'>Recommended Action</div>",
+                unsafe_allow_html=True,
+            )
+            for item in action_items:
+                st.markdown(
+                    f"""
+                    <div style="background:#111827;border:1px solid #374151;border-radius:10px;padding:10px 12px;margin-bottom:8px;color:#E5E7EB;font-size:13px;line-height:1.4;">
+                        {item}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        rec_metric_col1, rec_metric_col2, rec_metric_col3, rec_metric_col4 = st.columns(4)
+        with rec_metric_col1:
+            _render_kpi_card("Recommendation Score", f"{score} / 100", _score_label(score))
+        with rec_metric_col2:
+            _render_kpi_card("Drop-In Match", f"{confidence}%", "Compatibility confidence")
+        with rec_metric_col3:
+            _render_kpi_card("Lifecycle", lifecycle, "Supplier lifecycle status")
+        with rec_metric_col4:
+            _render_kpi_card("Package", package, f"Supplier: {supplier}")
+
     if "alternative_input_part" not in st.session_state:
         st.session_state["alternative_input_part"] = st.session_state.get(
             "alternative_original_part",
@@ -2816,6 +3034,10 @@ if app_mode == "Alternative Finder":
         st.divider()
 
         if best_alternative:
+            _render_engineering_recommendation(original_part, best_alternative)
+            st.divider()
+
+        if best_alternative:
             _render_section_title("Best Recommended Alternative")
 
             score_value = int(best_alternative.get("Recommendation Score", 0) or 0)
@@ -2827,7 +3049,7 @@ if app_mode == "Alternative Finder":
             supplier_value = best_alternative.get("Supplier", "Unknown")
             manufacturer_value = best_alternative.get("Manufacturer", "") or best_alternative.get("manufacturer", "")
             supplier_context = (
-                f"{supplier_context}"
+                f"{manufacturer_value} • {supplier_value}"
                 if manufacturer_value
                 else f"Supplier: {supplier_value}"
             )
@@ -2888,7 +3110,6 @@ if app_mode == "Alternative Finder":
             with best_card_col6:
                 st.metric("Price", f"${price_value:.2f}" if price_value > 0 else "N/A")
 
-            st.progress(min(score_value, 100) / 100)
             st.caption(
                 f"Supplier: {supplier_value}. Recommendation score blends lifecycle, stock, supplier availability, cost, and engineering compatibility."
             )
