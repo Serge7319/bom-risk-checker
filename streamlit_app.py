@@ -2840,6 +2840,86 @@ if app_mode == "Alternative Finder":
         return impacts
 
 
+    def _recommendation_badges(candidate):
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+        strength_text = " ".join(strengths).lower()
+        warning_text = " ".join(warnings).lower()
+        lifecycle = str(candidate.get("Lifecycle", "")).lower()
+        supplier = str(candidate.get("Supplier", "")).strip()
+        stock = int(candidate.get("Stock", 0) or 0)
+
+        badges = []
+        if "architecture" in strength_text or "operational amplifier" in strength_text:
+            badges.append(("PASS", "Electrical Compatible"))
+        if "voltage" in strength_text and "voltage" not in warning_text:
+            badges.append(("PASS", "Voltage Compatible"))
+        if "active" in lifecycle:
+            badges.append(("PASS", "Lifecycle Active"))
+        if stock > 0:
+            badges.append(("PASS", "Stock Available"))
+        if supplier and supplier.lower() not in ["unknown", "none", ""]:
+            badges.append(("PASS", "Supplier Verified"))
+        if "package" in warning_text or "mounting" in warning_text:
+            badges.append(("WARNING", "Footprint Review"))
+            badges.append(("WARNING", "Manufacturing Review"))
+        if "voltage" in warning_text:
+            badges.append(("WARNING", "Voltage Review"))
+        if "architecture" in warning_text or "function" in warning_text:
+            badges.append(("WARNING", "Functional Review"))
+        return badges[:8]
+
+    def _badge_html(status, label):
+        status = str(status or "INFO").upper()
+        if status == "PASS":
+            bg, border, color = "#052E1A", "#14532D", "#86EFAC"
+        elif status == "WARNING":
+            bg, border, color = "#422006", "#854D0E", "#FDE68A"
+        else:
+            bg, border, color = "#111827", "#334155", "#CBD5E1"
+        return f'<span style="display:inline-block;background:{bg};border:1px solid {border};color:{color};border-radius:999px;padding:7px 10px;margin:4px 6px 4px 0;font-size:12px;font-weight:800;letter-spacing:0.02em;">{label}</span>'
+
+    def _engineering_summary_text(original_part, candidate):
+        part_number = candidate.get("Alternative Part", "Unknown")
+        score = int(candidate.get("Recommendation Score", 0) or 0)
+        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
+        stock = int(candidate.get("Stock", 0) or 0)
+        supplier = candidate.get("Supplier", "Unknown")
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+        warning_text = " ".join(warnings).lower()
+
+        positives = []
+        if score >= 70:
+            positives.append("strong overall recommendation score")
+        if confidence >= 50:
+            positives.append("acceptable electrical compatibility signals")
+        if stock > 0:
+            positives.append(f"available supplier inventory through {supplier}")
+        if strengths:
+            positives.append("matching core engineering characteristics")
+
+        if not positives:
+            positives.append("available candidate data")
+
+        concerns = []
+        if "package" in warning_text or "mounting" in warning_text:
+            concerns.append("PCB footprint and assembly review")
+        if "voltage" in warning_text:
+            concerns.append("voltage range validation")
+        if "architecture" in warning_text or "function" in warning_text:
+            concerns.append("functional equivalence review")
+
+        if concerns:
+            concern_sentence = " Primary review item: " + ", ".join(concerns) + "."
+        else:
+            concern_sentence = " No major implementation warnings were detected by the current rules."
+
+        return (
+            f"{part_number} is recommended as the leading replacement candidate for {original_part} because it combines "
+            f"{', '.join(positives)}."
+            f"{concern_sentence}"
+        )
+
+
     def _confidence_band(value):
         value = int(value or 0)
         if value >= 85:
@@ -2978,6 +3058,9 @@ if app_mode == "Alternative Finder":
         with d_col6:
             _render_kpi_card("Price", _format_currency(price), "Unit price")
 
+        badge_markup = "".join(_badge_html(status, label) for status, label in _recommendation_badges(candidate))
+        summary_text = _engineering_summary_text(original_part, candidate)
+
         st.markdown(
             f"""
             <div style="
@@ -2986,12 +3069,13 @@ if app_mode == "Alternative Finder":
                 border-radius:14px;
                 padding:16px 18px;
                 margin-top:12px;
-                margin-bottom:18px;
+                margin-bottom:14px;
             ">
-                <div style="font-size:13px;color:#9CA3AF;font-weight:800;margin-bottom:6px;">Why this recommendation?</div>
+                <div style="font-size:13px;color:#9CA3AF;font-weight:800;margin-bottom:6px;">AI Engineering Summary</div>
                 <div style="font-size:15px;color:#D1D5DB;line-height:1.55;">
-                    {part_number} was selected because it has the strongest combined recommendation score among evaluated candidates, active lifecycle status, available supplier inventory, and acceptable electrical compatibility signals. {risk_note}
+                    {summary_text}
                 </div>
+                <div style="margin-top:12px;">{badge_markup}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -3130,7 +3214,7 @@ if app_mode == "Alternative Finder":
 
     with search_button_col:
         search_clicked = st.button(
-            "Find Alternatives",
+            "Analyze Component",
             type="primary",
             use_container_width=False,
             key="alternative_search_button",
@@ -3278,7 +3362,7 @@ if app_mode == "Alternative Finder":
             st.divider()
             _render_section_title("Best Value Alternative")
 
-            value_col1, value_col2, value_col3 = st.columns(3)
+            value_col1, value_col2, value_col3, value_col4, value_col5 = st.columns(5)
 
             with value_col1:
                 _render_kpi_card(
@@ -3299,6 +3383,21 @@ if app_mode == "Alternative Finder":
                     "Available Stock",
                     _format_int(best_value_alternative.get("Stock", 0)),
                     "Current supplier stock",
+                )
+
+            with value_col4:
+                value_score = int(best_value_alternative.get("Recommendation Score", 0) or 0)
+                _render_kpi_card(
+                    "Score",
+                    value_score,
+                    _score_label(value_score),
+                )
+
+            with value_col5:
+                _render_kpi_card(
+                    "Drop-In",
+                    f"{int(best_value_alternative.get('Drop-In Confidence', 0) or 0)}%",
+                    best_value_alternative.get("Drop-In Rating", "Compatibility"),
                 )
 
         st.divider()
