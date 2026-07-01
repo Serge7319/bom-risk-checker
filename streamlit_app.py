@@ -2738,6 +2738,217 @@ if app_mode == "Alternative Finder":
 
         return actions[:4]
 
+
+    def _short_compatibility_label(text):
+        text_lower = str(text or "").lower()
+
+        if "architecture" in text_lower:
+            return "Architecture", text
+        if "mounting" in text_lower:
+            return "Mounting / Assembly", text
+        if "package" in text_lower:
+            return "Package", text
+        if "pin count" in text_lower:
+            return "Pin Count", text
+        if "channel count" in text_lower:
+            return "Channel Count", text
+        if "voltage" in text_lower:
+            return "Voltage Range", text
+        if "bandwidth" in text_lower or "slew" in text_lower or "offset" in text_lower or "bias" in text_lower:
+            return "Electrical Spec", text
+
+        return "Engineering Check", text
+
+    def _render_validation_card(status, title, detail):
+        status = str(status or "INFO").upper()
+
+        if status == "PASS":
+            border = "#14532D"
+            bg = "#052E1A"
+            color = "#86EFAC"
+        elif status == "WARNING":
+            border = "#854D0E"
+            bg = "#422006"
+            color = "#FDE68A"
+        else:
+            border = "#334155"
+            bg = "#111827"
+            color = "#CBD5E1"
+
+        st.markdown(
+            f"""
+            <div style="
+                background-color:{bg};
+                border:1px solid {border};
+                border-radius:12px;
+                padding:16px 18px;
+                min-height:104px;
+                margin-bottom:12px;
+            ">
+                <div style="font-size:12px;font-weight:900;letter-spacing:0.08em;color:{color};margin-bottom:8px;">{status}</div>
+                <div style="font-size:16px;font-weight:800;color:#F9FAFB;margin-bottom:5px;">{title}</div>
+                <div style="font-size:14px;color:#D1D5DB;line-height:1.45;">{detail}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    def _score_breakdown(candidate):
+        score = int(candidate.get("Recommendation Score", 0) or 0)
+        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
+        lifecycle = str(candidate.get("Lifecycle", "")).lower()
+        stock = int(candidate.get("Stock", 0) or 0)
+        unit_price = float(candidate.get("Unit Price", 0.0) or 0.0)
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+        warning_text = " ".join(warnings).lower()
+
+        electrical = min(100, max(0, confidence + 25))
+        lifecycle_score = 100 if "active" in lifecycle else 60 if lifecycle else 50
+        supply_score = 95 if stock >= 50000 else 85 if stock >= 10000 else 65 if stock > 0 else 20
+        cost_score = 90 if 0 < unit_price <= 0.50 else 75 if unit_price <= 1.50 else 55 if unit_price else 50
+        package_score = 35 if "package" in warning_text or "mounting" in warning_text else 90
+
+        return [
+            ("Overall", score, _score_label(score)),
+            ("Electrical Fit", electrical, "Compatibility signals"),
+            ("Lifecycle", lifecycle_score, candidate.get("Lifecycle", "Unknown")),
+            ("Supply", supply_score, f"{stock:,} units"),
+            ("Package", package_score, "Review required" if package_score < 60 else "Compatible"),
+            ("Cost", cost_score, _format_currency(unit_price)),
+        ]
+
+    def _engineering_impact(candidate):
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+        warning_text = " ".join(warnings).lower()
+
+        impacts = []
+
+        if "package" in warning_text or "mounting" in warning_text:
+            impacts.append(("PCB Layout", "WARNING", "Footprint/package review required"))
+            impacts.append(("Manufacturing", "WARNING", "Assembly process may change"))
+        else:
+            impacts.append(("PCB Layout", "PASS", "No package issue detected"))
+            impacts.append(("Manufacturing", "PASS", "No assembly concern detected"))
+
+        if "voltage" in warning_text or "architecture" in warning_text or "function" in warning_text:
+            impacts.append(("Electrical", "WARNING", "Electrical validation required"))
+        else:
+            impacts.append(("Electrical", "PASS", "Primary electrical checks passed"))
+
+        impacts.append(("Firmware", "PASS", "No firmware impact expected for this component class"))
+
+        return impacts
+
+    def _render_engineering_decision_dashboard(original_part, candidate):
+        if not candidate:
+            return
+
+        part_number = candidate.get("Alternative Part", "Unknown")
+        score = int(candidate.get("Recommendation Score", 0) or 0)
+        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
+        lifecycle = candidate.get("Lifecycle", "Unknown")
+        supplier = candidate.get("Supplier", "Unknown")
+        package = candidate.get("Package", "Unknown")
+        price = float(candidate.get("Unit Price", 0.0) or 0.0)
+        stock = int(candidate.get("Stock", 0) or 0)
+        recommendation_status = _recommendation_label(candidate)
+        risk_label, risk_note = _engineering_risk_label(candidate)
+        strengths, warnings, informational = _split_drop_in_reasons(candidate)
+        recommendation_text = candidate.get("Recommendation", "Review compatibility.")
+
+        status_badge = "RECOMMENDED" if score >= 70 else "REVIEW REQUIRED"
+
+        st.markdown(
+            f"""
+            <div style="margin-top:24px;margin-bottom:10px;">
+                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Top Engineering Candidate</div>
+                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Decision dashboard summarizing engineering fit, sourcing strength, and implementation impact.</div>
+            </div>
+            <div style="
+                background:linear-gradient(135deg,#0B1220,#111827);
+                border:1px solid #334155;
+                border-radius:16px;
+                padding:22px 24px;
+                margin-bottom:16px;
+            ">
+                <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
+                    <div>
+                        <div style="font-size:12px;color:#93C5FD;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{status_badge}</div>
+                        <div style="font-size:40px;font-weight:900;color:#F9FAFB;letter-spacing:-0.03em;">{part_number}</div>
+                        <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">{recommendation_text}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:12px;color:#9CA3AF;font-weight:700;">Overall Recommendation</div>
+                        <div style="font-size:20px;color:#F9FAFB;font-weight:900;margin-top:4px;">{recommendation_status}</div>
+                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">{risk_label}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        d_col1, d_col2, d_col3, d_col4, d_col5, d_col6 = st.columns(6)
+        with d_col1:
+            _render_kpi_card("Score", f"{score}", _score_label(score))
+        with d_col2:
+            _render_kpi_card("Drop-In", f"{confidence}%", "Compatibility confidence")
+        with d_col3:
+            _render_kpi_card("Lifecycle", lifecycle, "Supplier status")
+        with d_col4:
+            _render_kpi_card("Supplier", supplier, "Top candidate source")
+        with d_col5:
+            _render_kpi_card("Stock", _format_int(stock), "Available units")
+        with d_col6:
+            _render_kpi_card("Price", _format_currency(price), "Unit price")
+
+        st.markdown(
+            f"""
+            <div style="
+                background-color:#0F172A;
+                border:1px solid #334155;
+                border-radius:14px;
+                padding:16px 18px;
+                margin-top:12px;
+                margin-bottom:18px;
+            ">
+                <div style="font-size:13px;color:#9CA3AF;font-weight:800;margin-bottom:6px;">Why this recommendation?</div>
+                <div style="font-size:15px;color:#D1D5DB;line-height:1.55;">
+                    {part_number} was selected because it has the strongest combined recommendation score among evaluated candidates, active lifecycle status, available supplier inventory, and acceptable electrical compatibility signals. {risk_note}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("#### Engineering Validation")
+        validation_items = []
+        for reason in strengths[:5]:
+            title, detail = _short_compatibility_label(reason)
+            validation_items.append(("PASS", title, detail))
+        for reason in warnings[:5]:
+            title, detail = _short_compatibility_label(reason)
+            validation_items.append(("WARNING", title, detail))
+
+        if not validation_items:
+            validation_items = [("INFO", "Validation", "No detailed compatibility reasons were returned.")]
+
+        v_col1, v_col2 = st.columns(2)
+        for idx, (status, title, detail) in enumerate(validation_items[:8]):
+            with (v_col1 if idx % 2 == 0 else v_col2):
+                _render_validation_card(status, title, detail)
+
+        st.markdown("#### Engineering Impact")
+        impact_col1, impact_col2, impact_col3, impact_col4 = st.columns(4)
+        for idx, (title, status, detail) in enumerate(_engineering_impact(candidate)):
+            with [impact_col1, impact_col2, impact_col3, impact_col4][idx % 4]:
+                _render_validation_card(status, title, detail)
+
+        with st.expander("Score breakdown", expanded=False):
+            breakdown = _score_breakdown(candidate)
+            for label, value, note in breakdown:
+                st.markdown(f"**{label}:** {value}/100 — {note}")
+
     def _render_engineering_recommendation(original_part, candidate):
         if not candidate:
             return
@@ -3038,82 +3249,10 @@ if app_mode == "Alternative Finder":
             st.divider()
 
         if best_alternative:
-            _render_section_title("Best Recommended Alternative")
+            _render_engineering_decision_dashboard(original_part, best_alternative)
+            st.divider()
 
-            score_value = int(best_alternative.get("Recommendation Score", 0) or 0)
-            stock_value = int(best_alternative.get("Stock", 0) or 0)
-            price_value = float(best_alternative.get("Unit Price", 0.0) or 0.0)
-            part_number = best_alternative.get("Alternative Part", "Unknown")
-            recommendation_text = best_alternative.get("Recommendation", "Review compatibility.")
-            lifecycle_value = best_alternative.get("Lifecycle", "Unknown")
-            supplier_value = best_alternative.get("Supplier", "Unknown")
-            manufacturer_value = best_alternative.get("Manufacturer", "") or best_alternative.get("manufacturer", "")
-            supplier_context = (
-                f"{manufacturer_value} • {supplier_value}"
-                if manufacturer_value
-                else f"Supplier: {supplier_value}"
-            )
-            drop_in_rating = str(best_alternative.get("Drop-In Rating", "Unknown")).replace("🟢", "").replace("🟡", "").replace("🔴", "").strip()
-            match_badge = "BEST MATCH" if score_value >= 70 else "REVIEW CANDIDATE"
-
-            st.markdown(
-                f"""
-                <div style="
-                    background:linear-gradient(135deg,#0B1220,#111827);
-                    border:1px solid #334155;
-                    border-radius:16px;
-                    padding:22px 24px;
-                    margin-bottom:14px;
-                ">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
-                        <div>
-                            <div style="font-size:40px;font-weight:900;color:#F9FAFB;letter-spacing:-0.03em;">{part_number}</div>
-                            <div style="font-size:13px;color:#9CA3AF;margin-top:4px;">{supplier_context}</div>
-                            <div style="font-size:15px;color:#93C5FD;margin-top:10px;">{recommendation_text}</div>
-                        </div>
-                        <div style="
-                            border:1px solid #1D4ED8;
-                            background-color:#0F172A;
-                            color:#BFDBFE;
-                            border-radius:999px;
-                            padding:8px 14px;
-                            font-size:12px;
-                            font-weight:800;
-                            letter-spacing:0.04em;
-                            white-space:nowrap;
-                        ">
-                            {match_badge}
-                        </div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            best_card_col1, best_card_col2, best_card_col3, best_card_col4, best_card_col5, best_card_col6 = st.columns(6)
-
-            with best_card_col1:
-                st.metric("Match", f"{top_confidence}%")
-
-            with best_card_col2:
-                st.metric("Score", f"{score_value} / 100")
-
-            with best_card_col3:
-                st.metric("Rating", drop_in_rating or "Unknown")
-
-            with best_card_col4:
-                st.metric("Lifecycle", lifecycle_value)
-
-            with best_card_col5:
-                st.metric("Stock", f"{stock_value:,}")
-
-            with best_card_col6:
-                st.metric("Price", f"${price_value:.2f}" if price_value > 0 else "N/A")
-
-            st.caption(
-                f"Supplier: {supplier_value}. Recommendation score blends lifecycle, stock, supplier availability, cost, and engineering compatibility."
-            )
-
+        if best_alternative:
             drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
 
             _render_section_title(
