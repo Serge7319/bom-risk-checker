@@ -28,7 +28,6 @@ start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
 import extra_streamlit_components as stx
-st.cache_data.clear()
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -2508,7 +2507,13 @@ if app_mode == "Alternative Finder":
     if "alternative_search_attempted" not in st.session_state:
         st.session_state["alternative_search_attempted"] = False
 
-    original_part = st.text_input("Enter original manufacturer part number")
+    if "alternative_original_part" not in st.session_state:
+        st.session_state["alternative_original_part"] = ""
+
+    original_part = st.text_input(
+        "Enter original manufacturer part number",
+        value=st.session_state.get("alternative_original_part", ""),
+    )
 
     if st.button("Find Alternatives", type="primary"):
         if not original_part:
@@ -2517,20 +2522,39 @@ if app_mode == "Alternative Finder":
             with st.spinner(
                 "🔍 Searching suppliers • ⚡ Comparing electrical specs • 🧠 Ranking alternatives..."
             ):
+                st.session_state["alternative_original_part"] = original_part
                 st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
                     original_part
                 )
                 st.session_state["alternative_search_attempted"] = True
 
     if st.session_state["suggested_alternatives"]:
-        alternatives_df = pd.DataFrame(
-            st.session_state["suggested_alternatives"]
-        )
+        alternatives = st.session_state["suggested_alternatives"]
+        original_part = st.session_state.get("alternative_original_part", original_part)
+        alternatives_df = pd.DataFrame(alternatives)
 
         st.success("Suggested alternatives found.")
 
+        if "Alternative Part" not in alternatives_df.columns:
+            st.warning("Alternative results are missing part number data.")
+            st.stop()
+
+        numeric_columns = [
+            "Recommendation Score",
+            "Drop-In Confidence",
+            "Stock",
+            "Unit Price",
+        ]
+
+        for col in numeric_columns:
+            if col in alternatives_df.columns:
+                alternatives_df[col] = pd.to_numeric(
+                    alternatives_df[col],
+                    errors="coerce",
+                ).fillna(0)
+
         true_alternatives = [
-            alt for alt in st.session_state["suggested_alternatives"]
+            alt for alt in alternatives
             if isinstance(alt, dict)
             and alt.get("Alternative Part", "") != original_part
         ]
@@ -2544,6 +2568,21 @@ if app_mode == "Alternative Finder":
             else None
         )
 
+        value_alternatives = [
+            alt for alt in true_alternatives
+            if float(alt.get("Stock", 0) or 0) > 0
+            and float(alt.get("Unit Price", 0.0) or 0.0) > 0
+        ]
+
+        best_value_alternative = (
+            min(
+                value_alternatives,
+                key=lambda x: float(x.get("Unit Price", 0.0) or 0.0),
+            )
+            if value_alternatives
+            else None
+        )
+
         supplier_count = (
             alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique()
             if "Supplier" in alternatives_df.columns
@@ -2551,41 +2590,27 @@ if app_mode == "Alternative Finder":
         )
 
         total_stock = (
-            alternatives_df["Stock"].sum()
+            int(alternatives_df["Stock"].sum())
             if "Stock" in alternatives_df.columns
             else 0
         )
 
-        priced_rows = (
-            alternatives_df[
-                (alternatives_df["Unit Price"] > 0)
-                & (alternatives_df["Stock"] > 0)
-            ]
-            if "Unit Price" in alternatives_df.columns
-            and "Stock" in alternatives_df.columns
-            else pd.DataFrame()
-        )
-
-        cheapest_row = (
-            priced_rows.loc[priced_rows["Unit Price"].idxmin()]
-            if not priced_rows.empty
-            else None
-        )
-
         lowest_unit_price = (
-            float(cheapest_row["Unit Price"])
-            if cheapest_row is not None
+            float(best_value_alternative.get("Unit Price", 0.0))
+            if best_value_alternative
             else 0.0
         )
 
-        true_df = alternatives_df[
-            alternatives_df["Alternative Part"] != original_part
-        ] if "Alternative Part" in alternatives_df.columns else alternatives_df
-
-        avg_confidence = (
-            int(true_df["Drop-In Confidence"].mean())
-            if "Drop-In Confidence" in true_df.columns and not true_df.empty
+        top_score = (
+            int(best_alternative.get("Recommendation Score", 0))
+            if best_alternative
             else 0
+        )
+
+        best_supplier = (
+            best_alternative.get("Supplier", "Unknown")
+            if best_alternative
+            else "Unknown"
         )
 
         st.markdown("## 📊 Alternative Search Summary")
@@ -2603,11 +2628,14 @@ if app_mode == "Alternative Finder":
                 if best_alternative
                 else "-",
             )
-            st.metric("Lowest Price", f"${lowest_unit_price:.2f}")
+            st.metric("Top Score", f"{top_score} / 100")
 
         with summary_col3:
-            st.metric("Average Compatibility", f"{avg_confidence}%")
-            st.metric("Total Stock", f"{int(total_stock):,}")
+            st.metric("Best Supplier", best_supplier or "Unknown")
+            st.metric("Total Stock", f"{total_stock:,}")
+
+        if lowest_unit_price > 0:
+            st.caption(f"Lowest stocked unit price found: ${lowest_unit_price:.2f}")
 
         if best_alternative:
             st.markdown("### 🏆 Best Recommended Alternative")
@@ -2623,7 +2651,7 @@ if app_mode == "Alternative Finder":
             with best_col2:
                 st.metric(
                     "Recommendation Score",
-                    int(best_alternative.get("Recommendation Score", 0)),
+                    f"{int(best_alternative.get('Recommendation Score', 0))} / 100",
                 )
 
             with best_col3:
@@ -2643,15 +2671,43 @@ if app_mode == "Alternative Finder":
                         if reason:
                             st.write(reason)
 
-        st.dataframe(
-            alternatives_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+        if best_value_alternative:
+            st.markdown("### 💰 Best Value Alternative")
+
+            value_col1, value_col2, value_col3 = st.columns(3)
+
+            with value_col1:
+                st.metric(
+                    "Part Number",
+                    best_value_alternative.get("Alternative Part", "Unknown"),
+                )
+
+            with value_col2:
+                st.metric(
+                    "Unit Price",
+                    f"${float(best_value_alternative.get('Unit Price', 0.0) or 0.0):.2f}",
+                )
+
+            with value_col3:
+                st.metric(
+                    "Available Stock",
+                    f"{int(best_value_alternative.get('Stock', 0) or 0):,}",
+                )
+
+        st.divider()
+
+        st.markdown("### 🧪 Engineering Comparison")
+
+        alternative_options = alternatives_df["Alternative Part"].dropna().tolist()
+        default_index = 0
+
+        if best_alternative and best_alternative.get("Alternative Part") in alternative_options:
+            default_index = alternative_options.index(best_alternative.get("Alternative Part"))
 
         selected_alternative = st.selectbox(
             "Select alternative to compare",
-            alternatives_df["Alternative Part"],
+            alternative_options,
+            index=default_index,
         )
 
         selected_row = alternatives_df[
@@ -2709,13 +2765,13 @@ if app_mode == "Alternative Finder":
                 },
                 {
                     "Attribute": "Stock",
-                    "Original": original_data.get("stock_total", 0),
-                    "Selected Alternative": selected_row.get("Stock", 0),
+                    "Original": f"{int(original_data.get('stock_total', 0) or 0):,}",
+                    "Selected Alternative": f"{int(selected_row.get('Stock', 0) or 0):,}",
                 },
                 {
                     "Attribute": "Unit Price",
-                    "Original": original_data.get("unit_price", 0.0),
-                    "Selected Alternative": selected_row.get("Unit Price", 0.0),
+                    "Original": f"${float(original_data.get('unit_price', 0.0) or 0.0):.2f}",
+                    "Selected Alternative": f"${float(selected_row.get('Unit Price', 0.0) or 0.0):.2f}",
                 },
                 {
                     "Attribute": "Stock Delta",
@@ -2757,10 +2813,61 @@ if app_mode == "Alternative Finder":
             ]
         )
 
-        st.subheader("Side-by-Side Comparison")
-
         st.dataframe(
             comparison_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.divider()
+
+        st.markdown("### 📋 All Suggested Alternatives")
+
+        preferred_columns = [
+            "Alternative Part",
+            "Recommendation Score",
+            "Drop-In Rating",
+            "Drop-In Confidence",
+            "Lifecycle",
+            "Supplier",
+            "Stock",
+            "Unit Price",
+            "Architecture",
+            "Package",
+            "Pin Count",
+            "Voltage Range",
+            "Estimated Risk",
+            "Recommendation",
+        ]
+
+        display_columns = [
+            col for col in preferred_columns
+            if col in alternatives_df.columns
+        ]
+
+        display_df = alternatives_df[display_columns].copy()
+
+        if "Estimated Risk" in display_df.columns:
+            display_df["Estimated Risk"] = display_df["Estimated Risk"].replace(
+                {
+                    "Low": "🟢 Low",
+                    "Medium": "🟠 Medium",
+                    "High": "🔴 High",
+                }
+            )
+
+        if "Unit Price" in display_df.columns:
+            display_df["Unit Price"] = display_df["Unit Price"].apply(
+                lambda value: f"${float(value or 0):.2f}"
+            )
+
+        if "Stock" in display_df.columns:
+            display_df["Stock"] = display_df["Stock"].apply(
+                lambda value: f"{int(value or 0):,}"
+            )
+
+        st.dataframe(
+            display_df,
             use_container_width=True,
             hide_index=True,
         )
@@ -2768,6 +2875,7 @@ if app_mode == "Alternative Finder":
         if st.button("🔄 New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
             st.session_state["alternative_search_attempted"] = False
+            st.session_state["alternative_original_part"] = ""
             st.rerun()
 
     elif st.session_state["alternative_search_attempted"]:
@@ -2793,84 +2901,30 @@ if app_mode == "Alternative Finder":
 
         if st.button("Compare Parts", type="primary"):
             if original_part:
-                alternatives = [
+                alternative_part_numbers = [
                     part.strip()
                     for part in alternatives_input.split(",")
                     if part.strip()
-                ] if alternatives_input else []
-
-                st.success(f"Comparing: {original_part} vs {alternatives}")
-
-                comparison_df = compare_parts(original_part, alternatives)
-
-                def risk_badge(level):
-                    if level == "High":
-                        return "🔴 High"
-                    if level == "Medium":
-                        return "🟡 Medium"
-                    return "🟢 Low"
-
-                comparison_df["Risk Level Display"] = comparison_df["Risk Level"].apply(
-                    risk_badge
-                )
-
-                comparison_df = comparison_df.sort_values(
-                    by=["Risk Score", "Total Market Stock"],
-                    ascending=[True, False],
-                )
-
-                st.markdown("### Step 3 — Comparison Results")
-
-                display_cols = [
-                    "Role",
-                    "MPN Searched",
-                    "Manufacturer",
-                    "Best Source",
-                    "Supplier Count",
-                    "Total Market Stock",
-                    "Lifecycle Status",
-                    "Risk Score",
-                    "Risk Level Display",
-                    "Product URL",
                 ]
 
-                comparison_display_df = comparison_df[display_cols]
+                with st.spinner("Comparing parts..."):
+                    comparison_df = compare_parts(
+                        original_part,
+                        alternative_part_numbers,
+                    )
+
+                st.subheader("Detailed Supplier Risk Comparison")
 
                 st.dataframe(
-                    comparison_display_df,
+                    comparison_df,
                     use_container_width=True,
                     hide_index=True,
                 )
-
-                alternatives_only = comparison_df[
-                    comparison_df["Role"] == "Alternative"
-                ]
-
-                if not alternatives_only.empty:
-                    best_alt = alternatives_only.sort_values(
-                        by=["Risk Score", "Total Market Stock"],
-                        ascending=[True, False],
-                    ).iloc[0]
-
-                    st.success(
-                        f"✅ Recommended Alternative: **{best_alt['Matched MPN']}** "
-                        f"(Risk: {best_alt['Risk Level']}, "
-                        f"Stock: {best_alt['Total Market Stock']})"
-                    )
-
-                csv = comparison_df.to_csv(index=False).encode("utf-8")
-
-                st.download_button(
-                    "Download Comparison (CSV)",
-                    data=csv,
-                    file_name="alternative_comparison.csv",
-                    mime="text/csv",
-                )
-
             else:
-                st.warning("Please enter a valid part number.")
+                st.warning("Please enter an original part number first.")
 
     st.stop()
+
 if app_mode == "BOM Analyzer":
 
     st.markdown(
