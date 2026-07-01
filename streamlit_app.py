@@ -2510,21 +2510,25 @@ if app_mode == "Alternative Finder":
     if "alternative_original_part" not in st.session_state:
         st.session_state["alternative_original_part"] = ""
 
-    search_col1, search_col2 = st.columns([3, 1])
-
-    with search_col1:
+    # Use a form so pressing Find Alternatives submits the typed part number
+    # and runs the search in the same interaction. This avoids the double-click
+    # behavior caused by mixing a free text_input and a separate button.
+    with st.form("alternative_finder_search_form", clear_on_submit=False):
         original_part = st.text_input(
             "Enter original manufacturer part number",
             value=st.session_state.get("alternative_original_part", ""),
             placeholder="Example: LM358, NE555, ATMEGA328P",
         )
 
-    with search_col2:
-        st.write("")
-        st.write("")
-        search_clicked = st.button("Find Alternatives", type="primary", use_container_width=True)
+        search_clicked = st.form_submit_button(
+            "Find Alternatives",
+            type="primary",
+            use_container_width=True,
+        )
 
     if search_clicked:
+        original_part = str(original_part or "").strip()
+
         if not original_part:
             st.warning("Please enter an original part number.")
         else:
