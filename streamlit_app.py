@@ -2861,8 +2861,8 @@ if app_mode == "Alternative Finder":
         st.markdown(
             f"""
             <div style="margin-top:24px;margin-bottom:10px;">
-                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Top Engineering Candidate</div>
-                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Decision dashboard summarizing engineering fit, sourcing strength, and implementation impact.</div>
+                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Top Candidate Dashboard</div>
+                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Engineering decision dashboard summarizing fit, sourcing strength, and implementation impact.</div>
             </div>
             <div style="
                 background:linear-gradient(135deg,#0B1220,#111827);
@@ -2921,7 +2921,7 @@ if app_mode == "Alternative Finder":
             unsafe_allow_html=True,
         )
 
-        st.markdown("#### Engineering Validation")
+        st.markdown("#### Engineering Validation Checklist")
         validation_items = []
         for reason in strengths[:5]:
             title, detail = _short_compatibility_label(reason)
@@ -2938,31 +2938,45 @@ if app_mode == "Alternative Finder":
             with (v_col1 if idx % 2 == 0 else v_col2):
                 _render_validation_card(status, title, detail)
 
-        st.markdown("#### Engineering Impact")
+        st.markdown("#### What Changes in My Design?")
         impact_col1, impact_col2, impact_col3, impact_col4 = st.columns(4)
         for idx, (title, status, detail) in enumerate(_engineering_impact(candidate)):
             with [impact_col1, impact_col2, impact_col3, impact_col4][idx % 4]:
                 _render_validation_card(status, title, detail)
 
-        with st.expander("Score breakdown", expanded=False):
+        with st.expander("Recommendation score breakdown", expanded=False):
             breakdown = _score_breakdown(candidate)
             for label, value, note in breakdown:
                 st.markdown(f"**{label}:** {value}/100 — {note}")
 
     def _render_engineering_recommendation(original_part, candidate):
+        """Compact executive decision card.
+
+        This intentionally avoids repeating the full validation checklist,
+        which is now handled in the Top Candidate Dashboard dashboard.
+        """
         if not candidate:
             return
 
         part_number = candidate.get("Alternative Part", "Unknown")
-        score = int(candidate.get("Recommendation Score", 0) or 0)
-        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
-        lifecycle = candidate.get("Lifecycle", "Unknown")
-        supplier = candidate.get("Supplier", "Unknown")
-        package = candidate.get("Package", "Unknown")
         recommendation_status = _recommendation_label(candidate)
         risk_label, risk_note = _engineering_risk_label(candidate)
-        strengths, warnings, informational = _split_drop_in_reasons(candidate)
-        actions = _recommended_action(candidate)
+        strengths, warnings, _ = _split_drop_in_reasons(candidate)
+
+        if warnings:
+            decision_sentence = (
+                "Electrical compatibility appears reasonable, but engineering review is required before production use."
+            )
+            implementation_sentence = (
+                "Primary implementation impact: PCB footprint/package and assembly review."
+            )
+        else:
+            decision_sentence = (
+                "No major compatibility warnings were detected by the current rules."
+            )
+            implementation_sentence = (
+                "Standard datasheet validation is still recommended before release."
+            )
 
         if risk_label == "Low Risk":
             risk_color = "#86EFAC"
@@ -2977,40 +2991,29 @@ if app_mode == "Alternative Finder":
             risk_border = "#7F1D1D"
             risk_bg = "#450A0A"
 
-        primary_strengths = strengths[:4] if strengths else ["Supplier data returned for evaluation"]
-        primary_warnings = warnings[:4] if warnings else ["No major compatibility warnings detected by the current rules"]
-        action_items = actions if actions else ["Perform standard datasheet validation"]
-
-        if warnings:
-            assessment = (
-                f"{part_number} is the highest-ranked candidate for {original_part}. "
-                f"It appears promising based on score, lifecycle, stock, and supplier availability, "
-                f"but the highlighted engineering warnings should be reviewed before production use."
-            )
-        else:
-            assessment = (
-                f"{part_number} is the highest-ranked candidate for {original_part}. "
-                f"No major compatibility warnings were detected by the current rules, but standard datasheet validation is still recommended."
-            )
-
         st.markdown(
             f"""
             <div style="margin-top:24px;margin-bottom:10px;">
-                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Engineering Recommendation</div>
-                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Interpreted recommendation based on compatibility, sourcing, lifecycle, and risk signals.</div>
+                <div style="font-size:32px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Engineering Decision</div>
+                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Executive recommendation generated from compatibility, lifecycle, sourcing, and risk signals.</div>
             </div>
             <div style="
                 background:linear-gradient(135deg,#0B1220,#111827);
                 border:1px solid #334155;
                 border-radius:16px;
-                padding:22px 24px;
-                margin-bottom:16px;
+                padding:20px 24px;
+                margin-bottom:18px;
             ">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;">
-                    <div>
-                        <div style="font-size:13px;color:#93C5FD;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{recommendation_status}</div>
-                        <div style="font-size:28px;color:#F9FAFB;font-weight:900;letter-spacing:-0.02em;">{part_number}</div>
-                        <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Candidate replacement for {original_part}</div>
+                <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
+                    <div style="max-width:980px;">
+                        <div style="font-size:12px;color:#93C5FD;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{recommendation_status}</div>
+                        <div style="font-size:34px;color:#F9FAFB;font-weight:900;letter-spacing:-0.03em;">{part_number}</div>
+                        <div style="font-size:16px;color:#D1D5DB;line-height:1.55;margin-top:12px;">
+                            {decision_sentence}
+                        </div>
+                        <div style="font-size:13px;color:#9CA3AF;margin-top:8px;">
+                            {implementation_sentence} {risk_note}
+                        </div>
                     </div>
                     <div style="
                         background-color:{risk_bg};
@@ -3022,71 +3025,13 @@ if app_mode == "Alternative Finder":
                         font-weight:900;
                         letter-spacing:0.04em;
                         text-transform:uppercase;
+                        white-space:nowrap;
                     ">{risk_label}</div>
                 </div>
-                <div style="font-size:15px;color:#D1D5DB;line-height:1.55;margin-top:16px;max-width:1100px;">{assessment}</div>
-                <div style="font-size:13px;color:#9CA3AF;margin-top:10px;">{risk_note}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-
-        rec_col1, rec_col2, rec_col3 = st.columns(3)
-
-        with rec_col1:
-            st.markdown(
-                "<div style='font-size:15px;font-weight:800;color:#F9FAFB;margin-bottom:8px;'>Strengths</div>",
-                unsafe_allow_html=True,
-            )
-            for item in primary_strengths:
-                st.markdown(
-                    f"""
-                    <div style="background:#052E1A;border:1px solid #14532D;border-radius:10px;padding:10px 12px;margin-bottom:8px;color:#D1FAE5;font-size:13px;line-height:1.4;">
-                        {item}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        with rec_col2:
-            st.markdown(
-                "<div style='font-size:15px;font-weight:800;color:#F9FAFB;margin-bottom:8px;'>Review Items</div>",
-                unsafe_allow_html=True,
-            )
-            for item in primary_warnings:
-                st.markdown(
-                    f"""
-                    <div style="background:#422006;border:1px solid #854D0E;border-radius:10px;padding:10px 12px;margin-bottom:8px;color:#FEF3C7;font-size:13px;line-height:1.4;">
-                        {item}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        with rec_col3:
-            st.markdown(
-                "<div style='font-size:15px;font-weight:800;color:#F9FAFB;margin-bottom:8px;'>Recommended Action</div>",
-                unsafe_allow_html=True,
-            )
-            for item in action_items:
-                st.markdown(
-                    f"""
-                    <div style="background:#111827;border:1px solid #374151;border-radius:10px;padding:10px 12px;margin-bottom:8px;color:#E5E7EB;font-size:13px;line-height:1.4;">
-                        {item}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        rec_metric_col1, rec_metric_col2, rec_metric_col3, rec_metric_col4 = st.columns(4)
-        with rec_metric_col1:
-            _render_kpi_card("Recommendation Score", f"{score} / 100", _score_label(score))
-        with rec_metric_col2:
-            _render_kpi_card("Drop-In Match", f"{confidence}%", "Compatibility confidence")
-        with rec_metric_col3:
-            _render_kpi_card("Lifecycle", lifecycle, "Supplier lifecycle status")
-        with rec_metric_col4:
-            _render_kpi_card("Package", package, f"Supplier: {supplier}")
 
     if "alternative_input_part" not in st.session_state:
         st.session_state["alternative_input_part"] = st.session_state.get(
@@ -3251,30 +3196,6 @@ if app_mode == "Alternative Finder":
         if best_alternative:
             _render_engineering_decision_dashboard(original_part, best_alternative)
             st.divider()
-
-        if best_alternative:
-            drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
-
-            _render_section_title(
-                "Engineering Compatibility",
-                "Pass/warning checklist generated from package, pin count, architecture, voltage, and available electrical characteristics.",
-            )
-
-            if drop_in_reasons:
-                reasons = [
-                    reason.strip()
-                    for reason in str(drop_in_reasons).split(";")
-                    if reason.strip()
-                ]
-
-                reason_col1, reason_col2 = st.columns(2)
-
-                for index, reason in enumerate(reasons):
-                    target_col = reason_col1 if index % 2 == 0 else reason_col2
-                    with target_col:
-                        _render_compatibility_card(reason)
-            else:
-                st.info("No detailed compatibility explanation was returned for this candidate.")
 
         if best_value_alternative:
             st.divider()
