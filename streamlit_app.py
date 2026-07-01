@@ -2489,7 +2489,7 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <div class="card">
-            <div class="card-title">🔎 Alternative Component Finder 2.1</div>
+            <div class="card-title">🔎 Alternative Component Finder 2.2</div>
             <div class="card-text">
                 Search for replacement parts, compare engineering compatibility,
                 and identify lower-risk sourcing options.
@@ -2520,11 +2520,19 @@ if app_mode == "Alternative Finder":
             placeholder="Example: LM358, NE555, ATMEGA328P",
         )
 
-        search_clicked = st.form_submit_button(
-            "Find Alternatives",
-            type="primary",
-            use_container_width=True,
-        )
+        search_button_col, search_hint_col = st.columns([0.18, 0.82])
+
+        with search_button_col:
+            search_clicked = st.form_submit_button(
+                "🔍 Find Alternatives",
+                type="primary",
+                use_container_width=True,
+            )
+
+        with search_hint_col:
+            st.caption(
+                "Searches suppliers, compares engineering specs, and ranks compatible alternatives."
+            )
 
     if search_clicked:
         original_part = str(original_part or "").strip()
@@ -2633,6 +2641,7 @@ if app_mode == "Alternative Finder":
         st.success("Suggested alternatives found.")
 
         st.markdown("## 📊 Alternative Search Summary")
+        st.caption("A quick executive view of the strongest candidate, confidence level, supplier coverage, stock, and pricing.")
 
         summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
 
@@ -2674,6 +2683,7 @@ if app_mode == "Alternative Finder":
 
             with best_card_col2:
                 st.metric("Drop-In Rating", best_alternative.get("Drop-In Rating", "Unknown"))
+                st.metric("Lifecycle", best_alternative.get("Lifecycle", "Unknown"))
                 st.metric("Supplier", best_alternative.get("Supplier", "Unknown"))
                 st.metric("Stock", f"{int(best_alternative.get('Stock', 0) or 0):,}")
                 st.metric(
