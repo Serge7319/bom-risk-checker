@@ -27,6 +27,23 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
+try:
+    import extra_streamlit_components as stx
+except Exception:
+    stx = None
+
+
+class _FallbackCookieManager:
+    def get(self, cookie=None, key=None):
+        return None
+
+    def set(self, *args, **kwargs):
+        return None
+
+    def delete(self, *args, **kwargs):
+        return None
+
+
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -400,18 +417,49 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
-if "user" not in st.session_state:
-    show_auth_ui(supabase)
-    st.stop()
+try:
+    cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else _FallbackCookieManager()
+except Exception:
+    cookie_manager = _FallbackCookieManager()
+
+if "access_token" not in st.session_state:
+    auth_cookie = cookie_manager.get(cookie="bom_auth")
+
+    if auth_cookie:
+        st.session_state["access_token"] = auth_cookie.get("access_token")
+        st.session_state["refresh_token"] = auth_cookie.get("refresh_token")
 
 if "access_token" in st.session_state and "refresh_token" in st.session_state:
-    supabase.auth.set_session(
-        st.session_state["access_token"],
-        st.session_state["refresh_token"]
-    )
+    try:
+        supabase.auth.set_session(
+            st.session_state["access_token"],
+            st.session_state["refresh_token"],
+        )
+
+        user_response = supabase.auth.get_user()
+
+        if user_response and user_response.user:
+            st.session_state["user"] = user_response.user
+
+    except Exception:
+        st.session_state.pop("user", None)
+        st.session_state.pop("access_token", None)
+        st.session_state.pop("refresh_token", None)
+
+if "user" not in st.session_state:
+    show_auth_ui(supabase, cookie_manager)
+    st.stop()
 
 with st.sidebar:
     if st.button("Log out"):
+        try:
+            cookie_manager.delete(
+                cookie="bom_auth",
+                key="delete_bom_auth",
+            )
+        except Exception:
+            pass
+
         supabase.auth.sign_out()
         st.session_state.clear()
         st.rerun()
