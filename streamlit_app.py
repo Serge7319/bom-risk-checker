@@ -27,7 +27,21 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
-import extra_streamlit_components as stx
+try:
+    import extra_streamlit_components as stx
+except Exception:
+    stx = None
+
+
+class _FallbackCookieManager:
+    def get(self, cookie=None, key=None):
+        return None
+
+    def set(self, *args, **kwargs):
+        return None
+
+    def delete(self, *args, **kwargs):
+        return None
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -401,7 +415,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
-cookie_manager = stx.CookieManager(key="bom_cookie_manager")
+cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else _FallbackCookieManager()
 
 if "access_token" not in st.session_state:
     auth_cookie = cookie_manager.get(cookie="bom_auth")
@@ -431,6 +445,17 @@ if "user" not in st.session_state:
     show_auth_ui(supabase, cookie_manager)
     st.stop()
 
+
+with st.sidebar:
+    if st.button("Log out"):
+        cookie_manager.delete(
+            cookie="bom_auth",
+            key="delete_bom_auth",
+        )
+
+        supabase.auth.sign_out()
+        st.session_state.clear()
+        st.rerun()
 
 current_user = load_user_data()
 
@@ -787,73 +812,124 @@ def risk_badge(level):
 st.markdown(
     """
     <style>
+    :root {
+        --brc-bg: #F5F7FB;
+        --brc-surface: #FFFFFF;
+        --brc-border: #E5E7EB;
+        --brc-text: #0F172A;
+        --brc-muted: #64748B;
+        --brc-blue: #2563EB;
+        --brc-blue-dark: #1D4ED8;
+        --brc-green: #059669;
+        --brc-amber: #D97706;
+        --brc-red: #DC2626;
+    }
+
+    .stApp {
+        background: var(--brc-bg);
+        color: var(--brc-text);
+    }
+
+    section[data-testid="stSidebar"] {
+        background: #FFFFFF;
+        border-right: 1px solid var(--brc-border);
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: #0F172A;
+    }
+
+    section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
+        gap: 0.45rem;
+    }
+
+    .main .block-container {
+        padding-top: 1.4rem;
+        padding-bottom: 3rem;
+        max-width: 1240px;
+    }
+
+    h1, h2, h3, h4 {
+        color: var(--brc-text);
+        letter-spacing: -0.02em;
+    }
+
     .main-title {
         font-size: 42px;
         font-weight: 800;
         margin-bottom: 0px;
     }
+
     .subtitle {
         font-size: 18px;
-        color: #666;
-        margin-bottom: 30px;
+        color: var(--brc-muted);
+        margin-bottom: 24px;
     }
+
     .card {
-    background-color: #111827;
-    border: 1px solid #374151;
-    border-radius: 16px;
-    padding: 20px;
-    margin-top: 20px;
-    margin-bottom: 20px;
+        background-color: var(--brc-surface);
+        border: 1px solid var(--brc-border);
+        border-radius: 18px;
+        padding: 22px;
+        margin-top: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
     }
 
     .card-title {
         font-size: 18px;
-        font-weight: 700;
-        color: #F9FAFB;
+        font-weight: 750;
+        color: var(--brc-text);
         margin-bottom: 8px;
     }
 
     .card-text {
         font-size: 14px;
-        color: #D1D5DB;
+        color: var(--brc-muted);
     }
-        .kpi-card {
-        background-color: #111827;
-        border: 1px solid #374151;
-        border-radius: 14px;
-        padding: 18px;
-        min-height: 120px;
+
+    .kpi-card {
+        background-color: var(--brc-surface);
+        border: 1px solid var(--brc-border);
+        border-radius: 18px;
+        padding: 18px 18px 16px 18px;
+        min-height: 108px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
     }
 
     .kpi-label {
-        font-size: 13px;
-        color: #9CA3AF;
-        margin-bottom: 8px;
+        font-size: 12px;
+        color: var(--brc-muted);
+        margin-bottom: 7px;
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
     .kpi-value {
-        font-size: 32px;
-        font-weight: 800;
-        color: #F9FAFB;
-        margin-bottom: 6px;
+        font-size: 30px;
+        font-weight: 820;
+        color: var(--brc-text);
+        margin-bottom: 4px;
     }
 
     .kpi-note {
         font-size: 13px;
-        color: #34D399;
+        color: var(--brc-green);
+        font-weight: 600;
     }
 
-
     .search-card {
-        background-color: #0B1117;
-        border: 1px solid #374151;
-        border-radius: 16px;
+        background-color: var(--brc-surface);
+        border: 1px solid var(--brc-border);
+        border-radius: 18px;
         padding: 18px 20px 14px 20px;
         margin-bottom: 12px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
     }
 
     .section-caption {
-        color: #9CA3AF;
+        color: var(--brc-muted);
         font-size: 14px;
         margin-top: -6px;
         margin-bottom: 12px;
@@ -861,11 +937,12 @@ st.markdown(
 
     .match-pill {
         display: inline-block;
-        background-color: #12344D;
-        color: #60A5FA;
+        background-color: #EFF6FF;
+        color: var(--brc-blue);
+        border: 1px solid #BFDBFE;
         padding: 8px 12px;
         border-radius: 999px;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
         margin-right: 8px;
         margin-bottom: 8px;
@@ -873,291 +950,128 @@ st.markdown(
 
     .warning-pill {
         display: inline-block;
-        background-color: #3B2F12;
-        color: #FBBF24;
+        background-color: #FFFBEB;
+        color: var(--brc-amber);
+        border: 1px solid #FDE68A;
         padding: 8px 12px;
         border-radius: 999px;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
         margin-right: 8px;
         margin-bottom: 8px;
     }
 
     .recommendation-card {
-        background: linear-gradient(135deg, #111827 0%, #0B1722 100%);
-        border: 1px solid #374151;
-        border-radius: 18px;
-        padding: 22px;
+        background: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%);
+        border: 1px solid #BFDBFE;
+        border-radius: 20px;
+        padding: 24px;
         margin-top: 10px;
         margin-bottom: 18px;
+        box-shadow: 0 14px 32px rgba(37, 99, 235, 0.10);
     }
 
     .recommendation-part {
         font-size: 38px;
         font-weight: 850;
-        color: #F9FAFB;
+        color: var(--brc-text);
         margin-bottom: 6px;
     }
 
     .recommendation-subtitle {
-        color: #93C5FD;
+        color: var(--brc-blue);
         font-size: 16px;
         margin-bottom: 14px;
+        font-weight: 650;
     }
 
-
-
-    /* ---------- Enterprise navigation shell ---------- */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0F172A 0%, #111827 100%);
-        border-right: 1px solid #E5E7EB22;
+    div.stButton > button[kind="primary"], div.stButton > button:first-child {
+        border-radius: 10px;
+        border: 1px solid var(--brc-blue);
+        background: var(--brc-blue);
+        color: white;
+        font-weight: 700;
+        min-height: 42px;
     }
 
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] div,
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] span {
-        color: #D1D5DB;
+    div.stButton > button:hover {
+        border-color: var(--brc-blue-dark);
+        background: var(--brc-blue-dark);
+        color: white;
     }
 
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3 {
-        color: #F9FAFB;
+    div[data-testid="stDataFrame"] {
+        border: 1px solid var(--brc-border);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
     }
 
     .sidebar-brand {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 8px 4px 18px 4px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.22);
-        margin-bottom: 18px;
+        padding: 8px 0 14px 0;
+        border-bottom: 1px solid var(--brc-border);
+        margin-bottom: 14px;
     }
 
-    .sidebar-logo {
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #2563EB;
-        color: white;
-        font-weight: 900;
-        font-size: 18px;
+    .sidebar-brand-title {
+        font-size: 20px;
+        font-weight: 850;
+        color: var(--brc-text);
+        margin-bottom: 2px;
     }
 
-    .sidebar-title {
-        font-size: 17px;
-        line-height: 1.1;
-        font-weight: 800;
-        color: #F8FAFC;
-    }
-
-    .sidebar-subtitle {
-        font-size: 11px;
-        color: #94A3B8;
-        margin-top: 2px;
-    }
-
-    .sidebar-user-card {
-        background: rgba(37, 99, 235, 0.10);
-        border: 1px solid rgba(96, 165, 250, 0.22);
-        border-radius: 14px;
-        padding: 12px 12px;
-        margin: 8px 0 18px 0;
-    }
-
-    .sidebar-user-label {
-        font-size: 11px;
-        color: #93C5FD;
-        text-transform: uppercase;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        margin-bottom: 4px;
-    }
-
-    .sidebar-user-email {
-        color: #E5E7EB;
+    .sidebar-brand-subtitle {
         font-size: 12px;
-        overflow-wrap: anywhere;
+        color: var(--brc-muted);
+        font-weight: 600;
     }
 
-    .sidebar-section-label {
-        color: #94A3B8;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-weight: 800;
-        margin-top: 16px;
-        margin-bottom: 6px;
-    }
-
-    .sidebar-plan-card {
-        background: rgba(15, 23, 42, 0.80);
-        border: 1px solid rgba(148, 163, 184, 0.18);
+    .sidebar-card {
+        background: #F8FAFC;
+        border: 1px solid var(--brc-border);
         border-radius: 14px;
         padding: 12px;
-        margin-top: 12px;
-        margin-bottom: 12px;
+        margin: 10px 0;
     }
 
-    .sidebar-plan-name {
-        font-weight: 800;
-        color: #F8FAFC;
-        font-size: 14px;
-        margin-bottom: 4px;
-    }
-
-    .sidebar-plan-meta {
-        color: #94A3B8;
+    .sidebar-small {
+        color: var(--brc-muted);
         font-size: 12px;
-        line-height: 1.55;
-    }
-
-    .app-shell-header {
-        background: linear-gradient(135deg, #F8FBFF 0%, #FFFFFF 100%);
-        border: 1px solid #E5E7EB;
-        border-radius: 18px;
-        padding: 22px 26px;
-        margin-bottom: 24px;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-    }
-
-    .app-shell-title {
-        color: #0F172A;
-        font-size: 26px;
-        font-weight: 850;
-        margin-bottom: 4px;
-    }
-
-    .app-shell-subtitle {
-        color: #64748B;
-        font-size: 14px;
-    }
-
-    .dashboard-hero {
-        background: linear-gradient(135deg, #F8FBFF 0%, #FFFFFF 100%);
-        border: 1px solid #E5E7EB;
-        border-radius: 20px;
-        padding: 28px 30px;
-        margin-bottom: 22px;
-        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
-    }
-
-    .dashboard-hero-eyebrow {
-        display: inline-block;
-        color: #2563EB;
-        background: #EFF6FF;
-        border: 1px solid #DBEAFE;
-        padding: 6px 10px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        margin-bottom: 10px;
-    }
-
-    .dashboard-hero h1 {
-        color: #0F172A;
-        font-size: 34px;
-        font-weight: 850;
-        margin: 0 0 8px 0;
-    }
-
-    .dashboard-hero p {
-        color: #64748B;
-        font-size: 15px;
-        margin: 0;
-    }
-
-    /* Clean radio navigation into app-menu style */
-    [data-testid="stSidebar"] [role="radiogroup"] label {
-        background: transparent;
-        border-radius: 10px;
-        padding: 8px 10px;
-        margin: 2px 0;
-        transition: background 0.15s ease, color 0.15s ease;
-    }
-
-    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
-        background: rgba(37, 99, 235, 0.14);
-    }
-
-    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
-        background: rgba(37, 99, 235, 0.18);
-        border: 1px solid rgba(96, 165, 250, 0.25);
-    }
-
-    /* Primary buttons: move away from red toward enterprise blue */
-    div.stButton > button[kind="primary"],
-    div.stButton > button {
-        border-radius: 10px;
-        font-weight: 750;
-    }
-
-    div.stButton > button[kind="primary"] {
-        background: #2563EB !important;
-        border: 1px solid #1D4ED8 !important;
-        color: white !important;
-    }
-
-    div.stButton > button[kind="primary"]:hover {
-        background: #1D4ED8 !important;
-        border-color: #1E40AF !important;
+        line-height: 1.4;
     }
 
     </style>
     """,
-    
     unsafe_allow_html=True,
-    
 )
 
-
-# ---------- App Navigation Shell ----------
-selected_plan_name = current_user["plan"]
-selected_plan = get_plan(selected_plan_name)
-monthly_upload_count = current_user["monthly_upload_count"]
-
-saved_bom_count_response = (
-    supabase.table("analyses")
-    .select("id", count="exact")
-    .eq("user_id", current_user["id"])
-    .execute()
-)
-saved_bom_count = saved_bom_count_response.count or 0
 
 with st.sidebar:
     st.markdown(
         """
         <div class="sidebar-brand">
-            <div class="sidebar-logo">B</div>
-            <div>
-                <div class="sidebar-title">BOM Risk Checker</div>
-                <div class="sidebar-subtitle">Supply Chain Intelligence</div>
+            <div class="sidebar-brand-title">BOM Risk Checker</div>
+            <div class="sidebar-brand-subtitle">Engineering sourcing intelligence</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if "user" in st.session_state:
+        st.markdown(
+            f"""
+            <div class="sidebar-card">
+                <div style="font-weight: 750; margin-bottom: 4px;">Workspace</div>
+                <div class="sidebar-small">{st.session_state['user'].email}</div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-    user_email = st.session_state.get("user").email if "user" in st.session_state else "Signed in"
-    st.markdown(
-        f"""
-        <div class="sidebar-user-card">
-            <div class="sidebar-user-label">Workspace</div>
-            <div class="sidebar-user-email">{user_email}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("#### Navigation")
 
-    st.markdown('<div class="sidebar-section-label">Navigation</div>', unsafe_allow_html=True)
     app_mode = st.radio(
-        "Navigation",
+        "",
         [
             "Dashboard",
             "BOM Analyzer",
@@ -1167,47 +1081,65 @@ with st.sidebar:
             "Pricing",
             "About",
         ],
-        format_func=lambda page: {
-            "Dashboard": "▣  Dashboard",
-            "BOM Analyzer": "▦  BOM Analyzer",
-            "Alternative Finder": "⎇  Alternative Finder",
-            "Monitoring": "◉  Monitoring",
-            "Reports": "▥  Reports",
-            "Pricing": "◇  Pricing",
-            "About": "○  About",
-        }.get(page, page),
         label_visibility="collapsed",
     )
 
-    st.markdown('<div class="sidebar-section-label">Plan</div>', unsafe_allow_html=True)
+# Default user plan
+selected_plan_name = current_user["plan"]
+selected_plan = get_plan(selected_plan_name)
+monthly_upload_count = current_user["monthly_upload_count"]
+
+with st.sidebar:
     st.markdown(
         f"""
-        <div class="sidebar-plan-card">
-            <div class="sidebar-plan-name">{selected_plan_name}</div>
-            <div class="sidebar-plan-meta">
-                BOMs this month: {monthly_upload_count} / {selected_plan['monthly_bom_limit']}<br>
-                Saved BOMs: {saved_bom_count} / {selected_plan['max_saved_boms']}<br>
-                Max parts/BOM: {selected_plan['max_parts_per_bom']}
-            </div>
+        <div class="sidebar-card">
+            <div style="font-weight: 750; margin-bottom: 6px;">Current Plan</div>
+            <div style="font-size: 20px; font-weight: 850; color: #2563EB;">{selected_plan_name}</div>
+            <div class="sidebar-small">{selected_plan['description']}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    st.caption(
+        f"BOM usage: {monthly_upload_count} / {selected_plan['monthly_bom_limit']}"
+    )
+    st.progress(
+        min(
+            1.0,
+            (monthly_upload_count or 0) / max(1, selected_plan["monthly_bom_limit"]),
+        )
+    )
+
+    saved_bom_count_response = (
+        supabase.table("analyses")
+        .select("id", count="exact")
+        .eq("user_id", current_user["id"])
+        .execute()
+    )
+
+    saved_bom_count = saved_bom_count_response.count or 0
+
+    st.caption(
+        f"Saved BOMs: {saved_bom_count} / {selected_plan['max_saved_boms']}"
+    )
+    st.progress(
+        min(
+            1.0,
+            saved_bom_count / max(1, selected_plan["max_saved_boms"]),
+        )
+    )
+
     if is_admin:
         st.success("Admin access enabled")
 
-    st.markdown('<div class="sidebar-section-label">Actions</div>', unsafe_allow_html=True)
-    if st.button("Clear current analysis", use_container_width=True):
+    st.divider()
+
+    if st.button("Clear Current Analysis", use_container_width=True):
         st.session_state.pop("results_df", None)
         st.session_state.pop("uploaded_filename", None)
         st.rerun()
 
-    if st.button("Log out", use_container_width=True):
-        cookie_manager.delete(cookie="bom_auth", key="delete_bom_auth_sidebar")
-        supabase.auth.sign_out()
-        st.session_state.clear()
-        st.rerun()
 
 
 # Application header now lives inside the Dashboard view.
@@ -1215,13 +1147,13 @@ with st.sidebar:
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
-    first_name = user_email.split("@")[0].split(".")[0].title() if "@" in user_email else "there"
     st.markdown(
-        f"""
-        <div class="dashboard-hero">
-            <div class="dashboard-hero-eyebrow">BOM Risk Intelligence</div>
-            <h1>Welcome back, {first_name}</h1>
-            <p>Review BOM health, reopen recent analyses, and continue sourcing-risk work from one dashboard.</p>
+        """
+        <div class="card" style="padding: 26px 30px; margin-bottom: 22px;">
+            <h1 style="font-size: 2.35rem; margin-bottom: 6px; color:#0F172A;">Welcome back</h1>
+            <p class="card-text" style="font-size: 1.05rem; margin-bottom: 0;">
+                Monitor BOM risk, review alternatives, and keep engineering decisions moving.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2471,7 +2403,7 @@ if app_mode == "Pricing":
         st.markdown(
             """
             <div class="card" style="border: 2px solid #2563EB;">
-                <div class="card-title">Pro 🚀</div>
+                <div class="card-title">Pro</div>
                 <h2>$99/mo</h2>
                 <div class="card-text">
                     ✓ 10 BOMs/month<br>
@@ -4478,7 +4410,7 @@ Unlock more power:
                 st.write("10 parts per BOM")
 
             with col2:
-                st.markdown("### Pro 🚀")
+                st.markdown("### Pro")
                 st.write("$99/mo")
                 st.write("10 BOMs/month")
                 st.write("20 parts per BOM")
