@@ -1002,169 +1002,146 @@ if st.sidebar.button("Clear Analysis"):
     st.rerun()
 
 
-st.markdown(
-    """
-    <div class="card">
-        <h1 style="font-size: 3rem; margin-bottom: 0;">
-            📦 BOM Risk Checker
-        </h1>
-        <p class="card-text" style="font-size: 1.2rem;">
-            Supply chain risk intelligence and alternative component analysis for engineering teams.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Suppliers Integrated</div>
-            <div class="kpi-value">3</div>
-            <div class="kpi-note">Mouser, DigiKey, Newark</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col2:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Risk Engine</div>
-            <div class="kpi-value">Active</div>
-            <div class="kpi-note">Live scoring enabled</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col3:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Alternative Finder</div>
-            <div class="kpi-value">Enabled</div>
-            <div class="kpi-note">Ranked candidates</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col4:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Export Support</div>
-            <div class="kpi-value">CSV/XLSX</div>
-            <div class="kpi-note">Reports ready</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+# Application header now lives inside the Dashboard view.
 
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
-    st.subheader("Executive Dashboard")
-    st.caption("Overview of BOM risk activity and sourcing intelligence.")
+    st.markdown(
+        """
+        <div class="card" style="padding: 26px 30px; margin-bottom: 22px;">
+            <h1 style="font-size: 2.6rem; margin-bottom: 6px;">📦 BOM Risk Checker</h1>
+            <p class="card-text" style="font-size: 1.05rem; margin-bottom: 0;">
+                Supply chain risk intelligence and alternative component analysis for engineering teams.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    dashboard_header_col, dashboard_action_col = st.columns([4, 1])
+
+    with dashboard_header_col:
+        st.markdown("## Dashboard")
+        st.caption("Overview of your BOM risk activity, recent analyses, and sourcing intelligence.")
+
+    with dashboard_action_col:
+        if st.button("+ New Analysis", use_container_width=True):
+            st.info("Open BOM Analyzer from the sidebar to upload a new BOM.")
 
     analysis_response = (
         supabase.table("analyses")
         .select("*")
         .eq("user_id", current_user["id"])
+        .order("created_at", desc=True)
         .execute()
     )
 
-    analysis_data = analysis_response.data
-
+    analysis_data = analysis_response.data or []
     total_analyses = len(analysis_data)
 
     if analysis_data:
-
         avg_health_score = int(
-            sum(item["health_score"] for item in analysis_data)
+            sum(item.get("health_score", 0) or 0 for item in analysis_data)
             / total_analyses
         )
-
-        total_high_risk = sum(
-            item["high_risk_count"] for item in analysis_data
-        )
-
+        total_high_risk = sum(item.get("high_risk_count", 0) or 0 for item in analysis_data)
+        total_medium_risk = sum(item.get("medium_risk_count", 0) or 0 for item in analysis_data)
+        total_low_risk = sum(item.get("low_risk_count", 0) or 0 for item in analysis_data)
+        total_components = sum(item.get("total_parts", 0) or 0 for item in analysis_data)
     else:
         avg_health_score = 0
         total_high_risk = 0
+        total_medium_risk = 0
+        total_low_risk = 0
+        total_components = 0
 
-    action_col1, action_col2, action_col3 = st.columns([1, 1, 4])
+    try:
+        alternative_history = load_alternative_history(current_user["id"])
+        alternatives_found = len(alternative_history)
+    except Exception:
+        alternatives_found = 0
 
-    with action_col1:
-        if st.button("➕ New BOM Analysis"):
-            st.session_state["go_to_bom_analyzer"] = True
+    dashboard_kpi_1, dashboard_kpi_2, dashboard_kpi_3, dashboard_kpi_4 = st.columns(4)
 
-    with action_col2:
-        if st.button("🔎 Find Alternatives"):
-            st.session_state["go_to_alternative_finder"] = True
-
-    if st.session_state.get("go_to_bom_analyzer"):
-        st.session_state["go_to_bom_analyzer"] = False
-        st.info("Use the sidebar to open BOM Analyzer.")
-
-    if st.session_state.get("go_to_alternative_finder"):
-        st.session_state["go_to_alternative_finder"] = False
-        st.info("Use the sidebar to open Alternative Finder.")
-
-    # ---------- KPI ROW ----------
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
+    with dashboard_kpi_1:
         st.markdown(
             f"""
             <div class="kpi-card">
                 <div class="kpi-label">Analyses This Month</div>
                 <div class="kpi-value">{total_analyses}</div>
-                <div class="kpi-note">Real analyses completed</div>
+                <div class="kpi-note">Saved BOM analyses</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with col2:
+    with dashboard_kpi_2:
+        risk_label = "No data" if avg_health_score == 0 else ("Low Risk" if avg_health_score >= 75 else "Medium Risk" if avg_health_score >= 50 else "High Risk")
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-label">Average BOM Risk</div>
+                <div class="kpi-label">Average BOM Health</div>
                 <div class="kpi-value">{avg_health_score}</div>
-                <div class="kpi-note">Average health score</div>
+                <div class="kpi-note">{risk_label}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with col3:
+    with dashboard_kpi_3:
         st.markdown(
             f"""
             <div class="kpi-card">
                 <div class="kpi-label">High Risk Components</div>
                 <div class="kpi-value">{total_high_risk}</div>
-                <div class="kpi-note">Detected across analyses</div>
+                <div class="kpi-note">Across saved BOMs</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with col4:
+    with dashboard_kpi_4:
         st.markdown(
-            """
+            f"""
             <div class="kpi-card">
                 <div class="kpi-label">Alternatives Found</div>
-                <div class="kpi-value">78</div>
-                <div class="kpi-note">↑ 15 vs last month</div>
+                <div class="kpi-value">{alternatives_found}</div>
+                <div class="kpi-note">Recommended candidates</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
+    st.divider()
+
+    chart_col, risk_col = st.columns([1.4, 1])
+
+    with chart_col:
+        st.markdown("### BOM Risk Trend")
+        if analysis_data and len(analysis_data) >= 2:
+            trend_df = pd.DataFrame(analysis_data)
+            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"])
+            trend_df = trend_df.sort_values("created_at")
+            trend_df = trend_df[["created_at", "health_score"]].rename(
+                columns={"created_at": "Date", "health_score": "BOM Health"}
+            )
+            st.line_chart(trend_df, x="Date", y="BOM Health", use_container_width=True)
+        else:
+            st.info("Run at least two BOM analyses to generate a risk trend.")
+
+    with risk_col:
+        st.markdown("### Risk Distribution")
+        if total_components > 0:
+            risk_distribution_df = pd.DataFrame(
+                {
+                    "Risk Level": ["High", "Medium", "Low"],
+                    "Components": [total_high_risk, total_medium_risk, total_low_risk],
+                }
+            )
+            st.dataframe(risk_distribution_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Risk distribution will appear after your first BOM analysis.")
 
     st.divider()
 
