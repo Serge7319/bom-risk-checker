@@ -1040,6 +1040,141 @@ st.markdown(
         line-height: 1.4;
     }
 
+
+
+    /* ===== Design System v1 foundation overrides ===== */
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        background: #F5F7FB !important;
+        color: #0F172A !important;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    }
+
+    [data-testid="stHeader"] {
+        background: #FFFFFF !important;
+        border-bottom: 1px solid #E5E7EB !important;
+    }
+
+    .main .block-container {
+        max-width: 1280px !important;
+        padding-top: 2rem !important;
+    }
+
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] label,
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
+    h1, h2, h3, h4 {
+        color: #0F172A !important;
+    }
+
+    [data-testid="stMarkdownContainer"] p,
+    .stCaptionContainer,
+    .stMarkdown p {
+        color: #64748B !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        background: #FFFFFF !important;
+        border-right: 1px solid #E5E7EB !important;
+        box-shadow: 8px 0 30px rgba(15, 23, 42, 0.04) !important;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: #0F172A !important;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+    section[data-testid="stSidebar"] .sidebar-small {
+        color: #64748B !important;
+    }
+
+    .card, .kpi-card, .search-card, .sidebar-card,
+    div[data-testid="stMetric"],
+    div[data-testid="stExpander"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 16px !important;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06) !important;
+    }
+
+    .kpi-label, .card-text, .section-caption, .subtitle, .sidebar-small {
+        color: #64748B !important;
+    }
+
+    .kpi-value, .card-title, .main-title {
+        color: #0F172A !important;
+    }
+
+    div.stButton > button {
+        border-radius: 12px !important;
+        min-height: 44px !important;
+        font-weight: 700 !important;
+        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18) !important;
+    }
+
+    div.stButton > button[kind="primary"],
+    div.stButton > button:first-child {
+        background: #2563EB !important;
+        border: 1px solid #2563EB !important;
+        color: #FFFFFF !important;
+    }
+
+    div.stButton > button:hover {
+        background: #1D4ED8 !important;
+        border-color: #1D4ED8 !important;
+        color: #FFFFFF !important;
+    }
+
+    input, textarea, select,
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"] > div,
+    div[data-testid="stFileUploader"] section {
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+        border-color: #CBD5E1 !important;
+        border-radius: 12px !important;
+    }
+
+    div[data-baseweb="input"] input,
+    div[data-baseweb="select"] span,
+    textarea {
+        color: #0F172A !important;
+    }
+
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
+    }
+
+    div[data-testid="stDataFrame"] * {
+        color: #0F172A !important;
+    }
+
+    div[data-testid="stPlotlyChart"],
+    div[data-testid="stPyplot"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 16px !important;
+        padding: 14px !important;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
+    }
+
+    div[data-testid="stProgress"] > div > div > div {
+        background-color: #2563EB !important;
+    }
+
+    div[data-testid="stProgress"] > div > div {
+        background-color: #E5E7EB !important;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -2712,15 +2847,15 @@ if app_mode == "Alternative Finder":
         st.markdown(
             f"""
             <div style="
-                background-color:#111827;
-                border:1px solid #374151;
+                background-color:#FFFFFF;
+                border:1px solid #E5E7EB;
                 border-radius:12px;
                 padding:14px 16px;
                 min-height:98px;
             ">
-                <div style="font-size:12px;color:#9CA3AF;font-weight:700;margin-bottom:7px;letter-spacing:0.01em;">{label}</div>
-                <div style="font-size:26px;color:#F9FAFB;font-weight:800;line-height:1.12;">{value}</div>
-                <div style="font-size:11px;color:#9CA3AF;margin-top:7px;">{note}</div>
+                <div style="font-size:12px;color:#64748B;font-weight:700;margin-bottom:7px;letter-spacing:0.01em;">{label}</div>
+                <div style="font-size:26px;color:#0F172A;font-weight:800;line-height:1.12;">{value}</div>
+                <div style="font-size:11px;color:#64748B;margin-top:7px;">{note}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -2730,8 +2865,8 @@ if app_mode == "Alternative Finder":
         st.markdown(
             f"""
             <div style="margin-top:18px;margin-bottom:8px;">
-                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">{title}</div>
-                {f'<div style="font-size:14px;color:#9CA3AF;margin-top:6px;">{subtitle}</div>' if subtitle else ''}
+                <div style="font-size:34px;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">{title}</div>
+                {f'<div style="font-size:14px;color:#64748B;margin-top:6px;">{subtitle}</div>' if subtitle else ''}
             </div>
             """,
             unsafe_allow_html=True,
@@ -2743,21 +2878,21 @@ if app_mode == "Alternative Finder":
         if reason.startswith("✓"):
             title = "PASS"
             body = reason.replace("✓", "", 1).strip()
-            border = "#14532D"
-            bg = "#052E1A"
-            color = "#86EFAC"
+            border = "#BBF7D0"
+            bg = "#ECFDF5"
+            color = "#15803D"
         elif reason.startswith("⚠"):
             title = "WARNING"
             body = reason.replace("⚠", "", 1).strip()
-            border = "#854D0E"
-            bg = "#422006"
-            color = "#FDE68A"
+            border = "#FDE68A"
+            bg = "#FFFBEB"
+            color = "#B45309"
         else:
             title = "INFO"
             body = reason
-            border = "#374151"
-            bg = "#111827"
-            color = "#D1D5DB"
+            border = "#E5E7EB"
+            bg = "#FFFFFF"
+            color = "#334155"
 
         st.markdown(
             f"""
@@ -2770,7 +2905,7 @@ if app_mode == "Alternative Finder":
                 margin-bottom:12px;
             ">
                 <div style="font-size:12px;font-weight:800;letter-spacing:0.08em;color:{color};margin-bottom:8px;">{title}</div>
-                <div style="font-size:15px;color:#F9FAFB;line-height:1.45;">{body}</div>
+                <div style="font-size:15px;color:#0F172A;line-height:1.45;">{body}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -2880,17 +3015,17 @@ if app_mode == "Alternative Finder":
         status = str(status or "INFO").upper()
 
         if status == "PASS":
-            border = "#14532D"
-            bg = "#052E1A"
-            color = "#86EFAC"
+            border = "#BBF7D0"
+            bg = "#ECFDF5"
+            color = "#15803D"
         elif status == "WARNING":
-            border = "#854D0E"
-            bg = "#422006"
-            color = "#FDE68A"
+            border = "#FDE68A"
+            bg = "#FFFBEB"
+            color = "#B45309"
         else:
-            border = "#334155"
-            bg = "#111827"
-            color = "#CBD5E1"
+            border = "#E5E7EB"
+            bg = "#FFFFFF"
+            color = "#334155"
 
         st.markdown(
             f"""
@@ -2903,8 +3038,8 @@ if app_mode == "Alternative Finder":
                 margin-bottom:12px;
             ">
                 <div style="font-size:12px;font-weight:900;letter-spacing:0.08em;color:{color};margin-bottom:8px;">{status}</div>
-                <div style="font-size:16px;font-weight:800;color:#F9FAFB;margin-bottom:5px;">{title}</div>
-                <div style="font-size:14px;color:#D1D5DB;line-height:1.45;">{detail}</div>
+                <div style="font-size:16px;font-weight:800;color:#0F172A;margin-bottom:5px;">{title}</div>
+                <div style="font-size:14px;color:#334155;line-height:1.45;">{detail}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -3134,26 +3269,26 @@ if app_mode == "Alternative Finder":
         st.markdown(
             f"""
             <div style="margin-top:24px;margin-bottom:10px;">
-                <div style="font-size:34px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Engineering Recommendation</div>
-                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Executive decision dashboard summarizing fit, sourcing strength, and implementation impact.</div>
+                <div style="font-size:34px;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">Engineering Recommendation</div>
+                <div style="font-size:14px;color:#64748B;margin-top:6px;">Executive decision dashboard summarizing fit, sourcing strength, and implementation impact.</div>
             </div>
             <div style="
-                background:linear-gradient(135deg,#0B1220,#111827);
-                border:1px solid #334155;
+                background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
+                border:1px solid #BFDBFE;
                 border-radius:16px;
                 padding:22px 24px;
                 margin-bottom:16px;
             ">
                 <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
                     <div>
-                        <div style="font-size:12px;color:#93C5FD;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{status_badge}</div>
-                        <div style="font-size:40px;font-weight:900;color:#F9FAFB;letter-spacing:-0.03em;">{part_number}</div>
-                        <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">{recommendation_text}</div>
+                        <div style="font-size:12px;color:#2563EB;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{status_badge}</div>
+                        <div style="font-size:40px;font-weight:900;color:#0F172A;letter-spacing:-0.03em;">{part_number}</div>
+                        <div style="font-size:14px;color:#64748B;margin-top:6px;">{recommendation_text}</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:12px;color:#9CA3AF;font-weight:700;">Overall Recommendation</div>
-                        <div style="font-size:20px;color:#F9FAFB;font-weight:900;margin-top:4px;">{recommendation_status}</div>
-                        <div style="font-size:12px;color:#9CA3AF;margin-top:6px;">{risk_label}</div>
+                        <div style="font-size:12px;color:#64748B;font-weight:700;">Overall Recommendation</div>
+                        <div style="font-size:20px;color:#0F172A;font-weight:900;margin-top:4px;">{recommendation_status}</div>
+                        <div style="font-size:12px;color:#64748B;margin-top:6px;">{risk_label}</div>
                     </div>
                 </div>
             </div>
@@ -3181,15 +3316,15 @@ if app_mode == "Alternative Finder":
         st.markdown(
             f"""
             <div style="
-                background-color:#0F172A;
-                border:1px solid #334155;
+                background-color:#FFFFFF;
+                border:1px solid #BFDBFE;
                 border-radius:14px;
                 padding:16px 18px;
                 margin-top:12px;
                 margin-bottom:14px;
             ">
-                <div style="font-size:13px;color:#9CA3AF;font-weight:800;margin-bottom:6px;">AI Engineering Summary</div>
-                <div style="font-size:15px;color:#D1D5DB;line-height:1.55;">
+                <div style="font-size:13px;color:#64748B;font-weight:800;margin-bottom:6px;">AI Engineering Summary</div>
+                <div style="font-size:15px;color:#334155;line-height:1.55;">
                     {summary_text}
                 </div>
                 <div style="margin-top:12px;">{badge_markup}</div>
@@ -3261,39 +3396,39 @@ if app_mode == "Alternative Finder":
             )
 
         if risk_label == "Low Risk":
-            risk_color = "#86EFAC"
-            risk_border = "#14532D"
-            risk_bg = "#052E1A"
+            risk_color = "#15803D"
+            risk_border = "#BBF7D0"
+            risk_bg = "#ECFDF5"
         elif risk_label == "Medium Risk":
-            risk_color = "#FDE68A"
-            risk_border = "#854D0E"
-            risk_bg = "#422006"
+            risk_color = "#B45309"
+            risk_border = "#FDE68A"
+            risk_bg = "#FFFBEB"
         else:
-            risk_color = "#FCA5A5"
-            risk_border = "#7F1D1D"
-            risk_bg = "#450A0A"
+            risk_color = "#B91C1C"
+            risk_border = "#FECACA"
+            risk_bg = "#FEF2F2"
 
         st.markdown(
             f"""
             <div style="margin-top:24px;margin-bottom:10px;">
-                <div style="font-size:32px;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">Engineering Decision</div>
-                <div style="font-size:14px;color:#9CA3AF;margin-top:6px;">Executive recommendation generated from compatibility, lifecycle, sourcing, and risk signals.</div>
+                <div style="font-size:32px;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">Engineering Decision</div>
+                <div style="font-size:14px;color:#64748B;margin-top:6px;">Executive recommendation generated from compatibility, lifecycle, sourcing, and risk signals.</div>
             </div>
             <div style="
-                background:linear-gradient(135deg,#0B1220,#111827);
-                border:1px solid #334155;
+                background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
+                border:1px solid #BFDBFE;
                 border-radius:16px;
                 padding:20px 24px;
                 margin-bottom:18px;
             ">
                 <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
                     <div style="max-width:980px;">
-                        <div style="font-size:12px;color:#93C5FD;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{recommendation_status}</div>
-                        <div style="font-size:34px;color:#F9FAFB;font-weight:900;letter-spacing:-0.03em;">{part_number}</div>
-                        <div style="font-size:16px;color:#D1D5DB;line-height:1.55;margin-top:12px;">
+                        <div style="font-size:12px;color:#2563EB;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{recommendation_status}</div>
+                        <div style="font-size:34px;color:#0F172A;font-weight:900;letter-spacing:-0.03em;">{part_number}</div>
+                        <div style="font-size:16px;color:#334155;line-height:1.55;margin-top:12px;">
                             {decision_sentence}
                         </div>
-                        <div style="font-size:13px;color:#9CA3AF;margin-top:8px;">
+                        <div style="font-size:13px;color:#64748B;margin-top:8px;">
                             {implementation_sentence} {risk_note}
                         </div>
                     </div>
