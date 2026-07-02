@@ -815,202 +815,67 @@ st.markdown(
     :root {
         --brc-bg: #F5F7FB;
         --brc-surface: #FFFFFF;
+        --brc-surface-soft: #F8FAFC;
         --brc-border: #E5E7EB;
+        --brc-border-strong: #CBD5E1;
         --brc-text: #0F172A;
         --brc-muted: #64748B;
         --brc-blue: #2563EB;
         --brc-blue-dark: #1D4ED8;
-        --brc-green: #059669;
-        --brc-amber: #D97706;
+        --brc-green: #16A34A;
+        --brc-amber: #F59E0B;
         --brc-red: #DC2626;
+        --brc-radius: 18px;
+        --brc-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
     }
 
-    .stApp {
-        background: var(--brc-bg);
-        color: var(--brc-text);
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        background: var(--brc-bg) !important;
+        color: var(--brc-text) !important;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
     }
 
-    section[data-testid="stSidebar"] {
-        background: #FFFFFF;
-        border-right: 1px solid var(--brc-border);
-    }
-
-    section[data-testid="stSidebar"] * {
-        color: #0F172A;
-    }
-
-    section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
-        gap: 0.45rem;
+    [data-testid="stHeader"] {
+        background: rgba(255, 255, 255, 0.92) !important;
+        border-bottom: 1px solid var(--brc-border) !important;
+        backdrop-filter: blur(10px);
     }
 
     .main .block-container {
-        padding-top: 1.4rem;
-        padding-bottom: 3rem;
-        max-width: 1240px;
+        max-width: 1280px !important;
+        padding-top: 1.6rem !important;
+        padding-bottom: 3rem !important;
     }
 
-    h1, h2, h3, h4 {
-        color: var(--brc-text);
-        letter-spacing: -0.02em;
+    h1, h2, h3, h4,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4 {
+        color: var(--brc-text) !important;
+        letter-spacing: -0.025em;
     }
 
-    .main-title {
-        font-size: 42px;
-        font-weight: 800;
-        margin-bottom: 0px;
+    p, li, label,
+    [data-testid="stMarkdownContainer"] p,
+    .stCaptionContainer {
+        color: var(--brc-muted) !important;
     }
 
-    .subtitle {
-        font-size: 18px;
-        color: var(--brc-muted);
-        margin-bottom: 24px;
+    section[data-testid="stSidebar"] {
+        background: #FFFFFF !important;
+        border-right: 1px solid var(--brc-border) !important;
+        box-shadow: 8px 0 28px rgba(15, 23, 42, 0.04) !important;
     }
 
-    .card {
-        background-color: var(--brc-surface);
-        border: 1px solid var(--brc-border);
-        border-radius: 18px;
-        padding: 22px;
-        margin-top: 16px;
-        margin-bottom: 16px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-    }
-
-    .card-title {
-        font-size: 18px;
-        font-weight: 750;
-        color: var(--brc-text);
-        margin-bottom: 8px;
-    }
-
-    .card-text {
-        font-size: 14px;
-        color: var(--brc-muted);
-    }
-
-    .kpi-card {
-        background-color: var(--brc-surface);
-        border: 1px solid var(--brc-border);
-        border-radius: 18px;
-        padding: 18px 18px 16px 18px;
-        min-height: 108px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-    }
-
-    .kpi-label {
-        font-size: 12px;
-        color: var(--brc-muted);
-        margin-bottom: 7px;
-        font-weight: 650;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .kpi-value {
-        font-size: 30px;
-        font-weight: 820;
-        color: var(--brc-text);
-        margin-bottom: 4px;
-    }
-
-    .kpi-note {
-        font-size: 13px;
-        color: var(--brc-green);
-        font-weight: 600;
-    }
-
-    .search-card {
-        background-color: var(--brc-surface);
-        border: 1px solid var(--brc-border);
-        border-radius: 18px;
-        padding: 18px 20px 14px 20px;
-        margin-bottom: 12px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-    }
-
-    .section-caption {
-        color: var(--brc-muted);
-        font-size: 14px;
-        margin-top: -6px;
-        margin-bottom: 12px;
-    }
-
-    .match-pill {
-        display: inline-block;
-        background-color: #EFF6FF;
-        color: var(--brc-blue);
-        border: 1px solid #BFDBFE;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 700;
-        margin-right: 8px;
-        margin-bottom: 8px;
-    }
-
-    .warning-pill {
-        display: inline-block;
-        background-color: #FFFBEB;
-        color: var(--brc-amber);
-        border: 1px solid #FDE68A;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 700;
-        margin-right: 8px;
-        margin-bottom: 8px;
-    }
-
-    .recommendation-card {
-        background: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%);
-        border: 1px solid #BFDBFE;
-        border-radius: 20px;
-        padding: 24px;
-        margin-top: 10px;
-        margin-bottom: 18px;
-        box-shadow: 0 14px 32px rgba(37, 99, 235, 0.10);
-    }
-
-    .recommendation-part {
-        font-size: 38px;
-        font-weight: 850;
-        color: var(--brc-text);
-        margin-bottom: 6px;
-    }
-
-    .recommendation-subtitle {
-        color: var(--brc-blue);
-        font-size: 16px;
-        margin-bottom: 14px;
-        font-weight: 650;
-    }
-
-    div.stButton > button[kind="primary"], div.stButton > button:first-child {
-        border-radius: 10px;
-        border: 1px solid var(--brc-blue);
-        background: var(--brc-blue);
-        color: white;
-        font-weight: 700;
-        min-height: 42px;
-    }
-
-    div.stButton > button:hover {
-        border-color: var(--brc-blue-dark);
-        background: var(--brc-blue-dark);
-        color: white;
-    }
-
-    div[data-testid="stDataFrame"] {
-        border: 1px solid var(--brc-border);
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+    section[data-testid="stSidebar"] * {
+        color: var(--brc-text) !important;
     }
 
     .sidebar-brand {
-        padding: 8px 0 14px 0;
+        padding: 8px 0 16px 0;
         border-bottom: 1px solid var(--brc-border);
-        margin-bottom: 14px;
+        margin-bottom: 16px;
     }
 
     .sidebar-brand-title {
@@ -1020,112 +885,144 @@ st.markdown(
         margin-bottom: 2px;
     }
 
-    .sidebar-brand-subtitle {
+    .sidebar-brand-subtitle,
+    .sidebar-small {
         font-size: 12px;
-        color: var(--brc-muted);
+        color: var(--brc-muted) !important;
         font-weight: 600;
+        line-height: 1.45;
     }
 
     .sidebar-card {
-        background: #F8FAFC;
-        border: 1px solid var(--brc-border);
-        border-radius: 14px;
-        padding: 12px;
-        margin: 10px 0;
+        background: var(--brc-surface-soft) !important;
+        border: 1px solid var(--brc-border) !important;
+        border-radius: 16px !important;
+        padding: 14px !important;
+        margin: 12px 0 !important;
+        box-shadow: none !important;
     }
 
-    .sidebar-small {
-        color: var(--brc-muted);
-        font-size: 12px;
-        line-height: 1.4;
-    }
-
-
-
-    /* ===== Design System v1 foundation overrides ===== */
-    html, body, .stApp, [data-testid="stAppViewContainer"] {
-        background: #F5F7FB !important;
-        color: #0F172A !important;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-    }
-
-    [data-testid="stHeader"] {
-        background: #FFFFFF !important;
-        border-bottom: 1px solid #E5E7EB !important;
-    }
-
-    .main .block-container {
-        max-width: 1280px !important;
-        padding-top: 2rem !important;
-    }
-
-    [data-testid="stMarkdownContainer"] h1,
-    [data-testid="stMarkdownContainer"] h2,
-    [data-testid="stMarkdownContainer"] h3,
-    [data-testid="stMarkdownContainer"] h4,
-    [data-testid="stMarkdownContainer"] p,
-    [data-testid="stMarkdownContainer"] li,
-    [data-testid="stMarkdownContainer"] label,
-    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
-    h1, h2, h3, h4 {
-        color: #0F172A !important;
-    }
-
-    [data-testid="stMarkdownContainer"] p,
-    .stCaptionContainer,
-    .stMarkdown p {
-        color: #64748B !important;
-    }
-
-    section[data-testid="stSidebar"] {
-        background: #FFFFFF !important;
-        border-right: 1px solid #E5E7EB !important;
-        box-shadow: 8px 0 30px rgba(15, 23, 42, 0.04) !important;
-    }
-
-    section[data-testid="stSidebar"] * {
-        color: #0F172A !important;
-    }
-
-    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-    section[data-testid="stSidebar"] .sidebar-small {
-        color: #64748B !important;
-    }
-
-    .card, .kpi-card, .search-card, .sidebar-card,
+    .card, .search-card, .recommendation-card,
     div[data-testid="stMetric"],
     div[data-testid="stExpander"] {
-        background: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-        border-radius: 16px !important;
-        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06) !important;
+        background: var(--brc-surface) !important;
+        border: 1px solid var(--brc-border) !important;
+        border-radius: var(--brc-radius) !important;
+        box-shadow: var(--brc-shadow) !important;
     }
 
-    .kpi-label, .card-text, .section-caption, .subtitle, .sidebar-small {
-        color: #64748B !important;
+    .card {
+        padding: 24px 26px !important;
+        margin-top: 18px !important;
+        margin-bottom: 18px !important;
     }
 
-    .kpi-value, .card-title, .main-title {
-        color: #0F172A !important;
+    .card-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--brc-text) !important;
+        margin-bottom: 8px;
+    }
+
+    .card-text {
+        font-size: 14px;
+        color: var(--brc-muted) !important;
+        line-height: 1.6;
+    }
+
+    .kpi-card {
+        background: var(--brc-surface) !important;
+        border: 1px solid var(--brc-border) !important;
+        border-radius: 18px !important;
+        padding: 22px 20px !important;
+        min-height: 118px !important;
+        box-shadow: var(--brc-shadow) !important;
+    }
+
+    .kpi-label {
+        font-size: 12px;
+        color: var(--brc-muted) !important;
+        margin-bottom: 10px;
+        font-weight: 750;
+        text-transform: uppercase;
+        letter-spacing: 0.055em;
+    }
+
+    .kpi-value {
+        font-size: 34px;
+        font-weight: 850;
+        color: var(--brc-text) !important;
+        line-height: 1.05;
+        margin-bottom: 8px;
+    }
+
+    .kpi-note {
+        font-size: 13px;
+        color: var(--brc-green) !important;
+        font-weight: 700;
+    }
+
+    .search-card {
+        padding: 20px 22px !important;
+        margin-bottom: 18px !important;
+    }
+
+    .recommendation-card {
+        background: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%) !important;
+        border: 1px solid #BFDBFE !important;
+        padding: 26px !important;
+        box-shadow: 0 18px 42px rgba(37, 99, 235, 0.12) !important;
+    }
+
+    .recommendation-part {
+        font-size: 40px;
+        font-weight: 900;
+        color: var(--brc-text) !important;
+        margin-bottom: 6px;
+    }
+
+    .recommendation-subtitle {
+        color: var(--brc-blue) !important;
+        font-size: 16px;
+        margin-bottom: 14px;
+        font-weight: 750;
+    }
+
+    .match-pill, .warning-pill {
+        display: inline-block;
+        padding: 8px 13px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 800;
+        margin-right: 8px;
+        margin-bottom: 8px;
+    }
+
+    .match-pill {
+        background: #EFF6FF;
+        color: var(--brc-blue);
+        border: 1px solid #BFDBFE;
+    }
+
+    .warning-pill {
+        background: #FFFBEB;
+        color: #B45309;
+        border: 1px solid #FDE68A;
     }
 
     div.stButton > button {
         border-radius: 12px !important;
         min-height: 44px !important;
-        font-weight: 700 !important;
-        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18) !important;
-    }
-
-    div.stButton > button[kind="primary"],
-    div.stButton > button:first-child {
-        background: #2563EB !important;
-        border: 1px solid #2563EB !important;
+        font-weight: 750 !important;
+        border: 1px solid var(--brc-blue) !important;
+        background: var(--brc-blue) !important;
         color: #FFFFFF !important;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18) !important;
     }
 
     div.stButton > button:hover {
-        background: #1D4ED8 !important;
-        border-color: #1D4ED8 !important;
+        background: var(--brc-blue-dark) !important;
+        border-color: var(--brc-blue-dark) !important;
         color: #FFFFFF !important;
     }
 
@@ -1134,47 +1031,50 @@ st.markdown(
     div[data-baseweb="select"] > div,
     div[data-testid="stFileUploader"] section {
         background: #FFFFFF !important;
-        color: #0F172A !important;
-        border-color: #CBD5E1 !important;
+        color: var(--brc-text) !important;
+        border-color: var(--brc-border-strong) !important;
         border-radius: 12px !important;
     }
 
     div[data-baseweb="input"] input,
     div[data-baseweb="select"] span,
     textarea {
-        color: #0F172A !important;
+        color: var(--brc-text) !important;
     }
 
     div[data-testid="stDataFrame"],
     div[data-testid="stTable"] {
         background: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
+        border: 1px solid var(--brc-border) !important;
         border-radius: 16px !important;
         overflow: hidden !important;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
+        box-shadow: var(--brc-shadow) !important;
     }
 
     div[data-testid="stDataFrame"] * {
-        color: #0F172A !important;
+        color: var(--brc-text) !important;
     }
 
     div[data-testid="stPlotlyChart"],
     div[data-testid="stPyplot"] {
         background: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
+        border: 1px solid var(--brc-border) !important;
         border-radius: 16px !important;
         padding: 14px !important;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
-    }
-
-    div[data-testid="stProgress"] > div > div > div {
-        background-color: #2563EB !important;
+        box-shadow: var(--brc-shadow) !important;
     }
 
     div[data-testid="stProgress"] > div > div {
         background-color: #E5E7EB !important;
     }
 
+    div[data-testid="stProgress"] > div > div > div {
+        background-color: var(--brc-blue) !important;
+    }
+
+    hr {
+        border-color: var(--brc-border) !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
