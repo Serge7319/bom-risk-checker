@@ -1075,6 +1075,77 @@ st.markdown(
     hr {
         border-color: var(--brc-border) !important;
     }
+    /* --- Sprint UI Patch: Light tables/forms/charts --- */
+
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"] {
+        background: #ffffff !important;
+        border: 1px solid #e5e7eb !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07) !important;
+    }
+
+    div[data-testid="stDataFrame"] * {
+        color: #0f172a !important;
+    }
+
+    div[data-testid="stDataFrame"] [role="gridcell"],
+    div[data-testid="stDataFrame"] [role="columnheader"] {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        border-color: #e5e7eb !important;
+    }
+
+    div[data-testid="stDataFrame"] [role="columnheader"] {
+        background-color: #f8fafc !important;
+        font-weight: 700 !important;
+    }
+
+    div[data-testid="stPlotlyChart"],
+    div[data-testid="stPyplot"] {
+        background: #ffffff !important;
+        border: 1px solid #e5e7eb !important;
+        border-radius: 18px !important;
+        padding: 18px !important;
+        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07) !important;
+    }
+
+    /* Upload + input polish */
+    div[data-testid="stFileUploader"] {
+        background: #ffffff !important;
+        border-radius: 18px !important;
+    }
+
+    div[data-testid="stFileUploader"] section {
+        background: #ffffff !important;
+        border: 1px dashed #cbd5e1 !important;
+        border-radius: 16px !important;
+    }
+
+    input, textarea,
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"] > div {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 12px !important;
+    }
+
+    /* Prevent faded/hidden section titles */
+    h1, h2, h3, h4,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4 {
+        color: #0f172a !important;
+        opacity: 1 !important;
+    }
+
+    [data-testid="stMarkdownContainer"] p {
+        color: #64748b !important;
+        opacity: 1 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
