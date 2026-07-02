@@ -27,21 +27,6 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
-try:
-    import extra_streamlit_components as stx
-except Exception:
-    stx = None
-
-
-class _FallbackCookieManager:
-    def get(self, cookie=None, key=None):
-        return None
-
-    def set(self, *args, **kwargs):
-        return None
-
-    def delete(self, *args, **kwargs):
-        return None
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -415,44 +400,18 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
-cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else _FallbackCookieManager()
-
-if "access_token" not in st.session_state:
-    auth_cookie = cookie_manager.get(cookie="bom_auth")
-
-    if auth_cookie:
-        st.session_state["access_token"] = auth_cookie.get("access_token")
-        st.session_state["refresh_token"] = auth_cookie.get("refresh_token")
-
-if "access_token" in st.session_state and "refresh_token" in st.session_state:
-    try:
-        supabase.auth.set_session(
-            st.session_state["access_token"],
-            st.session_state["refresh_token"],
-        )
-
-        user_response = supabase.auth.get_user()
-
-        if user_response and user_response.user:
-            st.session_state["user"] = user_response.user
-
-    except Exception:
-        st.session_state.pop("user", None)
-        st.session_state.pop("access_token", None)
-        st.session_state.pop("refresh_token", None)
-
 if "user" not in st.session_state:
-    show_auth_ui(supabase, cookie_manager)
+    show_auth_ui(supabase)
     st.stop()
 
+if "access_token" in st.session_state and "refresh_token" in st.session_state:
+    supabase.auth.set_session(
+        st.session_state["access_token"],
+        st.session_state["refresh_token"]
+    )
 
 with st.sidebar:
     if st.button("Log out"):
-        cookie_manager.delete(
-            cookie="bom_auth",
-            key="delete_bom_auth",
-        )
-
         supabase.auth.sign_out()
         st.session_state.clear()
         st.rerun()
@@ -812,611 +771,311 @@ def risk_badge(level):
 st.markdown(
     """
     <style>
-    :root {
-        --brc-bg: #F5F7FB;
-        --brc-surface: #FFFFFF;
-        --brc-border: #E5E7EB;
-        --brc-text: #0F172A;
-        --brc-muted: #64748B;
-        --brc-blue: #2563EB;
-        --brc-blue-dark: #1D4ED8;
-        --brc-green: #059669;
-        --brc-amber: #D97706;
-        --brc-red: #DC2626;
-    }
-
-    .stApp {
-        background: var(--brc-bg);
-        color: var(--brc-text);
-    }
-
-    section[data-testid="stSidebar"] {
-        background: #FFFFFF;
-        border-right: 1px solid var(--brc-border);
-    }
-
-    section[data-testid="stSidebar"] * {
-        color: #0F172A;
-    }
-
-    section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
-        gap: 0.45rem;
-    }
-
-    .main .block-container {
-        padding-top: 1.4rem;
-        padding-bottom: 3rem;
-        max-width: 1240px;
-    }
-
-    h1, h2, h3, h4 {
-        color: var(--brc-text);
-        letter-spacing: -0.02em;
-    }
-
     .main-title {
         font-size: 42px;
         font-weight: 800;
         margin-bottom: 0px;
     }
-
     .subtitle {
         font-size: 18px;
-        color: var(--brc-muted);
-        margin-bottom: 24px;
+        color: #666;
+        margin-bottom: 30px;
     }
-
     .card {
-        background-color: var(--brc-surface);
-        border: 1px solid var(--brc-border);
-        border-radius: 18px;
-        padding: 22px;
-        margin-top: 16px;
-        margin-bottom: 16px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    background-color: #111827;
+    border: 1px solid #374151;
+    border-radius: 16px;
+    padding: 20px;
+    margin-top: 20px;
+    margin-bottom: 20px;
     }
 
     .card-title {
         font-size: 18px;
-        font-weight: 750;
-        color: var(--brc-text);
+        font-weight: 700;
+        color: #F9FAFB;
         margin-bottom: 8px;
     }
 
     .card-text {
         font-size: 14px;
-        color: var(--brc-muted);
+        color: #D1D5DB;
     }
-
-    .kpi-card {
-        background-color: var(--brc-surface);
-        border: 1px solid var(--brc-border);
-        border-radius: 18px;
-        padding: 18px 18px 16px 18px;
-        min-height: 108px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+        .kpi-card {
+        background-color: #111827;
+        border: 1px solid #374151;
+        border-radius: 14px;
+        padding: 18px;
+        min-height: 120px;
     }
 
     .kpi-label {
-        font-size: 12px;
-        color: var(--brc-muted);
-        margin-bottom: 7px;
-        font-weight: 650;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        font-size: 13px;
+        color: #9CA3AF;
+        margin-bottom: 8px;
     }
 
     .kpi-value {
-        font-size: 30px;
-        font-weight: 820;
-        color: var(--brc-text);
-        margin-bottom: 4px;
+        font-size: 32px;
+        font-weight: 800;
+        color: #F9FAFB;
+        margin-bottom: 6px;
     }
 
     .kpi-note {
         font-size: 13px;
-        color: var(--brc-green);
-        font-weight: 600;
-    }
-
-    .search-card {
-        background-color: var(--brc-surface);
-        border: 1px solid var(--brc-border);
-        border-radius: 18px;
-        padding: 18px 20px 14px 20px;
-        margin-bottom: 12px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-    }
-
-    .section-caption {
-        color: var(--brc-muted);
-        font-size: 14px;
-        margin-top: -6px;
-        margin-bottom: 12px;
-    }
-
-    .match-pill {
-        display: inline-block;
-        background-color: #EFF6FF;
-        color: var(--brc-blue);
-        border: 1px solid #BFDBFE;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 700;
-        margin-right: 8px;
-        margin-bottom: 8px;
-    }
-
-    .warning-pill {
-        display: inline-block;
-        background-color: #FFFBEB;
-        color: var(--brc-amber);
-        border: 1px solid #FDE68A;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 700;
-        margin-right: 8px;
-        margin-bottom: 8px;
-    }
-
-    .recommendation-card {
-        background: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%);
-        border: 1px solid #BFDBFE;
-        border-radius: 20px;
-        padding: 24px;
-        margin-top: 10px;
-        margin-bottom: 18px;
-        box-shadow: 0 14px 32px rgba(37, 99, 235, 0.10);
-    }
-
-    .recommendation-part {
-        font-size: 38px;
-        font-weight: 850;
-        color: var(--brc-text);
-        margin-bottom: 6px;
-    }
-
-    .recommendation-subtitle {
-        color: var(--brc-blue);
-        font-size: 16px;
-        margin-bottom: 14px;
-        font-weight: 650;
-    }
-
-    div.stButton > button[kind="primary"], div.stButton > button:first-child {
-        border-radius: 10px;
-        border: 1px solid var(--brc-blue);
-        background: var(--brc-blue);
-        color: white;
-        font-weight: 700;
-        min-height: 42px;
-    }
-
-    div.stButton > button:hover {
-        border-color: var(--brc-blue-dark);
-        background: var(--brc-blue-dark);
-        color: white;
-    }
-
-    div[data-testid="stDataFrame"] {
-        border: 1px solid var(--brc-border);
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
-    }
-
-    .sidebar-brand {
-        padding: 8px 0 14px 0;
-        border-bottom: 1px solid var(--brc-border);
-        margin-bottom: 14px;
-    }
-
-    .sidebar-brand-title {
-        font-size: 20px;
-        font-weight: 850;
-        color: var(--brc-text);
-        margin-bottom: 2px;
-    }
-
-    .sidebar-brand-subtitle {
-        font-size: 12px;
-        color: var(--brc-muted);
-        font-weight: 600;
-    }
-
-    .sidebar-card {
-        background: #F8FAFC;
-        border: 1px solid var(--brc-border);
-        border-radius: 14px;
-        padding: 12px;
-        margin: 10px 0;
-    }
-
-    .sidebar-small {
-        color: var(--brc-muted);
-        font-size: 12px;
-        line-height: 1.4;
-    }
-
-
-
-    /* ===== Design System v1 foundation overrides ===== */
-    html, body, .stApp, [data-testid="stAppViewContainer"] {
-        background: #F5F7FB !important;
-        color: #0F172A !important;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-    }
-
-    [data-testid="stHeader"] {
-        background: #FFFFFF !important;
-        border-bottom: 1px solid #E5E7EB !important;
-    }
-
-    .main .block-container {
-        max-width: 1280px !important;
-        padding-top: 2rem !important;
-    }
-
-    [data-testid="stMarkdownContainer"] h1,
-    [data-testid="stMarkdownContainer"] h2,
-    [data-testid="stMarkdownContainer"] h3,
-    [data-testid="stMarkdownContainer"] h4,
-    [data-testid="stMarkdownContainer"] p,
-    [data-testid="stMarkdownContainer"] li,
-    [data-testid="stMarkdownContainer"] label,
-    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
-    h1, h2, h3, h4 {
-        color: #0F172A !important;
-    }
-
-    [data-testid="stMarkdownContainer"] p,
-    .stCaptionContainer,
-    .stMarkdown p {
-        color: #64748B !important;
-    }
-
-    section[data-testid="stSidebar"] {
-        background: #FFFFFF !important;
-        border-right: 1px solid #E5E7EB !important;
-        box-shadow: 8px 0 30px rgba(15, 23, 42, 0.04) !important;
-    }
-
-    section[data-testid="stSidebar"] * {
-        color: #0F172A !important;
-    }
-
-    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-    section[data-testid="stSidebar"] .sidebar-small {
-        color: #64748B !important;
-    }
-
-    .card, .kpi-card, .search-card, .sidebar-card,
-    div[data-testid="stMetric"],
-    div[data-testid="stExpander"] {
-        background: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-        border-radius: 16px !important;
-        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06) !important;
-    }
-
-    .kpi-label, .card-text, .section-caption, .subtitle, .sidebar-small {
-        color: #64748B !important;
-    }
-
-    .kpi-value, .card-title, .main-title {
-        color: #0F172A !important;
-    }
-
-    div.stButton > button {
-        border-radius: 12px !important;
-        min-height: 44px !important;
-        font-weight: 700 !important;
-        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18) !important;
-    }
-
-    div.stButton > button[kind="primary"],
-    div.stButton > button:first-child {
-        background: #2563EB !important;
-        border: 1px solid #2563EB !important;
-        color: #FFFFFF !important;
-    }
-
-    div.stButton > button:hover {
-        background: #1D4ED8 !important;
-        border-color: #1D4ED8 !important;
-        color: #FFFFFF !important;
-    }
-
-    input, textarea, select,
-    div[data-baseweb="input"] > div,
-    div[data-baseweb="select"] > div,
-    div[data-testid="stFileUploader"] section {
-        background: #FFFFFF !important;
-        color: #0F172A !important;
-        border-color: #CBD5E1 !important;
-        border-radius: 12px !important;
-    }
-
-    div[data-baseweb="input"] input,
-    div[data-baseweb="select"] span,
-    textarea {
-        color: #0F172A !important;
-    }
-
-    div[data-testid="stDataFrame"],
-    div[data-testid="stTable"] {
-        background: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-        border-radius: 16px !important;
-        overflow: hidden !important;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
-    }
-
-    div[data-testid="stDataFrame"] * {
-        color: #0F172A !important;
-    }
-
-    div[data-testid="stPlotlyChart"],
-    div[data-testid="stPyplot"] {
-        background: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-        border-radius: 16px !important;
-        padding: 14px !important;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
-    }
-
-    div[data-testid="stProgress"] > div > div > div {
-        background-color: #2563EB !important;
-    }
-
-    div[data-testid="stProgress"] > div > div {
-        background-color: #E5E7EB !important;
+        color: #34D399;
     }
 
     </style>
     """,
+    
     unsafe_allow_html=True,
+    
 )
 
 
-with st.sidebar:
-    st.markdown(
-        """
-        <div class="sidebar-brand">
-            <div class="sidebar-brand-title">BOM Risk Checker</div>
-            <div class="sidebar-brand-subtitle">Engineering sourcing intelligence</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+st.sidebar.title("BOM Risk Checker")
+if "user" in st.session_state:
+    st.sidebar.success(
+        f"Logged in as:\n{st.session_state['user'].email}"
     )
 
-    if "user" in st.session_state:
-        st.markdown(
-            f"""
-            <div class="sidebar-card">
-                <div style="font-weight: 750; margin-bottom: 4px;">Workspace</div>
-                <div class="sidebar-small">{st.session_state['user'].email}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    
+st.sidebar.write("Component lifecycle and supply chain risk analysis.")
+st.sidebar.divider()
+st.sidebar.write("Supported files: CSV, XLSX")
+st.sidebar.write("Required field: Part Number / MPN")
 
-    st.markdown("#### Navigation")
+st.sidebar.divider()
 
-    app_mode = st.radio(
-        "",
-        [
-            "Dashboard",
-            "BOM Analyzer",
-            "Alternative Finder",
-            "Monitoring",
-            "Reports",
-            "Pricing",
-            "About",
-        ],
-        label_visibility="collapsed",
-    )
+st.sidebar.subheader("Navigation")
+
+app_mode = st.sidebar.radio(
+    "",
+    [
+        "Dashboard",
+        "BOM Analyzer",
+        "Alternative Finder",
+        "Monitoring",
+        "Reports",
+        "Pricing",
+        "About",
+    ],
+)
+
+st.sidebar.subheader("Subscription")
 
 # Default user plan
 selected_plan_name = current_user["plan"]
 selected_plan = get_plan(selected_plan_name)
+
 monthly_upload_count = current_user["monthly_upload_count"]
 
-with st.sidebar:
+st.sidebar.markdown(f"### {selected_plan_name}")
+
+st.sidebar.write(
+    f"**Monthly BOM limit:** {selected_plan['monthly_bom_limit']}"
+)
+
+st.sidebar.write(
+    f"**Max parts per BOM:** {selected_plan['max_parts_per_bom']}"
+)
+
+st.sidebar.caption(selected_plan["description"])
+if is_admin:
+    st.sidebar.success("🛠 Admin access enabled")
+
+st.sidebar.write(
+    f"**BOM analyses used this month:** "
+    f"{monthly_upload_count} / "
+    f"{selected_plan['monthly_bom_limit']}"
+)
+
+saved_bom_count_response = (
+    supabase.table("analyses")
+    .select("id", count="exact")
+    .eq("user_id", current_user["id"])
+    .execute()
+)
+
+saved_bom_count = saved_bom_count_response.count or 0
+
+st.sidebar.write(
+    f"**Saved BOMs:** "
+    f"{saved_bom_count} / "
+    f"{selected_plan['max_saved_boms']}"
+)
+
+if st.sidebar.button("Clear Analysis"):
+    st.session_state.pop("results_df", None)
+    st.session_state.pop("uploaded_filename", None)
+    st.rerun()
+
+
+st.markdown(
+    """
+    <div class="card">
+        <h1 style="font-size: 3rem; margin-bottom: 0;">
+            📦 BOM Risk Checker
+        </h1>
+        <p class="card-text" style="font-size: 1.2rem;">
+            Supply chain risk intelligence and alternative component analysis for engineering teams.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
     st.markdown(
-        f"""
-        <div class="sidebar-card">
-            <div style="font-weight: 750; margin-bottom: 6px;">Current Plan</div>
-            <div style="font-size: 20px; font-weight: 850; color: #2563EB;">{selected_plan_name}</div>
-            <div class="sidebar-small">{selected_plan['description']}</div>
+        """
+        <div class="kpi-card">
+            <div class="kpi-label">Suppliers Integrated</div>
+            <div class="kpi-value">2</div>
+            <div class="kpi-note">+1 coming soon</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.caption(
-        f"BOM usage: {monthly_upload_count} / {selected_plan['monthly_bom_limit']}"
-    )
-    st.progress(
-        min(
-            1.0,
-            (monthly_upload_count or 0) / max(1, selected_plan["monthly_bom_limit"]),
-        )
-    )
-
-    saved_bom_count_response = (
-        supabase.table("analyses")
-        .select("id", count="exact")
-        .eq("user_id", current_user["id"])
-        .execute()
+with col2:
+    st.markdown(
+        """
+        <div class="kpi-card">
+            <div class="kpi-label">Risk Engine</div>
+            <div class="kpi-value">Active</div>
+            <div class="kpi-note">Live scoring enabled</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    saved_bom_count = saved_bom_count_response.count or 0
-
-    st.caption(
-        f"Saved BOMs: {saved_bom_count} / {selected_plan['max_saved_boms']}"
+with col3:
+    st.markdown(
+        """
+        <div class="kpi-card">
+            <div class="kpi-label">Alternative Finder</div>
+            <div class="kpi-value">Enabled</div>
+            <div class="kpi-note">Ranked candidates</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.progress(
-        min(
-            1.0,
-            saved_bom_count / max(1, selected_plan["max_saved_boms"]),
-        )
+
+with col4:
+    st.markdown(
+        """
+        <div class="kpi-card">
+            <div class="kpi-label">Export Support</div>
+            <div class="kpi-value">CSV/XLSX</div>
+            <div class="kpi-note">Reports ready</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-    if is_admin:
-        st.success("Admin access enabled")
-
-    st.divider()
-
-    if st.button("Clear Current Analysis", use_container_width=True):
-        st.session_state.pop("results_df", None)
-        st.session_state.pop("uploaded_filename", None)
-        st.rerun()
-
-
-
-# Application header now lives inside the Dashboard view.
 
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
-    st.markdown(
-        """
-        <div class="card" style="padding: 26px 30px; margin-bottom: 22px;">
-            <h1 style="font-size: 2.35rem; margin-bottom: 6px; color:#0F172A;">Welcome back</h1>
-            <p class="card-text" style="font-size: 1.05rem; margin-bottom: 0;">
-                Monitor BOM risk, review alternatives, and keep engineering decisions moving.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    dashboard_header_col, dashboard_action_col = st.columns([4, 1])
-
-    with dashboard_header_col:
-        st.markdown("## Dashboard")
-        st.caption("Overview of your BOM risk activity, recent analyses, and sourcing intelligence.")
-
-    with dashboard_action_col:
-        if st.button("+ New Analysis", use_container_width=True):
-            st.info("Open BOM Analyzer from the sidebar to upload a new BOM.")
+    st.subheader("Executive Dashboard")
+    st.caption("Overview of BOM risk activity and sourcing intelligence.")
 
     analysis_response = (
         supabase.table("analyses")
         .select("*")
         .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
         .execute()
     )
 
-    analysis_data = analysis_response.data or []
+    analysis_data = analysis_response.data
+
     total_analyses = len(analysis_data)
 
     if analysis_data:
+
         avg_health_score = int(
-            sum(item.get("health_score", 0) or 0 for item in analysis_data)
+            sum(item["health_score"] for item in analysis_data)
             / total_analyses
         )
-        total_high_risk = sum(item.get("high_risk_count", 0) or 0 for item in analysis_data)
-        total_medium_risk = sum(item.get("medium_risk_count", 0) or 0 for item in analysis_data)
-        total_low_risk = sum(item.get("low_risk_count", 0) or 0 for item in analysis_data)
-        total_components = sum(item.get("total_parts", 0) or 0 for item in analysis_data)
+
+        total_high_risk = sum(
+            item["high_risk_count"] for item in analysis_data
+        )
+
     else:
         avg_health_score = 0
         total_high_risk = 0
-        total_medium_risk = 0
-        total_low_risk = 0
-        total_components = 0
 
-    try:
-        alternative_history = load_alternative_history(current_user["id"])
-        alternatives_found = len(alternative_history)
-    except Exception:
-        alternatives_found = 0
+    action_col1, action_col2, action_col3 = st.columns([1, 1, 4])
 
-    dashboard_kpi_1, dashboard_kpi_2, dashboard_kpi_3, dashboard_kpi_4 = st.columns(4)
+    with action_col1:
+        if st.button("➕ New BOM Analysis"):
+            st.session_state["go_to_bom_analyzer"] = True
 
-    with dashboard_kpi_1:
+    with action_col2:
+        if st.button("🔎 Find Alternatives"):
+            st.session_state["go_to_alternative_finder"] = True
+
+    if st.session_state.get("go_to_bom_analyzer"):
+        st.session_state["go_to_bom_analyzer"] = False
+        st.info("Use the sidebar to open BOM Analyzer.")
+
+    if st.session_state.get("go_to_alternative_finder"):
+        st.session_state["go_to_alternative_finder"] = False
+        st.info("Use the sidebar to open Alternative Finder.")
+
+    # ---------- KPI ROW ----------
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
         st.markdown(
             f"""
             <div class="kpi-card">
                 <div class="kpi-label">Analyses This Month</div>
                 <div class="kpi-value">{total_analyses}</div>
-                <div class="kpi-note">Saved BOM analyses</div>
+                <div class="kpi-note">Real analyses completed</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with dashboard_kpi_2:
-        risk_label = "No data" if avg_health_score == 0 else ("Low Risk" if avg_health_score >= 75 else "Medium Risk" if avg_health_score >= 50 else "High Risk")
+    with col2:
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-label">Average BOM Health</div>
+                <div class="kpi-label">Average BOM Risk</div>
                 <div class="kpi-value">{avg_health_score}</div>
-                <div class="kpi-note">{risk_label}</div>
+                <div class="kpi-note">Average health score</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with dashboard_kpi_3:
+    with col3:
         st.markdown(
             f"""
             <div class="kpi-card">
                 <div class="kpi-label">High Risk Components</div>
                 <div class="kpi-value">{total_high_risk}</div>
-                <div class="kpi-note">Across saved BOMs</div>
+                <div class="kpi-note">Detected across analyses</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with dashboard_kpi_4:
+    with col4:
         st.markdown(
-            f"""
+            """
             <div class="kpi-card">
                 <div class="kpi-label">Alternatives Found</div>
-                <div class="kpi-value">{alternatives_found}</div>
-                <div class="kpi-note">Recommended candidates</div>
+                <div class="kpi-value">78</div>
+                <div class="kpi-note">↑ 15 vs last month</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-
-    st.divider()
-
-    chart_col, risk_col = st.columns([1.4, 1])
-
-    with chart_col:
-        st.markdown("### BOM Risk Trend")
-        if analysis_data and len(analysis_data) >= 2:
-            trend_df = pd.DataFrame(analysis_data)
-            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"])
-            trend_df = trend_df.sort_values("created_at")
-            trend_df = trend_df[["created_at", "health_score"]].rename(
-                columns={"created_at": "Date", "health_score": "BOM Health"}
-            )
-            st.line_chart(trend_df, x="Date", y="BOM Health", use_container_width=True)
-        else:
-            st.info("Run at least two BOM analyses to generate a risk trend.")
-
-    with risk_col:
-        st.markdown("### Risk Distribution")
-        if total_components > 0:
-            risk_distribution_df = pd.DataFrame(
-                {
-                    "Risk Level": ["High", "Medium", "Low"],
-                    "Components": [total_high_risk, total_medium_risk, total_low_risk],
-                }
-            )
-            st.dataframe(risk_distribution_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("Risk distribution will appear after your first BOM analysis.")
 
     st.divider()
 
@@ -1776,50 +1435,6 @@ if app_mode == "Dashboard":
                                     else "Unknown"
                                 )
 
-                                st.markdown("## 📊 Alternative Search Summary")
-                                
-                                summary_col1, summary_col2, summary_col3 = st.columns(3)
-
-                                with summary_col1:
-                                    st.metric(
-                                        "Alternatives Found",
-                                        len(true_alternatives)
-                                    )
-
-                                    st.metric(
-                                        "Suppliers Verified",
-                                        supplier_count
-                                    )
-
-                                with summary_col2:
-                                    st.metric(
-                                        "Best Recommendation",
-                                        best_alternative["Alternative Part"]
-                                        if true_alternatives else "-"
-                                    )
-
-                                    st.metric(
-                                        "Lowest Price",
-                                        f"${lowest_unit_price:.2f}"
-                                    )
-
-                                with summary_col3:
-                                    avg_confidence = (
-                                        int(alternatives_df["Drop-In Confidence"].mean())
-                                        if "Drop-In Confidence" in alternatives_df.columns
-                                        else 0
-                                    )
-
-                                    st.metric(
-                                        "Average Compatibility",
-                                        f"{avg_confidence}%"
-                                    )
-
-                                    st.metric(
-                                        "Total Stock",
-                                        f"{int(total_stock):,}"
-                                    )
-
                                 true_alternatives = [
                                     alt for alt in alternatives
                                     if alt.get("Alternative Part", "") != selected_attention_part
@@ -1831,38 +1446,15 @@ if app_mode == "Dashboard":
                                         key=lambda x: x.get("Recommendation Score", 0)
                                     )
 
-                                    st.markdown("### 🏆 Best Recommended Alternative")
+                                    st.success(
+                                        f"""
+                                        🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
 
-                                    best_col1, best_col2, best_col3 = st.columns(3)
+                                        Recommendation Score: {best_alternative['Recommendation Score']}
 
-                                    with best_col1:
-                                        st.metric(
-                                            "Part Number",
-                                            best_alternative.get("Alternative Part", "Unknown"),
-                                        )
-
-                                    with best_col2:
-                                        st.metric(
-                                            "Recommendation Score",
-                                            int(best_alternative.get("Recommendation Score", 0)),
-                                        )
-
-                                    with best_col3:
-                                        st.metric(
-                                            "Drop-In Confidence",
-                                            best_alternative.get("Drop-In Rating", "Unknown"),
-                                        )
-
-                                    st.info(best_alternative.get("Recommendation", "Review compatibility."))
-
-                                    drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
-
-                                    if drop_in_reasons:
-                                        with st.expander("Why this alternative?", expanded=True):
-                                            for reason in str(drop_in_reasons).split(";"):
-                                                reason = reason.strip()
-                                                if reason:
-                                                    st.write(reason)
+                                        Recommendation: {best_alternative['Recommendation']}
+                                        """
+                                    )
 
                                     value_alternatives = [
                                         alt for alt in true_alternatives
@@ -1878,27 +1470,15 @@ if app_mode == "Dashboard":
                                         )
 
                                     if best_value_alternative:
-                                        st.markdown("### 💰 Best Value Alternative")
+                                        st.info(
+                                            f"""
+                                            💰 Best Value Alternative: {best_value_alternative['Alternative Part']}
 
-                                        value_col1, value_col2, value_col3 = st.columns(3)
+                                            Unit Price: ${float(best_value_alternative.get('Unit Price', 0.0)):.2f}
 
-                                        with value_col1:
-                                            st.metric(
-                                                "Part Number",
-                                                best_value_alternative.get("Alternative Part", "Unknown"),
-                                            )
-
-                                        with value_col2:
-                                            st.metric(
-                                                "Unit Price",
-                                                f"${float(best_value_alternative.get('Unit Price', 0.0)):.2f}",
-                                            )
-
-                                        with value_col3:
-                                            st.metric(
-                                                "Available Stock",
-                                                int(best_value_alternative.get("Stock", 0)),
-                                            )
+                                            Available Stock: {best_value_alternative.get('Stock', 0)}
+                                            """
+                                        )
 
                                 else:
                                     st.info(
@@ -1984,8 +1564,6 @@ if app_mode == "Dashboard":
                                             "High": "🔴 High",
                                         }
                                     )
-
-                                    
 
                                 st.dataframe(
                                     alternatives_df,
@@ -2538,7 +2116,7 @@ if app_mode == "Pricing":
         st.markdown(
             """
             <div class="card" style="border: 2px solid #2563EB;">
-                <div class="card-title">Pro</div>
+                <div class="card-title">Pro 🚀</div>
                 <h2>$99/mo</h2>
                 <div class="card-text">
                     ✓ 10 BOMs/month<br>
@@ -2556,7 +2134,7 @@ if app_mode == "Pricing":
                     st.secrets["STRIPE_PRO_PRICE_ID"],
                     current_user["email"],
                     current_user["id"],
-                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
+                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
                     cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
                 )
                 st.link_button("Continue to Stripe Checkout", checkout_url)
@@ -2586,7 +2164,7 @@ if app_mode == "Pricing":
                     st.secrets["STRIPE_BUSINESS_PRICE_ID"],
                     current_user["email"],
                     current_user["id"],
-                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
+                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
                     cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
                 )
                 st.link_button("Continue to Stripe Checkout", checkout_url)
@@ -2800,1097 +2378,155 @@ if app_mode == "Admin":
     st.stop()
 
 if app_mode == "Alternative Finder":
-    st.markdown("## Alternative Component Finder")
-    st.caption(
-        "Verify supplier data, compare engineering compatibility, and rank replacement candidates."
-    )
+    st.markdown(
+    """
+    <div class="card">
+        <div class="card-title">🔎 Alternative Component Finder</div>
+        <div class="card-text">
+            Search for replacement parts, compare sourcing risk,
+            and identify lower-risk alternatives.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-    st.markdown("#### Search Original Component")
+    st.markdown("### Step 1 — Search Original Component")
+
+    original_part = st.text_input("Enter original manufacturer part number")
 
     if "suggested_alternatives" not in st.session_state:
         st.session_state["suggested_alternatives"] = []
 
-    if "alternative_search_attempted" not in st.session_state:
-        st.session_state["alternative_search_attempted"] = False
-
-    if "alternative_original_part" not in st.session_state:
-        st.session_state["alternative_original_part"] = ""
-
-    def _format_currency(value):
-        try:
-            value = float(value or 0)
-        except (TypeError, ValueError):
-            value = 0.0
-        return f"${value:.2f}" if value > 0 else "N/A"
-
-    def _format_int(value):
-        try:
-            return f"{int(float(value or 0)):,}"
-        except (TypeError, ValueError):
-            return "0"
-
-    def _score_label(score):
-        try:
-            score = int(score or 0)
-        except (TypeError, ValueError):
-            score = 0
-
-        if score >= 85:
-            return "Excellent Match"
-        if score >= 70:
-            return "Strong Candidate"
-        if score >= 50:
-            return "Review Candidate"
-        return "Engineering Review Required"
-
-    def _render_kpi_card(label, value, note=""):
-        st.markdown(
-            f"""
-            <div style="
-                background-color:#FFFFFF;
-                border:1px solid #E5E7EB;
-                border-radius:12px;
-                padding:14px 16px;
-                min-height:98px;
-            ">
-                <div style="font-size:12px;color:#64748B;font-weight:700;margin-bottom:7px;letter-spacing:0.01em;">{label}</div>
-                <div style="font-size:26px;color:#0F172A;font-weight:800;line-height:1.12;">{value}</div>
-                <div style="font-size:11px;color:#64748B;margin-top:7px;">{note}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    def _render_section_title(title, subtitle=""):
-        st.markdown(
-            f"""
-            <div style="margin-top:18px;margin-bottom:8px;">
-                <div style="font-size:34px;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">{title}</div>
-                {f'<div style="font-size:14px;color:#64748B;margin-top:6px;">{subtitle}</div>' if subtitle else ''}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    def _render_compatibility_card(reason):
-        reason = str(reason or "").strip()
-
-        if reason.startswith("✓"):
-            title = "PASS"
-            body = reason.replace("✓", "", 1).strip()
-            border = "#BBF7D0"
-            bg = "#ECFDF5"
-            color = "#15803D"
-        elif reason.startswith("⚠"):
-            title = "WARNING"
-            body = reason.replace("⚠", "", 1).strip()
-            border = "#FDE68A"
-            bg = "#FFFBEB"
-            color = "#B45309"
-        else:
-            title = "INFO"
-            body = reason
-            border = "#E5E7EB"
-            bg = "#FFFFFF"
-            color = "#334155"
-
-        st.markdown(
-            f"""
-            <div style="
-                background-color:{bg};
-                border:1px solid {border};
-                border-radius:12px;
-                padding:14px 16px;
-                min-height:96px;
-                margin-bottom:12px;
-            ">
-                <div style="font-size:12px;font-weight:800;letter-spacing:0.08em;color:{color};margin-bottom:8px;">{title}</div>
-                <div style="font-size:15px;color:#0F172A;line-height:1.45;">{body}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-    def _split_drop_in_reasons(candidate):
-        raw_reasons = str(candidate.get("Drop-In Reasons", "") or "")
-        reasons = [reason.strip() for reason in raw_reasons.split(";") if reason.strip()]
-        strengths = []
-        warnings = []
-        informational = []
-
-        for reason in reasons:
-            if reason.startswith("✓"):
-                strengths.append(reason.replace("✓", "", 1).strip())
-            elif reason.startswith("⚠"):
-                warnings.append(reason.replace("⚠", "", 1).strip())
-            else:
-                informational.append(reason.replace("ℹ", "", 1).strip())
-
-        return strengths, warnings, informational
-
-    def _engineering_risk_label(candidate):
-        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-        architecture_warning = any("architecture" in warning.lower() for warning in warnings)
-        voltage_warning = any("voltage" in warning.lower() for warning in warnings)
-        package_warning = any("package" in warning.lower() or "mounting" in warning.lower() for warning in warnings)
-
-        if confidence >= 80 and not architecture_warning and not voltage_warning:
-            return "Low Risk", "Suitable for direct evaluation with normal validation."
-
-        if confidence >= 50 and not architecture_warning and not voltage_warning:
-            if package_warning:
-                return "Medium Risk", "Electrical fit looks reasonable, but package or PCB footprint review is required."
-            return "Medium Risk", "Candidate is promising, but engineering validation is still required."
-
-        if architecture_warning or voltage_warning:
-            return "High Risk", "Major electrical or functional differences require detailed redesign review."
-
-        return "High Risk", "Compatibility confidence is low; treat this as a redesign candidate."
-
-    def _recommendation_label(candidate):
-        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
-        score = int(candidate.get("Recommendation Score", 0) or 0)
-        risk_label, _ = _engineering_risk_label(candidate)
-
-        if risk_label == "Low Risk" and score >= 80:
-            return "Recommended for Evaluation"
-        if risk_label == "Medium Risk" and score >= 60:
-            return "Recommended with Engineering Review"
-        if score >= 50:
-            return "Review Before Use"
-        return "Not Recommended Without Redesign"
-
-    def _recommended_action(candidate):
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-        risk_label, _ = _engineering_risk_label(candidate)
-        warning_text = " ".join(warnings).lower()
-
-        actions = []
-
-        if risk_label == "Low Risk":
-            actions.append("Prototype evaluation recommended")
-        elif risk_label == "Medium Risk":
-            actions.append("Engineering review required before release")
-        else:
-            actions.append("Do not approve without redesign review")
-
-        if "package" in warning_text or "mounting" in warning_text:
-            actions.append("PCB footprint and assembly review required")
-
-        if "voltage" in warning_text:
-            actions.append("Electrical operating range validation required")
-
-        if "architecture" in warning_text or "function" in warning_text:
-            actions.append("Functional equivalence review required")
-
-        if not actions:
-            actions.append("Standard datasheet validation recommended")
-
-        return actions[:4]
-
-
-    def _short_compatibility_label(text):
-        text_lower = str(text or "").lower()
-
-        if "architecture" in text_lower:
-            return "Architecture", text
-        if "mounting" in text_lower:
-            return "Mounting / Assembly", text
-        if "package" in text_lower:
-            return "Package", text
-        if "pin count" in text_lower:
-            return "Pin Count", text
-        if "channel count" in text_lower:
-            return "Channel Count", text
-        if "voltage" in text_lower:
-            return "Voltage Range", text
-        if "bandwidth" in text_lower or "slew" in text_lower or "offset" in text_lower or "bias" in text_lower:
-            return "Electrical Spec", text
-
-        return "Engineering Check", text
-
-    def _render_validation_card(status, title, detail):
-        status = str(status or "INFO").upper()
-
-        if status == "PASS":
-            border = "#BBF7D0"
-            bg = "#ECFDF5"
-            color = "#15803D"
-        elif status == "WARNING":
-            border = "#FDE68A"
-            bg = "#FFFBEB"
-            color = "#B45309"
-        else:
-            border = "#E5E7EB"
-            bg = "#FFFFFF"
-            color = "#334155"
-
-        st.markdown(
-            f"""
-            <div style="
-                background-color:{bg};
-                border:1px solid {border};
-                border-radius:12px;
-                padding:16px 18px;
-                min-height:104px;
-                margin-bottom:12px;
-            ">
-                <div style="font-size:12px;font-weight:900;letter-spacing:0.08em;color:{color};margin-bottom:8px;">{status}</div>
-                <div style="font-size:16px;font-weight:800;color:#0F172A;margin-bottom:5px;">{title}</div>
-                <div style="font-size:14px;color:#334155;line-height:1.45;">{detail}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    def _score_breakdown(candidate):
-        score = int(candidate.get("Recommendation Score", 0) or 0)
-        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
-        lifecycle = str(candidate.get("Lifecycle", "")).lower()
-        stock = int(candidate.get("Stock", 0) or 0)
-        unit_price = float(candidate.get("Unit Price", 0.0) or 0.0)
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-        warning_text = " ".join(warnings).lower()
-
-        electrical = min(100, max(0, confidence + 25))
-        lifecycle_score = 100 if "active" in lifecycle else 60 if lifecycle else 50
-        supply_score = 95 if stock >= 50000 else 85 if stock >= 10000 else 65 if stock > 0 else 20
-        cost_score = 90 if 0 < unit_price <= 0.50 else 75 if unit_price <= 1.50 else 55 if unit_price else 50
-        package_score = 35 if "package" in warning_text or "mounting" in warning_text else 90
-
-        return [
-            ("Overall", score, _score_label(score)),
-            ("Electrical Fit", electrical, "Compatibility signals"),
-            ("Lifecycle", lifecycle_score, candidate.get("Lifecycle", "Unknown")),
-            ("Supply", supply_score, f"{stock:,} units"),
-            ("Package", package_score, "Review required" if package_score < 60 else "Compatible"),
-            ("Cost", cost_score, _format_currency(unit_price)),
-        ]
-
-    def _engineering_impact(candidate):
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-        warning_text = " ".join(warnings).lower()
-
-        impacts = []
-
-        if "package" in warning_text or "mounting" in warning_text:
-            impacts.append(("PCB Layout", "WARNING", "Footprint/package review required"))
-            impacts.append(("Manufacturing", "WARNING", "Assembly process may change"))
-        else:
-            impacts.append(("PCB Layout", "PASS", "No package issue detected"))
-            impacts.append(("Manufacturing", "PASS", "No assembly concern detected"))
-
-        if "voltage" in warning_text or "architecture" in warning_text or "function" in warning_text:
-            impacts.append(("Circuit Performance", "WARNING", "Electrical validation required"))
-        else:
-            impacts.append(("Circuit Performance", "PASS", "Primary electrical checks passed"))
-
-        impacts.append(("Software/Firmware", "PASS", "No software or firmware impact expected for this component class"))
-
-        return impacts
-
-
-    def _recommendation_badges(candidate):
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-        strength_text = " ".join(strengths).lower()
-        warning_text = " ".join(warnings).lower()
-        lifecycle = str(candidate.get("Lifecycle", "")).lower()
-        supplier = str(candidate.get("Supplier", "")).strip()
-        stock = int(candidate.get("Stock", 0) or 0)
-
-        badges = []
-        if "architecture" in strength_text or "operational amplifier" in strength_text:
-            badges.append(("PASS", "Electrical Compatible"))
-        if "voltage" in strength_text and "voltage" not in warning_text:
-            badges.append(("PASS", "Voltage Compatible"))
-        if "active" in lifecycle:
-            badges.append(("PASS", "Lifecycle Active"))
-        if stock > 0:
-            badges.append(("PASS", "Stock Available"))
-        if supplier and supplier.lower() not in ["unknown", "none", ""]:
-            badges.append(("PASS", "Supplier Verified"))
-        if "package" in warning_text or "mounting" in warning_text:
-            badges.append(("WARNING", "Footprint Review"))
-            badges.append(("WARNING", "Manufacturing Review"))
-        if "voltage" in warning_text:
-            badges.append(("WARNING", "Voltage Review"))
-        if "architecture" in warning_text or "function" in warning_text:
-            badges.append(("WARNING", "Functional Review"))
-        return badges[:8]
-
-    def _badge_html(status, label):
-        status = str(status or "INFO").upper()
-        if status == "PASS":
-            bg, border, color = "#052E1A", "#14532D", "#86EFAC"
-        elif status == "WARNING":
-            bg, border, color = "#422006", "#854D0E", "#FDE68A"
-        else:
-            bg, border, color = "#111827", "#334155", "#CBD5E1"
-        return f'<span style="display:inline-block;background:{bg};border:1px solid {border};color:{color};border-radius:999px;padding:7px 10px;margin:4px 6px 4px 0;font-size:12px;font-weight:800;letter-spacing:0.02em;">{label}</span>'
-
-    def _engineering_summary_text(original_part, candidate):
-        part_number = candidate.get("Alternative Part", "Unknown")
-        score = int(candidate.get("Recommendation Score", 0) or 0)
-        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
-        stock = int(candidate.get("Stock", 0) or 0)
-        supplier = candidate.get("Supplier", "Unknown")
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-        warning_text = " ".join(warnings).lower()
-
-        positives = []
-        if score >= 70:
-            positives.append("strong overall recommendation score")
-        if confidence >= 50:
-            positives.append("acceptable electrical compatibility signals")
-        if stock > 0:
-            positives.append(f"available supplier inventory through {supplier}")
-        if strengths:
-            positives.append("matching core engineering characteristics")
-
-        if not positives:
-            positives.append("available candidate data")
-
-        concerns = []
-        if "package" in warning_text or "mounting" in warning_text:
-            concerns.append("PCB footprint and assembly review")
-        if "voltage" in warning_text:
-            concerns.append("voltage range validation")
-        if "architecture" in warning_text or "function" in warning_text:
-            concerns.append("functional equivalence review")
-
-        if concerns:
-            concern_sentence = " Primary review item: " + ", ".join(concerns) + "."
-        else:
-            concern_sentence = " No major implementation warnings were detected by the current rules."
-
-        return (
-            f"{part_number} is recommended as the leading replacement candidate for {original_part} because it combines "
-            f"{', '.join(positives)}."
-            f"{concern_sentence}"
-        )
-
-
-    def _confidence_band(value):
-        value = int(value or 0)
-        if value >= 85:
-            return "High", "Strong engineering confidence"
-        if value >= 60:
-            return "Medium", "Promising candidate with review items"
-        if value >= 40:
-            return "Moderate", "Use only after engineering validation"
-        return "Low", "Treat as redesign candidate"
-
-    def _render_horizontal_score(label, value, note):
-        safe_value = max(0, min(int(value or 0), 100))
-        band, _ = _confidence_band(safe_value)
-        st.markdown(f"**{label}** — {safe_value}/100")
-        st.progress(safe_value)
-        st.caption(f"{band}: {note}")
-
-    def _compatibility_signal_summary(candidate):
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-        strength_text = " ".join(strengths).lower()
-        warning_text = " ".join(warnings).lower()
-
-        function_ok = (
-            "architecture" in strength_text
-            or "function" in strength_text
-            or "operational amplifier" in strength_text
-        )
-        pin_ok = "pin count" in strength_text
-        channel_ok = "channel count" in strength_text
-        voltage_ok = "voltage" in strength_text and "voltage" not in warning_text
-        package_warning = "package" in warning_text or "mounting" in warning_text
-        electrical_warning = any(
-            token in warning_text
-            for token in ["voltage", "bandwidth", "slew", "offset", "bias", "quiescent", "architecture", "function"]
-        )
-
-        if function_ok and voltage_ok and pin_ok and channel_ok and not electrical_warning:
-            electrical_status = "PASS"
-            electrical_detail = "Functional and primary electrical compatibility signals look acceptable."
-        elif electrical_warning:
-            electrical_status = "WARNING"
-            electrical_detail = "One or more electrical compatibility signals require datasheet validation."
-        else:
-            electrical_status = "INFO"
-            electrical_detail = "Electrical compatibility is partially verified; review datasheets before approval."
-
-        package_status = "WARNING" if package_warning else "PASS"
-        package_detail = (
-            "Package or mounting mismatch detected; PCB footprint and assembly review required."
-            if package_warning
-            else "No package mismatch detected by the current rules."
-        )
-
-        pin_status = "PASS" if pin_ok else "INFO"
-        pin_detail = "Pin count matches the original component." if pin_ok else "Pin compatibility requires datasheet review."
-
-        voltage_status = "PASS" if voltage_ok else "INFO"
-        voltage_detail = "Candidate supply range covers the original requirement." if voltage_ok else "Voltage compatibility requires datasheet validation."
-
-        return [
-            ("Functional/Electrical Fit", electrical_status, electrical_detail),
-            ("Pin / Channel Fit", pin_status, pin_detail),
-            ("Supply Voltage", voltage_status, voltage_detail),
-            ("Package / Footprint", package_status, package_detail),
-        ]
-
-    def _render_confidence_explanation(candidate):
-        st.markdown("#### Engineering Confidence Details")
-        st.caption("Compatibility signals interpreted from package, pin count, voltage range, architecture, and available electrical parameters.")
-
-        c1, c2 = st.columns(2)
-        for idx, (title, status, detail) in enumerate(_compatibility_signal_summary(candidate)):
-            with (c1 if idx % 2 == 0 else c2):
-                _render_validation_card(status, title, detail)
-
-    def _render_engineering_decision_dashboard(original_part, candidate):
-        if not candidate:
-            return
-
-        part_number = candidate.get("Alternative Part", "Unknown")
-        score = int(candidate.get("Recommendation Score", 0) or 0)
-        confidence = int(candidate.get("Drop-In Confidence", 0) or 0)
-        lifecycle = candidate.get("Lifecycle", "Unknown")
-        supplier = candidate.get("Supplier", "Unknown")
-        package = candidate.get("Package", "Unknown")
-        price = float(candidate.get("Unit Price", 0.0) or 0.0)
-        stock = int(candidate.get("Stock", 0) or 0)
-        recommendation_status = _recommendation_label(candidate)
-        risk_label, risk_note = _engineering_risk_label(candidate)
-        strengths, warnings, informational = _split_drop_in_reasons(candidate)
-        recommendation_text = candidate.get("Recommendation", "Review compatibility.")
-
-        status_badge = "RECOMMENDED" if score >= 70 else "REVIEW REQUIRED"
-
-        st.markdown(
-            f"""
-            <div style="margin-top:24px;margin-bottom:10px;">
-                <div style="font-size:34px;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">Engineering Recommendation</div>
-                <div style="font-size:14px;color:#64748B;margin-top:6px;">Executive decision dashboard summarizing fit, sourcing strength, and implementation impact.</div>
-            </div>
-            <div style="
-                background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
-                border:1px solid #BFDBFE;
-                border-radius:16px;
-                padding:22px 24px;
-                margin-bottom:16px;
-            ">
-                <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
-                    <div>
-                        <div style="font-size:12px;color:#2563EB;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{status_badge}</div>
-                        <div style="font-size:40px;font-weight:900;color:#0F172A;letter-spacing:-0.03em;">{part_number}</div>
-                        <div style="font-size:14px;color:#64748B;margin-top:6px;">{recommendation_text}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:12px;color:#64748B;font-weight:700;">Overall Recommendation</div>
-                        <div style="font-size:20px;color:#0F172A;font-weight:900;margin-top:4px;">{recommendation_status}</div>
-                        <div style="font-size:12px;color:#64748B;margin-top:6px;">{risk_label}</div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        d_col1, d_col2, d_col3, d_col4, d_col5, d_col6 = st.columns(6)
-        with d_col1:
-            _render_kpi_card("Score", f"{score}", _score_label(score))
-        with d_col2:
-            _render_kpi_card("Drop-In", f"{confidence}%", "Compatibility confidence")
-        with d_col3:
-            _render_kpi_card("Lifecycle", lifecycle, "Supplier status")
-        with d_col4:
-            _render_kpi_card("Supplier", supplier, "Top candidate source")
-        with d_col5:
-            _render_kpi_card("Stock", _format_int(stock), "Available units")
-        with d_col6:
-            _render_kpi_card("Price", _format_currency(price), "Unit price")
-
-        badge_markup = "".join(_badge_html(status, label) for status, label in _recommendation_badges(candidate))
-        summary_text = _engineering_summary_text(original_part, candidate)
-
-        st.markdown(
-            f"""
-            <div style="
-                background-color:#FFFFFF;
-                border:1px solid #BFDBFE;
-                border-radius:14px;
-                padding:16px 18px;
-                margin-top:12px;
-                margin-bottom:14px;
-            ">
-                <div style="font-size:13px;color:#64748B;font-weight:800;margin-bottom:6px;">AI Engineering Summary</div>
-                <div style="font-size:15px;color:#334155;line-height:1.55;">
-                    {summary_text}
-                </div>
-                <div style="margin-top:12px;">{badge_markup}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        _render_confidence_explanation(candidate)
-
-        st.markdown("#### Engineering Validation Checklist")
-        validation_items = []
-        for reason in strengths[:5]:
-            title, detail = _short_compatibility_label(reason)
-            validation_items.append(("PASS", title, detail))
-        for reason in warnings[:5]:
-            title, detail = _short_compatibility_label(reason)
-            validation_items.append(("WARNING", title, detail))
-
-        if not validation_items:
-            validation_items = [("INFO", "Validation", "No detailed compatibility reasons were returned.")]
-
-        v_col1, v_col2 = st.columns(2)
-        for idx, (status, title, detail) in enumerate(validation_items[:8]):
-            with (v_col1 if idx % 2 == 0 else v_col2):
-                _render_validation_card(status, title, detail)
-
-        st.markdown("#### Design Impact")
-        impact_col1, impact_col2, impact_col3, impact_col4 = st.columns(4)
-        for idx, (title, status, detail) in enumerate(_engineering_impact(candidate)):
-            with [impact_col1, impact_col2, impact_col3, impact_col4][idx % 4]:
-                _render_validation_card(status, title, detail)
-
-        with st.expander("Recommendation score breakdown", expanded=False):
-            breakdown = _score_breakdown(candidate)
-            for label, value, note in breakdown:
-                safe_value = max(0, min(int(value or 0), 100))
-                st.markdown(f"**{label}** — {safe_value}/100")
-                st.progress(safe_value)
-                st.caption(str(note))
-
-    def _render_engineering_recommendation(original_part, candidate):
-        """Compact executive decision card.
-
-        This intentionally avoids repeating the full validation checklist,
-        which is now handled in the Top Candidate Dashboard dashboard.
-        """
-        if not candidate:
-            return
-
-        part_number = candidate.get("Alternative Part", "Unknown")
-        recommendation_status = _recommendation_label(candidate)
-        risk_label, risk_note = _engineering_risk_label(candidate)
-        strengths, warnings, _ = _split_drop_in_reasons(candidate)
-
-        if warnings:
-            decision_sentence = (
-                "Electrical compatibility appears reasonable, but engineering review is required before production use."
-            )
-            implementation_sentence = (
-                "Primary implementation impact: PCB footprint/package and assembly review."
-            )
-        else:
-            decision_sentence = (
-                "No major compatibility warnings were detected by the current rules."
-            )
-            implementation_sentence = (
-                "Standard datasheet validation is still recommended before release."
-            )
-
-        if risk_label == "Low Risk":
-            risk_color = "#15803D"
-            risk_border = "#BBF7D0"
-            risk_bg = "#ECFDF5"
-        elif risk_label == "Medium Risk":
-            risk_color = "#B45309"
-            risk_border = "#FDE68A"
-            risk_bg = "#FFFBEB"
-        else:
-            risk_color = "#B91C1C"
-            risk_border = "#FECACA"
-            risk_bg = "#FEF2F2"
-
-        st.markdown(
-            f"""
-            <div style="margin-top:24px;margin-bottom:10px;">
-                <div style="font-size:32px;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">Engineering Decision</div>
-                <div style="font-size:14px;color:#64748B;margin-top:6px;">Executive recommendation generated from compatibility, lifecycle, sourcing, and risk signals.</div>
-            </div>
-            <div style="
-                background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
-                border:1px solid #BFDBFE;
-                border-radius:16px;
-                padding:20px 24px;
-                margin-bottom:18px;
-            ">
-                <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;">
-                    <div style="max-width:980px;">
-                        <div style="font-size:12px;color:#2563EB;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{recommendation_status}</div>
-                        <div style="font-size:34px;color:#0F172A;font-weight:900;letter-spacing:-0.03em;">{part_number}</div>
-                        <div style="font-size:16px;color:#334155;line-height:1.55;margin-top:12px;">
-                            {decision_sentence}
-                        </div>
-                        <div style="font-size:13px;color:#64748B;margin-top:8px;">
-                            {implementation_sentence} {risk_note}
-                        </div>
-                    </div>
-                    <div style="
-                        background-color:{risk_bg};
-                        border:1px solid {risk_border};
-                        border-radius:999px;
-                        padding:9px 14px;
-                        color:{risk_color};
-                        font-size:12px;
-                        font-weight:900;
-                        letter-spacing:0.04em;
-                        text-transform:uppercase;
-                        white-space:nowrap;
-                    ">{risk_label}</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    if "alternative_input_part" not in st.session_state:
-        st.session_state["alternative_input_part"] = st.session_state.get(
-            "alternative_original_part",
-            "",
-        )
-
-    original_part = st.text_input(
-        "Manufacturer part number",
-        key="alternative_input_part",
-        placeholder="Example: LM358, NE555, ATMEGA328P",
-    )
-
-    search_button_col, search_hint_col = st.columns([0.13, 0.87])
-
-    with search_button_col:
-        search_clicked = st.button(
-            "Analyze Component",
-            type="primary",
-            use_container_width=False,
-            key="alternative_search_button",
-        )
-
-    with search_hint_col:
-        st.caption(
-            "Supplier lookup • Electrical comparison • Ranked engineering recommendations"
-        )
-
-    if search_clicked:
-        original_part = str(original_part or "").strip()
-
+    if st.button("Find Alternatives", type="primary"):
         if not original_part:
             st.warning("Please enter an original part number.")
         else:
-            with st.spinner(
-                "Searching suppliers, comparing electrical specs, and ranking alternatives..."
-            ):
-                st.session_state["alternative_original_part"] = original_part
+            with st.spinner("Searching suppliers and finding alternatives..."):
                 st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
                     original_part
                 )
-                st.session_state["alternative_search_attempted"] = True
+
+                if st.session_state["suggested_alternatives"]:
+                    alternatives_df = pd.DataFrame(
+                        st.session_state["suggested_alternatives"]
+                    )
+
+                    st.success("Suggested alternatives found.")
+
+                    st.dataframe(
+                        alternatives_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                else:
+                    st.warning("No suggested alternatives found.")
+
+    suggested_part_numbers = []
 
     if st.session_state["suggested_alternatives"]:
-        alternatives = st.session_state["suggested_alternatives"]
-        original_part = st.session_state.get("alternative_original_part", original_part)
-        alternatives_df = pd.DataFrame(alternatives)
-
-        if "Alternative Part" not in alternatives_df.columns:
-            st.warning("Alternative results are missing part number data.")
-            st.stop()
-
-        numeric_columns = [
-            "Recommendation Score",
-            "Drop-In Confidence",
-            "Stock",
-            "Unit Price",
-        ]
-
-        for col in numeric_columns:
-            if col in alternatives_df.columns:
-                alternatives_df[col] = pd.to_numeric(
-                    alternatives_df[col],
-                    errors="coerce",
-                ).fillna(0)
-
-        true_alternatives = [
-            alt for alt in alternatives
+        suggested_part_numbers = [
+            alt.get("Alternative Part", "")
+            for alt in st.session_state["suggested_alternatives"]
             if isinstance(alt, dict)
-            and alt.get("Alternative Part", "") != original_part
         ]
 
-        best_alternative = (
-            max(
-                true_alternatives,
-                key=lambda x: x.get("Recommendation Score", 0),
-            )
-            if true_alternatives
-            else None
-        )
-
-        value_alternatives = [
-            alt for alt in true_alternatives
-            if float(alt.get("Stock", 0) or 0) > 0
-            and float(alt.get("Unit Price", 0.0) or 0.0) > 0
-        ]
-
-        best_value_alternative = (
-            min(
-                value_alternatives,
-                key=lambda x: float(x.get("Unit Price", 0.0) or 0.0),
-            )
-            if value_alternatives
-            else None
-        )
-
-        supplier_count = (
-            alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique()
-            if "Supplier" in alternatives_df.columns
-            else 0
-        )
-
-        total_stock = (
-            int(alternatives_df["Stock"].sum())
-            if "Stock" in alternatives_df.columns
-            else 0
-        )
-
-        lowest_unit_price = (
-            float(best_value_alternative.get("Unit Price", 0.0) or 0.0)
-            if best_value_alternative
-            else 0.0
-        )
-
-        top_score = (
-            int(best_alternative.get("Recommendation Score", 0) or 0)
-            if best_alternative
-            else 0
-        )
-
-        top_confidence = (
-            int(best_alternative.get("Drop-In Confidence", 0) or 0)
-            if best_alternative
-            else 0
-        )
-
-        best_supplier = (
-            best_alternative.get("Supplier", "Unknown")
-            if best_alternative
-            else "Unknown"
-        )
-
-        _render_section_title(
-            "Search Summary",
-            "Ranked results based on compatibility, availability, lifecycle status, and sourcing risk.",
-        )
-
-        summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
-
-        with summary_col1:
-            _render_kpi_card(
-                "Best Recommendation",
-                best_alternative.get("Alternative Part", "-") if best_alternative else "-",
-                "Highest-ranked candidate",
-            )
-
-        with summary_col2:
-            _render_kpi_card("Recommendation Score", f"{top_score} / 100", _score_label(top_score))
-
-        with summary_col3:
-            _render_kpi_card("Drop-In Match", f"{top_confidence}%", "Engineering compatibility")
-
-        with summary_col4:
-            _render_kpi_card("Verified Suppliers", supplier_count, "Live supplier responses")
-
+    if suggested_part_numbers:
         st.divider()
+        st.subheader("Step 2: Compare Alternatives")
 
-        if best_alternative:
-            _render_engineering_decision_dashboard(original_part, best_alternative)
-            st.divider()
-
-        if best_value_alternative:
-            st.divider()
-            _render_section_title("Best Value Alternative")
-
-            value_col1, value_col2, value_col3, value_col4, value_col5 = st.columns(5)
-
-            with value_col1:
-                _render_kpi_card(
-                    "Part Number",
-                    best_value_alternative.get("Alternative Part", "Unknown"),
-                    "Lowest-priced stocked candidate",
-                )
-
-            with value_col2:
-                _render_kpi_card(
-                    "Unit Price",
-                    _format_currency(best_value_alternative.get("Unit Price", 0.0)),
-                    "Supplier-listed price",
-                )
-
-            with value_col3:
-                _render_kpi_card(
-                    "Available Stock",
-                    _format_int(best_value_alternative.get("Stock", 0)),
-                    "Current supplier stock",
-                )
-
-            with value_col4:
-                value_score = int(best_value_alternative.get("Recommendation Score", 0) or 0)
-                _render_kpi_card(
-                    "Score",
-                    value_score,
-                    _score_label(value_score),
-                )
-
-            with value_col5:
-                _render_kpi_card(
-                    "Drop-In",
-                    f"{int(best_value_alternative.get('Drop-In Confidence', 0) or 0)}%",
-                    best_value_alternative.get("Drop-In Rating", "Compatibility"),
-                )
-
-        st.divider()
-
-        _render_section_title("Supplier Intelligence")
-
-        supplier_col1, supplier_col2, supplier_col3, supplier_col4 = st.columns(4)
-
-        with supplier_col1:
-            _render_kpi_card("Verified Suppliers", supplier_count, "Supplier records found")
-
-        with supplier_col2:
-            _render_kpi_card("Market Stock", f"{total_stock:,}", "Across returned candidates")
-
-        with supplier_col3:
-            _render_kpi_card("Supplier for Top Recommendation", best_supplier or "Unknown", "Matched supplier record")
-
-        with supplier_col4:
-            price_label = f"${lowest_unit_price:.2f}" if lowest_unit_price > 0 else "N/A"
-            _render_kpi_card("Lowest Price", price_label, "Best stocked unit price")
-
-        st.divider()
-
-        _render_section_title(
-            "Side-by-Side Comparison",
-            "Select an alternative to compare directly against the searched original component.",
+        alternatives_input = st.text_input(
+            "Enter alternative part numbers (comma-separated)",
+            value=", ".join(suggested_part_numbers),
         )
 
-        alternative_options = alternatives_df["Alternative Part"].dropna().tolist()
-        default_index = 0
+        if st.button("Compare Parts", type="primary"):
+            if original_part:
+                alternatives = [
+                    part.strip()
+                    for part in alternatives_input.split(",")
+                    if part.strip()
+                ] if alternatives_input else []
 
-        if best_alternative and best_alternative.get("Alternative Part") in alternative_options:
-            default_index = alternative_options.index(best_alternative.get("Alternative Part"))
+                st.success(f"Comparing: {original_part} vs {alternatives}")
 
-        selected_alternative = st.selectbox(
-            "Compare with recommended part",
-            alternative_options,
-            index=default_index,
-        )
+                comparison_df = compare_parts(original_part, alternatives)
 
-        selected_row = alternatives_df[
-            alternatives_df["Alternative Part"] == selected_alternative
-        ].iloc[0]
+                def risk_badge(level):
+                    if level == "High":
+                        return "🔴 High"
+                    if level == "Medium":
+                        return "🟡 Medium"
+                    return "🟢 Low"
 
-        original_data = get_best_part_data(original_part)
+                comparison_df["Risk Level Display"] = comparison_df["Risk Level"].apply(risk_badge)
 
-        original_stock = float(original_data.get("stock_total", 0) or 0)
-        alternative_stock = float(selected_row.get("Stock", 0) or 0)
+                comparison_df = comparison_df.sort_values(
+                    by=["Risk Score", "Total Market Stock"],
+                    ascending=[True, False],
+                )
 
-        original_price = float(original_data.get("unit_price", 0.0) or 0.0)
-        alternative_price = float(selected_row.get("Unit Price", 0.0) or 0.0)
+                st.markdown("### Step 3 — Comparison Results")
 
-        if original_stock > 0 and alternative_stock > 0:
-            stock_ratio = alternative_stock / original_stock
+                display_cols = [
+                    "Role",
+                    "MPN Searched",
+                    "Manufacturer",
+                    "Best Source",
+                    "Supplier Count",
+                    "Total Market Stock",
+                    "Lifecycle Status",
+                    "Risk Score",
+                    "Risk Level Display",
+                    "Product URL",
+                ]
 
-            if stock_ratio > 1:
-                stock_delta = f"Improved: {stock_ratio:.0f}x more stock available"
+                comparison_display_df = comparison_df[display_cols].rename(
+                    columns={
+                        "mpn": "Part Number",
+                        "manufacturer": "Manufacturer",
+                        "risk_score": "Risk Score",
+                        "risk_level": "Risk Level",
+                        "risk_reasons": "Risk Reasons",
+                        "lifecycle_status": "Lifecycle Status",
+                        "stock_available": "Stock Available",
+                        "supplier_count": "Supplier Count",
+                    }
+                )
+
+                st.dataframe(
+                    comparison_display_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                alternatives_only = comparison_df[comparison_df["Role"] == "Alternative"]
+
+                if not alternatives_only.empty:
+                    best_alt = alternatives_only.sort_values(
+                        by=["Risk Score", "Total Market Stock"],
+                        ascending=[True, False],
+                    ).iloc[0]
+
+                    st.success(
+                        f"✅ Recommended Alternative: **{best_alt['Matched MPN']}** "
+                        f"(Risk: {best_alt['Risk Level']}, Stock: {best_alt['Total Market Stock']})"
+                    )
+
+                csv = comparison_df.to_csv(index=False).encode("utf-8")
+
+                st.download_button(
+                    "Download Comparison (CSV)",
+                    data=csv,
+                    file_name="alternative_comparison.csv",
+                    mime="text/csv",
+                )
+
             else:
-                stock_delta = f"Reduced: {(1 / stock_ratio):.1f}x less stock available"
-
-        elif original_stock > 0 and alternative_stock == 0:
-            stock_delta = "No stock available"
-
-        else:
-            stock_delta = "N/A"
-
-        if original_price > 0:
-            price_pct = ((alternative_price - original_price) / original_price) * 100
-
-            if price_pct < 0:
-                price_delta = f"Improved: {abs(price_pct):.1f}% lower cost"
-            else:
-                price_delta = f"Tradeoff: {price_pct:.1f}% higher cost"
-        else:
-            price_delta = "N/A"
-
-        comparison_df = pd.DataFrame(
-            [
-                {
-                    "Attribute": "Part Number",
-                    "Original": original_part,
-                    "Selected Alternative": selected_row.get("Alternative Part", ""),
-                },
-                {
-                    "Attribute": "Lifecycle",
-                    "Original": original_data.get("lifecycle_status", "Unknown"),
-                    "Selected Alternative": selected_row.get("Lifecycle", "Unknown"),
-                },
-                {
-                    "Attribute": "Supplier",
-                    "Original": original_data.get("source", ""),
-                    "Selected Alternative": selected_row.get("Supplier", ""),
-                },
-                {
-                    "Attribute": "Stock",
-                    "Original": f"{int(original_data.get('stock_total', 0) or 0):,}",
-                    "Selected Alternative": f"{int(selected_row.get('Stock', 0) or 0):,}",
-                },
-                {
-                    "Attribute": "Unit Price",
-                    "Original": f"${float(original_data.get('unit_price', 0.0) or 0.0):.2f}",
-                    "Selected Alternative": f"${float(selected_row.get('Unit Price', 0.0) or 0.0):.2f}",
-                },
-                {
-                    "Attribute": "Stock Delta",
-                    "Original": "—",
-                    "Selected Alternative": stock_delta,
-                },
-                {
-                    "Attribute": "Price Delta",
-                    "Original": "—",
-                    "Selected Alternative": price_delta,
-                },
-                {
-                    "Attribute": "Package",
-                    "Original": original_data.get("package") or "Not available from supplier data",
-                    "Selected Alternative": selected_row.get("Package", ""),
-                },
-                {
-                    "Attribute": "Pin Count",
-                    "Original": original_data.get("pin_count") or "Not available from supplier data",
-                    "Selected Alternative": selected_row.get("Pin Count", ""),
-                },
-                {
-                    "Attribute": "Architecture",
-                    "Original": original_data.get("architecture")
-                    or original_data.get("Architecture")
-                    or "Not available from supplier data",
-                    "Selected Alternative": selected_row.get("Architecture", ""),
-                },
-                {
-                    "Attribute": "Voltage Range",
-                    "Original": original_data.get("voltage_range") or "Not available from supplier data",
-                    "Selected Alternative": selected_row.get("Voltage Range", ""),
-                },
-                {
-                    "Attribute": "Drop-In Confidence",
-                    "Original": "—",
-                    "Selected Alternative": selected_row.get("Drop-In Confidence", ""),
-                },
-                {
-                    "Attribute": "Drop-In Rating",
-                    "Original": "—",
-                    "Selected Alternative": str(selected_row.get("Drop-In Rating", "")).replace("🟢", "").replace("🟡", "").replace("🔴", "").strip(),
-                },
-            ]
-        )
-
-        st.dataframe(
-            comparison_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        st.divider()
-
-        _render_section_title(
-            "All Suggested Alternatives",
-            "Reference table for reviewing all ranked alternatives returned by the engine.",
-        )
-
-        preferred_columns = [
-            "Alternative Part",
-            "Recommendation Score",
-            "Drop-In Rating",
-            "Drop-In Confidence",
-            "Lifecycle",
-            "Supplier",
-            "Stock",
-            "Unit Price",
-            "Architecture",
-            "Package",
-            "Pin Count",
-            "Voltage Range",
-            "Estimated Risk",
-            "Recommendation",
-        ]
-
-        display_columns = [
-            col for col in preferred_columns
-            if col in alternatives_df.columns
-        ]
-
-        display_df = alternatives_df[display_columns].copy()
-
-        if best_alternative and "Alternative Part" in display_df.columns:
-            best_part_number = best_alternative.get("Alternative Part", "")
-            display_df.insert(
-                0,
-                "Status",
-                display_df["Alternative Part"].apply(
-                    lambda value: "Recommended" if value == best_part_number else ""
-                ),
-            )
-
-        if "Drop-In Rating" in display_df.columns:
-            display_df["Drop-In Rating"] = (
-                display_df["Drop-In Rating"]
-                .astype(str)
-                .str.replace("🟢", "", regex=False)
-                .str.replace("🟡", "", regex=False)
-                .str.replace("🔴", "", regex=False)
-                .str.strip()
-            )
-
-        if "Estimated Risk" in display_df.columns:
-            display_df["Estimated Risk"] = display_df["Estimated Risk"].replace(
-                {
-                    "Low": "Low",
-                    "Medium": "Medium",
-                    "High": "High",
-                }
-            )
-
-        if "Unit Price" in display_df.columns:
-            display_df["Unit Price"] = display_df["Unit Price"].apply(
-                lambda value: f"${float(value or 0):.2f}"
-            )
-
-        if "Stock" in display_df.columns:
-            display_df["Stock"] = display_df["Stock"].apply(
-                lambda value: f"{int(value or 0):,}"
-            )
-
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        if st.button("Analyze Another Component"):
-            st.session_state["suggested_alternatives"] = []
-            st.session_state["alternative_search_attempted"] = False
-            st.session_state["alternative_original_part"] = ""
-            st.rerun()
-
-    elif st.session_state["alternative_search_attempted"]:
-        st.warning("No suggested alternatives found.")
+                st.warning("Please enter a valid part number.")
 
     st.stop()
-
 if app_mode == "BOM Analyzer":
 
     st.markdown(
@@ -4114,15 +2750,31 @@ if app_mode == "BOM Analyzer":
                 )
 
             if not allowed:
+                st.error(message)
                 upgrade_plan = selected_plan.get("upgrade_to")
 
-                st.session_state["show_upgrade_checkout"] = True
-                st.session_state["upgrade_message"] = message
-                st.session_state["upgrade_plan_name"] = upgrade_plan
+                if upgrade_plan:
+                    next_plan = get_plan(upgrade_plan)
 
-                # Rerun so the persistent upgrade checkout section below can render.
-                # Using st.stop() here would show the text but prevent the button from appearing.
-                st.rerun()
+                    st.markdown(
+                        f"""
+---
+### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
+
+Unlock more power:
+
+- 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
+- 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
+- 🌐 Multi-supplier intelligence (Mouser + DigiKey)
+- ⚡ Faster sourcing decisions
+
+👉 Upgrade now to continue your analysis
+---
+"""
+                    )
+                    st.session_state["show_upgrade_checkout"] = True
+
+                st.stop()
 
             saved_analysis_count = (
                 supabase.table("analyses")
@@ -4159,8 +2811,6 @@ if app_mode == "BOM Analyzer":
                 # If analysis succeeds, hide any old checkout prompt from a previous blocked attempt.
                 st.session_state.pop("show_upgrade_checkout", None)
                 st.session_state.pop("checkout_url", None)
-                st.session_state.pop("upgrade_message", None)
-                st.session_state.pop("upgrade_plan_name", None)
 
             except Exception as e:
                 st.error(f"BOM analysis failed unexpectedly: {e}")
@@ -4169,57 +2819,22 @@ if app_mode == "BOM Analyzer":
             results_df = st.session_state["results_df"]
 
     if st.session_state.get("show_upgrade_checkout"):
-        upgrade_message = st.session_state.get(
-            "upgrade_message",
-            "Your current plan limit has been reached.",
-        )
-
-        upgrade_plan = st.session_state.get("upgrade_plan_name")
-        next_plan = get_plan(upgrade_plan) if upgrade_plan else None
-
-        st.error(upgrade_message)
-
-        if upgrade_plan and next_plan:
-            st.markdown(
-                f"""
----
-### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
-
-Unlock more power:
-
-- 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
-- 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
-- 🌐 Multi-supplier intelligence (Mouser + DigiKey)
-- ⚡ Faster sourcing decisions
-
-👉 Upgrade now to continue your analysis
----
-"""
+        if st.button("🚀 Upgrade to Pro", key="upgrade_button_main"):
+            checkout_url = create_checkout_session(
+                st.secrets["STRIPE_PRO_PRICE_ID"],
+                current_user["email"],
+                current_user["id"],
+                success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success",
+                cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
             )
 
-            if st.button(f"🚀 Upgrade to {upgrade_plan}", key="upgrade_button_main"):
-                try:
-                    checkout_url = create_checkout_session(
-                        st.secrets["STRIPE_PRO_PRICE_ID"],
-                        current_user["email"],
-                        current_user["id"],
-                        success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
-                        cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
-                    )
+            st.session_state["checkout_url"] = checkout_url
 
-                    st.session_state["checkout_url"] = checkout_url
-
-                except Exception as e:
-                    st.error(f"Unable to create checkout session: {e}")
-
-            if "checkout_url" in st.session_state:
-                st.link_button(
-                    "Continue to Stripe Checkout",
-                    st.session_state["checkout_url"],
-                )
-
-        else:
-            st.info("No upgrade plan is configured for your current subscription.")
+        if "checkout_url" in st.session_state:
+            st.link_button(
+                "Continue to Stripe Checkout",
+                st.session_state["checkout_url"],
+            )
 
     if "results_df" in st.session_state:
         results_df = st.session_state["results_df"]
@@ -4545,7 +3160,7 @@ Unlock more power:
                 st.write("10 parts per BOM")
 
             with col2:
-                st.markdown("### Pro")
+                st.markdown("### Pro 🚀")
                 st.write("$99/mo")
                 st.write("10 BOMs/month")
                 st.write("20 parts per BOM")
