@@ -432,17 +432,6 @@ if "user" not in st.session_state:
     st.stop()
 
 
-with st.sidebar:
-    if st.button("Log out"):
-        cookie_manager.delete(
-            cookie="bom_auth",
-            key="delete_bom_auth",
-        )
-
-        supabase.auth.sign_out()
-        st.session_state.clear()
-        st.rerun()
-
 current_user = load_user_data()
 
 is_admin = current_user.get("role") == "admin"
@@ -916,6 +905,210 @@ st.markdown(
         margin-bottom: 14px;
     }
 
+
+
+    /* ---------- Enterprise navigation shell ---------- */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0F172A 0%, #111827 100%);
+        border-right: 1px solid #E5E7EB22;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] div,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] span {
+        color: #D1D5DB;
+    }
+
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #F9FAFB;
+    }
+
+    .sidebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 4px 18px 4px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+        margin-bottom: 18px;
+    }
+
+    .sidebar-logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #2563EB;
+        color: white;
+        font-weight: 900;
+        font-size: 18px;
+    }
+
+    .sidebar-title {
+        font-size: 17px;
+        line-height: 1.1;
+        font-weight: 800;
+        color: #F8FAFC;
+    }
+
+    .sidebar-subtitle {
+        font-size: 11px;
+        color: #94A3B8;
+        margin-top: 2px;
+    }
+
+    .sidebar-user-card {
+        background: rgba(37, 99, 235, 0.10);
+        border: 1px solid rgba(96, 165, 250, 0.22);
+        border-radius: 14px;
+        padding: 12px 12px;
+        margin: 8px 0 18px 0;
+    }
+
+    .sidebar-user-label {
+        font-size: 11px;
+        color: #93C5FD;
+        text-transform: uppercase;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        margin-bottom: 4px;
+    }
+
+    .sidebar-user-email {
+        color: #E5E7EB;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+    }
+
+    .sidebar-section-label {
+        color: #94A3B8;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 800;
+        margin-top: 16px;
+        margin-bottom: 6px;
+    }
+
+    .sidebar-plan-card {
+        background: rgba(15, 23, 42, 0.80);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 14px;
+        padding: 12px;
+        margin-top: 12px;
+        margin-bottom: 12px;
+    }
+
+    .sidebar-plan-name {
+        font-weight: 800;
+        color: #F8FAFC;
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+
+    .sidebar-plan-meta {
+        color: #94A3B8;
+        font-size: 12px;
+        line-height: 1.55;
+    }
+
+    .app-shell-header {
+        background: linear-gradient(135deg, #F8FBFF 0%, #FFFFFF 100%);
+        border: 1px solid #E5E7EB;
+        border-radius: 18px;
+        padding: 22px 26px;
+        margin-bottom: 24px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    .app-shell-title {
+        color: #0F172A;
+        font-size: 26px;
+        font-weight: 850;
+        margin-bottom: 4px;
+    }
+
+    .app-shell-subtitle {
+        color: #64748B;
+        font-size: 14px;
+    }
+
+    .dashboard-hero {
+        background: linear-gradient(135deg, #F8FBFF 0%, #FFFFFF 100%);
+        border: 1px solid #E5E7EB;
+        border-radius: 20px;
+        padding: 28px 30px;
+        margin-bottom: 22px;
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+    }
+
+    .dashboard-hero-eyebrow {
+        display: inline-block;
+        color: #2563EB;
+        background: #EFF6FF;
+        border: 1px solid #DBEAFE;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+
+    .dashboard-hero h1 {
+        color: #0F172A;
+        font-size: 34px;
+        font-weight: 850;
+        margin: 0 0 8px 0;
+    }
+
+    .dashboard-hero p {
+        color: #64748B;
+        font-size: 15px;
+        margin: 0;
+    }
+
+    /* Clean radio navigation into app-menu style */
+    [data-testid="stSidebar"] [role="radiogroup"] label {
+        background: transparent;
+        border-radius: 10px;
+        padding: 8px 10px;
+        margin: 2px 0;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
+        background: rgba(37, 99, 235, 0.14);
+    }
+
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+        background: rgba(37, 99, 235, 0.18);
+        border: 1px solid rgba(96, 165, 250, 0.25);
+    }
+
+    /* Primary buttons: move away from red toward enterprise blue */
+    div.stButton > button[kind="primary"],
+    div.stButton > button {
+        border-radius: 10px;
+        font-weight: 750;
+    }
+
+    div.stButton > button[kind="primary"] {
+        background: #2563EB !important;
+        border: 1px solid #1D4ED8 !important;
+        color: white !important;
+    }
+
+    div.stButton > button[kind="primary"]:hover {
+        background: #1D4ED8 !important;
+        border-color: #1E40AF !important;
+    }
+
     </style>
     """,
     
@@ -924,62 +1117,10 @@ st.markdown(
 )
 
 
-st.sidebar.title("BOM Risk Checker")
-if "user" in st.session_state:
-    st.sidebar.success(
-        f"Logged in as:\n{st.session_state['user'].email}"
-    )
-
-    
-st.sidebar.write("Component lifecycle and supply chain risk analysis.")
-st.sidebar.divider()
-st.sidebar.write("Supported files: CSV, XLSX")
-st.sidebar.write("Required field: Part Number / MPN")
-
-st.sidebar.divider()
-
-st.sidebar.subheader("Navigation")
-
-app_mode = st.sidebar.radio(
-    "",
-    [
-        "Dashboard",
-        "BOM Analyzer",
-        "Alternative Finder",
-        "Monitoring",
-        "Reports",
-        "Pricing",
-        "About",
-    ],
-)
-
-st.sidebar.subheader("Subscription")
-
-# Default user plan
+# ---------- App Navigation Shell ----------
 selected_plan_name = current_user["plan"]
 selected_plan = get_plan(selected_plan_name)
-
 monthly_upload_count = current_user["monthly_upload_count"]
-
-st.sidebar.markdown(f"### {selected_plan_name}")
-
-st.sidebar.write(
-    f"**Monthly BOM limit:** {selected_plan['monthly_bom_limit']}"
-)
-
-st.sidebar.write(
-    f"**Max parts per BOM:** {selected_plan['max_parts_per_bom']}"
-)
-
-st.sidebar.caption(selected_plan["description"])
-if is_admin:
-    st.sidebar.success("🛠 Admin access enabled")
-
-st.sidebar.write(
-    f"**BOM analyses used this month:** "
-    f"{monthly_upload_count} / "
-    f"{selected_plan['monthly_bom_limit']}"
-)
 
 saved_bom_count_response = (
     supabase.table("analyses")
@@ -987,19 +1128,86 @@ saved_bom_count_response = (
     .eq("user_id", current_user["id"])
     .execute()
 )
-
 saved_bom_count = saved_bom_count_response.count or 0
 
-st.sidebar.write(
-    f"**Saved BOMs:** "
-    f"{saved_bom_count} / "
-    f"{selected_plan['max_saved_boms']}"
-)
+with st.sidebar:
+    st.markdown(
+        """
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">B</div>
+            <div>
+                <div class="sidebar-title">BOM Risk Checker</div>
+                <div class="sidebar-subtitle">Supply Chain Intelligence</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-if st.sidebar.button("Clear Analysis"):
-    st.session_state.pop("results_df", None)
-    st.session_state.pop("uploaded_filename", None)
-    st.rerun()
+    user_email = st.session_state.get("user").email if "user" in st.session_state else "Signed in"
+    st.markdown(
+        f"""
+        <div class="sidebar-user-card">
+            <div class="sidebar-user-label">Workspace</div>
+            <div class="sidebar-user-email">{user_email}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="sidebar-section-label">Navigation</div>', unsafe_allow_html=True)
+    app_mode = st.radio(
+        "Navigation",
+        [
+            "Dashboard",
+            "BOM Analyzer",
+            "Alternative Finder",
+            "Monitoring",
+            "Reports",
+            "Pricing",
+            "About",
+        ],
+        format_func=lambda page: {
+            "Dashboard": "▣  Dashboard",
+            "BOM Analyzer": "▦  BOM Analyzer",
+            "Alternative Finder": "⎇  Alternative Finder",
+            "Monitoring": "◉  Monitoring",
+            "Reports": "▥  Reports",
+            "Pricing": "◇  Pricing",
+            "About": "○  About",
+        }.get(page, page),
+        label_visibility="collapsed",
+    )
+
+    st.markdown('<div class="sidebar-section-label">Plan</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="sidebar-plan-card">
+            <div class="sidebar-plan-name">{selected_plan_name}</div>
+            <div class="sidebar-plan-meta">
+                BOMs this month: {monthly_upload_count} / {selected_plan['monthly_bom_limit']}<br>
+                Saved BOMs: {saved_bom_count} / {selected_plan['max_saved_boms']}<br>
+                Max parts/BOM: {selected_plan['max_parts_per_bom']}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if is_admin:
+        st.success("Admin access enabled")
+
+    st.markdown('<div class="sidebar-section-label">Actions</div>', unsafe_allow_html=True)
+    if st.button("Clear current analysis", use_container_width=True):
+        st.session_state.pop("results_df", None)
+        st.session_state.pop("uploaded_filename", None)
+        st.rerun()
+
+    if st.button("Log out", use_container_width=True):
+        cookie_manager.delete(cookie="bom_auth", key="delete_bom_auth_sidebar")
+        supabase.auth.sign_out()
+        st.session_state.clear()
+        st.rerun()
 
 
 # Application header now lives inside the Dashboard view.
@@ -1007,13 +1215,13 @@ if st.sidebar.button("Clear Analysis"):
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
+    first_name = user_email.split("@")[0].split(".")[0].title() if "@" in user_email else "there"
     st.markdown(
-        """
-        <div class="card" style="padding: 26px 30px; margin-bottom: 22px;">
-            <h1 style="font-size: 2.6rem; margin-bottom: 6px;">📦 BOM Risk Checker</h1>
-            <p class="card-text" style="font-size: 1.05rem; margin-bottom: 0;">
-                Supply chain risk intelligence and alternative component analysis for engineering teams.
-            </p>
+        f"""
+        <div class="dashboard-hero">
+            <div class="dashboard-hero-eyebrow">BOM Risk Intelligence</div>
+            <h1>Welcome back, {first_name}</h1>
+            <p>Review BOM health, reopen recent analyses, and continue sourcing-risk work from one dashboard.</p>
         </div>
         """,
         unsafe_allow_html=True,
