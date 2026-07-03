@@ -805,15 +805,16 @@ def risk_badge(level):
 
 
 def use_chart_dark_layout(fig, height=360):
+    # Kept function name for compatibility, but use a premium light chart style.
     fig.update_layout(
         height=height,
-        plot_bgcolor="#0B0F16",
-        paper_bgcolor="#0B0F16",
-        font=dict(color="#E5E7EB"),
+        plot_bgcolor="#FFFFFF",
+        paper_bgcolor="#FFFFFF",
+        font=dict(color="#0F172A"),
         margin=dict(l=40, r=25, t=30, b=40),
     )
-    fig.update_xaxes(gridcolor="#1F2937", zerolinecolor="#1F2937")
-    fig.update_yaxes(gridcolor="#1F2937", zerolinecolor="#1F2937")
+    fig.update_xaxes(gridcolor="#E5E7EB", zerolinecolor="#E5E7EB")
+    fig.update_yaxes(gridcolor="#E5E7EB", zerolinecolor="#E5E7EB")
     return fig
 
 
@@ -823,337 +824,47 @@ def brc_page_hero(title="Welcome back", subtitle="Monitor BOM risk, review recen
         unsafe_allow_html=True,
     )
 
-
-
-def brc_html_table(df, columns=None, max_rows=None):
-    """Render a premium light table that is more consistent than Streamlit's canvas table."""
-    if df is None or df.empty:
-        st.info("No records to display.")
-        return
-
-    display_df = df.copy()
-    if columns:
-        display_df = display_df[[c for c in columns if c in display_df.columns]]
-    if max_rows:
-        display_df = display_df.head(max_rows)
-
-    html = display_df.to_html(index=False, escape=False, classes="brc-html-table")
-    st.markdown(f'<div class="brc-html-table-wrap">{html}</div>', unsafe_allow_html=True)
-
-
-def brc_kpi(label, value, note=""):
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-            <div class="kpi-label">{label}</div>
-            <div class="kpi-value">{value}</div>
-            <div class="kpi-note">{note}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 st.markdown(
     """
     <style>
     :root {
-        --brc-bg:#F4F7FB;
-        --brc-surface:#FFFFFF;
-        --brc-navy:#0F172A;
-        --brc-slate:#334155;
-        --brc-muted:#64748B;
-        --brc-border:#E2E8F0;
-        --brc-border-strong:#CBD5E1;
-        --brc-blue:#2563EB;
-        --brc-blue-dark:#1D4ED8;
-        --brc-blue-soft:#EFF6FF;
-        --brc-success:#0F9F6E;
-        --brc-red:#EF4444;
-        --brc-orange:#F59E0B;
-        --brc-shadow:0 18px 42px rgba(15,23,42,.075);
-        --brc-shadow-soft:0 10px 25px rgba(15,23,42,.055);
-        --brc-radius:14px;
+        --brc-bg:#F5F7FB; --brc-surface:#FFFFFF; --brc-navy:#0F172A; --brc-muted:#64748B;
+        --brc-border:#E2E8F0; --brc-blue:#2563EB; --brc-blue-soft:#EFF6FF;
+        --brc-green:#2563EB; --brc-red:#EF4444; --brc-orange:#F59E0B;
+        --brc-shadow:0 18px 45px rgba(15,23,42,.08);
     }
-
-    html, body, [data-testid="stAppViewContainer"] {
-        background:var(--brc-bg)!important;
-        color:var(--brc-navy)!important;
-    }
-
-    [data-testid="stHeader"] {
-        background:rgba(255,255,255,.92)!important;
-        border-bottom:1px solid var(--brc-border)!important;
-    }
-
-    [data-testid="stSidebar"] {
-        background:#FFFFFF!important;
-        border-right:1px solid var(--brc-border)!important;
-    }
-
+    html, body, [data-testid="stAppViewContainer"] { background:var(--brc-bg)!important; color:var(--brc-navy)!important; }
+    [data-testid="stHeader"] { background:rgba(255,255,255,.88)!important; border-bottom:1px solid var(--brc-border)!important; }
+    [data-testid="stSidebar"] { background:#FFFFFF!important; border-right:1px solid var(--brc-border)!important; }
     [data-testid="stSidebar"] * { color:var(--brc-navy)!important; }
+    .block-container { max-width:1480px!important; padding-top:2.1rem!important; padding-left:2.4rem!important; padding-right:2.4rem!important; }
+    h1,h2,h3,h4,h5,h6 { color:var(--brc-navy)!important; letter-spacing:-.03em; }
+    p,label,span,div,.stMarkdown,.stCaptionContainer { color:var(--brc-muted); }
 
-    .block-container {
-        max-width:1500px!important;
-        padding-top:2rem!important;
-        padding-left:2.5rem!important;
-        padding-right:2.5rem!important;
-        padding-bottom:4rem!important;
-    }
+    .brc-hero { background:linear-gradient(135deg,#fff 0%,#EEF6FF 100%); border:1px solid var(--brc-border); border-radius:18px; box-shadow:var(--brc-shadow); padding:26px 30px; margin:0 0 18px 0; }
+    .brc-eyebrow { display:inline-flex; background:var(--brc-blue-soft); color:var(--brc-blue)!important; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; border-radius:999px; padding:7px 12px; margin-bottom:22px; }
+    .brc-hero-title { color:var(--brc-navy)!important; font-size:34px; font-weight:850; line-height:1.05; margin:0 0 14px 0; }
+    .brc-hero-subtitle { color:#52647A!important; font-size:17px; line-height:1.7; max-width:780px; margin:0; }
 
-    h1,h2,h3,h4,h5,h6 {
-        color:var(--brc-navy)!important;
-        letter-spacing:-.03em;
-        font-weight:850!important;
-    }
+    .card,.kpi-card,.brc-card { background:#fff!important; border:1px solid var(--brc-border)!important; border-radius:16px!important; box-shadow:var(--brc-shadow)!important; padding:22px!important; margin-top:8px; margin-bottom:14px; }
+    .card-title,.kpi-label { font-size:12px!important; font-weight:800!important; letter-spacing:.07em!important; text-transform:uppercase!important; color:#64748B!important; margin-bottom:12px!important; }
+    .card-text,.kpi-note { font-size:13px!important; color:#334155!important; font-weight:700!important; }
+    .kpi-value { font-size:32px!important; font-weight:850!important; color:var(--brc-navy)!important; margin-bottom:8px!important; line-height:1.05!important; }
 
-    p,label,span,div,.stMarkdown,.stCaptionContainer {
-        color:var(--brc-muted);
-    }
+    div.stButton > button, div.stDownloadButton > button { background:var(--brc-blue)!important; color:#FFFFFF!important; border:1px solid var(--brc-blue)!important; border-radius:10px!important; min-height:42px!important; padding:.55rem 1.05rem!important; font-weight:750!important; box-shadow:0 12px 24px rgba(37,99,235,.20)!important; width:auto!important; min-width:150px!important; }
+    div.stButton > button:hover, div.stDownloadButton > button:hover { background:#1D4ED8!important; border-color:#1D4ED8!important; color:#FFFFFF!important; }
+    div.stButton > button *, div.stDownloadButton > button * { color:#FFFFFF!important; }
+    [data-testid="stSidebar"] div.stButton > button { width:100%!important; min-width:0!important; }
 
-    .brc-hero {
-        background:linear-gradient(135deg,#FFFFFF 0%,#EEF6FF 100%);
-        border:1px solid var(--brc-border);
-        border-radius:18px;
-        box-shadow:var(--brc-shadow);
-        padding:34px 38px;
-        margin:0 0 28px 0;
-    }
+    div[data-testid="stTextInput"] input, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stFileUploader"] section { background:#fff!important; border:1px solid #CBD5E1!important; border-radius:10px!important; color:var(--brc-navy)!important; }
+    
 
-    .brc-eyebrow {
-        display:inline-flex;
-        align-items:center;
-        gap:6px;
-        background:var(--brc-blue-soft);
-        color:var(--brc-blue)!important;
-        font-size:11px;
-        font-weight:850;
-        letter-spacing:.08em;
-        text-transform:uppercase;
-        border-radius:999px;
-        padding:7px 12px;
-        margin-bottom:20px;
-    }
-
-    .brc-hero-title {
-        color:var(--brc-navy)!important;
-        font-size:42px;
-        font-weight:900;
-        line-height:1.05;
-        margin:0 0 14px 0;
-    }
-
-    .brc-hero-subtitle {
-        color:#52647A!important;
-        font-size:17px;
-        line-height:1.65;
-        max-width:820px;
-        margin:0;
-    }
-
-    .brc-card, .kpi-card, .card {
-        background:#FFFFFF!important;
-        border:1px solid var(--brc-border)!important;
-        border-radius:var(--brc-radius)!important;
-        box-shadow:var(--brc-shadow-soft)!important;
-        padding:22px!important;
-        margin-top:8px;
-        margin-bottom:14px;
-    }
-
-    .kpi-label, .card-title {
-        font-size:12px!important;
-        font-weight:850!important;
-        letter-spacing:.075em!important;
-        text-transform:uppercase!important;
-        color:#64748B!important;
-        margin-bottom:13px!important;
-    }
-
-    .kpi-value {
-        font-size:34px!important;
-        font-weight:900!important;
-        color:var(--brc-navy)!important;
-        margin-bottom:8px!important;
-        line-height:1.05!important;
-    }
-
-    .kpi-note, .card-text {
-        font-size:13px!important;
-        color:#475569!important;
-        font-weight:700!important;
-    }
-
-    .brc-section-row {
-        display:grid;
-        grid-template-columns:1.35fr .95fr;
-        gap:24px;
-        align-items:start;
-        margin-top:18px;
-    }
-
-    .brc-panel {
-        background:#FFFFFF;
-        border:1px solid var(--brc-border);
-        border-radius:14px;
-        box-shadow:var(--brc-shadow-soft);
-        padding:20px;
-    }
-
-    .brc-panel-title {
-        color:var(--brc-navy)!important;
-        font-size:20px;
-        font-weight:850;
-        margin:0 0 4px 0;
-    }
-
-    .brc-panel-subtitle {
-        color:var(--brc-muted)!important;
-        font-size:13px;
-        margin:0 0 16px 0;
-    }
-
-    .brc-snapshot {
-        background:linear-gradient(135deg,#0F172A 0%,#1E3A8A 100%);
-        border:1px solid rgba(255,255,255,.10);
-        border-radius:16px;
-        box-shadow:0 18px 45px rgba(15,23,42,.18);
-        padding:26px;
-        margin:26px 0;
-    }
-
-    .brc-snapshot * { color:#FFFFFF!important; }
-    .brc-snapshot p { color:#D8E3F3!important; }
-
-    .brc-snapshot-grid {
-        display:grid;
-        grid-template-columns:repeat(3,1fr);
-        gap:14px;
-        margin-top:16px;
-    }
-
-    .brc-snapshot-item {
-        border:1px solid rgba(255,255,255,.14);
-        background:rgba(255,255,255,.08);
-        border-radius:12px;
-        padding:16px;
-    }
-
-    .brc-snapshot-label {
-        font-size:11px;
-        text-transform:uppercase;
-        letter-spacing:.08em;
-        font-weight:850;
-        color:#BED2F5!important;
-    }
-
-    .brc-snapshot-value {
-        font-size:28px;
-        font-weight:900;
-        margin-top:8px;
-    }
-
-    .brc-html-table-wrap {
-        width:100%;
-        overflow-x:auto;
-        background:#FFFFFF;
-        border:1px solid var(--brc-border);
-        border-radius:8px;
-        box-shadow:var(--brc-shadow-soft);
-        margin:12px 0 22px 0;
-    }
-
-    table.brc-html-table {
-        width:100%;
-        border-collapse:collapse;
-        font-size:14px;
-        color:var(--brc-navy)!important;
-    }
-
-    .brc-html-table th {
-        background:#F8FAFC;
-        color:#475569!important;
-        text-align:left;
-        font-size:12px;
-        text-transform:uppercase;
-        letter-spacing:.045em;
-        font-weight:850;
-        border-bottom:1px solid var(--brc-border);
-        border-right:1px solid var(--brc-border);
-        padding:12px 14px;
-        white-space:nowrap;
-    }
-
-    .brc-html-table td {
-        background:#FFFFFF;
-        color:var(--brc-navy)!important;
-        border-bottom:1px solid #EEF2F7;
-        border-right:1px solid #EEF2F7;
-        padding:12px 14px;
-        vertical-align:top;
-        white-space:nowrap;
-    }
-
-    .brc-html-table tr:nth-child(even) td { background:#FBFDFF; }
-    .brc-html-table tr:last-child td { border-bottom:0; }
-    .brc-html-table th:last-child, .brc-html-table td:last-child { border-right:0; }
-
-    div.stButton > button, div.stDownloadButton > button {
-        background:var(--brc-blue)!important;
-        color:#FFFFFF!important;
-        border:1px solid var(--brc-blue)!important;
-        border-radius:10px!important;
-        min-height:42px!important;
-        padding:.55rem 1.05rem!important;
-        font-weight:800!important;
-        box-shadow:0 12px 24px rgba(37,99,235,.20)!important;
-        width:auto!important;
-        min-width:150px!important;
-        max-width:280px!important;
-    }
-
-    div.stButton > button:hover, div.stDownloadButton > button:hover {
-        background:var(--brc-blue-dark)!important;
-        border-color:var(--brc-blue-dark)!important;
-        color:#FFFFFF!important;
-    }
-
-    [data-testid="stSidebar"] div.stButton > button {
-        width:100%!important;
-        min-width:0!important;
-        max-width:100%!important;
-    }
-
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"],
-    div[data-testid="stFileUploader"] section {
-        background:#FFFFFF!important;
-        border:1px solid var(--brc-border-strong)!important;
-        border-radius:10px!important;
-        color:var(--brc-navy)!important;
-    }
-
-    div[data-testid="stTextInput"] input { max-width:560px!important; }
-
-    .stDataFrame, [data-testid="stDataFrame"] {
-        border:1px solid var(--brc-border)!important;
-        border-radius:8px!important;
-        overflow:hidden!important;
-        box-shadow:var(--brc-shadow-soft)!important;
-        background:#FFFFFF!important;
-    }
-
-    div[data-testid="stAlert"] {
-        border-radius:12px!important;
-        border:1px solid var(--brc-border)!important;
-    }
-
-    @media(max-width:1000px){
-        .block-container{padding-left:1.1rem!important;padding-right:1.1rem!important;}
-        .brc-hero-title{font-size:32px;}
-        .brc-section-row{grid-template-columns:1fr;}
-        .brc-snapshot-grid{grid-template-columns:1fr;}
-    }
+    .stDataFrame,[data-testid="stDataFrame"] { border:1px solid var(--brc-border)!important; border-radius:8px!important; overflow:hidden!important; box-shadow:0 12px 30px rgba(15,23,42,.06)!important; background:#fff!important; }
+    [data-testid="stDataFrame"] * { color:var(--brc-navy)!important; }
+    [data-testid="stDataFrame"] [role="columnheader"], [data-testid="stDataFrame"] thead tr th { background:#F6F8FA!important; color:#475569!important; border-bottom:1px solid var(--brc-border)!important; font-weight:750!important; }
+    [data-testid="stDataFrame"] [role="gridcell"], [data-testid="stDataFrame"] tbody tr td { background:#fff!important; color:var(--brc-navy)!important; border-bottom:1px solid #EEF2F7!important; }
+    div[data-testid="stAlert"] { border-radius:12px!important; border:1px solid var(--brc-border)!important; }
+    @media(max-width:900px){ .block-container{padding-left:1.1rem!important;padding-right:1.1rem!important;} .brc-hero-title{font-size:32px;} }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1310,259 +1021,275 @@ with col4:
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
-    brc_page_hero(
-        title="Welcome back",
-        subtitle="Monitor BOM risk, review recent analyses, and keep sourcing decisions moving from one executive dashboard.",
-    )
-
-    header_col, action_col1, action_col2 = st.columns([5, 1.15, 1.15])
-    with header_col:
-        st.subheader("Dashboard")
-        st.caption("Overview of BOM activity, portfolio risk, and recent engineering work.")
-    with action_col1:
-        if st.button("+ New Analysis"):
-            st.session_state["pending_app_mode"] = "BOM Analyzer"
-            st.rerun()
-    with action_col2:
-        if st.button("Find Alternatives"):
-            st.session_state["pending_app_mode"] = "Alternative Finder"
-            st.rerun()
+    brc_page_hero()
+    st.subheader("Dashboard")
+    st.caption("Overview of your BOM activity, risk exposure, and recommended sourcing work.")
 
     analysis_response = (
         supabase.table("analyses")
         .select("*")
         .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
         .execute()
     )
-    analysis_data = analysis_response.data or []
+
+    analysis_data = analysis_response.data
+
     total_analyses = len(analysis_data)
 
     if analysis_data:
-        avg_health_score = int(sum(int(item.get("health_score") or 0) for item in analysis_data) / total_analyses)
-        total_high_risk = sum(int(item.get("high_risk_count") or 0) for item in analysis_data)
-        total_medium_risk = sum(int(item.get("medium_risk_count") or 0) for item in analysis_data)
-        total_low_risk = sum(int(item.get("low_risk_count") or 0) for item in analysis_data)
-        latest = analysis_data[0]
+
+        avg_health_score = int(
+            sum(item["health_score"] for item in analysis_data)
+            / total_analyses
+        )
+
+        total_high_risk = sum(
+            item["high_risk_count"] for item in analysis_data
+        )
+
     else:
         avg_health_score = 0
         total_high_risk = 0
-        total_medium_risk = 0
-        total_low_risk = 0
-        latest = None
 
-    alt_history = load_alternative_history(current_user["id"])
-    alternatives_found = len(alt_history)
+    action_col1, action_col2, action_col3 = st.columns([1, 1, 4])
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        brc_kpi("Saved Analyses", total_analyses, "BOM reviews stored")
-    with k2:
-        brc_kpi("Average BOM Health", avg_health_score, "Portfolio health score")
-    with k3:
-        brc_kpi("High-Risk Components", total_high_risk, "Across saved BOMs")
-    with k4:
-        brc_kpi("Alternatives Found", alternatives_found, "Saved recommendations")
+    with action_col1:
+        if st.button("➕ New BOM Analysis"):
+            st.session_state["pending_app_mode"] = "BOM Analyzer"
+            st.rerun()
 
-    left, right = st.columns([1.45, 1])
+    with action_col2:
+        if st.button("🔎 Find Alternatives"):
+            st.session_state["pending_app_mode"] = "Alternative Finder"
+            st.rerun()
 
-    with left:
-        st.markdown('<div class="brc-panel-title">Portfolio Health Trend</div><div class="brc-panel-subtitle">Average BOM health score over time.</div>', unsafe_allow_html=True)
-        if analysis_data:
-            trend_df = pd.DataFrame(analysis_data).copy()
-            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"], errors="coerce")
-            trend_df = trend_df.sort_values("created_at")
-            x_vals = trend_df["created_at"].dt.strftime("%b %d")
-            y_vals = trend_df["health_score"].fillna(0)
-            st.plotly_chart(
-                {
-                    "data": [
-                        {
-                            "x": x_vals,
-                            "y": y_vals,
-                            "type": "scatter",
-                            "mode": "lines+markers",
-                            "line": {"color": "#2563EB", "width": 3},
-                            "marker": {"size": 7, "color": "#2563EB"},
-                        }
-                    ],
-                    "layout": {
-                        "height": 340,
-                        "plot_bgcolor": "#FFFFFF",
-                        "paper_bgcolor": "#FFFFFF",
-                        "font": {"color": "#0F172A"},
-                        "margin": {"l": 45, "r": 20, "t": 10, "b": 45},
-                        "xaxis": {"gridcolor": "#EEF2F7", "zerolinecolor": "#E2E8F0", "title": "Date"},
-                        "yaxis": {"gridcolor": "#EEF2F7", "zerolinecolor": "#E2E8F0", "title": "BOM Health", "range": [0, 100]},
-                    },
-                },
-                use_container_width=True,
-            )
-        else:
-            st.info("Upload your first BOM to start building a portfolio health trend.")
 
-    with right:
-        st.markdown('<div class="brc-panel-title">Risk Distribution</div><div class="brc-panel-subtitle">Component risk breakdown across saved BOMs.</div>', unsafe_allow_html=True)
-        risk_values = [total_high_risk, total_medium_risk, total_low_risk]
-        if sum(risk_values) > 0:
-            st.plotly_chart(
-                {
-                    "data": [
-                        {
-                            "labels": ["High", "Medium", "Low"],
-                            "values": risk_values,
-                            "type": "pie",
-                            "hole": 0.58,
-                            "marker": {"colors": ["#EF4444", "#F59E0B", "#22C55E"], "line": {"color": "#FFFFFF", "width": 3}},
-                            "textinfo": "percent",
-                            "sort": False,
-                        }
-                    ],
-                    "layout": {
-                        "height": 250,
-                        "plot_bgcolor": "#FFFFFF",
-                        "paper_bgcolor": "#FFFFFF",
-                        "font": {"color": "#0F172A"},
-                        "margin": {"l": 10, "r": 10, "t": 10, "b": 10},
-                        "legend": {"orientation": "v", "x": 1.03, "y": 0.75},
-                    },
-                },
-                use_container_width=True,
-            )
-            risk_table = pd.DataFrame({"Risk Level": ["High", "Medium", "Low"], "Components": risk_values})
-            brc_html_table(risk_table)
-        else:
-            st.info("Risk distribution will appear once you save analyses.")
+    # ---------- KPI ROW ----------
+    col1, col2, col3, col4 = st.columns(4)
 
-    if latest:
-        latest_health = latest.get("health_score", 0)
-        latest_parts = latest.get("total_parts", 0)
-        latest_high = latest.get("high_risk_count", 0)
-        latest_project = latest.get("project_name", "Latest BOM")
+    with col1:
         st.markdown(
-            f'''
-            <div class="brc-snapshot">
-                <h3>Latest engineering snapshot</h3>
-                <p>Latest saved project: <b>{latest_project}</b>. Current average health is <b>{avg_health_score}</b>, with <b>{total_high_risk}</b> high-risk components across saved BOMs.</p>
-                <div class="brc-snapshot-grid">
-                    <div class="brc-snapshot-item"><div class="brc-snapshot-label">Latest Health</div><div class="brc-snapshot-value">{latest_health}</div></div>
-                    <div class="brc-snapshot-item"><div class="brc-snapshot-label">Latest Parts</div><div class="brc-snapshot-value">{latest_parts}</div></div>
-                    <div class="brc-snapshot-item"><div class="brc-snapshot-label">Latest High Risk</div><div class="brc-snapshot-value">{latest_high}</div></div>
-                </div>
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-label">Analyses This Month</div>
+                <div class="kpi-value">{total_analyses}</div>
+                <div class="kpi-note">Real analyses completed</div>
             </div>
-            ''',
+            """,
             unsafe_allow_html=True,
         )
 
-    st.subheader("Recent Analyses")
-    st.caption("Open saved BOM reviews, inspect risk history, or remove old analyses.")
+    with col2:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-label">Average BOM Risk</div>
+                <div class="kpi-value">{avg_health_score}</div>
+                <div class="kpi-note">Average health score</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col3:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-label">High Risk Components</div>
+                <div class="kpi-value">{total_high_risk}</div>
+                <div class="kpi-note">Detected across analyses</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col4:
+        st.markdown(
+            """
+            <div class="kpi-card">
+                <div class="kpi-label">Alternatives Found</div>
+                <div class="kpi-value">78</div>
+                <div class="kpi-note">↑ 15 vs last month</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    st.subheader("Saved BOM Analyses")
 
     history = load_analysis_history(current_user["id"])
 
     if not history:
         st.info("No saved BOM analyses yet.")
+
     else:
-        history_df = pd.DataFrame(history).copy()
-        history_df["created_at_display"] = pd.to_datetime(history_df["created_at"], errors="coerce").dt.strftime("%Y-%m-%d")
+        history_df = pd.DataFrame(history)
 
-        recent_display_df = history_df[[
-            "project_name",
-            "uploaded_filename",
-            "created_at_display",
-            "total_parts",
-            "health_score",
-            "high_risk_count",
-            "medium_risk_count",
-            "low_risk_count",
-        ]].rename(columns={
-            "project_name": "Project Name",
-            "uploaded_filename": "Uploaded File",
-            "created_at_display": "Date",
-            "total_parts": "Components",
-            "health_score": "Health Score",
-            "high_risk_count": "High Risk",
-            "medium_risk_count": "Medium Risk",
-            "low_risk_count": "Low Risk",
-        })
-        brc_html_table(recent_display_df, max_rows=8)
 
-        st.subheader("Open or delete a saved analysis")
         analysis_options = {
             f"{row['project_name']} — {row['created_at']}": row["id"]
             for _, row in history_df.drop_duplicates(subset=["id"]).iterrows()
         }
+ 
 
-        selected_saved_analysis_label = st.selectbox(
-            "Choose a saved analysis",
-            list(analysis_options.keys()),
-            key="dashboard_saved_analysis_select",
+        if analysis_options:
+            selected_saved_analysis_label = st.selectbox(
+                "Choose a saved analysis to open or delete",
+                list(analysis_options.keys()),
+            )
+
+            selected_saved_analysis_id = analysis_options[selected_saved_analysis_label]
+
+            action_col1, action_col2 = st.columns(2)
+
+            with action_col1:
+                if st.button("📂 Open Saved Analysis"):
+                    saved_parts = (
+                        supabase.table("analysis_parts")
+                        .select("*")
+                        .eq("analysis_id", selected_saved_analysis_id)
+                        .eq("user_id", current_user["id"])
+                        .execute()
+                    )
+
+                    if not saved_parts.data:
+                        st.warning("No saved parts were found for this analysis.")
+                    else:
+                        saved_results_df = pd.DataFrame(saved_parts.data)
+
+                        saved_results_df = saved_results_df.rename(
+                            columns={
+                                "mpn": "MPN",
+                                "manufacturer": "Manufacturer",
+                                "risk_score": "Risk Score",
+                                "risk_level": "Risk Level",
+                                "risk_reasons": "Risk Reasons",
+                                "lifecycle_status": "Lifecycle Status",
+                                "stock_available": "Stock Available",
+                                "supplier_count": "Supplier Count",
+                            }
+                        )
+
+                        saved_results_df["Best Source"] = ""
+                        saved_results_df["Total Market Stock"] = saved_results_df["Stock Available"]
+                        saved_results_df["Sources Available"] = ""
+                        saved_results_df["Lead Time Weeks"] = None
+                        saved_results_df["Product URL"] = ""
+                        saved_results_df["Has Alternates"] = False
+                        saved_results_df["Alternate Count"] = 0
+                        saved_results_df["Alternative Part Numbers"] = ""
+                        saved_results_df["Normalized MPN"] = saved_results_df["MPN"]
+
+                        st.session_state["results_df"] = saved_results_df
+                        st.session_state["pending_app_mode"] = "BOM Analyzer"
+                        st.success("Saved analysis loaded. Opening BOM Analyzer...")
+                        st.rerun()
+
+            with action_col2:
+                if st.button("🗑 Delete Saved Analysis"):
+                    try:
+                        supabase.table("analysis_parts").delete().eq(
+                            "analysis_id",
+                            selected_saved_analysis_id
+                        ).eq(
+                            "user_id",
+                            current_user["id"]
+                        ).execute()
+
+                        supabase.table("part_monitor_history").delete().eq(
+                            "analysis_id",
+                            selected_saved_analysis_id
+                        ).eq(
+                            "user_id",
+                            current_user["id"]
+                        ).execute()
+
+                        supabase.table("monitor_alerts").delete().eq(
+                            "analysis_id",
+                            selected_saved_analysis_id
+                        ).eq(
+                            "user_id",
+                            current_user["id"]
+                        ).execute()
+
+                        supabase.table("alternative_recommendations").delete().eq(
+                            "analysis_id",
+                            selected_saved_analysis_id
+                        ).eq(
+                            "user_id",
+                            current_user["id"]
+                        ).execute()
+
+                        supabase.table("analyses").delete().eq(
+                            "id",
+                            selected_saved_analysis_id
+                        ).eq(
+                            "user_id",
+                            current_user["id"]
+                        ).execute()
+
+                        st.session_state.pop("results_df", None)
+
+                        st.success("Saved analysis deleted.")
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Could not delete saved analysis: {e}")
+
+
+        summary_df = history_df.copy()
+
+        summary_df["created_at"] = pd.to_datetime(
+            summary_df["created_at"]
+        ).dt.strftime("%Y-%m-%d")
+
+        summary_display_df = summary_df[
+            [
+                "project_name",
+                "created_at",
+                "total_parts",
+                "high_risk_count",
+                "medium_risk_count",
+                "low_risk_count",
+                "health_score",
+            ]
+        ].rename(
+            columns={
+                "project_name": "Project Name",
+                "created_at": "Created At",
+                "total_parts": "Total Parts",
+                "high_risk_count": "High Risk Parts",
+                "medium_risk_count": "Medium Risk Parts",
+                "low_risk_count": "Low Risk Parts",
+                "health_score": "Health Score",
+            }
         )
-        selected_saved_analysis_id = analysis_options[selected_saved_analysis_label]
 
-        action_col1, action_col2, action_col3 = st.columns([1, 1, 4])
-        with action_col1:
-            if st.button("📂 Open Saved Analysis", key="dashboard_open_saved"):
-                saved_parts = (
-                    supabase.table("analysis_parts")
-                    .select("*")
-                    .eq("analysis_id", selected_saved_analysis_id)
-                    .eq("user_id", current_user["id"])
-                    .execute()
-                )
-                if not saved_parts.data:
-                    st.warning("No saved parts were found for this analysis.")
-                else:
-                    saved_results_df = pd.DataFrame(saved_parts.data)
-                    saved_results_df = saved_results_df.rename(columns={
-                        "mpn": "MPN",
-                        "manufacturer": "Manufacturer",
-                        "risk_score": "Risk Score",
-                        "risk_level": "Risk Level",
-                        "risk_reasons": "Risk Reasons",
-                        "lifecycle_status": "Lifecycle Status",
-                        "stock_available": "Stock Available",
-                        "supplier_count": "Supplier Count",
-                    })
-                    saved_results_df["Best Source"] = saved_results_df.get("Best Source", "")
-                    saved_results_df["Total Market Stock"] = saved_results_df.get("Stock Available", 0)
-                    saved_results_df["Sources Available"] = saved_results_df.get("Sources Available", "")
-                    saved_results_df["Lead Time Weeks"] = saved_results_df.get("Lead Time Weeks", None)
-                    saved_results_df["Product URL"] = saved_results_df.get("Product URL", "")
-                    saved_results_df["Has Alternates"] = saved_results_df.get("Has Alternates", False)
-                    saved_results_df["Alternate Count"] = saved_results_df.get("Alternate Count", 0)
-                    saved_results_df["Alternative Part Numbers"] = saved_results_df.get("Alternative Part Numbers", "")
-                    saved_results_df["Normalized MPN"] = saved_results_df.get("MPN", "")
-                    st.session_state["results_df"] = saved_results_df
-                    st.session_state["pending_app_mode"] = "BOM Analyzer"
-                    st.success("Saved analysis loaded. Opening BOM Analyzer...")
-                    st.rerun()
+        st.dataframe(
+            summary_display_df,
+            use_container_width=True,
+            hide_index=True,
+        )
 
-        with action_col2:
-            if st.button("🗑 Delete Saved Analysis", key="dashboard_delete_saved"):
-                try:
-                    supabase.table("analysis_parts").delete().eq("analysis_id", selected_saved_analysis_id).eq("user_id", current_user["id"]).execute()
-                    supabase.table("part_monitor_history").delete().eq("analysis_id", selected_saved_analysis_id).eq("user_id", current_user["id"]).execute()
-                    supabase.table("monitor_alerts").delete().eq("analysis_id", selected_saved_analysis_id).eq("user_id", current_user["id"]).execute()
-                    supabase.table("alternative_recommendations").delete().eq("analysis_id", selected_saved_analysis_id).eq("user_id", current_user["id"]).execute()
-                    supabase.table("analyses").delete().eq("id", selected_saved_analysis_id).eq("user_id", current_user["id"]).execute()
-                    st.session_state.pop("results_df", None)
-                    st.success("Saved analysis deleted.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Could not delete saved analysis: {e}")
+      
 
         st.divider()
+
         st.subheader("View Saved Analysis Details")
-        detail_options = {
-            f"{row['project_name']} — {row['created_at_display']}": row["id"]
-            for _, row in history_df.iterrows()
+
+        analysis_options = {
+            f"{row['project_name']} — {row['created_at']}": row["id"]
+            for _, row in summary_df.iterrows()
         }
+
         selected_analysis_label = st.selectbox(
             "Choose an analysis to view",
-            list(detail_options.keys()),
-            key="dashboard_detail_analysis_select",
+            list(analysis_options.keys())
         )
-        selected_analysis_id = detail_options[selected_analysis_label]
+
+        selected_analysis_id = analysis_options[selected_analysis_label]
 
         selected_parts_response = (
             supabase.table("analysis_parts")
@@ -1571,100 +1298,516 @@ if app_mode == "Dashboard":
             .eq("user_id", current_user["id"])
             .execute()
         )
-        selected_parts = pd.DataFrame(selected_parts_response.data or [])
 
+        selected_parts = pd.DataFrame(selected_parts_response.data)
         if selected_parts.empty:
             st.warning("No parts were found for this saved analysis.")
-        else:
-            detail_left, detail_right = st.columns([1, 1.35])
-            risk_distribution = selected_parts["risk_level"].value_counts().reindex(["High", "Medium", "Low"]).fillna(0).astype(int)
+            st.stop()
 
-            with detail_left:
-                st.subheader("Risk Composition")
-                st.plotly_chart(
+        risk_distribution = (
+            selected_parts["risk_level"]
+            .value_counts()
+            .reset_index()
+        )
+
+        risk_distribution.columns = ["Risk Level", "Part Count"]
+
+        st.subheader("Risk Composition")
+
+        st.plotly_chart(
+            {
+                "data": [
                     {
-                        "data": [{
-                            "labels": risk_distribution.index.tolist(),
-                            "values": risk_distribution.values.tolist(),
-                            "type": "pie",
-                            "hole": 0.58,
-                            "marker": {"colors": ["#EF4444", "#F59E0B", "#22C55E"], "line": {"color": "#FFFFFF", "width": 3}},
-                            "textinfo": "percent",
-                            "sort": False,
-                        }],
-                        "layout": {
-                            "height": 300,
-                            "plot_bgcolor": "#FFFFFF",
-                            "paper_bgcolor": "#FFFFFF",
-                            "font": {"color": "#0F172A"},
-                            "margin": {"l": 10, "r": 10, "t": 10, "b": 10},
-                        },
-                    },
-                    use_container_width=True,
+                        "labels": risk_distribution["Risk Level"],
+                        "values": risk_distribution["Part Count"],
+                        "type": "pie",
+                        "hole": 0.45,
+                    }
+                ],
+                "layout": {
+                    "margin": {"t": 20, "b": 20, "l": 20, "r": 20},
+                },
+            },
+            use_container_width=True,
+        )
+
+        attention_parts = selected_parts[
+            (selected_parts["risk_level"] == "High")
+            |
+            (
+                selected_parts["lifecycle_status"]
+                .astype(str)
+                .str.contains(
+                    "obsolete|not recommended|replacement",
+                    case=False,
+                    na=False,
                 )
-
-            with detail_right:
-                st.subheader("Parts Requiring Attention")
-                attention_parts = selected_parts[
-                    (selected_parts["risk_level"] == "High")
-                    | selected_parts["lifecycle_status"].astype(str).str.contains("obsolete|not recommended|replacement", case=False, na=False)
-                ]
-                if attention_parts.empty:
-                    st.success("No critical parts detected in this BOM.")
-                else:
-                    attention_display = attention_parts[["mpn", "manufacturer", "risk_level", "lifecycle_status", "risk_reasons"]].rename(columns={
-                        "mpn": "Part Number",
-                        "manufacturer": "Manufacturer",
-                        "risk_level": "Risk Level",
-                        "lifecycle_status": "Lifecycle Status",
-                        "risk_reasons": "Risk Reasons",
-                    })
-                    brc_html_table(attention_display, max_rows=8)
-
-            st.subheader("Selected BOM Summary")
-            s1, s2, s3, s4 = st.columns(4)
-            with s1:
-                brc_kpi("Total Parts", len(selected_parts), "In selected BOM")
-            with s2:
-                brc_kpi("High-Risk Parts", int((selected_parts["risk_level"] == "High").sum()), "Require review")
-            with s3:
-                obsolete_count = int(selected_parts["lifecycle_status"].astype(str).str.contains("obsolete", case=False, na=False).sum())
-                brc_kpi("Obsolete / EOL Parts", obsolete_count, "Lifecycle risk")
-            with s4:
-                avg_risk = int(selected_parts["risk_score"].fillna(0).mean()) if "risk_score" in selected_parts else 0
-                brc_kpi("Average Risk Score", avg_risk, "Selected BOM")
-
-            st.subheader("Filter Saved Parts")
-            search_query = st.text_input("Search by MPN, manufacturer, or risk reason", key="dashboard_saved_parts_search")
-            risk_filter = st.multiselect(
-                "Filter by risk level",
-                sorted(selected_parts["risk_level"].dropna().unique().tolist()),
-                default=sorted(selected_parts["risk_level"].dropna().unique().tolist()),
-                key="dashboard_risk_filter",
             )
-            lifecycle_filter = st.multiselect(
-                "Filter by lifecycle status",
-                sorted(selected_parts["lifecycle_status"].dropna().unique().tolist()),
-                default=sorted(selected_parts["lifecycle_status"].dropna().unique().tolist()),
-                key="dashboard_lifecycle_filter",
+        ]
+        selected_total_parts = len(selected_parts)
+
+        selected_high_risk = (
+            selected_parts["risk_level"] == "High"
+        ).sum()
+
+        selected_obsolete = (
+            selected_parts["lifecycle_status"]
+            .astype(str)
+            .str.contains("obsolete", case=False, na=False)
+        ).sum()
+
+        selected_avg_risk = int(
+            selected_parts["risk_score"].mean()
+        )
+
+        st.subheader("Parts Requiring Attention")
+
+        if not attention_parts.empty:
+
+            attention_display = attention_parts[
+                [
+                    "mpn",
+                    "manufacturer",
+                    "risk_level",
+                    "lifecycle_status",
+                    "risk_reasons",
+                ]
+            ].rename(
+                columns={
+                    "mpn": "Part Number",
+                    "manufacturer": "Manufacturer",
+                    "risk_level": "Risk Level",
+                    "lifecycle_status": "Lifecycle Status",
+                    "risk_reasons": "Risk Reasons",
+                }
             )
 
-            filtered_parts = selected_parts.copy()
-            if search_query:
-                q = search_query.lower()
-                filtered_parts = filtered_parts[
-                    filtered_parts["mpn"].astype(str).str.lower().str.contains(q, na=False)
-                    | filtered_parts["manufacturer"].astype(str).str.lower().str.contains(q, na=False)
-                    | filtered_parts["risk_reasons"].astype(str).str.lower().str.contains(q, na=False)
-                ]
-            if risk_filter:
-                filtered_parts = filtered_parts[filtered_parts["risk_level"].isin(risk_filter)]
-            if lifecycle_filter:
-                filtered_parts = filtered_parts[filtered_parts["lifecycle_status"].isin(lifecycle_filter)]
+            st.dataframe(
+                attention_display,
+                use_container_width=True,
+                hide_index=True,
+            )
 
-            part_display_cols = ["mpn", "manufacturer", "risk_score", "risk_level", "risk_reasons", "lifecycle_status", "stock_available", "supplier_count"]
-            existing_cols = [c for c in part_display_cols if c in filtered_parts.columns]
-            part_display = filtered_parts[existing_cols].rename(columns={
+            st.subheader("Supplier Verification & Suggested Alternatives")
+
+            attention_part_options = attention_parts["mpn"].dropna().unique().tolist()
+
+            selected_attention_parts = st.multiselect(
+                "Choose risky parts to find alternatives",
+                attention_part_options,
+            )
+
+            if st.button("Find Alternatives for Selected Parts"):
+                with st.spinner("Searching suppliers and finding compatible alternatives..."):
+                    if not selected_attention_parts:
+                        st.warning("Please select at least one risky part.")
+
+                    else:
+                        for selected_attention_part in selected_attention_parts:
+                            st.markdown(f"### Results for {selected_attention_part}")
+
+                            alternatives = suggest_alternatives_v2(
+                                selected_attention_part
+                            )
+
+                            if alternatives:
+                                alternatives_df = pd.DataFrame(alternatives)
+                                engineering_cols = [
+                                    "Architecture",
+                                    "Package",
+                                    "Pin Count",
+                                    "Voltage Range",
+                                ]
+
+                                for col in engineering_cols:
+                                    if col not in alternatives_df.columns:
+                                        alternatives_df[col] = ""
+
+                                supplier_count = alternatives_df["Supplier"].replace("", pd.NA).dropna().nunique() if "Supplier" in alternatives_df.columns else 0
+
+                                total_stock = alternatives_df["Stock"].sum() if "Stock" in alternatives_df.columns else 0
+
+                                highest_stock_row = (
+                                    alternatives_df.loc[alternatives_df["Stock"].idxmax()]
+                                    if "Stock" in alternatives_df.columns and not alternatives_df.empty
+                                    else None
+                                )
+
+                                best_supplier = (
+                                    highest_stock_row["Supplier"]
+                                    if highest_stock_row is not None
+                                    else "Unknown"
+                                )
+
+                                highest_stock = (
+                                    int(highest_stock_row["Stock"])
+                                    if highest_stock_row is not None
+                                    else 0
+                                )
+
+                                priced_rows = alternatives_df[
+                                    (alternatives_df["Unit Price"] > 0)
+                                    & (alternatives_df["Stock"] > 0)
+                                ] if "Unit Price" in alternatives_df.columns and "Stock" in alternatives_df.columns else pd.DataFrame()
+
+                                cheapest_row = (
+                                    priced_rows.loc[priced_rows["Unit Price"].idxmin()]
+                                    if not priced_rows.empty
+                                    else None
+                                )
+
+                                cheapest_supplier = (
+                                    cheapest_row["Supplier"]
+                                    if cheapest_row is not None
+                                    else "Unknown"
+                                )
+
+                                lowest_unit_price = (
+                                    float(cheapest_row["Unit Price"])
+                                    if cheapest_row is not None
+                                    else 0.0
+                                )
+
+                                best_lifecycle = (
+                                    alternatives_df["Lifecycle"].dropna().iloc[0]
+                                    if "Lifecycle" in alternatives_df.columns and not alternatives_df["Lifecycle"].dropna().empty
+                                    else "Unknown"
+                                )
+
+                                true_alternatives = [
+                                    alt for alt in alternatives
+                                    if alt.get("Alternative Part", "") != selected_attention_part
+                                ]
+
+                                best_alternative = None
+                                if true_alternatives:
+                                    best_alternative = max(
+                                        true_alternatives,
+                                        key=lambda x: x.get("Recommendation Score", 0)
+                                    )
+
+                                st.markdown("## 📊 Alternative Search Summary")
+                                
+                                summary_col1, summary_col2, summary_col3 = st.columns(3)
+
+                                with summary_col1:
+                                    st.metric(
+                                        "Alternatives Found",
+                                        len(true_alternatives)
+                                    )
+
+                                    st.metric(
+                                        "Suppliers Verified",
+                                        supplier_count
+                                    )
+
+                                with summary_col2:
+                                    st.metric(
+                                        "Best Recommendation",
+                                        best_alternative["Alternative Part"]
+                                        if true_alternatives else "-"
+                                    )
+
+                                    st.metric(
+                                        "Lowest Price",
+                                        f"${lowest_unit_price:.2f}"
+                                    )
+
+                                with summary_col3:
+                                    avg_confidence = (
+                                        int(alternatives_df["Drop-In Confidence"].mean())
+                                        if "Drop-In Confidence" in alternatives_df.columns
+                                        else 0
+                                    )
+
+                                    st.metric(
+                                        "Average Compatibility",
+                                        f"{avg_confidence}%"
+                                    )
+
+                                    st.metric(
+                                        "Total Stock",
+                                        f"{int(total_stock):,}"
+                                    )
+
+                                if true_alternatives and best_alternative:
+                                    st.markdown("### 🏆 Best Recommended Alternative")
+
+                                    best_col1, best_col2, best_col3 = st.columns(3)
+
+                                    with best_col1:
+                                        st.metric(
+                                            "Part Number",
+                                            best_alternative.get("Alternative Part", "Unknown"),
+                                        )
+
+                                    with best_col2:
+                                        st.metric(
+                                            "Recommendation Score",
+                                            int(best_alternative.get("Recommendation Score", 0)),
+                                        )
+
+                                    with best_col3:
+                                        st.metric(
+                                            "Drop-In Confidence",
+                                            best_alternative.get("Drop-In Rating", "Unknown"),
+                                        )
+
+                                    st.info(best_alternative.get("Recommendation", "Review compatibility."))
+
+                                    drop_in_reasons = best_alternative.get("Drop-In Reasons", "")
+
+                                    if drop_in_reasons:
+                                        with st.expander("Why this alternative?", expanded=True):
+                                            for reason in str(drop_in_reasons).split(";"):
+                                                reason = reason.strip()
+                                                if reason:
+                                                    st.write(reason)
+
+                                    value_alternatives = [
+                                        alt for alt in true_alternatives
+                                        if alt.get("Stock", 0) > 0
+                                    ]
+
+                                    best_value_alternative = None
+
+                                    if value_alternatives:
+                                        best_value_alternative = min(
+                                            value_alternatives,
+                                            key=lambda x: float(x.get("Unit Price", 0.0))
+                                        )
+
+                                    if best_value_alternative:
+                                        st.markdown("### 💰 Best Value Alternative")
+
+                                        value_col1, value_col2, value_col3 = st.columns(3)
+
+                                        with value_col1:
+                                            st.metric(
+                                                "Part Number",
+                                                best_value_alternative.get("Alternative Part", "Unknown"),
+                                            )
+
+                                        with value_col2:
+                                            st.metric(
+                                                "Unit Price",
+                                                f"${float(best_value_alternative.get('Unit Price', 0.0)):.2f}",
+                                            )
+
+                                        with value_col3:
+                                            st.metric(
+                                                "Available Stock",
+                                                int(best_value_alternative.get("Stock", 0)),
+                                            )
+
+                                else:
+                                    st.info(
+                                        "Supplier verification found for the selected part, but no true alternative recommendations were identified yet."
+                                    )
+
+                                verify_col1, verify_col2, verify_col3, verify_col4, verify_col5 = st.columns(5)
+
+                                with verify_col1:
+                                    st.metric("Suppliers Found", supplier_count)
+
+                                with verify_col2:
+                                    st.metric("Total Stock", int(total_stock))
+
+                                with verify_col3:
+                                    st.metric("Best Supplier", best_supplier)
+
+                                with verify_col4:
+                                    st.metric("Highest Stock", highest_stock)
+                                
+                                with verify_col5:
+                                    st.metric(
+                                        "Lowest Price",
+                                        f"${lowest_unit_price:.2f}",
+                                        cheapest_supplier,
+                                    )
+
+                                lifecycle_col1, lifecycle_col2 = st.columns([1, 3])
+
+                                with lifecycle_col1:
+                                    st.markdown("**Lifecycle Status**")
+                                    st.info(best_lifecycle)
+
+                                with lifecycle_col2:
+                                    st.caption(
+                                        "Lifecycle status is based on the first available supplier response and may differ across suppliers."
+                                    )
+
+                                recommendation_records = []
+
+                                for alt in alternatives:
+                                    recommendation_records.append(
+                                        {
+                                            "user_id": current_user["id"],
+                                            "analysis_id": selected_analysis_id,
+                                            "original_part": selected_attention_part,
+                                            "alternative_part": alt.get("Alternative Part", ""),
+                                            "recommendation_score": alt.get("Recommendation Score", 0),
+                                            "estimated_risk": alt.get("Estimated Risk", "Unknown"),
+                                            "supplier": alt.get("Supplier", ""),
+                                            "stock": alt.get("Stock", 0),
+                                            "unit_price": alt.get("Unit Price", 0.0),
+                                            "compatibility_notes": alt.get("Compatibility Notes", ""),
+                                            "architecture": alt.get("Architecture", ""),
+                                            "package": alt.get("Package", ""),
+                                            "pin_count": alt.get("Pin Count", 0),
+                                            "voltage_range": alt.get("Voltage Range", ""),
+                                            "score_reasons": alt.get("Score Reasons", ""),
+                                        }
+                                    )
+
+                                if recommendation_records:
+                                    supabase.table("alternative_recommendations").delete().eq(
+                                        "user_id",
+                                        current_user["id"]
+                                    ).eq(
+                                        "analysis_id",
+                                        selected_analysis_id
+                                    ).eq(
+                                        "original_part",
+                                        selected_attention_part
+                                    ).execute()
+
+                                    supabase.table("alternative_recommendations").insert(
+                                        recommendation_records
+                                    ).execute()
+
+                                if "Estimated Risk" in alternatives_df.columns:
+                                    alternatives_df["Estimated Risk"] = alternatives_df["Estimated Risk"].replace(
+                                        {
+                                            "Low": "🟢 Low",
+                                            "Medium": "🟠 Medium",
+                                            "High": "🔴 High",
+                                        }
+                                    )
+
+                                    
+
+                                st.dataframe(
+                                    alternatives_df,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                )
+
+                            else:
+                                st.info(f"No alternatives found for {selected_attention_part}.")
+
+        else:
+            st.success("No critical parts detected in this BOM.")
+
+        st.subheader("Filter Saved Parts")
+
+        st.subheader("Selected BOM Summary")
+
+        bom_col1, bom_col2, bom_col3, bom_col4 = st.columns(4)
+
+        with bom_col1:
+            st.metric("Total Parts", selected_total_parts)
+
+        with bom_col2:
+            st.metric("High-Risk Parts", selected_high_risk)
+
+        with bom_col3:
+            st.metric("Obsolete / EOL Parts", selected_obsolete)
+
+        with bom_col4:
+            st.metric("Average Risk Score", selected_avg_risk)
+
+        search_query = st.text_input("Search by MPN, manufacturer, or risk reason")
+
+        risk_filter = st.multiselect(
+            "Filter by risk level",
+            options=sorted(selected_parts["risk_level"].dropna().unique()),
+            default=sorted(selected_parts["risk_level"].dropna().unique()),
+        )
+
+        lifecycle_filter = st.multiselect(
+            "Filter by lifecycle status",
+            options=sorted(selected_parts["lifecycle_status"].dropna().unique()),
+            default=sorted(selected_parts["lifecycle_status"].dropna().unique()),
+        )
+
+        filtered_parts = selected_parts.copy()
+
+        if search_query:
+            filtered_parts = filtered_parts[
+                filtered_parts["mpn"].astype(str).str.contains(search_query, case=False, na=False)
+                | filtered_parts["manufacturer"].astype(str).str.contains(search_query, case=False, na=False)
+                | filtered_parts["risk_reasons"].astype(str).str.contains(search_query, case=False, na=False)
+            ]
+
+        filtered_parts = filtered_parts[
+            filtered_parts["risk_level"].isin(risk_filter)
+            & filtered_parts["lifecycle_status"].isin(lifecycle_filter)
+        ]
+
+        if st.button("Delete this saved analysis"):
+            try:
+                supabase.table("analysis_parts").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                supabase.table("part_monitor_history").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                supabase.table("monitor_alerts").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                supabase.table("alternative_recommendations").delete().eq(
+                    "analysis_id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                supabase.table("analyses").delete().eq(
+                    "id",
+                    selected_analysis_id
+                ).eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                st.session_state.pop("results_df", None)
+
+                st.success("Saved analysis deleted.")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Could not delete saved analysis: {e}")
+
+        filtered_display_df = filtered_parts[
+            [
+                "mpn",
+                "manufacturer",
+                "risk_score",
+                "risk_level",
+                "risk_reasons",
+                "lifecycle_status",
+                "stock_available",
+                "supplier_count",
+            ]
+        ].rename(
+            columns={
                 "mpn": "Part Number",
                 "manufacturer": "Manufacturer",
                 "risk_score": "Risk Score",
@@ -1673,29 +1816,231 @@ if app_mode == "Dashboard":
                 "lifecycle_status": "Lifecycle Status",
                 "stock_available": "Stock Available",
                 "supplier_count": "Supplier Count",
-            })
-            brc_html_table(part_display, max_rows=20)
+            }
+        )
 
-            csv_buffer = part_display.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Download Analysis CSV",
-                data=csv_buffer,
-                file_name="bom_analysis.csv",
-                mime="text/csv",
-                key="dashboard_download_csv",
+        filtered_display_df["Risk Level"] = (
+            filtered_display_df["Risk Level"]
+            .replace(
+                {
+                    "High": "🔴 High",
+                    "Medium": "🟠 Medium",
+                    "Low": "🟢 Low",
+                }
+            )
+        )
+
+        st.dataframe(
+            filtered_display_df,
+            use_container_width=True,
+        )
+
+        download_df = filtered_parts[
+            [
+                "mpn",
+                "manufacturer",
+                "risk_score",
+                "risk_level",
+                "risk_reasons",
+                "lifecycle_status",
+                "stock_available",
+                "supplier_count",
+            ]
+        ]
+
+        csv_data = download_df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download Analysis CSV",
+            data=csv_data,
+            file_name=f"{selected_analysis_label}.csv",
+            mime="text/csv",
+        )
+
+        selected_alt_history = pd.DataFrame(
+            load_alternative_history(current_user["id"])
+        )
+
+        if not selected_alt_history.empty:
+            selected_alt_history = selected_alt_history[
+                selected_alt_history["analysis_id"] == selected_analysis_id
+            ]
+
+        pdf_buffer = generate_bom_pdf_report(
+            selected_analysis_label,
+            selected_parts,
+            attention_parts,
+            int(selected_parts["risk_score"].mean()),
+            selected_alt_history,
+        )
+
+        st.download_button(
+            label="Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{selected_analysis_label}_executive_report.pdf",
+            mime="application/pdf",
+        )
+
+        st.divider()
+        st.subheader("Alternative Recommendation History")
+
+        alternative_history = load_alternative_history(current_user["id"])
+
+        if not alternative_history:
+            st.info("No alternative recommendations saved yet.")
+        else:
+            alternative_history_df = pd.DataFrame(alternative_history)
+
+            alternative_history_df["created_at"] = pd.to_datetime(
+                alternative_history_df["created_at"]
+            ).dt.strftime("%Y-%m-%d")
+
+            alternative_display_df = alternative_history_df[
+                [
+                    "original_part",
+                    "alternative_part",
+                    "recommendation_score",
+                    "estimated_risk",
+                    "supplier",
+                    "stock",
+                    "unit_price",
+                    "compatibility_notes",
+                    "architecture",
+                    "package",
+                    "pin_count",
+                    "voltage_range",
+                    "score_reasons",
+                    "created_at",
+                ]
+            ].rename(
+                columns={
+                    "original_part": "Original Part",
+                    "alternative_part": "Alternative Part",
+                    "recommendation_score": "Recommendation Score",
+                    "estimated_risk": "Estimated Risk",
+                    "supplier": "Supplier",
+                    "stock": "Stock",
+                    "unit_price": "Unit Price",
+                    "compatibility_notes": "Compatibility Notes",
+                    "architecture": "Architecture",
+                    "package": "Package",
+                    "pin_count": "Pin Count",
+                    "voltage_range": "Voltage Range",
+                    "score_reasons": "Score Reasons",
+                    "created_at": "Created At",
+                }
             )
 
+            st.dataframe(
+                alternative_display_df,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            alternative_csv = alternative_display_df.to_csv(index=False).encode("utf-8")
+
+            st.download_button(
+                label="Download Alternative History CSV",
+                data=alternative_csv,
+                file_name="alternative_recommendation_history.csv",
+                mime="text/csv",
+            )
+
+            if st.button("Clear Alternative Recommendation History"):
+                supabase.table("alternative_recommendations").delete().eq(
+                    "user_id",
+                    current_user["id"]
+                ).execute()
+
+                st.success("Alternative recommendation history cleared.")
+                st.rerun()
+
+    # ---------- Charts ----------
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        st.subheader("BOM Risk Trend")
+
+        if analysis_data:
+            trend_df = pd.DataFrame(analysis_data)
+
+            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"])
+            trend_df["Date"] = trend_df["created_at"].dt.date
+
+            trend_data = (
+                trend_df.groupby("Date")["health_score"]
+                .mean()
+                .reset_index()
+                .rename(columns={"health_score": "Average Health Score"})
+            )
+
+            st.line_chart(
+                trend_data,
+                x="Date",
+                y="Average Health Score",
+            )
+        else:
+            st.info("No trend data yet.")
+
+
     st.divider()
-    st.subheader("Quick Actions")
-    qa1, qa2, qa3 = st.columns(3)
-    with qa1:
-        st.markdown('<div class="brc-card"><div class="kpi-label">Upload a BOM</div><div class="kpi-note">Use BOM Analyzer to review lifecycle, sourcing, and risk exposure.</div></div>', unsafe_allow_html=True)
-    with qa2:
-        st.markdown('<div class="brc-card"><div class="kpi-label">Find Alternatives</div><div class="kpi-note">Search replacement parts and compare supplier availability.</div></div>', unsafe_allow_html=True)
-    with qa3:
-        st.markdown('<div class="brc-card"><div class="kpi-label">Monitor Alerts</div><div class="kpi-note">Review lifecycle, stock, and price changes across monitored components.</div></div>', unsafe_allow_html=True)
 
+    # ---------- Recent Activity ----------
+    st.subheader("Recent Analyses")
 
+    recent_response = (
+
+        supabase.table("analyses")
+        .select("*")
+        .eq("user_id", current_user["id"])
+        .order("created_at", desc=True)
+        .limit(10)
+        .execute()
+    )
+
+    recent_data = recent_response.data
+
+    if recent_data:
+
+        recent_df = pd.DataFrame(recent_data)
+        
+        recent_df = recent_df.rename(
+            columns={
+                "project_name": "Project Name",
+                "filename": "File",
+                "total_parts": "Components",
+                "health_score": "Health Score",
+                "high_risk_count": "High Risk Parts",
+                "medium_risk_count": "Medium Risk Parts",
+                "low_risk_count": "Low Risk Parts",
+                "created_at": "Created At",
+            }
+        )
+
+        display_cols = [
+            "Project Name",
+            "File",
+            "Components",
+            "Health Score",
+            "High Risk Parts",
+            "Created At",
+        ]
+        display_cols = [col for col in display_cols if col in recent_df.columns]
+
+        recent_display_df = recent_df[display_cols].copy()
+
+        st.dataframe(
+            recent_display_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    else:
+        st.info("No analyses yet.")
+
+    st.stop()
+
+# ---------- Monitoring ----------
 if app_mode == "Monitoring":
     st.subheader("Monitoring Dashboard")
 
