@@ -687,7 +687,7 @@ def show_dashboard_summary(results_df):
         ascending=False
     ).head(5)
 
-    st.dataframe(
+    render_light_table(
         top_risks[
             [
                 "MPN",
@@ -698,8 +698,7 @@ def show_dashboard_summary(results_df):
                 "Supplier Count",
                 "Risk Reasons",
             ]
-        ].reset_index(drop=True),
-        use_container_width=True,
+        ].reset_index(drop=True)
     )
     st.divider()
 
@@ -1214,6 +1213,34 @@ st.markdown(
     }
     table.brc-light-table tbody tr:hover td {
         background: #f8fafc !important;
+    }
+
+
+    .brc-table-wrap {
+        background: #FFFFFF !important;
+        border: 1px solid #D8E0EA !important;
+        border-radius: 18px !important;
+    }
+    table.brc-light-table {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+    }
+    table.brc-light-table thead th {
+        background: #F1F5F9 !important;
+        color: #334155 !important;
+        border-right: 1px solid #E2E8F0 !important;
+        border-bottom: 1px solid #CBD5E1 !important;
+    }
+    table.brc-light-table thead th:last-child,
+    table.brc-light-table tbody td:last-child {
+        border-right: 0 !important;
+    }
+    table.brc-light-table tbody td {
+        border-right: 1px solid #EEF2F7 !important;
+        border-bottom: 1px solid #EEF2F7 !important;
+    }
+    table.brc-light-table tbody tr:nth-child(even) td {
+        background: #FAFCFF !important;
     }
 
     /* Keep action buttons readable without stretching every button too aggressively */
@@ -2020,7 +2047,7 @@ if app_mode == "Monitoring":
             )
         )
 
-        st.dataframe(
+        render_light_table(
             alert_display_df[
                 [
                     "Part Number",
@@ -2031,9 +2058,7 @@ if app_mode == "Monitoring":
                     "Current Value",
                     "Detected At",
                 ]
-            ],
-            hide_index=True,
-            use_container_width=True,
+            ]
         )
     else:
         st.info("No monitoring alerts detected yet.")
@@ -2062,7 +2087,7 @@ if app_mode == "Monitoring":
             )
         )
 
-        st.dataframe(
+        render_light_table(
             monitor_display_df[
                 [
                     "Part Number",
@@ -2073,9 +2098,7 @@ if app_mode == "Monitoring":
                     "Risk Level Display",
                     "Last Checked",
                 ]
-            ],
-            hide_index=True,
-            use_container_width=True,
+            ]
         )
     else:
         st.info("No monitoring history available yet.")
@@ -3377,11 +3400,7 @@ if app_mode == "Alternative Finder":
             ]
         )
 
-        st.dataframe(
-            comparison_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+        render_light_table(comparison_df)
 
         st.divider()
 
@@ -3453,11 +3472,7 @@ if app_mode == "Alternative Finder":
                 lambda value: f"{int(value or 0):,}"
             )
 
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+        render_light_table(display_df)
 
         if st.button("Analyze Another Component"):
             st.session_state["suggested_alternatives"] = []
@@ -3518,11 +3533,7 @@ if app_mode == "BOM Analyzer":
             }
         )
 
-        st.dataframe(
-            display_history,
-            use_container_width=True,
-            hide_index=True,
-        )
+        render_light_table(display_history)
 
     else:
         st.info("No previous BOM analyses found.")
@@ -4011,26 +4022,7 @@ Unlock more power:
             }
         )
 
-        st.dataframe(
-            filtered_df[display_columns],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "MPN": st.column_config.TextColumn(width="medium"),
-                "Manufacturer": st.column_config.TextColumn(width="medium"),
-                "Best Source": st.column_config.TextColumn(width="small"),
-                "Supplier Count": st.column_config.NumberColumn(width="small"),
-                "Stock Available": st.column_config.NumberColumn(width="small"),
-                "Lifecycle Status": st.column_config.TextColumn(width="medium"),
-                "Has Alternates": st.column_config.CheckboxColumn(width="small"),
-                "Risk Score": st.column_config.NumberColumn(width="small"),
-                "Risk Level Display": st.column_config.TextColumn(width="small"),
-                "Risk Reasons": st.column_config.TextColumn(
-                    "Risk Reasons",
-                    width="large",
-                ),
-            },
-        )
+        render_light_table(filtered_df[display_columns])
 
 
         st.subheader("Part Details")
