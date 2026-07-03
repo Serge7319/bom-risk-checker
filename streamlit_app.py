@@ -810,6 +810,16 @@ def risk_badge(level):
     return "⚪ Unknown"
 
 
+def render_light_table(df, max_rows=None):
+    """Render a launch-style light table instead of Streamlit's dark dataframe canvas."""
+    if df is None or df.empty:
+        st.info("No records to display yet.")
+        return
+    display_df = df.head(max_rows).copy() if max_rows else df.copy()
+    html = display_df.to_html(index=False, escape=True, classes="brc-light-table")
+    st.markdown(f'<div class="brc-table-wrap">{html}</div>', unsafe_allow_html=True)
+
+
 st.markdown(
     """
     <style>
@@ -1168,6 +1178,57 @@ st.markdown(
         white-space: nowrap !important;
     }
 
+    .brc-table-wrap {
+        background: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 16px !important;
+        overflow-x: auto !important;
+        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07) !important;
+        margin: 12px 0 18px 0 !important;
+    }
+    table.brc-light-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        font-size: 14px;
+    }
+    table.brc-light-table thead th {
+        background: #f8fafc !important;
+        color: #475569 !important;
+        text-align: left;
+        font-weight: 800;
+        padding: 12px 14px;
+        border-bottom: 1px solid #e2e8f0;
+        white-space: nowrap;
+    }
+    table.brc-light-table tbody td {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        padding: 12px 14px;
+        border-bottom: 1px solid #eef2f7;
+        vertical-align: top;
+    }
+    table.brc-light-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+    table.brc-light-table tbody tr:hover td {
+        background: #f8fafc !important;
+    }
+
+    /* Keep action buttons readable without stretching every button too aggressively */
+    div.stButton > button {
+        width: auto !important;
+        min-width: 160px !important;
+        padding-left: 18px !important;
+        padding-right: 18px !important;
+    }
+
+    /* Alternative Finder search input should feel like one part lookup, not bulk entry */
+    div[data-testid="stTextInput"] {
+        max-width: 760px;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -1197,6 +1258,10 @@ with st.sidebar:
         )
 
     st.markdown("#### Navigation")
+
+    pending_app_mode = st.session_state.pop("pending_app_mode", None)
+    if pending_app_mode:
+        st.session_state["app_mode"] = pending_app_mode
 
     app_mode = st.radio(
         "",
@@ -1522,7 +1587,7 @@ if app_mode == "Dashboard":
     with action_col:
         st.write("")
         if st.button("+ New Analysis", use_container_width=True):
-            st.session_state["app_mode"] = "BOM Analyzer"
+            st.session_state["pending_app_mode"] = "BOM Analyzer"
             st.rerun()
 
     # -------- KPI cards --------
@@ -1638,7 +1703,7 @@ if app_mode == "Dashboard":
                     .properties(height=265)
                 )
                 st.altair_chart(donut_chart, use_container_width=True)
-                st.dataframe(risk_distribution_df, use_container_width=True, hide_index=True)
+                render_light_table(risk_distribution_df)
         else:
             st.info("Risk distribution will appear after your first BOM analysis.")
 
@@ -1715,11 +1780,7 @@ if app_mode == "Dashboard":
             }
         )
 
-        st.dataframe(
-            summary_display_df.head(10),
-            use_container_width=True,
-            hide_index=True,
-        )
+        render_light_table(summary_display_df, max_rows=10)
 
         st.markdown("### Open or delete a saved analysis")
 
@@ -1740,7 +1801,7 @@ if app_mode == "Dashboard":
             action_col1, action_col2, _action_spacer = st.columns([1.25, 1.25, 3.5])
 
             with action_col1:
-                if st.button("📂 Open Saved Analysis", use_container_width=True):
+                if st.button("📂 Open Saved Analysis"):
                     saved_parts = (
                         supabase.table("analysis_parts")
                         .select("*")
@@ -1779,12 +1840,12 @@ if app_mode == "Dashboard":
 
                         st.session_state["results_df"] = saved_results_df
                         st.session_state["loaded_saved_analysis_label"] = selected_saved_analysis_label
-                        st.session_state["app_mode"] = "BOM Analyzer"
+                        st.session_state["pending_app_mode"] = "BOM Analyzer"
                         st.success("Saved analysis loaded. Opening BOM Analyzer...")
                         st.rerun()
 
             with action_col2:
-                if st.button("🗑 Delete Saved Analysis", use_container_width=True):
+                if st.button("🗑 Delete Saved Analysis"):
                     try:
                         supabase.table("analysis_parts").delete().eq(
                             "analysis_id",
