@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 from src.alternative_engine import suggest_alternatives_v2
 from src.bom_parser import normalize_bom_columns, validate_bom, clean_bom_data
 from src.risk_engine import calculate_risk
@@ -1146,6 +1147,27 @@ st.markdown(
         color: #64748b !important;
         opacity: 1 !important;
     }
+
+
+    /* Dashboard polish: readable buttons and compact action rows */
+    div.stButton > button,
+    div.stButton > button *,
+    div.stButton > button p,
+    div.stButton > button span {
+        color: #FFFFFF !important;
+        opacity: 1 !important;
+    }
+
+    div.stButton > button:disabled,
+    div.stButton > button[disabled] {
+        opacity: 0.88 !important;
+        color: #FFFFFF !important;
+    }
+
+    div[data-testid="stButton"] button {
+        white-space: nowrap !important;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -1188,6 +1210,7 @@ with st.sidebar:
             "About",
         ],
         label_visibility="collapsed",
+        key="app_mode",
     )
 
 # Default user plan
@@ -1499,7 +1522,8 @@ if app_mode == "Dashboard":
     with action_col:
         st.write("")
         if st.button("+ New Analysis", use_container_width=True):
-            st.info("Open BOM Analyzer from the sidebar to upload a new BOM.")
+            st.session_state["app_mode"] = "BOM Analyzer"
+            st.rerun()
 
     # -------- KPI cards --------
     kpi_1, kpi_2, kpi_3, kpi_4 = st.columns(4)
@@ -1591,7 +1615,30 @@ if app_mode == "Dashboard":
                     "Components": [total_high_risk, total_medium_risk, total_low_risk],
                 }
             )
-            st.dataframe(risk_distribution_df, use_container_width=True, hide_index=True)
+            risk_distribution_df = risk_distribution_df[risk_distribution_df["Components"] > 0]
+
+            if risk_distribution_df.empty:
+                st.info("Risk distribution will appear after your first BOM analysis.")
+            else:
+                donut_chart = (
+                    alt.Chart(risk_distribution_df)
+                    .mark_arc(innerRadius=62, outerRadius=105, stroke="#FFFFFF", strokeWidth=2)
+                    .encode(
+                        theta=alt.Theta("Components:Q"),
+                        color=alt.Color(
+                            "Risk Level:N",
+                            scale=alt.Scale(
+                                domain=["High", "Medium", "Low"],
+                                range=["#EF4444", "#F59E0B", "#22C55E"],
+                            ),
+                            legend=alt.Legend(title=None, orient="right"),
+                        ),
+                        tooltip=["Risk Level:N", "Components:Q"],
+                    )
+                    .properties(height=265)
+                )
+                st.altair_chart(donut_chart, use_container_width=True)
+                st.dataframe(risk_distribution_df, use_container_width=True, hide_index=True)
         else:
             st.info("Risk distribution will appear after your first BOM analysis.")
 
@@ -1690,7 +1737,7 @@ if app_mode == "Dashboard":
 
             selected_saved_analysis_id = analysis_options[selected_saved_analysis_label]
 
-            action_col1, action_col2 = st.columns([1, 1])
+            action_col1, action_col2, _action_spacer = st.columns([1.25, 1.25, 3.5])
 
             with action_col1:
                 if st.button("📂 Open Saved Analysis", use_container_width=True):
@@ -1731,7 +1778,10 @@ if app_mode == "Dashboard":
                         saved_results_df["Normalized MPN"] = saved_results_df["MPN"] if "MPN" in saved_results_df.columns else ""
 
                         st.session_state["results_df"] = saved_results_df
-                        st.success("Saved analysis loaded. Open BOM Analyzer to view the loaded results.")
+                        st.session_state["loaded_saved_analysis_label"] = selected_saved_analysis_label
+                        st.session_state["app_mode"] = "BOM Analyzer"
+                        st.success("Saved analysis loaded. Opening BOM Analyzer...")
+                        st.rerun()
 
             with action_col2:
                 if st.button("🗑 Delete Saved Analysis", use_container_width=True):
