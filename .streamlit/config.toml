@@ -1,0 +1,20 @@
+[theme]
+base = "light"
+
+# Brand colors
+primaryColor = "#2563EB"
+
+# Backgrounds
+backgroundColor = "#F5F7FB"
+secondaryBackgroundColor = "#FFFFFF"
+
+# Text
+textColor = "#0F172A"
+
+# Font
+font = "sans serif"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
