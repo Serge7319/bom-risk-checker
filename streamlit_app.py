@@ -1253,35 +1253,34 @@ with st.sidebar:
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
+    # Dashboard-only styles. This keeps the redesign scoped to Dashboard
+    # and avoids touching authentication, Supabase, Stripe, Analyzer, or Alternative Finder logic.
     st.markdown(
         """
         <style>
-        .dashboard-shell {
-            padding-bottom: 12px;
-        }
-        .dashboard-hero {
-            background: linear-gradient(135deg, #FFFFFF 0%, #F8FBFF 48%, #EEF5FF 100%);
+        .dash-hero {
+            background: linear-gradient(135deg, #FFFFFF 0%, #F8FBFF 50%, #EEF5FF 100%);
             border: 1px solid #E2E8F0;
-            border-radius: 22px;
+            border-radius: 24px;
             padding: 34px 36px;
             box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
-            margin-bottom: 26px;
+            margin-bottom: 24px;
         }
-        .dashboard-eyebrow {
+        .dash-eyebrow {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 7px 11px;
+            padding: 7px 12px;
             border-radius: 999px;
             background: #EFF6FF;
             color: #2563EB !important;
             font-size: 12px;
             font-weight: 850;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.055em;
             text-transform: uppercase;
             margin-bottom: 16px;
         }
-        .dashboard-title {
+        .dash-title {
             font-size: 44px;
             line-height: 1.05;
             font-weight: 900;
@@ -1289,34 +1288,27 @@ if app_mode == "Dashboard":
             letter-spacing: -0.04em;
             margin: 0 0 12px 0;
         }
-        .dashboard-subtitle {
-            max-width: 780px;
+        .dash-subtitle {
+            max-width: 820px;
             font-size: 17px;
             line-height: 1.6;
             color: #64748B !important;
             margin: 0;
         }
-        .dashboard-section-row {
-            display: flex;
-            align-items: flex-end;
-            justify-content: space-between;
-            gap: 20px;
-            margin: 4px 0 18px 0;
-        }
-        .dashboard-section-title {
-            font-size: 34px;
-            line-height: 1.1;
+        .dash-section-title {
+            font-size: 28px;
+            line-height: 1.15;
             font-weight: 900;
             letter-spacing: -0.035em;
             color: #0F172A !important;
-            margin: 0 0 7px 0;
+            margin: 0 0 6px 0;
         }
-        .dashboard-section-copy {
+        .dash-section-copy {
             color: #64748B !important;
             font-size: 14px;
-            margin: 0;
+            margin: 0 0 14px 0;
         }
-        .brc-kpi {
+        .dash-kpi {
             background: #FFFFFF;
             border: 1px solid #E2E8F0;
             border-radius: 18px;
@@ -1324,7 +1316,7 @@ if app_mode == "Dashboard":
             min-height: 132px;
             box-shadow: 0 16px 32px rgba(15, 23, 42, 0.07);
         }
-        .brc-kpi-label {
+        .dash-kpi-label {
             color: #64748B !important;
             font-size: 12px;
             font-weight: 850;
@@ -1332,77 +1324,58 @@ if app_mode == "Dashboard":
             letter-spacing: 0.06em;
             margin-bottom: 12px;
         }
-        .brc-kpi-value {
+        .dash-kpi-value {
             color: #0F172A !important;
             font-size: 36px;
             font-weight: 900;
             line-height: 1;
             margin-bottom: 10px;
         }
-        .brc-kpi-note {
+        .dash-kpi-note {
             color: #059669 !important;
             font-size: 13px;
             font-weight: 800;
         }
-        .brc-panel {
+        .dash-panel {
             background: #FFFFFF;
             border: 1px solid #E2E8F0;
             border-radius: 20px;
             padding: 22px;
             box-shadow: 0 18px 38px rgba(15, 23, 42, 0.07);
             margin-top: 12px;
+            margin-bottom: 16px;
         }
-        .brc-panel-title {
-            color: #0F172A !important;
-            font-size: 22px;
-            font-weight: 900;
-            letter-spacing: -0.025em;
-            margin-bottom: 4px;
-        }
-        .brc-panel-copy {
-            color: #64748B !important;
-            font-size: 13px;
-            margin-bottom: 14px;
-        }
-        .brc-status-pill {
-            display: inline-block;
-            padding: 8px 12px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 850;
-            border: 1px solid #BBF7D0;
-            background: #ECFDF5;
-            color: #047857 !important;
-        }
-        .brc-alert-card {
+        .dash-dark-panel {
             background: linear-gradient(135deg, #0F172A 0%, #172554 100%);
-            color: #FFFFFF !important;
-            border-radius: 20px;
-            padding: 24px;
-            box-shadow: 0 18px 38px rgba(15, 23, 42, 0.15);
+            border-radius: 22px;
+            padding: 26px;
+            box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
             margin-top: 18px;
+            margin-bottom: 22px;
         }
-        .brc-alert-card h3, .brc-alert-card p, .brc-alert-card div {
+        .dash-dark-panel h3,
+        .dash-dark-panel p,
+        .dash-dark-panel div {
             color: #FFFFFF !important;
         }
-        .brc-alert-muted {
+        .dash-dark-muted {
             color: #CBD5E1 !important;
             font-size: 14px;
             line-height: 1.6;
         }
-        .brc-mini-grid {
+        .dash-mini-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
             margin-top: 16px;
         }
-        .brc-mini-stat {
+        .dash-mini-stat {
             background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.14);
             border-radius: 14px;
             padding: 13px;
         }
-        .brc-mini-stat-label {
+        .dash-mini-label {
             color: #CBD5E1 !important;
             font-size: 11px;
             font-weight: 850;
@@ -1410,18 +1383,37 @@ if app_mode == "Dashboard":
             letter-spacing: 0.05em;
             margin-bottom: 8px;
         }
-        .brc-mini-stat-value {
+        .dash-mini-value {
             color: #FFFFFF !important;
             font-size: 24px;
             font-weight: 900;
             line-height: 1;
         }
+        .dash-action-card {
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 18px;
+            padding: 18px 20px;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.06);
+            min-height: 118px;
+        }
+        .dash-action-title {
+            font-size: 16px;
+            font-weight: 850;
+            color: #0F172A !important;
+            margin-bottom: 6px;
+        }
+        .dash-action-copy {
+            color: #64748B !important;
+            font-size: 13px;
+            line-height: 1.5;
+        }
         </style>
-        <div class="dashboard-shell"></div>
         """,
         unsafe_allow_html=True,
     )
 
+    # -------- Data loading --------
     analysis_response = (
         supabase.table("analyses")
         .select("*")
@@ -1436,7 +1428,7 @@ if app_mode == "Dashboard":
     if analysis_data:
         avg_health_score = int(
             sum(item.get("health_score", 0) or 0 for item in analysis_data)
-            / total_analyses
+            / max(1, total_analyses)
         )
         total_high_risk = sum(item.get("high_risk_count", 0) or 0 for item in analysis_data)
         total_medium_risk = sum(item.get("medium_risk_count", 0) or 0 for item in analysis_data)
@@ -1453,45 +1445,54 @@ if app_mode == "Dashboard":
         alternative_history = load_alternative_history(current_user["id"])
         alternatives_found = len(alternative_history)
     except Exception:
+        alternative_history = []
         alternatives_found = 0
 
     risk_label = (
         "No data"
         if avg_health_score == 0
-        else "Low Risk"
+        else "Healthy"
         if avg_health_score >= 75
-        else "Medium Risk"
+        else "Moderate Risk"
         if avg_health_score >= 50
         else "High Risk"
     )
 
     latest_analysis = analysis_data[0] if analysis_data else None
-    latest_project = latest_analysis.get("project_name", "No BOM analyzed yet") if latest_analysis else "No BOM analyzed yet"
+    latest_project = latest_analysis.get("project_name") or latest_analysis.get("filename") if latest_analysis else "No BOM analyzed yet"
     latest_health = latest_analysis.get("health_score", 0) if latest_analysis else 0
+    latest_parts = latest_analysis.get("total_parts", 0) if latest_analysis else 0
+    latest_high_risk = latest_analysis.get("high_risk_count", 0) if latest_analysis else 0
+    latest_created = latest_analysis.get("created_at", "") if latest_analysis else ""
 
+    if latest_created:
+        try:
+            latest_created_display = pd.to_datetime(latest_created).strftime("%Y-%m-%d")
+        except Exception:
+            latest_created_display = str(latest_created)
+    else:
+        latest_created_display = "No recent analysis"
+
+    # -------- Hero --------
     st.markdown(
-        f"""
-        <div class="dashboard-hero">
-            <div class="dashboard-eyebrow">📦 BOM Risk Intelligence</div>
-            <h1 class="dashboard-title">Welcome back</h1>
-            <p class="dashboard-subtitle">
-                Monitor BOM risk, review saved analyses, and use sourcing intelligence to keep engineering decisions moving.
+        """
+        <div class="dash-hero">
+            <div class="dash-eyebrow">BOM Risk Intelligence</div>
+            <h1 class="dash-title">Welcome back</h1>
+            <p class="dash-subtitle">
+                Monitor BOM risk, review recent analyses, and keep sourcing decisions moving from one executive dashboard.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    header_col, action_col = st.columns([4.5, 1.2])
+    header_col, action_col = st.columns([4.5, 1.3])
     with header_col:
         st.markdown(
             """
-            <div class="dashboard-section-row">
-                <div>
-                    <div class="dashboard-section-title">Dashboard</div>
-                    <p class="dashboard-section-copy">Overview of your BOM activity, risk exposure, and recent sourcing work.</p>
-                </div>
-            </div>
+            <div class="dash-section-title">Dashboard</div>
+            <p class="dash-section-copy">Overview of your BOM activity, risk exposure, and recommended sourcing work.</p>
             """,
             unsafe_allow_html=True,
         )
@@ -1500,15 +1501,16 @@ if app_mode == "Dashboard":
         if st.button("+ New Analysis", use_container_width=True):
             st.info("Open BOM Analyzer from the sidebar to upload a new BOM.")
 
+    # -------- KPI cards --------
     kpi_1, kpi_2, kpi_3, kpi_4 = st.columns(4)
 
     with kpi_1:
         st.markdown(
             f"""
-            <div class="brc-kpi">
-                <div class="brc-kpi-label">Analyses This Month</div>
-                <div class="brc-kpi-value">{total_analyses}</div>
-                <div class="brc-kpi-note">Saved BOM analyses</div>
+            <div class="dash-kpi">
+                <div class="dash-kpi-label">Saved Analyses</div>
+                <div class="dash-kpi-value">{total_analyses}</div>
+                <div class="dash-kpi-note">BOM reviews stored</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1517,10 +1519,10 @@ if app_mode == "Dashboard":
     with kpi_2:
         st.markdown(
             f"""
-            <div class="brc-kpi">
-                <div class="brc-kpi-label">Average BOM Health</div>
-                <div class="brc-kpi-value">{avg_health_score}</div>
-                <div class="brc-kpi-note">{risk_label}</div>
+            <div class="dash-kpi">
+                <div class="dash-kpi-label">Average BOM Health</div>
+                <div class="dash-kpi-value">{avg_health_score}</div>
+                <div class="dash-kpi-note">{risk_label}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1529,10 +1531,10 @@ if app_mode == "Dashboard":
     with kpi_3:
         st.markdown(
             f"""
-            <div class="brc-kpi">
-                <div class="brc-kpi-label">High Risk Components</div>
-                <div class="brc-kpi-value">{total_high_risk}</div>
-                <div class="brc-kpi-note">Across saved BOMs</div>
+            <div class="dash-kpi">
+                <div class="dash-kpi-label">High Risk Components</div>
+                <div class="dash-kpi-value">{total_high_risk}</div>
+                <div class="dash-kpi-note">Across saved BOMs</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1541,10 +1543,10 @@ if app_mode == "Dashboard":
     with kpi_4:
         st.markdown(
             f"""
-            <div class="brc-kpi">
-                <div class="brc-kpi-label">Alternatives Found</div>
-                <div class="brc-kpi-value">{alternatives_found}</div>
-                <div class="brc-kpi-note">Recommended candidates</div>
+            <div class="dash-kpi">
+                <div class="dash-kpi-label">Alternatives Found</div>
+                <div class="dash-kpi-value">{alternatives_found}</div>
+                <div class="dash-kpi-note">Recommended candidates</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1552,13 +1554,14 @@ if app_mode == "Dashboard":
 
     st.write("")
 
-    trend_col, distribution_col = st.columns([1.45, 1])
+    # -------- Portfolio analytics --------
+    left_col, right_col = st.columns([1.45, 1])
 
-    with trend_col:
+    with left_col:
         st.markdown(
             """
-            <div class="brc-panel-title">BOM Risk Trend</div>
-            <div class="brc-panel-copy">Average BOM health score over time.</div>
+            <div class="dash-section-title" style="font-size:24px;">Portfolio Health Trend</div>
+            <p class="dash-section-copy">Average BOM health score over time.</p>
             """,
             unsafe_allow_html=True,
         )
@@ -1573,11 +1576,11 @@ if app_mode == "Dashboard":
         else:
             st.info("Run at least two BOM analyses to generate a risk trend.")
 
-    with distribution_col:
+    with right_col:
         st.markdown(
             """
-            <div class="brc-panel-title">Risk Distribution</div>
-            <div class="brc-panel-copy">Component risk breakdown across saved BOMs.</div>
+            <div class="dash-section-title" style="font-size:24px;">Risk Distribution</div>
+            <p class="dash-section-copy">Component risk breakdown across saved BOMs.</p>
             """,
             unsafe_allow_html=True,
         )
@@ -1592,25 +1595,27 @@ if app_mode == "Dashboard":
         else:
             st.info("Risk distribution will appear after your first BOM analysis.")
 
+    # -------- Engineering snapshot --------
     st.markdown(
         f"""
-        <div class="brc-alert-card">
-            <h3 style="margin: 0 0 8px 0; font-size: 24px;">Latest engineering snapshot</h3>
-            <p class="brc-alert-muted" style="margin: 0;">
-                Latest saved project: <b>{latest_project}</b>. Current average health is <b>{avg_health_score}</b>, with <b>{total_high_risk}</b> high-risk components across saved BOMs.
+        <div class="dash-dark-panel">
+            <h3 style="margin:0 0 8px 0;font-size:24px;">Latest engineering snapshot</h3>
+            <p class="dash-dark-muted" style="margin:0;">
+                Latest saved project: <b>{latest_project}</b>. Current average health is <b>{avg_health_score}</b>,
+                with <b>{total_high_risk}</b> high-risk components across saved BOMs.
             </p>
-            <div class="brc-mini-grid">
-                <div class="brc-mini-stat">
-                    <div class="brc-mini-stat-label">Latest Health</div>
-                    <div class="brc-mini-stat-value">{latest_health}</div>
+            <div class="dash-mini-grid">
+                <div class="dash-mini-stat">
+                    <div class="dash-mini-label">Latest Health</div>
+                    <div class="dash-mini-value">{latest_health}</div>
                 </div>
-                <div class="brc-mini-stat">
-                    <div class="brc-mini-stat-label">Total Components</div>
-                    <div class="brc-mini-stat-value">{total_components}</div>
+                <div class="dash-mini-stat">
+                    <div class="dash-mini-label">Latest Parts</div>
+                    <div class="dash-mini-value">{latest_parts}</div>
                 </div>
-                <div class="brc-mini-stat">
-                    <div class="brc-mini-stat-label">Saved BOMs</div>
-                    <div class="brc-mini-stat-value">{total_analyses}</div>
+                <div class="dash-mini-stat">
+                    <div class="dash-mini-label">Latest High Risk</div>
+                    <div class="dash-mini-value">{latest_high_risk}</div>
                 </div>
             </div>
         </div>
@@ -1618,12 +1623,11 @@ if app_mode == "Dashboard":
         unsafe_allow_html=True,
     )
 
-    st.divider()
-
+    # -------- Recent analyses + saved analysis actions --------
     st.markdown(
         """
-        <div class="dashboard-section-title" style="font-size: 28px;">Recent Analyses</div>
-        <p class="dashboard-section-copy">Your latest saved BOM reviews and risk results.</p>
+        <div class="dash-section-title">Recent Analyses</div>
+        <p class="dash-section-copy">Open saved BOM reviews, inspect risk history, or remove old analyses.</p>
         """,
         unsafe_allow_html=True,
     )
@@ -1632,24 +1636,26 @@ if app_mode == "Dashboard":
 
     if not history:
         st.info("No saved BOM analyses yet.")
-
     else:
         history_df = pd.DataFrame(history)
         summary_df = history_df.copy()
         summary_df["created_at"] = pd.to_datetime(summary_df["created_at"]).dt.strftime("%Y-%m-%d")
 
-        summary_display_df = summary_df[
-            [
-                "project_name",
-                "filename",
-                "created_at",
-                "total_parts",
-                "health_score",
-                "high_risk_count",
-                "medium_risk_count",
-                "low_risk_count",
-            ]
-        ].rename(
+        expected_cols = [
+            "project_name",
+            "filename",
+            "created_at",
+            "total_parts",
+            "health_score",
+            "high_risk_count",
+            "medium_risk_count",
+            "low_risk_count",
+        ]
+        for col in expected_cols:
+            if col not in summary_df.columns:
+                summary_df[col] = ""
+
+        summary_display_df = summary_df[expected_cols].rename(
             columns={
                 "project_name": "Project Name",
                 "filename": "Uploaded File",
@@ -1663,16 +1669,17 @@ if app_mode == "Dashboard":
         )
 
         st.dataframe(
-            summary_display_df.head(8),
+            summary_display_df.head(10),
             use_container_width=True,
             hide_index=True,
         )
 
-        st.markdown("### Open Saved Analysis")
+        st.markdown("### Open or delete a saved analysis")
 
         analysis_options = {
-            f"{row['project_name']} — {row['created_at']}": row["id"]
+            f"{row.get('project_name') or row.get('filename', 'Untitled')} — {row.get('created_at', '')}": row["id"]
             for _, row in history_df.drop_duplicates(subset=["id"]).iterrows()
+            if "id" in row
         }
 
         if analysis_options:
@@ -1714,14 +1721,14 @@ if app_mode == "Dashboard":
                         )
 
                         saved_results_df["Best Source"] = ""
-                        saved_results_df["Total Market Stock"] = saved_results_df["Stock Available"]
+                        saved_results_df["Total Market Stock"] = saved_results_df["Stock Available"] if "Stock Available" in saved_results_df.columns else 0
                         saved_results_df["Sources Available"] = ""
                         saved_results_df["Lead Time Weeks"] = None
                         saved_results_df["Product URL"] = ""
                         saved_results_df["Has Alternates"] = False
                         saved_results_df["Alternate Count"] = 0
                         saved_results_df["Alternative Part Numbers"] = ""
-                        saved_results_df["Normalized MPN"] = saved_results_df["MPN"]
+                        saved_results_df["Normalized MPN"] = saved_results_df["MPN"] if "MPN" in saved_results_df.columns else ""
 
                         st.session_state["results_df"] = saved_results_df
                         st.success("Saved analysis loaded. Open BOM Analyzer to view the loaded results.")
@@ -1760,6 +1767,48 @@ if app_mode == "Dashboard":
 
                     except Exception as e:
                         st.error(f"Could not delete saved analysis: {e}")
+
+    # -------- Quick actions --------
+    st.divider()
+    st.markdown(
+        """
+        <div class="dash-section-title">Quick Actions</div>
+        <p class="dash-section-copy">Jump into the most common engineering workflows.</p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    qa_1, qa_2, qa_3 = st.columns(3)
+    with qa_1:
+        st.markdown(
+            """
+            <div class="dash-action-card">
+                <div class="dash-action-title">Upload a BOM</div>
+                <div class="dash-action-copy">Use BOM Analyzer to review lifecycle, sourcing, and risk exposure.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with qa_2:
+        st.markdown(
+            """
+            <div class="dash-action-card">
+                <div class="dash-action-title">Find Alternatives</div>
+                <div class="dash-action-copy">Search compatible replacement parts and compare supplier availability.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with qa_3:
+        st.markdown(
+            """
+            <div class="dash-action-card">
+                <div class="dash-action-title">Monitor Alerts</div>
+                <div class="dash-action-copy">Review lifecycle, stock, and price changes across monitored components.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.stop()
 
