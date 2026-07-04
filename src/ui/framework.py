@@ -1,134 +1,114 @@
-from __future__ import annotations
-
-from pathlib import Path
-from typing import Any, Optional
-
-import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
+
+CADIVOR_PRIMARY = "#2563EB"
+CADIVOR_TEXT = "#0F172A"
+CADIVOR_MUTED = "#64748B"
+CADIVOR_BORDER = "#E5E7EB"
+CADIVOR_BG = "#F6F8FB"
+CADIVOR_SURFACE = "#FFFFFF"
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-CSS_CANDIDATES = [
-    ROOT_DIR / "assets" / "css" / "premium.css",
-    ROOT_DIR / "src" / "assets" / "css" / "premium.css",
-]
-ASSET_CSS_PATH = next((path for path in CSS_CANDIDATES if path.exists()), CSS_CANDIDATES[0])
-
-
-def inject_premium_css() -> None:
-    """Inject the shared premium CSS file once per run."""
+def inject_premium_css():
+    """Inject the Cadivor Design System v1.0 CSS."""
     try:
-        css = ASSET_CSS_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError:
+        with open("src/css/premium.css", "r", encoding="utf-8") as css_file:
+            css = css_file.read()
+    except Exception:
         css = ""
-    if css:
-        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
-def _safe_text(value: Any, fallback: str = "") -> str:
-    if value is None:
-        return fallback
-    return str(value)
-
-
-def user_initials(email: str | None) -> str:
-    if not email:
-        return "U"
-    local = email.split("@")[0].replace(".", " ").replace("_", " ").strip()
-    parts = [p for p in local.split() if p]
-    if not parts:
-        return email[:1].upper()
-    return "".join(p[0].upper() for p in parts[:2])
-
-
-def render_topbar(current_user: Optional[dict] = None, active_page: str = "Dashboard") -> None:
-    """Render compact top navigation with logo left and user info right."""
+def render_topbar(current_user=None, app_mode="Dashboard"):
+    """Render the Cadivor application top bar."""
     email = ""
-    name = "Workspace"
     if current_user:
-        email = _safe_text(current_user.get("email", ""))
-        name = _safe_text(current_user.get("full_name") or current_user.get("name") or "Workspace")
-    initials = user_initials(email)
+        email = current_user.get("email", "") if isinstance(current_user, dict) else getattr(current_user, "email", "")
+    initials = "C"
+    if email:
+        initials = email[0].upper()
+
     st.markdown(
         f"""
-        <div class="brc-topbar">
-          <div class="brc-topbar-left">
-            <div class="brc-logo-mark">B</div>
+        <div class="cadivor-topbar">
+            <div class="cadivor-brand">
+                <div class="cadivor-logo-mark">C</div>
+                <div>
+                    <div class="cadivor-logo-text">Cadivor</div>
+                    <div class="cadivor-logo-subtitle">Engineering Intelligence</div>
+                </div>
+            </div>
+            <div class="cadivor-topbar-center">{app_mode}</div>
+            <div class="cadivor-user">
+                <div class="cadivor-user-meta">
+                    <div class="cadivor-user-label">Workspace</div>
+                    <div class="cadivor-user-email">{email}</div>
+                </div>
+                <div class="cadivor-avatar">{initials}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def page_header(title, subtitle="", action_label=None):
+    st.markdown(
+        f"""
+        <div class="cadivor-page-header">
             <div>
-              <div class="brc-topbar-title">BOM Risk Checker</div>
-              <div class="brc-topbar-subtitle">{active_page} · Engineering sourcing intelligence</div>
+                <h1>{title}</h1>
+                <p>{subtitle}</p>
             </div>
-          </div>
-          <div class="brc-topbar-right">
-            <div class="brc-user-chip">
-              <div class="brc-user-avatar">{initials}</div>
-              <div class="brc-user-meta">
-                <div class="brc-user-name">{name}</div>
-                <div class="brc-user-email">{email}</div>
-              </div>
-            </div>
-          </div>
+            {f'<div class="cadivor-page-action">{action_label}</div>' if action_label else ''}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def status_badge(label: str, kind: str = "info") -> str:
-    class_name = {
-        "success": "brc-badge-success",
-        "warning": "brc-badge-warning",
-        "danger": "brc-badge-danger",
-        "info": "brc-badge-info",
-    }.get(kind, "")
-    return f'<span class="brc-badge {class_name}">{label}</span>'
-
-
-def metric_card(label: str, value: Any, badge: str = "", badge_kind: str = "info") -> None:
-    badge_html = status_badge(badge, badge_kind) if badge else ""
+def metric_card(title, value, status="", kind="info"):
+    kind_class = f"cadivor-badge-{kind}" if kind else "cadivor-badge-info"
     st.markdown(
         f"""
-        <div class="kpi-card">
-          <div class="kpi-label">{label}</div>
-          <div class="kpi-value">{value}</div>
-          <div class="kpi-note">{badge_html}</div>
+        <div class="cadivor-metric-card">
+            <div class="cadivor-metric-title">{title}</div>
+            <div class="cadivor-metric-value">{value}</div>
+            {f'<div class="cadivor-badge {kind_class}">{status}</div>' if status else ''}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def page_header(title: str, subtitle: str = "", eyebrow: str = "") -> None:
-    eyebrow_html = f'<div class="brc-eyebrow">{eyebrow}</div>' if eyebrow else ""
-    st.markdown(
-        f"""
-        <div class="brc-hero">
-          {eyebrow_html}
-          <div class="brc-hero-title">{title}</div>
-          <p class="brc-hero-subtitle">{subtitle}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def light_plotly_layout(fig: Any, height: int = 360) -> Any:
-    """Apply the shared light Plotly theme."""
+def light_plotly_layout(fig, height=340):
+    """Apply Cadivor's light chart style to a Plotly figure."""
     fig.update_layout(
         height=height,
-        plot_bgcolor="#FFFFFF",
         paper_bgcolor="#FFFFFF",
-        font=dict(color="#0F172A", family="Inter, Segoe UI, sans-serif"),
-        margin=dict(l=40, r=24, t=28, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        plot_bgcolor="#FFFFFF",
+        font=dict(color="#0F172A", family="Inter, Arial, sans-serif"),
+        margin=dict(l=28, r=20, t=30, b=28),
+        xaxis=dict(
+            showgrid=True,
+            gridcolor="#E5E7EB",
+            zeroline=False,
+            linecolor="#CBD5E1",
+            tickfont=dict(color="#64748B"),
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="#E5E7EB",
+            zeroline=False,
+            linecolor="#CBD5E1",
+            tickfont=dict(color="#64748B"),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+        ),
     )
-    fig.update_xaxes(gridcolor="#E5E7EB", zerolinecolor="#E5E7EB", linecolor="#CBD5E1")
-    fig.update_yaxes(gridcolor="#E5E7EB", zerolinecolor="#E5E7EB", linecolor="#CBD5E1")
     return fig
-
-
-def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy suitable for display without mutating business data."""
-    if df is None:
-        return pd.DataFrame()
-    return df.copy()
