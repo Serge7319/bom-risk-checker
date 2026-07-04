@@ -27,6 +27,7 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
+from src.ui.framework import inject_premium_css, render_topbar, page_header, metric_card, light_plotly_layout
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -405,7 +406,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
-cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else None
+cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else _FallbackCookieManager()
 
 if "access_token" not in st.session_state:
     auth_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
@@ -958,72 +959,14 @@ if st.sidebar.button("Clear Analysis"):
     st.rerun()
 
 
-st.markdown(
-    """
-    <div class="brc-hero">
-        <div class="brc-eyebrow">📦 BOM Risk Intelligence</div>
-        <div class="brc-hero-title">BOM Risk Checker</div>
-        <p class="brc-hero-subtitle">Supply chain risk intelligence and alternative component analysis for engineering teams.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Suppliers Integrated</div>
-            <div class="kpi-value">3</div>
-            <div class="kpi-note">Mouser, DigiKey, Newark</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col2:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Risk Engine</div>
-            <div class="kpi-value">Active</div>
-            <div class="kpi-note">Live scoring enabled</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col3:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Alternative Finder</div>
-            <div class="kpi-value">Enabled</div>
-            <div class="kpi-note">Ranked candidates</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col4:
-    st.markdown(
-        """
-        <div class="kpi-card">
-            <div class="kpi-label">Export Support</div>
-            <div class="kpi-value">CSV/XLSX</div>
-            <div class="kpi-note">Reports ready</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+# ---------- Shared UI Framework ----------
+inject_premium_css()
+render_topbar(current_user, app_mode)
 
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
-    brc_page_hero()
-    st.subheader("Dashboard")
-    st.caption("Overview of your BOM activity, risk exposure, and recommended sourcing work.")
+    page_header("Dashboard", "Monitor BOM risk, review recent analyses, and keep sourcing decisions moving from one executive dashboard.", "BOM Risk Intelligence")
 
     analysis_response = (
         supabase.table("analyses")
