@@ -283,7 +283,7 @@ def show_auth_ui(supabase, cookie_manager=None):
     )
 
     # Query-param controlled auth route. The landing page stays purely marketing.
-    # Sign In / Get Started / Start Free Trial open this compact auth page instead
+    # Sign In / Get Started / Get Started open this compact auth page instead
     # of rendering a login form halfway down the public landing page.
     auth_route = None
     try:
@@ -527,13 +527,13 @@ def show_auth_ui(supabase, cookie_manager=None):
             }
             </style>
             <div class="brc-auth-logo-wrap">
-              <div class="brc-auth-logo-mark">B</div>
-              <div class="brc-auth-logo-title">BOM Risk Checker</div>
-              <div class="brc-auth-logo-subtitle">Secure BOM intelligence for engineering and sourcing teams.</div>
+              <div class="brc-auth-logo-mark">C</div>
+              <div class="brc-auth-logo-title">Cadivor</div>
+              <div class="brc-auth-logo-subtitle">Engineering intelligence for modern electronics teams.</div>
             </div>
             <div class="brc-auth-heading">Access your workspace</div>
-            <p class="brc-auth-copy">Sign in to continue, or create an account to start reviewing BOM risk.</p>
-            <div class="brc-auth-strip">🔒 Your BOMs, saved analyses, reports, recommendations, and subscription usage stay connected to this account.</div>
+            <p class="brc-auth-copy">Sign in to Cadivor, or create a workspace to run your first BOM through Cadivor.</p>
+            <div class="brc-auth-strip">🔒 Your BOMs, saved analyses, reports, recommendations, and subscription usage stay connected to your Cadivor workspace.</div>
             <div class="brc-auth-divider"></div>
             """,
             unsafe_allow_html=True,
@@ -554,7 +554,7 @@ def show_auth_ui(supabase, cookie_manager=None):
             st.markdown(
                 """
                 <div class="brc-terms-box">
-                  <strong>Terms summary:</strong> BOM Risk Checker provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.
+                  <strong>Terms summary:</strong> Cadivor provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -563,17 +563,19 @@ def show_auth_ui(supabase, cookie_manager=None):
             with st.expander("View Terms of Service draft"):
                 st.markdown(
                     """
-                    **BOM Risk Checker Terms of Service — Draft Placeholder**
+                    **Cadivor Terms of Service — Draft Placeholder**
 
-                    By creating an account, you agree that BOM Risk Checker provides software-based component lifecycle, sourcing, supplier, and alternative-part intelligence for informational and decision-support purposes only. You remain responsible for independent engineering review, datasheet validation, supplier confirmation, regulatory review, procurement decisions, and production release decisions.
+                    By creating an account, you agree that Cadivor provides software-based component lifecycle, sourcing, supplier, and alternative-part intelligence for informational and decision-support purposes only. Cadivor does not replace professional engineering judgment, datasheet review, supplier confirmation, regulatory review, qualification testing, procurement review, or production release approval.
 
-                    You agree not to upload unlawful, confidential third-party, export-controlled, or restricted data unless you have the right to do so. You retain ownership of your uploaded BOM data, but grant the service permission to process it for analysis, reporting, account usage tracking, and product improvement.
+                    You remain solely responsible for validating every component, alternative, compatibility claim, lifecycle status, supplier listing, stock level, pricing estimate, lead time, export classification, regulatory requirement, and manufacturing decision before using any output from Cadivor in a real product or production workflow.
 
-                    The service may include data from third-party suppliers, distributors, APIs, or public sources. Availability, lifecycle status, pricing, lead times, and alternate recommendations may be incomplete, delayed, or inaccurate. The service is provided “as is” without warranties of uninterrupted availability, accuracy, merchantability, or fitness for a particular purpose.
+                    You agree not to upload unlawful, confidential third-party, export-controlled, restricted, regulated, or sensitive data unless you have the legal right and authority to do so. You retain ownership of your uploaded BOM data, but grant Cadivor permission to process it for analysis, reporting, account usage tracking, security, support, and product improvement.
 
-                    To the maximum extent permitted by law, the company is not liable for indirect, incidental, consequential, special, punitive, procurement, production, recall, lost-profit, or business interruption damages arising from use of the service. Your sole remedy is to stop using the service.
+                    Cadivor may include data from third-party suppliers, distributors, APIs, public sources, and AI-assisted analysis. Availability, lifecycle status, pricing, lead times, and alternative recommendations may be incomplete, delayed, inaccurate, or unsuitable for your specific design. Cadivor is provided “as is” and “as available” without warranties of uninterrupted availability, accuracy, merchantability, non-infringement, or fitness for a particular purpose.
 
-                    The company may suspend accounts for abuse, misuse, nonpayment, security risk, or violation of these terms. These terms should be reviewed by a qualified attorney before launch and updated with the final company name, domain, privacy practices, billing terms, governing law, and support contact.
+                    To the maximum extent permitted by law, Cadivor and its owners, officers, employees, contractors, and affiliates are not liable for indirect, incidental, consequential, special, punitive, procurement, production, recall, lost-profit, lost-data, business interruption, design failure, regulatory, or manufacturing damages arising from use of the service. Your sole remedy is to stop using the service.
+
+                    Cadivor may suspend or terminate accounts for abuse, misuse, nonpayment, security risk, violation of these terms, or activity that may harm the service or other users. These terms are a draft placeholder and should be reviewed by a qualified attorney before launch and updated with the final company legal entity, domain, privacy practices, billing terms, governing law, support contact, and dispute process.
                     """
                 )
 
@@ -621,7 +623,7 @@ def show_auth_ui(supabase, cookie_manager=None):
         """
         <div class="brc-public-page">
           <div class="auth-nav">
-            <div class="auth-logo"><div class="auth-logo-mark">B</div><span>BOM Risk Checker</span></div>
+            <div class="auth-logo"><div class="auth-logo-mark">C</div><span>Cadivor</span></div>
             <div class="auth-nav-links">
               <a href="#features">Features</a>
               <a href="#solutions">Solutions</a>
@@ -633,22 +635,22 @@ def show_auth_ui(supabase, cookie_manager=None):
           </div>
           <div class="auth-hero-grid">
             <div>
-              <div class="auth-eyebrow">AI-powered supply chain intelligence</div>
-              <h1 class="auth-title">Reduce BOM Risk.<br><span class="blue">Find Better Alternatives.</span></h1>
-              <p class="auth-subtitle">Analyze component lifecycle, supplier risk, and market availability in seconds. Make smarter sourcing decisions and keep your products moving.</p>
+              <div class="auth-eyebrow">Engineering intelligence for electronics teams</div>
+              <h1 class="auth-title">Reduce BOM Risk.<br><span class="blue">Run it through Cadivor.</span></h1>
+              <p class="auth-subtitle">Identify lifecycle risk, discover compatible alternatives, monitor supply chains, and make sourcing decisions with confidence.</p>
               <div class="auth-cta-row">
-                <a class="auth-primary-cta" href="?auth=signup">Start Free Trial</a>
+                <a class="auth-primary-cta" href="?auth=signup">Get Started</a>
                 <a class="auth-secondary-cta" href="#features">See How It Works</a>
               </div>
               <div class="auth-proof-row">
                 <span><span class="auth-proof-dot">✓</span>No credit card required</span>
-                <span><span class="auth-proof-dot">✓</span>AI-powered risk scoring</span>
+                <span><span class="auth-proof-dot">✓</span>AI-assisted risk insights</span>
                 <span><span class="auth-proof-dot">✓</span>CSV & Excel export</span>
               </div>
             </div>
             <div class="product-window">
               <div class="product-window-top">
-                <div class="product-brand"><span class="product-mini-logo">B</span><span>BOM Risk Checker</span></div>
+                <div class="product-brand"><span class="product-mini-logo">C</span><span>Cadivor</span></div>
                 <div style="color:#94A3B8;font-weight:850;font-size:12px;">Live workspace</div>
               </div>
               <div class="product-app">
@@ -696,11 +698,11 @@ def show_auth_ui(supabase, cookie_manager=None):
         """
         <div class="brc-public-page" id="features">
           <div class="trusted-band">
-            <div class="trusted-label">Trusted by engineering and supply chain teams</div>
-            <div class="trusted-logos"><span>Honeywell</span><span>PHILIPS</span><span>flex</span><span>SIEMENS</span><span>BOSCH</span><span>molex</span></div>
+            <div class="trusted-label">Built for engineering and sourcing teams</div>
+            <div class="trusted-logos"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>CSV</span><span>Excel</span><span>Octopart soon</span></div>
           </div>
           <div class="feature-section">
-            <h2 class="section-title">Everything you need to manage BOM risk</h2>
+            <h2 class="section-title">Everything you need to review BOM risk with confidence</h2>
             <div class="feature-grid">
               <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle & Obsolescence Analysis</strong><span>Identify EOL, NRND, and at-risk components before they impact your product.</span></div>
               <div class="feature-card"><div class="feature-icon">◌</div><strong>Supplier & Market Intelligence</strong><span>Access supplier risk, lead times, and availability data in one place.</span></div>
@@ -708,7 +710,7 @@ def show_auth_ui(supabase, cookie_manager=None):
               <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Component Finder</strong><span>Find fit, form, and function alternatives ranked by risk, availability, and cost.</span></div>
             </div>
           </div>
-          <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Join engineering teams building more resilient products.</span></div><a class="auth-primary-cta" href="?auth=signup">Start Free Trial</a></div>
+          <div class="bottom-cta"><div><strong>Ready to run your first BOM through Cadivor?</strong><span>Identify risk, compare alternatives, and build more resilient electronics products.</span></div><a class="auth-primary-cta" href="?auth=signup">Get Started</a></div>
         </div>
         """,
         unsafe_allow_html=True,
