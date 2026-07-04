@@ -296,186 +296,137 @@ def show_auth_ui(supabase, cookie_manager=None):
         st.markdown(
             """
             <style>
+            [data-testid="stToolbar"], [data-testid="stDecoration"] { display:none!important; }
             .block-container{
-                max-width:1400px!important;
-                width:96vw!important;
-                padding-top:1.25rem!important;
+                max-width:520px!important;
+                width:min(520px,92vw)!important;
+                margin:8vh auto 0 auto!important;
+                padding:34px 36px 30px 36px!important;
+                background:#FFFFFF!important;
+                border:1px solid #E2E8F0!important;
+                border-top:6px solid #2563EB!important;
+                border-radius:22px!important;
+                box-shadow:0 30px 80px rgba(15,23,42,.14)!important;
             }
-            .brc-auth-clean-shell{
-                min-height:calc(100vh - 80px);
+            html, body, .stApp, [data-testid="stAppViewContainer"]{
+                background:
+                    linear-gradient(rgba(37,99,235,.035) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(37,99,235,.035) 1px, transparent 1px),
+                    #F6F8FB!important;
+                background-size:36px 36px!important;
+                color:#0F172A!important;
+            }
+            [data-testid="stHeader"]{
+                background:transparent!important;
+                border-bottom:0!important;
+            }
+            section[data-testid="stSidebar"] { display:none!important; }
+            .brc-auth-logo-wrap{
                 display:flex;
                 flex-direction:column;
                 align-items:center;
-                justify-content:flex-start;
-                padding-top:22px;
+                text-align:center;
+                margin:0 0 24px 0;
             }
-            .brc-auth-clean-nav{
-                width:100%;
-                max-width:1220px;
-                display:flex;
-                align-items:center;
-                justify-content:space-between;
-                margin:0 auto 42px auto;
-            }
-            .brc-auth-brand{
-                display:flex;
-                align-items:center;
-                gap:12px;
-                font-weight:950;
-                color:#0F172A!important;
-                letter-spacing:-.02em;
-                font-size:18px;
-            }
-            .brc-auth-mark{
-                width:42px;
-                height:42px;
-                border-radius:13px;
+            .brc-auth-logo-mark{
+                width:52px;
+                height:52px;
+                border-radius:16px;
                 display:grid;
                 place-items:center;
-                background:linear-gradient(135deg,#3B82F6,#2563EB);
+                background:linear-gradient(135deg,#3B82F6,#1D4ED8);
                 color:#FFFFFF!important;
+                font-weight:950;
+                font-size:24px;
                 box-shadow:0 18px 38px rgba(37,99,235,.28);
+                margin-bottom:14px;
             }
-            .brc-auth-back{
+            .brc-auth-logo-title{
+                color:#0F172A!important;
+                font-size:24px;
+                line-height:1;
+                font-weight:950;
+                letter-spacing:-.04em;
+                margin-bottom:7px;
+            }
+            .brc-auth-logo-subtitle{
+                color:#64748B!important;
+                font-size:13px;
+                font-weight:650;
+                line-height:1.5;
+                max-width:360px;
+            }
+            .brc-auth-heading{
+                color:#0F172A!important;
+                font-size:25px;
+                font-weight:950;
+                letter-spacing:-.045em;
+                margin:0 0 6px 0;
+            }
+            .brc-auth-copy{
+                color:#64748B!important;
+                font-size:14px;
+                line-height:1.55;
+                margin:0 0 18px 0;
+            }
+            .brc-auth-strip{
+                display:flex;
+                align-items:flex-start;
+                gap:10px;
+                background:#F8FAFC;
+                border:1px solid #E2E8F0;
+                border-radius:14px;
+                padding:12px 13px;
+                color:#475569!important;
+                font-size:12.5px;
+                font-weight:750;
+                line-height:1.45;
+                margin:0 0 18px 0;
+            }
+            .brc-auth-divider{
+                height:1px;
+                background:#E5E7EB;
+                margin:18px -36px 20px -36px;
+            }
+            .brc-auth-back-link{
+                display:block;
+                text-align:center;
                 color:#334155!important;
                 text-decoration:none!important;
+                font-size:13px;
                 font-weight:850;
-                background:#FFFFFF;
-                border:1px solid #E2E8F0;
-                border-radius:999px;
-                padding:10px 15px;
-                box-shadow:0 10px 26px rgba(15,23,42,.06);
-            }
-            .brc-auth-layout{
-                width:100%;
-                max-width:1220px;
-                display:grid;
-                grid-template-columns:minmax(420px,.86fr) minmax(420px,1fr);
-                gap:34px;
-                align-items:start;
-                margin:0 auto;
-            }
-            .brc-auth-value-card{
-                background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 55%,#EFF6FF 100%);
-                border:1px solid #E2E8F0;
-                border-radius:28px;
-                padding:42px;
-                box-shadow:0 28px 80px rgba(15,23,42,.09);
-                min-height:520px;
-                position:relative;
-                overflow:hidden;
-            }
-            .brc-auth-value-card:before{
-                content:"";
-                position:absolute;
-                width:420px;
-                height:420px;
-                border-radius:999px;
-                background:radial-gradient(circle, rgba(37,99,235,.16), transparent 68%);
-                right:-170px;
-                top:-160px;
-            }
-            .brc-auth-value-card > *{position:relative;z-index:1;}
-            .brc-auth-card-title{
-                color:#0F172A!important;
-                font-size:44px;
-                line-height:1.02;
-                letter-spacing:-.065em;
-                font-weight:950;
-                margin:20px 0 18px 0;
-            }
-            .brc-auth-card-copy{
-                color:#475569!important;
-                font-size:16px;
-                line-height:1.7;
-                max-width:560px;
-                margin:0 0 28px 0;
-            }
-            .brc-auth-benefits{
-                display:grid;
-                gap:12px;
-                margin-top:24px;
-            }
-            .brc-auth-benefit{
-                background:rgba(255,255,255,.78);
-                border:1px solid #E2E8F0;
-                border-radius:17px;
-                padding:15px 16px;
-                display:flex;
-                gap:12px;
-                align-items:flex-start;
-                box-shadow:0 10px 24px rgba(15,23,42,.04);
-            }
-            .brc-auth-benefit-dot{
-                width:26px;
-                height:26px;
-                border-radius:9px;
-                display:grid;
-                place-items:center;
-                background:#EFF6FF;
-                color:#2563EB!important;
-                font-weight:950;
-                flex:0 0 auto;
-            }
-            .brc-auth-benefit strong{
-                display:block;
-                color:#0F172A!important;
-                font-size:14px;
-                margin-bottom:3px;
-            }
-            .brc-auth-benefit span{
-                color:#64748B!important;
-                font-size:13px;
-                line-height:1.45;
-            }
-            .brc-auth-form-card{
-                background:#FFFFFF;
-                border:1px solid #E2E8F0;
-                border-radius:28px;
-                padding:38px 40px 34px 40px;
-                box-shadow:0 28px 80px rgba(15,23,42,.12);
-            }
-            .brc-auth-form-card h1{
-                color:#0F172A!important;
-                font-size:32px!important;
-                font-weight:950!important;
-                letter-spacing:-.05em!important;
-                margin:0 0 8px 0!important;
-            }
-            .brc-auth-muted{
-                color:#64748B!important;
-                font-size:14px;
-                margin:0 0 20px 0;
-                line-height:1.55;
-            }
-            .brc-auth-secure-strip{
-                background:#F8FAFC;
-                border:1px solid #E5E7EB;
-                border-radius:15px;
-                padding:12px 14px;
-                color:#475569!important;
-                font-size:13px;
-                font-weight:750;
-                margin:6px 0 20px 0;
+                margin-top:16px;
             }
             .brc-terms-box{
                 background:#F8FAFC;
                 border:1px solid #E2E8F0;
-                border-radius:16px;
-                padding:14px 16px;
+                border-radius:14px;
+                padding:12px 13px;
                 color:#475569!important;
                 font-size:12px;
                 line-height:1.55;
-                margin-top:8px;
+                margin:8px 0 4px 0;
             }
             div[data-testid="stRadio"]{
                 background:#F8FAFC!important;
                 border:1px solid #E5E7EB!important;
-                border-radius:16px!important;
-                padding:12px 14px 8px 14px!important;
-                box-shadow:none!important;
+                border-radius:14px!important;
+                padding:11px 13px 7px 13px!important;
+                margin-bottom:14px!important;
             }
-            div[data-testid="stRadio"] > label{font-weight:850!important;color:#334155!important;}
+            div[data-testid="stRadio"] > label{
+                color:#334155!important;
+                font-weight:850!important;
+                font-size:13px!important;
+            }
+            div[data-testid="stRadio"] label, div[data-testid="stRadio"] p{
+                color:#0F172A!important;
+                font-weight:750!important;
+            }
+            div[data-testid="stTextInput"] label, div[data-testid="stCheckbox"] label{
+                color:#334155!important;
+                font-weight:800!important;
+            }
             div[data-testid="stTextInput"] input{
                 background:#FFFFFF!important;
                 border:1px solid #CBD5E1!important;
@@ -488,9 +439,10 @@ def show_auth_ui(supabase, cookie_manager=None):
                 border-color:#2563EB!important;
                 box-shadow:0 0 0 4px rgba(37,99,235,.13)!important;
             }
-            div[data-testid="stCheckbox"] label, div[data-testid="stCheckbox"] p{
+            div[data-testid="stCheckbox"] p{
                 color:#334155!important;
-                font-weight:750!important;
+                font-weight:700!important;
+                font-size:13px!important;
             }
             div.stButton > button{
                 width:100%!important;
@@ -502,39 +454,31 @@ def show_auth_ui(supabase, cookie_manager=None):
                 font-weight:900!important;
                 box-shadow:0 18px 34px rgba(37,99,235,.25)!important;
             }
-            div.stButton > button *{color:#FFFFFF!important;}
-            @media(max-width:980px){
-                .brc-auth-layout{grid-template-columns:1fr;}
-                .brc-auth-value-card{min-height:auto;}
+            div.stButton > button:hover{
+                background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;
+                border-color:#1D4ED8!important;
+                color:#FFFFFF!important;
             }
+            div.stButton > button *{color:#FFFFFF!important;}
             @media(max-width:700px){
-                .block-container{width:100%!important;padding-left:1rem!important;padding-right:1rem!important;}
-                .brc-auth-clean-nav{flex-direction:column;align-items:flex-start;gap:14px;margin-bottom:24px;}
-                .brc-auth-layout{gap:18px;}
-                .brc-auth-value-card,.brc-auth-form-card{padding:26px 22px;border-radius:22px;}
-                .brc-auth-card-title{font-size:34px;}
+                .block-container{
+                    margin:3vh auto 0 auto!important;
+                    width:94vw!important;
+                    padding:26px 22px 24px 22px!important;
+                    border-radius:18px!important;
+                }
+                .brc-auth-divider{margin-left:-22px;margin-right:-22px;}
             }
             </style>
-            <div class="brc-auth-clean-shell">
-              <div class="brc-auth-clean-nav">
-                <div class="brc-auth-brand"><div class="brc-auth-mark">B</div><span>BOM Risk Checker</span></div>
-                <a class="brc-auth-back" href="?">← Back to Home</a>
-              </div>
-              <div class="brc-auth-layout">
-                <section class="brc-auth-value-card">
-                  <div class="auth-eyebrow">Secure BOM workspace</div>
-                  <div class="brc-auth-card-title">Access your engineering dashboard.</div>
-                  <p class="brc-auth-card-copy">Review BOM health, supplier coverage, lifecycle exposure, and recommended alternatives from one connected workspace.</p>
-                  <div class="brc-auth-benefits">
-                    <div class="brc-auth-benefit"><div class="brc-auth-benefit-dot">✓</div><div><strong>Protected project history</strong><span>Your saved BOM analyses and reports stay connected to your account.</span></div></div>
-                    <div class="brc-auth-benefit"><div class="brc-auth-benefit-dot">↗</div><div><strong>Supplier intelligence workflow</strong><span>Move from risk detection to alternate-part review without losing context.</span></div></div>
-                    <div class="brc-auth-benefit"><div class="brc-auth-benefit-dot">▣</div><div><strong>Export-ready decisions</strong><span>Keep engineering and sourcing teams aligned with downloadable reports.</span></div></div>
-                  </div>
-                </section>
-                <section class="brc-auth-form-card">
-                  <h1>Welcome back</h1>
-                  <p class="brc-auth-muted">Sign in to continue, or create an account to start reviewing BOM risk.</p>
-                  <div class="brc-auth-secure-strip">🔒 Secure access for BOMs, reports, alternatives, and subscription usage.</div>
+            <div class="brc-auth-logo-wrap">
+              <div class="brc-auth-logo-mark">B</div>
+              <div class="brc-auth-logo-title">BOM Risk Checker</div>
+              <div class="brc-auth-logo-subtitle">Secure BOM intelligence for engineering and sourcing teams.</div>
+            </div>
+            <div class="brc-auth-heading">Access your workspace</div>
+            <p class="brc-auth-copy">Sign in to continue, or create an account to start reviewing BOM risk.</p>
+            <div class="brc-auth-strip">🔒 Your BOMs, saved analyses, reports, recommendations, and subscription usage stay connected to this account.</div>
+            <div class="brc-auth-divider"></div>
             """,
             unsafe_allow_html=True,
         )
@@ -546,15 +490,15 @@ def show_auth_ui(supabase, cookie_manager=None):
             index=options.index(initial_mode),
             horizontal=True,
         )
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
+        email = st.text_input("Email", placeholder="you@company.com")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
 
         accepted_terms = True
         if auth_mode == "Create Account":
             st.markdown(
                 """
                 <div class="brc-terms-box">
-                  <strong>Terms summary:</strong> By creating an account, you agree to use the service only for lawful BOM analysis and sourcing review. Results are decision-support outputs, not a substitute for engineering validation, datasheet review, supplier confirmation, or legal/regulatory advice. You are responsible for verifying all component, lifecycle, availability, pricing, and alternate-part recommendations before use in production.
+                  <strong>Terms summary:</strong> BOM Risk Checker provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -578,7 +522,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                 )
 
         submit = st.button("Create Account" if auth_mode == "Create Account" else "Login")
-        st.markdown("</section></div></div>", unsafe_allow_html=True)
+        st.markdown('<a class="brc-auth-back-link" href="?">← Back to Home</a>', unsafe_allow_html=True)
 
         if submit:
             if not email or not password:
