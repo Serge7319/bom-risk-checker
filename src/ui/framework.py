@@ -7,7 +7,12 @@ import pandas as pd
 import streamlit as st
 
 
-ASSET_CSS_PATH = Path(__file__).resolve().parents[2] / "assets" / "css" / "premium.css"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+CSS_CANDIDATES = [
+    ROOT_DIR / "assets" / "css" / "premium.css",
+    ROOT_DIR / "src" / "assets" / "css" / "premium.css",
+]
+ASSET_CSS_PATH = next((path for path in CSS_CANDIDATES if path.exists()), CSS_CANDIDATES[0])
 
 
 def inject_premium_css() -> None:
