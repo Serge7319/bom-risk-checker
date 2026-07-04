@@ -298,22 +298,19 @@ def show_auth_ui(supabase, cookie_manager=None):
             <style>
             [data-testid="stToolbar"], [data-testid="stDecoration"] { display:none!important; }
             .block-container{
-                max-width:520px!important;
-                width:min(520px,92vw)!important;
-                margin:8vh auto 0 auto!important;
-                padding:34px 36px 30px 36px!important;
+                max-width:540px!important;
+                width:min(540px,92vw)!important;
+                margin:7vh auto 0 auto!important;
+                padding:38px 38px 34px 38px!important;
                 background:#FFFFFF!important;
                 border:1px solid #E2E8F0!important;
                 border-top:6px solid #2563EB!important;
                 border-radius:22px!important;
-                box-shadow:0 30px 80px rgba(15,23,42,.14)!important;
+                box-shadow:0 28px 70px rgba(15,23,42,.13)!important;
+                overflow:visible!important;
             }
             html, body, .stApp, [data-testid="stAppViewContainer"]{
-                background:
-                    linear-gradient(rgba(37,99,235,.035) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(37,99,235,.035) 1px, transparent 1px),
-                    #F6F8FB!important;
-                background-size:36px 36px!important;
+                background:#F3F5F8!important;
                 color:#0F172A!important;
             }
             [data-testid="stHeader"]{
@@ -427,17 +424,48 @@ def show_auth_ui(supabase, cookie_manager=None):
                 color:#334155!important;
                 font-weight:800!important;
             }
-            div[data-testid="stTextInput"] input{
+            div[data-testid="stTextInput"]{
+                overflow:visible!important;
+                margin-bottom:14px!important;
+            }
+            div[data-testid="stTextInput"] > div{
+                overflow:visible!important;
+            }
+            div[data-baseweb="input"]{
                 background:#FFFFFF!important;
                 border:1px solid #CBD5E1!important;
                 border-radius:12px!important;
-                min-height:46px!important;
+                min-height:48px!important;
+                box-shadow:none!important;
+                overflow:hidden!important;
+            }
+            div[data-baseweb="input"]:focus-within{
+                border-color:#2563EB!important;
+                box-shadow:0 0 0 4px rgba(37,99,235,.12)!important;
+            }
+            div[data-testid="stTextInput"] input{
+                background:transparent!important;
+                border:0!important;
+                border-radius:12px!important;
+                min-height:48px!important;
                 color:#0F172A!important;
                 box-shadow:none!important;
+                padding-left:14px!important;
+                padding-right:42px!important;
             }
             div[data-testid="stTextInput"] input:focus{
-                border-color:#2563EB!important;
-                box-shadow:0 0 0 4px rgba(37,99,235,.13)!important;
+                border:0!important;
+                outline:none!important;
+                box-shadow:none!important;
+            }
+            div[data-testid="stTextInput"] button{
+                min-height:48px!important;
+                height:48px!important;
+                width:44px!important;
+                border:0!important;
+                background:#FFFFFF!important;
+                border-radius:0 12px 12px 0!important;
+                box-shadow:none!important;
             }
             div[data-testid="stCheckbox"] p{
                 color:#334155!important;
@@ -464,7 +492,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                 .block-container{
                     margin:3vh auto 0 auto!important;
                     width:94vw!important;
-                    padding:26px 22px 24px 22px!important;
+                    padding:28px 22px 28px 22px!important;
                     border-radius:18px!important;
                 }
                 .brc-auth-divider{margin-left:-22px;margin-right:-22px;}
