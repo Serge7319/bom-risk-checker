@@ -1,5 +1,6 @@
 import streamlit as st
 from datetime import datetime, timedelta
+from textwrap import dedent
 
 
 def _set_auth_cookie(cookie_manager, session, key: str):
@@ -127,6 +128,7 @@ def _auth_css():
         /* Auth route */
         .auth-card-header{text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
         div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}div[data-testid="stRadio"] label,div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}div[data-testid="stTextInput"] label,div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;}div[data-testid="stTextInput"] > div{overflow:visible!important;}div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}div[data-testid="stTextInput"] [data-baseweb="input"]::before,div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}div[data-testid="stTextInput"] [data-baseweb="input"] > div,div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}div[data-testid="stTextInput"] input,div[data-testid="stTextInput"] input[type="text"],div[data-testid="stTextInput"] input[type="password"],div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}div[data-testid="stTextInput"] input:focus,div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}div[data-testid="stTextInput"] button:focus,div[data-testid="stTextInput"] button:focus-visible{outline:0!important;box-shadow:none!important;}div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}div.stButton > button{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}div.stButton > button:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}div.stButton > button *{color:#fff!important;}
+        .page-section{padding-top:34px!important;min-height:56vh;} .compact-section{padding-top:34px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
         @media(max-width:1200px){.cadivor-hero{grid-template-columns:1fr;padding:44px;}.product-window{max-width:900px}.trusted-logos{grid-template-columns:repeat(3,1fr)}.feature-grid,.solution-grid,.pricing-grid{grid-template-columns:repeat(2,1fr)}.how-grid{grid-template-columns:repeat(2,1fr)}}
         @media(max-width:760px){.block-container{width:100%!important;padding-left:1rem!important;padding-right:1rem!important}.cadivor-nav{align-items:flex-start;flex-direction:column}.cadivor-nav-links{flex-wrap:wrap;gap:14px}.cadivor-hero{padding:28px;min-height:auto;border-radius:22px}.product-app{grid-template-columns:1fr}.product-side{display:none}.product-kpis,.product-panels,.feature-grid,.solution-grid,.pricing-grid,.faq-grid{grid-template-columns:1fr}.trusted-logos{grid-template-columns:repeat(2,1fr);font-size:20px}.bottom-cta,.footer{flex-direction:column;align-items:flex-start}.how-grid{grid-template-columns:1fr}}
         </style>
@@ -223,133 +225,203 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 st.error(f"Login failed: {error}")
 
 
-def _render_landing_page():
-    st.markdown(
-        """
-        <div class="cadivor-public">
-          <div class="cadivor-nav">
-            <a class="cadivor-brand" href="?" style="text-decoration:none!important;"><div class="cadivor-mark">C</div><span>Cadivor</span></a>
-            <div class="cadivor-nav-links">
-              <a href="#features">Features</a>
-              <a href="#solutions">Solutions</a>
-              <a href="#pricing">Pricing</a>
-              <a href="#resources">Resources</a>
-              <a href="?auth=login" class="cadivor-signin">Sign In</a>
-              <a href="?auth=signup" class="cadivor-nav-cta">Get Started</a>
-            </div>
-          </div>
 
-          <section class="cadivor-hero">
-            <div class="cadivor-hero-content">
-              <div class="cadivor-eyebrow">Engineering intelligence for electronics teams</div>
-              <h1 class="cadivor-title">Run every BOM<br><span class="blue">through Cadivor.</span></h1>
-              <p class="cadivor-subtitle">Detect lifecycle risks, uncover compatible alternatives, monitor supplier health, and make sourcing decisions with confidence.</p>
-              <div class="cadivor-cta-row">
-                <a class="cadivor-primary" href="?auth=signup">Get Started</a>
-                <a class="cadivor-secondary" href="#how-it-works">See How It Works</a>
-              </div>
-              <div class="cadivor-proof">
-                <span><span class="cadivor-check">✓</span>No credit card required</span>
-                <span><span class="cadivor-check">✓</span>AI-assisted risk insights</span>
-                <span><span class="cadivor-check">✓</span>CSV & Excel export</span>
-              </div>
-            </div>
+def _html(markup: str):
+    """Render HTML without Markdown indentation turning it into a code block."""
+    st.markdown(dedent(markup).strip(), unsafe_allow_html=True)
 
-            <div class="product-window">
-              <div class="product-top"><div class="product-brand"><span class="product-logo">C</span><span>Cadivor</span></div><div style="color:#94A3B8;font-weight:850;font-size:12px;">Live workspace</div></div>
-              <div class="product-app">
-                <div class="product-side">
-                  <div class="product-nav active">⌂ Dashboard</div>
-                  <div class="product-nav">▦ BOM Analyzer</div>
-                  <div class="product-nav">◌ Analyses</div>
-                  <div class="product-nav">✦ Alternative Finder</div>
-                  <div class="product-nav">▣ Reports</div>
-                  <div class="product-nav">⚙ Settings</div>
-                </div>
-                <div class="product-main">
-                  <div class="product-heading"><strong>Dashboard</strong><span class="product-btn">+ New Analysis</span></div>
-                  <div class="product-kpis">
-                    <div class="product-kpi"><span>Overall BOM Risk</span><strong>72</strong></div>
-                    <div class="product-kpi"><span>High Risk</span><strong>18</strong></div>
-                    <div class="product-kpi"><span>Alternatives</span><strong>78</strong></div>
-                  </div>
-                  <div class="product-panels">
-                    <div class="product-panel"><strong style="color:#0F172A!important;">BOM Risk Trend</strong><div class="line-chart"><svg viewBox="0 0 420 100"><polyline points="0,30 60,35 120,62 180,50 240,76 300,80 360,54 420,38" fill="none" stroke="#2563EB" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><g fill="#2563EB"><circle cx="0" cy="30" r="4"/><circle cx="60" cy="35" r="4"/><circle cx="120" cy="62" r="4"/><circle cx="180" cy="50" r="4"/><circle cx="240" cy="76" r="4"/><circle cx="300" cy="80" r="4"/><circle cx="360" cy="54" r="4"/><circle cx="420" cy="38" r="4"/></g></svg></div></div>
-                    <div class="product-panel"><strong style="color:#0F172A!important;">Risk Distribution</strong><div class="donut-wrap"><div class="donut"><div class="donut-inner">100</div></div><div class="risk-legend"><div><span class="legend-red"></span>High Risk</div><div><span class="legend-amber"></span>Medium Risk</div><div><span class="legend-green"></span>Low Risk</div></div></div></div>
-                  </div>
-                  <div class="product-table">
-                    <div class="product-row product-head"><div class="product-cell">File Name</div><div class="product-cell">Date</div><div class="product-cell">Components</div><div class="product-cell">Risk</div><div class="product-cell">Action</div></div>
-                    <div class="product-row"><div class="product-cell">Industrial_Controller_BOM.xlsx</div><div class="product-cell">May 12</div><div class="product-cell">100</div><div class="product-cell">Medium</div><div class="product-cell">View</div></div>
-                    <div class="product-row"><div class="product-cell">Power_Supply_RevB.csv</div><div class="product-cell">May 11</div><div class="product-cell">78</div><div class="product-cell">Low</div><div class="product-cell">View</div></div>
-                    <div class="product-row"><div class="product-cell">IoT_Device_BOM.xlsx</div><div class="product-cell">May 10</div><div class="product-cell">80</div><div class="product-cell">High</div><div class="product-cell">View</div></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
 
-          <div class="trusted-label">Built for engineering and sourcing teams</div>
-          <div class="trusted-logos"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>CSV</span><span>Excel</span><span>Octopart soon</span></div>
-
-          <section class="cadivor-section" id="how-it-works">
-            <div class="section-heading"><h2>How Cadivor works</h2><p>Move from uploaded BOM to reviewable engineering decisions in a clear, repeatable workflow.</p></div>
-            <div class="how-grid">
-              <div class="how-card"><div class="step-num">1</div><strong>Upload BOM</strong><span>Import CSV or Excel files with part numbers and quantities.</span></div>
-              <div class="how-card"><div class="step-num">2</div><strong>Analyze risk</strong><span>Cadivor checks lifecycle, supplier coverage, inventory, and sourcing exposure.</span></div>
-              <div class="how-card"><div class="step-num">3</div><strong>Review issues</strong><span>See high-risk parts, supplier limitations, and lifecycle warnings in one place.</span></div>
-              <div class="how-card"><div class="step-num">4</div><strong>Find alternatives</strong><span>Compare compatible replacement candidates ranked by engineering and sourcing confidence.</span></div>
-              <div class="how-card"><div class="step-num">5</div><strong>Export reports</strong><span>Generate engineering-ready reports for sourcing, procurement, and management review.</span></div>
-            </div>
-          </section>
-
-          <section class="cadivor-section" id="features">
-            <div class="section-heading"><h2>Everything you need to review BOM risk with confidence</h2><p>Cadivor combines supplier intelligence, engineering rules, and AI-assisted analysis to help teams make better component decisions.</p></div>
-            <div class="feature-grid">
-              <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle Intelligence</strong><span>Identify EOL, NRND, replacement-suggested, and unknown lifecycle components before they affect production.</span></div>
-              <div class="feature-card"><div class="feature-icon">◌</div><strong>Supplier Intelligence</strong><span>Review stock, supplier concentration, lead time, and availability signals across integrated suppliers.</span></div>
-              <div class="feature-card"><div class="feature-icon">↗</div><strong>AI-Assisted Risk Scoring</strong><span>Prioritize components using lifecycle, sourcing, inventory, and supplier factors without overselling automation.</span></div>
-              <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Finder</strong><span>Find compatible replacements ranked by availability, lifecycle health, sourcing confidence, and implementation risk.</span></div>
-              <div class="feature-card"><div class="feature-icon">▤</div><strong>Executive Reports</strong><span>Export clear BOM health reports that engineering, sourcing, and leadership teams can review together.</span></div>
-              <div class="feature-card"><div class="feature-icon">◎</div><strong>Monitoring</strong><span>Track saved parts for stock, lifecycle, and supplier changes that may affect ongoing projects.</span></div>
-            </div>
-          </section>
-
-          <section class="cadivor-section" id="solutions">
-            <div class="section-heading"><h2>Built for the teams behind modern electronics</h2><p>Cadivor gives each team a shared view of component risk without replacing engineering review.</p></div>
-            <div class="solution-grid">
-              <div class="solution-card"><strong>Electronics Engineers</strong><span>Validate component risk before design release.</span><ul><li>Review lifecycle status</li><li>Compare replacements</li><li>Document engineering concerns</li></ul></div>
-              <div class="solution-card"><strong>Procurement Teams</strong><span>Understand supplier and market exposure earlier.</span><ul><li>Check stock and supplier count</li><li>Track sourcing concentration</li><li>Prepare alternate sourcing paths</li></ul></div>
-              <div class="solution-card"><strong>Engineering Managers</strong><span>See portfolio-level BOM health and reporting.</span><ul><li>Monitor saved analyses</li><li>Review high-risk projects</li><li>Export decision-ready reports</li></ul></div>
-            </div>
-          </section>
-
-          <section class="cadivor-section" id="pricing">
-            <div class="section-heading"><h2>Simple plans for BOM review workflows</h2><p>Start small, then scale as your team reviews more projects and monitors more parts.</p></div>
-            <div class="pricing-grid">
-              <div class="pricing-card"><div class="pricing-name">Starter</div><div class="pricing-price">$29/mo</div><p>For individual engineers reviewing smaller BOMs.</p><ul><li>5 BOMs/month</li><li>10 parts per BOM</li><li>CSV/XLSX export</li></ul><a class="cadivor-secondary" href="?auth=signup">Get Started</a></div>
-              <div class="pricing-card"><div class="pricing-name">Pro</div><div class="pricing-price">$99/mo</div><p>For engineers reviewing multiple BOMs.</p><ul><li>10 BOMs/month</li><li>20 parts per BOM</li><li>Alternative Finder</li><li>Supplier intelligence</li></ul><a class="cadivor-primary" href="?auth=signup">Start Pro</a></div>
-              <div class="pricing-card"><div class="pricing-name">Business</div><div class="pricing-price">$299/mo</div><p>For teams standardizing BOM risk review.</p><ul><li>25 BOMs/month</li><li>100 parts per BOM</li><li>Advanced reports</li><li>Team workflows</li></ul><a class="cadivor-secondary" href="?auth=signup">Start Business</a></div>
-              <div class="pricing-card"><div class="pricing-name">Enterprise</div><div class="pricing-price">Custom</div><p>For organizations with broader component intelligence needs.</p><ul><li>Higher limits</li><li>Custom workflows</li><li>Priority support</li><li>Supplier integrations</li></ul><a class="cadivor-secondary" href="?auth=signup">Contact Us</a></div>
-            </div>
-          </section>
-
-          <section class="cadivor-section" id="resources">
-            <div class="section-heading"><h2>Resources</h2><p>Documentation, examples, and engineering guidance will live here as Cadivor grows.</p></div>
-            <div class="faq-grid">
-              <div class="faq-card"><strong>What file formats are supported?</strong><span>Cadivor supports CSV and Excel BOM files with part number and quantity columns.</span></div>
-              <div class="faq-card"><strong>Does Cadivor replace engineering review?</strong><span>No. Cadivor is a decision-support tool. Engineers remain responsible for datasheet, supplier, and production validation.</span></div>
-              <div class="faq-card"><strong>Which suppliers are supported?</strong><span>Current integrations include DigiKey, Mouser, and Newark, with Octopart planned.</span></div>
-              <div class="faq-card"><strong>Can I export reports?</strong><span>Yes. Cadivor supports report exports for engineering and sourcing review.</span></div>
-            </div>
-          </section>
-
-          <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Run it through Cadivor and review supplier, lifecycle, and alternative-part intelligence in minutes.</span></div><a class="cadivor-primary" href="?auth=signup">Get Started</a></div>
-          <footer class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="#features">Features</a><a href="#solutions">Solutions</a><a href="#pricing">Pricing</a><a href="#resources">Resources</a><a href="?auth=login">Sign In</a></div></footer>
-        </div>
-        """,
-        unsafe_allow_html=True,
+def _nav(active: str = "home"):
+    items = [("features", "Features"), ("solutions", "Solutions"), ("pricing", "Pricing"), ("resources", "Resources")]
+    links = "".join(
+        f'<a class="{"active" if key == active else ""}" href="?public={key}">{label}</a>'
+        for key, label in items
     )
+    _html(f"""
+    <div class="cadivor-public">
+      <div class="cadivor-nav">
+        <a class="cadivor-brand" href="?" style="text-decoration:none!important;">
+          <div class="cadivor-mark">C</div><span>Cadivor</span>
+        </a>
+        <div class="cadivor-nav-links">
+          {links}
+          <a href="?auth=login" class="cadivor-signin">Sign In</a>
+          <a href="?auth=signup" class="cadivor-nav-cta">Get Started</a>
+        </div>
+      </div>
+    </div>
+    """)
 
+
+def _dashboard_mockup():
+    return """
+    <div class="product-window">
+      <div class="product-top">
+        <div class="product-brand"><span class="product-logo">C</span><span>Cadivor</span></div>
+        <div style="color:#94A3B8;font-weight:850;font-size:12px;">Live workspace</div>
+      </div>
+      <div class="product-app">
+        <div class="product-side">
+          <div class="product-nav active">⌂ Dashboard</div>
+          <div class="product-nav">▦ BOM Analyzer</div>
+          <div class="product-nav">◌ Analyses</div>
+          <div class="product-nav">✦ Alternative Finder</div>
+          <div class="product-nav">▣ Reports</div>
+          <div class="product-nav">⚙ Settings</div>
+        </div>
+        <div class="product-main">
+          <div class="product-heading"><strong>Dashboard</strong><span class="product-btn">+ New Analysis</span></div>
+          <div class="product-kpis">
+            <div class="product-kpi"><span>Overall BOM Risk</span><strong>72</strong></div>
+            <div class="product-kpi"><span>High Risk</span><strong>18</strong></div>
+            <div class="product-kpi"><span>Alternatives</span><strong>78</strong></div>
+          </div>
+          <div class="product-panels">
+            <div class="product-panel"><strong style="color:#0F172A!important;">BOM Risk Trend</strong><div class="line-chart"><svg viewBox="0 0 420 100"><polyline points="0,30 60,35 120,62 180,50 240,76 300,80 360,54 420,38" fill="none" stroke="#2563EB" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><g fill="#2563EB"><circle cx="0" cy="30" r="4"/><circle cx="60" cy="35" r="4"/><circle cx="120" cy="62" r="4"/><circle cx="180" cy="50" r="4"/><circle cx="240" cy="76" r="4"/><circle cx="300" cy="80" r="4"/><circle cx="360" cy="54" r="4"/><circle cx="420" cy="38" r="4"/></g></svg></div></div>
+            <div class="product-panel"><strong style="color:#0F172A!important;">Risk Distribution</strong><div class="donut-wrap"><div class="donut"><div class="donut-inner">100</div></div><div class="risk-legend"><div><span class="legend-red"></span>High Risk</div><div><span class="legend-amber"></span>Medium Risk</div><div><span class="legend-green"></span>Low Risk</div></div></div></div>
+          </div>
+          <div class="product-table">
+            <div class="product-row product-head"><div class="product-cell">File Name</div><div class="product-cell">Date</div><div class="product-cell">Components</div><div class="product-cell">Risk</div><div class="product-cell">Action</div></div>
+            <div class="product-row"><div class="product-cell">Industrial_Controller_BOM.xlsx</div><div class="product-cell">May 12</div><div class="product-cell">100</div><div class="product-cell">Medium</div><div class="product-cell">View</div></div>
+            <div class="product-row"><div class="product-cell">Power_Supply_RevB.csv</div><div class="product-cell">May 11</div><div class="product-cell">78</div><div class="product-cell">Low</div><div class="product-cell">View</div></div>
+            <div class="product-row"><div class="product-cell">IoT_Device_BOM.xlsx</div><div class="product-cell">May 10</div><div class="product-cell">80</div><div class="product-cell">High</div><div class="product-cell">View</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+
+
+def _render_home_page():
+    _nav("home")
+    _html(f"""
+    <div class="cadivor-public">
+      <section class="cadivor-hero">
+        <div class="cadivor-hero-content">
+          <div class="cadivor-eyebrow">Engineering intelligence for electronics teams</div>
+          <h1 class="cadivor-title">Run every BOM<br><span class="blue">through Cadivor.</span></h1>
+          <p class="cadivor-subtitle">Detect lifecycle risks, uncover compatible alternatives, monitor supplier health, and make sourcing decisions with confidence.</p>
+          <div class="cadivor-cta-row">
+            <a class="cadivor-primary" href="?auth=signup">Get Started</a>
+            <a class="cadivor-secondary" href="?public=features">See How It Works</a>
+          </div>
+          <div class="cadivor-proof">
+            <span><span class="cadivor-check">✓</span>No credit card required</span>
+            <span><span class="cadivor-check">✓</span>AI-assisted risk insights</span>
+            <span><span class="cadivor-check">✓</span>CSV & Excel export</span>
+          </div>
+        </div>
+        {_dashboard_mockup()}
+      </section>
+      <div class="trusted-label">Built for engineering and sourcing teams</div>
+      <div class="trusted-logos"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>CSV</span><span>Excel</span><span>Octopart soon</span></div>
+      <section class="cadivor-section" id="overview">
+        <div class="section-heading"><h2>Engineering BOM review without the spreadsheet chaos</h2><p>Cadivor gives teams a cleaner way to review lifecycle, sourcing, risk, and alternative-part intelligence before issues reach production.</p></div>
+        <div class="feature-grid">
+          <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle Intelligence</strong><span>Find lifecycle and obsolescence risk earlier.</span></div>
+          <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Finder</strong><span>Compare better replacement candidates with sourcing context.</span></div>
+          <div class="feature-card"><div class="feature-icon">▤</div><strong>Executive Reports</strong><span>Export clean reports for engineering and sourcing review.</span></div>
+        </div>
+      </section>
+      <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Run it through Cadivor and review supplier, lifecycle, and alternative-part intelligence in minutes.</span></div><a class="cadivor-primary" href="?auth=signup">Get Started</a></div>
+    </div>
+    """)
+
+
+def _render_features_page():
+    _nav("features")
+    _html("""
+    <div class="cadivor-public">
+      <section class="cadivor-section page-section" id="features">
+        <div class="section-heading"><h2>How Cadivor works</h2><p>Move from uploaded BOM to reviewable engineering decisions in a clear, repeatable workflow.</p></div>
+        <div class="how-grid">
+          <div class="how-card"><div class="step-num">1</div><strong>Upload BOM</strong><span>Import CSV or Excel files with part numbers and quantities.</span></div>
+          <div class="how-card"><div class="step-num">2</div><strong>Analyze risk</strong><span>Cadivor checks lifecycle, supplier coverage, inventory, and sourcing exposure.</span></div>
+          <div class="how-card"><div class="step-num">3</div><strong>Review issues</strong><span>See high-risk parts, supplier limitations, and lifecycle warnings in one place.</span></div>
+          <div class="how-card"><div class="step-num">4</div><strong>Find alternatives</strong><span>Compare replacement candidates ranked by engineering and sourcing confidence.</span></div>
+          <div class="how-card"><div class="step-num">5</div><strong>Export reports</strong><span>Generate engineering-ready reports for sourcing, procurement, and management review.</span></div>
+        </div>
+      </section>
+      <section class="cadivor-section compact-section">
+        <div class="section-heading"><h2>Everything you need to review BOM risk with confidence</h2><p>Cadivor combines supplier intelligence, engineering rules, and AI-assisted analysis to help teams make better component decisions.</p></div>
+        <div class="feature-grid">
+          <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle Intelligence</strong><span>Identify EOL, NRND, replacement-suggested, and unknown lifecycle components before they affect production.</span></div>
+          <div class="feature-card"><div class="feature-icon">◌</div><strong>Supplier Intelligence</strong><span>Review stock, supplier concentration, lead time, and availability signals across integrated suppliers.</span></div>
+          <div class="feature-card"><div class="feature-icon">↗</div><strong>AI-Assisted Risk Scoring</strong><span>Prioritize components using lifecycle, sourcing, inventory, and supplier factors without overselling automation.</span></div>
+          <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Finder</strong><span>Find compatible replacements ranked by availability, lifecycle health, sourcing confidence, and implementation risk.</span></div>
+          <div class="feature-card"><div class="feature-icon">▤</div><strong>Executive Reports</strong><span>Export clear BOM health reports that engineering, sourcing, and leadership teams can review together.</span></div>
+          <div class="feature-card"><div class="feature-icon">◎</div><strong>Monitoring</strong><span>Track saved parts for stock, lifecycle, and supplier changes that may affect ongoing projects.</span></div>
+        </div>
+      </section>
+    </div>
+    """)
+
+
+def _render_solutions_page():
+    _nav("solutions")
+    _html("""
+    <div class="cadivor-public">
+      <section class="cadivor-section page-section" id="solutions">
+        <div class="section-heading"><h2>Built for the teams behind modern electronics</h2><p>Cadivor gives each team a shared view of component risk without replacing engineering review.</p></div>
+        <div class="solution-grid">
+          <div class="solution-card"><strong>Electronics Engineers</strong><span>Validate component risk before design release.</span><ul><li>Review lifecycle status</li><li>Compare replacements</li><li>Document engineering concerns</li></ul></div>
+          <div class="solution-card"><strong>Procurement Teams</strong><span>Understand supplier and market exposure earlier.</span><ul><li>Check stock and supplier count</li><li>Track sourcing concentration</li><li>Prepare alternate sourcing paths</li></ul></div>
+          <div class="solution-card"><strong>Engineering Managers</strong><span>See portfolio-level BOM health and reporting.</span><ul><li>Monitor saved analyses</li><li>Review high-risk projects</li><li>Export decision-ready reports</li></ul></div>
+        </div>
+      </section>
+    </div>
+    """)
+
+
+def _render_pricing_page():
+    _nav("pricing")
+    _html("""
+    <div class="cadivor-public">
+      <section class="cadivor-section page-section" id="pricing">
+        <div class="section-heading"><h2>Simple plans for BOM review workflows</h2><p>Start small, then scale as your team reviews more projects and monitors more parts.</p></div>
+        <div class="pricing-grid">
+          <div class="pricing-card"><div class="pricing-name">Starter</div><div class="pricing-price">$29/mo</div><p>For individual engineers reviewing smaller BOMs.</p><ul><li>5 BOMs/month</li><li>10 parts per BOM</li><li>CSV/XLSX export</li></ul><a class="cadivor-secondary" href="?auth=signup">Get Started</a></div>
+          <div class="pricing-card"><div class="pricing-name">Pro</div><div class="pricing-price">$99/mo</div><p>For engineers reviewing multiple BOMs.</p><ul><li>10 BOMs/month</li><li>20 parts per BOM</li><li>Alternative Finder</li><li>Supplier intelligence</li></ul><a class="cadivor-primary" href="?auth=signup">Start Pro</a></div>
+          <div class="pricing-card"><div class="pricing-name">Business</div><div class="pricing-price">$299/mo</div><p>For teams standardizing BOM risk review.</p><ul><li>25 BOMs/month</li><li>100 parts per BOM</li><li>Advanced reports</li><li>Team workflows</li></ul><a class="cadivor-secondary" href="?auth=signup">Start Business</a></div>
+          <div class="pricing-card"><div class="pricing-name">Enterprise</div><div class="pricing-price">Custom</div><p>For organizations with broader component intelligence needs.</p><ul><li>Higher limits</li><li>Custom workflows</li><li>Priority support</li><li>Supplier integrations</li></ul><a class="cadivor-secondary" href="?auth=signup">Contact Us</a></div>
+        </div>
+      </section>
+    </div>
+    """)
+
+
+def _render_resources_page():
+    _nav("resources")
+    _html("""
+    <div class="cadivor-public">
+      <section class="cadivor-section page-section" id="resources">
+        <div class="section-heading"><h2>Resources</h2><p>Documentation, examples, and engineering guidance will live here as Cadivor grows.</p></div>
+        <div class="faq-grid">
+          <div class="faq-card"><strong>What file formats are supported?</strong><span>Cadivor supports CSV and Excel BOM files with part number and quantity columns.</span></div>
+          <div class="faq-card"><strong>Does Cadivor replace engineering review?</strong><span>No. Cadivor is a decision-support tool. Engineers remain responsible for datasheet, supplier, and production validation.</span></div>
+          <div class="faq-card"><strong>Which suppliers are supported?</strong><span>Current integrations include DigiKey, Mouser, and Newark, with Octopart planned.</span></div>
+          <div class="faq-card"><strong>Can I export reports?</strong><span>Yes. Cadivor supports report exports for engineering and sourcing review.</span></div>
+        </div>
+      </section>
+    </div>
+    """)
+
+
+def _render_landing_page():
+    try:
+        page = st.query_params.get("public", "home")
+    except Exception:
+        page = "home"
+    if page == "features":
+        _render_features_page()
+    elif page == "solutions":
+        _render_solutions_page()
+    elif page == "pricing":
+        _render_pricing_page()
+    elif page == "resources":
+        _render_resources_page()
+    else:
+        _render_home_page()
 
 def show_auth_ui(supabase, cookie_manager=None):
     """Cadivor public landing page and authentication flow."""
