@@ -1,6 +1,361 @@
-/* BOM Risk Checker Premium UI Framework v2.7.0
-   Phase 2: premium landing + dashboard foundation.
-   Single source of truth for colors, layout, cards, tables, charts, forms, buttons. */
+
+/* Cadivor Design System v1.0
+   Engineering intelligence for modern electronics teams.
+   Brand phrase: Run it through Cadivor. */
+
+:root {
+  --brc-bg: #f6f8fb;
+  --brc-surface: #ffffff;
+  --brc-surface-soft: #f8fafc;
+  --brc-border: #e5e7eb;
+  --brc-border-strong: #cbd5e1;
+  --brc-text: #0f172a;
+  --brc-muted: #64748b;
+  --brc-muted-2: #94a3b8;
+  --brc-blue: #2563eb;
+  --brc-blue-dark: #1d4ed8;
+  --brc-blue-soft: #eff6ff;
+  --brc-green: #16a34a;
+  --brc-green-soft: #ecfdf5;
+  --brc-amber: #f59e0b;
+  --brc-amber-soft: #fffbeb;
+  --brc-red: #dc2626;
+  --brc-red-soft: #fef2f2;
+  --brc-radius-sm: 6px;
+  --brc-radius-md: 10px;
+  --brc-radius-lg: 14px;
+  --brc-radius-xl: 18px;
+  --brc-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --brc-shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.055);
+  --brc-shadow-md: 0 16px 42px rgba(15, 23, 42, 0.07);
+}
+
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+  background: var(--brc-bg) !important;
+  color: var(--brc-text) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+[data-testid="stHeader"] {
+  background: rgba(246, 248, 251, .94) !important;
+  border-bottom: 1px solid var(--brc-border) !important;
+  backdrop-filter: blur(10px);
+}
+
+.main .block-container,
+.block-container {
+  max-width: 1480px !important;
+  padding-top: 1.15rem !important;
+  padding-left: 1.8rem !important;
+  padding-right: 1.8rem !important;
+  padding-bottom: 3.5rem !important;
+}
+
+.cadivor-topbar {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20px;
+  background: #ffffff;
+  border: 1px solid var(--brc-border);
+  border-radius: 18px;
+  padding: 13px 16px;
+  box-shadow: var(--brc-shadow-sm);
+  margin: 0 0 18px 0;
+}
+
+.cadivor-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cadivor-logo-mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff !important;
+  font-size: 18px;
+  font-weight: 950;
+  box-shadow: 0 12px 24px rgba(37,99,235,.22);
+}
+
+.cadivor-logo-text {
+  color: var(--brc-text) !important;
+  font-weight: 950;
+  letter-spacing: -.035em;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.cadivor-logo-subtitle {
+  color: var(--brc-muted) !important;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.cadivor-topbar-center {
+  color: var(--brc-text) !important;
+  font-weight: 850;
+  font-size: 14px;
+  background: #f8fafc;
+  border: 1px solid var(--brc-border);
+  border-radius: 999px;
+  padding: 8px 13px;
+}
+
+.cadivor-user {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.cadivor-user-meta {
+  text-align: right;
+}
+
+.cadivor-user-label {
+  color: var(--brc-muted-2) !important;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.cadivor-user-email {
+  color: var(--brc-text) !important;
+  font-size: 12px;
+  font-weight: 750;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cadivor-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb !important;
+  font-weight: 950;
+}
+
+.cadivor-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 18px 0 18px 0;
+}
+
+.cadivor-page-header h1 {
+  color: var(--brc-text) !important;
+  font-size: 38px;
+  line-height: 1.05;
+  margin: 0 0 7px 0;
+  font-weight: 950;
+  letter-spacing: -.045em;
+}
+
+.cadivor-page-header p {
+  color: var(--brc-muted) !important;
+  font-size: 14px;
+  margin: 0;
+}
+
+.cadivor-metric-card {
+  background: #fff;
+  border: 1px solid var(--brc-border);
+  border-radius: 16px;
+  padding: 18px 18px 16px 18px;
+  min-height: 116px;
+  box-shadow: var(--brc-shadow-sm);
+}
+
+.cadivor-metric-title {
+  color: var(--brc-muted) !important;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: none;
+  margin-bottom: 11px;
+}
+
+.cadivor-metric-value {
+  color: var(--brc-text) !important;
+  font-size: 36px;
+  line-height: 1;
+  font-weight: 950;
+  margin-bottom: 10px;
+}
+
+.cadivor-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 850;
+  border: 1px solid transparent;
+}
+
+.cadivor-badge-success { background: #ecfdf5; color: #047857 !important; border-color: #bbf7d0; }
+.cadivor-badge-warning { background: #fffbeb; color: #b45309 !important; border-color: #fde68a; }
+.cadivor-badge-danger { background: #fef2f2; color: #b91c1c !important; border-color: #fecaca; }
+.cadivor-badge-info { background: #eff6ff; color: #1d4ed8 !important; border-color: #bfdbfe; }
+
+.card, .search-card, .recommendation-card, div[data-testid="stMetric"], div[data-testid="stExpander"] {
+  background: #ffffff !important;
+  border: 1px solid var(--brc-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--brc-shadow-sm) !important;
+}
+
+.card {
+  padding: 22px 24px !important;
+  margin-top: 14px !important;
+  margin-bottom: 16px !important;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--brc-text) !important;
+  margin-bottom: 7px;
+}
+
+.card-text {
+  font-size: 14px;
+  color: var(--brc-muted) !important;
+  line-height: 1.6;
+}
+
+/* Premium tables: light, compact, enterprise. */
+div[data-testid="stDataFrame"],
+div[data-testid="stTable"] {
+  background: #ffffff !important;
+  border: 1px solid var(--brc-border) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  box-shadow: var(--brc-shadow-xs) !important;
+}
+
+div[data-testid="stDataFrame"] *,
+div[data-testid="stTable"] * {
+  color: var(--brc-text) !important;
+}
+
+div[data-testid="stDataFrame"] [role="columnheader"],
+div[data-testid="stDataFrame"] [role="gridcell"] {
+  background-color: #ffffff !important;
+  color: var(--brc-text) !important;
+  border-color: #e5e7eb !important;
+}
+
+div[data-testid="stDataFrame"] [role="columnheader"] {
+  background-color: #f8fafc !important;
+  font-weight: 850 !important;
+}
+
+/* Inputs */
+input, textarea, select,
+div[data-baseweb="input"] > div,
+div[data-baseweb="select"] > div,
+div[data-testid="stFileUploader"] section {
+  background: #ffffff !important;
+  color: var(--brc-text) !important;
+  border-color: var(--brc-border-strong) !important;
+  border-radius: 10px !important;
+}
+
+div[data-baseweb="input"] input,
+div[data-baseweb="select"] span,
+textarea {
+  color: var(--brc-text) !important;
+}
+
+div[data-baseweb="input"] > div:focus-within,
+div[data-baseweb="select"] > div:focus-within {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12) !important;
+}
+
+/* Buttons */
+div.stButton > button,
+div[data-testid="stDownloadButton"] > button {
+  border-radius: 10px !important;
+  min-height: 42px !important;
+  font-weight: 850 !important;
+  border: 1px solid #2563eb !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 20px rgba(37,99,235,.18) !important;
+}
+
+div.stButton > button *,
+div[data-testid="stDownloadButton"] > button * {
+  color: #ffffff !important;
+}
+
+div.stButton > button:hover,
+div[data-testid="stDownloadButton"] > button:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+/* Charts */
+div[data-testid="stPlotlyChart"],
+div[data-testid="stPyplot"] {
+  background: #ffffff !important;
+  border: 1px solid var(--brc-border) !important;
+  border-radius: 14px !important;
+  padding: 12px !important;
+  box-shadow: var(--brc-shadow-sm) !important;
+}
+
+section[data-testid="stSidebar"] {
+  background: #ffffff !important;
+  border-right: 1px solid var(--brc-border) !important;
+}
+
+section[data-testid="stSidebar"] * {
+  color: var(--brc-text) !important;
+}
+
+hr {
+  border-color: var(--brc-border) !important;
+}
+
+@media (max-width: 900px) {
+  .cadivor-topbar {
+    grid-template-columns: 1fr;
+  }
+  .cadivor-topbar-center, .cadivor-user {
+    justify-self: start;
+  }
+  .cadivor-page-header {
+    display: block;
+  }
+  .main .block-container, .block-container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+
+/* Legacy compatibility styles from prior UI framework. */
+
 
 :root {
   --brc-bg: #f6f8fb;
@@ -352,4 +707,361 @@ hr { border-color: var(--brc-border) !important; margin: 1.15rem 0 !important; }
   .brc-page-title { font-size: 30px !important; }
   .brc-hero-title { font-size: 28px !important; }
   .brc-action-stack { padding-top: 0; }
+}
+
+
+/* Cadivor final overrides */
+
+/* Cadivor Design System v1.0
+   Engineering intelligence for modern electronics teams.
+   Brand phrase: Run it through Cadivor. */
+
+:root {
+  --brc-bg: #f6f8fb;
+  --brc-surface: #ffffff;
+  --brc-surface-soft: #f8fafc;
+  --brc-border: #e5e7eb;
+  --brc-border-strong: #cbd5e1;
+  --brc-text: #0f172a;
+  --brc-muted: #64748b;
+  --brc-muted-2: #94a3b8;
+  --brc-blue: #2563eb;
+  --brc-blue-dark: #1d4ed8;
+  --brc-blue-soft: #eff6ff;
+  --brc-green: #16a34a;
+  --brc-green-soft: #ecfdf5;
+  --brc-amber: #f59e0b;
+  --brc-amber-soft: #fffbeb;
+  --brc-red: #dc2626;
+  --brc-red-soft: #fef2f2;
+  --brc-radius-sm: 6px;
+  --brc-radius-md: 10px;
+  --brc-radius-lg: 14px;
+  --brc-radius-xl: 18px;
+  --brc-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --brc-shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.055);
+  --brc-shadow-md: 0 16px 42px rgba(15, 23, 42, 0.07);
+}
+
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+  background: var(--brc-bg) !important;
+  color: var(--brc-text) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+[data-testid="stHeader"] {
+  background: rgba(246, 248, 251, .94) !important;
+  border-bottom: 1px solid var(--brc-border) !important;
+  backdrop-filter: blur(10px);
+}
+
+.main .block-container,
+.block-container {
+  max-width: 1480px !important;
+  padding-top: 1.15rem !important;
+  padding-left: 1.8rem !important;
+  padding-right: 1.8rem !important;
+  padding-bottom: 3.5rem !important;
+}
+
+.cadivor-topbar {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20px;
+  background: #ffffff;
+  border: 1px solid var(--brc-border);
+  border-radius: 18px;
+  padding: 13px 16px;
+  box-shadow: var(--brc-shadow-sm);
+  margin: 0 0 18px 0;
+}
+
+.cadivor-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cadivor-logo-mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff !important;
+  font-size: 18px;
+  font-weight: 950;
+  box-shadow: 0 12px 24px rgba(37,99,235,.22);
+}
+
+.cadivor-logo-text {
+  color: var(--brc-text) !important;
+  font-weight: 950;
+  letter-spacing: -.035em;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.cadivor-logo-subtitle {
+  color: var(--brc-muted) !important;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.cadivor-topbar-center {
+  color: var(--brc-text) !important;
+  font-weight: 850;
+  font-size: 14px;
+  background: #f8fafc;
+  border: 1px solid var(--brc-border);
+  border-radius: 999px;
+  padding: 8px 13px;
+}
+
+.cadivor-user {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.cadivor-user-meta {
+  text-align: right;
+}
+
+.cadivor-user-label {
+  color: var(--brc-muted-2) !important;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.cadivor-user-email {
+  color: var(--brc-text) !important;
+  font-size: 12px;
+  font-weight: 750;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cadivor-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb !important;
+  font-weight: 950;
+}
+
+.cadivor-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 18px 0 18px 0;
+}
+
+.cadivor-page-header h1 {
+  color: var(--brc-text) !important;
+  font-size: 38px;
+  line-height: 1.05;
+  margin: 0 0 7px 0;
+  font-weight: 950;
+  letter-spacing: -.045em;
+}
+
+.cadivor-page-header p {
+  color: var(--brc-muted) !important;
+  font-size: 14px;
+  margin: 0;
+}
+
+.cadivor-metric-card {
+  background: #fff;
+  border: 1px solid var(--brc-border);
+  border-radius: 16px;
+  padding: 18px 18px 16px 18px;
+  min-height: 116px;
+  box-shadow: var(--brc-shadow-sm);
+}
+
+.cadivor-metric-title {
+  color: var(--brc-muted) !important;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: none;
+  margin-bottom: 11px;
+}
+
+.cadivor-metric-value {
+  color: var(--brc-text) !important;
+  font-size: 36px;
+  line-height: 1;
+  font-weight: 950;
+  margin-bottom: 10px;
+}
+
+.cadivor-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 850;
+  border: 1px solid transparent;
+}
+
+.cadivor-badge-success { background: #ecfdf5; color: #047857 !important; border-color: #bbf7d0; }
+.cadivor-badge-warning { background: #fffbeb; color: #b45309 !important; border-color: #fde68a; }
+.cadivor-badge-danger { background: #fef2f2; color: #b91c1c !important; border-color: #fecaca; }
+.cadivor-badge-info { background: #eff6ff; color: #1d4ed8 !important; border-color: #bfdbfe; }
+
+.card, .search-card, .recommendation-card, div[data-testid="stMetric"], div[data-testid="stExpander"] {
+  background: #ffffff !important;
+  border: 1px solid var(--brc-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--brc-shadow-sm) !important;
+}
+
+.card {
+  padding: 22px 24px !important;
+  margin-top: 14px !important;
+  margin-bottom: 16px !important;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--brc-text) !important;
+  margin-bottom: 7px;
+}
+
+.card-text {
+  font-size: 14px;
+  color: var(--brc-muted) !important;
+  line-height: 1.6;
+}
+
+/* Premium tables: light, compact, enterprise. */
+div[data-testid="stDataFrame"],
+div[data-testid="stTable"] {
+  background: #ffffff !important;
+  border: 1px solid var(--brc-border) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  box-shadow: var(--brc-shadow-xs) !important;
+}
+
+div[data-testid="stDataFrame"] *,
+div[data-testid="stTable"] * {
+  color: var(--brc-text) !important;
+}
+
+div[data-testid="stDataFrame"] [role="columnheader"],
+div[data-testid="stDataFrame"] [role="gridcell"] {
+  background-color: #ffffff !important;
+  color: var(--brc-text) !important;
+  border-color: #e5e7eb !important;
+}
+
+div[data-testid="stDataFrame"] [role="columnheader"] {
+  background-color: #f8fafc !important;
+  font-weight: 850 !important;
+}
+
+/* Inputs */
+input, textarea, select,
+div[data-baseweb="input"] > div,
+div[data-baseweb="select"] > div,
+div[data-testid="stFileUploader"] section {
+  background: #ffffff !important;
+  color: var(--brc-text) !important;
+  border-color: var(--brc-border-strong) !important;
+  border-radius: 10px !important;
+}
+
+div[data-baseweb="input"] input,
+div[data-baseweb="select"] span,
+textarea {
+  color: var(--brc-text) !important;
+}
+
+div[data-baseweb="input"] > div:focus-within,
+div[data-baseweb="select"] > div:focus-within {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12) !important;
+}
+
+/* Buttons */
+div.stButton > button,
+div[data-testid="stDownloadButton"] > button {
+  border-radius: 10px !important;
+  min-height: 42px !important;
+  font-weight: 850 !important;
+  border: 1px solid #2563eb !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 20px rgba(37,99,235,.18) !important;
+}
+
+div.stButton > button *,
+div[data-testid="stDownloadButton"] > button * {
+  color: #ffffff !important;
+}
+
+div.stButton > button:hover,
+div[data-testid="stDownloadButton"] > button:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+/* Charts */
+div[data-testid="stPlotlyChart"],
+div[data-testid="stPyplot"] {
+  background: #ffffff !important;
+  border: 1px solid var(--brc-border) !important;
+  border-radius: 14px !important;
+  padding: 12px !important;
+  box-shadow: var(--brc-shadow-sm) !important;
+}
+
+section[data-testid="stSidebar"] {
+  background: #ffffff !important;
+  border-right: 1px solid var(--brc-border) !important;
+}
+
+section[data-testid="stSidebar"] * {
+  color: var(--brc-text) !important;
+}
+
+hr {
+  border-color: var(--brc-border) !important;
+}
+
+@media (max-width: 900px) {
+  .cadivor-topbar {
+    grid-template-columns: 1fr;
+  }
+  .cadivor-topbar-center, .cadivor-user {
+    justify-self: start;
+  }
+  .cadivor-page-header {
+    display: block;
+  }
+  .main .block-container, .block-container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
 }
