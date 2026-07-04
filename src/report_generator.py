@@ -134,7 +134,7 @@ def format_summary_sheet(sheet):
 
     # Sheet title
     sheet.insert_rows(1, 2)
-    sheet["A1"] = "BOM Risk Checker Report"
+    sheet["A1"] = "Cadivor Report"
     sheet["A1"].font = Font(size=20, bold=True, color="FFFFFF")
     sheet["A1"].fill = PatternFill("solid", fgColor="111827")
     sheet["A1"].alignment = Alignment(horizontal="center")
