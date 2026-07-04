@@ -282,6 +282,96 @@ def show_auth_ui(supabase, cookie_manager=None):
         unsafe_allow_html=True,
     )
 
+    # Query-param controlled auth route. The landing page stays purely marketing.
+    # Sign In / Get Started / Start Free Trial open this compact auth page instead
+    # of rendering a login form halfway down the public landing page.
+    auth_route = None
+    try:
+        auth_route = st.query_params.get("auth")
+    except Exception:
+        auth_route = None
+
+    if auth_route in ("login", "signup"):
+        initial_mode = "Create Account" if auth_route == "signup" else "Login"
+        st.markdown(
+            """
+            <div class="brc-public-page">
+              <div class="auth-nav">
+                <div class="auth-logo"><div class="auth-logo-mark">B</div><span>BOM Risk Checker</span></div>
+                <div class="auth-nav-links">
+                  <a href="?">← Back to Home</a>
+                </div>
+              </div>
+              <div class="auth-form-shell" style="max-width:720px;margin-top:70px;">
+                <div class="auth-form-title">Access your workspace</div>
+                <div class="auth-form-subtitle">Sign in to continue, or create an account to start reviewing BOM risk.</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        form_left, form_right = st.columns([0.52, 0.48], gap="large")
+        with form_left:
+            options = ["Login", "Create Account"]
+            auth_mode = st.radio(
+                "Choose an option",
+                options,
+                index=options.index(initial_mode),
+                horizontal=True,
+            )
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+
+            if auth_mode == "Create Account":
+                submit = st.button("Create Account")
+            else:
+                submit = st.button("Login")
+        with form_right:
+            st.markdown(
+                """
+                <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,.05);margin-top:30px;">
+                  <div style="font-weight:950;color:#0F172A;font-size:18px;margin-bottom:8px;">Secure engineering workspace</div>
+                  <div style="color:#64748B;line-height:1.6;font-size:14px;">Your BOMs, saved analyses, reports, alternative recommendations, and subscription usage stay connected to your account.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        if submit:
+            if not email or not password:
+                st.warning("Please enter your email and password.")
+                return
+            if auth_mode == "Create Account":
+                try:
+                    response = supabase.auth.sign_up({"email": email, "password": password})
+                    if getattr(response, "session", None):
+                        st.session_state["user"] = response.user
+                        st.session_state["access_token"] = response.session.access_token
+                        st.session_state["refresh_token"] = response.session.refresh_token
+                        _set_auth_cookie(cookie_manager, response.session, "signup_set_bom_auth")
+                        st.success("Account created and logged in successfully.")
+                        st.rerun()
+                    else:
+                        st.success("Account created. Please check your email to confirm your account, then return here to log in.")
+                except Exception as error:
+                    st.error(f"Signup failed: {error}")
+            else:
+                try:
+                    response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    if not getattr(response, "session", None):
+                        st.error("Login failed: no session was returned. Please confirm your email and try again.")
+                        return
+                    _set_auth_cookie(cookie_manager, response.session, "login_set_bom_auth")
+                    st.session_state["user"] = response.user
+                    st.session_state["access_token"] = response.session.access_token
+                    st.session_state["refresh_token"] = response.session.refresh_token
+                    st.success("Logged in successfully.")
+                    st.rerun()
+                except Exception as error:
+                    st.error(f"Login failed: {error}")
+        return
+
     st.markdown(
         """
         <div class="brc-public-page">
@@ -292,8 +382,8 @@ def show_auth_ui(supabase, cookie_manager=None):
               <a href="#solutions">Solutions</a>
               <a href="#pricing">Pricing</a>
               <a href="#resources">Resources</a>
-              <a href="#workspace-access" class="auth-secondary-cta" style="min-height:40px;padding:0 16px;">Sign In</a>
-              <a href="#workspace-access" class="auth-nav-cta">Get Started</a>
+              <a href="?auth=login" class="auth-secondary-cta" style="min-height:40px;padding:0 16px;">Sign In</a>
+              <a href="?auth=signup" class="auth-nav-cta">Get Started</a>
             </div>
           </div>
           <div class="auth-hero-grid">
@@ -302,7 +392,7 @@ def show_auth_ui(supabase, cookie_manager=None):
               <h1 class="auth-title">Reduce BOM Risk.<br><span class="blue">Find Better Alternatives.</span></h1>
               <p class="auth-subtitle">Analyze component lifecycle, supplier risk, and market availability in seconds. Make smarter sourcing decisions and keep your products moving.</p>
               <div class="auth-cta-row">
-                <a class="auth-primary-cta" href="#workspace-access">Start Free Trial</a>
+                <a class="auth-primary-cta" href="?auth=signup">Start Free Trial</a>
                 <a class="auth-secondary-cta" href="#features">See How It Works</a>
               </div>
               <div class="auth-proof-row">
@@ -353,71 +443,9 @@ def show_auth_ui(supabase, cookie_manager=None):
             </div>
           </div>
         </div>
-        <div id="workspace-access" class="auth-form-shell">
-          <div class="auth-form-title">Access your workspace</div>
-          <div class="auth-form-subtitle">Use Sign In for an existing account, or Create Account to start a new workspace.</div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
-
-    form_left, form_right = st.columns([0.42, 0.58], gap="large")
-    with form_left:
-        auth_mode = st.radio(
-            "Choose an option",
-            ["Login", "Create Account"],
-            horizontal=True,
-        )
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-
-        if auth_mode == "Create Account":
-            submit = st.button("Create Account")
-        else:
-            submit = st.button("Login")
-    with form_right:
-        st.markdown(
-            """
-            <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,.05);margin-top:30px;">
-              <div style="font-weight:950;color:#0F172A;font-size:18px;margin-bottom:8px;">Secure engineering workspace</div>
-              <div style="color:#64748B;line-height:1.6;font-size:14px;">Your BOMs, saved analyses, reports, alternative recommendations, and subscription usage stay connected to your account.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    if submit:
-        if not email or not password:
-            st.warning("Please enter your email and password.")
-            return
-        if auth_mode == "Create Account":
-            try:
-                response = supabase.auth.sign_up({"email": email, "password": password})
-                if getattr(response, "session", None):
-                    st.session_state["user"] = response.user
-                    st.session_state["access_token"] = response.session.access_token
-                    st.session_state["refresh_token"] = response.session.refresh_token
-                    _set_auth_cookie(cookie_manager, response.session, "signup_set_bom_auth")
-                    st.success("Account created and logged in successfully.")
-                    st.rerun()
-                else:
-                    st.success("Account created. Please check your email to confirm your account, then return here to log in.")
-            except Exception as error:
-                st.error(f"Signup failed: {error}")
-        else:
-            try:
-                response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                if not getattr(response, "session", None):
-                    st.error("Login failed: no session was returned. Please confirm your email and try again.")
-                    return
-                _set_auth_cookie(cookie_manager, response.session, "login_set_bom_auth")
-                st.session_state["user"] = response.user
-                st.session_state["access_token"] = response.session.access_token
-                st.session_state["refresh_token"] = response.session.refresh_token
-                st.success("Logged in successfully.")
-                st.rerun()
-            except Exception as error:
-                st.error(f"Login failed: {error}")
 
     st.markdown(
         """
@@ -435,7 +463,7 @@ def show_auth_ui(supabase, cookie_manager=None):
               <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Component Finder</strong><span>Find fit, form, and function alternatives ranked by risk, availability, and cost.</span></div>
             </div>
           </div>
-          <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Join engineering teams building more resilient products.</span></div><a class="auth-primary-cta" href="#workspace-access">Start Free Trial</a></div>
+          <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Join engineering teams building more resilient products.</span></div><a class="auth-primary-cta" href="?auth=signup">Start Free Trial</a></div>
         </div>
         """,
         unsafe_allow_html=True,
