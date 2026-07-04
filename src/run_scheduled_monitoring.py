@@ -27,7 +27,7 @@ supabase = create_client(
 resend.api_key = os.getenv("RESEND_API_KEY")
 ALERT_FROM_EMAIL = os.getenv(
     "ALERT_FROM_EMAIL",
-    "BOM Risk Checker <onboarding@resend.dev>",
+    "Cadivor <onboarding@resend.dev>",
 )
 
 
