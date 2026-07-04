@@ -1,6 +1,6 @@
-/* BOM Risk Checker Premium UI Framework v2.6.0
-   Phase 1: shared layout, topbar, cards, tables, charts, forms, buttons.
-   Keep this as the single visual source of truth. */
+/* BOM Risk Checker Premium UI Framework v2.7.0
+   Phase 2: premium landing + dashboard foundation.
+   Single source of truth for colors, layout, cards, tables, charts, forms, buttons. */
 
 :root {
   --brc-bg: #f6f8fb;
@@ -20,11 +20,13 @@
   --brc-amber-soft: #fffbeb;
   --brc-red: #dc2626;
   --brc-red-soft: #fef2f2;
-  --brc-radius-sm: 8px;
-  --brc-radius-md: 12px;
-  --brc-radius-lg: 16px;
-  --brc-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --brc-shadow-md: 0 10px 28px rgba(15, 23, 42, 0.06);
+  --brc-radius-sm: 6px;
+  --brc-radius-md: 10px;
+  --brc-radius-lg: 14px;
+  --brc-radius-xl: 18px;
+  --brc-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --brc-shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.055);
+  --brc-shadow-md: 0 16px 42px rgba(15, 23, 42, 0.07);
 }
 
 html, body, .stApp, [data-testid="stAppViewContainer"] {
@@ -41,7 +43,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 
 .block-container {
   max-width: 1360px !important;
-  padding-top: 1.15rem !important;
+  padding-top: 1rem !important;
   padding-left: 2rem !important;
   padding-right: 2rem !important;
   padding-bottom: 3rem !important;
@@ -70,9 +72,9 @@ p, li, label, .stCaptionContainer,
   background: var(--brc-surface);
   border: 1px solid var(--brc-border);
   border-radius: var(--brc-radius-lg);
-  box-shadow: var(--brc-shadow-sm);
-  padding: 12px 16px;
-  margin: 0 0 18px 0;
+  box-shadow: var(--brc-shadow-xs);
+  padding: 10px 14px;
+  margin: 0 0 16px 0;
 }
 .brc-topbar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .brc-logo-mark {
@@ -82,7 +84,7 @@ p, li, label, .stCaptionContainer,
   color: #fff !important; font-weight: 900; font-size: 16px;
   box-shadow: 0 10px 22px rgba(37, 99, 235, .22);
 }
-.brc-topbar-title { color: var(--brc-text) !important; font-size: 15px; font-weight: 850; line-height: 1.15; }
+.brc-topbar-title { color: var(--brc-text) !important; font-size: 15px; font-weight: 900; line-height: 1.15; }
 .brc-topbar-subtitle { color: var(--brc-muted) !important; font-size: 12px; font-weight: 650; margin-top: 2px; }
 .brc-topbar-right { display: flex; align-items: center; gap: 10px; }
 .brc-user-chip {
@@ -97,7 +99,7 @@ p, li, label, .stCaptionContainer,
   background: var(--brc-blue-soft);
   color: var(--brc-blue) !important;
   display: grid; place-items: center;
-  font-weight: 850; font-size: 12px;
+  font-weight: 900; font-size: 12px;
   border: 1px solid #bfdbfe;
 }
 .brc-user-meta { line-height: 1.15; }
@@ -108,14 +110,46 @@ p, li, label, .stCaptionContainer,
 section[data-testid="stSidebar"] {
   background: var(--brc-surface) !important;
   border-right: 1px solid var(--brc-border) !important;
-  box-shadow: 8px 0 28px rgba(15, 23, 42, 0.03) !important;
+  box-shadow: 8px 0 28px rgba(15, 23, 42, 0.025) !important;
 }
 section[data-testid="stSidebar"] * { color: var(--brc-text) !important; }
 section[data-testid="stSidebar"] .stCaptionContainer,
 section[data-testid="stSidebar"] p { color: var(--brc-muted) !important; }
-section[data-testid="stSidebar"] h1 { font-size: 22px !important; margin-bottom: 4px !important; }
-section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { font-size: 13px !important; text-transform: uppercase; letter-spacing: .06em; color: var(--brc-muted) !important; }
-section[data-testid="stSidebar"] hr { margin: .85rem 0 !important; border-color: var(--brc-border) !important; }
+section[data-testid="stSidebar"] h1 { font-size: 20px !important; margin-bottom: 4px !important; }
+section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {
+  font-size: 12px !important;
+  text-transform: uppercase;
+  letter-spacing: .065em;
+  color: var(--brc-muted) !important;
+  margin-top: 1rem !important;
+}
+section[data-testid="stSidebar"] hr { margin: .8rem 0 !important; border-color: var(--brc-border) !important; }
+
+/* Page-level compact heading */
+.brc-page-title-row { margin: 2px 0 12px 0; }
+.brc-page-eyebrow {
+  color: var(--brc-blue) !important;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 6px;
+}
+.brc-page-title {
+  margin: 0 0 6px 0 !important;
+  font-size: 36px !important;
+  line-height: 1.05 !important;
+  font-weight: 950 !important;
+  color: var(--brc-text) !important;
+}
+.brc-page-subtitle {
+  margin: 0 !important;
+  color: var(--brc-muted) !important;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+  max-width: 780px;
+}
+.brc-action-stack { display: flex; flex-direction: column; gap: 8px; padding-top: 18px; }
 
 /* Cards and KPI cards */
 .card, .kpi-card, .brc-card,
@@ -123,16 +157,16 @@ div[data-testid="stMetric"], div[data-testid="stExpander"] {
   background: var(--brc-surface) !important;
   border: 1px solid var(--brc-border) !important;
   border-radius: var(--brc-radius-lg) !important;
-  box-shadow: var(--brc-shadow-sm) !important;
+  box-shadow: var(--brc-shadow-xs) !important;
 }
-.card, .brc-card { padding: 18px 20px !important; margin: 10px 0 16px 0 !important; }
+.card, .brc-card { padding: 18px 20px !important; margin: 8px 0 16px 0 !important; }
 .kpi-card {
   padding: 18px !important;
   min-height: 112px !important;
-  margin: 6px 0 14px 0 !important;
+  margin: 4px 0 14px 0 !important;
 }
 .card-title, .kpi-label {
-  font-size: 12px !important;
+  font-size: 13px !important;
   font-weight: 800 !important;
   color: var(--brc-muted) !important;
   text-transform: none !important;
@@ -140,8 +174,8 @@ div[data-testid="stMetric"], div[data-testid="stExpander"] {
   margin-bottom: 10px !important;
 }
 .kpi-value {
-  font-size: 38px !important;
-  font-weight: 900 !important;
+  font-size: 40px !important;
+  font-weight: 950 !important;
   color: var(--brc-text) !important;
   line-height: 1 !important;
   margin: 0 0 10px 0 !important;
@@ -157,7 +191,7 @@ div[data-testid="stMetric"], div[data-testid="stExpander"] {
 .brc-badge {
   display: inline-flex; align-items: center; gap: 6px;
   border-radius: 999px; padding: 4px 9px;
-  font-size: 11px; font-weight: 800;
+  font-size: 11px; font-weight: 850;
   border: 1px solid var(--brc-border);
   background: var(--brc-surface-soft);
   color: var(--brc-muted) !important;
@@ -167,12 +201,12 @@ div[data-testid="stMetric"], div[data-testid="stExpander"] {
 .brc-badge-danger { background: var(--brc-red-soft); border-color: #fecaca; color: #b91c1c !important; }
 .brc-badge-info { background: var(--brc-blue-soft); border-color: #bfdbfe; color: var(--brc-blue) !important; }
 
-/* Page hero: compact by default */
+/* Legacy page hero retained but compact */
 .brc-hero {
   background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%) !important;
   border: 1px solid var(--brc-border) !important;
   border-radius: var(--brc-radius-lg) !important;
-  box-shadow: var(--brc-shadow-sm) !important;
+  box-shadow: var(--brc-shadow-xs) !important;
   padding: 20px 22px !important;
   margin: 0 0 18px 0 !important;
 }
@@ -181,7 +215,7 @@ div[data-testid="stMetric"], div[data-testid="stExpander"] {
   background: var(--brc-blue-soft) !important;
   color: var(--brc-blue) !important;
   font-size: 11px !important;
-  font-weight: 800 !important;
+  font-weight: 850 !important;
   letter-spacing: .06em !important;
   text-transform: uppercase !important;
   border-radius: 999px !important;
@@ -191,15 +225,46 @@ div[data-testid="stMetric"], div[data-testid="stExpander"] {
 .brc-hero-title { color: var(--brc-text) !important; font-size: 34px !important; font-weight: 900 !important; line-height: 1.05 !important; margin: 0 0 8px 0 !important; }
 .brc-hero-subtitle { color: var(--brc-muted) !important; font-size: 15px !important; line-height: 1.55 !important; max-width: 760px !important; margin: 0 !important; }
 
+/* Dashboard */
+.brc-section-heading {
+  color: var(--brc-text) !important;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  margin: 16px 0 2px 0;
+}
+.brc-muted-copy { color: var(--brc-muted) !important; font-size: 13px; line-height: 1.5; }
+.brc-snapshot-card { min-height: 326px; }
+.brc-snapshot-project {
+  color: var(--brc-text) !important;
+  font-size: 18px;
+  font-weight: 900;
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.brc-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.brc-snapshot-grid div {
+  background: var(--brc-surface-soft);
+  border: 1px solid var(--brc-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.brc-snapshot-grid span { display: block; color: var(--brc-muted) !important; font-size: 11px; font-weight: 800; margin-bottom: 6px; }
+.brc-snapshot-grid strong { color: var(--brc-text) !important; font-size: 24px; line-height: 1; }
+
 /* Buttons */
 div.stButton > button, div.stDownloadButton > button, div[data-testid="stLinkButton"] a {
   background: var(--brc-blue) !important;
   color: #ffffff !important;
   border: 1px solid var(--brc-blue) !important;
-  border-radius: 10px !important;
+  border-radius: var(--brc-radius-md) !important;
   min-height: 40px !important;
   padding: 0.5rem 0.95rem !important;
-  font-weight: 750 !important;
+  font-weight: 800 !important;
   box-shadow: none !important;
   width: auto !important;
   max-width: 100% !important;
@@ -224,7 +289,7 @@ div[data-testid="stFileUploader"] section {
   background: var(--brc-surface) !important;
   color: var(--brc-text) !important;
   border: 1px solid var(--brc-border-strong) !important;
-  border-radius: 10px !important;
+  border-radius: var(--brc-radius-md) !important;
   box-shadow: none !important;
 }
 div[data-testid="stTextInput"] input:focus,
@@ -233,14 +298,13 @@ div[data-baseweb="select"] > div:focus-within {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .12) !important;
 }
 
-/* Tables: light premium style. Streamlit dataframes are canvas-backed in some versions,
-   so these rules target all accessible DOM layers and the container. */
+/* Tables: light premium style. */
 div[data-testid="stDataFrame"], div[data-testid="stTable"] {
   background: var(--brc-surface) !important;
   border: 1px solid var(--brc-border) !important;
   border-radius: var(--brc-radius-sm) !important;
   overflow: hidden !important;
-  box-shadow: var(--brc-shadow-sm) !important;
+  box-shadow: var(--brc-shadow-xs) !important;
 }
 div[data-testid="stDataFrame"] *, div[data-testid="stTable"] * { color: var(--brc-text) !important; }
 div[data-testid="stDataFrame"] [role="columnheader"],
@@ -249,7 +313,7 @@ div[data-testid="stDataFrame"] thead tr th {
   background: #f6f8fa !important;
   color: #475569 !important;
   border-bottom: 1px solid var(--brc-border) !important;
-  font-weight: 800 !important;
+  font-weight: 850 !important;
 }
 div[data-testid="stDataFrame"] [role="gridcell"],
 div[data-testid="stTable"] tbody tr td,
@@ -259,13 +323,13 @@ div[data-testid="stDataFrame"] tbody tr td {
   border-bottom: 1px solid #eef2f7 !important;
 }
 
-/* Charts: light cards */
+/* Charts */
 div[data-testid="stPlotlyChart"], div[data-testid="stVegaLiteChart"], div[data-testid="stPyplot"] {
   background: var(--brc-surface) !important;
   border: 1px solid var(--brc-border) !important;
   border-radius: var(--brc-radius-lg) !important;
-  padding: 14px !important;
-  box-shadow: var(--brc-shadow-sm) !important;
+  padding: 12px !important;
+  box-shadow: var(--brc-shadow-xs) !important;
 }
 
 /* Alerts */
@@ -279,11 +343,13 @@ div[data-testid="stAlert"] {
 div[data-testid="stProgress"] > div > div { background: #e5e7eb !important; }
 div[data-testid="stProgress"] > div > div > div { background: var(--brc-blue) !important; }
 
-hr { border-color: var(--brc-border) !important; margin: 1.25rem 0 !important; }
+hr { border-color: var(--brc-border) !important; margin: 1.15rem 0 !important; }
 
 @media (max-width: 900px) {
   .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
   .brc-topbar { align-items: flex-start; flex-direction: column; }
   .brc-user-chip { width: 100%; justify-content: flex-start; }
+  .brc-page-title { font-size: 30px !important; }
   .brc-hero-title { font-size: 28px !important; }
+  .brc-action-stack { padding-top: 0; }
 }
