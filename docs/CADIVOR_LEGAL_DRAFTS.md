@@ -1,19 +1,17 @@
-# Cadivor Legal Drafts
+# Cadivor Legal Notes
 
-These are draft placeholders for product development and should be reviewed by a qualified attorney before launch.
+This file contains working legal copy for the Cadivor app. It should be reviewed by a qualified attorney before commercial launch.
 
-## Terms of Service Summary
+## Terms of Service
 
-Cadivor provides engineering decision-support software for BOM risk analysis, lifecycle intelligence, supplier visibility, and alternative component discovery. Cadivor outputs are informational only and do not replace engineering judgment, datasheet validation, supplier confirmation, regulatory review, qualification testing, or production release approval.
+By creating an account or using Cadivor, you agree that Cadivor provides software-based component lifecycle, sourcing, supplier, risk, and alternative-part intelligence for informational and decision-support purposes only.
 
-## Engineering Disclaimer
+Cadivor does not replace professional engineering judgment, datasheet review, supplier confirmation, regulatory review, qualification testing, procurement review, manufacturing review, or production release approval. You remain responsible for validating every component, alternate part, compatibility claim, lifecycle status, supplier listing, stock level, price estimate, lead time, risk score, export classification, regulatory requirement, and manufacturing decision before relying on Cadivor output in any design, procurement, or production workflow.
 
-Users remain responsible for validating every component, alternative, compatibility claim, lifecycle status, supplier listing, stock level, pricing estimate, lead time, export classification, regulatory requirement, and manufacturing decision before using Cadivor output in a real product.
+You agree not to upload unlawful, confidential third-party, export-controlled, restricted, regulated, or sensitive data unless you have the legal right and authority to do so. You retain ownership of your uploaded BOM data, but grant Cadivor permission to process it for analysis, reporting, account usage tracking, support, security, service reliability, and product improvement.
 
-## Privacy Placeholder
+Cadivor may use supplier records, distributor APIs, public sources, third-party data, software rules, and AI-assisted analysis. Availability, lifecycle status, pricing, lead times, and alternative recommendations may be incomplete, delayed, inaccurate, or unsuitable for your specific design. Cadivor is provided “as is” and “as available” without warranties of uninterrupted availability, accuracy, merchantability, non-infringement, or fitness for a particular purpose.
 
-Cadivor may process uploaded BOMs, account details, usage records, analysis outputs, and support communications to provide the service, improve functionality, secure accounts, and support users. Final privacy terms should identify the legal company entity, domain, data retention policy, processors, analytics providers, and user rights.
+To the maximum extent permitted by law, Cadivor and its owners, officers, employees, contractors, suppliers, service providers, and affiliates are not liable for indirect, incidental, consequential, special, punitive, procurement, production, recall, lost-profit, lost-data, business interruption, design failure, regulatory, or manufacturing damages arising from use of the service.
 
-## Brand Phrase
-
-Run it through Cadivor.
+Cadivor may suspend or terminate accounts for abuse, misuse, nonpayment, security risk, violation of these terms, or activity that may harm the service or other users. Final legal terms should be reviewed by a qualified attorney before commercial launch and updated with the final company legal entity, billing terms, governing law, support contact, and dispute process.
