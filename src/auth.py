@@ -296,62 +296,296 @@ def show_auth_ui(supabase, cookie_manager=None):
         st.markdown(
             """
             <style>
-            .block-container{max-width:1120px!important;width:92vw!important;padding-top:1.25rem!important;}
-            .brc-auth-page-shell{max-width:980px;margin:0 auto;}
-            .brc-auth-card{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:26px;padding:38px 42px;box-shadow:0 28px 80px rgba(15,23,42,.10);margin:52px auto 22px auto;}
-            .brc-auth-card-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center;}
-            .brc-auth-title{color:#0F172A!important;font-size:34px;font-weight:950;letter-spacing:-.05em;line-height:1.05;margin:0 0 10px 0;}
-            .brc-auth-copy{color:#64748B!important;font-size:15px;line-height:1.65;margin:0;}
-            .brc-auth-note{background:#F8FAFC;border:1px solid #E5E7EB;border-radius:18px;padding:18px 20px;}
-            .brc-auth-note strong{display:block;color:#0F172A!important;font-size:16px;font-weight:950;margin-bottom:6px;}
-            .brc-auth-note span{color:#64748B!important;font-size:13px;line-height:1.55;}
-            div[data-testid="stRadio"]{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:18px;padding:18px 20px 12px 20px;box-shadow:0 12px 36px rgba(15,23,42,.06);}
-            div[data-testid="stTextInput"]{margin-bottom:6px;}
-            @media(max-width:760px){.brc-auth-card-grid{grid-template-columns:1fr}.brc-auth-card{padding:28px 24px;margin-top:28px}.block-container{width:100%!important}}
+            .block-container{
+                max-width:1400px!important;
+                width:96vw!important;
+                padding-top:1.25rem!important;
+            }
+            .brc-auth-clean-shell{
+                min-height:calc(100vh - 80px);
+                display:flex;
+                flex-direction:column;
+                align-items:center;
+                justify-content:flex-start;
+                padding-top:22px;
+            }
+            .brc-auth-clean-nav{
+                width:100%;
+                max-width:1220px;
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                margin:0 auto 42px auto;
+            }
+            .brc-auth-brand{
+                display:flex;
+                align-items:center;
+                gap:12px;
+                font-weight:950;
+                color:#0F172A!important;
+                letter-spacing:-.02em;
+                font-size:18px;
+            }
+            .brc-auth-mark{
+                width:42px;
+                height:42px;
+                border-radius:13px;
+                display:grid;
+                place-items:center;
+                background:linear-gradient(135deg,#3B82F6,#2563EB);
+                color:#FFFFFF!important;
+                box-shadow:0 18px 38px rgba(37,99,235,.28);
+            }
+            .brc-auth-back{
+                color:#334155!important;
+                text-decoration:none!important;
+                font-weight:850;
+                background:#FFFFFF;
+                border:1px solid #E2E8F0;
+                border-radius:999px;
+                padding:10px 15px;
+                box-shadow:0 10px 26px rgba(15,23,42,.06);
+            }
+            .brc-auth-layout{
+                width:100%;
+                max-width:1220px;
+                display:grid;
+                grid-template-columns:minmax(420px,.86fr) minmax(420px,1fr);
+                gap:34px;
+                align-items:start;
+                margin:0 auto;
+            }
+            .brc-auth-value-card{
+                background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 55%,#EFF6FF 100%);
+                border:1px solid #E2E8F0;
+                border-radius:28px;
+                padding:42px;
+                box-shadow:0 28px 80px rgba(15,23,42,.09);
+                min-height:520px;
+                position:relative;
+                overflow:hidden;
+            }
+            .brc-auth-value-card:before{
+                content:"";
+                position:absolute;
+                width:420px;
+                height:420px;
+                border-radius:999px;
+                background:radial-gradient(circle, rgba(37,99,235,.16), transparent 68%);
+                right:-170px;
+                top:-160px;
+            }
+            .brc-auth-value-card > *{position:relative;z-index:1;}
+            .brc-auth-card-title{
+                color:#0F172A!important;
+                font-size:44px;
+                line-height:1.02;
+                letter-spacing:-.065em;
+                font-weight:950;
+                margin:20px 0 18px 0;
+            }
+            .brc-auth-card-copy{
+                color:#475569!important;
+                font-size:16px;
+                line-height:1.7;
+                max-width:560px;
+                margin:0 0 28px 0;
+            }
+            .brc-auth-benefits{
+                display:grid;
+                gap:12px;
+                margin-top:24px;
+            }
+            .brc-auth-benefit{
+                background:rgba(255,255,255,.78);
+                border:1px solid #E2E8F0;
+                border-radius:17px;
+                padding:15px 16px;
+                display:flex;
+                gap:12px;
+                align-items:flex-start;
+                box-shadow:0 10px 24px rgba(15,23,42,.04);
+            }
+            .brc-auth-benefit-dot{
+                width:26px;
+                height:26px;
+                border-radius:9px;
+                display:grid;
+                place-items:center;
+                background:#EFF6FF;
+                color:#2563EB!important;
+                font-weight:950;
+                flex:0 0 auto;
+            }
+            .brc-auth-benefit strong{
+                display:block;
+                color:#0F172A!important;
+                font-size:14px;
+                margin-bottom:3px;
+            }
+            .brc-auth-benefit span{
+                color:#64748B!important;
+                font-size:13px;
+                line-height:1.45;
+            }
+            .brc-auth-form-card{
+                background:#FFFFFF;
+                border:1px solid #E2E8F0;
+                border-radius:28px;
+                padding:38px 40px 34px 40px;
+                box-shadow:0 28px 80px rgba(15,23,42,.12);
+            }
+            .brc-auth-form-card h1{
+                color:#0F172A!important;
+                font-size:32px!important;
+                font-weight:950!important;
+                letter-spacing:-.05em!important;
+                margin:0 0 8px 0!important;
+            }
+            .brc-auth-muted{
+                color:#64748B!important;
+                font-size:14px;
+                margin:0 0 20px 0;
+                line-height:1.55;
+            }
+            .brc-auth-secure-strip{
+                background:#F8FAFC;
+                border:1px solid #E5E7EB;
+                border-radius:15px;
+                padding:12px 14px;
+                color:#475569!important;
+                font-size:13px;
+                font-weight:750;
+                margin:6px 0 20px 0;
+            }
+            .brc-terms-box{
+                background:#F8FAFC;
+                border:1px solid #E2E8F0;
+                border-radius:16px;
+                padding:14px 16px;
+                color:#475569!important;
+                font-size:12px;
+                line-height:1.55;
+                margin-top:8px;
+            }
+            div[data-testid="stRadio"]{
+                background:#F8FAFC!important;
+                border:1px solid #E5E7EB!important;
+                border-radius:16px!important;
+                padding:12px 14px 8px 14px!important;
+                box-shadow:none!important;
+            }
+            div[data-testid="stRadio"] > label{font-weight:850!important;color:#334155!important;}
+            div[data-testid="stTextInput"] input{
+                background:#FFFFFF!important;
+                border:1px solid #CBD5E1!important;
+                border-radius:12px!important;
+                min-height:46px!important;
+                color:#0F172A!important;
+                box-shadow:none!important;
+            }
+            div[data-testid="stTextInput"] input:focus{
+                border-color:#2563EB!important;
+                box-shadow:0 0 0 4px rgba(37,99,235,.13)!important;
+            }
+            div[data-testid="stCheckbox"] label, div[data-testid="stCheckbox"] p{
+                color:#334155!important;
+                font-weight:750!important;
+            }
+            div.stButton > button{
+                width:100%!important;
+                min-height:50px!important;
+                border-radius:13px!important;
+                background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;
+                border:1px solid #2563EB!important;
+                color:#FFFFFF!important;
+                font-weight:900!important;
+                box-shadow:0 18px 34px rgba(37,99,235,.25)!important;
+            }
+            div.stButton > button *{color:#FFFFFF!important;}
+            @media(max-width:980px){
+                .brc-auth-layout{grid-template-columns:1fr;}
+                .brc-auth-value-card{min-height:auto;}
+            }
+            @media(max-width:700px){
+                .block-container{width:100%!important;padding-left:1rem!important;padding-right:1rem!important;}
+                .brc-auth-clean-nav{flex-direction:column;align-items:flex-start;gap:14px;margin-bottom:24px;}
+                .brc-auth-layout{gap:18px;}
+                .brc-auth-value-card,.brc-auth-form-card{padding:26px 22px;border-radius:22px;}
+                .brc-auth-card-title{font-size:34px;}
+            }
             </style>
-            <div class="brc-auth-page-shell">
-              <div class="auth-nav">
-                <div class="auth-logo"><div class="auth-logo-mark">B</div><span>BOM Risk Checker</span></div>
-                <div class="auth-nav-links"><a href="?">← Back to Home</a></div>
+            <div class="brc-auth-clean-shell">
+              <div class="brc-auth-clean-nav">
+                <div class="brc-auth-brand"><div class="brc-auth-mark">B</div><span>BOM Risk Checker</span></div>
+                <a class="brc-auth-back" href="?">← Back to Home</a>
               </div>
-              <div class="brc-auth-card">
-                <div class="brc-auth-card-grid">
-                  <div>
-                    <div class="auth-eyebrow">Secure BOM workspace</div>
-                    <div class="brc-auth-title">Access your engineering dashboard.</div>
-                    <p class="brc-auth-copy">Sign in to continue, or create an account to start reviewing BOM risk, saved analyses, reports, and alternative recommendations.</p>
+              <div class="brc-auth-layout">
+                <section class="brc-auth-value-card">
+                  <div class="auth-eyebrow">Secure BOM workspace</div>
+                  <div class="brc-auth-card-title">Access your engineering dashboard.</div>
+                  <p class="brc-auth-card-copy">Review BOM health, supplier coverage, lifecycle exposure, and recommended alternatives from one connected workspace.</p>
+                  <div class="brc-auth-benefits">
+                    <div class="brc-auth-benefit"><div class="brc-auth-benefit-dot">✓</div><div><strong>Protected project history</strong><span>Your saved BOM analyses and reports stay connected to your account.</span></div></div>
+                    <div class="brc-auth-benefit"><div class="brc-auth-benefit-dot">↗</div><div><strong>Supplier intelligence workflow</strong><span>Move from risk detection to alternate-part review without losing context.</span></div></div>
+                    <div class="brc-auth-benefit"><div class="brc-auth-benefit-dot">▣</div><div><strong>Export-ready decisions</strong><span>Keep engineering and sourcing teams aligned with downloadable reports.</span></div></div>
                   </div>
-                  <div class="brc-auth-note">
-                    <strong>One workspace for BOM intelligence</strong>
-                    <span>Your BOMs, supplier checks, alternative recommendations, and subscription usage stay connected to this account.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+                </section>
+                <section class="brc-auth-form-card">
+                  <h1>Welcome back</h1>
+                  <p class="brc-auth-muted">Sign in to continue, or create an account to start reviewing BOM risk.</p>
+                  <div class="brc-auth-secure-strip">🔒 Secure access for BOMs, reports, alternatives, and subscription usage.</div>
             """,
             unsafe_allow_html=True,
         )
 
-        _spacer_left, form_center, _spacer_right = st.columns([0.20, 0.60, 0.20])
-        with form_center:
-            options = ["Login", "Create Account"]
-            auth_mode = st.radio(
-                "Choose an option",
-                options,
-                index=options.index(initial_mode),
-                horizontal=True,
-            )
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
+        options = ["Login", "Create Account"]
+        auth_mode = st.radio(
+            "Choose an option",
+            options,
+            index=options.index(initial_mode),
+            horizontal=True,
+        )
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
 
-            if auth_mode == "Create Account":
-                submit = st.button("Create Account")
-            else:
-                submit = st.button("Login")
+        accepted_terms = True
+        if auth_mode == "Create Account":
+            st.markdown(
+                """
+                <div class="brc-terms-box">
+                  <strong>Terms summary:</strong> By creating an account, you agree to use the service only for lawful BOM analysis and sourcing review. Results are decision-support outputs, not a substitute for engineering validation, datasheet review, supplier confirmation, or legal/regulatory advice. You are responsible for verifying all component, lifecycle, availability, pricing, and alternate-part recommendations before use in production.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            accepted_terms = st.checkbox("I agree to the Terms of Service and Privacy Policy.")
+            with st.expander("View Terms of Service draft"):
+                st.markdown(
+                    """
+                    **BOM Risk Checker Terms of Service — Draft Placeholder**
+
+                    By creating an account, you agree that BOM Risk Checker provides software-based component lifecycle, sourcing, supplier, and alternative-part intelligence for informational and decision-support purposes only. You remain responsible for independent engineering review, datasheet validation, supplier confirmation, regulatory review, procurement decisions, and production release decisions.
+
+                    You agree not to upload unlawful, confidential third-party, export-controlled, or restricted data unless you have the right to do so. You retain ownership of your uploaded BOM data, but grant the service permission to process it for analysis, reporting, account usage tracking, and product improvement.
+
+                    The service may include data from third-party suppliers, distributors, APIs, or public sources. Availability, lifecycle status, pricing, lead times, and alternate recommendations may be incomplete, delayed, or inaccurate. The service is provided “as is” without warranties of uninterrupted availability, accuracy, merchantability, or fitness for a particular purpose.
+
+                    To the maximum extent permitted by law, the company is not liable for indirect, incidental, consequential, special, punitive, procurement, production, recall, lost-profit, or business interruption damages arising from use of the service. Your sole remedy is to stop using the service.
+
+                    The company may suspend accounts for abuse, misuse, nonpayment, security risk, or violation of these terms. These terms should be reviewed by a qualified attorney before launch and updated with the final company name, domain, privacy practices, billing terms, governing law, and support contact.
+                    """
+                )
+
+        submit = st.button("Create Account" if auth_mode == "Create Account" else "Login")
+        st.markdown("</section></div></div>", unsafe_allow_html=True)
 
         if submit:
             if not email or not password:
                 st.warning("Please enter your email and password.")
+                return
+            if auth_mode == "Create Account" and not accepted_terms:
+                st.warning("Please accept the Terms of Service and Privacy Policy to create an account.")
                 return
             if auth_mode == "Create Account":
                 try:
