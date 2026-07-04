@@ -38,8 +38,8 @@ def show_auth_ui(supabase, cookie_manager=None):
         }
         section[data-testid="stSidebar"] { display:none!important; }
         .block-container {
-            width:95vw!important;
-            max-width:1800px!important;
+            width:98vw!important;
+            max-width:2140px!important;
             padding-top:1.25rem!important;
             padding-left:1.25rem!important;
             padding-right:1.25rem!important;
@@ -97,13 +97,13 @@ def show_auth_ui(supabase, cookie_manager=None):
         }
         .auth-hero-grid {
             display:grid;
-            grid-template-columns:minmax(0, .92fr) minmax(560px, 1.08fr);
-            gap:48px;
+            grid-template-columns:minmax(0, .9fr) minmax(720px, 1.22fr);
+            gap:64px;
             align-items:center;
             background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 54%,#EFF6FF 100%);
             border:1px solid #E5E7EB;
             border-radius:28px;
-            padding:58px;
+            padding:64px 68px;
             box-shadow:0 24px 70px rgba(15,23,42,.08);
             min-height:650px;
             overflow:hidden;
@@ -136,7 +136,7 @@ def show_auth_ui(supabase, cookie_manager=None):
         }
         .auth-title {
             color:#0F172A!important;
-            font-size:clamp(52px,4.8vw,88px);
+            font-size:clamp(54px,4.6vw,92px);
             line-height:.98;
             font-weight:950;
             letter-spacing:-.07em;
@@ -189,9 +189,9 @@ def show_auth_ui(supabase, cookie_manager=None):
         }
         .product-brand { display:flex; align-items:center; gap:10px; font-weight:900; color:#0F172A!important; }
         .product-mini-logo { width:25px; height:25px; border-radius:8px; background:#2563EB; color:#fff!important; display:grid; place-items:center; font-size:12px; font-weight:950; }
-        .product-app { display:grid; grid-template-columns:150px 1fr; min-height:470px; }
+        .product-app { display:grid; grid-template-columns:190px 1fr; min-height:470px; }
         .product-sidebar { background:#F8FAFC; border-right:1px solid #E5E7EB; padding:18px 12px; }
-        .product-nav-item { display:flex; align-items:center; gap:8px; border-radius:10px; padding:10px 12px; color:#475569!important; font-size:13px; font-weight:800; margin-bottom:5px; }
+        .product-nav-item { display:flex; align-items:center; gap:8px; border-radius:10px; padding:10px 12px; color:#475569!important; font-size:13px; font-weight:800; margin-bottom:5px; white-space:nowrap; }
         .product-nav-item.active { background:#EFF6FF; color:#2563EB!important; }
         .product-main { padding:24px; background:#FFFFFF; }
         .product-main-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
@@ -261,7 +261,7 @@ def show_auth_ui(supabase, cookie_manager=None):
         div.stButton > button * { color:#FFFFFF!important; }
         div[data-testid="stRadio"] label { color:#0F172A!important; font-weight:750!important; }
         @media(max-width:1200px){
-            .auth-hero-grid{grid-template-columns:1fr; padding:38px;}
+            .auth-hero-grid{grid-template-columns:1fr; padding:42px;}
             .product-window{transform:none;}
             .trusted-logos{grid-template-columns:repeat(3,1fr);}
             .feature-grid{grid-template-columns:repeat(2,1fr);}
@@ -295,24 +295,45 @@ def show_auth_ui(supabase, cookie_manager=None):
         initial_mode = "Create Account" if auth_route == "signup" else "Login"
         st.markdown(
             """
-            <div class="brc-public-page">
+            <style>
+            .block-container{max-width:1120px!important;width:92vw!important;padding-top:1.25rem!important;}
+            .brc-auth-page-shell{max-width:980px;margin:0 auto;}
+            .brc-auth-card{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:26px;padding:38px 42px;box-shadow:0 28px 80px rgba(15,23,42,.10);margin:52px auto 22px auto;}
+            .brc-auth-card-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center;}
+            .brc-auth-title{color:#0F172A!important;font-size:34px;font-weight:950;letter-spacing:-.05em;line-height:1.05;margin:0 0 10px 0;}
+            .brc-auth-copy{color:#64748B!important;font-size:15px;line-height:1.65;margin:0;}
+            .brc-auth-note{background:#F8FAFC;border:1px solid #E5E7EB;border-radius:18px;padding:18px 20px;}
+            .brc-auth-note strong{display:block;color:#0F172A!important;font-size:16px;font-weight:950;margin-bottom:6px;}
+            .brc-auth-note span{color:#64748B!important;font-size:13px;line-height:1.55;}
+            div[data-testid="stRadio"]{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:18px;padding:18px 20px 12px 20px;box-shadow:0 12px 36px rgba(15,23,42,.06);}
+            div[data-testid="stTextInput"]{margin-bottom:6px;}
+            @media(max-width:760px){.brc-auth-card-grid{grid-template-columns:1fr}.brc-auth-card{padding:28px 24px;margin-top:28px}.block-container{width:100%!important}}
+            </style>
+            <div class="brc-auth-page-shell">
               <div class="auth-nav">
                 <div class="auth-logo"><div class="auth-logo-mark">B</div><span>BOM Risk Checker</span></div>
-                <div class="auth-nav-links">
-                  <a href="?">← Back to Home</a>
-                </div>
+                <div class="auth-nav-links"><a href="?">← Back to Home</a></div>
               </div>
-              <div class="auth-form-shell" style="max-width:720px;margin-top:70px;">
-                <div class="auth-form-title">Access your workspace</div>
-                <div class="auth-form-subtitle">Sign in to continue, or create an account to start reviewing BOM risk.</div>
+              <div class="brc-auth-card">
+                <div class="brc-auth-card-grid">
+                  <div>
+                    <div class="auth-eyebrow">Secure BOM workspace</div>
+                    <div class="brc-auth-title">Access your engineering dashboard.</div>
+                    <p class="brc-auth-copy">Sign in to continue, or create an account to start reviewing BOM risk, saved analyses, reports, and alternative recommendations.</p>
+                  </div>
+                  <div class="brc-auth-note">
+                    <strong>One workspace for BOM intelligence</strong>
+                    <span>Your BOMs, supplier checks, alternative recommendations, and subscription usage stay connected to this account.</span>
+                  </div>
+                </div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        form_left, form_right = st.columns([0.52, 0.48], gap="large")
-        with form_left:
+        _spacer_left, form_center, _spacer_right = st.columns([0.20, 0.60, 0.20])
+        with form_center:
             options = ["Login", "Create Account"]
             auth_mode = st.radio(
                 "Choose an option",
@@ -327,16 +348,6 @@ def show_auth_ui(supabase, cookie_manager=None):
                 submit = st.button("Create Account")
             else:
                 submit = st.button("Login")
-        with form_right:
-            st.markdown(
-                """
-                <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,.05);margin-top:30px;">
-                  <div style="font-weight:950;color:#0F172A;font-size:18px;margin-bottom:8px;">Secure engineering workspace</div>
-                  <div style="color:#64748B;line-height:1.6;font-size:14px;">Your BOMs, saved analyses, reports, alternative recommendations, and subscription usage stay connected to your account.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
 
         if submit:
             if not email or not password:
