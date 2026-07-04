@@ -431,40 +431,68 @@ def show_auth_ui(supabase, cookie_manager=None):
             div[data-testid="stTextInput"] > div{
                 overflow:visible!important;
             }
-            div[data-baseweb="input"]{
+            /* Auth inputs: force one clean rounded rectangle and remove Streamlit/BaseWeb inner borders. */
+            div[data-testid="stTextInput"] [data-baseweb="input"]{
                 background:#FFFFFF!important;
                 border:1px solid #CBD5E1!important;
                 border-radius:12px!important;
                 min-height:48px!important;
+                height:48px!important;
                 box-shadow:none!important;
+                outline:none!important;
                 overflow:hidden!important;
             }
-            div[data-baseweb="input"]:focus-within{
+            div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{
                 border-color:#2563EB!important;
-                box-shadow:0 0 0 4px rgba(37,99,235,.12)!important;
+                box-shadow:0 0 0 3px rgba(37,99,235,.16)!important;
             }
-            div[data-testid="stTextInput"] input{
+            div[data-testid="stTextInput"] [data-baseweb="input"]::before,
+            div[data-testid="stTextInput"] [data-baseweb="input"]::after{
+                display:none!important;
+                content:none!important;
+            }
+            div[data-testid="stTextInput"] [data-baseweb="input"] > div,
+            div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{
+                border:0!important;
+                outline:0!important;
+                box-shadow:none!important;
+                background:transparent!important;
+                min-height:46px!important;
+            }
+            div[data-testid="stTextInput"] input,
+            div[data-testid="stTextInput"] input[type="text"],
+            div[data-testid="stTextInput"] input[type="password"],
+            div[data-testid="stTextInput"] input[type="email"]{
                 background:transparent!important;
                 border:0!important;
-                border-radius:12px!important;
-                min-height:48px!important;
+                outline:0!important;
+                border-radius:0!important;
+                min-height:46px!important;
+                height:46px!important;
                 color:#0F172A!important;
                 box-shadow:none!important;
-                padding-left:14px!important;
-                padding-right:42px!important;
+                padding:0 14px!important;
+                caret-color:#2563EB!important;
             }
-            div[data-testid="stTextInput"] input:focus{
+            div[data-testid="stTextInput"] input:focus,
+            div[data-testid="stTextInput"] input:focus-visible{
                 border:0!important;
-                outline:none!important;
+                outline:0!important;
                 box-shadow:none!important;
             }
             div[data-testid="stTextInput"] button{
-                min-height:48px!important;
-                height:48px!important;
+                min-height:46px!important;
+                height:46px!important;
                 width:44px!important;
                 border:0!important;
+                outline:0!important;
                 background:#FFFFFF!important;
-                border-radius:0 12px 12px 0!important;
+                border-radius:0!important;
+                box-shadow:none!important;
+            }
+            div[data-testid="stTextInput"] button:focus,
+            div[data-testid="stTextInput"] button:focus-visible{
+                outline:0!important;
                 box-shadow:none!important;
             }
             div[data-testid="stCheckbox"] p{
