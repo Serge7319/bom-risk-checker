@@ -20,8 +20,8 @@ def _set_auth_cookie(cookie_manager, session, key: str):
 def show_auth_ui(supabase, cookie_manager=None):
     """Premium public landing + auth flow.
 
-    Signup may return session=None when email confirmation is enabled in Supabase.
-    In that case, show a confirmation message instead of reading session.access_token.
+    v2.2: The landing page remains the marketing page, but Sign In / Get Started
+    now jump directly to a compact workspace access form near the top of the page.
     """
     st.markdown(
         """
@@ -82,6 +82,8 @@ def show_auth_ui(supabase, cookie_manager=None):
             font-size:14px;
             font-weight:750;
         }
+        .auth-nav-links a { text-decoration:none!important; color:#334155!important; }
+        .auth-nav-links a:hover { color:#2563EB!important; }
         .auth-nav-cta {
             display:inline-flex;
             align-items:center;
@@ -228,7 +230,7 @@ def show_auth_ui(supabase, cookie_manager=None):
         .bottom-cta { margin:34px 0 0 0; background:linear-gradient(135deg,#0F172A,#1E3A8A); border-radius:20px; padding:26px 30px; display:flex; align-items:center; justify-content:space-between; gap:20px; box-shadow:0 22px 50px rgba(15,23,42,.18); }
         .bottom-cta strong { color:#FFFFFF!important; font-size:24px; display:block; margin-bottom:6px; }
         .bottom-cta span { color:#CBD5E1!important; font-size:14px; }
-        .auth-form-shell { margin:30px auto 0 auto; max-width:900px; background:#FFFFFF; border:1px solid #E5E7EB; border-radius:24px; padding:28px; box-shadow:0 18px 45px rgba(15,23,42,.07); }
+        .auth-form-shell { margin:30px auto 16px auto; max-width:900px; background:#FFFFFF; border:1px solid #E5E7EB; border-radius:24px; padding:28px; box-shadow:0 18px 45px rgba(15,23,42,.07); }
         .auth-form-title { color:#0F172A!important; font-size:26px; font-weight:950; letter-spacing:-.04em; margin:0 0 6px 0; }
         .auth-form-subtitle { color:#64748B!important; font-size:14px; margin:0 0 18px 0; }
         div[data-testid="stTextInput"] input {
@@ -286,7 +288,12 @@ def show_auth_ui(supabase, cookie_manager=None):
           <div class="auth-nav">
             <div class="auth-logo"><div class="auth-logo-mark">B</div><span>BOM Risk Checker</span></div>
             <div class="auth-nav-links">
-              <span>Features</span><span>Solutions</span><span>Pricing</span><span>Resources</span><span>About</span><span class="auth-nav-cta">Get Started</span>
+              <a href="#features">Features</a>
+              <a href="#solutions">Solutions</a>
+              <a href="#pricing">Pricing</a>
+              <a href="#resources">Resources</a>
+              <a href="#workspace-access" class="auth-secondary-cta" style="min-height:40px;padding:0 16px;">Sign In</a>
+              <a href="#workspace-access" class="auth-nav-cta">Get Started</a>
             </div>
           </div>
           <div class="auth-hero-grid">
@@ -295,8 +302,8 @@ def show_auth_ui(supabase, cookie_manager=None):
               <h1 class="auth-title">Reduce BOM Risk.<br><span class="blue">Find Better Alternatives.</span></h1>
               <p class="auth-subtitle">Analyze component lifecycle, supplier risk, and market availability in seconds. Make smarter sourcing decisions and keep your products moving.</p>
               <div class="auth-cta-row">
-                <span class="auth-primary-cta">Start Free Trial</span>
-                <span class="auth-secondary-cta">See How It Works</span>
+                <a class="auth-primary-cta" href="#workspace-access">Start Free Trial</a>
+                <a class="auth-secondary-cta" href="#features">See How It Works</a>
               </div>
               <div class="auth-proof-row">
                 <span><span class="auth-proof-dot">✓</span>No credit card required</span>
@@ -345,53 +352,45 @@ def show_auth_ui(supabase, cookie_manager=None):
               </div>
             </div>
           </div>
-          <div class="trusted-band">
-            <div class="trusted-label">Trusted by engineering and supply chain teams</div>
-            <div class="trusted-logos"><span>Honeywell</span><span>PHILIPS</span><span>flex</span><span>SIEMENS</span><span>BOSCH</span><span>molex</span></div>
-          </div>
-          <div class="feature-section">
-            <h2 class="section-title">Everything you need to manage BOM risk</h2>
-            <div class="feature-grid">
-              <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle & Obsolescence Analysis</strong><span>Identify EOL, NRND, and at-risk components before they impact your product.</span></div>
-              <div class="feature-card"><div class="feature-icon">◌</div><strong>Supplier & Market Intelligence</strong><span>Access supplier risk, lead times, and availability data in one place.</span></div>
-              <div class="feature-card"><div class="feature-icon">↗</div><strong>AI-Powered Risk Scoring</strong><span>Score each component using lifecycle, sourcing, inventory, and supplier factors.</span></div>
-              <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Component Finder</strong><span>Find fit, form, and function alternatives ranked by risk, availability, and cost.</span></div>
-            </div>
-          </div>
-          <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Join engineering teams building more resilient products.</span></div><span class="auth-primary-cta">Start Free Trial</span></div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        """
-        <div class="auth-form-shell">
+        <div id="workspace-access" class="auth-form-shell">
           <div class="auth-form-title">Access your workspace</div>
-          <div class="auth-form-subtitle">Sign in or create an account to continue.</div>
+          <div class="auth-form-subtitle">Use Sign In for an existing account, or Create Account to start a new workspace.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    form_left, form_right = st.columns([1, 1], gap="large")
+    form_left, form_right = st.columns([0.42, 0.58], gap="large")
     with form_left:
         auth_mode = st.radio(
             "Choose an option",
             ["Login", "Create Account"],
             horizontal=True,
         )
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+
+        if auth_mode == "Create Account":
+            submit = st.button("Create Account")
+        else:
+            submit = st.button("Login")
     with form_right:
-        st.caption("Your BOMs, saved analyses, and plan usage stay connected to this account.")
+        st.markdown(
+            """
+            <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,.05);margin-top:30px;">
+              <div style="font-weight:950;color:#0F172A;font-size:18px;margin-bottom:8px;">Secure engineering workspace</div>
+              <div style="color:#64748B;line-height:1.6;font-size:14px;">Your BOMs, saved analyses, reports, alternative recommendations, and subscription usage stay connected to your account.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-
-    if auth_mode == "Create Account":
-        if st.button("Create Account"):
-            if not email or not password:
-                st.warning("Please enter an email and password.")
-                return
+    if submit:
+        if not email or not password:
+            st.warning("Please enter your email and password.")
+            return
+        if auth_mode == "Create Account":
             try:
                 response = supabase.auth.sign_up({"email": email, "password": password})
                 if getattr(response, "session", None):
@@ -405,11 +404,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                     st.success("Account created. Please check your email to confirm your account, then return here to log in.")
             except Exception as error:
                 st.error(f"Signup failed: {error}")
-    else:
-        if st.button("Login"):
-            if not email or not password:
-                st.warning("Please enter your email and password.")
-                return
+        else:
             try:
                 response = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if not getattr(response, "session", None):
@@ -423,3 +418,25 @@ def show_auth_ui(supabase, cookie_manager=None):
                 st.rerun()
             except Exception as error:
                 st.error(f"Login failed: {error}")
+
+    st.markdown(
+        """
+        <div class="brc-public-page" id="features">
+          <div class="trusted-band">
+            <div class="trusted-label">Trusted by engineering and supply chain teams</div>
+            <div class="trusted-logos"><span>Honeywell</span><span>PHILIPS</span><span>flex</span><span>SIEMENS</span><span>BOSCH</span><span>molex</span></div>
+          </div>
+          <div class="feature-section">
+            <h2 class="section-title">Everything you need to manage BOM risk</h2>
+            <div class="feature-grid">
+              <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle & Obsolescence Analysis</strong><span>Identify EOL, NRND, and at-risk components before they impact your product.</span></div>
+              <div class="feature-card"><div class="feature-icon">◌</div><strong>Supplier & Market Intelligence</strong><span>Access supplier risk, lead times, and availability data in one place.</span></div>
+              <div class="feature-card"><div class="feature-icon">↗</div><strong>AI-Powered Risk Scoring</strong><span>Score each component using lifecycle, sourcing, inventory, and supplier factors.</span></div>
+              <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Component Finder</strong><span>Find fit, form, and function alternatives ranked by risk, availability, and cost.</span></div>
+            </div>
+          </div>
+          <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Join engineering teams building more resilient products.</span></div><a class="auth-primary-cta" href="#workspace-access">Start Free Trial</a></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
