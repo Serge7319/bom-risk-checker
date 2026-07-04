@@ -471,7 +471,7 @@ analysis_history = (
 
 
 st.set_page_config(
-    page_title="BOM Risk Checker",
+    page_title="Cadivor",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -522,7 +522,7 @@ def send_monitor_alert_email(to_email: str, subject: str, message: str):
     resend.api_key = st.secrets.get("RESEND_API_KEY")
     from_email = st.secrets.get(
         "ALERT_FROM_EMAIL",
-        "BOM Risk Checker <onboarding@resend.dev>",
+        "Cadivor <onboarding@resend.dev>",
     )
 
     if not resend.api_key:
@@ -872,14 +872,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.sidebar.title("BOM Risk Checker")
+st.sidebar.title("Cadivor")
 if "user" in st.session_state:
     st.sidebar.success(
         f"Logged in as:\n{st.session_state['user'].email}"
     )
 
     
-st.sidebar.write("Component lifecycle and supply chain risk analysis.")
+st.sidebar.write("Run it through Cadivor. Engineering intelligence for electronics teams.")
 st.sidebar.divider()
 st.sidebar.write("Supported files: CSV, XLSX")
 st.sidebar.write("Required field: Part Number / MPN")
@@ -1516,8 +1516,8 @@ if app_mode == "Pricing":
 
 # ---------- About ----------
 if app_mode == "About":
-    st.subheader("About BOM Risk Checker")
-    st.caption("Helping engineering teams reduce supply chain surprises before they reach production.")
+    st.subheader("About Cadivor")
+    st.caption("Engineering intelligence for electronics teams.")
 
     col1, col2 = st.columns([2, 1])
 
@@ -1527,7 +1527,7 @@ if app_mode == "About":
             <div class="card">
                 <div class="card-title">What We Do</div>
                 <div class="card-text">
-                    BOM Risk Checker helps engineering and supply chain teams identify obsolete,
+                    Cadivor helps engineering and supply chain teams identify obsolete,
                     unavailable, single-source, and high-risk components before they create production delays.
                     <br><br>
                     The platform combines supplier data, lifecycle signals, sourcing risk, and alternative
