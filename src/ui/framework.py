@@ -113,7 +113,7 @@ def metric_card(title, value, status="", kind="info"):
     )
 
 
-def light_plotly_layout(fig, height=340):
+def light_plotly_layout(fig, height=380):
     """Apply Cadivor's light chart style to a Plotly figure."""
     fig.update_layout(
         height=height,
