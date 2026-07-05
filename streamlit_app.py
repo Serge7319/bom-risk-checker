@@ -61,6 +61,66 @@ def load_user_data():
     st.stop()
 
 
+
+def _safe_text(value, fallback=""):
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text if text else fallback
+
+
+def get_user_profile(current_user):
+    """Return user-facing profile fields without assuming optional DB columns exist."""
+    if not isinstance(current_user, dict):
+        current_user = {}
+    auth_user = st.session_state.get("user")
+    metadata = getattr(auth_user, "user_metadata", {}) or {}
+
+    email = _safe_text(current_user.get("email"), _safe_text(getattr(auth_user, "email", "")))
+    full_name = _safe_text(
+        current_user.get("full_name"),
+        _safe_text(
+            current_user.get("name"),
+            _safe_text(metadata.get("full_name"), _safe_text(metadata.get("name"), "")),
+        ),
+    )
+    first_name = _safe_text(current_user.get("first_name"), _safe_text(metadata.get("first_name"), ""))
+    last_name = _safe_text(current_user.get("last_name"), _safe_text(metadata.get("last_name"), ""))
+    if not full_name and (first_name or last_name):
+        full_name = f"{first_name} {last_name}".strip()
+    if not full_name and email:
+        full_name = email.split("@")[0].replace(".", " ").replace("_", " ").title()
+
+    company = _safe_text(
+        current_user.get("company_name"),
+        _safe_text(current_user.get("company"), _safe_text(metadata.get("company_name"), _safe_text(metadata.get("company"), ""))),
+    )
+    role_title = _safe_text(current_user.get("role_title"), _safe_text(current_user.get("job_title"), _safe_text(metadata.get("role_title"), "")))
+    avatar_url = _safe_text(current_user.get("profile_image_url"), _safe_text(current_user.get("avatar_url"), _safe_text(metadata.get("avatar_url"), "")))
+    plan = _safe_text(current_user.get("plan"), "Starter")
+
+    initials_source = full_name or email or "Cadivor"
+    initials = "".join([part[0] for part in initials_source.replace("@", " ").split()[:2]]).upper()[:2] or "C"
+    return {
+        "email": email,
+        "full_name": full_name or "Cadivor user",
+        "company": company,
+        "role_title": role_title,
+        "avatar_url": avatar_url,
+        "plan": plan,
+        "initials": initials,
+    }
+
+
+def update_user_profile_fields(user_id, updates):
+    """Update only optional profile columns that already exist in the users table."""
+    existing = set(current_user.keys()) if isinstance(current_user, dict) else set()
+    allowed = {k: v for k, v in updates.items() if k in existing}
+    skipped = [k for k in updates.keys() if k not in existing]
+    if allowed:
+        supabase.table("users").update(allowed).eq("id", user_id).execute()
+    return allowed, skipped
+
 def load_alternative_history(user_id):
     response = (
         supabase.table("alternative_recommendations")
@@ -839,7 +899,7 @@ st.markdown(
     [data-testid="stHeader"] { background:rgba(255,255,255,.88)!important; border-bottom:1px solid var(--brc-border)!important; }
     [data-testid="stSidebar"] { background:#FFFFFF!important; border-right:1px solid var(--brc-border)!important; }
     [data-testid="stSidebar"] * { color:var(--brc-navy)!important; }
-    .block-container { max-width:1480px!important; padding-top:2.1rem!important; padding-left:2.4rem!important; padding-right:2.4rem!important; }
+    .block-container { max-width:100%!important; padding-top:1.25rem!important; padding-left:1.25rem!important; padding-right:1.25rem!important; }
     h1,h2,h3,h4,h5,h6 { color:var(--brc-navy)!important; letter-spacing:-.03em; }
     p,label,span,div,.stMarkdown,.stCaptionContainer { color:var(--brc-muted); }
 
@@ -895,6 +955,7 @@ NAV_OPTIONS = [
     "Monitoring",
     "Reports",
     "Pricing",
+    "Settings",
     "About",
 ]
 
@@ -971,35 +1032,40 @@ if app_mode == "Dashboard":
         """
         <style>
         .cadivor-topbar {
-            margin-top: 4px;
+            margin-top: 0;
             margin-bottom: 18px;
-            padding: 14px 18px;
-            background: rgba(255,255,255,.92);
+            padding: 16px 22px;
+            background: rgba(255,255,255,.96);
             border: 1px solid #E5E7EB;
-            border-radius: 18px;
-            box-shadow: 0 14px 34px rgba(15,23,42,.06);
-            display: flex;
+            border-radius: 0 0 18px 18px;
+            box-shadow: 0 12px 32px rgba(15,23,42,.055);
+            display: grid;
+            grid-template-columns: 260px 1fr auto;
             align-items: center;
-            justify-content: space-between;
-            gap: 18px;
+            gap: 22px;
+            width: 100%;
         }
-        .cadivor-brand { display:flex; align-items:center; gap:12px; min-width:220px; }
+        .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:240px; }
         .cadivor-logo-mark {
-            width: 38px; height: 38px; border-radius: 12px;
+            width: 42px; height: 42px; border-radius: 13px;
             display:flex; align-items:center; justify-content:center;
-            background:#0F172A; color:#FFFFFF!important; font-weight:900; font-size:18px;
+            background:#2563EB; color:#FFFFFF!important; font-weight:900; font-size:20px;
+            box-shadow:0 12px 22px rgba(37,99,235,.22);
         }
-        .cadivor-logo-text { color:#0F172A!important; font-size:18px; font-weight:900; line-height:1; }
-        .cadivor-logo-subtitle { color:#64748B!important; font-size:11px; font-weight:700; margin-top:3px; }
-        .cadivor-topbar-center { color:#0F172A!important; font-size:14px; font-weight:800; }
-        .cadivor-user { display:flex; align-items:center; gap:10px; justify-content:flex-end; min-width:220px; }
-        .cadivor-user-label { color:#94A3B8!important; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; text-align:right; }
-        .cadivor-user-email { color:#0F172A!important; font-size:12px; font-weight:750; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .cadivor-avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:900; border:1px solid #BFDBFE; }
+        .cadivor-logo-text { color:#0F172A!important; font-size:20px; font-weight:900; line-height:1; }
+        .cadivor-logo-subtitle { color:#64748B!important; font-size:11px; font-weight:750; margin-top:4px; }
+        .cadivor-topbar-center { color:#0F172A!important; font-size:15px; font-weight:850; justify-self:start; }
+        .cadivor-user { display:flex; align-items:center; gap:12px; justify-content:flex-end; min-width:280px; }
+        .cadivor-user-label { color:#94A3B8!important; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.08em; text-align:right; }
+        .cadivor-user-email { color:#64748B!important; font-size:12px; font-weight:700; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .cadivor-user-name { color:#0F172A!important; font-size:14px; font-weight:850; text-align:right; line-height:1.15; }
+        .cadivor-user-company { color:#64748B!important; font-size:12px; font-weight:700; text-align:right; margin-top:2px; }
+        .cadivor-avatar { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:900; border:1px solid #BFDBFE; overflow:hidden; }
+        .cadivor-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 
         .cv-dashboard-header {
             display:flex; align-items:flex-start; justify-content:space-between; gap:24px;
-            margin: 4px 0 18px 0;
+            margin: 2px 0 14px 0;
         }
         .cv-eyebrow {
             display:inline-flex; align-items:center; gap:8px;
@@ -1121,8 +1187,9 @@ if app_mode == "Dashboard":
         health_badge = "No Data Yet"
         health_kind = ""
 
-    user_email = current_user.get("email", "") if isinstance(current_user, dict) else ""
-    user_name = user_email.split("@")[0].replace(".", " ").title() if user_email else "there"
+    profile = get_user_profile(current_user)
+    user_email = profile["email"]
+    user_name = profile["full_name"].split()[0] if profile.get("full_name") else "there"
 
     def _metric(label, value, note, icon="•", kind=""):
         kind_class = f" cv-{kind}" if kind else ""
@@ -1148,8 +1215,8 @@ if app_mode == "Dashboard":
             <div class="cv-dashboard-header">
               <div>
                 <div class="cv-eyebrow">Cadivor Intelligence</div>
-                <h1 class="cv-title">Welcome back, {user_name}</h1>
-                <p class="cv-subtitle">Review BOM health, supplier exposure, saved analyses, and component alternatives from one Cadivor workspace.</p>
+                <h1 class="cv-title">Good to see you, {user_name}.</h1>
+                <p class="cv-subtitle">Your Cadivor workspace at a glance: BOM health, supplier exposure, saved analyses, and recommended alternatives.</p>
               </div>
             </div>
             """,
@@ -1617,6 +1684,87 @@ if app_mode == "Pricing":
             except Exception as e:
                 st.error(f"Unable to create checkout session: {e}")
 
+    st.stop()
+
+
+# ---------- Settings ----------
+if app_mode == "Settings":
+    profile = get_user_profile(current_user)
+    st.markdown(
+        f"""
+        <div class="cv-dashboard-header">
+          <div>
+            <div class="cv-eyebrow">Workspace Settings</div>
+            <h1 class="cv-title">Profile & workspace</h1>
+            <p class="cv-subtitle">Update the user information Cadivor displays in your workspace header. Fields save when matching columns exist in your Supabase users table.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns([1.05, 1.35])
+    with left:
+        avatar_markup = f'<img src="{profile["avatar_url"]}" alt="Profile photo" />' if profile.get("avatar_url") else profile["initials"]
+        st.markdown(
+            f"""
+            <div class="cv-panel">
+              <div style="display:flex;align-items:center;gap:14px;">
+                <div class="cadivor-avatar" style="width:58px;height:58px;font-size:20px;">{avatar_markup}</div>
+                <div>
+                  <div class="cv-panel-title" style="margin-bottom:4px;">{profile["full_name"]}</div>
+                  <div class="cv-panel-copy">{profile["company"] or profile["email"]}</div>
+                </div>
+              </div>
+              <div class="cv-snapshot-grid" style="margin-top:18px;grid-template-columns:1fr;">
+                <div class="cv-snapshot-item"><span>Plan</span><strong>{profile["plan"]}</strong></div>
+                <div class="cv-snapshot-item"><span>Email</span><strong style="font-size:14px;">{profile["email"]}</strong></div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with right:
+        st.markdown('<div class="cv-panel">', unsafe_allow_html=True)
+        st.markdown('<div class="cv-panel-title">Edit profile</div><div class="cv-panel-copy">This information powers the dashboard profile display.</div>', unsafe_allow_html=True)
+        full_name = st.text_input("Full name", value=profile.get("full_name", ""), placeholder="Joshua Kashambala")
+        company_name = st.text_input("Company / organization", value=profile.get("company", ""), placeholder="Egres Technologies")
+        role_title = st.text_input("Role / title", value=profile.get("role_title", ""), placeholder="Founder, Engineering Lead, Sourcing Manager")
+        profile_image_url = st.text_input("Profile image URL", value=profile.get("avatar_url", ""), placeholder="https://...")
+
+        save_col, note_col = st.columns([.7, 1.3])
+        with save_col:
+            if st.button("Save Profile"):
+                updates = {
+                    "full_name": full_name.strip(),
+                    "company_name": company_name.strip(),
+                    "role_title": role_title.strip(),
+                    "profile_image_url": profile_image_url.strip(),
+                }
+                try:
+                    saved, skipped = update_user_profile_fields(current_user["id"], updates)
+                    if saved:
+                        st.success("Profile updated.")
+                    if skipped:
+                        st.info("Some profile fields need matching columns in Supabase before they can be saved permanently.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Unable to update profile: {e}")
+        with note_col:
+            st.caption("Recommended database columns: full_name, company_name, role_title, profile_image_url.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="cv-section-spacer"></div>
+        <div class="cv-panel">
+          <div class="cv-panel-title">Workspace preferences</div>
+          <div class="cv-panel-copy">Notification, billing, security, and team settings will be expanded in Sprint 2.7. This profile section is the foundation for user identity across Cadivor.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 
