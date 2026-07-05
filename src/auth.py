@@ -82,9 +82,11 @@ def _auth_css():
             margin:28px 0 28px 0;
             padding:0 4px;
         }
-        .cadivor-brand{display:flex; align-items:center; gap:14px; color:var(--cadivor-navy)!important; font-weight:950; font-size:22px; letter-spacing:-.04em;}
-        .cadivor-mark{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;font-weight:950;font-size:21px;box-shadow:0 16px 34px rgba(37,99,235,.24);}
-        .cadivor-nav-links{display:flex;align-items:center;gap:26px;font-size:14px;font-weight:850;}
+        .cadivor-brand{display:flex; align-items:center; gap:16px; color:var(--cadivor-navy)!important; font-weight:950; font-size:30px; letter-spacing:-.055em; text-decoration:none!important; border:0!important; box-shadow:none!important;}
+        .cadivor-brand:visited,.cadivor-brand:hover,.cadivor-brand:active{color:var(--cadivor-navy)!important;text-decoration:none!important;border:0!important;box-shadow:none!important;}
+        .cadivor-brand span{text-decoration:none!important;border-bottom:0!important;box-shadow:none!important;}
+        .cadivor-mark{width:62px;height:62px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;font-weight:950;font-size:27px;box-shadow:0 18px 40px rgba(37,99,235,.28);}
+        .cadivor-nav-links{display:flex;align-items:center;gap:28px;font-size:15px;font-weight:850;}
         .cadivor-nav-links a{color:#334155!important;text-decoration:none!important;}
         .cadivor-nav-links a:hover{color:var(--cadivor-blue)!important;}
         .cadivor-signin{background:#fff;border:1px solid var(--cadivor-border);border-radius:12px;padding:11px 17px;color:#0F172A!important;box-shadow:var(--shadow-sm);}
@@ -112,9 +114,16 @@ def _auth_css():
         .cadivor-cta-row{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:26px;}
         .cadivor-primary,.cadivor-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:50px;border-radius:14px;padding:0 22px;font-weight:950;font-size:15px;text-decoration:none!important;}
         .cadivor-primary{background:var(--cadivor-blue);color:#fff!important;border:1px solid var(--cadivor-blue);box-shadow:0 18px 34px rgba(37,99,235,.24);}
-        .cadivor-primary:hover,.cadivor-nav-cta:hover{background:var(--cadivor-blue-2)!important;color:#fff!important;border-color:var(--cadivor-blue-2)!important;}
+        .cadivor-primary:hover,.cadivor-nav-cta:hover{background:var(--cadivor-blue-2)!important;color:#fff!important;border-color:var(--cadivor-blue-2)!important;text-decoration:none!important;}
+        a.cadivor-primary,a.cadivor-primary:visited,a.cadivor-primary:hover,a.cadivor-primary:active,a.cadivor-nav-cta,a.cadivor-nav-cta:visited,a.cadivor-nav-cta:hover,a.cadivor-nav-cta:active{color:#fff!important;text-decoration:none!important;}
         .cadivor-secondary{background:#fff;color:var(--cadivor-navy)!important;border:1px solid #CBD5E1;box-shadow:var(--shadow-sm);}
         .cadivor-proof{display:flex;align-items:center;flex-wrap:wrap;gap:22px;color:#475569!important;font-size:14px;font-weight:800;}
+
+        .cadivor-public h1 a,.cadivor-public h2 a,.cadivor-public h3 a,.cadivor-public h4 a,.cadivor-title a,.section-heading h2 a{display:none!important;visibility:hidden!important;}
+        .cadivor-public a[href^="#"]{display:none!important;}
+        .cadivor-eyebrow:before{content:"";width:8px;height:8px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 4px rgba(37,99,235,.10);}
+        .feature-card:hover,.solution-card:hover,.mini-card:hover,.resource-card:hover,.flow-step:hover{transform:translateY(-3px);box-shadow:0 22px 46px rgba(15,23,42,.09);border-color:#CBD5E1;}
+        .feature-card,.solution-card,.mini-card,.resource-card,.flow-step{transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;}
         .cadivor-proof span{display:inline-flex;align-items:center;gap:8px;}.cadivor-check{width:22px;height:22px;border-radius:8px;display:grid;place-items:center;background:#EFF6FF;color:var(--cadivor-blue)!important;border:1px solid #BFDBFE;font-size:13px;}
         .product-window{position:relative;z-index:1;background:#fff;border:1px solid var(--cadivor-border);border-radius:24px;box-shadow:0 30px 80px rgba(15,23,42,.14);overflow:hidden;margin-top:0;}
         .product-top{height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #E5E7EB;background:#fff;}
@@ -255,7 +264,7 @@ def _nav(active: str = "home"):
     _html(f"""
     <div class="cadivor-public">
       <div class="cadivor-nav">
-        <a class="cadivor-brand" href="?" target="_self" style="text-decoration:none!important;">
+        <a class="cadivor-brand" href="?" target="_self">
           <div class="cadivor-mark">C</div><span>Cadivor</span>
         </a>
         <div class="cadivor-nav-links">
@@ -314,7 +323,7 @@ def _render_home_page():
       <section class="cadivor-hero">
         <div class="cadivor-hero-content">
           <div class="cadivor-eyebrow">Engineering intelligence for modern electronics teams</div>
-          <h1 class="cadivor-title">Find better alternatives.<br><span class="blue">Run every BOM through Cadivor.</span></h1>
+          <h1 class="cadivor-title"><span>Find better alternatives.</span><br><span class="blue">Run every BOM through Cadivor.</span></h1>
           <p class="cadivor-subtitle">Cadivor helps electronics teams detect lifecycle risk, compare compatible replacements, monitor supplier health, and make sourcing decisions with confidence.</p>
           <div class="cadivor-cta-row">
             <a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a>
