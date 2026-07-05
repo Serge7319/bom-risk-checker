@@ -487,6 +487,8 @@ if "access_token" in st.session_state and "refresh_token" in st.session_state:
 
         if user_response and user_response.user:
             st.session_state["user"] = user_response.user
+            st.session_state["cadivor_auth_restore_checked"] = True
+            st.session_state["cadivor_auth_restore_attempts"] = 3
 
     except Exception:
         st.session_state.pop("user", None)
@@ -495,12 +497,13 @@ if "access_token" in st.session_state and "refresh_token" in st.session_state:
 
 if "user" not in st.session_state:
 
-    # CookieManager can take one render cycle to hydrate cookies after a page reload.
-    # Showing the public landing/login page during that cycle creates the brief flash
-    # seen when navigating between authenticated pages. Hold a neutral Cadivor loading
-    # state for one cycle before falling back to the auth UI.
-    if cookie_manager and not st.session_state.get("cadivor_auth_restore_checked"):
-        st.session_state["cadivor_auth_restore_checked"] = True
+    # CookieManager can take more than one render cycle to hydrate cookies after
+    # a reload or query-param navigation. Do not show the public landing/auth UI
+    # until we have given the saved session several chances to restore. This
+    # prevents the brief landing-page flash during authenticated navigation.
+    _restore_attempts = st.session_state.get("cadivor_auth_restore_attempts", 0)
+    if cookie_manager and _restore_attempts < 3:
+        st.session_state["cadivor_auth_restore_attempts"] = _restore_attempts + 1
         st.markdown(
             """
             <style>
@@ -1117,6 +1120,37 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+# Cadivor v2.7 shell/dashboard polish overrides.
+st.markdown(
+    """
+    <style>
+    .cv-dashboard-header { margin-bottom: 18px!important; }
+    .cv-quick-mini {
+        max-width: 390px; margin-left: auto; margin-top: 2px;
+        background: transparent!important; border: 0!important; box-shadow: none!important;
+        display: flex; flex-direction: column; gap: 8px;
+    }
+    .cv-mini-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .cv-quick-mini .cv-action-row-label { text-align: right; margin-bottom: 0!important; }
+    .cv-quick-mini .cv-quick-button { padding: 10px 14px; border-radius: 11px; min-width: 150px; }
+    .cv-title { font-size: 38px!important; margin-bottom: 10px!important; }
+    .cv-subtitle { max-width: 720px!important; }
+    .cv-metric { min-height: 112px!important; padding: 17px 18px 15px!important; }
+    .cv-metric-value { font-size: 40px!important; }
+    .cadivor-topbar { min-height: 62px!important; padding: 11px 18px!important; margin-bottom: 26px!important; }
+    .cadivor-logo-mark { width: 44px!important; height: 44px!important; }
+    .cadivor-logo-text { font-size: 23px!important; }
+    .cadivor-user { align-items: center!important; }
+    .cv-section-spacer { margin-top: 42px!important; }
+    .cv-panel-title { font-size: 19px!important; }
+    div[data-testid="stPlotlyChart"] { background: #FFFFFF!important; border-radius: 14px!important; }
+    @media(max-width:1200px){ .cv-mini-buttons{grid-template-columns:1fr;} .cv-quick-mini{max-width:240px;} }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 _nav_html = []
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
@@ -1386,11 +1420,12 @@ if app_mode == "Dashboard":
     with action_col:
         st.markdown(
             f"""
-            <div class="cv-quick-card">
+            <div class="cv-quick-mini">
               <div class="cv-action-row-label">Quick Actions</div>
-              <div class="cv-quick-copy">Start the next sourcing workflow.</div>
-              <a class="cv-quick-button" href="?page=BOM%20Analyzer" target="_self">New Analysis</a>
-              <a class="cv-quick-button secondary" href="?page=Alternative%20Finder" target="_self">Find Alternatives</a>
+              <div class="cv-mini-buttons">
+                <a class="cv-quick-button" href="?page=BOM%20Analyzer" target="_self">New Analysis</a>
+                <a class="cv-quick-button secondary" href="?page=Alternative%20Finder" target="_self">Find Alternatives</a>
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
