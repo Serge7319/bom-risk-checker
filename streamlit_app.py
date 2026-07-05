@@ -915,6 +915,10 @@ st.markdown(
     [data-testid="stDataFrame"] [role="columnheader"], [data-testid="stDataFrame"] thead tr th { background:#F6F8FA!important; color:#475569!important; border-bottom:1px solid var(--brc-border)!important; font-weight:750!important; }
     [data-testid="stDataFrame"] [role="gridcell"], [data-testid="stDataFrame"] tbody tr td { background:#fff!important; color:var(--brc-navy)!important; border-bottom:1px solid #EEF2F7!important; }
     div[data-testid="stAlert"] { border-radius:12px!important; border:1px solid var(--brc-border)!important; }
+    /* Cadivor v2.5 polished tables */
+    [data-testid="stDataFrame"] { border-radius:14px!important; border:1px solid #E2E8F0!important; box-shadow:0 12px 30px rgba(15,23,42,.045)!important; }
+    [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] { background:#F8FAFC!important; }
+
     @media(max-width:900px){ .block-container{padding-left:1.1rem!important;padding-right:1.1rem!important;} .brc-hero-title{font-size:32px;} }
     </style>
     """,
@@ -1024,7 +1028,7 @@ st.markdown(
         margin-left:0!important;
         max-width:none!important;
         width:100%!important;
-        padding:28px 26px 48px calc(var(--cv-sidebar-width) + 26px)!important;
+        padding:22px 24px 48px calc(var(--cv-sidebar-width) + 24px)!important;
         box-sizing:border-box!important;
     }
     .cv-app-sidebar {
@@ -1038,13 +1042,13 @@ st.markdown(
     .cv-side-sub { color:#64748B!important; font-size:10px; font-weight:800; margin-top:4px; letter-spacing:.04em; text-transform:uppercase; }
     .cv-side-user { display:flex; gap:12px; align-items:center; padding:13px; border:1px solid #E5E7EB; border-radius:16px; background:#F8FAFC; margin-bottom:20px; }
     .cv-side-avatar { width:38px; height:38px; border-radius:50%; background:#EFF6FF; color:#2563EB!important; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; font-weight:950; flex:0 0 auto; }
-    .cv-side-user strong { display:block; color:#0F172A!important; font-size:13px; font-weight:900; line-height:1.2; }
+    .cv-side-user strong { display:block; color:#0F172A!important; font-size:14px; font-weight:950; line-height:1.2; }
     .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
     .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
     .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
-    .cv-side-link span { width:20px; text-align:center; color:#64748B!important; }
-    .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; }
+    .cv-side-link span { width:22px; text-align:center; color:#64748B!important; font-size:15px; }
+    .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; transform:translateX(2px); transition:all .16s ease; }
     .cv-side-link.active { background:#EFF6FF; border-color:#BFDBFE; color:#2563EB!important; }
     .cv-side-link.active span { color:#2563EB!important; }
     .cv-side-plan { border:1px solid #E5E7EB; border-radius:16px; background:#FFFFFF; padding:14px; display:flex; flex-direction:column; gap:7px; }
@@ -1054,24 +1058,30 @@ st.markdown(
     .cv-side-footer a { padding:10px 12px; border-radius:12px; text-decoration:none!important; color:#334155!important; font-weight:850; font-size:13px; background:#F8FAFC; border:1px solid #E5E7EB; text-align:center; }
     .cv-side-footer a:last-child { color:#DC2626!important; }
     .cadivor-topbar {
-        margin:0 0 22px 0; padding:16px 22px; background:rgba(255,255,255,.96);
-        border:1px solid #E5E7EB; border-radius:18px; box-shadow:0 12px 32px rgba(15,23,42,.055);
-        display:grid; grid-template-columns:260px 1fr auto; align-items:center; gap:22px; width:100%;
+        margin:0 0 20px 0; padding:12px 18px; background:rgba(255,255,255,.97);
+        border:1px solid #E5E7EB; border-radius:16px; box-shadow:0 10px 26px rgba(15,23,42,.050);
+        display:grid; grid-template-columns:280px 1fr auto; align-items:center; gap:18px; width:100%; min-height:58px;
     }
-    .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:240px; }
-    .cadivor-logo-mark { width:42px; height:42px; border-radius:13px; display:flex; align-items:center; justify-content:center; background:#2563EB; color:#FFFFFF!important; font-weight:900; font-size:20px; box-shadow:0 12px 22px rgba(37,99,235,.22); }
-    .cadivor-logo-text { color:#0F172A!important; font-size:20px; font-weight:900; line-height:1; }
-    .cadivor-logo-subtitle { color:#64748B!important; font-size:11px; font-weight:750; margin-top:4px; }
+    .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:260px; }
+    .cadivor-logo-mark { width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:#2563EB; color:#FFFFFF!important; font-weight:950; font-size:22px; box-shadow:0 12px 22px rgba(37,99,235,.22); }
+    .cadivor-logo-text { color:#0F172A!important; font-size:22px; font-weight:950; line-height:1; letter-spacing:-.02em; }
+    .cadivor-logo-subtitle { color:#64748B!important; font-size:11.5px; font-weight:800; margin-top:4px; letter-spacing:.02em; }
     .cadivor-topbar-center { color:#0F172A!important; font-size:15px; font-weight:850; justify-self:start; }
     .cadivor-user { display:flex; align-items:center; gap:12px; justify-content:flex-end; min-width:280px; }
     .cadivor-user-label { color:#94A3B8!important; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.08em; text-align:right; }
-    .cadivor-user-name { color:#0F172A!important; font-size:14px; font-weight:850; text-align:right; line-height:1.15; }
+    .cadivor-user-name { color:#0F172A!important; font-size:15px; font-weight:900; text-align:right; line-height:1.15; }
     .cadivor-user-company { color:#64748B!important; font-size:12px; font-weight:700; text-align:right; margin-top:2px; }
-    .cadivor-avatar { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:900; border:1px solid #BFDBFE; overflow:hidden; }
+    .cadivor-avatar { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:950; border:1px solid #BFDBFE; overflow:hidden; }
     .cadivor-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
     .cv-dashboard-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin: 2px 0 14px 0; }
     .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:34px; }
     .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; margin-bottom:8px; }
+    .cv-quick-card { background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px; padding:14px; box-shadow:0 14px 32px rgba(15,23,42,.055); display:grid; gap:8px; }
+    .cv-quick-copy { color:#64748B!important; font-size:12px; font-weight:700; margin-bottom:2px; text-align:right; }
+    .cv-quick-button { display:block; text-align:center; text-decoration:none!important; background:#2563EB; color:#FFFFFF!important; border-radius:10px; padding:11px 14px; font-weight:850; box-shadow:0 12px 24px rgba(37,99,235,.20); }
+    .cv-quick-button:hover { background:#1D4ED8; color:#FFFFFF!important; transform:translateY(-1px); transition:all .16s ease; }
+    .cv-quick-button.secondary { background:#F8FAFC; color:#2563EB!important; border:1px solid #BFDBFE; box-shadow:none; }
+    .cv-quick-button.secondary:hover { background:#EFF6FF; color:#1D4ED8!important; }
     .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
     @media(max-width:1000px){
         [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main { margin-left:0!important; width:100%!important; max-width:100%!important; }
@@ -1124,20 +1134,20 @@ if app_mode == "Dashboard":
         <style>
 
         /* Dashboard-specific styling only. Layout shell is defined globally above. */
-        .main .block-container, [data-testid="stMainBlockContainer"] { padding-left:calc(var(--cv-sidebar-width) + 26px)!important; padding-right:26px!important; max-width:none!important; }
+        .main .block-container, [data-testid="stMainBlockContainer"] { padding-left:calc(var(--cv-sidebar-width) + 24px)!important; padding-right:24px!important; max-width:none!important; }
         .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
         .cv-side-logo { width:38px; height:38px; border-radius:12px; background:#2563EB; color:#fff!important; display:flex; align-items:center; justify-content:center; font-weight:950; box-shadow:0 12px 24px rgba(37,99,235,.25); }
         .cv-side-name { color:#0F172A!important; font-size:20px; font-weight:950; line-height:1; }
         .cv-side-sub { color:#64748B!important; font-size:10px; font-weight:800; margin-top:4px; letter-spacing:.04em; text-transform:uppercase; }
         .cv-side-user { display:flex; gap:12px; align-items:center; padding:13px; border:1px solid #E5E7EB; border-radius:16px; background:#F8FAFC; margin-bottom:22px; }
         .cv-side-avatar { width:38px; height:38px; border-radius:50%; background:#EFF6FF; color:#2563EB!important; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; font-weight:950; flex:0 0 auto; }
-        .cv-side-user strong { display:block; color:#0F172A!important; font-size:13px; font-weight:900; line-height:1.2; }
+        .cv-side-user strong { display:block; color:#0F172A!important; font-size:14px; font-weight:950; line-height:1.2; }
         .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
         .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
         .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
-        .cv-side-link span { width:20px; text-align:center; color:#64748B!important; }
-        .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; }
+        .cv-side-link span { width:22px; text-align:center; color:#64748B!important; font-size:15px; }
+        .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; transform:translateX(2px); transition:all .16s ease; }
         .cv-side-link.active { background:#EFF6FF; border-color:#BFDBFE; color:#2563EB!important; }
         .cv-side-link.active span { color:#2563EB!important; }
         .cv-side-plan { border:1px solid #E5E7EB; border-radius:16px; background:#FFFFFF; padding:14px; display:flex; flex-direction:column; gap:7px; }
@@ -1149,33 +1159,33 @@ if app_mode == "Dashboard":
         .cadivor-topbar {
             margin-top: 0;
             margin-bottom: 22px;
-            padding: 16px 22px;
-            background: rgba(255,255,255,.96);
+            padding: 12px 18px;
+            background: rgba(255,255,255,.97);
             border: 1px solid #E5E7EB;
             border-radius: 18px;
             box-shadow: 0 12px 32px rgba(15,23,42,.055);
             display: grid;
-            grid-template-columns: 260px 1fr auto;
+            grid-template-columns: 280px 1fr auto;
             align-items: center;
             gap: 22px;
             width: 100%;
         }
-        .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:240px; }
+        .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:260px; }
         .cadivor-logo-mark {
-            width: 42px; height: 42px; border-radius: 13px;
+            width: 46px; height: 46px; border-radius: 14px;
             display:flex; align-items:center; justify-content:center;
-            background:#2563EB; color:#FFFFFF!important; font-weight:900; font-size:20px;
+            background:#2563EB; color:#FFFFFF!important; font-weight:900; font-size:22px;
             box-shadow:0 12px 22px rgba(37,99,235,.22);
         }
-        .cadivor-logo-text { color:#0F172A!important; font-size:20px; font-weight:900; line-height:1; }
-        .cadivor-logo-subtitle { color:#64748B!important; font-size:11px; font-weight:750; margin-top:4px; }
+        .cadivor-logo-text { color:#0F172A!important; font-size:22px; font-weight:950; line-height:1; letter-spacing:-.02em; }
+        .cadivor-logo-subtitle { color:#64748B!important; font-size:11.5px; font-weight:800; margin-top:4px; letter-spacing:.02em; }
         .cadivor-topbar-center { color:#0F172A!important; font-size:15px; font-weight:850; justify-self:start; }
         .cadivor-user { display:flex; align-items:center; gap:12px; justify-content:flex-end; min-width:280px; }
         .cadivor-user-label { color:#94A3B8!important; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.08em; text-align:right; }
         .cadivor-user-email { color:#64748B!important; font-size:12px; font-weight:700; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .cadivor-user-name { color:#0F172A!important; font-size:14px; font-weight:850; text-align:right; line-height:1.15; }
+        .cadivor-user-name { color:#0F172A!important; font-size:15px; font-weight:900; text-align:right; line-height:1.15; }
         .cadivor-user-company { color:#64748B!important; font-size:12px; font-weight:700; text-align:right; margin-top:2px; }
-        .cadivor-avatar { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:900; border:1px solid #BFDBFE; overflow:hidden; }
+        .cadivor-avatar { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:950; border:1px solid #BFDBFE; overflow:hidden; }
         .cadivor-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 
         .cv-dashboard-header {
@@ -1189,10 +1199,16 @@ if app_mode == "Dashboard":
             font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase;
             margin-bottom:10px;
         }
-        .cv-title { font-size:42px; line-height:1.05; font-weight:950; color:#0F172A!important; letter-spacing:-.045em; margin:0 0 8px 0; }
+        .cv-title { font-size:40px; line-height:1.05; font-weight:950; color:#0F172A!important; letter-spacing:-.045em; margin:0 0 8px 0; }
         .cv-subtitle { color:#64748B!important; font-size:15px; line-height:1.55; max-width:760px; margin:0; }
         .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:8px; }
         .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; padding-top:0; margin-bottom:8px; }
+        .cv-quick-card { background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px; padding:14px; box-shadow:0 14px 32px rgba(15,23,42,.055); display:grid; gap:8px; }
+        .cv-quick-copy { color:#64748B!important; font-size:12px; font-weight:700; margin-bottom:2px; text-align:right; }
+    .cv-quick-button { display:block; text-align:center; text-decoration:none!important; background:#2563EB; color:#FFFFFF!important; border-radius:10px; padding:11px 14px; font-weight:850; box-shadow:0 12px 24px rgba(37,99,235,.20); }
+    .cv-quick-button:hover { background:#1D4ED8; color:#FFFFFF!important; transform:translateY(-1px); transition:all .16s ease; }
+    .cv-quick-button.secondary { background:#F8FAFC; color:#2563EB!important; border:1px solid #BFDBFE; box-shadow:none; }
+    .cv-quick-button.secondary:hover { background:#EFF6FF; color:#1D4ED8!important; }
         .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
 
         .cv-metric {
@@ -1207,7 +1223,7 @@ if app_mode == "Dashboard":
         .cv-metric-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
         .cv-metric-label { color:#64748B!important; font-size:12px; font-weight:850; letter-spacing:.035em; text-transform:uppercase; }
         .cv-metric-icon { width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:#F8FAFC; border:1px solid #E5E7EB; font-size:16px; }
-        .cv-metric-value { color:#0F172A!important; font-size:36px; line-height:1; font-weight:950; letter-spacing:-.04em; margin-bottom:8px; }
+        .cv-metric-value { color:#0F172A!important; font-size:38px; line-height:1; font-weight:950; letter-spacing:-.04em; margin-bottom:8px; }
         .cv-metric-note { color:#64748B!important; font-size:13px; font-weight:700; }
         .cv-badge { display:inline-flex; padding:5px 9px; border-radius:999px; font-size:11px; font-weight:850; border:1px solid #BFDBFE; color:#2563EB!important; background:#EFF6FF; }
         .cv-badge.success { color:#047857!important; background:#ECFDF5; border-color:#A7F3D0; }
@@ -1218,7 +1234,7 @@ if app_mode == "Dashboard":
             background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px;
             padding:18px; box-shadow:0 14px 32px rgba(15,23,42,.055); margin-top:16px;
         }
-        .cv-panel-title { color:#0F172A!important; font-size:18px; font-weight:900; letter-spacing:-.025em; margin-bottom:4px; }
+        .cv-panel-title { color:#0F172A!important; font-size:18px; font-weight:950; letter-spacing:-.025em; margin-bottom:4px; }
         .cv-panel-copy { color:#64748B!important; font-size:13px; margin-bottom:14px; }
         .cv-snapshot-main { color:#0F172A!important; font-size:22px; font-weight:900; line-height:1.2; margin:10px 0 12px; }
         .cv-snapshot-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
@@ -1230,7 +1246,7 @@ if app_mode == "Dashboard":
         .cv-action-icon { width:34px; height:34px; border-radius:11px; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:900; margin-bottom:10px; }
         .cv-action-title { color:#0F172A!important; font-size:14px; font-weight:900; margin-bottom:4px; }
         .cv-action-copy { color:#64748B!important; font-size:12px; line-height:1.45; }
-        .cv-section-spacer { margin-top:22px; }
+        .cv-section-spacer { margin-top:36px; }
         @media(max-width:1000px){ .cv-app-sidebar{position:relative;width:auto;height:auto;box-shadow:none;border-right:0;border-bottom:1px solid #E5E7EB;} .main .block-container{padding-left:1rem!important;padding-right:1rem!important;} .cv-dashboard-header{display:block;} .cv-action-row{justify-content:flex-start;padding-top:14px;} .cv-actions-grid{grid-template-columns:1fr 1fr;} }
         </style>
         """,
@@ -1306,6 +1322,13 @@ if app_mode == "Dashboard":
     profile = get_user_profile(current_user)
     user_email = profile["email"]
     user_name = profile["full_name"].split()[0] if profile.get("full_name") else "there"
+    _hour = datetime.now().hour if "datetime" in globals() else 12
+    if _hour < 12:
+        greeting_prefix = "Good morning"
+    elif _hour < 17:
+        greeting_prefix = "Good afternoon"
+    else:
+        greeting_prefix = "Good evening"
 
     def _metric(label, value, note, icon="•", kind=""):
         kind_class = f" cv-{kind}" if kind else ""
@@ -1331,24 +1354,25 @@ if app_mode == "Dashboard":
             <div class="cv-dashboard-header">
               <div>
                 <div class="cv-eyebrow">Cadivor Intelligence</div>
-                <h1 class="cv-title">Good to see you, {user_name}.</h1>
-                <p class="cv-subtitle">Your Cadivor workspace at a glance: BOM health, supplier exposure, saved analyses, and recommended alternatives.</p>
+                <h1 class="cv-title">{greeting_prefix}, {user_name}.</h1>
+                <p class="cv-subtitle">Your BOM intelligence workspace at a glance: portfolio health, supplier exposure, saved analyses, and recommended alternatives.</p>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
     with action_col:
-        st.markdown('<div class="cv-action-row-label">Quick actions</div>', unsafe_allow_html=True)
-        act_new, act_alt = st.columns(2)
-        with act_new:
-            if st.button("New Analysis"):
-                st.session_state["pending_app_mode"] = "BOM Analyzer"
-                st.rerun()
-        with act_alt:
-            if st.button("Alternatives"):
-                st.session_state["pending_app_mode"] = "Alternative Finder"
-                st.rerun()
+        st.markdown(
+            f"""
+            <div class="cv-quick-card">
+              <div class="cv-action-row-label">Quick Actions</div>
+              <div class="cv-quick-copy">Start the next sourcing workflow.</div>
+              <a class="cv-quick-button" href="?page=BOM%20Analyzer" target="_self">New Analysis</a>
+              <a class="cv-quick-button secondary" href="?page=Alternative%20Finder" target="_self">Find Alternatives</a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # KPI row: compact, side-by-side, and information dense.
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -1356,7 +1380,7 @@ if app_mode == "Dashboard":
         _metric("Portfolio Health", avg_health_score, health_badge, "↗", health_kind)
     with kpi2:
         risk_kind = "danger" if total_high_risk else "success"
-        _metric("High-Risk Parts", total_high_risk, "Across saved BOMs" if total_high_risk else "No high-risk parts", "⚠", risk_kind)
+        _metric("High-Risk Parts", total_high_risk, "Needs Review" if total_high_risk else "No high-risk parts", "⚠", risk_kind)
     with kpi3:
         _metric("Saved Analyses", total_analyses, "BOM reviews stored", "▦", "")
     with kpi4:
@@ -1374,7 +1398,7 @@ if app_mode == "Dashboard":
             trend_df = trend_df.rename(columns={"created_at": "Date", "health_score": "Health Score"})
             fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
             fig.update_traces(line_color="#2563EB", marker_color="#2563EB", line_width=3)
-            st.plotly_chart(light_plotly_layout(fig, height=300), use_container_width=True)
+            st.plotly_chart(light_plotly_layout(fig, height=380), use_container_width=True)
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
 
@@ -1395,7 +1419,7 @@ if app_mode == "Dashboard":
             )
             fig.update_traces(textposition="inside", textinfo="percent+label", marker=dict(line=dict(color="#FFFFFF", width=3)))
             fig.update_layout(showlegend=True)
-            st.plotly_chart(light_plotly_layout(fig, height=300), use_container_width=True)
+            st.plotly_chart(light_plotly_layout(fig, height=380), use_container_width=True)
         else:
             st.info("Risk distribution will appear after your first BOM analysis.")
 
