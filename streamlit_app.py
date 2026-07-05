@@ -502,17 +502,6 @@ if "user" not in st.session_state:
     st.stop()
 
 
-with st.sidebar:
-    if st.button("Log out"):
-        if cookie_manager:
-            cookie_manager.delete(
-                cookie="bom_auth",
-                key="delete_bom_auth",
-            )
-
-        supabase.auth.sign_out()
-        st.session_state.clear()
-        st.rerun()
 
 current_user = load_user_data()
 
@@ -1006,6 +995,81 @@ shell_email = profile_for_shell.get("email") or current_user.get("email", "")
 shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:2] or "C"
 
 import urllib.parse as _urlparse
+
+# Global Cadivor application shell CSS. Keep this outside individual pages so
+# Dashboard, BOM Analyzer, Monitoring, Reports, Pricing, Settings, and About
+# all share the same layout and the custom sidebar never renders unstyled.
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none!important; }
+    header[data-testid="stHeader"] { background:rgba(246,248,251,.92)!important; box-shadow:none!important; }
+    [data-testid="stAppViewContainer"] > .main {
+        margin-left:284px!important;
+        width:calc(100% - 284px)!important;
+    }
+    .main .block-container {
+        max-width:none!important;
+        padding:26px 28px 48px 28px!important;
+    }
+    .cv-app-sidebar {
+        position:fixed; left:0; top:0; bottom:0; width:284px; z-index:999999;
+        box-sizing:border-box; background:#FFFFFF; border-right:1px solid #E5E7EB; padding:22px 18px;
+        box-shadow:16px 0 40px rgba(15,23,42,.04); overflow:auto;
+    }
+    .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+    .cv-side-logo { width:42px; height:42px; border-radius:13px; background:#2563EB; color:#fff!important; display:flex; align-items:center; justify-content:center; font-weight:950; font-size:18px; box-shadow:0 12px 24px rgba(37,99,235,.24); }
+    .cv-side-name { color:#0F172A!important; font-size:21px; font-weight:950; line-height:1; }
+    .cv-side-sub { color:#64748B!important; font-size:10px; font-weight:800; margin-top:4px; letter-spacing:.04em; text-transform:uppercase; }
+    .cv-side-user { display:flex; gap:12px; align-items:center; padding:13px; border:1px solid #E5E7EB; border-radius:16px; background:#F8FAFC; margin-bottom:20px; }
+    .cv-side-avatar { width:38px; height:38px; border-radius:50%; background:#EFF6FF; color:#2563EB!important; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; font-weight:950; flex:0 0 auto; }
+    .cv-side-user strong { display:block; color:#0F172A!important; font-size:13px; font-weight:900; line-height:1.2; }
+    .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
+    .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
+    .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
+    .cv-side-link span { width:20px; text-align:center; color:#64748B!important; }
+    .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; }
+    .cv-side-link.active { background:#EFF6FF; border-color:#BFDBFE; color:#2563EB!important; }
+    .cv-side-link.active span { color:#2563EB!important; }
+    .cv-side-plan { border:1px solid #E5E7EB; border-radius:16px; background:#FFFFFF; padding:14px; display:flex; flex-direction:column; gap:7px; }
+    .cv-side-plan strong { color:#0F172A!important; font-size:18px; font-weight:950; }
+    .cv-side-plan span { color:#64748B!important; font-size:12px; font-weight:750; }
+    .cv-side-footer { margin-top:18px; display:grid; gap:8px; }
+    .cv-side-footer a { padding:10px 12px; border-radius:12px; text-decoration:none!important; color:#334155!important; font-weight:850; font-size:13px; background:#F8FAFC; border:1px solid #E5E7EB; text-align:center; }
+    .cv-side-footer a:last-child { color:#DC2626!important; }
+    .cadivor-topbar {
+        margin:0 0 22px 0; padding:16px 22px; background:rgba(255,255,255,.96);
+        border:1px solid #E5E7EB; border-radius:18px; box-shadow:0 12px 32px rgba(15,23,42,.055);
+        display:grid; grid-template-columns:260px 1fr auto; align-items:center; gap:22px; width:100%;
+    }
+    .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:240px; }
+    .cadivor-logo-mark { width:42px; height:42px; border-radius:13px; display:flex; align-items:center; justify-content:center; background:#2563EB; color:#FFFFFF!important; font-weight:900; font-size:20px; box-shadow:0 12px 22px rgba(37,99,235,.22); }
+    .cadivor-logo-text { color:#0F172A!important; font-size:20px; font-weight:900; line-height:1; }
+    .cadivor-logo-subtitle { color:#64748B!important; font-size:11px; font-weight:750; margin-top:4px; }
+    .cadivor-topbar-center { color:#0F172A!important; font-size:15px; font-weight:850; justify-self:start; }
+    .cadivor-user { display:flex; align-items:center; gap:12px; justify-content:flex-end; min-width:280px; }
+    .cadivor-user-label { color:#94A3B8!important; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.08em; text-align:right; }
+    .cadivor-user-name { color:#0F172A!important; font-size:14px; font-weight:850; text-align:right; line-height:1.15; }
+    .cadivor-user-company { color:#64748B!important; font-size:12px; font-weight:700; text-align:right; margin-top:2px; }
+    .cadivor-avatar { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:900; border:1px solid #BFDBFE; overflow:hidden; }
+    .cadivor-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+    .cv-dashboard-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin: 2px 0 14px 0; }
+    .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:34px; }
+    .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; margin-bottom:8px; }
+    .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
+    @media(max-width:1000px){
+        [data-testid="stAppViewContainer"] > .main { margin-left:0!important; width:100%!important; }
+        .cv-app-sidebar{position:relative;width:auto;height:auto;box-shadow:none;border-right:0;border-bottom:1px solid #E5E7EB;}
+        .main .block-container{padding-left:1rem!important;padding-right:1rem!important;}
+        .cv-dashboard-header{display:block;} .cv-action-row{justify-content:flex-start;padding-top:14px;}
+        .cadivor-topbar{grid-template-columns:1fr; gap:12px;} .cadivor-user{justify-content:flex-start;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 _nav_html = []
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
@@ -1035,7 +1099,7 @@ st.markdown(
 
 # ---------- Shared UI Framework ----------
 inject_premium_css()
-render_topbar(current_user, app_mode)
+render_topbar(profile_for_shell, app_mode)
 
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
@@ -1046,9 +1110,9 @@ if app_mode == "Dashboard":
 
         [data-testid="stSidebar"] { display:none!important; }
         [data-testid="collapsedControl"] { display:none!important; }
-        .main .block-container { padding-left:300px!important; padding-right:26px!important; max-width:100vw!important; }
+        .main .block-container { padding-left:28px!important; padding-right:28px!important; max-width:none!important; }
         .cv-app-sidebar {
-            position:fixed; left:0; top:0; bottom:0; width:272px; z-index:999;
+            position:fixed; left:0; top:0; bottom:0; width:284px; z-index:999999;
             background:#FFFFFF; border-right:1px solid #E5E7EB; padding:26px 20px;
             box-shadow:16px 0 40px rgba(15,23,42,.04); overflow:auto;
         }
