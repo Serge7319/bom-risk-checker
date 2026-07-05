@@ -495,6 +495,27 @@ if "access_token" in st.session_state and "refresh_token" in st.session_state:
 
 if "user" not in st.session_state:
 
+    # CookieManager can take one render cycle to hydrate cookies after a page reload.
+    # Showing the public landing/login page during that cycle creates the brief flash
+    # seen when navigating between authenticated pages. Hold a neutral Cadivor loading
+    # state for one cycle before falling back to the auth UI.
+    if cookie_manager and not st.session_state.get("cadivor_auth_restore_checked"):
+        st.session_state["cadivor_auth_restore_checked"] = True
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebar"], [data-testid="collapsedControl"], header[data-testid="stHeader"],
+            [data-testid="stToolbar"], [data-testid="stDecoration"] { display:none!important; }
+            .stApp { background:#F6F8FB!important; }
+            .cadivor-restore { min-height:100vh; display:flex; align-items:center; justify-content:center; color:#64748B; font-weight:800; }
+            .cadivor-restore-card { background:#fff; border:1px solid #E5E7EB; border-radius:20px; padding:24px 28px; box-shadow:0 24px 70px rgba(15,23,42,.08); }
+            </style>
+            <div class="cadivor-restore"><div class="cadivor-restore-card">Loading Cadivor workspace…</div></div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
     try:
         show_auth_ui(supabase, cookie_manager)
     except TypeError:
@@ -1045,6 +1066,7 @@ st.markdown(
     .cv-side-user strong { display:block; color:#0F172A!important; font-size:14px; font-weight:950; line-height:1.2; }
     .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
+    .cv-side-section.first { margin-top:8px; }
     .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
     .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
     .cv-side-link span { width:22px; text-align:center; color:#64748B!important; font-size:15px; }
@@ -1109,8 +1131,7 @@ st.markdown(
     f'''
     <div class="cv-app-sidebar">
       <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
-      <div class="cv-side-user"><div class="cv-side-avatar">{shell_initials}</div><div><strong>{shell_name}</strong><small>{shell_company}</small><small>{shell_email}</small></div></div>
-      <div class="cv-side-section">Navigation</div>
+      <div class="cv-side-section first">Navigation</div>
       <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
       <div class="cv-side-section">Workspace</div>
       <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span></div>
@@ -1144,6 +1165,7 @@ if app_mode == "Dashboard":
         .cv-side-user strong { display:block; color:#0F172A!important; font-size:14px; font-weight:950; line-height:1.2; }
         .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
+    .cv-side-section.first { margin-top:8px; }
         .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
         .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
         .cv-side-link span { width:22px; text-align:center; color:#64748B!important; font-size:15px; }
