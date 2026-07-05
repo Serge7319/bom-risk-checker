@@ -1175,6 +1175,65 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Cadivor v2.8 fixed enterprise shell overrides.
+st.markdown(
+    """
+    <style>
+    :root { --cv-topbar-height: 76px; --cv-sidebar-width: 284px; }
+    /* Enterprise app frame: one global topbar across the full app, sidebar starts below it. */
+    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="stSidebar"], [data-testid="collapsedControl"] {
+        display:none!important; height:0!important; min-height:0!important; visibility:hidden!important;
+    }
+    .stApp, [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
+    .cadivor-topbar {
+        position:fixed!important; top:0!important; left:0!important; right:0!important; z-index:1000002!important;
+        width:100vw!important; min-height:var(--cv-topbar-height)!important; height:var(--cv-topbar-height)!important;
+        margin:0!important; padding:0 22px!important; border-radius:0!important;
+        border:0!important; border-bottom:1px solid #E5E7EB!important;
+        box-shadow:0 10px 28px rgba(15,23,42,.055)!important;
+        display:grid!important; grid-template-columns: var(--cv-sidebar-width) 1fr auto!important; align-items:center!important; gap:22px!important;
+        background:rgba(255,255,255,.98)!important; backdrop-filter:blur(14px)!important;
+        box-sizing:border-box!important;
+    }
+    .cadivor-brand { min-width:0!important; gap:12px!important; }
+    .cadivor-logo-mark { width:44px!important; height:44px!important; border-radius:13px!important; font-size:21px!important; }
+    .cadivor-logo-text { font-size:21px!important; }
+    .cadivor-logo-subtitle { font-size:10.5px!important; letter-spacing:.08em!important; text-transform:uppercase!important; }
+    .cadivor-topbar-center { justify-self:start!important; align-self:center!important; font-size:15px!important; }
+    .cadivor-user { min-width:260px!important; align-self:center!important; }
+    .cv-app-sidebar {
+        top:var(--cv-topbar-height)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        padding-top:20px!important; z-index:1000001!important; box-shadow:14px 0 34px rgba(15,23,42,.035)!important;
+    }
+    .cv-side-brand { display:none!important; }
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
+        margin-left:0!important; width:100vw!important; max-width:100vw!important; padding-top:0!important;
+    }
+    [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"] > div,
+    .main .block-container, [data-testid="stMainBlockContainer"] {
+        padding-top:calc(var(--cv-topbar-height) + 28px)!important;
+        padding-left:calc(var(--cv-sidebar-width) + 24px)!important;
+        padding-right:24px!important; padding-bottom:56px!important;
+        width:100%!important; max-width:none!important; margin:0!important; box-sizing:border-box!important;
+    }
+    .cv-dashboard-header { margin-top:4px!important; margin-bottom:20px!important; align-items:flex-end!important; }
+    .cv-quick-mini { margin-top:0!important; align-self:flex-start!important; }
+    .cv-mini-buttons { display:flex!important; justify-content:flex-end!important; gap:12px!important; }
+    .cv-quick-mini .cv-quick-button { min-width:165px!important; }
+    .cv-title { margin-top:0!important; }
+    @media(max-width:1000px){
+        .cadivor-topbar{grid-template-columns:1fr!important;height:auto!important;min-height:76px!important;padding:12px 16px!important;}
+        .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+        .cv-side-brand{display:flex!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:1rem!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 
 
 # ---------- Shared UI Framework ----------
