@@ -19,14 +19,45 @@ def inject_premium_css():
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
+def _safe_text(value, fallback=""):
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text if text else fallback
+
+
+def _profile_from_user(current_user=None):
+    current_user = current_user if isinstance(current_user, dict) else {}
+    email = _safe_text(current_user.get("email"))
+    full_name = _safe_text(current_user.get("full_name"), _safe_text(current_user.get("name")))
+    first_name = _safe_text(current_user.get("first_name"))
+    last_name = _safe_text(current_user.get("last_name"))
+    if not full_name and (first_name or last_name):
+        full_name = f"{first_name} {last_name}".strip()
+    if not full_name and email:
+        full_name = email.split("@")[0].replace(".", " ").replace("_", " ").title()
+    company = _safe_text(current_user.get("company_name"), _safe_text(current_user.get("company")))
+    role_title = _safe_text(current_user.get("role_title"), _safe_text(current_user.get("job_title")))
+    avatar_url = _safe_text(current_user.get("profile_image_url"), _safe_text(current_user.get("avatar_url")))
+    plan = _safe_text(current_user.get("plan"), "Starter")
+    initials_source = full_name or email or "Cadivor"
+    initials = "".join([part[0] for part in initials_source.replace("@", " ").split()[:2]]).upper()[:2] or "C"
+    return {
+        "email": email,
+        "full_name": full_name or "Cadivor user",
+        "company": company,
+        "role_title": role_title,
+        "avatar_url": avatar_url,
+        "plan": plan,
+        "initials": initials,
+    }
+
+
 def render_topbar(current_user=None, app_mode="Dashboard"):
     """Render the Cadivor application top bar."""
-    email = ""
-    if current_user:
-        email = current_user.get("email", "") if isinstance(current_user, dict) else getattr(current_user, "email", "")
-    initials = "C"
-    if email:
-        initials = email[0].upper()
+    profile = _profile_from_user(current_user)
+    secondary = profile["company"] or profile["role_title"] or profile["plan"]
+    avatar = f'<img src="{profile["avatar_url"]}" alt="Profile photo" />' if profile.get("avatar_url") else profile["initials"]
 
     st.markdown(
         f"""
@@ -42,9 +73,10 @@ def render_topbar(current_user=None, app_mode="Dashboard"):
             <div class="cadivor-user">
                 <div class="cadivor-user-meta">
                     <div class="cadivor-user-label">Workspace</div>
-                    <div class="cadivor-user-email">{email}</div>
+                    <div class="cadivor-user-name">{profile["full_name"]}</div>
+                    <div class="cadivor-user-company">{secondary}</div>
                 </div>
-                <div class="cadivor-avatar">{initials}</div>
+                <div class="cadivor-avatar">{avatar}</div>
             </div>
         </div>
         """,
