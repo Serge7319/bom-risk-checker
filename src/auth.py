@@ -70,7 +70,7 @@ def _auth_css():
         .block-container{
             width:96vw!important;
             max-width:1880px!important;
-            padding:1.1rem 1.3rem 4rem 1.3rem!important;
+            padding:1.8rem 1.3rem 4rem 1.3rem!important;
         }
         .cadivor-public{width:100%; margin:0 auto;}
         .cadivor-nav{
@@ -79,25 +79,25 @@ def _auth_css():
             align-items:center;
             justify-content:space-between;
             gap:24px;
-            margin:28px 0 28px 0;
+            margin:44px 0 34px 0;
             padding:0 4px;
         }
-        .cadivor-brand{display:flex; align-items:center; gap:16px; color:var(--cadivor-navy)!important; font-weight:950; font-size:30px; letter-spacing:-.055em; text-decoration:none!important; border:0!important; box-shadow:none!important;}
+        .cadivor-brand{display:flex; align-items:center; gap:16px; color:var(--cadivor-navy)!important; font-weight:950; font-size:38px; letter-spacing:-.06em; text-decoration:none!important; border:0!important; box-shadow:none!important;}
         .cadivor-brand:visited,.cadivor-brand:hover,.cadivor-brand:active{color:var(--cadivor-navy)!important;text-decoration:none!important;border:0!important;box-shadow:none!important;}
         .cadivor-brand span{text-decoration:none!important;border-bottom:0!important;box-shadow:none!important;}
-        .cadivor-mark{width:62px;height:62px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;font-weight:950;font-size:27px;box-shadow:0 18px 40px rgba(37,99,235,.28);}
+        .cadivor-mark{width:70px;height:70px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;font-weight:950;font-size:31px;box-shadow:0 18px 40px rgba(37,99,235,.28);}
         .cadivor-nav-links{display:flex;align-items:center;gap:28px;font-size:15px;font-weight:850;}
         .cadivor-nav-links a{color:#334155!important;text-decoration:none!important;}
-        .cadivor-nav-links a:hover{color:var(--cadivor-blue)!important;}
+        .cadivor-nav-links a:hover{color:var(--cadivor-blue)!important;text-decoration:none!important;opacity:1!important;filter:none!important;}
         .cadivor-signin{background:#fff;border:1px solid var(--cadivor-border);border-radius:12px;padding:11px 17px;color:#0F172A!important;box-shadow:var(--shadow-sm);}
         .cadivor-nav-cta{background:var(--cadivor-blue);border:1px solid var(--cadivor-blue);border-radius:12px;padding:11px 18px;color:#fff!important;box-shadow:0 14px 28px rgba(37,99,235,.23);}
         .cadivor-hero{
             display:grid;
-            grid-template-columns:minmax(0,.88fr) minmax(650px,1.08fr);
+            grid-template-columns:minmax(0,.92fr) minmax(650px,1.08fr);
             gap:60px;
             align-items:start;
             min-height:640px;
-            padding:66px 68px;
+            padding:74px 72px;
             border:1px solid var(--cadivor-border);
             border-radius:30px;
             background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 56%,#EAF3FF 100%);
@@ -106,21 +106,25 @@ def _auth_css():
             position:relative;
         }
         .cadivor-hero:before{content:"";position:absolute;right:-220px;top:-260px;width:620px;height:620px;border-radius:999px;background:radial-gradient(circle,rgba(37,99,235,.14),transparent 64%);pointer-events:none;}
-        .cadivor-hero-content{position:relative;z-index:1;padding-top:10px;}
-        .cadivor-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:var(--cadivor-blue)!important;border:1px solid #BFDBFE;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:22px;}
-        .cadivor-title{font-size:clamp(56px,4.9vw,94px);line-height:.96;font-weight:950;letter-spacing:-.075em;color:var(--cadivor-navy)!important;margin:0 0 24px 0;max-width:840px;}
+        .cadivor-hero-content{position:relative;z-index:1;padding-top:0;align-self:start;margin-top:12px;}
+        .cadivor-eyebrow{display:inline-flex;align-items:center;gap:9px;background:#EFF6FF;color:var(--cadivor-blue)!important;border:1px solid #BFDBFE;border-radius:999px;padding:9px 15px;font-size:12px;font-weight:950;letter-spacing:.105em;text-transform:uppercase;margin-bottom:24px;box-shadow:0 10px 24px rgba(37,99,235,.08);}
+        .cadivor-title{font-size:clamp(58px,5.05vw,96px);line-height:.96;font-weight:950;letter-spacing:-.075em;color:var(--cadivor-navy)!important;margin:0 0 24px 0;max-width:840px;}
         .cadivor-title .blue{color:var(--cadivor-blue)!important;}
         .cadivor-subtitle{font-size:clamp(18px,1.25vw,22px);line-height:1.6;color:var(--cadivor-slate)!important;margin:0 0 34px 0;max-width:720px;}
         .cadivor-cta-row{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:26px;}
         .cadivor-primary,.cadivor-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:50px;border-radius:14px;padding:0 22px;font-weight:950;font-size:15px;text-decoration:none!important;}
         .cadivor-primary{background:var(--cadivor-blue);color:#fff!important;border:1px solid var(--cadivor-blue);box-shadow:0 18px 34px rgba(37,99,235,.24);}
-        .cadivor-primary:hover,.cadivor-nav-cta:hover{background:var(--cadivor-blue-2)!important;color:#fff!important;border-color:var(--cadivor-blue-2)!important;text-decoration:none!important;}
+        .cadivor-primary:hover,.cadivor-nav-cta:hover{background:var(--cadivor-blue-2)!important;color:#fff!important;border-color:var(--cadivor-blue-2)!important;text-decoration:none!important;filter:none!important;opacity:1!important;}
         a.cadivor-primary,a.cadivor-primary:visited,a.cadivor-primary:hover,a.cadivor-primary:active,a.cadivor-nav-cta,a.cadivor-nav-cta:visited,a.cadivor-nav-cta:hover,a.cadivor-nav-cta:active{color:#fff!important;text-decoration:none!important;}
         .cadivor-secondary{background:#fff;color:var(--cadivor-navy)!important;border:1px solid #CBD5E1;box-shadow:var(--shadow-sm);}
         .cadivor-proof{display:flex;align-items:center;flex-wrap:wrap;gap:22px;color:#475569!important;font-size:14px;font-weight:800;}
 
         .cadivor-public h1 a,.cadivor-public h2 a,.cadivor-public h3 a,.cadivor-public h4 a,.cadivor-title a,.section-heading h2 a{display:none!important;visibility:hidden!important;}
         .cadivor-public a[href^="#"]{display:none!important;}
+        .cadivor-public .header-anchor,.cadivor-public .anchor-link,.cadivor-public a.anchor-link,.cadivor-public svg[class*="anchor"],.cadivor-public [data-testid*="stMarkdownContainer"] a[href^="#"]{display:none!important;visibility:hidden!important;width:0!important;height:0!important;overflow:hidden!important;}
+        .cadivor-nav-links a,.cadivor-brand,.cadivor-primary,.cadivor-secondary,.cadivor-signin,.cadivor-nav-cta{cursor:pointer;transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease,border-color .18s ease;}
+        .cadivor-nav-cta:hover,.cadivor-primary:hover{transform:translateY(-1px);box-shadow:0 18px 36px rgba(37,99,235,.28)!important;}
+        .cadivor-signin:hover,.cadivor-secondary:hover{background:#F8FAFC!important;color:#0F172A!important;border-color:#94A3B8!important;text-decoration:none!important;opacity:1!important;filter:none!important;}
         .cadivor-eyebrow:before{content:"";width:8px;height:8px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 4px rgba(37,99,235,.10);}
         .feature-card:hover,.solution-card:hover,.mini-card:hover,.resource-card:hover,.flow-step:hover{transform:translateY(-3px);box-shadow:0 22px 46px rgba(15,23,42,.09);border-color:#CBD5E1;}
         .feature-card,.solution-card,.mini-card,.resource-card,.flow-step{transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;}
@@ -137,7 +141,7 @@ def _auth_css():
         /* Auth route */
         .auth-card-header{text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
         div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}div[data-testid="stRadio"] label,div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}div[data-testid="stTextInput"] label,div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;}div[data-testid="stTextInput"] > div{overflow:visible!important;}div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}div[data-testid="stTextInput"] [data-baseweb="input"]::before,div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}div[data-testid="stTextInput"] [data-baseweb="input"] > div,div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}div[data-testid="stTextInput"] input,div[data-testid="stTextInput"] input[type="text"],div[data-testid="stTextInput"] input[type="password"],div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}div[data-testid="stTextInput"] input:focus,div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}div[data-testid="stTextInput"] button:focus,div[data-testid="stTextInput"] button:focus-visible{outline:0!important;box-shadow:none!important;}div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}div.stButton > button{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}div.stButton > button:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}div.stButton > button *{color:#fff!important;}
-        .page-section{padding-top:34px!important;} .compact-section{padding-top:22px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
+        .page-section{padding-top:58px!important;} .compact-section{padding-top:42px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
 
         .mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px;}
         .mini-card{background:#fff;border:1px solid var(--cadivor-border);border-radius:18px;padding:26px;box-shadow:0 14px 34px rgba(15,23,42,.055);}
@@ -323,8 +327,8 @@ def _render_home_page():
       <section class="cadivor-hero">
         <div class="cadivor-hero-content">
           <div class="cadivor-eyebrow">Engineering intelligence for modern electronics teams</div>
-          <h1 class="cadivor-title"><span>Find better alternatives.</span><br><span class="blue">Run every BOM through Cadivor.</span></h1>
-          <p class="cadivor-subtitle">Cadivor helps electronics teams detect lifecycle risk, compare compatible replacements, monitor supplier health, and make sourcing decisions with confidence.</p>
+          <h1 class="cadivor-title"><span>Run every BOM through Cadivor.</span><br><span class="blue">Find better alternatives.</span></h1>
+          <p class="cadivor-subtitle">Turn BOM spreadsheets into lifecycle, supplier, risk, and replacement-part intelligence your engineering and sourcing teams can review with confidence.</p>
           <div class="cadivor-cta-row">
             <a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a>
             <a class="cadivor-secondary" href="?public=features" target="_self">See How It Works</a>
@@ -340,14 +344,15 @@ def _render_home_page():
       <div class="trusted-label">Built for engineering and sourcing teams</div>
       <div class="trusted-logos"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>CSV</span><span>Excel</span><span>Octopart soon</span></div>
       <section class="cadivor-section" id="overview">
-        <div class="section-heading"><h2>Engineering BOM review without spreadsheet chaos</h2><p>Move from scattered part lists to lifecycle, sourcing, risk, and alternative-part intelligence your team can actually review.</p></div>
+        <div class="section-heading"><h2>Engineering BOM review without spreadsheet chaos</h2><p>Cadivor gives teams a cleaner way to review component health, sourcing exposure, and replacement paths before small risks become production problems.</p></div>
         <div class="feature-grid">
-          <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle Intelligence</strong><span>Find lifecycle and obsolescence risk earlier.</span></div>
-          <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Finder</strong><span>Compare better replacement candidates with sourcing context.</span></div>
-          <div class="feature-card"><div class="feature-icon">▤</div><strong>Executive Reports</strong><span>Export clean reports for engineering and sourcing review.</span></div>
+          <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle Intelligence</strong><span>Identify EOL, NRND, replacement-suggested, and unknown lifecycle exposure before design release.</span></div>
+          <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Finder</strong><span>Compare replacement candidates with lifecycle, sourcing, and implementation context.</span></div>
+          <div class="feature-card"><div class="feature-icon">▤</div><strong>Executive Reports</strong><span>Export clean BOM risk summaries for engineering, sourcing, and leadership review.</span></div>
         </div>
       </section>
       <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Run it through Cadivor and review supplier, lifecycle, and alternative-part intelligence in minutes.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
     </div>
     """)
 
@@ -382,6 +387,8 @@ def _render_features_page():
           <div class="feature-card"><div class="feature-icon">◎</div><strong>Monitoring</strong><span>Track saved parts for stock, lifecycle, and supplier changes that may affect ongoing projects.</span></div>
         </div>
       </section>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
     </div>
     """)
 
@@ -406,6 +413,8 @@ def _render_solutions_page():
           <div class="flow-step"><b>04</b><strong>Leadership review</strong><span>Export concise reports so managers can see project risk clearly.</span></div>
         </div>
       </section>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
     </div>
     """)
 
@@ -422,6 +431,8 @@ def _render_pricing_page():
           <div class="pricing-card"><div class="pricing-name">Enterprise</div><div class="pricing-price">Custom</div><p>For organizations with broader component intelligence needs.</p><ul><li>Higher limits</li><li>Custom workflows</li><li>Priority support</li><li>Supplier integrations</li></ul><a class="cadivor-secondary" href="?auth=signup" target="_self">Contact Us</a></div>
         </div>
       </section>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
     </div>
     """)
 
@@ -449,6 +460,8 @@ def _render_resources_page():
           <div class="faq-card"><strong>Is AI used?</strong><span>Cadivor uses AI-assisted analysis alongside supplier data and engineering rules, while keeping final decisions with your team.</span></div>
         </div>
       </section>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
     </div>
     """)
 
