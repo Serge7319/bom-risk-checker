@@ -1002,15 +1002,30 @@ import urllib.parse as _urlparse
 st.markdown(
     """
     <style>
+    :root { --cv-sidebar-width: 284px; }
     [data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none!important; }
-    header[data-testid="stHeader"] { background:rgba(246,248,251,.92)!important; box-shadow:none!important; }
-    [data-testid="stAppViewContainer"] > .main {
-        margin-left:284px!important;
-        width:calc(100% - 284px)!important;
+    header[data-testid="stHeader"] { display:none!important; height:0!important; min-height:0!important; }
+    [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"], .stDeployButton { display:none!important; }
+    .stApp { background:#F6F8FB!important; }
+    /* Keep the app canvas beside the fixed Cadivor sidebar. Streamlit versions
+       differ in their main-content test ids, so we target all common shells. */
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    section.main,
+    .main {
+        margin-left:0!important;
+        width:100vw!important;
+        max-width:100vw!important;
     }
-    .main .block-container {
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"] > div,
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        margin-left:0!important;
         max-width:none!important;
-        padding:26px 28px 48px 28px!important;
+        width:100%!important;
+        padding:28px 26px 48px calc(var(--cv-sidebar-width) + 26px)!important;
+        box-sizing:border-box!important;
     }
     .cv-app-sidebar {
         position:fixed; left:0; top:0; bottom:0; width:284px; z-index:999999;
@@ -1059,9 +1074,9 @@ st.markdown(
     .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; margin-bottom:8px; }
     .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
     @media(max-width:1000px){
-        [data-testid="stAppViewContainer"] > .main { margin-left:0!important; width:100%!important; }
+        [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main { margin-left:0!important; width:100%!important; max-width:100%!important; }
         .cv-app-sidebar{position:relative;width:auto;height:auto;box-shadow:none;border-right:0;border-bottom:1px solid #E5E7EB;}
-        .main .block-container{padding-left:1rem!important;padding-right:1rem!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding-left:1rem!important;padding-right:1rem!important;}
         .cv-dashboard-header{display:block;} .cv-action-row{justify-content:flex-start;padding-top:14px;}
         .cadivor-topbar{grid-template-columns:1fr; gap:12px;} .cadivor-user{justify-content:flex-start;}
     }
@@ -1108,14 +1123,8 @@ if app_mode == "Dashboard":
         """
         <style>
 
-        [data-testid="stSidebar"] { display:none!important; }
-        [data-testid="collapsedControl"] { display:none!important; }
-        .main .block-container { padding-left:28px!important; padding-right:28px!important; max-width:none!important; }
-        .cv-app-sidebar {
-            position:fixed; left:0; top:0; bottom:0; width:284px; z-index:999999;
-            background:#FFFFFF; border-right:1px solid #E5E7EB; padding:26px 20px;
-            box-shadow:16px 0 40px rgba(15,23,42,.04); overflow:auto;
-        }
+        /* Dashboard-specific styling only. Layout shell is defined globally above. */
+        .main .block-container, [data-testid="stMainBlockContainer"] { padding-left:calc(var(--cv-sidebar-width) + 26px)!important; padding-right:26px!important; max-width:none!important; }
         .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
         .cv-side-logo { width:38px; height:38px; border-radius:12px; background:#2563EB; color:#fff!important; display:flex; align-items:center; justify-content:center; font-weight:950; box-shadow:0 12px 24px rgba(37,99,235,.25); }
         .cv-side-name { color:#0F172A!important; font-size:20px; font-weight:950; line-height:1; }
@@ -1182,8 +1191,8 @@ if app_mode == "Dashboard":
         }
         .cv-title { font-size:42px; line-height:1.05; font-weight:950; color:#0F172A!important; letter-spacing:-.045em; margin:0 0 8px 0; }
         .cv-subtitle { color:#64748B!important; font-size:15px; line-height:1.55; max-width:760px; margin:0; }
-        .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:64px; }
-        .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; padding-top:42px; margin-bottom:8px; }
+        .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:8px; }
+        .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; padding-top:0; margin-bottom:8px; }
         .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
 
         .cv-metric {
