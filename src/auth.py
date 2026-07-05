@@ -82,8 +82,8 @@ def _auth_css():
             margin:28px 0 28px 0;
             padding:0 4px;
         }
-        .cadivor-brand{display:flex; align-items:center; gap:12px; color:var(--cadivor-navy)!important; font-weight:950; font-size:18px; letter-spacing:-.03em;}
-        .cadivor-mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;font-weight:950;box-shadow:0 14px 30px rgba(37,99,235,.22);}
+        .cadivor-brand{display:flex; align-items:center; gap:14px; color:var(--cadivor-navy)!important; font-weight:950; font-size:22px; letter-spacing:-.04em;}
+        .cadivor-mark{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;font-weight:950;font-size:21px;box-shadow:0 16px 34px rgba(37,99,235,.24);}
         .cadivor-nav-links{display:flex;align-items:center;gap:26px;font-size:14px;font-weight:850;}
         .cadivor-nav-links a{color:#334155!important;text-decoration:none!important;}
         .cadivor-nav-links a:hover{color:var(--cadivor-blue)!important;}
@@ -93,7 +93,7 @@ def _auth_css():
             display:grid;
             grid-template-columns:minmax(0,.88fr) minmax(650px,1.08fr);
             gap:60px;
-            align-items:center;
+            align-items:start;
             min-height:640px;
             padding:66px 68px;
             border:1px solid var(--cadivor-border);
@@ -104,25 +104,25 @@ def _auth_css():
             position:relative;
         }
         .cadivor-hero:before{content:"";position:absolute;right:-220px;top:-260px;width:620px;height:620px;border-radius:999px;background:radial-gradient(circle,rgba(37,99,235,.14),transparent 64%);pointer-events:none;}
-        .cadivor-hero-content{position:relative;z-index:1;}
+        .cadivor-hero-content{position:relative;z-index:1;padding-top:10px;}
         .cadivor-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:var(--cadivor-blue)!important;border:1px solid #BFDBFE;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:22px;}
-        .cadivor-title{font-size:clamp(54px,4.7vw,90px);line-height:.98;font-weight:950;letter-spacing:-.075em;color:var(--cadivor-navy)!important;margin:0 0 24px 0;max-width:790px;}
+        .cadivor-title{font-size:clamp(56px,4.9vw,94px);line-height:.96;font-weight:950;letter-spacing:-.075em;color:var(--cadivor-navy)!important;margin:0 0 24px 0;max-width:840px;}
         .cadivor-title .blue{color:var(--cadivor-blue)!important;}
         .cadivor-subtitle{font-size:clamp(18px,1.25vw,22px);line-height:1.6;color:var(--cadivor-slate)!important;margin:0 0 34px 0;max-width:720px;}
         .cadivor-cta-row{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:26px;}
         .cadivor-primary,.cadivor-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:50px;border-radius:14px;padding:0 22px;font-weight:950;font-size:15px;text-decoration:none!important;}
         .cadivor-primary{background:var(--cadivor-blue);color:#fff!important;border:1px solid var(--cadivor-blue);box-shadow:0 18px 34px rgba(37,99,235,.24);}
-        .cadivor-primary:hover{background:var(--cadivor-blue-2);color:#fff!important;}
+        .cadivor-primary:hover,.cadivor-nav-cta:hover{background:var(--cadivor-blue-2)!important;color:#fff!important;border-color:var(--cadivor-blue-2)!important;}
         .cadivor-secondary{background:#fff;color:var(--cadivor-navy)!important;border:1px solid #CBD5E1;box-shadow:var(--shadow-sm);}
         .cadivor-proof{display:flex;align-items:center;flex-wrap:wrap;gap:22px;color:#475569!important;font-size:14px;font-weight:800;}
         .cadivor-proof span{display:inline-flex;align-items:center;gap:8px;}.cadivor-check{width:22px;height:22px;border-radius:8px;display:grid;place-items:center;background:#EFF6FF;color:var(--cadivor-blue)!important;border:1px solid #BFDBFE;font-size:13px;}
-        .product-window{position:relative;z-index:1;background:#fff;border:1px solid var(--cadivor-border);border-radius:24px;box-shadow:0 30px 80px rgba(15,23,42,.14);overflow:hidden;}
+        .product-window{position:relative;z-index:1;background:#fff;border:1px solid var(--cadivor-border);border-radius:24px;box-shadow:0 30px 80px rgba(15,23,42,.14);overflow:hidden;margin-top:0;}
         .product-top{height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #E5E7EB;background:#fff;}
         .product-brand{display:flex;align-items:center;gap:10px;font-weight:950;color:#0F172A!important;}.product-logo{width:26px;height:26px;border-radius:8px;background:#2563EB;color:#fff!important;display:grid;place-items:center;font-weight:950;font-size:13px;}
         .product-app{display:grid;grid-template-columns:190px 1fr;min-height:475px;}.product-side{background:#F8FAFC;border-right:1px solid #E5E7EB;padding:18px 12px;}.product-nav{display:flex;align-items:center;gap:8px;border-radius:10px;padding:10px 12px;color:#475569!important;font-size:13px;font-weight:850;margin-bottom:5px;white-space:nowrap;}.product-nav.active{background:#EFF6FF;color:#2563EB!important;}.product-main{padding:24px;background:#fff;}.product-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}.product-heading strong{font-size:22px;color:#0F172A!important;letter-spacing:-.04em;}.product-btn{background:#2563EB;color:#fff!important;border-radius:10px;padding:9px 13px;font-size:12px;font-weight:900;}.product-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;}.product-kpi{background:#fff;border:1px solid #E5E7EB;border-radius:15px;padding:15px;box-shadow:0 8px 18px rgba(15,23,42,.035);}.product-kpi span{display:block;color:#64748B!important;text-transform:uppercase;letter-spacing:.045em;font-size:11px;font-weight:900;margin-bottom:8px;}.product-kpi strong{font-size:30px;color:#0F172A!important;}.product-panels{display:grid;grid-template-columns:1fr .86fr;gap:14px;margin-bottom:16px;}.product-panel{border:1px solid #E5E7EB;border-radius:16px;padding:16px;min-height:150px;background:#fff;}.line-chart{height:95px;border-left:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;margin-top:20px;}.line-chart svg{width:100%;height:100%;overflow:visible}.donut-wrap{display:flex;gap:18px;align-items:center;justify-content:center;height:120px;}.donut{width:100px;height:100px;border-radius:50%;background:conic-gradient(#16A34A 0 48%,#F59E0B 48% 78%,#EF4444 78% 100%);display:grid;place-items:center;}.donut-inner{width:58px;height:58px;border-radius:50%;background:#fff;display:grid;place-items:center;color:#0F172A!important;font-weight:950;}.risk-legend{font-size:12px;color:#475569!important;line-height:1.9;font-weight:800}.legend-red,.legend-amber,.legend-green{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}.legend-red{background:#EF4444}.legend-amber{background:#F59E0B}.legend-green{background:#16A34A}.product-table{border:1px solid #E5E7EB;border-radius:14px;overflow:hidden}.product-row{display:grid;grid-template-columns:1.3fr .8fr .8fr .8fr .6fr;border-bottom:1px solid #EEF2F7}.product-row:last-child{border-bottom:0}.product-cell{padding:10px 12px;color:#334155!important;font-size:12px;font-weight:750}.product-head .product-cell{background:#F8FAFC;color:#64748B!important;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
-        .cadivor-section{padding:72px 0 10px 0;}.section-heading{text-align:center;max-width:900px;margin:0 auto 32px auto;}.section-heading h2{color:#0F172A!important;font-size:clamp(34px,2.4vw,52px);line-height:1.06;font-weight:950;letter-spacing:-.055em;margin:0 0 12px 0;}.section-heading p{color:#64748B!important;font-size:17px;line-height:1.65;margin:0;}.trusted-label{text-align:center;color:#64748B!important;font-weight:850;margin:36px 0 18px 0;}.trusted-logos{display:grid;grid-template-columns:repeat(6,1fr);gap:18px;align-items:center;text-align:center;color:#0F172A!important;font-size:26px;font-weight:950;}.trusted-logos span:nth-child(2),.trusted-logos span:nth-child(3),.trusted-logos span:nth-child(4){color:#2563EB!important;}
-        .how-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;}.how-card,.feature-card,.solution-card,.pricing-card,.faq-card{background:#fff;border:1px solid #E5E7EB;border-radius:20px;box-shadow:var(--shadow-sm);}.how-card{padding:22px;position:relative;}.step-num{width:34px;height:34px;border-radius:11px;background:#EFF6FF;color:#2563EB!important;display:grid;place-items:center;font-weight:950;margin-bottom:16px;}.how-card strong,.feature-card strong,.solution-card strong{display:block;color:#0F172A!important;font-size:18px;margin-bottom:8px;letter-spacing:-.02em;}.how-card span,.feature-card span,.solution-card span{display:block;color:#64748B!important;font-size:14px;line-height:1.55;}
-        .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}.feature-card{padding:24px;transition:transform .18s ease, box-shadow .18s ease;}.feature-card:hover,.solution-card:hover,.pricing-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}.feature-icon{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#EFF6FF;color:#2563EB!important;font-weight:950;margin-bottom:16px;font-size:20px;}.solution-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}.solution-card{padding:28px;}.solution-card ul{margin:16px 0 0 0;padding:0;list-style:none;color:#475569!important;font-weight:750;line-height:2;}.solution-card li:before{content:"✓";color:#2563EB;font-weight:950;margin-right:8px;}.pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}.pricing-card{padding:28px;display:flex;flex-direction:column;min-height:330px;}.pricing-name{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#64748B!important;font-weight:950;margin-bottom:14px;}.pricing-price{font-size:38px;color:#0F172A!important;font-weight:950;letter-spacing:-.05em;margin-bottom:8px;}.pricing-card p{color:#64748B!important;line-height:1.55;margin:0 0 18px 0;}.pricing-card ul{list-style:none;margin:0 0 24px 0;padding:0;color:#334155!important;font-weight:750;line-height:2;}.pricing-card li:before{content:"✓";color:#2563EB;font-weight:950;margin-right:8px;}.pricing-card .cadivor-primary,.pricing-card .cadivor-secondary{margin-top:auto;width:100%;}
+        .cadivor-section{padding:64px 0 10px 0;}.section-heading{text-align:center;max-width:900px;margin:0 auto 32px auto;}.section-heading h2{color:#0F172A!important;font-size:clamp(34px,2.4vw,52px);line-height:1.06;font-weight:950;letter-spacing:-.055em;margin:0 0 12px 0;}.section-heading p{color:#64748B!important;font-size:17px;line-height:1.65;margin:0;}.trusted-label{text-align:center;color:#64748B!important;font-weight:850;margin:36px 0 18px 0;}.trusted-logos{display:grid;grid-template-columns:repeat(6,1fr);gap:18px;align-items:center;text-align:center;color:#0F172A!important;font-size:26px;font-weight:950;}.trusted-logos span:nth-child(2),.trusted-logos span:nth-child(3),.trusted-logos span:nth-child(4){color:#2563EB!important;}
+        .how-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;}.how-card,.pricing-card,.faq-card{background:#fff;border:1px solid #E5E7EB;border-radius:20px;box-shadow:var(--shadow-sm);}.feature-card,.solution-card{background:linear-gradient(180deg,#FFFFFF 0%,#FBFDFF 100%);border:1px solid #E5E7EB;border-radius:22px;box-shadow:0 16px 38px rgba(15,23,42,.06);position:relative;overflow:hidden;}.how-card{padding:22px;position:relative;}.step-num{width:34px;height:34px;border-radius:11px;background:#EFF6FF;color:#2563EB!important;display:grid;place-items:center;font-weight:950;margin-bottom:16px;}.how-card strong{display:block;color:#0F172A!important;font-size:18px;margin-bottom:8px;letter-spacing:-.02em;}.feature-card strong,.solution-card strong{display:block;color:#0F172A!important;font-size:20px;margin-bottom:10px;letter-spacing:-.035em;font-weight:950;}.how-card span{display:block;color:#64748B!important;font-size:14px;line-height:1.55;}.feature-card span,.solution-card span{display:block;color:#64748B!important;font-size:15px;line-height:1.68;font-weight:700;}
+        .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}.feature-card{padding:30px;transition:transform .18s ease, box-shadow .18s ease,border-color .18s ease;}.feature-card:hover,.solution-card:hover,.pricing-card:hover{transform:translateY(-4px);box-shadow:0 26px 55px rgba(15,23,42,.09);border-color:#93C5FD;}.feature-icon{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#EFF6FF;color:#2563EB!important;font-weight:950;margin-bottom:16px;font-size:20px;}.solution-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}.solution-card{padding:32px;transition:transform .18s ease, box-shadow .18s ease,border-color .18s ease;}.solution-card ul{margin:18px 0 0 0;padding:0;list-style:none;color:#475569!important;font-weight:800;line-height:2.05;}.solution-card li:before{content:"✓";color:#2563EB;font-weight:950;margin-right:8px;}.pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}.pricing-card{padding:28px;display:flex;flex-direction:column;min-height:330px;}.pricing-name{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#64748B!important;font-weight:950;margin-bottom:14px;}.pricing-price{font-size:38px;color:#0F172A!important;font-weight:950;letter-spacing:-.05em;margin-bottom:8px;}.pricing-card p{color:#64748B!important;line-height:1.55;margin:0 0 18px 0;}.pricing-card ul{list-style:none;margin:0 0 24px 0;padding:0;color:#334155!important;font-weight:750;line-height:2;}.pricing-card li:before{content:"✓";color:#2563EB;font-weight:950;margin-right:8px;}.pricing-card .cadivor-primary,.pricing-card .cadivor-secondary{margin-top:auto;width:100%;}
         .faq-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}.faq-card{padding:22px;}.faq-card strong{display:block;color:#0F172A!important;margin-bottom:8px;font-size:17px;}.faq-card span{color:#64748B!important;line-height:1.6;font-size:14px;}.footer{margin:70px 0 0 0;background:#0F172A;border-radius:24px;padding:34px;display:flex;justify-content:space-between;gap:28px;align-items:flex-start;box-shadow:0 24px 60px rgba(15,23,42,.20);}.footer strong{color:#fff!important;font-size:22px;}.footer p{color:#CBD5E1!important;max-width:520px;line-height:1.6;}.footer-links{display:flex;gap:22px;flex-wrap:wrap;}.footer-links a{color:#E2E8F0!important;text-decoration:none!important;font-weight:800;}
         .bottom-cta{margin:54px 0 0 0;background:linear-gradient(135deg,#0F172A,#1E3A8A);border-radius:24px;padding:30px 34px;display:flex;align-items:center;justify-content:space-between;gap:22px;box-shadow:0 26px 60px rgba(15,23,42,.20);}.bottom-cta strong{color:#fff!important;font-size:26px;display:block;margin-bottom:6px;}.bottom-cta span{color:#CBD5E1!important;font-size:15px;}
         /* Auth route */
@@ -131,7 +131,7 @@ def _auth_css():
         .page-section{padding-top:34px!important;} .compact-section{padding-top:22px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
 
         .mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px;}
-        .mini-card{background:#fff;border:1px solid var(--cadivor-border);border-radius:18px;padding:24px;box-shadow:var(--shadow-sm);}
+        .mini-card{background:#fff;border:1px solid var(--cadivor-border);border-radius:18px;padding:26px;box-shadow:0 14px 34px rgba(15,23,42,.055);}
         .mini-card strong{display:block;color:#0F172A!important;font-size:17px;font-weight:950;margin-bottom:8px;}
         .mini-card span{display:block;color:#64748B!important;font-size:14px;line-height:1.6;font-weight:700;}
         .resource-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px;}
@@ -140,7 +140,7 @@ def _auth_css():
         .resource-card strong{display:block;color:#0F172A!important;font-size:18px;font-weight:950;margin-bottom:8px;}
         .resource-card span{display:block;color:#64748B!important;font-size:14px;line-height:1.6;font-weight:700;}
         .solution-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:26px;}
-        .flow-step{background:#fff;border:1px solid var(--cadivor-border);border-radius:16px;padding:20px;box-shadow:var(--shadow-sm);}
+        .flow-step{background:#fff;border:1px solid var(--cadivor-border);border-radius:18px;padding:24px;box-shadow:0 14px 34px rgba(15,23,42,.055);}
         .flow-step b{display:block;color:#2563EB!important;font-size:13px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
         .flow-step strong{display:block;color:#0F172A!important;font-size:16px;margin-bottom:6px;}
         .flow-step span{display:block;color:#64748B!important;font-size:13px;line-height:1.5;font-weight:700;}
@@ -313,9 +313,9 @@ def _render_home_page():
     <div class="cadivor-public">
       <section class="cadivor-hero">
         <div class="cadivor-hero-content">
-          <div class="cadivor-eyebrow">Engineering intelligence for electronics teams</div>
-          <h1 class="cadivor-title">Run every BOM<br><span class="blue">through Cadivor.</span></h1>
-          <p class="cadivor-subtitle">Detect lifecycle risks, uncover compatible alternatives, monitor supplier health, and make sourcing decisions with confidence.</p>
+          <div class="cadivor-eyebrow">Engineering intelligence for modern electronics teams</div>
+          <h1 class="cadivor-title">Find better alternatives.<br><span class="blue">Run every BOM through Cadivor.</span></h1>
+          <p class="cadivor-subtitle">Cadivor helps electronics teams detect lifecycle risk, compare compatible replacements, monitor supplier health, and make sourcing decisions with confidence.</p>
           <div class="cadivor-cta-row">
             <a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a>
             <a class="cadivor-secondary" href="?public=features" target="_self">See How It Works</a>
@@ -331,7 +331,7 @@ def _render_home_page():
       <div class="trusted-label">Built for engineering and sourcing teams</div>
       <div class="trusted-logos"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>CSV</span><span>Excel</span><span>Octopart soon</span></div>
       <section class="cadivor-section" id="overview">
-        <div class="section-heading"><h2>Engineering BOM review without the spreadsheet chaos</h2><p>Cadivor gives teams a cleaner way to review lifecycle, sourcing, risk, and alternative-part intelligence before issues reach production.</p></div>
+        <div class="section-heading"><h2>Engineering BOM review without spreadsheet chaos</h2><p>Move from scattered part lists to lifecycle, sourcing, risk, and alternative-part intelligence your team can actually review.</p></div>
         <div class="feature-grid">
           <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle Intelligence</strong><span>Find lifecycle and obsolescence risk earlier.</span></div>
           <div class="feature-card"><div class="feature-icon">↔</div><strong>Alternative Finder</strong><span>Compare better replacement candidates with sourcing context.</span></div>
@@ -348,7 +348,7 @@ def _render_features_page():
     _html("""
     <div class="cadivor-public">
       <section class="cadivor-section page-section" id="features">
-        <div class="section-heading"><h2>How Cadivor works</h2><p>Move from uploaded BOM to reviewable engineering decisions in a clear, repeatable workflow.</p></div>
+        <div class="section-heading"><h2>How Cadivor works</h2><p>A structured BOM review workflow built for engineering, sourcing, and leadership teams.</p></div>
         <div class="how-grid">
           <div class="how-card"><div class="step-num">1</div><strong>Upload BOM</strong><span>Import CSV or Excel files with part numbers and quantities.</span></div>
           <div class="how-card"><div class="step-num">2</div><strong>Analyze risk</strong><span>Cadivor checks lifecycle, supplier coverage, inventory, and sourcing exposure.</span></div>
@@ -363,7 +363,7 @@ def _render_features_page():
         </div>
       </section>
       <section class="cadivor-section compact-section">
-        <div class="section-heading"><h2>Everything you need to review BOM risk with confidence</h2><p>Cadivor combines supplier intelligence, engineering rules, and AI-assisted analysis to help teams make better component decisions.</p></div>
+        <div class="section-heading"><h2>Everything you need to review BOM risk with confidence</h2><p>Supplier data, lifecycle checks, risk scoring, monitoring, and alternatives in one clean engineering workspace.</p></div>
         <div class="feature-grid">
           <div class="feature-card"><div class="feature-icon">▣</div><strong>Lifecycle Intelligence</strong><span>Identify EOL, NRND, replacement-suggested, and unknown lifecycle components before they affect production.</span></div>
           <div class="feature-card"><div class="feature-icon">◌</div><strong>Supplier Intelligence</strong><span>Review stock, supplier concentration, lead time, and availability signals across integrated suppliers.</span></div>
@@ -381,15 +381,15 @@ def _render_solutions_page():
     _html("""
     <div class="cadivor-public">
       <section class="cadivor-section page-section" id="solutions">
-        <div class="section-heading"><h2>Built for the teams behind modern electronics</h2><p>Cadivor gives each team a shared view of component risk without replacing engineering review.</p></div>
+        <div class="section-heading"><h2>Built for the teams behind modern electronics</h2><p>One shared source of BOM intelligence for engineering validation, sourcing review, and management visibility.</p></div>
         <div class="solution-grid">
-          <div class="solution-card"><strong>Electronics Engineers</strong><span>Validate component risk before design release.</span><ul><li>Review lifecycle status</li><li>Compare replacements</li><li>Document engineering concerns</li></ul></div>
-          <div class="solution-card"><strong>Procurement Teams</strong><span>Understand supplier and market exposure earlier.</span><ul><li>Check stock and supplier count</li><li>Track sourcing concentration</li><li>Prepare alternate sourcing paths</li></ul></div>
-          <div class="solution-card"><strong>Engineering Managers</strong><span>See portfolio-level BOM health and reporting.</span><ul><li>Monitor saved analyses</li><li>Review high-risk projects</li><li>Export decision-ready reports</li></ul></div>
+          <div class="solution-card"><div class="feature-icon">⚙</div><strong>Electronics Engineers</strong><span>Validate component risk before design release.</span><ul><li>Review lifecycle status</li><li>Compare replacements</li><li>Document engineering concerns</li></ul></div>
+          <div class="solution-card"><div class="feature-icon">▤</div><strong>Procurement Teams</strong><span>Understand supplier and market exposure earlier.</span><ul><li>Check stock and supplier count</li><li>Track sourcing concentration</li><li>Prepare alternate sourcing paths</li></ul></div>
+          <div class="solution-card"><div class="feature-icon">◉</div><strong>Engineering Managers</strong><span>See portfolio-level BOM health and reporting.</span><ul><li>Monitor saved analyses</li><li>Review high-risk projects</li><li>Export decision-ready reports</li></ul></div>
         </div>
       </section>
       <section class="cadivor-section compact-section">
-        <div class="section-heading"><h2>One workflow from risk detection to decision</h2><p>Cadivor is designed to help engineering and sourcing teams stay aligned before production pressure starts.</p></div>
+        <div class="section-heading"><h2>One workflow from risk detection to decision</h2><p>Keep the full review path connected: upload, analyze, compare, decide, and export.</p></div>
         <div class="solution-flow">
           <div class="flow-step"><b>01</b><strong>Design review</strong><span>Check early BOMs for lifecycle exposure and sourcing concentration.</span></div>
           <div class="flow-step"><b>02</b><strong>Sourcing review</strong><span>Compare suppliers, inventory signals, and likely procurement bottlenecks.</span></div>
