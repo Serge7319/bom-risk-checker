@@ -534,7 +534,7 @@ st.set_page_config(
     page_title="Cadivor",
     page_icon="📦",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 
@@ -897,9 +897,9 @@ st.markdown(
     }
     html, body, [data-testid="stAppViewContainer"] { background:var(--brc-bg)!important; color:var(--brc-navy)!important; }
     [data-testid="stHeader"] { background:rgba(255,255,255,.88)!important; border-bottom:1px solid var(--brc-border)!important; }
-    [data-testid="stSidebar"] { background:#FFFFFF!important; border-right:1px solid var(--brc-border)!important; }
-    [data-testid="stSidebar"] * { color:var(--brc-navy)!important; }
-    .block-container { max-width:100%!important; padding-top:1.25rem!important; padding-left:1.25rem!important; padding-right:1.25rem!important; }
+    [data-testid="stSidebar"] { display:none!important; }
+    [data-testid="collapsedControl"] { display:none!important; }
+    .block-container { max-width:100%!important; padding-top:1.25rem!important; padding-left:1.15rem!important; padding-right:1.15rem!important; }
     h1,h2,h3,h4,h5,h6 { color:var(--brc-navy)!important; letter-spacing:-.03em; }
     p,label,span,div,.stMarkdown,.stCaptionContainer { color:var(--brc-muted); }
 
@@ -932,22 +932,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.sidebar.title("Cadivor")
-if "user" in st.session_state:
-    st.sidebar.success(
-        f"Logged in as:\n{st.session_state['user'].email}"
-    )
-
-    
-st.sidebar.write("Run it through Cadivor. Engineering intelligence for electronics teams.")
-st.sidebar.divider()
-st.sidebar.write("Supported files: CSV, XLSX")
-st.sidebar.write("Required field: Part Number / MPN")
-
-st.sidebar.divider()
-
-st.sidebar.subheader("Navigation")
-
+# ---------- Cadivor App Navigation / Workspace Shell ----------
 NAV_OPTIONS = [
     "Dashboard",
     "BOM Analyzer",
@@ -959,46 +944,39 @@ NAV_OPTIONS = [
     "About",
 ]
 
-if "pending_app_mode" in st.session_state:
-    st.session_state["app_mode"] = st.session_state.pop("pending_app_mode")
+def _qp_value(name, default=""):
+    try:
+        value = st.query_params.get(name, default)
+        if isinstance(value, list):
+            return value[0] if value else default
+        return value or default
+    except Exception:
+        return default
 
-if "app_mode" not in st.session_state or st.session_state["app_mode"] not in NAV_OPTIONS:
-    st.session_state["app_mode"] = "Dashboard"
+if _qp_value("action") == "logout":
+    if cookie_manager:
+        cookie_manager.delete(cookie="bom_auth", key="delete_bom_auth_from_shell")
+    supabase.auth.sign_out()
+    st.session_state.clear()
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+    st.rerun()
 
-app_mode = st.sidebar.radio(
-    "",
-    NAV_OPTIONS,
-    index=NAV_OPTIONS.index(st.session_state["app_mode"]),
-    key="app_mode",
-)
-
-st.sidebar.subheader("Subscription")
+if _qp_value("action") == "clear":
+    st.session_state.pop("results_df", None)
+    st.session_state.pop("uploaded_filename", None)
+    try:
+        st.query_params["page"] = _qp_value("page", "Dashboard")
+        del st.query_params["action"]
+    except Exception:
+        pass
 
 # Default user plan
 selected_plan_name = current_user["plan"]
 selected_plan = get_plan(selected_plan_name)
-
 monthly_upload_count = current_user["monthly_upload_count"]
-
-st.sidebar.markdown(f"### {selected_plan_name}")
-
-st.sidebar.write(
-    f"**Monthly BOM limit:** {selected_plan['monthly_bom_limit']}"
-)
-
-st.sidebar.write(
-    f"**Max parts per BOM:** {selected_plan['max_parts_per_bom']}"
-)
-
-st.sidebar.caption(selected_plan["description"])
-if is_admin:
-    st.sidebar.success("🛠 Admin access enabled")
-
-st.sidebar.write(
-    f"**BOM analyses used this month:** "
-    f"{monthly_upload_count} / "
-    f"{selected_plan['monthly_bom_limit']}"
-)
 
 saved_bom_count_response = (
     supabase.table("analyses")
@@ -1006,19 +984,53 @@ saved_bom_count_response = (
     .eq("user_id", current_user["id"])
     .execute()
 )
-
 saved_bom_count = saved_bom_count_response.count or 0
 
-st.sidebar.write(
-    f"**Saved BOMs:** "
-    f"{saved_bom_count} / "
-    f"{selected_plan['max_saved_boms']}"
+if "pending_app_mode" in st.session_state:
+    app_mode = st.session_state.pop("pending_app_mode")
+    try:
+        st.query_params["page"] = app_mode
+    except Exception:
+        pass
+else:
+    app_mode = _qp_value("page", st.session_state.get("app_mode", "Dashboard"))
+
+if app_mode not in NAV_OPTIONS:
+    app_mode = "Dashboard"
+st.session_state["app_mode"] = app_mode
+
+profile_for_shell = get_user_profile(current_user) if "get_user_profile" in globals() else current_user
+shell_name = profile_for_shell.get("full_name") or profile_for_shell.get("email", "Cadivor User").split("@")[0].title()
+shell_company = profile_for_shell.get("company_name") or profile_for_shell.get("company") or selected_plan_name
+shell_email = profile_for_shell.get("email") or current_user.get("email", "")
+shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:2] or "C"
+
+import urllib.parse as _urlparse
+_nav_html = []
+_nav_icons = {
+    "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
+    "Reports":"□", "Pricing":"$", "Settings":"⚙", "About":"?"
+}
+for _nav in NAV_OPTIONS:
+    _active = " active" if _nav == app_mode else ""
+    _href = "?page=" + _urlparse.quote(_nav)
+    _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
+
+st.markdown(
+    f'''
+    <div class="cv-app-sidebar">
+      <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
+      <div class="cv-side-user"><div class="cv-side-avatar">{shell_initials}</div><div><strong>{shell_name}</strong><small>{shell_company}</small><small>{shell_email}</small></div></div>
+      <div class="cv-side-section">Navigation</div>
+      <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
+      <div class="cv-side-section">Workspace</div>
+      <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span></div>
+      <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
+    </div>
+    ''',
+    unsafe_allow_html=True,
 )
 
-if st.sidebar.button("Clear Analysis"):
-    st.session_state.pop("results_df", None)
-    st.session_state.pop("uploaded_filename", None)
-    st.rerun()
 
 
 # ---------- Shared UI Framework ----------
@@ -1031,13 +1043,43 @@ if app_mode == "Dashboard":
     st.markdown(
         """
         <style>
+
+        [data-testid="stSidebar"] { display:none!important; }
+        [data-testid="collapsedControl"] { display:none!important; }
+        .main .block-container { padding-left:300px!important; padding-right:26px!important; max-width:100vw!important; }
+        .cv-app-sidebar {
+            position:fixed; left:0; top:0; bottom:0; width:272px; z-index:999;
+            background:#FFFFFF; border-right:1px solid #E5E7EB; padding:26px 20px;
+            box-shadow:16px 0 40px rgba(15,23,42,.04); overflow:auto;
+        }
+        .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+        .cv-side-logo { width:38px; height:38px; border-radius:12px; background:#2563EB; color:#fff!important; display:flex; align-items:center; justify-content:center; font-weight:950; box-shadow:0 12px 24px rgba(37,99,235,.25); }
+        .cv-side-name { color:#0F172A!important; font-size:20px; font-weight:950; line-height:1; }
+        .cv-side-sub { color:#64748B!important; font-size:10px; font-weight:800; margin-top:4px; letter-spacing:.04em; text-transform:uppercase; }
+        .cv-side-user { display:flex; gap:12px; align-items:center; padding:13px; border:1px solid #E5E7EB; border-radius:16px; background:#F8FAFC; margin-bottom:22px; }
+        .cv-side-avatar { width:38px; height:38px; border-radius:50%; background:#EFF6FF; color:#2563EB!important; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; font-weight:950; flex:0 0 auto; }
+        .cv-side-user strong { display:block; color:#0F172A!important; font-size:13px; font-weight:900; line-height:1.2; }
+        .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
+        .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
+        .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
+        .cv-side-link span { width:20px; text-align:center; color:#64748B!important; }
+        .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; }
+        .cv-side-link.active { background:#EFF6FF; border-color:#BFDBFE; color:#2563EB!important; }
+        .cv-side-link.active span { color:#2563EB!important; }
+        .cv-side-plan { border:1px solid #E5E7EB; border-radius:16px; background:#FFFFFF; padding:14px; display:flex; flex-direction:column; gap:7px; }
+        .cv-side-plan strong { color:#0F172A!important; font-size:18px; font-weight:950; }
+        .cv-side-plan span { color:#64748B!important; font-size:12px; font-weight:750; }
+        .cv-side-footer { margin-top:20px; display:grid; gap:8px; }
+        .cv-side-footer a { padding:10px 12px; border-radius:12px; text-decoration:none!important; color:#334155!important; font-weight:850; font-size:13px; background:#F8FAFC; border:1px solid #E5E7EB; }
+        .cv-side-footer a:last-child { color:#DC2626!important; }
         .cadivor-topbar {
             margin-top: 0;
-            margin-bottom: 18px;
+            margin-bottom: 22px;
             padding: 16px 22px;
             background: rgba(255,255,255,.96);
             border: 1px solid #E5E7EB;
-            border-radius: 0 0 18px 18px;
+            border-radius: 18px;
             box-shadow: 0 12px 32px rgba(15,23,42,.055);
             display: grid;
             grid-template-columns: 260px 1fr auto;
@@ -1076,7 +1118,8 @@ if app_mode == "Dashboard":
         }
         .cv-title { font-size:42px; line-height:1.05; font-weight:950; color:#0F172A!important; letter-spacing:-.045em; margin:0 0 8px 0; }
         .cv-subtitle { color:#64748B!important; font-size:15px; line-height:1.55; max-width:760px; margin:0; }
-        .cv-action-row { display:flex; gap:10px; justify-content:flex-end; padding-top:30px; }
+        .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:64px; }
+        .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; padding-top:42px; margin-bottom:8px; }
         .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
 
         .cv-metric {
@@ -1115,7 +1158,7 @@ if app_mode == "Dashboard":
         .cv-action-title { color:#0F172A!important; font-size:14px; font-weight:900; margin-bottom:4px; }
         .cv-action-copy { color:#64748B!important; font-size:12px; line-height:1.45; }
         .cv-section-spacer { margin-top:22px; }
-        @media(max-width:1000px){ .cv-dashboard-header{display:block;} .cv-action-row{justify-content:flex-start;padding-top:14px;} .cv-actions-grid{grid-template-columns:1fr 1fr;} }
+        @media(max-width:1000px){ .cv-app-sidebar{position:relative;width:auto;height:auto;box-shadow:none;border-right:0;border-bottom:1px solid #E5E7EB;} .main .block-container{padding-left:1rem!important;padding-right:1rem!important;} .cv-dashboard-header{display:block;} .cv-action-row{justify-content:flex-start;padding-top:14px;} .cv-actions-grid{grid-template-columns:1fr 1fr;} }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1223,14 +1266,16 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
     with action_col:
-        st.markdown('<div class="cv-action-row">', unsafe_allow_html=True)
-        if st.button("New Analysis"):
-            st.session_state["pending_app_mode"] = "BOM Analyzer"
-            st.rerun()
-        if st.button("Alternatives"):
-            st.session_state["pending_app_mode"] = "Alternative Finder"
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv-action-row-label">Quick actions</div>', unsafe_allow_html=True)
+        act_new, act_alt = st.columns(2)
+        with act_new:
+            if st.button("New Analysis"):
+                st.session_state["pending_app_mode"] = "BOM Analyzer"
+                st.rerun()
+        with act_alt:
+            if st.button("Alternatives"):
+                st.session_state["pending_app_mode"] = "Alternative Finder"
+                st.rerun()
 
     # KPI row: compact, side-by-side, and information dense.
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -1248,7 +1293,6 @@ if app_mode == "Dashboard":
     chart_col, dist_col = st.columns([1.45, 1])
 
     with chart_col:
-        st.markdown('<div class="cv-panel">', unsafe_allow_html=True)
         st.markdown('<div class="cv-panel-title">Portfolio Health Trend</div><div class="cv-panel-copy">Average health score across saved BOM analyses.</div>', unsafe_allow_html=True)
         if analysis_data and len(analysis_data) >= 2:
             trend_df = pd.DataFrame(analysis_data)
@@ -1260,10 +1304,8 @@ if app_mode == "Dashboard":
             st.plotly_chart(light_plotly_layout(fig, height=300), use_container_width=True)
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with dist_col:
-        st.markdown('<div class="cv-panel">', unsafe_allow_html=True)
         st.markdown('<div class="cv-panel-title">Risk Distribution</div><div class="cv-panel-copy">Component risk across all saved analyses.</div>', unsafe_allow_html=True)
         if total_components > 0:
             risk_distribution_df = pd.DataFrame({
@@ -1283,7 +1325,6 @@ if app_mode == "Dashboard":
             st.plotly_chart(light_plotly_layout(fig, height=300), use_container_width=True)
         else:
             st.info("Risk distribution will appear after your first BOM analysis.")
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # Snapshot + recent analyses.
     snapshot_col, activity_col = st.columns([1.0, 1.55])
@@ -1316,7 +1357,6 @@ if app_mode == "Dashboard":
         )
 
     with activity_col:
-        st.markdown('<div class="cv-panel">', unsafe_allow_html=True)
         st.markdown('<div class="cv-panel-title">Recent Analyses</div><div class="cv-panel-copy">Latest saved BOM reviews and risk results.</div>', unsafe_allow_html=True)
         if analysis_data:
             recent_df = pd.DataFrame(analysis_data).copy()
@@ -1339,7 +1379,6 @@ if app_mode == "Dashboard":
             st.dataframe(recent_display_df.head(8), use_container_width=True, hide_index=True, height=300)
         else:
             st.info("No analyses yet. Upload your first BOM to begin building portfolio intelligence.")
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # Quick actions.
     st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
@@ -1726,7 +1765,6 @@ if app_mode == "Settings":
         )
 
     with right:
-        st.markdown('<div class="cv-panel">', unsafe_allow_html=True)
         st.markdown('<div class="cv-panel-title">Edit profile</div><div class="cv-panel-copy">This information powers the dashboard profile display.</div>', unsafe_allow_html=True)
         full_name = st.text_input("Full name", value=profile.get("full_name", ""), placeholder="Joshua Kashambala")
         company_name = st.text_input("Company / organization", value=profile.get("company", ""), placeholder="Egres Technologies")
@@ -1753,7 +1791,6 @@ if app_mode == "Settings":
                     st.error(f"Unable to update profile: {e}")
         with note_col:
             st.caption("Recommended database columns: full_name, company_name, role_title, profile_image_url.")
-        st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
         """
