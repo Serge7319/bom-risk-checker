@@ -29,7 +29,7 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
-from src.ui.framework import inject_premium_css, render_topbar, page_header, metric_card, light_plotly_layout
+from src.ui.framework import inject_premium_css, render_topbar, page_header, metric_card, light_plotly_layout, empty_state, action_card
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -1066,6 +1066,9 @@ NAV_OPTIONS = [
     "Reports",
     "Pricing",
     "Settings",
+    "Workspace",
+    "Notifications",
+    "Help",
     "About",
 ]
 
@@ -1449,6 +1452,24 @@ st.markdown(
 # ---------- Shared UI Framework ----------
 inject_premium_css()
 render_topbar(profile_for_shell, app_mode)
+
+
+# Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
+st.markdown(
+    """
+    <style>
+    .cv-v31-pill { display:inline-flex; align-items:center; gap:8px; min-height:32px; padding:0 12px; border-radius:999px; background:#F8FAFC; border:1px solid #E2E8F0; color:#475569!important; font-size:12px; font-weight:850; }
+    .cv-actions-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; }
+    .cv-action-card { min-height:124px!important; transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+    .cv-action-card:hover { transform:translateY(-3px); box-shadow:0 22px 46px rgba(15,23,42,.09)!important; border-color:#BFDBFE!important; }
+    .cv-action-card a { text-decoration:none!important; color:inherit!important; }
+    .cv-kbd { padding:2px 7px; border:1px solid #CBD5E1; border-radius:7px; background:#FFFFFF; color:#64748B!important; font-size:11px; font-weight:900; }
+    @media(max-width:1250px){ .cv-actions-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;} }
+    @media(max-width:760px){ .cv-actions-grid{grid-template-columns:1fr!important;} }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
@@ -1921,10 +1942,10 @@ if app_mode == "Dashboard":
     st.markdown(
         """
         <div class="cv-actions-grid">
-          <div class="cv-action-card"><div class="cv-action-icon">+</div><div class="cv-action-title">Analyze a BOM</div><div class="cv-action-copy">Upload CSV or Excel files and generate a risk profile.</div></div>
-          <div class="cv-action-card"><div class="cv-action-icon">⇄</div><div class="cv-action-title">Find Alternatives</div><div class="cv-action-copy">Compare compatible replacement candidates and supplier coverage.</div></div>
-          <div class="cv-action-card"><div class="cv-action-icon">!</div><div class="cv-action-title">Review Alerts</div><div class="cv-action-copy">Check stock, lifecycle, and risk changes across monitored parts.</div></div>
-          <div class="cv-action-card"><div class="cv-action-icon">↧</div><div class="cv-action-title">Export Reports</div><div class="cv-action-copy">Download engineering-ready reports for review and sourcing.</div></div>
+          <a class="cv-action-card" href="?page=BOM%20Analyzer" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">+</div><div class="cv-action-title">Analyze a BOM</div><div class="cv-action-copy">Upload CSV or Excel files and generate a risk profile.</div></a>
+          <a class="cv-action-card" href="?page=Alternative%20Finder" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">⇄</div><div class="cv-action-title">Find Alternatives</div><div class="cv-action-copy">Compare compatible replacement candidates and supplier coverage.</div></a>
+          <a class="cv-action-card" href="?page=Monitoring" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">!</div><div class="cv-action-title">Review Alerts</div><div class="cv-action-copy">Check stock, lifecycle, and risk changes across monitored parts.</div></a>
+          <a class="cv-action-card" href="?page=Reports" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">↧</div><div class="cv-action-title">Export Reports</div><div class="cv-action-copy">Download engineering-ready reports for review and sourcing.</div></a>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2339,6 +2360,81 @@ if app_mode == "Settings":
     )
     st.stop()
 
+
+
+# ---------- Workspace ----------
+if app_mode == "Workspace":
+    profile = get_user_profile(current_user)
+    st.markdown(
+        f"""
+        <div class="cv-dashboard-header">
+          <div>
+            <div class="cv-eyebrow">Workspace</div>
+            <h1 class="cv-title">{profile.get('company') or 'Cadivor Workspace'}</h1>
+            <p class="cv-subtitle">Manage workspace identity, usage, plan limits, and team foundations. Team collaboration will expand in a future sprint.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    w1, w2, w3 = st.columns(3)
+    with w1:
+        st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">Current Plan</div><div class="cv-snapshot-main">{selected_plan_name}</div><p class="cv-panel-copy">{selected_plan.get("description", "Cadivor subscription")}</p></div>', unsafe_allow_html=True)
+    with w2:
+        st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">BOM Usage</div><div class="cv-snapshot-main">{monthly_upload_count} / {selected_plan["monthly_bom_limit"]}</div><p class="cv-panel-copy">Monthly analyses used.</p></div>', unsafe_allow_html=True)
+    with w3:
+        st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">Saved BOMs</div><div class="cv-snapshot-main">{saved_bom_count} / {selected_plan["max_saved_boms"]}</div><p class="cv-panel-copy">Stored analyses in this workspace.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Workspace actions</div><div class="cv-panel-copy">Billing, team members, integrations, and API access are being prepared for the next product releases.</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        action_card("Billing", "Review subscription and upgrade options.", "?page=Pricing", "$")
+    with c2:
+        action_card("Profile", "Update your display name, company, and role.", "?page=Settings", "◎")
+    with c3:
+        action_card("Integrations", "Supplier and API settings coming soon.", "?page=Help", "◇")
+    st.stop()
+
+# ---------- Notifications ----------
+if app_mode == "Notifications":
+    st.markdown(
+        """
+        <div class="cv-dashboard-header">
+          <div>
+            <div class="cv-eyebrow">Notification Center</div>
+            <h1 class="cv-title">Alerts & updates</h1>
+            <p class="cv-subtitle">Cadivor will surface lifecycle, stock, pricing, and monitoring changes here as your workspace grows.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    empty_state("No active notifications", "Your workspace has no unresolved alerts right now. Start monitoring parts to receive lifecycle, stock, and supplier updates.", "Open Monitoring", "?page=Monitoring", "●")
+    st.stop()
+
+# ---------- Help ----------
+if app_mode == "Help":
+    st.markdown(
+        """
+        <div class="cv-dashboard-header">
+          <div>
+            <div class="cv-eyebrow">Help Center</div>
+            <h1 class="cv-title">Cadivor support</h1>
+            <p class="cv-subtitle">Guides, templates, and answers for engineering teams using Cadivor BOM intelligence.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    h1, h2, h3 = st.columns(3)
+    with h1:
+        action_card("BOM upload guide", "CSV and Excel formatting recommendations.", "?page=BOM%20Analyzer", "▦")
+    with h2:
+        action_card("Alternative search", "How to review replacement candidates.", "?page=Alternative%20Finder", "⇄")
+    with h3:
+        action_card("Contact support", "Support workflow coming soon.", "?page=About", "?")
+    st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
+    empty_state("Documentation is being prepared", "Cadivor documentation, API notes, and engineering guides will be added as the product matures.", None, None, "◇")
+    st.stop()
 
 # ---------- About ----------
 if app_mode == "About":
