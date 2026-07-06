@@ -35,6 +35,31 @@ try:
 except Exception:
     stx = None
 
+# Streamlit must receive page config before any other UI/state rendering.
+# Keep native Streamlit chrome hidden as early as possible to prevent page-nav flash.
+st.set_page_config(
+    page_title="Cadivor",
+    page_icon="C",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+st.markdown(
+    """
+    <style>
+    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stSidebar"], [data-testid="collapsedControl"],
+    section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+        display: none !important; visibility: hidden !important; width: 0 !important; min-width: 0 !important;
+    }
+    .stApp { background: #F6F8FB !important; }
+    .main .block-container, [data-testid="stAppViewContainer"] .main .block-container {
+        padding-top: 0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -497,18 +522,18 @@ if "access_token" in st.session_state and "refresh_token" in st.session_state:
 
 if "user" not in st.session_state:
 
-    # CookieManager can take more than one render cycle to hydrate cookies after
-    # a reload or query-param navigation. Do not show the public landing/auth UI
-    # until we have given the saved session several chances to restore. This
-    # prevents the brief landing-page flash during authenticated navigation.
-    _restore_attempts = st.session_state.get("cadivor_auth_restore_attempts", 0)
-    if cookie_manager and _restore_attempts < 3:
-        st.session_state["cadivor_auth_restore_attempts"] = _restore_attempts + 1
+    # Give CookieManager exactly one short retry cycle to hydrate cookies.
+    # The previous v2.9 loader could stop without rerunning, leaving the app
+    # stuck forever on "Loading Cadivor workspace...". This version reruns once,
+    # then falls back to the auth UI if no valid session exists.
+    if cookie_manager and not st.session_state.get("cadivor_auth_restore_checked"):
+        st.session_state["cadivor_auth_restore_checked"] = True
         st.markdown(
             """
             <style>
-            [data-testid="stSidebar"], [data-testid="collapsedControl"], header[data-testid="stHeader"],
-            [data-testid="stToolbar"], [data-testid="stDecoration"] { display:none!important; }
+            header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+            [data-testid="stSidebar"], [data-testid="collapsedControl"], section[data-testid="stSidebar"],
+            div[data-testid="stSidebarNav"] { display:none!important; visibility:hidden!important; width:0!important; min-width:0!important; }
             .stApp { background:#F6F8FB!important; }
             .cadivor-restore { min-height:100vh; display:flex; align-items:center; justify-content:center; color:#64748B; font-weight:800; }
             .cadivor-restore-card { background:#fff; border:1px solid #E5E7EB; border-radius:20px; padding:24px 28px; box-shadow:0 24px 70px rgba(15,23,42,.08); }
@@ -517,7 +542,8 @@ if "user" not in st.session_state:
             """,
             unsafe_allow_html=True,
         )
-        st.stop()
+        time.sleep(0.2)
+        st.rerun()
 
     try:
         show_auth_ui(supabase, cookie_manager)
@@ -541,15 +567,6 @@ analysis_history = (
     .limit(10)
     .execute()
 )
-
-
-st.set_page_config(
-    page_title="Cadivor",
-    page_icon="📦",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
