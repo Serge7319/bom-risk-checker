@@ -546,6 +546,18 @@ def _persist_auth_cookie():
         pass
 
 
+
+
+def _qp_value(name, default=""):
+    """Safe query-param reader available before auth routing renders anything."""
+    try:
+        value = st.query_params.get(name, default)
+        if isinstance(value, list):
+            return value[0] if value else default
+        return value or default
+    except Exception:
+        return default
+
 # 1) Restore tokens from cookie only if this Streamlit session does not have them.
 if "access_token" not in st.session_state or "refresh_token" not in st.session_state:
     raw_auth_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
@@ -565,7 +577,11 @@ if st.session_state.get("access_token") and st.session_state.get("refresh_token"
         if user_response and user_response.user:
             st.session_state["user"] = user_response.user
             st.session_state["cadivor_auth_restore_checked"] = True
-            st.session_state["cadivor_auth_restore_attempts"] = 3
+            # Do not mark restore attempts as exhausted. If Streamlit creates a brief
+            # fresh frontend session during navigation, we still want the neutral
+            # loader to appear while CookieManager hydrates instead of flashing the
+            # public landing/auth page.
+            st.session_state["cadivor_auth_restore_attempts"] = 0
             _persist_auth_cookie()
     except Exception:
         # Tokens are invalid/expired. Remove them from session, but do not delete
@@ -581,19 +597,32 @@ if st.session_state.get("user") and st.session_state.get("access_token") and st.
 
 if "user" not in st.session_state:
 
-    # CookieManager can hydrate one rerun later. During that short window show a
-    # neutral loading card, not the public landing page. This prevents the 1 sec
-    # landing-page flash and avoids accidental logout on navigation.
+    # CookieManager can hydrate several reruns late on Streamlit Cloud, especially
+    # after query-string navigation or browser Back. During that window we must
+    # NEVER render the public landing page because it creates the visible flash.
+    # Instead, keep a neutral loader until either auth restores or we decide the
+    # visitor is genuinely signed out.
+    current_route = _qp_value("page", "") if "_qp_value" in globals() else ""
+    recovery_key = f"{current_route}|{_qp_value('action', '') if '_qp_value' in globals() else ''}"
+    if st.session_state.get("cadivor_auth_recovery_key") != recovery_key:
+        st.session_state["cadivor_auth_recovery_key"] = recovery_key
+        st.session_state["cadivor_auth_restore_attempts"] = 0
+
     attempts = int(st.session_state.get("cadivor_auth_restore_attempts", 0))
-    if cookie_manager and attempts < 2:
+    should_buffer = bool(cookie_manager) and attempts < 8
+
+    if should_buffer:
         st.session_state["cadivor_auth_restore_attempts"] = attempts + 1
         st.markdown(
             """
             <style>
             #MainMenu, footer, header, [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-            [data-testid="stSidebar"], [data-testid="collapsedControl"], section[data-testid="stSidebar"],
-            div[data-testid="stSidebarNav"] { display:none!important; visibility:hidden!important; width:0!important; min-width:0!important; }
-            .stApp { background:#F6F8FB!important; }
+            [data-testid="stStatusWidget"], .stDeployButton, [data-testid="stSidebar"], [data-testid="collapsedControl"],
+            section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+                display:none!important; visibility:hidden!important; width:0!important; min-width:0!important; height:0!important; min-height:0!important;
+            }
+            .stApp, [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
+            .main .block-container, [data-testid="stMainBlockContainer"] { padding:0!important; margin:0!important; max-width:100%!important; }
             .cadivor-restore { min-height:100vh; display:flex; align-items:center; justify-content:center; color:#64748B; font-weight:800; }
             .cadivor-restore-card { background:#fff; border:1px solid #E5E7EB; border-radius:20px; padding:24px 28px; box-shadow:0 24px 70px rgba(15,23,42,.08); }
             </style>
@@ -601,9 +630,12 @@ if "user" not in st.session_state:
             """,
             unsafe_allow_html=True,
         )
-        time.sleep(0.18)
+        time.sleep(0.22)
         st.rerun()
 
+    # If recovery did not restore a user, show auth only after the buffer. This
+    # preserves public access for signed-out visitors while preventing navigation
+    # flicker for signed-in users.
     try:
         show_auth_ui(supabase, cookie_manager)
     except TypeError:
@@ -1036,15 +1068,6 @@ NAV_OPTIONS = [
     "Settings",
     "About",
 ]
-
-def _qp_value(name, default=""):
-    try:
-        value = st.query_params.get(name, default)
-        if isinstance(value, list):
-            return value[0] if value else default
-        return value or default
-    except Exception:
-        return default
 
 if _qp_value("action") == "logout":
     if cookie_manager:
