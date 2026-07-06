@@ -1235,6 +1235,117 @@ st.markdown(
 
 
 
+# Cadivor v2.9 enterprise refinement overrides.
+st.markdown(
+    """
+    <style>
+    :root { --cv-topbar-height: 70px!important; --cv-sidebar-width: 284px; }
+
+    /* Make Streamlit chrome invisible as early and as aggressively as possible. */
+    #MainMenu, footer, header, [data-testid="stHeader"], [data-testid="stToolbar"],
+    [data-testid="stDecoration"], [data-testid="stStatusWidget"], .stDeployButton,
+    [data-testid="collapsedControl"], [data-testid="stSidebar"] {
+        display:none!important; visibility:hidden!important; height:0!important; min-height:0!important;
+    }
+
+    /* Enterprise topbar: full-width, compact, and information-dense. */
+    .cadivor-topbar {
+        height:var(--cv-topbar-height)!important;
+        min-height:var(--cv-topbar-height)!important;
+        padding:0 24px!important;
+        grid-template-columns: var(--cv-sidebar-width) minmax(420px, 1fr) auto!important;
+        gap:20px!important;
+        border-bottom:1px solid #E5E7EB!important;
+        background:rgba(255,255,255,.985)!important;
+    }
+    .cadivor-brand { gap:12px!important; }
+    .cadivor-logo-mark { width:42px!important; height:42px!important; border-radius:13px!important; font-size:20px!important; }
+    .cadivor-logo-text { font-size:21px!important; letter-spacing:-.035em!important; }
+    .cadivor-logo-subtitle { font-size:9.5px!important; letter-spacing:.12em!important; }
+    .cadivor-topbar-center {
+        display:flex!important; align-items:center!important; gap:14px!important; min-width:0!important;
+        color:#0F172A!important;
+    }
+    .cadivor-current-page { font-size:15px!important; font-weight:950!important; min-width:128px!important; }
+    .cadivor-search-pill {
+        height:38px; min-width:260px; max-width:520px; flex:1 1 360px;
+        display:flex; align-items:center; padding:0 15px; border:1px solid #E5E7EB;
+        background:#F8FAFC; color:#94A3B8!important; border-radius:999px;
+        font-size:12px; font-weight:800; box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+    }
+    .cadivor-top-icon {
+        width:34px; height:34px; border-radius:999px; display:flex; align-items:center; justify-content:center;
+        border:1px solid #E5E7EB; background:#FFFFFF; color:#64748B!important; font-size:12px; font-weight:950;
+    }
+    .cadivor-top-icon:first-of-type { color:#2563EB!important; }
+    .cadivor-user { min-width:260px!important; }
+    .cadivor-user-name { font-size:14px!important; }
+    .cadivor-user-company { font-size:11px!important; }
+    .cadivor-avatar { width:40px!important; height:40px!important; }
+
+    /* Sidebar polish. */
+    .cv-app-sidebar { top:var(--cv-topbar-height)!important; height:calc(100vh - var(--cv-topbar-height))!important; padding:22px 16px!important; }
+    .cv-side-section { margin-top:20px!important; margin-bottom:10px!important; font-size:10.5px!important; }
+    .cv-side-link { padding:11px 12px!important; gap:12px!important; border-radius:13px!important; font-size:13.2px!important; }
+    .cv-side-link span { font-size:16px!important; width:23px!important; }
+    .cv-side-link.active { box-shadow:0 10px 20px rgba(37,99,235,.07)!important; }
+    .cv-side-link:hover { transform:translateX(3px)!important; }
+
+    /* Main canvas spacing now matches the compact topbar. */
+    [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"] > div,
+    .main .block-container, [data-testid="stMainBlockContainer"] {
+        padding-top:calc(var(--cv-topbar-height) + 24px)!important;
+        padding-left:calc(var(--cv-sidebar-width) + 22px)!important;
+        padding-right:22px!important;
+    }
+
+    /* Dashboard hero and action alignment. */
+    .cv-dashboard-header { margin-top:0!important; margin-bottom:14px!important; align-items:flex-start!important; }
+    .cv-eyebrow { margin-bottom:8px!important; padding:6px 10px!important; }
+    .cv-title { font-size:36px!important; line-height:1.04!important; margin-bottom:8px!important; color:#334155!important; }
+    .cv-subtitle { font-size:14px!important; max-width:660px!important; line-height:1.48!important; }
+    .cv-quick-mini { max-width:390px!important; padding-top:10px!important; }
+    .cv-mini-buttons { gap:10px!important; }
+    .cv-quick-mini .cv-quick-button { min-width:155px!important; padding:10px 14px!important; }
+
+    /* KPI hierarchy. */
+    .cv-metric { min-height:106px!important; padding:16px 18px 14px!important; }
+    .cv-metric-top { margin-bottom:9px!important; }
+    .cv-metric-label { font-size:11.5px!important; }
+    .cv-metric-value { font-size:39px!important; letter-spacing:-.05em!important; margin-bottom:7px!important; }
+    .cv-metric-note { font-size:12.5px!important; }
+    .cv-metric-icon { width:30px!important; height:30px!important; }
+
+    /* Chart and table polish. */
+    .cv-panel, .js-plotly-plot, [data-testid="stDataFrame"], [data-testid="stTable"] {
+        border-radius:16px!important;
+    }
+    .js-plotly-plot { overflow:hidden!important; }
+    .cv-panel-title { margin-top:16px!important; font-size:18px!important; font-weight:950!important; }
+    .cv-panel-copy { margin-bottom:10px!important; color:#64748B!important; }
+    [data-testid="stDataFrame"] { border:1px solid #E5E7EB!important; box-shadow:0 14px 32px rgba(15,23,42,.045)!important; }
+
+    /* Inputs/buttons hover readability. */
+    div.stButton > button:hover, .cv-quick-button:hover { color:#FFFFFF!important; }
+    .cv-quick-button.secondary:hover { color:#1D4ED8!important; }
+
+    @media(max-width:1300px){
+        .cadivor-search-pill{display:none!important;}
+        .cadivor-current-page{min-width:0!important;}
+    }
+    @media(max-width:1000px){
+        .cadivor-topbar{position:relative!important;grid-template-columns:1fr!important;height:auto!important;min-height:74px!important;}
+        .cadivor-topbar-center{display:none!important;}
+        .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+        .cv-side-brand{display:flex!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:1rem!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 
 # ---------- Shared UI Framework ----------
 inject_premium_css()
