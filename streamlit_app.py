@@ -1578,6 +1578,118 @@ if app_mode == "Dashboard":
         unsafe_allow_html=True,
     )
 
+    # Cadivor v3.0 dashboard polish overrides: shell rhythm, KPI hierarchy, and table finish.
+    st.markdown(
+        """
+        <style>
+        :root { --cv-topbar-height: 64px!important; --cv-sidebar-width: 284px!important; }
+
+        /* Keep Streamlit chrome suppressed without showing native navigation during reruns. */
+        header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"],
+        [data-testid="stSidebar"], section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+            display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
+        }
+
+        /* Enterprise shell alignment. */
+        .cadivor-topbar {
+            position:fixed!important; top:0!important; left:0!important; right:0!important; z-index:999998!important;
+            height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+            margin:0!important; padding:0 20px!important; border-radius:0!important; border:0!important;
+            border-bottom:1px solid #E5E7EB!important; box-shadow:0 12px 28px rgba(15,23,42,.045)!important;
+            background:rgba(255,255,255,.985)!important;
+            grid-template-columns: var(--cv-sidebar-width) minmax(360px,1fr) auto!important;
+        }
+        .cadivor-brand { min-width:0!important; gap:12px!important; }
+        .cadivor-logo-mark { width:40px!important; height:40px!important; border-radius:12px!important; font-size:20px!important; }
+        .cadivor-logo-text { font-size:22px!important; }
+        .cadivor-logo-subtitle { font-size:9.5px!important; letter-spacing:.16em!important; text-transform:uppercase!important; }
+        .cadivor-topbar-center { display:flex!important; align-items:center!important; gap:16px!important; min-width:0!important; }
+        .cadivor-current-page { min-width:132px!important; font-size:14px!important; font-weight:950!important; }
+        .cadivor-search-pill {
+            max-width:360px!important; height:36px!important; background:#F8FAFC!important;
+            border:1px solid #E2E8F0!important; color:#94A3B8!important; font-size:12px!important;
+        }
+        .cadivor-top-icon { width:32px!important; height:32px!important; box-shadow:none!important; }
+        .cadivor-user { min-width:260px!important; }
+        .cadivor-user-label { font-size:9.5px!important; }
+        .cadivor-user-name { font-size:14px!important; }
+        .cadivor-user-company { font-size:11px!important; }
+        .cadivor-avatar { width:38px!important; height:38px!important; }
+
+        .cv-app-sidebar {
+            position:fixed!important; top:var(--cv-topbar-height)!important; left:0!important; bottom:0!important;
+            height:calc(100vh - var(--cv-topbar-height))!important; width:var(--cv-sidebar-width)!important;
+            padding:22px 16px 18px!important; z-index:999997!important;
+            box-shadow:14px 0 34px rgba(15,23,42,.035)!important;
+        }
+
+        [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"] > div,
+        .main .block-container, [data-testid="stMainBlockContainer"] {
+            padding-top:calc(var(--cv-topbar-height) + 22px)!important;
+            padding-left:calc(var(--cv-sidebar-width) + 22px)!important;
+            padding-right:22px!important; padding-bottom:56px!important; max-width:none!important; width:100%!important;
+        }
+
+        /* Dashboard rhythm: less wasted vertical space, more premium hierarchy. */
+        .cv-dashboard-header { margin-top:0!important; margin-bottom:12px!important; align-items:flex-end!important; }
+        .cv-eyebrow { margin-bottom:9px!important; padding:6px 10px!important; font-size:10.5px!important; }
+        .cv-title { font-size:36px!important; line-height:1.04!important; margin-bottom:10px!important; letter-spacing:-.045em!important; }
+        .cv-subtitle { max-width:760px!important; font-size:14px!important; line-height:1.55!important; }
+        .cv-quick-mini { max-width:340px!important; padding-top:0!important; margin-top:0!important; }
+        .cv-quick-mini .cv-action-row-label { margin-bottom:7px!important; }
+        .cv-mini-buttons { display:grid!important; grid-template-columns:1fr 1fr!important; gap:10px!important; }
+        .cv-quick-mini .cv-quick-button { min-width:0!important; padding:10px 15px!important; border-radius:12px!important; }
+
+        .cv-metric { min-height:112px!important; padding:18px 18px 16px!important; border-radius:17px!important; transition:transform .16s ease, box-shadow .16s ease!important; }
+        .cv-metric:hover { transform:translateY(-2px)!important; box-shadow:0 20px 42px rgba(15,23,42,.075)!important; }
+        .cv-metric-label { font-size:11px!important; letter-spacing:.06em!important; }
+        .cv-metric-icon { width:31px!important; height:31px!important; border-radius:10px!important; }
+        .cv-metric-value { font-size:42px!important; line-height:.95!important; margin-bottom:9px!important; }
+        .cv-metric-note { font-size:12px!important; font-weight:850!important; }
+
+        .cv-panel-title { font-size:18px!important; margin-bottom:3px!important; }
+        .cv-panel-copy { font-size:12.5px!important; margin-bottom:12px!important; }
+        div[data-testid="stPlotlyChart"] {
+            background:#FFFFFF!important; border:1px solid #E5E7EB!important; border-radius:17px!important;
+            box-shadow:0 14px 32px rgba(15,23,42,.045)!important; padding:10px!important;
+        }
+        .js-plotly-plot { border-radius:14px!important; overflow:hidden!important; }
+
+        .cv-panel { border-radius:17px!important; padding:19px!important; }
+        .cv-snapshot-grid { gap:11px!important; }
+        .cv-snapshot-item { border-radius:14px!important; }
+
+        /* Dataframes: softer enterprise table treatment. */
+        [data-testid="stDataFrame"] {
+            border-radius:16px!important; border:1px solid #E5E7EB!important; overflow:hidden!important;
+            box-shadow:0 14px 34px rgba(15,23,42,.045)!important; background:#FFFFFF!important;
+        }
+        [data-testid="stDataFrame"] [role="columnheader"] {
+            background:#F8FAFC!important; color:#64748B!important; font-size:12px!important; font-weight:900!important;
+        }
+        [data-testid="stDataFrame"] [role="gridcell"] {
+            background:#FFFFFF!important; color:#0F172A!important; border-bottom:1px solid #EEF2F7!important;
+        }
+        [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] { background:#F8FAFC!important; }
+
+        .cv-actions-grid { gap:14px!important; }
+        .cv-action-card { border-radius:17px!important; transition:transform .16s ease, box-shadow .16s ease!important; }
+        .cv-action-card:hover { transform:translateY(-2px)!important; box-shadow:0 18px 38px rgba(15,23,42,.07)!important; }
+
+        @media(max-width:1100px){
+            .cadivor-topbar{position:relative!important;grid-template-columns:1fr!important;height:auto!important;min-height:70px!important;padding:12px 16px!important;}
+            .cadivor-topbar-center{display:none!important;}
+            .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+            .main .block-container,[data-testid="stMainBlockContainer"]{padding:1rem!important;}
+            .cv-dashboard-header{display:block!important;}
+            .cv-quick-mini{margin-left:0!important;margin-top:16px!important;max-width:none!important;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # Load dashboard data once for this page.
     analysis_response = (
         supabase.table("analyses")
@@ -1680,7 +1792,7 @@ if app_mode == "Dashboard":
               <div>
                 <div class="cv-eyebrow">Cadivor Intelligence</div>
                 <h1 class="cv-title">{greeting_prefix}, {user_name}.</h1>
-                <p class="cv-subtitle">Your BOM intelligence workspace at a glance: portfolio health, supplier exposure, saved analyses, and recommended alternatives.</p>
+                <p class="cv-subtitle">Monitor BOM health, supplier exposure, saved analyses, and recommended alternatives from one Cadivor workspace.</p>
               </div>
             </div>
             """,
@@ -1690,7 +1802,7 @@ if app_mode == "Dashboard":
         st.markdown(
             f"""
             <div class="cv-quick-mini">
-              <div class="cv-action-row-label">Quick Actions</div>
+              <div class="cv-action-row-label">Start workflow</div>
               <div class="cv-mini-buttons">
                 <a class="cv-quick-button" href="?page=BOM%20Analyzer" target="_self">New Analysis</a>
                 <a class="cv-quick-button secondary" href="?page=Alternative%20Finder" target="_self">Find Alternatives</a>
