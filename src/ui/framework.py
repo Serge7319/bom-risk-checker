@@ -69,7 +69,12 @@ def render_topbar(current_user=None, app_mode="Dashboard"):
                     <div class="cadivor-logo-subtitle">Engineering Intelligence</div>
                 </div>
             </div>
-            <div class="cadivor-topbar-center">{app_mode}</div>
+            <div class="cadivor-topbar-center">
+                <div class="cadivor-current-page">{app_mode}</div>
+                <div class="cadivor-search-pill">Search BOMs, parts, suppliers…</div>
+                <div class="cadivor-top-icon" title="Notifications">●</div>
+                <div class="cadivor-top-icon" title="Help">?</div>
+            </div>
             <div class="cadivor-user">
                 <div class="cadivor-user-meta">
                     <div class="cadivor-user-label">Workspace</div>
