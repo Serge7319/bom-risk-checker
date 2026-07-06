@@ -494,44 +494,103 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
 cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else _FallbackCookieManager()
 
-if "access_token" not in st.session_state:
-    auth_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
+# -----------------------------------------------------------------------------
+# Cadivor auth/session recovery
+# -----------------------------------------------------------------------------
+# Navigation uses query-string page changes. On Streamlit Cloud, those can create
+# a fresh frontend session. Therefore the Supabase tokens MUST be persisted into
+# the Cadivor auth cookie immediately after login, and restored before routing.
+# This block is intentionally placed before app routing and before any page UI.
 
-    if auth_cookie:
+
+def _coerce_auth_cookie(raw_cookie):
+    """Return a cookie dict whether CookieManager gives us dict, JSON, or None."""
+    if not raw_cookie:
+        return None
+    if isinstance(raw_cookie, dict):
+        return raw_cookie
+    if isinstance(raw_cookie, str):
+        try:
+            import json
+            parsed = json.loads(raw_cookie)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+    return None
+
+
+def _persist_auth_cookie():
+    """Persist current Supabase tokens so page navigation/refresh does not log out."""
+    access_token = st.session_state.get("access_token")
+    refresh_token = st.session_state.get("refresh_token")
+    if not cookie_manager or not access_token or not refresh_token:
+        return
+    try:
+        from datetime import datetime, timedelta
+        cookie_manager.set(
+            cookie="bom_auth",
+            val={"access_token": access_token, "refresh_token": refresh_token},
+            expires_at=datetime.utcnow() + timedelta(days=7),
+            key="persist_bom_auth_cookie",
+        )
+    except TypeError:
+        try:
+            cookie_manager.set(
+                cookie="bom_auth",
+                val={"access_token": access_token, "refresh_token": refresh_token},
+                key="persist_bom_auth_cookie",
+            )
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+# 1) Restore tokens from cookie only if this Streamlit session does not have them.
+if "access_token" not in st.session_state or "refresh_token" not in st.session_state:
+    raw_auth_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
+    auth_cookie = _coerce_auth_cookie(raw_auth_cookie)
+    if auth_cookie and auth_cookie.get("access_token") and auth_cookie.get("refresh_token"):
         st.session_state["access_token"] = auth_cookie.get("access_token")
         st.session_state["refresh_token"] = auth_cookie.get("refresh_token")
 
-if "access_token" in st.session_state and "refresh_token" in st.session_state:
+# 2) Validate tokens with Supabase before deciding whether to show landing/auth.
+if st.session_state.get("access_token") and st.session_state.get("refresh_token"):
     try:
         supabase.auth.set_session(
             st.session_state["access_token"],
             st.session_state["refresh_token"],
         )
-
         user_response = supabase.auth.get_user()
-
         if user_response and user_response.user:
             st.session_state["user"] = user_response.user
             st.session_state["cadivor_auth_restore_checked"] = True
             st.session_state["cadivor_auth_restore_attempts"] = 3
-
+            _persist_auth_cookie()
     except Exception:
+        # Tokens are invalid/expired. Remove them from session, but do not delete
+        # the cookie here; the login/logout handlers own cookie deletion.
         st.session_state.pop("user", None)
         st.session_state.pop("access_token", None)
         st.session_state.pop("refresh_token", None)
 
+# 3) If auth.py just logged in and set session_state tokens, persist them before
+# any navigation link can create a fresh frontend session.
+if st.session_state.get("user") and st.session_state.get("access_token") and st.session_state.get("refresh_token"):
+    _persist_auth_cookie()
+
 if "user" not in st.session_state:
 
-    # Give CookieManager exactly one short retry cycle to hydrate cookies.
-    # The previous v2.9 loader could stop without rerunning, leaving the app
-    # stuck forever on "Loading Cadivor workspace...". This version reruns once,
-    # then falls back to the auth UI if no valid session exists.
-    if cookie_manager and not st.session_state.get("cadivor_auth_restore_checked"):
-        st.session_state["cadivor_auth_restore_checked"] = True
+    # CookieManager can hydrate one rerun later. During that short window show a
+    # neutral loading card, not the public landing page. This prevents the 1 sec
+    # landing-page flash and avoids accidental logout on navigation.
+    attempts = int(st.session_state.get("cadivor_auth_restore_attempts", 0))
+    if cookie_manager and attempts < 2:
+        st.session_state["cadivor_auth_restore_attempts"] = attempts + 1
         st.markdown(
             """
             <style>
-            header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+            #MainMenu, footer, header, [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
             [data-testid="stSidebar"], [data-testid="collapsedControl"], section[data-testid="stSidebar"],
             div[data-testid="stSidebarNav"] { display:none!important; visibility:hidden!important; width:0!important; min-width:0!important; }
             .stApp { background:#F6F8FB!important; }
@@ -542,7 +601,7 @@ if "user" not in st.session_state:
             """,
             unsafe_allow_html=True,
         )
-        time.sleep(0.2)
+        time.sleep(0.18)
         st.rerun()
 
     try:
