@@ -226,3 +226,102 @@ def action_card(title, body, href, icon="+", kind="primary"):
         """,
         unsafe_allow_html=True,
     )
+
+# -----------------------------------------------------------------------------
+# Cadivor v3.2 UX completion helpers
+# -----------------------------------------------------------------------------
+def inject_v32_ux_css():
+    """Final Milestone 2 UX layer: design tokens, tables, animations, empty states."""
+    st.markdown(
+        """
+        <style>
+        :root {
+            --cv-color-bg: #F6F8FB;
+            --cv-color-surface: #FFFFFF;
+            --cv-color-surface-soft: #F8FAFC;
+            --cv-color-text: #0F172A;
+            --cv-color-text-2: #334155;
+            --cv-color-muted: #64748B;
+            --cv-color-border: #E5E7EB;
+            --cv-color-primary: #2563EB;
+            --cv-color-primary-dark: #1D4ED8;
+            --cv-color-success: #16A34A;
+            --cv-color-warning: #F59E0B;
+            --cv-color-danger: #DC2626;
+            --cv-radius-sm: 10px;
+            --cv-radius-md: 14px;
+            --cv-radius-lg: 18px;
+            --cv-radius-xl: 24px;
+            --cv-shadow-sm: 0 8px 22px rgba(15,23,42,.045);
+            --cv-shadow-md: 0 16px 38px rgba(15,23,42,.065);
+            --cv-shadow-lg: 0 26px 70px rgba(15,23,42,.10);
+            --cv-space-1: 4px;
+            --cv-space-2: 8px;
+            --cv-space-3: 12px;
+            --cv-space-4: 16px;
+            --cv-space-5: 24px;
+            --cv-space-6: 32px;
+            --cv-space-7: 40px;
+        }
+        .cv-fade-in { animation: cvFadeIn .22s ease both; }
+        @keyframes cvFadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+        .cv-panel, .cv-metric, .cv-action-card, .cadivor-metric-card, .card, .kpi-card {
+            transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+        }
+        .cv-panel:hover, .cv-metric:hover, .cv-action-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--cv-shadow-md)!important;
+            border-color: #CBD5E1!important;
+        }
+        .cv-command-card {
+            background: linear-gradient(135deg, #FFFFFF 0%, #F8FBFF 100%);
+            border: 1px solid var(--cv-color-border);
+            border-radius: var(--cv-radius-xl);
+            box-shadow: var(--cv-shadow-md);
+            padding: 22px;
+            margin: 14px 0 22px;
+        }
+        .cv-command-header { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; margin-bottom:16px; }
+        .cv-command-title { color:var(--cv-color-text)!important; font-size:20px; font-weight:950; letter-spacing:-.03em; margin-bottom:4px; }
+        .cv-command-copy { color:var(--cv-color-muted)!important; font-size:13px; font-weight:700; line-height:1.55; }
+        .cv-kbd-inline { border:1px solid #CBD5E1; background:#FFFFFF; color:#64748B!important; border-radius:7px; padding:2px 8px; font-size:11px; font-weight:950; }
+        .cv-result-card {
+            display:grid; grid-template-columns: 1fr auto; gap:16px; align-items:center;
+            border:1px solid #E5E7EB; border-radius:15px; background:#FFFFFF; padding:14px 16px; margin:9px 0;
+            box-shadow:0 8px 18px rgba(15,23,42,.035);
+        }
+        .cv-result-title { color:#0F172A!important; font-size:14px; font-weight:950; margin-bottom:3px; }
+        .cv-result-meta { color:#64748B!important; font-size:12px; font-weight:750; }
+        .cv-status-pill { display:inline-flex; align-items:center; min-height:26px; padding:0 9px; border-radius:999px; font-size:11px; font-weight:900; border:1px solid #BFDBFE; color:#2563EB!important; background:#EFF6FF; }
+        .cv-status-pill.success { color:#047857!important; background:#ECFDF5; border-color:#A7F3D0; }
+        .cv-status-pill.warning { color:#B45309!important; background:#FFFBEB; border-color:#FDE68A; }
+        .cv-status-pill.danger { color:#B91C1C!important; background:#FEF2F2; border-color:#FECACA; }
+        .cv-status-pill.muted { color:#64748B!important; background:#F8FAFC; border-color:#E2E8F0; }
+        .cv-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 16px; }
+        .cv-field-grid.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+        .cv-section-rule { height:1px; background:#E5E7EB; margin:24px 0; }
+        .cv-table-caption { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:8px 0 12px; }
+        .cv-table-caption-title { color:#0F172A!important; font-size:18px; font-weight:950; }
+        .cv-table-caption-note { color:#64748B!important; font-size:12px; font-weight:800; }
+        [data-testid="stDataFrame"] { border-radius:14px!important; overflow:hidden!important; border:1px solid #E5E7EB!important; box-shadow:var(--cv-shadow-sm)!important; }
+        [data-testid="stDataFrame"] [role="columnheader"] { background:#F8FAFC!important; color:#475569!important; font-size:12px!important; font-weight:900!important; border-bottom:1px solid #E5E7EB!important; }
+        [data-testid="stDataFrame"] [role="gridcell"] { background:#FFFFFF!important; color:#0F172A!important; border-bottom:1px solid #EEF2F7!important; }
+        [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] { background:#F8FAFC!important; }
+        div.stTextInput input, div.stTextArea textarea, div[data-baseweb="select"] > div {
+            border-radius:12px!important; border:1px solid #CBD5E1!important; background:#FFFFFF!important; color:#0F172A!important;
+        }
+        div.stTextInput input:focus, div.stTextArea textarea:focus {
+            border-color:#2563EB!important; box-shadow:0 0 0 3px rgba(37,99,235,.12)!important; outline:none!important;
+        }
+        div.stButton > button, div.stDownloadButton > button { transition:transform .15s ease, box-shadow .15s ease, background .15s ease; }
+        div.stButton > button:hover, div.stDownloadButton > button:hover { transform:translateY(-1px); }
+        @media(max-width:1100px){ .cv-field-grid, .cv-field-grid.three { grid-template-columns:1fr; } .cv-command-header{display:block;} }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def status_pill(label, status="info"):
+    status = status if status in {"success", "warning", "danger", "muted"} else "info"
+    return f'<span class="cv-status-pill {status}">{label}</span>'
