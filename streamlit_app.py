@@ -29,7 +29,18 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
-from src.ui.framework import inject_premium_css, inject_v32_ux_css, render_topbar, page_header, metric_card, light_plotly_layout, empty_state, action_card
+from src.ui.framework import (
+    inject_premium_css,
+    inject_v32_ux_css,
+    render_topbar,
+    page_header,
+    metric_card,
+    light_plotly_layout,
+    empty_state,
+    action_card,
+    dashboard_command_center,
+    dashboard_insight_card,
+)
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -1943,37 +1954,44 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
 
-    # Compact SaaS page header: title left, actions right.
-    header_col, action_col = st.columns([4.8, 2.1])
-    with header_col:
-        st.markdown(
-            f"""
-            <div class="cv-dashboard-header">
-              <div>
-                <div class="cv-eyebrow">Cadivor Intelligence</div>
-                <h1 class="cv-title">{greeting_prefix}, {user_name}.</h1>
-                <p class="cv-subtitle">Monitor BOM health, supplier exposure, saved analyses, and recommended alternatives from one Cadivor workspace.</p>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with action_col:
-        st.markdown(
-            f"""
-            <div class="cv-quick-mini">
-              <div class="cv-action-row-label">Start workflow</div>
-              <div class="cv-mini-buttons">
-                <a class="cv-quick-button" href="?page=BOM%20Analyzer" target="_self">New Analysis</a>
-                <a class="cv-quick-button secondary" href="?page=Alternative%20Finder" target="_self">Find Alternatives</a>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    # Milestone 4.2 premium dashboard hero.
+    dashboard_command_center(
+        greeting_prefix,
+        user_name,
+        "Monitor BOM health, supplier exposure, saved analyses, alternatives, and active alerts from one Cadivor command center.",
+        avg_health_score,
+        health_badge,
+    )
 
     if _qp_value("focus", "") == "search":
         render_global_search_panel(current_user["id"])
+
+    # Milestone 4.2 insight strip: gives the dashboard an executive recommendation layer.
+    insight_col_1, insight_col_2, insight_col_3 = st.columns(3)
+    with insight_col_1:
+        dashboard_insight_card(
+            "Priority review",
+            f"{total_high_risk} high-risk part{'s' if total_high_risk != 1 else ''} across the saved portfolio.",
+            "Review" if total_high_risk else "Stable",
+            "danger" if total_high_risk else "success",
+            "!",
+        )
+    with insight_col_2:
+        dashboard_insight_card(
+            "Monitoring posture",
+            f"{alert_count} active alert{'s' if alert_count != 1 else ''}; {high_alert_count} marked high severity.",
+            "Watch" if alert_count else "Clear",
+            "warning" if alert_count else "success",
+            "●",
+        )
+    with insight_col_3:
+        dashboard_insight_card(
+            "Replacement intelligence",
+            f"{alternatives_found} alternative recommendation record{'s' if alternatives_found != 1 else ''} saved.",
+            "Explore" if alternatives_found else "Start",
+            "info" if alternatives_found else "muted",
+            "⇄",
+        )
 
     # KPI row: compact, side-by-side, and information dense.
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
