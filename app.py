@@ -2,7 +2,9 @@ from src.bom_parser import load_bom
 from src.risk_engine import calculate_risk
 from src.report_generator import save_results_to_csv
 from src.report_generator import save_results_to_csv, save_results_to_excel
+from src.cadivor_design_system import apply_cadivor_design_system
 
+apply_cadivor_design_system()
 
 def get_mock_part_data(row):
     """
