@@ -66,10 +66,10 @@ def render_topbar(current_user=None, app_mode="Dashboard"):
         .cadivor-user-wrap:hover .cadivor-user-menu {{ opacity:1; transform:translateY(0); pointer-events:auto; }}
         .cadivor-user {{ cursor:pointer; }}
         .cadivor-user-menu {{
-            position:absolute; right:0; top:calc(100% + 10px); min-width:240px;
+            position:absolute; right:0; top:100%; min-width:248px;
             background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px;
             box-shadow:0 24px 52px rgba(15,23,42,.14); padding:8px;
-            opacity:0; transform:translateY(-6px); pointer-events:none; transition:all .16s ease; z-index:1000006;
+            opacity:0; transform:translateY(-4px); pointer-events:none; transition:opacity .14s ease, transform .14s ease; z-index:1000006;
         }}
         .cadivor-user-menu a {{
             display:flex; align-items:center; justify-content:space-between; gap:12px;
