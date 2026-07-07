@@ -10,13 +10,23 @@ CADIVOR_SURFACE = "#FFFFFF"
 
 
 def inject_premium_css():
-    """Inject the Cadivor Design System v1.0 CSS."""
-    try:
-        with open("src/css/premium.css", "r", encoding="utf-8") as css_file:
-            css = css_file.read()
-    except Exception:
-        css = ""
-    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    """Inject the Cadivor Design System v1.0 CSS.
+
+    Supports both the original `src/css/premium.css` path and the current
+    `src/assets/css/premium.css` project path so the styling layer loads
+    reliably regardless of which milestone ZIP the project came from.
+    """
+    css = ""
+    for css_path in ("src/css/premium.css", "src/assets/css/premium.css"):
+        try:
+            with open(css_path, "r", encoding="utf-8") as css_file:
+                css = css_file.read()
+            if css.strip():
+                break
+        except Exception:
+            continue
+    if css.strip():
+        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
 def _safe_text(value, fallback=""):
@@ -325,3 +335,50 @@ def inject_v32_ux_css():
 def status_pill(label, status="info"):
     status = status if status in {"success", "warning", "danger", "muted"} else "info"
     return f'<span class="cv-status-pill {status}">{label}</span>'
+
+
+# -----------------------------------------------------------------------------
+# Cadivor Milestone 4.2 dashboard presentation helpers
+# -----------------------------------------------------------------------------
+def dashboard_insight_card(title, body, status="Action", kind="info", icon="•"):
+    """Render a compact premium insight card for the dashboard command center."""
+    kind = kind if kind in {"success", "warning", "danger", "muted", "info"} else "info"
+    st.markdown(
+        f"""
+        <div class="cv-insight-card cv-insight-{kind}">
+            <div class="cv-insight-icon">{icon}</div>
+            <div class="cv-insight-content">
+                <div class="cv-insight-title">{title}</div>
+                <div class="cv-insight-body">{body}</div>
+            </div>
+            <span class="cv-status-pill {kind if kind != 'info' else ''}">{status}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def dashboard_command_center(greeting, user_name, subtitle, health_score, health_label, action_href="?page=BOM%20Analyzer"):
+    """Render the premium dashboard hero used in Milestone 4.2."""
+    st.markdown(
+        f"""
+        <div class="cv-command-hero cv-fade-in">
+            <div class="cv-command-hero-copy">
+                <div class="cv-eyebrow">Cadivor Command Center</div>
+                <h1 class="cv-title">{greeting}, {user_name}.</h1>
+                <p class="cv-subtitle">{subtitle}</p>
+                <div class="cv-hero-actions">
+                    <a class="cv-hero-primary" href="{action_href}" target="_self">Run new BOM analysis</a>
+                    <a class="cv-hero-secondary" href="?page=Alternative%20Finder" target="_self">Find alternatives</a>
+                </div>
+            </div>
+            <div class="cv-hero-score-card">
+                <div class="cv-hero-score-label">Portfolio Health</div>
+                <div class="cv-hero-score-value">{health_score}</div>
+                <div class="cv-hero-score-status">{health_label}</div>
+                <div class="cv-hero-score-track"><span style="width:{max(0, min(100, int(health_score or 0)))}%;"></span></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
