@@ -29,7 +29,7 @@ import time
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
-from src.ui.framework import inject_premium_css, render_topbar, page_header, metric_card, light_plotly_layout, empty_state, action_card
+from src.ui.framework import inject_premium_css, inject_v32_ux_css, render_topbar, page_header, metric_card, light_plotly_layout, empty_state, action_card
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -122,6 +122,10 @@ def get_user_profile(current_user):
     )
     role_title = _safe_text(current_user.get("role_title"), _safe_text(current_user.get("job_title"), _safe_text(metadata.get("role_title"), "")))
     avatar_url = _safe_text(current_user.get("profile_image_url"), _safe_text(current_user.get("avatar_url"), _safe_text(metadata.get("avatar_url"), "")))
+    phone = _safe_text(current_user.get("phone"), _safe_text(metadata.get("phone"), ""))
+    country = _safe_text(current_user.get("country"), _safe_text(metadata.get("country"), ""))
+    timezone = _safe_text(current_user.get("timezone"), _safe_text(metadata.get("timezone"), ""))
+    workspace_name = _safe_text(current_user.get("workspace_name"), _safe_text(company, "Cadivor Workspace"))
     plan = _safe_text(current_user.get("plan"), "Starter")
 
     initials_source = full_name or email or "Cadivor"
@@ -132,6 +136,10 @@ def get_user_profile(current_user):
         "company": company,
         "role_title": role_title,
         "avatar_url": avatar_url,
+        "phone": phone,
+        "country": country,
+        "timezone": timezone,
+        "workspace_name": workspace_name,
         "plan": plan,
         "initials": initials,
     }
@@ -169,6 +177,136 @@ def load_analysis_history(user_id):
     )
 
     return response.data if response.data else []
+
+def run_global_search(user_id, query, limit=8):
+    """Search saved analyses, analysis parts, and alternative history for the dashboard command palette foundation."""
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    q = query.lower()
+    results = []
+
+    try:
+        analyses = load_analysis_history(user_id)
+        for item in analyses:
+            haystack = " ".join([
+                str(item.get("project_name", "")),
+                str(item.get("filename", "")),
+                str(item.get("created_at", "")),
+            ]).lower()
+            if q in haystack:
+                results.append({
+                    "type": "BOM Analysis",
+                    "title": item.get("project_name") or item.get("filename") or "Saved analysis",
+                    "meta": f"{item.get('total_parts', 0)} parts • Health {item.get('health_score', '—')} • {item.get('created_at', '')}",
+                    "page": "Dashboard",
+                })
+    except Exception:
+        pass
+
+    try:
+        parts_response = (
+            supabase.table("analysis_parts")
+            .select("mpn,manufacturer,risk_level,lifecycle_status,analysis_id")
+            .eq("user_id", user_id)
+            .limit(100)
+            .execute()
+        )
+        for part in parts_response.data or []:
+            haystack = " ".join([
+                str(part.get("mpn", "")),
+                str(part.get("manufacturer", "")),
+                str(part.get("risk_level", "")),
+                str(part.get("lifecycle_status", "")),
+            ]).lower()
+            if q in haystack:
+                results.append({
+                    "type": "Component",
+                    "title": part.get("mpn") or "Component",
+                    "meta": f"{part.get('manufacturer', 'Unknown manufacturer')} • {part.get('risk_level', 'Unknown risk')} • {part.get('lifecycle_status', 'Unknown lifecycle')}",
+                    "page": "BOM Analyzer",
+                })
+    except Exception:
+        pass
+
+    try:
+        alternatives = load_alternative_history(user_id)
+        for alt in alternatives:
+            haystack = " ".join([
+                str(alt.get("original_part", "")),
+                str(alt.get("alternative_part", "")),
+                str(alt.get("supplier", "")),
+                str(alt.get("estimated_risk", "")),
+            ]).lower()
+            if q in haystack:
+                results.append({
+                    "type": "Alternative",
+                    "title": f"{alt.get('original_part', '')} → {alt.get('alternative_part', '')}",
+                    "meta": f"{alt.get('supplier', 'Unknown supplier')} • Score {alt.get('recommendation_score', '—')} • Stock {alt.get('stock', '—')}",
+                    "page": "Alternative Finder",
+                })
+    except Exception:
+        pass
+
+    deduped = []
+    seen = set()
+    for result in results:
+        key = (result.get("type"), result.get("title"), result.get("meta"))
+        if key not in seen:
+            deduped.append(result)
+            seen.add(key)
+    return deduped[:limit]
+
+
+def render_global_search_panel(user_id):
+    st.markdown(
+        """
+        <div class="cv-command-card cv-fade-in">
+          <div class="cv-command-header">
+            <div>
+              <div class="cv-command-title">Global Search</div>
+              <div class="cv-command-copy">Search BOMs, saved analyses, part numbers, suppliers, and alternatives. Command palette shortcut foundation: <span class="cv-kbd-inline">Ctrl</span> + <span class="cv-kbd-inline">K</span>.</div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    search_query = st.text_input(
+        "Search Cadivor workspace",
+        value=st.session_state.get("global_search_query", ""),
+        placeholder="Try a project name, part number, supplier, or risk level...",
+        label_visibility="collapsed",
+        key="global_search_query",
+    )
+
+    if search_query:
+        results = run_global_search(user_id, search_query)
+        if not results:
+            empty_state(
+                "No matching results",
+                "Cadivor searched saved analyses, parts, alternatives, and suppliers but did not find a match.",
+                "Analyze a BOM",
+                "?page=BOM%20Analyzer",
+                "⌕",
+            )
+        else:
+            for result in results:
+                page_href = str(result.get("page", "Dashboard")).replace(" ", "%20")
+                st.markdown(
+                    f"""
+                    <div class="cv-result-card">
+                      <div>
+                        <div class="cv-result-title">{result.get('title', '')}</div>
+                        <div class="cv-result-meta">{result.get('type', '')} • {result.get('meta', '')}</div>
+                      </div>
+                      <a class="cv-status-pill" href="?page={page_href}" target="_self">Open</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
 
 def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_health_score, alternative_history=None):
     buffer = BytesIO()
@@ -1451,6 +1589,7 @@ st.markdown(
 
 # ---------- Shared UI Framework ----------
 inject_premium_css()
+inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
 
 
@@ -1833,6 +1972,9 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
 
+    if _qp_value("focus", "") == "search":
+        render_global_search_panel(current_user["id"])
+
     # KPI row: compact, side-by-side, and information dense.
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
@@ -1935,6 +2077,53 @@ if app_mode == "Dashboard":
             st.dataframe(recent_display_df.head(8), use_container_width=True, hide_index=True, height=300)
         else:
             st.info("No analyses yet. Upload your first BOM to begin building portfolio intelligence.")
+
+    # Activity and alert feed.
+    feed_col, alert_col = st.columns([1.25, 1])
+    with feed_col:
+        st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Activity Feed</div><div class="cv-panel-copy">Recent workspace events that help the dashboard feel alive.</div>', unsafe_allow_html=True)
+        if analysis_data:
+            for item in analysis_data[:4]:
+                event_title = item.get("project_name") or item.get("filename") or "Saved BOM analysis"
+                event_date = item.get("created_at", "")
+                try:
+                    event_date = pd.to_datetime(event_date).strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+                st.markdown(
+                    f"""
+                    <div class="cv-result-card">
+                      <div>
+                        <div class="cv-result-title">{event_title}</div>
+                        <div class="cv-result-meta">Analysis completed • Health {item.get('health_score', '—')} • {event_date}</div>
+                      </div>
+                      <span class="cv-status-pill success">Ready</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            empty_state("No activity yet", "Upload your first BOM to start building a Cadivor activity history.", "Analyze a BOM", "?page=BOM%20Analyzer", "○")
+    with alert_col:
+        st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Recent Alerts</div><div class="cv-panel-copy">Lifecycle, stock, and supplier changes will appear here.</div>', unsafe_allow_html=True)
+        if alert_data:
+            for alert in alert_data[:4]:
+                severity = str(alert.get("severity", "")).lower()
+                pill = "danger" if "high" in severity else "warning" if "medium" in severity else "muted"
+                st.markdown(
+                    f"""
+                    <div class="cv-result-card">
+                      <div>
+                        <div class="cv-result-title">{alert.get('part_number', 'Part alert')}</div>
+                        <div class="cv-result-meta">{alert.get('alert_type', 'Monitoring alert')} • {alert.get('alert_message', '')}</div>
+                      </div>
+                      <span class="cv-status-pill {pill}">{alert.get('severity', 'Info')}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            empty_state("No active alerts", "Your monitored components have no unresolved alerts right now.", "Open Monitoring", "?page=Monitoring", "●")
 
     # Quick actions.
     st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
@@ -2189,9 +2378,34 @@ if app_mode == "Monitoring":
 
 # ---------- Reports ----------
 if app_mode == "Reports":
-    st.subheader("Reports")
+    st.markdown(
+        """
+        <div class="cv-dashboard-header cv-fade-in">
+          <div>
+            <div class="cv-eyebrow">Reports Center</div>
+            <h1 class="cv-title">Engineering reports</h1>
+            <p class="cv-subtitle">Generate, download, and share executive-ready BOM risk reports. Full report automation is scheduled after BOM Intelligence 2.0.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    r1, r2, r3 = st.columns(3)
+    with r1:
+        action_card("Executive PDF", "Generate a management-ready BOM risk summary.", "?page=BOM%20Analyzer", "PDF")
+    with r2:
+        action_card("Excel Workbook", "Export detailed risk, lifecycle, and supplier data.", "?page=BOM%20Analyzer", "XLS")
+    with r3:
+        action_card("Scheduled Reports", "Email recurring reports to stakeholders.", "?page=Reports", "⏱")
 
-    st.info("Saved reports and exports coming soon.")
+    st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
+    empty_state(
+        "No saved reports yet",
+        "Reports generated from BOM Intelligence will appear here. Analyze or open a saved BOM to export your first executive report.",
+        "Open BOM Analyzer",
+        "?page=BOM%20Analyzer",
+        "□",
+    )
 
     st.stop()
 
@@ -2287,53 +2501,72 @@ if app_mode == "Settings":
     profile = get_user_profile(current_user)
     st.markdown(
         f"""
-        <div class="cv-dashboard-header">
+        <div class="cv-dashboard-header cv-fade-in">
           <div>
-            <div class="cv-eyebrow">Workspace Settings</div>
-            <h1 class="cv-title">Profile & workspace</h1>
-            <p class="cv-subtitle">Update the user information Cadivor displays in your workspace header. Fields save when matching columns exist in your Supabase users table.</p>
+            <div class="cv-eyebrow">My Profile</div>
+            <h1 class="cv-title">Profile settings</h1>
+            <p class="cv-subtitle">Manage the personal information Cadivor displays across your workspace. Optional fields save when matching Supabase columns exist.</p>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns([1.05, 1.35])
+    left, right = st.columns([1.0, 1.6])
     with left:
         avatar_markup = f'<img src="{profile["avatar_url"]}" alt="Profile photo" />' if profile.get("avatar_url") else profile["initials"]
         st.markdown(
             f"""
-            <div class="cv-panel">
-              <div style="display:flex;align-items:center;gap:14px;">
-                <div class="cadivor-avatar" style="width:58px;height:58px;font-size:20px;">{avatar_markup}</div>
+            <div class="cv-panel cv-fade-in">
+              <div style="display:flex;align-items:center;gap:16px;">
+                <div class="cadivor-avatar" style="width:68px;height:68px;font-size:22px;">{avatar_markup}</div>
                 <div>
                   <div class="cv-panel-title" style="margin-bottom:4px;">{profile["full_name"]}</div>
-                  <div class="cv-panel-copy">{profile["company"] or profile["email"]}</div>
+                  <div class="cv-panel-copy" style="margin-bottom:0;">{profile["role_title"] or "Cadivor workspace member"}</div>
                 </div>
               </div>
-              <div class="cv-snapshot-grid" style="margin-top:18px;grid-template-columns:1fr;">
+              <div class="cv-section-rule"></div>
+              <div class="cv-snapshot-grid" style="grid-template-columns:1fr;">
+                <div class="cv-snapshot-item"><span>Email</span><strong style="font-size:13px;">{profile["email"]}</strong></div>
+                <div class="cv-snapshot-item"><span>Company</span><strong>{profile["company"] or "Not set"}</strong></div>
                 <div class="cv-snapshot-item"><span>Plan</span><strong>{profile["plan"]}</strong></div>
-                <div class="cv-snapshot-item"><span>Email</span><strong style="font-size:14px;">{profile["email"]}</strong></div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
+        st.markdown(
+            """
+            <div class="cv-panel">
+              <div class="cv-panel-title">Security</div>
+              <div class="cv-panel-copy">Password changes and two-factor authentication will be added in a later security sprint.</div>
+              <span class="cv-status-pill muted">Coming soon</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     with right:
-        st.markdown('<div class="cv-panel-title">Edit profile</div><div class="cv-panel-copy">This information powers the dashboard profile display.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv-panel-title">Profile information</div><div class="cv-panel-copy">Use this information to personalize Cadivor, reports, notifications, and future team workspaces.</div>', unsafe_allow_html=True)
         full_name = st.text_input("Full name", value=profile.get("full_name", ""), placeholder="Joshua Kashambala")
         company_name = st.text_input("Company / organization", value=profile.get("company", ""), placeholder="Egres Technologies")
-        role_title = st.text_input("Role / title", value=profile.get("role_title", ""), placeholder="Founder, Engineering Lead, Sourcing Manager")
+        role_title = st.text_input("Job title", value=profile.get("role_title", ""), placeholder="Founder, Engineering Lead, Sourcing Manager")
+        phone = st.text_input("Phone", value=profile.get("phone", ""), placeholder="+1 555 000 0000")
+        country = st.text_input("Country", value=profile.get("country", ""), placeholder="United States")
+        timezone_value = st.text_input("Time zone", value=profile.get("timezone", ""), placeholder="America/New_York")
         profile_image_url = st.text_input("Profile image URL", value=profile.get("avatar_url", ""), placeholder="https://...")
 
-        save_col, note_col = st.columns([.7, 1.3])
+        save_col, cancel_col = st.columns([.75, .75])
         with save_col:
-            if st.button("Save Profile"):
+            if st.button("Save Changes", use_container_width=True):
                 updates = {
                     "full_name": full_name.strip(),
                     "company_name": company_name.strip(),
                     "role_title": role_title.strip(),
+                    "phone": phone.strip(),
+                    "country": country.strip(),
+                    "timezone": timezone_value.strip(),
                     "profile_image_url": profile_image_url.strip(),
                 }
                 try:
@@ -2341,23 +2574,16 @@ if app_mode == "Settings":
                     if saved:
                         st.success("Profile updated.")
                     if skipped:
-                        st.info("Some profile fields need matching columns in Supabase before they can be saved permanently.")
+                        st.info("Some optional profile fields need matching columns in your Supabase users table before they can be saved permanently.")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Unable to update profile: {e}")
-        with note_col:
-            st.caption("Recommended database columns: full_name, company_name, role_title, profile_image_url.")
+        with cancel_col:
+            if st.button("Cancel", use_container_width=True):
+                st.rerun()
 
-    st.markdown(
-        """
-        <div class="cv-section-spacer"></div>
-        <div class="cv-panel">
-          <div class="cv-panel-title">Workspace preferences</div>
-          <div class="cv-panel-copy">Notification, billing, security, and team settings will be expanded in Sprint 2.7. This profile section is the foundation for user identity across Cadivor.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        st.caption("Recommended optional columns: full_name, company_name, role_title, phone, country, timezone, profile_image_url.")
+
     st.stop()
 
 
@@ -2365,32 +2591,72 @@ if app_mode == "Settings":
 # ---------- Workspace ----------
 if app_mode == "Workspace":
     profile = get_user_profile(current_user)
+    workspace_title = profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace"
     st.markdown(
         f"""
-        <div class="cv-dashboard-header">
+        <div class="cv-dashboard-header cv-fade-in">
           <div>
             <div class="cv-eyebrow">Workspace</div>
-            <h1 class="cv-title">{profile.get('company') or 'Cadivor Workspace'}</h1>
-            <p class="cv-subtitle">Manage workspace identity, usage, plan limits, and team foundations. Team collaboration will expand in a future sprint.</p>
+            <h1 class="cv-title">{workspace_title}</h1>
+            <p class="cv-subtitle">Manage workspace identity, subscription usage, team foundations, and billing entry points. Team collaboration expands after core product workflows are complete.</p>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    w1, w2, w3 = st.columns(3)
+
+    w1, w2, w3, w4 = st.columns(4)
     with w1:
         st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">Current Plan</div><div class="cv-snapshot-main">{selected_plan_name}</div><p class="cv-panel-copy">{selected_plan.get("description", "Cadivor subscription")}</p></div>', unsafe_allow_html=True)
     with w2:
         st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">BOM Usage</div><div class="cv-snapshot-main">{monthly_upload_count} / {selected_plan["monthly_bom_limit"]}</div><p class="cv-panel-copy">Monthly analyses used.</p></div>', unsafe_allow_html=True)
     with w3:
         st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">Saved BOMs</div><div class="cv-snapshot-main">{saved_bom_count} / {selected_plan["max_saved_boms"]}</div><p class="cv-panel-copy">Stored analyses in this workspace.</p></div>', unsafe_allow_html=True)
-    st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Workspace actions</div><div class="cv-panel-copy">Billing, team members, integrations, and API access are being prepared for the next product releases.</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
+    with w4:
+        st.markdown('<div class="cv-panel"><div class="cv-panel-title">Team Members</div><div class="cv-snapshot-main">1</div><p class="cv-panel-copy">Team workspaces coming soon.</p></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Workspace settings</div><div class="cv-panel-copy">Workspace profile, team access, billing, and integrations will grow here as Cadivor moves toward team-ready workflows.</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns([1.1, 1.4])
     with c1:
-        action_card("Billing", "Review subscription and upgrade options.", "?page=Pricing", "$")
+        st.markdown(
+            f"""
+            <div class="cv-panel">
+              <div class="cv-panel-title">Workspace identity</div>
+              <div class="cv-snapshot-grid" style="grid-template-columns:1fr;">
+                <div class="cv-snapshot-item"><span>Workspace</span><strong>{workspace_title}</strong></div>
+                <div class="cv-snapshot-item"><span>Organization</span><strong>{profile.get('company') or 'Not set'}</strong></div>
+                <div class="cv-snapshot-item"><span>Owner</span><strong>{profile.get('full_name')}</strong></div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with c2:
+        st.markdown(
+            """
+            <div class="cv-panel">
+              <div class="cv-panel-title">Team foundation</div>
+              <div class="cv-panel-copy">Cadivor is currently configured for single-user workspaces. Team roles, invitations, activity history, comments, and shared BOM ownership are planned after BOM Intelligence 2.0.</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+                <span class="cv-status-pill muted">Admin role</span>
+                <span class="cv-status-pill muted">Engineer role</span>
+                <span class="cv-status-pill muted">Viewer role</span>
+                <span class="cv-status-pill muted">Coming soon</span>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Workspace actions</div><div class="cv-panel-copy">Use these shortcuts to manage the current workspace experience.</div>', unsafe_allow_html=True)
+    a1, a2, a3, a4 = st.columns(4)
+    with a1:
+        action_card("Billing", "Review subscription and upgrade options.", "?page=Pricing", "$")
+    with a2:
         action_card("Profile", "Update your display name, company, and role.", "?page=Settings", "◎")
-    with c3:
+    with a3:
+        action_card("Notifications", "Prepare lifecycle, stock, and supplier alerts.", "?page=Notifications", "●")
+    with a4:
         action_card("Integrations", "Supplier and API settings coming soon.", "?page=Help", "◇")
     st.stop()
 
