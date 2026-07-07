@@ -1153,3 +1153,20 @@ hr {
   .cv-command-hero { grid-template-columns: 1fr; }
   .cv-insight-grid { grid-template-columns: 1fr; }
 }
+
+
+/* Milestone 4.2.1 compact shell spacing fix */
+.element-container:has(.cadivor-topbar),
+.element-container:has(.cv-app-sidebar),
+div[data-testid="stMarkdownContainer"]:has(.cadivor-topbar),
+div[data-testid="stMarkdownContainer"]:has(.cv-app-sidebar) {
+  height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
+}
+[data-testid="stAppViewContainer"] > .main,
+[data-testid="stMain"] > div,
+.main .block-container,
+[data-testid="stMainBlockContainer"] {
+  padding-top:calc(var(--cv-topbar-height, 64px) + 12px)!important;
+}
+.cv-command-hero { margin-top:0!important; margin-bottom:18px!important; }
+.cv-section-spacer { margin-top:28px!important; }
