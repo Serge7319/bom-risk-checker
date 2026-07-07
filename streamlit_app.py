@@ -1604,6 +1604,41 @@ inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
 
 
+# Cadivor Milestone 4.2.1 — compact shell spacing fix.
+# The custom fixed topbar/sidebar should not reserve vertical document space.
+st.markdown(
+    """
+    <style>
+    .element-container:has(.cadivor-topbar),
+    .element-container:has(.cv-app-sidebar),
+    div[data-testid="stMarkdownContainer"]:has(.cadivor-topbar),
+    div[data-testid="stMarkdownContainer"]:has(.cv-app-sidebar) {
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important;
+        overflow:visible!important;
+    }
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"] > div,
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        padding-top:calc(var(--cv-topbar-height, 64px) + 12px)!important;
+        padding-left:calc(var(--cv-sidebar-width, 284px) + 22px)!important;
+        padding-right:22px!important;
+        padding-bottom:48px!important;
+    }
+    .cv-command-hero { margin-top:0!important; margin-bottom:18px!important; }
+    .cv-panel-title:first-child, h1:first-child, h2:first-child, h3:first-child { margin-top:0!important; }
+    .cv-section-spacer { margin-top:28px!important; }
+    .card, .kpi-card, .brc-card, .cv-panel { margin-top:10px!important; }
+    @media(max-width:1100px){
+        .element-container:has(.cadivor-topbar), .element-container:has(.cv-app-sidebar){height:auto!important; overflow:visible!important;}
+        .main .block-container,[data-testid="stMainBlockContainer"]{padding:1rem!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 # Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
 st.markdown(
     """
