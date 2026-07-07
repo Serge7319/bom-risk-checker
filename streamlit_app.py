@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -1604,34 +1605,90 @@ inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
 
 
-# Cadivor Milestone 4.2.1 — compact shell spacing fix.
-# The custom fixed topbar/sidebar should not reserve vertical document space.
+# Cadivor M4.2.2 — authoritative shell spacing reset.
+# This JS collapses the Streamlit wrapper elements that contain the fixed custom topbar/sidebar.
+# Without this, Streamlit can reserve vertical space for fixed HTML, creating the large blank gap.
+components.html(
+    """
+    <script>
+    const collapseCadivorShellWrappers = () => {
+      const doc = window.parent.document;
+      const shellNodes = doc.querySelectorAll('.cadivor-topbar, .cv-app-sidebar');
+      shellNodes.forEach((node) => {
+        let el = node.parentElement;
+        for (let i = 0; i < 8 && el; i++) {
+          if (el.classList && el.classList.contains('element-container')) {
+            el.style.height = '0px';
+            el.style.minHeight = '0px';
+            el.style.margin = '0px';
+            el.style.padding = '0px';
+            el.style.overflow = 'visible';
+            break;
+          }
+          el = el.parentElement;
+        }
+      });
+      const mainBlocks = doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]');
+      mainBlocks.forEach((el) => {
+        el.style.paddingTop = '78px';
+        el.style.paddingLeft = '306px';
+        el.style.paddingRight = '22px';
+        el.style.paddingBottom = '48px';
+      });
+    };
+    collapseCadivorShellWrappers();
+    setTimeout(collapseCadivorShellWrappers, 150);
+    setTimeout(collapseCadivorShellWrappers, 600);
+    </script>
+    """,
+    height=0,
+)
+
 st.markdown(
     """
-    <style>
+    <style id="cadivor-authoritative-spacing-reset">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+    .cadivor-topbar{
+        position:fixed!important; top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+        z-index:999998!important; margin:0!important;
+    }
+    .cv-app-sidebar{
+        position:fixed!important; top:var(--cv-topbar-height)!important; left:0!important; bottom:0!important;
+        height:calc(100vh - var(--cv-topbar-height))!important; width:var(--cv-sidebar-width)!important;
+        z-index:999997!important;
+    }
+
+    /* Collapse the markdown containers that only exist to inject the fixed shell. */
     .element-container:has(.cadivor-topbar),
     .element-container:has(.cv-app-sidebar),
     div[data-testid="stMarkdownContainer"]:has(.cadivor-topbar),
-    div[data-testid="stMarkdownContainer"]:has(.cv-app-sidebar) {
-        height:0!important; min-height:0!important; margin:0!important; padding:0!important;
-        overflow:visible!important;
+    div[data-testid="stMarkdownContainer"]:has(.cv-app-sidebar){
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
     }
-    [data-testid="stAppViewContainer"] > .main,
-    [data-testid="stMain"] > div,
+
+    /* Final page canvas. This is intentionally the last spacing authority. */
     .main .block-container,
-    [data-testid="stMainBlockContainer"] {
-        padding-top:calc(var(--cv-topbar-height, 64px) + 12px)!important;
-        padding-left:calc(var(--cv-sidebar-width, 284px) + 22px)!important;
+    [data-testid="stAppViewContainer"] .main .block-container,
+    [data-testid="stMainBlockContainer"]{
+        max-width:100%!important; width:100%!important;
+        padding-top:78px!important;
+        padding-left:306px!important;
         padding-right:22px!important;
         padding-bottom:48px!important;
     }
-    .cv-command-hero { margin-top:0!important; margin-bottom:18px!important; }
-    .cv-panel-title:first-child, h1:first-child, h2:first-child, h3:first-child { margin-top:0!important; }
-    .cv-section-spacer { margin-top:28px!important; }
-    .card, .kpi-card, .brc-card, .cv-panel { margin-top:10px!important; }
+
+    .cv-command-hero, .cv-panel, .card, .kpi-card, .brc-card { margin-top:0!important; }
+    .cv-section-spacer { margin-top:24px!important; }
+    h1:first-child, h2:first-child, h3:first-child, .cv-panel-title:first-child { margin-top:0!important; }
+
     @media(max-width:1100px){
-        .element-container:has(.cadivor-topbar), .element-container:has(.cv-app-sidebar){height:auto!important; overflow:visible!important;}
-        .main .block-container,[data-testid="stMainBlockContainer"]{padding:1rem!important;}
+        .cadivor-topbar{position:relative!important;height:auto!important;min-height:64px!important;}
+        .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{
+            padding:16px!important;
+        }
     }
     </style>
     """,
