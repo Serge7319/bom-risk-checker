@@ -1713,6 +1713,103 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+# ---------- Cadivor M4.3 Layout Refactor: final spacing authority ----------
+st.markdown(
+    """
+    <style id="cadivor-m43-layout-refactor">
+    :root{--cv-topbar-height:64px!important;--cv-sidebar-width:284px!important;--cv-page-x:24px!important;}
+
+    /* Streamlit creates empty vertical wrappers for every injected <style>. Collapse them so style blocks do not push content down. */
+    .element-container:has(style):not(:has(.cadivor-topbar)):not(:has(.cv-app-sidebar)),
+    .element-container:has(script),
+    div[data-testid="stMarkdownContainer"]:has(style):not(:has(.cadivor-topbar)):not(:has(.cv-app-sidebar)){
+        height:0!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;
+    }
+    .element-container:has(style):not(:has(.cadivor-topbar)):not(:has(.cv-app-sidebar)) > div{
+        height:0!important;min-height:0!important;margin:0!important;padding:0!important;
+    }
+    iframe[title="streamlit_component"]{height:0!important;min-height:0!important;display:block!important;}
+
+    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"],
+    [data-testid="stSidebar"], section[data-testid="stSidebar"], div[data-testid="stSidebarNav"]{
+        display:none!important;visibility:hidden!important;width:0!important;height:0!important;min-height:0!important;
+    }
+
+    .cadivor-topbar{
+        position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:999998!important;
+        height:var(--cv-topbar-height)!important;min-height:var(--cv-topbar-height)!important;
+        margin:0!important;padding:0 20px!important;border-radius:0!important;border:0!important;border-bottom:1px solid #E5E7EB!important;
+        box-shadow:0 10px 26px rgba(15,23,42,.045)!important;background:rgba(255,255,255,.985)!important;
+        display:grid!important;grid-template-columns:var(--cv-sidebar-width) minmax(360px,1fr) auto!important;align-items:center!important;gap:18px!important;box-sizing:border-box!important;
+    }
+    .cv-app-sidebar{
+        position:fixed!important;top:var(--cv-topbar-height)!important;left:0!important;bottom:0!important;
+        width:var(--cv-sidebar-width)!important;height:calc(100vh - var(--cv-topbar-height))!important;
+        z-index:999997!important;padding:20px 16px 18px!important;box-sizing:border-box!important;
+    }
+    .cv-side-brand{display:none!important;}
+
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main{
+        margin:0!important;padding:0!important;width:100vw!important;max-width:100vw!important;background:#F6F8FB!important;
+    }
+    .main .block-container, [data-testid="stAppViewContainer"] .main .block-container, [data-testid="stMainBlockContainer"]{
+        width:100%!important;max-width:none!important;box-sizing:border-box!important;
+        padding-top:calc(var(--cv-topbar-height) + 18px)!important;
+        padding-left:calc(var(--cv-sidebar-width) + var(--cv-page-x))!important;
+        padding-right:var(--cv-page-x)!important;padding-bottom:52px!important;
+    }
+
+    /* Keep first visible section tight to the topbar. */
+    .main .block-container > div:first-child, [data-testid="stMainBlockContainer"] > div:first-child{margin-top:0!important;padding-top:0!important;}
+    .cv-command-hero,.cv-dashboard-header,.cv-panel,.card,.kpi-card,.brc-card{margin-top:0!important;}
+    .cv-dashboard-header{margin-bottom:14px!important;}
+    .cv-section-spacer{margin-top:24px!important;}
+    h1:first-child,h2:first-child,h3:first-child,.cv-panel-title:first-child{margin-top:0!important;}
+
+    /* Page cards should feel premium but not overly tall. */
+    .card,.brc-card,.cv-panel{border-radius:16px!important;box-shadow:0 14px 34px rgba(15,23,42,.055)!important;}
+    [data-testid="stDataFrame"]{border-radius:12px!important;box-shadow:0 12px 28px rgba(15,23,42,.04)!important;}
+
+    @media(max-width:1100px){
+        .cadivor-topbar{position:relative!important;height:auto!important;min-height:64px!important;grid-template-columns:1fr!important;}
+        .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+        .cv-side-brand{display:flex!important;}
+        .main .block-container,[data-testid="stMainBlockContainer"]{padding:16px!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+components.html(
+    """
+    <script>
+    const cadivorM43Collapse = () => {
+      const doc = window.parent.document;
+      doc.querySelectorAll('.element-container').forEach((el) => {
+        const hasStyle = el.querySelector('style') && !el.querySelector('.cadivor-topbar') && !el.querySelector('.cv-app-sidebar');
+        const hasShell = el.querySelector('.cadivor-topbar') || el.querySelector('.cv-app-sidebar');
+        const hasEmptyIframe = el.querySelector('iframe[title="streamlit_component"]');
+        if (hasStyle || hasShell || hasEmptyIframe) {
+          el.style.height='0px'; el.style.minHeight='0px'; el.style.margin='0px'; el.style.padding='0px'; el.style.overflow='visible';
+        }
+      });
+      doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]').forEach((el) => {
+        el.style.paddingTop='82px'; el.style.paddingLeft='308px'; el.style.paddingRight='24px'; el.style.paddingBottom='52px';
+        el.style.maxWidth='none'; el.style.width='100%';
+      });
+    };
+    cadivorM43Collapse();
+    setTimeout(cadivorM43Collapse, 50);
+    setTimeout(cadivorM43Collapse, 250);
+    setTimeout(cadivorM43Collapse, 800);
+    </script>
+    """,
+    height=0,
+)
+
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
 
