@@ -4100,3 +4100,45 @@ Unlock more power:
                     st.success("🎉 You are now on the Business plan!")
 
                     st.rerun()
+
+
+# Cadivor M4.6 — final visual gap compression.
+# This targets the remaining empty Streamlit wrapper space before the first real page section.
+components.html(
+    """
+    <script>
+    function cadivorCompressTopGap(){
+      const doc = window.parent.document;
+      const desiredTop = 76;
+      const firstContent = doc.querySelector('.cv-command-hero, .brc-hero, .cadivor-page-header, .cv-page-title, .cv-panel-title, h1, h2');
+      if (!firstContent) return;
+
+      let firstRow = firstContent.closest('.element-container');
+      if (!firstRow) {
+        let el = firstContent.parentElement;
+        for (let i = 0; i < 10 && el; i++) {
+          const cls = el.className ? String(el.className) : '';
+          if (cls.includes('element-container')) { firstRow = el; break; }
+          el = el.parentElement;
+        }
+      }
+      if (!firstRow) return;
+
+      const currentTop = firstContent.getBoundingClientRect().top;
+      const delta = Math.round(currentTop - desiredTop);
+
+      // Only compress excessive whitespace; never push content upward into the top bar.
+      if (delta > 28) {
+        firstRow.style.marginTop = `-${delta}px`;
+      }
+    }
+    cadivorCompressTopGap();
+    setTimeout(cadivorCompressTopGap, 100);
+    setTimeout(cadivorCompressTopGap, 350);
+    setTimeout(cadivorCompressTopGap, 800);
+    setTimeout(cadivorCompressTopGap, 1400);
+    window.addEventListener('resize', cadivorCompressTopGap);
+    </script>
+    """,
+    height=0,
+)
