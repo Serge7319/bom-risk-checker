@@ -1604,6 +1604,63 @@ inject_premium_css()
 inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
 
+# Cadivor M4.8 — stable shell row compression.
+# Streamlit gives every st.markdown/style injection its own row. Those invisible
+# rows were accumulating above the page content and creating the large blank
+# band under the fixed topbar. Collapse only rows that contain style-only/shell
+# markup, then keep one content offset for the fixed topbar/sidebar.
+st.markdown(
+    """
+    <style id="cadivor-m48-stable-shell-row-compression">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+    /* Collapse invisible style injection rows without touching real content rows. */
+    .element-container:has(style) {
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
+    }
+    .element-container:has(#cadivor-topbar-root),
+    .element-container:has(#cadivor-sidebar-root) {
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
+    }
+
+    #cadivor-topbar-root, .cadivor-topbar {
+        position:fixed!important; top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+        z-index:1000005!important; margin:0!important; border-radius:0!important;
+    }
+    #cadivor-sidebar-root, .cv-app-sidebar {
+        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        z-index:1000004!important;
+    }
+
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"],
+    section.main,
+    .main {
+        padding-top:0!important; margin-top:0!important;
+    }
+
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        max-width:none!important; width:100%!important; box-sizing:border-box!important; margin:0!important;
+        padding-top:72px!important;
+        padding-left:306px!important;
+        padding-right:24px!important;
+        padding-bottom:48px!important;
+    }
+
+    .cv-command-hero { margin-top:0!important; }
+    @media(max-width:1100px){
+        .element-container:has(style), .element-container:has(#cadivor-topbar-root), .element-container:has(#cadivor-sidebar-root){height:auto!important; min-height:0!important;}
+        #cadivor-topbar-root, .cadivor-topbar, #cadivor-sidebar-root, .cv-app-sidebar{position:relative!important; top:auto!important; width:auto!important; height:auto!important; min-height:auto!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Cadivor M4.5 — shell gap fix.
 # This replaces the stacked M4.2/M4.4 spacing patches with one layout authority.
 # The earlier patches applied top padding to multiple nested Streamlit containers,
@@ -1677,186 +1734,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-components.html(
-    """
-    <script>
-    function cadivorM45FixShellGap(){
-      const doc = window.parent.document;
-
-      // Collapse only the Streamlit rows that wrap the fixed topbar/sidebar.
-      ['cadivor-topbar-root','cadivor-sidebar-root'].forEach((id) => {
-        const node = doc.getElementById(id);
-        if (!node) return;
-        let el = node.parentElement;
-        for (let i = 0; i < 12 && el; i++) {
-          const cls = el.classList ? Array.from(el.classList).join(' ') : '';
-          if (cls.includes('element-container') || el.getAttribute('data-testid') === 'stVerticalBlock') {
-            el.style.height = '0px';
-            el.style.minHeight = '0px';
-            el.style.margin = '0px';
-            el.style.padding = '0px';
-            el.style.overflow = 'visible';
-            if (cls.includes('element-container')) break;
-          }
-          el = el.parentElement;
-        }
-      });
-
-      // Remove accumulated padding from parent wrappers. Previous patches applied offset here too.
-      doc.querySelectorAll('[data-testid="stAppViewContainer"] > .main, [data-testid="stMain"], section.main').forEach((el) => {
-        el.style.paddingTop = '0px';
-        el.style.marginTop = '0px';
-      });
-
-      // Apply the single intended offset only to the true content block.
-      doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]').forEach((el) => {
-        if (window.innerWidth > 1100) {
-          el.style.paddingTop = '78px';
-          el.style.paddingLeft = '306px';
-          el.style.paddingRight = '24px';
-        } else {
-          el.style.paddingTop = '16px';
-          el.style.paddingLeft = '16px';
-          el.style.paddingRight = '16px';
-        }
-        el.style.paddingBottom = '48px';
-        el.style.marginTop = '0px';
-        el.style.maxWidth = 'none';
-        el.style.width = '100%';
-        el.style.boxSizing = 'border-box';
-      });
-    }
-    cadivorM45FixShellGap();
-    setTimeout(cadivorM45FixShellGap, 100);
-    setTimeout(cadivorM45FixShellGap, 400);
-    setTimeout(cadivorM45FixShellGap, 1000);
-    window.addEventListener('resize', cadivorM45FixShellGap);
-    </script>
-    """,
-    height=0,
-)
-
-
-
-# Cadivor M4.7 — verified shell wrapper compression.
-# Streamlit gives every st.markdown(<style>...</style>) call a wrapper row.
-# Earlier milestone patches left several style-only rows above the real page.
-# This collapses those invisible rows without hiding the fixed topbar/sidebar.
-st.markdown(
-    """
-    <style id="cadivor-m47-wrapper-compression">
-    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
-
-    /* One authoritative content offset: just below the fixed topbar. */
-    .main .block-container,
-    [data-testid="stMainBlockContainer"] {
-        padding-top:76px!important;
-        padding-left:306px!important;
-        padding-right:24px!important;
-        padding-bottom:48px!important;
-        margin-top:0!important;
-        max-width:none!important;
-        width:100%!important;
-        box-sizing:border-box!important;
-    }
-
-    /* Collapse invisible style-only Streamlit rows that were creating the top gap. */
-    .element-container:has(style):not(:has(.cv-command-hero)):not(:has(.cv-metric)):not(:has(.cv-panel)):not(:has([data-testid="stDataFrame"])),
-    div[data-testid="stMarkdownContainer"]:has(style):not(:has(.cv-command-hero)):not(:has(.cv-metric)):not(:has(.cv-panel)) {
-        height:0!important;
-        min-height:0!important;
-        margin:0!important;
-        padding:0!important;
-        overflow:visible!important;
-    }
-
-    /* Keep shell roots fixed, but their Streamlit wrapper rows collapsed. */
-    .element-container:has(#cadivor-topbar-root),
-    .element-container:has(#cadivor-sidebar-root),
-    div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root),
-    div[data-testid="stMarkdownContainer"]:has(#cadivor-sidebar-root) {
-        height:0!important;
-        min-height:0!important;
-        margin:0!important;
-        padding:0!important;
-        overflow:visible!important;
-    }
-
-    .cv-command-hero { margin-top:0!important; }
-
-    @media(max-width:1100px){
-        .main .block-container, [data-testid="stMainBlockContainer"]{
-            padding:16px!important;
-        }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-components.html(
-    """
-    <script>
-    function cadivorM47CompressInvisibleRows(){
-      const doc = window.parent.document;
-      const collapse = (el) => {
-        if (!el) return;
-        el.style.height = '0px';
-        el.style.minHeight = '0px';
-        el.style.margin = '0px';
-        el.style.padding = '0px';
-        el.style.overflow = 'visible';
-      };
-
-      // Collapse all Streamlit rows that contain only injected CSS or shell chrome.
-      doc.querySelectorAll('.element-container').forEach((el) => {
-        const hasShell = el.querySelector('#cadivor-topbar-root, #cadivor-sidebar-root, .cadivor-topbar, .cv-app-sidebar');
-        const hasStyle = el.querySelector('style[id^="cadivor"], style');
-        const text = (el.innerText || '').trim();
-        const hasInteractive = el.querySelector('button,input,textarea,select,canvas,svg,table,[data-testid="stDataFrame"],[data-testid="stPlotlyChart"],img');
-        const hasRealCadivorContent = el.querySelector('.cv-command-hero,.cv-metric,.cv-panel,.cv-empty-state,.cv-actions-grid,.cv-action-card');
-        if (hasShell || (hasStyle && !hasInteractive && !hasRealCadivorContent && text.length < 2)) {
-          collapse(el);
-          collapse(el.parentElement && el.parentElement.getAttribute('data-testid') === 'stVerticalBlock' ? el.parentElement : null);
-        }
-      });
-
-      // Preserve the fixed shell and set one compact page offset.
-      const topbar = doc.getElementById('cadivor-topbar-root');
-      if (topbar) {
-        topbar.style.position = 'fixed'; topbar.style.top = '0px'; topbar.style.left = '0px'; topbar.style.right = '0px';
-        topbar.style.height = '64px'; topbar.style.minHeight = '64px'; topbar.style.zIndex = '1000005';
-      }
-      const sidebar = doc.getElementById('cadivor-sidebar-root');
-      if (sidebar) {
-        sidebar.style.position = 'fixed'; sidebar.style.top = '64px'; sidebar.style.left = '0px'; sidebar.style.bottom = '0px';
-        sidebar.style.width = '284px'; sidebar.style.height = 'calc(100vh - 64px)'; sidebar.style.zIndex = '1000004';
-      }
-
-      doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]').forEach((el) => {
-        if (window.innerWidth > 1100) {
-          el.style.paddingTop = '76px';
-          el.style.paddingLeft = '306px';
-          el.style.paddingRight = '24px';
-        } else {
-          el.style.padding = '16px';
-        }
-        el.style.marginTop = '0px';
-        el.style.maxWidth = 'none';
-        el.style.width = '100%';
-        el.style.boxSizing = 'border-box';
-      });
-    }
-    cadivorM47CompressInvisibleRows();
-    setTimeout(cadivorM47CompressInvisibleRows, 50);
-    setTimeout(cadivorM47CompressInvisibleRows, 200);
-    setTimeout(cadivorM47CompressInvisibleRows, 700);
-    setTimeout(cadivorM47CompressInvisibleRows, 1500);
-    window.addEventListener('resize', cadivorM47CompressInvisibleRows);
-    </script>
-    """,
-    height=0,
-)
+# Cadivor shell gap handled with CSS only; JS parent-collapsing removed for stability.
 
 # Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
 st.markdown(
