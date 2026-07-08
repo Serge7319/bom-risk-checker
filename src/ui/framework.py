@@ -1,5 +1,8 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
+import json
+
 
 CADIVOR_PRIMARY = "#2563EB"
 CADIVOR_TEXT = "#0F172A"
@@ -64,73 +67,65 @@ def _profile_from_user(current_user=None):
 
 
 def render_topbar(current_user=None, app_mode="Dashboard"):
-    """Render the Cadivor application top bar with profile menu foundation."""
+    """Render the Cadivor top bar outside Streamlit's normal document flow.
+
+    Fixed-position elements rendered with st.markdown still create Streamlit
+    wrapper rows. This injects the topbar into the parent document with a
+    zero-height component so it does not reserve page height.
+    """
     profile = _profile_from_user(current_user)
     secondary = profile["company"] or profile["role_title"] or profile["plan"]
     avatar = f'<img src="{profile["avatar_url"]}" alt="Profile photo" />' if profile.get("avatar_url") else profile["initials"]
 
-    st.markdown(
-        f"""
-        <style>
-        .cadivor-user-wrap {{ position:relative; justify-self:end; }}
-        .cadivor-user-wrap:hover .cadivor-user-menu {{ opacity:1; transform:translateY(0); pointer-events:auto; }}
-        .cadivor-user {{ cursor:pointer; }}
-        .cadivor-user-menu {{
-            position:absolute; right:0; top:100%; min-width:248px;
-            background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px;
-            box-shadow:0 24px 52px rgba(15,23,42,.14); padding:8px;
-            opacity:0; transform:translateY(-4px); pointer-events:none; transition:opacity .14s ease, transform .14s ease; z-index:1000006;
-        }}
-        .cadivor-user-menu a {{
-            display:flex; align-items:center; justify-content:space-between; gap:12px;
-            padding:10px 12px; border-radius:11px; text-decoration:none!important;
-            color:#0F172A!important; font-size:13px; font-weight:800;
-        }}
-        .cadivor-user-menu a:hover {{ background:#F8FAFC; color:#2563EB!important; }}
-        .cadivor-user-menu .danger:hover {{ background:#FEF2F2; color:#DC2626!important; }}
-        .cadivor-user-menu-divider {{ height:1px; background:#EEF2F7; margin:6px 4px; }}
-        .cadivor-user-menu-meta {{ padding:10px 12px 8px; }}
-        .cadivor-user-menu-meta strong {{ display:block; color:#0F172A!important; font-size:13px; }}
-        .cadivor-user-menu-meta span {{ display:block; color:#64748B!important; font-size:12px; margin-top:2px; }}
-        </style>
-        <div id="cadivor-topbar-root" class="cadivor-topbar">
-            <div class="cadivor-brand">
-                <div class="cadivor-logo-mark">C</div>
-                <div>
-                    <div class="cadivor-logo-text">Cadivor</div>
-                    <div class="cadivor-logo-subtitle">Engineering Intelligence</div>
-                </div>
-            </div>
-            <div class="cadivor-topbar-center">
-                <div class="cadivor-current-page">{app_mode}</div>
-                <a class="cadivor-search-pill" href="?page=Dashboard&focus=search" target="_self" style="text-decoration:none!important;">Search BOMs, parts, suppliers…</a>
-                <a class="cadivor-top-icon" href="?page=Notifications" target="_self" title="Notifications" style="text-decoration:none!important;">●</a>
-                <a class="cadivor-top-icon" href="?page=Help" target="_self" title="Help" style="text-decoration:none!important;">?</a>
-            </div>
-            <div class="cadivor-user-wrap">
-                <div class="cadivor-user">
-                    <div class="cadivor-user-meta">
-                        <div class="cadivor-user-label">Workspace</div>
-                        <div class="cadivor-user-name">{profile["full_name"]}</div>
-                        <div class="cadivor-user-company">{secondary}</div>
-                    </div>
-                    <div class="cadivor-avatar">{avatar}</div>
-                </div>
-                <div class="cadivor-user-menu">
-                    <div class="cadivor-user-menu-meta"><strong>{profile["full_name"]}</strong><span>{profile["email"]}</span></div>
-                    <div class="cadivor-user-menu-divider"></div>
-                    <a href="?page=Settings" target="_self">My Profile <span>→</span></a>
-                    <a href="?page=Workspace" target="_self">Workspace <span>→</span></a>
-                    <a href="?page=Pricing" target="_self">Billing <span>→</span></a>
-                    <a href="?page=Notifications" target="_self">Notifications <span>→</span></a>
-                    <a href="?page=Help" target="_self">Help <span>→</span></a>
-                    <div class="cadivor-user-menu-divider"></div>
-                    <a class="danger" href="?action=logout" target="_self">Log out <span>↩</span></a>
-                </div>
+    html = f"""
+    <div id="cadivor-topbar-root" class="cadivor-topbar">
+        <div class="cadivor-brand">
+            <div class="cadivor-logo-mark">C</div>
+            <div>
+                <div class="cadivor-logo-text">Cadivor</div>
+                <div class="cadivor-logo-subtitle">Engineering Intelligence</div>
             </div>
         </div>
+        <div class="cadivor-topbar-center">
+            <div class="cadivor-current-page">{app_mode}</div>
+            <a class="cadivor-search-pill" href="?page=Dashboard&focus=search" target="_self" style="text-decoration:none!important;">Search BOMs, parts, suppliers…</a>
+            <a class="cadivor-top-icon" href="?page=Notifications" target="_self" title="Notifications" style="text-decoration:none!important;">●</a>
+            <a class="cadivor-top-icon" href="?page=Help" target="_self" title="Help" style="text-decoration:none!important;">?</a>
+        </div>
+        <div class="cadivor-user-wrap">
+            <div class="cadivor-user">
+                <div class="cadivor-user-meta">
+                    <div class="cadivor-user-label">Workspace</div>
+                    <div class="cadivor-user-name">{profile["full_name"]}</div>
+                    <div class="cadivor-user-company">{secondary}</div>
+                </div>
+                <div class="cadivor-avatar">{avatar}</div>
+            </div>
+            <div class="cadivor-user-menu">
+                <div class="cadivor-user-menu-meta"><strong>{profile["full_name"]}</strong><span>{profile["email"]}</span></div>
+                <div class="cadivor-user-menu-divider"></div>
+                <a href="?page=Settings" target="_self">My Profile <span>→</span></a>
+                <a href="?page=Workspace" target="_self">Workspace <span>→</span></a>
+                <a href="?page=Pricing" target="_self">Billing <span>→</span></a>
+                <a href="?page=Notifications" target="_self">Notifications <span>→</span></a>
+                <a href="?page=Help" target="_self">Help <span>→</span></a>
+                <div class="cadivor-user-menu-divider"></div>
+                <a class="danger" href="?action=logout" target="_self">Log out <span>↩</span></a>
+            </div>
+        </div>
+    </div>
+    """
+
+    components.html(
+        f"""
+        <script>
+        const doc = window.parent.document;
+        const existing = doc.getElementById('cadivor-topbar-root');
+        if (existing) existing.remove();
+        doc.body.insertAdjacentHTML('beforeend', {json.dumps(html)});
+        </script>
         """,
-        unsafe_allow_html=True,
+        height=0,
     )
 
 
