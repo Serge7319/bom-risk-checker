@@ -1415,7 +1415,7 @@ for _nav in NAV_OPTIONS:
 
 st.markdown(
     f'''
-    <div class="cv-app-sidebar">
+    <div id="cadivor-sidebar-root" class="cv-app-sidebar">
       <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
       <div class="cv-side-section first">Navigation</div>
       <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
@@ -1603,6 +1603,98 @@ st.markdown(
 inject_premium_css()
 inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
+
+# Cadivor M4.4 — shell stabilizer.
+# Keeps the fixed topbar/sidebar from reserving vertical page space in Streamlit.
+st.markdown(
+    """
+    <style id="cadivor-m44-shell-stabilizer">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+    /* The topbar/sidebar are fixed UI chrome. Their Streamlit wrapper rows must not consume page height. */
+    .element-container:has(#cadivor-topbar-root),
+    .element-container:has(#cadivor-sidebar-root),
+    div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root),
+    div[data-testid="stMarkdownContainer"]:has(#cadivor-sidebar-root) {
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
+    }
+
+    #cadivor-topbar-root {
+        position:fixed!important; top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+        z-index:1000005!important; margin:0!important; border-radius:0!important;
+    }
+    #cadivor-sidebar-root {
+        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        z-index:1000004!important;
+    }
+
+    /* Single source of truth for the app canvas. */
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"] > div,
+    section.main > div,
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        padding-top:78px!important;
+        padding-left:306px!important;
+        padding-right:24px!important;
+        padding-bottom:48px!important;
+        margin:0!important;
+        max-width:none!important;
+        width:100%!important;
+        box-sizing:border-box!important;
+    }
+
+    /* Tighter page rhythm for non-dashboard pages. */
+    .brc-hero, .card, .cv-panel, .cv-command-hero { margin-top:0!important; }
+    .cv-page-kicker { color:#2563EB!important; font-size:11px!important; font-weight:950!important; letter-spacing:.12em!important; text-transform:uppercase!important; margin-bottom:8px!important; }
+    .cv-page-title { color:#0F172A!important; font-size:32px!important; font-weight:950!important; letter-spacing:-.04em!important; margin:0 0 8px!important; }
+    .cv-page-subtitle { color:#64748B!important; font-size:14px!important; line-height:1.55!important; margin:0!important; max-width:760px!important; }
+
+    @media(max-width:1100px){
+        #cadivor-topbar-root, #cadivor-sidebar-root{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+components.html(
+    """
+    <script>
+    function cadivorM44Stabilize(){
+      const doc = window.parent.document;
+      ['cadivor-topbar-root','cadivor-sidebar-root'].forEach((id) => {
+        const node = doc.getElementById(id);
+        if (!node) return;
+        let el = node.parentElement;
+        for (let i = 0; i < 10 && el; i++) {
+          if (el.classList && el.classList.contains('element-container')) {
+            el.style.height = '0px';
+            el.style.minHeight = '0px';
+            el.style.margin = '0px';
+            el.style.padding = '0px';
+            el.style.overflow = 'visible';
+            break;
+          }
+          el = el.parentElement;
+        }
+      });
+      doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]').forEach((el) => {
+        el.style.paddingTop = '78px';
+        el.style.paddingLeft = window.innerWidth > 1100 ? '306px' : '16px';
+        el.style.paddingRight = window.innerWidth > 1100 ? '24px' : '16px';
+      });
+    }
+    cadivorM44Stabilize();
+    setTimeout(cadivorM44Stabilize, 100);
+    setTimeout(cadivorM44Stabilize, 500);
+    setTimeout(cadivorM44Stabilize, 1200);
+    </script>
+    """,
+    height=0,
+)
 
 
 # Cadivor M4.2.2 — authoritative shell spacing reset.
