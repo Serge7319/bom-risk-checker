@@ -27,6 +27,7 @@ from src.monitoring_engine import (
     detect_monitor_alerts,
 )
 import time
+import html
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
@@ -1928,7 +1929,7 @@ if app_mode == "Dashboard":
             trend_df = trend_df.rename(columns={"created_at": "Date", "health_score": "Health Score"})
             fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
             fig.update_traces(line_color="#2563EB", marker_color="#2563EB", line_width=3)
-            st.plotly_chart(light_plotly_layout(fig, height=380), use_container_width=True)
+            st.plotly_chart(light_plotly_layout(fig, height=330), use_container_width=True, config={"displayModeBar": False})
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
 
@@ -1949,7 +1950,7 @@ if app_mode == "Dashboard":
             )
             fig.update_traces(textposition="inside", textinfo="percent+label", marker=dict(line=dict(color="#FFFFFF", width=3)))
             fig.update_layout(showlegend=True)
-            st.plotly_chart(light_plotly_layout(fig, height=380), use_container_width=True)
+            st.plotly_chart(light_plotly_layout(fig, height=330), use_container_width=True, config={"displayModeBar": False})
         else:
             st.info("Risk distribution will appear after your first BOM analysis.")
 
@@ -2002,8 +2003,40 @@ if app_mode == "Dashboard":
                     "health_score": "Health",
                     "high_risk_count": "High Risk",
                 }
+            ).head(7)
+
+            rows = []
+            for _, row in recent_display_df.iterrows():
+                health_value = int(row.get("Health", 0) or 0)
+                health_class = "good" if health_value >= 80 else "warn" if health_value >= 55 else "bad"
+                rows.append(
+                    "<tr>"
+                    f"<td><span class='cv-table-project'>{html.escape(str(row.get('Project', 'Untitled')))}</span></td>"
+                    f"<td class='cv-table-muted'>{html.escape(str(row.get('File', '—')))}</td>"
+                    f"<td class='cv-table-muted'>{html.escape(str(row.get('Date', '—')))}</td>"
+                    f"<td>{html.escape(str(row.get('Parts', '—')))}</td>"
+                    f"<td><span class='cv-health-pill {health_class}'>{health_value}</span></td>"
+                    f"<td>{html.escape(str(row.get('High Risk', '—')))}</td>"
+                    "</tr>"
+                )
+
+            st.markdown(
+                """
+                <div class="cv-table-card">
+                  <table class="cv-table">
+                    <thead>
+                      <tr>
+                        <th>Project</th><th>File</th><th>Date</th><th>Parts</th><th>Health</th><th>High risk</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                """ + "".join(rows) + """
+                    </tbody>
+                  </table>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            st.dataframe(recent_display_df.head(8), use_container_width=True, hide_index=True, height=300)
         else:
             st.info("No analyses yet. Upload your first BOM to begin building portfolio intelligence.")
 
