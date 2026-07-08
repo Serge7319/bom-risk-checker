@@ -1736,6 +1736,128 @@ components.html(
     height=0,
 )
 
+
+
+# Cadivor M4.7 — verified shell wrapper compression.
+# Streamlit gives every st.markdown(<style>...</style>) call a wrapper row.
+# Earlier milestone patches left several style-only rows above the real page.
+# This collapses those invisible rows without hiding the fixed topbar/sidebar.
+st.markdown(
+    """
+    <style id="cadivor-m47-wrapper-compression">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+    /* One authoritative content offset: just below the fixed topbar. */
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        padding-top:76px!important;
+        padding-left:306px!important;
+        padding-right:24px!important;
+        padding-bottom:48px!important;
+        margin-top:0!important;
+        max-width:none!important;
+        width:100%!important;
+        box-sizing:border-box!important;
+    }
+
+    /* Collapse invisible style-only Streamlit rows that were creating the top gap. */
+    .element-container:has(style):not(:has(.cv-command-hero)):not(:has(.cv-metric)):not(:has(.cv-panel)):not(:has([data-testid="stDataFrame"])),
+    div[data-testid="stMarkdownContainer"]:has(style):not(:has(.cv-command-hero)):not(:has(.cv-metric)):not(:has(.cv-panel)) {
+        height:0!important;
+        min-height:0!important;
+        margin:0!important;
+        padding:0!important;
+        overflow:visible!important;
+    }
+
+    /* Keep shell roots fixed, but their Streamlit wrapper rows collapsed. */
+    .element-container:has(#cadivor-topbar-root),
+    .element-container:has(#cadivor-sidebar-root),
+    div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root),
+    div[data-testid="stMarkdownContainer"]:has(#cadivor-sidebar-root) {
+        height:0!important;
+        min-height:0!important;
+        margin:0!important;
+        padding:0!important;
+        overflow:visible!important;
+    }
+
+    .cv-command-hero { margin-top:0!important; }
+
+    @media(max-width:1100px){
+        .main .block-container, [data-testid="stMainBlockContainer"]{
+            padding:16px!important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+components.html(
+    """
+    <script>
+    function cadivorM47CompressInvisibleRows(){
+      const doc = window.parent.document;
+      const collapse = (el) => {
+        if (!el) return;
+        el.style.height = '0px';
+        el.style.minHeight = '0px';
+        el.style.margin = '0px';
+        el.style.padding = '0px';
+        el.style.overflow = 'visible';
+      };
+
+      // Collapse all Streamlit rows that contain only injected CSS or shell chrome.
+      doc.querySelectorAll('.element-container').forEach((el) => {
+        const hasShell = el.querySelector('#cadivor-topbar-root, #cadivor-sidebar-root, .cadivor-topbar, .cv-app-sidebar');
+        const hasStyle = el.querySelector('style[id^="cadivor"], style');
+        const text = (el.innerText || '').trim();
+        const hasInteractive = el.querySelector('button,input,textarea,select,canvas,svg,table,[data-testid="stDataFrame"],[data-testid="stPlotlyChart"],img');
+        const hasRealCadivorContent = el.querySelector('.cv-command-hero,.cv-metric,.cv-panel,.cv-empty-state,.cv-actions-grid,.cv-action-card');
+        if (hasShell || (hasStyle && !hasInteractive && !hasRealCadivorContent && text.length < 2)) {
+          collapse(el);
+          collapse(el.parentElement && el.parentElement.getAttribute('data-testid') === 'stVerticalBlock' ? el.parentElement : null);
+        }
+      });
+
+      // Preserve the fixed shell and set one compact page offset.
+      const topbar = doc.getElementById('cadivor-topbar-root');
+      if (topbar) {
+        topbar.style.position = 'fixed'; topbar.style.top = '0px'; topbar.style.left = '0px'; topbar.style.right = '0px';
+        topbar.style.height = '64px'; topbar.style.minHeight = '64px'; topbar.style.zIndex = '1000005';
+      }
+      const sidebar = doc.getElementById('cadivor-sidebar-root');
+      if (sidebar) {
+        sidebar.style.position = 'fixed'; sidebar.style.top = '64px'; sidebar.style.left = '0px'; sidebar.style.bottom = '0px';
+        sidebar.style.width = '284px'; sidebar.style.height = 'calc(100vh - 64px)'; sidebar.style.zIndex = '1000004';
+      }
+
+      doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]').forEach((el) => {
+        if (window.innerWidth > 1100) {
+          el.style.paddingTop = '76px';
+          el.style.paddingLeft = '306px';
+          el.style.paddingRight = '24px';
+        } else {
+          el.style.padding = '16px';
+        }
+        el.style.marginTop = '0px';
+        el.style.maxWidth = 'none';
+        el.style.width = '100%';
+        el.style.boxSizing = 'border-box';
+      });
+    }
+    cadivorM47CompressInvisibleRows();
+    setTimeout(cadivorM47CompressInvisibleRows, 50);
+    setTimeout(cadivorM47CompressInvisibleRows, 200);
+    setTimeout(cadivorM47CompressInvisibleRows, 700);
+    setTimeout(cadivorM47CompressInvisibleRows, 1500);
+    window.addEventListener('resize', cadivorM47CompressInvisibleRows);
+    </script>
+    """,
+    height=0,
+)
+
 # Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
 st.markdown(
     """
