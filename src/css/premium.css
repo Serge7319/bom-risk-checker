@@ -124,3 +124,66 @@ div[data-testid="stPlotlyChart"] { background: #fff !important; border: 1px soli
 .brc-hero-subtitle { color: #64748B !important; font-size: 14px !important; line-height: 1.55 !important; margin: 0 !important; }
 @media (max-width: 1200px) { .cadivor-search-pill { display: none !important; } .cadivor-current-page { min-width: 0 !important; } .cv-command-hero { grid-template-columns: 1fr !important; } .cv-actions-grid { grid-template-columns: repeat(2, minmax(0,1fr)) !important; } }
 @media (max-width: 900px) { .cadivor-topbar { position: relative !important; grid-template-columns: 1fr !important; height: auto !important; min-height: 64px !important; padding: 12px 16px !important; } .cadivor-topbar-center { display: none !important; } .cv-app-sidebar { position: relative !important; top: auto !important; width: auto !important; height: auto !important; } .cv-side-brand { display: flex !important; } .main .block-container, [data-testid="stMainBlockContainer"] { padding: 16px !important; } .cv-command-hero { padding: 22px !important; } .cv-title { font-size: 30px !important; } .cv-actions-grid { grid-template-columns: 1fr !important; } }
+
+
+/* Cadivor M4.18 deterministic shell-gap fix.
+   This is the single authoritative shell spacing layer. */
+:root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+.element-container:has(#cadivor-topbar-root),
+.element-container:has(#cadivor-sidebar-root),
+div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root),
+div[data-testid="stMarkdownContainer"]:has(#cadivor-sidebar-root) {
+    display: contents !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+[data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"],
+[data-testid="stSidebar"], section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+    display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
+}
+
+[data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
+    margin:0!important; padding:0!important; width:100vw!important; max-width:100vw!important; background:#F6F8FB!important;
+}
+
+.main .block-container, [data-testid="stMainBlockContainer"] {
+    max-width:none!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+    margin:0!important;
+    padding-top:84px!important;
+    padding-left:306px!important;
+    padding-right:24px!important;
+    padding-bottom:48px!important;
+}
+
+.cadivor-topbar, #cadivor-topbar-root {
+    position:fixed!important;
+    top:0!important; left:0!important; right:0!important;
+    height:var(--cv-topbar-height)!important;
+    min-height:var(--cv-topbar-height)!important;
+    z-index:1000005!important;
+}
+
+.cv-app-sidebar, #cadivor-sidebar-root {
+    position:fixed!important;
+    left:0!important;
+    top:var(--cv-topbar-height)!important;
+    bottom:0!important;
+    width:var(--cv-sidebar-width)!important;
+    height:calc(100vh - var(--cv-topbar-height))!important;
+    z-index:1000004!important;
+}
+
+@media(max-width:1100px){
+    .cadivor-topbar, #cadivor-topbar-root, .cv-app-sidebar, #cadivor-sidebar-root{
+        position:relative!important; top:auto!important; left:auto!important; right:auto!important; width:auto!important; height:auto!important;
+    }
+    .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
+    .element-container:has(#cadivor-topbar-root), .element-container:has(#cadivor-sidebar-root){display:block!important;}
+}
