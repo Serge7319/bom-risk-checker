@@ -156,7 +156,7 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecor
     width:100%!important;
     box-sizing:border-box!important;
     margin:0!important;
-    padding-top:84px!important;
+    padding-top:52px!important;
     padding-left:306px!important;
     padding-right:24px!important;
     padding-bottom:48px!important;
@@ -186,4 +186,30 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecor
     }
     .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
     .element-container:has(#cadivor-topbar-root), .element-container:has(#cadivor-sidebar-root){display:block!important;}
+}
+
+
+/* Cadivor M4.19 top-gap fine tune.
+   Collapse Streamlit rows that contain style-only markdown blocks. These blocks were
+   visually empty but still participated in the vertical layout in Chrome. */
+div[data-testid="stElementContainer"]:has(style),
+div.element-container:has(style),
+div[data-testid="stMarkdownContainer"]:has(style:only-child) {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Pull the first dashboard command center upward into the formerly empty shell space
+   without touching the fixed topbar/sidebar or profile menu behavior. */
+.cv-command-hero {
+    margin-top: -72px !important;
+}
+
+/* Keep follow-on sections tight after the hero has been pulled upward. */
+.cv-insight-card, .cv-metric {
+    margin-bottom: 12px !important;
 }
