@@ -93,7 +93,7 @@ def render_topbar(current_user=None, app_mode="Dashboard"):
         .cadivor-user-menu-meta strong {{ display:block; color:#0F172A!important; font-size:13px; }}
         .cadivor-user-menu-meta span {{ display:block; color:#64748B!important; font-size:12px; margin-top:2px; }}
         </style>
-        <div class="cadivor-topbar">
+        <div id="cadivor-topbar-root" class="cadivor-topbar">
             <div class="cadivor-brand">
                 <div class="cadivor-logo-mark">C</div>
                 <div>
