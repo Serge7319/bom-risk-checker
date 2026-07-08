@@ -1604,15 +1604,133 @@ inject_premium_css()
 inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
 
-# Cadivor M4.10 — stable shell gap fix.
-# Root cause: fixed topbar/sidebar HTML was being rendered in normal Streamlit
-# markdown rows, and those wrapper rows still reserved vertical height.
-# This CSS collapses ONLY the wrapper rows that contain the fixed shell nodes.
+
+# Cadivor M4.11 — stable shell gap root fix.
+# Root cause: the custom fixed topbar/sidebar are injected through Streamlit markdown.
+# Streamlit still creates wrapper rows for those injected elements, and those rows
+# were reserving vertical space before the real page content. This collapses ONLY
+# the wrapper rows that contain the fixed shell roots, never the dashboard/content rows.
 st.markdown(
     """
-    <style id="cadivor-m410-stable-shell-gap-fix">
+    <style id="cadivor-m411-stable-shell-gap-css">
     :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
 
+    #cadivor-topbar-root, .cadivor-topbar {
+        position:fixed!important;
+        top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important;
+        min-height:var(--cv-topbar-height)!important;
+        z-index:1000005!important;
+        margin:0!important;
+    }
+
+    #cadivor-sidebar-root, .cv-app-sidebar {
+        position:fixed!important;
+        top:var(--cv-topbar-height)!important;
+        left:0!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important;
+        height:calc(100vh - var(--cv-topbar-height))!important;
+        z-index:1000004!important;
+    }
+
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        max-width:none!important;
+        width:100%!important;
+        box-sizing:border-box!important;
+        margin:0!important;
+        padding-top:76px!important;
+        padding-left:calc(var(--cv-sidebar-width) + 24px)!important;
+        padding-right:24px!important;
+        padding-bottom:48px!important;
+    }
+
+    @media(max-width:1100px){
+        #cadivor-topbar-root, .cadivor-topbar,
+        #cadivor-sidebar-root, .cv-app-sidebar {
+            position:relative!important;
+            top:auto!important; left:auto!important; right:auto!important; bottom:auto!important;
+            width:auto!important; height:auto!important; min-height:auto!important;
+        }
+        .main .block-container,
+        [data-testid="stMainBlockContainer"] {
+            padding:16px!important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+components.html(
+    """
+    <script>
+    (function(){
+      function zeroBox(el){
+        if(!el) return;
+        el.style.setProperty('height','0px','important');
+        el.style.setProperty('min-height','0px','important');
+        el.style.setProperty('max-height','0px','important');
+        el.style.setProperty('margin','0px','important');
+        el.style.setProperty('padding','0px','important');
+        el.style.setProperty('overflow','visible','important');
+      }
+
+      function collapseShellRoot(rootId){
+        const doc = window.parent.document;
+        const root = doc.getElementById(rootId);
+        if(!root) return;
+
+        // Keep the actual shell fixed and visible.
+        root.style.setProperty('position','fixed','important');
+        root.style.setProperty('margin','0','important');
+
+        // Collapse the immediate Streamlit wrappers that exist only because st.markdown rendered the shell.
+        let el = root.parentElement;
+        for(let i=0; i<8 && el; i++, el=el.parentElement){
+          const cls = (el.className || '').toString();
+          const testid = el.getAttribute ? (el.getAttribute('data-testid') || '') : '';
+          const isMarkdown = testid === 'stMarkdownContainer';
+          const isElement = cls.includes('element-container');
+          const isVertical = testid === 'stVerticalBlock' || testid === 'stVerticalBlockBorderWrapper';
+
+          if(isMarkdown || isElement){
+            zeroBox(el);
+          }
+
+          // Stop before collapsing general layout blocks that may contain real page content.
+          if(isElement) break;
+          if(isVertical && i > 2) break;
+        }
+      }
+
+      function applyCadivorShellFix(){
+        collapseShellRoot('cadivor-topbar-root');
+        collapseShellRoot('cadivor-sidebar-root');
+      }
+
+      applyCadivorShellFix();
+      setTimeout(applyCadivorShellFix, 50);
+      setTimeout(applyCadivorShellFix, 150);
+      setTimeout(applyCadivorShellFix, 400);
+      setTimeout(applyCadivorShellFix, 900);
+      window.parent.addEventListener('resize', applyCadivorShellFix);
+    })();
+    </script>
+    """,
+    height=0,
+)
+
+# Cadivor M4.5 — shell gap fix.
+# This replaces the stacked M4.2/M4.4 spacing patches with one layout authority.
+# The earlier patches applied top padding to multiple nested Streamlit containers,
+# which added up and created the large blank area below the fixed top bar.
+st.markdown(
+    """
+    <style id="cadivor-m45-shell-gap-fix">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+    /* Fixed app chrome. */
     #cadivor-topbar-root, .cadivor-topbar {
         position:fixed!important; top:0!important; left:0!important; right:0!important;
         height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
@@ -1624,34 +1742,31 @@ st.markdown(
         z-index:1000004!important;
     }
 
-    /* Collapse the Streamlit element rows that wrap fixed chrome.
-       Streamlit versions use different wrappers, so include both class and data-testid selectors. */
+    /* Shell injection rows must not reserve page height. */
     .element-container:has(#cadivor-topbar-root),
     .element-container:has(#cadivor-sidebar-root),
     .element-container:has(.cadivor-topbar),
     .element-container:has(.cv-app-sidebar),
-    [data-testid="stElementContainer"]:has(#cadivor-topbar-root),
-    [data-testid="stElementContainer"]:has(#cadivor-sidebar-root),
-    [data-testid="stElementContainer"]:has(.cadivor-topbar),
-    [data-testid="stElementContainer"]:has(.cv-app-sidebar),
     div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root),
     div[data-testid="stMarkdownContainer"]:has(#cadivor-sidebar-root),
     div[data-testid="stMarkdownContainer"]:has(.cadivor-topbar),
     div[data-testid="stMarkdownContainer"]:has(.cv-app-sidebar) {
-        height:0!important; min-height:0!important; max-height:0!important;
-        margin:0!important; padding:0!important; overflow:visible!important;
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
     }
 
-    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"],
-    [data-testid="stSidebar"], section[data-testid="stSidebar"] {
-        display:none!important; visibility:hidden!important; height:0!important; min-height:0!important;
+    /* IMPORTANT: parent containers get zero top padding. Only the real block container gets page offset. */
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"],
+    section.main {
+        padding-top:0!important; margin-top:0!important;
+    }
+    [data-testid="stMain"] > div:not([data-testid="stMainBlockContainer"]),
+    section.main > div:not(.block-container) {
+        padding-top:0!important; margin-top:0!important;
     }
 
-    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
-        margin-top:0!important; padding-top:0!important; background:#F6F8FB!important;
-    }
-    .main .block-container, [data-testid="stMainBlockContainer"] {
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
         max-width:none!important; width:100%!important; box-sizing:border-box!important;
         margin:0!important;
         padding-top:78px!important;
@@ -1660,24 +1775,82 @@ st.markdown(
         padding-bottom:48px!important;
     }
 
-    .cv-command-hero, .brc-hero, .cadivor-page-header { margin-top:0!important; }
+    .cv-command-hero, .cv-panel, .card, .kpi-card, .brc-card { margin-top:0!important; }
     .cv-section-spacer { margin-top:24px!important; }
+    h1:first-child, h2:first-child, h3:first-child, .cv-panel-title:first-child { margin-top:0!important; }
+
+    .cv-page-kicker { color:#2563EB!important; font-size:11px!important; font-weight:950!important; letter-spacing:.12em!important; text-transform:uppercase!important; margin-bottom:8px!important; }
+    .cv-page-title { color:#0F172A!important; font-size:32px!important; font-weight:950!important; letter-spacing:-.04em!important; margin:0 0 8px!important; }
+    .cv-page-subtitle { color:#64748B!important; font-size:14px!important; line-height:1.55!important; margin:0!important; max-width:760px!important; }
 
     @media(max-width:1100px){
-        #cadivor-topbar-root, .cadivor-topbar, #cadivor-sidebar-root, .cv-app-sidebar {
+        #cadivor-topbar-root, .cadivor-topbar, #cadivor-sidebar-root, .cv-app-sidebar{
             position:relative!important; top:auto!important; width:auto!important; height:auto!important; min-height:auto!important;
         }
-        .main .block-container, [data-testid="stMainBlockContainer"] { padding:16px!important; }
-        [data-testid="stElementContainer"]:has(#cadivor-topbar-root),
-        [data-testid="stElementContainer"]:has(#cadivor-sidebar-root),
-        [data-testid="stElementContainer"]:has(.cadivor-topbar),
-        [data-testid="stElementContainer"]:has(.cv-app-sidebar) {
-            height:auto!important; max-height:none!important; overflow:visible!important;
-        }
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
     }
     </style>
     """,
     unsafe_allow_html=True,
+)
+
+components.html(
+    """
+    <script>
+    function cadivorM45FixShellGap(){
+      const doc = window.parent.document;
+
+      // Collapse only the Streamlit rows that wrap the fixed topbar/sidebar.
+      ['cadivor-topbar-root','cadivor-sidebar-root'].forEach((id) => {
+        const node = doc.getElementById(id);
+        if (!node) return;
+        let el = node.parentElement;
+        for (let i = 0; i < 12 && el; i++) {
+          const cls = el.classList ? Array.from(el.classList).join(' ') : '';
+          if (cls.includes('element-container') || el.getAttribute('data-testid') === 'stVerticalBlock') {
+            el.style.height = '0px';
+            el.style.minHeight = '0px';
+            el.style.margin = '0px';
+            el.style.padding = '0px';
+            el.style.overflow = 'visible';
+            if (cls.includes('element-container')) break;
+          }
+          el = el.parentElement;
+        }
+      });
+
+      // Remove accumulated padding from parent wrappers. Previous patches applied offset here too.
+      doc.querySelectorAll('[data-testid="stAppViewContainer"] > .main, [data-testid="stMain"], section.main').forEach((el) => {
+        el.style.paddingTop = '0px';
+        el.style.marginTop = '0px';
+      });
+
+      // Apply the single intended offset only to the true content block.
+      doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]').forEach((el) => {
+        if (window.innerWidth > 1100) {
+          el.style.paddingTop = '78px';
+          el.style.paddingLeft = '306px';
+          el.style.paddingRight = '24px';
+        } else {
+          el.style.paddingTop = '16px';
+          el.style.paddingLeft = '16px';
+          el.style.paddingRight = '16px';
+        }
+        el.style.paddingBottom = '48px';
+        el.style.marginTop = '0px';
+        el.style.maxWidth = 'none';
+        el.style.width = '100%';
+        el.style.boxSizing = 'border-box';
+      });
+    }
+    cadivorM45FixShellGap();
+    setTimeout(cadivorM45FixShellGap, 100);
+    setTimeout(cadivorM45FixShellGap, 400);
+    setTimeout(cadivorM45FixShellGap, 1000);
+    window.addEventListener('resize', cadivorM45FixShellGap);
+    </script>
+    """,
+    height=0,
 )
 
 # Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
@@ -4044,6 +4217,3 @@ Unlock more power:
                     st.success("🎉 You are now on the Business plan!")
 
                     st.rerun()
-
-
-
