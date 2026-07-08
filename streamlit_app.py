@@ -1275,6 +1275,7 @@ shell_email = profile_for_shell.get("email") or current_user.get("email", "")
 shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:2] or "C"
 
 import urllib.parse as _urlparse
+import json as _json
 
 # Global Cadivor application shell CSS. Keep this outside individual pages so
 # Dashboard, BOM Analyzer, Monitoring, Reports, Pricing, Settings, and About
@@ -1413,8 +1414,7 @@ for _nav in NAV_OPTIONS:
     _href = "?page=" + _urlparse.quote(_nav)
     _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
 
-st.markdown(
-    f'''
+_sidebar_html = f"""
     <div id="cadivor-sidebar-root" class="cv-app-sidebar">
       <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
       <div class="cv-side-section first">Navigation</div>
@@ -1423,8 +1423,17 @@ st.markdown(
       <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span></div>
       <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
     </div>
-    ''',
-    unsafe_allow_html=True,
+    """
+components.html(
+    f"""
+    <script>
+    const doc = window.parent.document;
+    const existing = doc.getElementById('cadivor-sidebar-root');
+    if (existing) existing.remove();
+    doc.body.insertAdjacentHTML('beforeend', {_json.dumps(_sidebar_html)});
+    </script>
+    """,
+    height=0,
 )
 
 # Cadivor v2.8 fixed enterprise shell overrides.
@@ -1605,120 +1614,49 @@ inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
 
 
-# Cadivor M4.11 — stable shell gap root fix.
-# Root cause: the custom fixed topbar/sidebar are injected through Streamlit markdown.
-# Streamlit still creates wrapper rows for those injected elements, and those rows
-# were reserving vertical space before the real page content. This collapses ONLY
-# the wrapper rows that contain the fixed shell roots, never the dashboard/content rows.
+# Cadivor M4.12 — authoritative stable shell spacing.
 st.markdown(
     """
-    <style id="cadivor-m411-stable-shell-gap-css">
-    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
-
-    #cadivor-topbar-root, .cadivor-topbar {
-        position:fixed!important;
-        top:0!important; left:0!important; right:0!important;
-        height:var(--cv-topbar-height)!important;
-        min-height:var(--cv-topbar-height)!important;
-        z-index:1000005!important;
-        margin:0!important;
+    <style id="cadivor-m412-stable-shell">
+    :root { --cv-topbar-height: 64px!important; --cv-sidebar-width: 284px!important; }
+    #MainMenu, footer, header[data-testid="stHeader"], [data-testid="stToolbar"],
+    [data-testid="stDecoration"], [data-testid="stStatusWidget"], .stDeployButton,
+    [data-testid="stSidebar"], [data-testid="collapsedControl"] {
+        display:none!important; visibility:hidden!important; height:0!important; min-height:0!important;
     }
-
+    .stApp, [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
+    #cadivor-topbar-root, .cadivor-topbar {
+        position:fixed!important; top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+        width:100vw!important; z-index:1000005!important; margin:0!important; border-radius:0!important;
+    }
     #cadivor-sidebar-root, .cv-app-sidebar {
-        position:fixed!important;
-        top:var(--cv-topbar-height)!important;
-        left:0!important; bottom:0!important;
-        width:var(--cv-sidebar-width)!important;
-        height:calc(100vh - var(--cv-topbar-height))!important;
+        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
         z-index:1000004!important;
     }
-
-    .main .block-container,
-    [data-testid="stMainBlockContainer"] {
-        max-width:none!important;
-        width:100%!important;
-        box-sizing:border-box!important;
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
+        margin:0!important; padding:0!important; width:100vw!important; max-width:100vw!important;
+    }
+    .main .block-container, [data-testid="stMainBlockContainer"] {
+        max-width:none!important; width:100%!important; box-sizing:border-box!important;
         margin:0!important;
-        padding-top:76px!important;
+        padding-top:calc(var(--cv-topbar-height) + 14px)!important;
         padding-left:calc(var(--cv-sidebar-width) + 24px)!important;
         padding-right:24px!important;
         padding-bottom:48px!important;
     }
-
+    iframe[title="streamlit-component" i] { min-height:0!important; height:0!important; display:block!important; }
+    .cv-command-hero, .brc-hero, .cadivor-page-header { margin-top:0!important; }
     @media(max-width:1100px){
-        #cadivor-topbar-root, .cadivor-topbar,
-        #cadivor-sidebar-root, .cv-app-sidebar {
-            position:relative!important;
-            top:auto!important; left:auto!important; right:auto!important; bottom:auto!important;
-            width:auto!important; height:auto!important; min-height:auto!important;
+        #cadivor-topbar-root, .cadivor-topbar, #cadivor-sidebar-root, .cv-app-sidebar{
+            position:relative!important; top:auto!important; width:auto!important; height:auto!important; min-height:auto!important;
         }
-        .main .block-container,
-        [data-testid="stMainBlockContainer"] {
-            padding:16px!important;
-        }
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
     }
     </style>
     """,
     unsafe_allow_html=True,
-)
-
-components.html(
-    """
-    <script>
-    (function(){
-      function zeroBox(el){
-        if(!el) return;
-        el.style.setProperty('height','0px','important');
-        el.style.setProperty('min-height','0px','important');
-        el.style.setProperty('max-height','0px','important');
-        el.style.setProperty('margin','0px','important');
-        el.style.setProperty('padding','0px','important');
-        el.style.setProperty('overflow','visible','important');
-      }
-
-      function collapseShellRoot(rootId){
-        const doc = window.parent.document;
-        const root = doc.getElementById(rootId);
-        if(!root) return;
-
-        // Keep the actual shell fixed and visible.
-        root.style.setProperty('position','fixed','important');
-        root.style.setProperty('margin','0','important');
-
-        // Collapse the immediate Streamlit wrappers that exist only because st.markdown rendered the shell.
-        let el = root.parentElement;
-        for(let i=0; i<8 && el; i++, el=el.parentElement){
-          const cls = (el.className || '').toString();
-          const testid = el.getAttribute ? (el.getAttribute('data-testid') || '') : '';
-          const isMarkdown = testid === 'stMarkdownContainer';
-          const isElement = cls.includes('element-container');
-          const isVertical = testid === 'stVerticalBlock' || testid === 'stVerticalBlockBorderWrapper';
-
-          if(isMarkdown || isElement){
-            zeroBox(el);
-          }
-
-          // Stop before collapsing general layout blocks that may contain real page content.
-          if(isElement) break;
-          if(isVertical && i > 2) break;
-        }
-      }
-
-      function applyCadivorShellFix(){
-        collapseShellRoot('cadivor-topbar-root');
-        collapseShellRoot('cadivor-sidebar-root');
-      }
-
-      applyCadivorShellFix();
-      setTimeout(applyCadivorShellFix, 50);
-      setTimeout(applyCadivorShellFix, 150);
-      setTimeout(applyCadivorShellFix, 400);
-      setTimeout(applyCadivorShellFix, 900);
-      window.parent.addEventListener('resize', applyCadivorShellFix);
-    })();
-    </script>
-    """,
-    height=0,
 )
 
 # Cadivor M4.5 — shell gap fix.
@@ -1794,64 +1732,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-components.html(
-    """
-    <script>
-    function cadivorM45FixShellGap(){
-      const doc = window.parent.document;
-
-      // Collapse only the Streamlit rows that wrap the fixed topbar/sidebar.
-      ['cadivor-topbar-root','cadivor-sidebar-root'].forEach((id) => {
-        const node = doc.getElementById(id);
-        if (!node) return;
-        let el = node.parentElement;
-        for (let i = 0; i < 12 && el; i++) {
-          const cls = el.classList ? Array.from(el.classList).join(' ') : '';
-          if (cls.includes('element-container') || el.getAttribute('data-testid') === 'stVerticalBlock') {
-            el.style.height = '0px';
-            el.style.minHeight = '0px';
-            el.style.margin = '0px';
-            el.style.padding = '0px';
-            el.style.overflow = 'visible';
-            if (cls.includes('element-container')) break;
-          }
-          el = el.parentElement;
-        }
-      });
-
-      // Remove accumulated padding from parent wrappers. Previous patches applied offset here too.
-      doc.querySelectorAll('[data-testid="stAppViewContainer"] > .main, [data-testid="stMain"], section.main').forEach((el) => {
-        el.style.paddingTop = '0px';
-        el.style.marginTop = '0px';
-      });
-
-      // Apply the single intended offset only to the true content block.
-      doc.querySelectorAll('.main .block-container, [data-testid="stMainBlockContainer"]').forEach((el) => {
-        if (window.innerWidth > 1100) {
-          el.style.paddingTop = '78px';
-          el.style.paddingLeft = '306px';
-          el.style.paddingRight = '24px';
-        } else {
-          el.style.paddingTop = '16px';
-          el.style.paddingLeft = '16px';
-          el.style.paddingRight = '16px';
-        }
-        el.style.paddingBottom = '48px';
-        el.style.marginTop = '0px';
-        el.style.maxWidth = 'none';
-        el.style.width = '100%';
-        el.style.boxSizing = 'border-box';
-      });
-    }
-    cadivorM45FixShellGap();
-    setTimeout(cadivorM45FixShellGap, 100);
-    setTimeout(cadivorM45FixShellGap, 400);
-    setTimeout(cadivorM45FixShellGap, 1000);
-    window.addEventListener('resize', cadivorM45FixShellGap);
-    </script>
-    """,
-    height=0,
-)
+# M4.12: removed JS shell compression. Topbar/sidebar are now zero-height parent-document components.
 
 # Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
 st.markdown(
@@ -4217,3 +4098,7 @@ Unlock more power:
                     st.success("🎉 You are now on the Business plan!")
 
                     st.rerun()
+
+
+# M4.12: removed unsafe visual gap compression component.
+
