@@ -213,3 +213,8 @@ div[data-testid="stMarkdownContainer"]:has(style:only-child) {
 .cv-insight-card, .cv-metric {
     margin-bottom: 12px !important;
 }
+
+/* Milestone 4.14 Dashboard Polish external support: content-layer only. */
+.cv-command-hero, .cv-metric, .cv-insight-card, .cv-panel, .cv-action-card, .cv-result-card {
+  will-change: transform, box-shadow;
+}
