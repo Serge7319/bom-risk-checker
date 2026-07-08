@@ -55,6 +55,23 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+st.markdown(
+    """
+    <style>
+    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stSidebar"], [data-testid="collapsedControl"],
+    section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+        display: none !important; visibility: hidden !important; width: 0 !important; min-width: 0 !important;
+    }
+    .stApp { background: #F6F8FB !important; }
+    .main .block-container, [data-testid="stAppViewContainer"] .main .block-container {
+        padding-top: 0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -1259,140 +1276,664 @@ shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:
 
 import urllib.parse as _urlparse
 
+# Global Cadivor application shell CSS. Keep this outside individual pages so
+# Dashboard, BOM Analyzer, Monitoring, Reports, Pricing, Settings, and About
+# all share the same layout and the custom sidebar never renders unstyled.
+st.markdown(
+    """
+    <style>
+    :root { --cv-sidebar-width: 284px; }
+    [data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none!important; }
+    header[data-testid="stHeader"] { display:none!important; height:0!important; min-height:0!important; }
+    [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"], .stDeployButton { display:none!important; }
+    .stApp { background:#F6F8FB!important; }
+    /* Keep the app canvas beside the fixed Cadivor sidebar. Streamlit versions
+       differ in their main-content test ids, so we target all common shells. */
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    section.main,
+    .main {
+        margin-left:0!important;
+        width:100vw!important;
+        max-width:100vw!important;
+    }
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"] > div,
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        margin-left:0!important;
+        max-width:none!important;
+        width:100%!important;
+        padding:22px 24px 48px calc(var(--cv-sidebar-width) + 24px)!important;
+        box-sizing:border-box!important;
+    }
+    .cv-app-sidebar {
+        position:fixed; left:0; top:0; bottom:0; width:284px; z-index:999999;
+        box-sizing:border-box; background:#FFFFFF; border-right:1px solid #E5E7EB; padding:22px 18px;
+        box-shadow:16px 0 40px rgba(15,23,42,.04); overflow:auto;
+    }
+    .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+    .cv-side-logo { width:42px; height:42px; border-radius:13px; background:#2563EB; color:#fff!important; display:flex; align-items:center; justify-content:center; font-weight:950; font-size:18px; box-shadow:0 12px 24px rgba(37,99,235,.24); }
+    .cv-side-name { color:#0F172A!important; font-size:21px; font-weight:950; line-height:1; }
+    .cv-side-sub { color:#64748B!important; font-size:10px; font-weight:800; margin-top:4px; letter-spacing:.04em; text-transform:uppercase; }
+    .cv-side-user { display:flex; gap:12px; align-items:center; padding:13px; border:1px solid #E5E7EB; border-radius:16px; background:#F8FAFC; margin-bottom:20px; }
+    .cv-side-avatar { width:38px; height:38px; border-radius:50%; background:#EFF6FF; color:#2563EB!important; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; font-weight:950; flex:0 0 auto; }
+    .cv-side-user strong { display:block; color:#0F172A!important; font-size:14px; font-weight:950; line-height:1.2; }
+    .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
+    .cv-side-section.first { margin-top:8px; }
+    .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
+    .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
+    .cv-side-link span { width:22px; text-align:center; color:#64748B!important; font-size:15px; }
+    .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; transform:translateX(2px); transition:all .16s ease; }
+    .cv-side-link.active { background:#EFF6FF; border-color:#BFDBFE; color:#2563EB!important; }
+    .cv-side-link.active span { color:#2563EB!important; }
+    .cv-side-plan { border:1px solid #E5E7EB; border-radius:16px; background:#FFFFFF; padding:14px; display:flex; flex-direction:column; gap:7px; }
+    .cv-side-plan strong { color:#0F172A!important; font-size:18px; font-weight:950; }
+    .cv-side-plan span { color:#64748B!important; font-size:12px; font-weight:750; }
+    .cv-side-footer { margin-top:18px; display:grid; gap:8px; }
+    .cv-side-footer a { padding:10px 12px; border-radius:12px; text-decoration:none!important; color:#334155!important; font-weight:850; font-size:13px; background:#F8FAFC; border:1px solid #E5E7EB; text-align:center; }
+    .cv-side-footer a:last-child { color:#DC2626!important; }
+    .cadivor-topbar {
+        margin:0 0 20px 0; padding:12px 18px; background:rgba(255,255,255,.97);
+        border:1px solid #E5E7EB; border-radius:16px; box-shadow:0 10px 26px rgba(15,23,42,.050);
+        display:grid; grid-template-columns:280px 1fr auto; align-items:center; gap:18px; width:100%; min-height:58px;
+    }
+    .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:260px; }
+    .cadivor-logo-mark { width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:#2563EB; color:#FFFFFF!important; font-weight:950; font-size:22px; box-shadow:0 12px 22px rgba(37,99,235,.22); }
+    .cadivor-logo-text { color:#0F172A!important; font-size:22px; font-weight:950; line-height:1; letter-spacing:-.02em; }
+    .cadivor-logo-subtitle { color:#64748B!important; font-size:11.5px; font-weight:800; margin-top:4px; letter-spacing:.02em; }
+    .cadivor-topbar-center { color:#0F172A!important; font-size:15px; font-weight:850; justify-self:start; }
+    .cadivor-user { display:flex; align-items:center; gap:12px; justify-content:flex-end; min-width:280px; }
+    .cadivor-user-label { color:#94A3B8!important; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.08em; text-align:right; }
+    .cadivor-user-name { color:#0F172A!important; font-size:15px; font-weight:900; text-align:right; line-height:1.15; }
+    .cadivor-user-company { color:#64748B!important; font-size:12px; font-weight:700; text-align:right; margin-top:2px; }
+    .cadivor-avatar { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:950; border:1px solid #BFDBFE; overflow:hidden; }
+    .cadivor-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+    .cv-dashboard-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin: 2px 0 14px 0; }
+    .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:34px; }
+    .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; margin-bottom:8px; }
+    .cv-quick-card { background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px; padding:14px; box-shadow:0 14px 32px rgba(15,23,42,.055); display:grid; gap:8px; }
+    .cv-quick-copy { color:#64748B!important; font-size:12px; font-weight:700; margin-bottom:2px; text-align:right; }
+    .cv-quick-button { display:block; text-align:center; text-decoration:none!important; background:#2563EB; color:#FFFFFF!important; border-radius:10px; padding:11px 14px; font-weight:850; box-shadow:0 12px 24px rgba(37,99,235,.20); }
+    .cv-quick-button:hover { background:#1D4ED8; color:#FFFFFF!important; transform:translateY(-1px); transition:all .16s ease; }
+    .cv-quick-button.secondary { background:#F8FAFC; color:#2563EB!important; border:1px solid #BFDBFE; box-shadow:none; }
+    .cv-quick-button.secondary:hover { background:#EFF6FF; color:#1D4ED8!important; }
+    .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
+    @media(max-width:1000px){
+        [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main { margin-left:0!important; width:100%!important; max-width:100%!important; }
+        .cv-app-sidebar{position:relative;width:auto;height:auto;box-shadow:none;border-right:0;border-bottom:1px solid #E5E7EB;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding-left:1rem!important;padding-right:1rem!important;}
+        .cv-dashboard-header{display:block;} .cv-action-row{justify-content:flex-start;padding-top:14px;}
+        .cadivor-topbar{grid-template-columns:1fr; gap:12px;} .cadivor-user{justify-content:flex-start;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# ---------- Shared Cadivor Shell ----------
-# Single shell authority. Earlier milestone files had several competing topbar/sidebar
-# CSS injections and JS wrapper-compression patches. Those invisible Streamlit rows
-# created the large blank gap under the topbar. Keep this section consolidated.
-inject_premium_css()
+
+# Cadivor v2.7 shell/dashboard polish overrides.
+st.markdown(
+    """
+    <style>
+    .cv-dashboard-header { margin-bottom: 18px!important; }
+    .cv-quick-mini {
+        max-width: 390px; margin-left: auto; margin-top: 2px;
+        background: transparent!important; border: 0!important; box-shadow: none!important;
+        display: flex; flex-direction: column; gap: 8px;
+    }
+    .cv-mini-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .cv-quick-mini .cv-action-row-label { text-align: right; margin-bottom: 0!important; }
+    .cv-quick-mini .cv-quick-button { padding: 10px 14px; border-radius: 11px; min-width: 150px; }
+    .cv-title { font-size: 38px!important; margin-bottom: 10px!important; }
+    .cv-subtitle { max-width: 720px!important; }
+    .cv-metric { min-height: 112px!important; padding: 17px 18px 15px!important; }
+    .cv-metric-value { font-size: 40px!important; }
+    .cadivor-topbar { min-height: 62px!important; padding: 11px 18px!important; margin-bottom: 26px!important; }
+    .cadivor-logo-mark { width: 44px!important; height: 44px!important; }
+    .cadivor-logo-text { font-size: 23px!important; }
+    .cadivor-user { align-items: center!important; }
+    .cv-section-spacer { margin-top: 42px!important; }
+    .cv-panel-title { font-size: 19px!important; }
+    div[data-testid="stPlotlyChart"] { background: #FFFFFF!important; border-radius: 14px!important; }
+    @media(max-width:1200px){ .cv-mini-buttons{grid-template-columns:1fr;} .cv-quick-mini{max-width:240px;} }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 _nav_html = []
 _nav_icons = {
-    "Dashboard": "⌂", "BOM Analyzer": "▦", "Alternative Finder": "⇄", "Monitoring": "◷",
-    "Reports": "□", "Pricing": "$", "Settings": "⚙", "Workspace": "•", "Notifications": "•",
-    "Help": "•", "About": "?",
+    "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
+    "Reports":"□", "Pricing":"$", "Settings":"⚙", "About":"?"
 }
 for _nav in NAV_OPTIONS:
     _active = " active" if _nav == app_mode else ""
     _href = "?page=" + _urlparse.quote(_nav)
     _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
 
-_shell_avatar = shell_initials
-_profile_links = '''
-    <div class="cadivor-user-menu">
-        <div class="cadivor-user-menu-meta"><strong>{name}</strong><span>{email}</span></div>
-        <div class="cadivor-user-menu-divider"></div>
-        <a href="?page=Settings" target="_self">My Profile <span>→</span></a>
-        <a href="?page=Workspace" target="_self">Workspace <span>→</span></a>
-        <a href="?page=Pricing" target="_self">Billing <span>→</span></a>
-        <a href="?page=Notifications" target="_self">Notifications <span>→</span></a>
-        <a href="?page=Help" target="_self">Help <span>→</span></a>
-        <div class="cadivor-user-menu-divider"></div>
-        <a class="danger" href="?action=logout" target="_self">Log out <span>↩</span></a>
-    </div>
-'''.format(name=shell_name, email=shell_email)
-
 st.markdown(
     f'''
-    <style id="cadivor-single-shell-authority">
-    :root {{ --cv-topbar-height: 64px; --cv-sidebar-width: 284px; }}
-    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"],
-    [data-testid="stSidebar"], section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {{
-        display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
-    }}
-    html, body, .stApp, [data-testid="stAppViewContainer"] {{ background:#F6F8FB!important; }}
-    .main .block-container, [data-testid="stMainBlockContainer"] {{
-        max-width:none!important; width:100%!important; box-sizing:border-box!important;
-        margin:0!important; padding-top:84px!important; padding-left:306px!important; padding-right:24px!important; padding-bottom:52px!important;
-    }}
-    .element-container:has(#cadivor-shell-root),
-    div[data-testid="stMarkdownContainer"]:has(#cadivor-shell-root) {{
-        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
-    }}
-    #cadivor-shell-root {{ height:0!important; min-height:0!important; overflow:visible!important; }}
-    .cadivor-topbar {{
-        position:fixed!important; top:0!important; left:0!important; right:0!important; z-index:1000002!important;
-        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
-        display:grid!important; grid-template-columns:var(--cv-sidebar-width) minmax(360px,1fr) auto!important;
-        align-items:center!important; gap:18px!important; margin:0!important; padding:0 20px!important;
-        background:rgba(255,255,255,.985)!important; border-bottom:1px solid #E5E7EB!important;
-        box-shadow:0 10px 26px rgba(15,23,42,.045)!important; box-sizing:border-box!important;
-    }}
-    .cadivor-brand {{ display:flex!important; align-items:center!important; gap:12px!important; min-width:0!important; }}
-    .cadivor-logo-mark {{ width:40px!important; height:40px!important; border-radius:12px!important; display:flex!important; align-items:center!important; justify-content:center!important; background:#2563EB!important; color:#fff!important; font-weight:950!important; box-shadow:0 12px 24px rgba(37,99,235,.22)!important; }}
-    .cadivor-logo-text {{ color:#0F172A!important; font-size:21px!important; font-weight:950!important; line-height:1!important; }}
-    .cadivor-logo-subtitle {{ color:#64748B!important; font-size:9.5px!important; letter-spacing:.16em!important; text-transform:uppercase!important; font-weight:850!important; margin-top:4px!important; }}
-    .cadivor-topbar-center {{ display:flex!important; align-items:center!important; gap:16px!important; min-width:0!important; }}
-    .cadivor-current-page {{ min-width:132px!important; color:#64748B!important; font-size:14px!important; font-weight:950!important; }}
-    .cadivor-search-pill {{ height:36px!important; min-width:320px!important; max-width:380px!important; display:flex!important; align-items:center!important; padding:0 18px!important; border-radius:999px!important; border:1px solid #DDE6F2!important; background:#F8FAFC!important; color:#8493A7!important; font-size:12px!important; font-weight:800!important; }}
-    .cadivor-top-icon {{ width:32px!important; height:32px!important; display:flex!important; align-items:center!important; justify-content:center!important; border-radius:999px!important; border:1px solid #E2E8F0!important; background:#fff!important; color:#64748B!important; font-size:12px!important; font-weight:900!important; text-decoration:none!important; }}
-    .cadivor-user-wrap {{ position:relative!important; justify-self:end!important; }}
-    .cadivor-user-wrap:hover .cadivor-user-menu {{ opacity:1!important; transform:translateY(0)!important; pointer-events:auto!important; }}
-    .cadivor-user {{ display:flex!important; align-items:center!important; gap:12px!important; justify-content:flex-end!important; min-width:250px!important; cursor:pointer!important; }}
-    .cadivor-user-meta {{ text-align:right!important; line-height:1.2!important; }}
-    .cadivor-user-label {{ color:#94A3B8!important; font-size:9.5px!important; font-weight:900!important; letter-spacing:.15em!important; text-transform:uppercase!important; }}
-    .cadivor-user-name {{ color:#0F172A!important; font-size:14px!important; font-weight:950!important; }}
-    .cadivor-user-company {{ color:#64748B!important; font-size:11px!important; font-weight:800!important; }}
-    .cadivor-avatar {{ width:38px!important; height:38px!important; border-radius:50%!important; display:flex!important; align-items:center!important; justify-content:center!important; background:#EFF6FF!important; color:#2563EB!important; border:1px solid #BFDBFE!important; font-weight:950!important; }}
-    .cadivor-user-menu {{ position:absolute!important; right:0!important; top:100%!important; min-width:248px!important; background:#fff!important; border:1px solid #E5E7EB!important; border-radius:16px!important; box-shadow:0 24px 52px rgba(15,23,42,.14)!important; padding:8px!important; opacity:0!important; transform:translateY(-4px)!important; pointer-events:none!important; transition:opacity .14s ease, transform .14s ease!important; z-index:1000006!important; }}
-    .cadivor-user-menu a {{ display:flex!important; align-items:center!important; justify-content:space-between!important; gap:12px!important; padding:10px 12px!important; border-radius:11px!important; text-decoration:none!important; color:#0F172A!important; font-size:13px!important; font-weight:800!important; }}
-    .cadivor-user-menu a:hover {{ background:#F8FAFC!important; color:#2563EB!important; }}
-    .cadivor-user-menu .danger:hover {{ background:#FEF2F2!important; color:#DC2626!important; }}
-    .cadivor-user-menu-divider {{ height:1px!important; background:#EEF2F7!important; margin:6px 4px!important; }}
-    .cadivor-user-menu-meta {{ padding:10px 12px 8px!important; }}
-    .cadivor-user-menu-meta strong {{ display:block!important; color:#0F172A!important; font-size:13px!important; }}
-    .cadivor-user-menu-meta span {{ display:block!important; color:#64748B!important; font-size:12px!important; margin-top:2px!important; }}
-    .cv-app-sidebar {{
-        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
-        width:var(--cv-sidebar-width)!important; z-index:1000001!important; background:#fff!important;
-        border-right:1px solid #E5E7EB!important; padding:22px 16px 18px!important;
-        box-shadow:14px 0 34px rgba(15,23,42,.035)!important; overflow-y:auto!important; box-sizing:border-box!important;
-    }}
-    .cv-side-brand {{ display:none!important; }}
-    .cv-side-section {{ color:#94A3B8!important; font-size:11px!important; font-weight:900!important; text-transform:uppercase!important; letter-spacing:.09em!important; margin:18px 8px 8px!important; }}
-    .cv-side-section.first {{ margin-top:8px!important; }}
-    .cv-side-nav {{ display:flex!important; flex-direction:column!important; gap:4px!important; }}
-    .cv-side-link {{ display:flex!important; align-items:center!important; gap:10px!important; padding:10px 11px!important; border-radius:12px!important; color:#334155!important; text-decoration:none!important; font-size:13px!important; font-weight:850!important; border:1px solid transparent!important; }}
-    .cv-side-link span {{ width:22px!important; text-align:center!important; color:#64748B!important; }}
-    .cv-side-link:hover {{ background:#F8FAFC!important; color:#0F172A!important; }}
-    .cv-side-link.active {{ background:#EFF6FF!important; border-color:#BFDBFE!important; color:#2563EB!important; }}
-    .cv-side-link.active span {{ color:#2563EB!important; }}
-    .cv-side-plan {{ border:1px solid #E5E7EB!important; border-radius:16px!important; background:#fff!important; padding:14px!important; display:flex!important; flex-direction:column!important; gap:7px!important; }}
-    .cv-side-plan strong {{ color:#0F172A!important; font-size:18px!important; font-weight:950!important; }}
-    .cv-side-plan span {{ color:#64748B!important; font-size:12px!important; font-weight:750!important; }}
-    .cv-side-footer {{ margin-top:18px!important; display:grid!important; gap:8px!important; }}
-    .cv-side-footer a {{ padding:10px 12px!important; border-radius:12px!important; text-decoration:none!important; color:#334155!important; font-weight:850!important; font-size:13px!important; background:#F8FAFC!important; border:1px solid #E5E7EB!important; text-align:center!important; }}
-    .cv-side-footer a:last-child {{ color:#DC2626!important; }}
-    @media(max-width:1000px){{
-        .cadivor-topbar{{position:relative!important;grid-template-columns:1fr!important;height:auto!important;min-height:64px!important;}}
-        .cadivor-topbar-center{{display:none!important;}}
-        .cv-app-sidebar{{position:relative!important;top:auto!important;width:auto!important;}}
-        .main .block-container,[data-testid="stMainBlockContainer"]{{padding:16px!important;}}
-    }}
-    </style>
-    <div id="cadivor-shell-root">
-      <div id="cadivor-topbar-root" class="cadivor-topbar">
-        <div class="cadivor-brand"><div class="cadivor-logo-mark">C</div><div><div class="cadivor-logo-text">Cadivor</div><div class="cadivor-logo-subtitle">Engineering Intelligence</div></div></div>
-        <div class="cadivor-topbar-center"><div class="cadivor-current-page">{app_mode}</div><a class="cadivor-search-pill" href="?page=Dashboard&focus=search" target="_self" style="text-decoration:none!important;">Search BOMs, parts, suppliers…</a><a class="cadivor-top-icon" href="?page=Notifications" target="_self" title="Notifications">●</a><a class="cadivor-top-icon" href="?page=Help" target="_self" title="Help">?</a></div>
-        <div class="cadivor-user-wrap"><div class="cadivor-user"><div class="cadivor-user-meta"><div class="cadivor-user-label">Workspace</div><div class="cadivor-user-name">{shell_name}</div><div class="cadivor-user-company">{shell_company}</div></div><div class="cadivor-avatar">{_shell_avatar}</div></div>{_profile_links}</div>
-      </div>
-      <div id="cadivor-sidebar-root" class="cv-app-sidebar">
-        <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
-        <div class="cv-side-section first">Navigation</div>
-        <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
-        <div class="cv-side-section">Workspace</div>
-        <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span></div>
-        <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
-      </div>
+    <div id="cadivor-sidebar-root" class="cv-app-sidebar">
+      <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
+      <div class="cv-side-section first">Navigation</div>
+      <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
+      <div class="cv-side-section">Workspace</div>
+      <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span></div>
+      <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
     </div>
     ''',
     unsafe_allow_html=True,
 )
 
-# ---------- Dashboard ----------
+# Cadivor v2.8 fixed enterprise shell overrides.
+st.markdown(
+    """
+    <style>
+    :root { --cv-topbar-height: 76px; --cv-sidebar-width: 284px; }
+    /* Enterprise app frame: one global topbar across the full app, sidebar starts below it. */
+    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="stSidebar"], [data-testid="collapsedControl"] {
+        display:none!important; height:0!important; min-height:0!important; visibility:hidden!important;
+    }
+    .stApp, [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
+    .cadivor-topbar {
+        position:fixed!important; top:0!important; left:0!important; right:0!important; z-index:1000002!important;
+        width:100vw!important; min-height:var(--cv-topbar-height)!important; height:var(--cv-topbar-height)!important;
+        margin:0!important; padding:0 22px!important; border-radius:0!important;
+        border:0!important; border-bottom:1px solid #E5E7EB!important;
+        box-shadow:0 10px 28px rgba(15,23,42,.055)!important;
+        display:grid!important; grid-template-columns: var(--cv-sidebar-width) 1fr auto!important; align-items:center!important; gap:22px!important;
+        background:rgba(255,255,255,.98)!important; backdrop-filter:blur(14px)!important;
+        box-sizing:border-box!important;
+    }
+    .cadivor-brand { min-width:0!important; gap:12px!important; }
+    .cadivor-logo-mark { width:44px!important; height:44px!important; border-radius:13px!important; font-size:21px!important; }
+    .cadivor-logo-text { font-size:21px!important; }
+    .cadivor-logo-subtitle { font-size:10.5px!important; letter-spacing:.08em!important; text-transform:uppercase!important; }
+    .cadivor-topbar-center { justify-self:start!important; align-self:center!important; font-size:15px!important; }
+    .cadivor-user { min-width:260px!important; align-self:center!important; }
+    .cv-app-sidebar {
+        top:var(--cv-topbar-height)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        padding-top:20px!important; z-index:1000001!important; box-shadow:14px 0 34px rgba(15,23,42,.035)!important;
+    }
+    .cv-side-brand { display:none!important; }
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
+        margin-left:0!important; width:100vw!important; max-width:100vw!important; padding-top:0!important;
+    }
+    [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"] > div,
+    .main .block-container, [data-testid="stMainBlockContainer"] {
+        padding-top:calc(var(--cv-topbar-height) + 12px)!important;
+        padding-left:calc(var(--cv-sidebar-width) + 24px)!important;
+        padding-right:24px!important; padding-bottom:56px!important;
+        width:100%!important; max-width:none!important; margin:0!important; box-sizing:border-box!important;
+    }
+    .cv-dashboard-header { margin-top:4px!important; margin-bottom:20px!important; align-items:flex-end!important; }
+    .cv-quick-mini { margin-top:0!important; align-self:flex-start!important; }
+    .cv-mini-buttons { display:flex!important; justify-content:flex-end!important; gap:12px!important; }
+    .cv-quick-mini .cv-quick-button { min-width:165px!important; }
+    .cv-title { margin-top:0!important; }
+    @media(max-width:1000px){
+        .cadivor-topbar{grid-template-columns:1fr!important;height:auto!important;min-height:76px!important;padding:12px 16px!important;}
+        .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+        .cv-side-brand{display:flex!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:1rem!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
+
+
+# Cadivor v2.9 enterprise refinement overrides.
+st.markdown(
+    """
+    <style>
+    :root { --cv-topbar-height: 70px!important; --cv-sidebar-width: 284px; }
+
+    /* Make Streamlit chrome invisible as early and as aggressively as possible. */
+    #MainMenu, footer, header, [data-testid="stHeader"], [data-testid="stToolbar"],
+    [data-testid="stDecoration"], [data-testid="stStatusWidget"], .stDeployButton,
+    [data-testid="collapsedControl"], [data-testid="stSidebar"] {
+        display:none!important; visibility:hidden!important; height:0!important; min-height:0!important;
+    }
+
+    /* Enterprise topbar: full-width, compact, and information-dense. */
+    .cadivor-topbar {
+        height:var(--cv-topbar-height)!important;
+        min-height:var(--cv-topbar-height)!important;
+        padding:0 24px!important;
+        grid-template-columns: var(--cv-sidebar-width) minmax(420px, 1fr) auto!important;
+        gap:20px!important;
+        border-bottom:1px solid #E5E7EB!important;
+        background:rgba(255,255,255,.985)!important;
+    }
+    .cadivor-brand { gap:12px!important; }
+    .cadivor-logo-mark { width:42px!important; height:42px!important; border-radius:13px!important; font-size:20px!important; }
+    .cadivor-logo-text { font-size:21px!important; letter-spacing:-.035em!important; }
+    .cadivor-logo-subtitle { font-size:9.5px!important; letter-spacing:.12em!important; }
+    .cadivor-topbar-center {
+        display:flex!important; align-items:center!important; gap:14px!important; min-width:0!important;
+        color:#0F172A!important;
+    }
+    .cadivor-current-page { font-size:15px!important; font-weight:950!important; min-width:128px!important; }
+    .cadivor-search-pill {
+        height:38px; min-width:260px; max-width:520px; flex:1 1 360px;
+        display:flex; align-items:center; padding:0 15px; border:1px solid #E5E7EB;
+        background:#F8FAFC; color:#94A3B8!important; border-radius:999px;
+        font-size:12px; font-weight:800; box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+    }
+    .cadivor-top-icon {
+        width:34px; height:34px; border-radius:999px; display:flex; align-items:center; justify-content:center;
+        border:1px solid #E5E7EB; background:#FFFFFF; color:#64748B!important; font-size:12px; font-weight:950;
+    }
+    .cadivor-top-icon:first-of-type { color:#2563EB!important; }
+    .cadivor-user { min-width:260px!important; }
+    .cadivor-user-name { font-size:14px!important; }
+    .cadivor-user-company { font-size:11px!important; }
+    .cadivor-avatar { width:40px!important; height:40px!important; }
+
+    /* Sidebar polish. */
+    .cv-app-sidebar { top:var(--cv-topbar-height)!important; height:calc(100vh - var(--cv-topbar-height))!important; padding:22px 16px!important; }
+    .cv-side-section { margin-top:20px!important; margin-bottom:10px!important; font-size:10.5px!important; }
+    .cv-side-link { padding:11px 12px!important; gap:12px!important; border-radius:13px!important; font-size:13.2px!important; }
+    .cv-side-link span { font-size:16px!important; width:23px!important; }
+    .cv-side-link.active { box-shadow:0 10px 20px rgba(37,99,235,.07)!important; }
+    .cv-side-link:hover { transform:translateX(3px)!important; }
+
+    /* Main canvas spacing now matches the compact topbar. */
+    [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"] > div,
+    .main .block-container, [data-testid="stMainBlockContainer"] {
+        padding-top:calc(var(--cv-topbar-height) + 12px)!important;
+        padding-left:calc(var(--cv-sidebar-width) + 22px)!important;
+        padding-right:22px!important;
+    }
+
+    /* Dashboard hero and action alignment. */
+    .cv-dashboard-header { margin-top:0!important; margin-bottom:14px!important; align-items:flex-start!important; }
+    .cv-eyebrow { margin-bottom:8px!important; padding:6px 10px!important; }
+    .cv-title { font-size:36px!important; line-height:1.04!important; margin-bottom:8px!important; color:#334155!important; }
+    .cv-subtitle { font-size:14px!important; max-width:660px!important; line-height:1.48!important; }
+    .cv-quick-mini { max-width:390px!important; padding-top:10px!important; }
+    .cv-mini-buttons { gap:10px!important; }
+    .cv-quick-mini .cv-quick-button { min-width:155px!important; padding:10px 14px!important; }
+
+    /* KPI hierarchy. */
+    .cv-metric { min-height:106px!important; padding:16px 18px 14px!important; }
+    .cv-metric-top { margin-bottom:9px!important; }
+    .cv-metric-label { font-size:11.5px!important; }
+    .cv-metric-value { font-size:39px!important; letter-spacing:-.05em!important; margin-bottom:7px!important; }
+    .cv-metric-note { font-size:12.5px!important; }
+    .cv-metric-icon { width:30px!important; height:30px!important; }
+
+    /* Chart and table polish. */
+    .cv-panel, .js-plotly-plot, [data-testid="stDataFrame"], [data-testid="stTable"] {
+        border-radius:16px!important;
+    }
+    .js-plotly-plot { overflow:hidden!important; }
+    .cv-panel-title { margin-top:16px!important; font-size:18px!important; font-weight:950!important; }
+    .cv-panel-copy { margin-bottom:10px!important; color:#64748B!important; }
+    [data-testid="stDataFrame"] { border:1px solid #E5E7EB!important; box-shadow:0 14px 32px rgba(15,23,42,.045)!important; }
+
+    /* Inputs/buttons hover readability. */
+    div.stButton > button:hover, .cv-quick-button:hover { color:#FFFFFF!important; }
+    .cv-quick-button.secondary:hover { color:#1D4ED8!important; }
+
+    @media(max-width:1300px){
+        .cadivor-search-pill{display:none!important;}
+        .cadivor-current-page{min-width:0!important;}
+    }
+    @media(max-width:1000px){
+        .cadivor-topbar{position:relative!important;grid-template-columns:1fr!important;height:auto!important;min-height:74px!important;}
+        .cadivor-topbar-center{display:none!important;}
+        .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+        .cv-side-brand{display:flex!important;}
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:1rem!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+
+# ---------- Shared UI Framework ----------
+inject_premium_css()
+inject_v32_ux_css()
+render_topbar(profile_for_shell, app_mode)
+
+# Cadivor M4.5 — shell gap fix.
+# This replaces the stacked M4.2/M4.4 spacing patches with one layout authority.
+# The earlier patches applied top padding to multiple nested Streamlit containers,
+# which added up and created the large blank area below the fixed top bar.
+st.markdown(
+    """
+    <style id="cadivor-m45-shell-gap-fix">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+    /* Fixed app chrome. */
+    #cadivor-topbar-root, .cadivor-topbar {
+        position:fixed!important; top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+        z-index:1000005!important; margin:0!important; border-radius:0!important;
+    }
+    #cadivor-sidebar-root, .cv-app-sidebar {
+        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        z-index:1000004!important;
+    }
+
+    /* Shell injection rows must not reserve page height. */
+    .element-container:has(#cadivor-topbar-root),
+    .element-container:has(#cadivor-sidebar-root),
+    .element-container:has(.cadivor-topbar),
+    .element-container:has(.cv-app-sidebar),
+    div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root),
+    div[data-testid="stMarkdownContainer"]:has(#cadivor-sidebar-root),
+    div[data-testid="stMarkdownContainer"]:has(.cadivor-topbar),
+    div[data-testid="stMarkdownContainer"]:has(.cv-app-sidebar) {
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
+    }
+
+    /* IMPORTANT: parent containers get zero top padding. Only the real block container gets page offset. */
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"],
+    section.main {
+        padding-top:0!important; margin-top:0!important;
+    }
+    [data-testid="stMain"] > div:not([data-testid="stMainBlockContainer"]),
+    section.main > div:not(.block-container) {
+        padding-top:0!important; margin-top:0!important;
+    }
+
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        max-width:none!important; width:100%!important; box-sizing:border-box!important;
+        margin:0!important;
+        padding-top:78px!important;
+        padding-left:306px!important;
+        padding-right:24px!important;
+        padding-bottom:48px!important;
+    }
+
+    .cv-command-hero, .cv-panel, .card, .kpi-card, .brc-card { margin-top:0!important; }
+    .cv-section-spacer { margin-top:24px!important; }
+    h1:first-child, h2:first-child, h3:first-child, .cv-panel-title:first-child { margin-top:0!important; }
+
+    .cv-page-kicker { color:#2563EB!important; font-size:11px!important; font-weight:950!important; letter-spacing:.12em!important; text-transform:uppercase!important; margin-bottom:8px!important; }
+    .cv-page-title { color:#0F172A!important; font-size:32px!important; font-weight:950!important; letter-spacing:-.04em!important; margin:0 0 8px!important; }
+    .cv-page-subtitle { color:#64748B!important; font-size:14px!important; line-height:1.55!important; margin:0!important; max-width:760px!important; }
+
+    @media(max-width:1100px){
+        #cadivor-topbar-root, .cadivor-topbar, #cadivor-sidebar-root, .cv-app-sidebar{
+            position:relative!important; top:auto!important; width:auto!important; height:auto!important; min-height:auto!important;
+        }
+        .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
+st.markdown(
+    """
+    <style>
+    .cv-v31-pill { display:inline-flex; align-items:center; gap:8px; min-height:32px; padding:0 12px; border-radius:999px; background:#F8FAFC; border:1px solid #E2E8F0; color:#475569!important; font-size:12px; font-weight:850; }
+    .cv-actions-grid { grid-template-columns:repeat(4,minmax(0,1fr))!important; }
+    .cv-action-card { min-height:124px!important; transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+    .cv-action-card:hover { transform:translateY(-3px); box-shadow:0 22px 46px rgba(15,23,42,.09)!important; border-color:#BFDBFE!important; }
+    .cv-action-card a { text-decoration:none!important; color:inherit!important; }
+    .cv-kbd { padding:2px 7px; border:1px solid #CBD5E1; border-radius:7px; background:#FFFFFF; color:#64748B!important; font-size:11px; font-weight:900; }
+    @media(max-width:1250px){ .cv-actions-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;} }
+    @media(max-width:760px){ .cv-actions-grid{grid-template-columns:1fr!important;} }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------- Dashboard ----------
 if app_mode == "Dashboard":
+
+    st.markdown(
+        """
+        <style>
+
+        /* Dashboard-specific styling only. Layout shell is defined globally above. */
+        .main .block-container, [data-testid="stMainBlockContainer"] { padding-left:calc(var(--cv-sidebar-width) + 24px)!important; padding-right:24px!important; max-width:none!important; }
+        .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+        .cv-side-logo { width:38px; height:38px; border-radius:12px; background:#2563EB; color:#fff!important; display:flex; align-items:center; justify-content:center; font-weight:950; box-shadow:0 12px 24px rgba(37,99,235,.25); }
+        .cv-side-name { color:#0F172A!important; font-size:20px; font-weight:950; line-height:1; }
+        .cv-side-sub { color:#64748B!important; font-size:10px; font-weight:800; margin-top:4px; letter-spacing:.04em; text-transform:uppercase; }
+        .cv-side-user { display:flex; gap:12px; align-items:center; padding:13px; border:1px solid #E5E7EB; border-radius:16px; background:#F8FAFC; margin-bottom:22px; }
+        .cv-side-avatar { width:38px; height:38px; border-radius:50%; background:#EFF6FF; color:#2563EB!important; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; font-weight:950; flex:0 0 auto; }
+        .cv-side-user strong { display:block; color:#0F172A!important; font-size:14px; font-weight:950; line-height:1.2; }
+        .cv-side-user small { display:block; color:#64748B!important; font-size:11px; font-weight:700; line-height:1.35; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .cv-side-section { color:#94A3B8!important; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.09em; margin:18px 8px 8px; }
+    .cv-side-section.first { margin-top:8px; }
+        .cv-side-nav { display:flex; flex-direction:column; gap:4px; }
+        .cv-side-link { display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; color:#334155!important; text-decoration:none!important; font-size:13px; font-weight:800; border:1px solid transparent; }
+        .cv-side-link span { width:22px; text-align:center; color:#64748B!important; font-size:15px; }
+        .cv-side-link:hover { background:#F8FAFC; color:#0F172A!important; transform:translateX(2px); transition:all .16s ease; }
+        .cv-side-link.active { background:#EFF6FF; border-color:#BFDBFE; color:#2563EB!important; }
+        .cv-side-link.active span { color:#2563EB!important; }
+        .cv-side-plan { border:1px solid #E5E7EB; border-radius:16px; background:#FFFFFF; padding:14px; display:flex; flex-direction:column; gap:7px; }
+        .cv-side-plan strong { color:#0F172A!important; font-size:18px; font-weight:950; }
+        .cv-side-plan span { color:#64748B!important; font-size:12px; font-weight:750; }
+        .cv-side-footer { margin-top:20px; display:grid; gap:8px; }
+        .cv-side-footer a { padding:10px 12px; border-radius:12px; text-decoration:none!important; color:#334155!important; font-weight:850; font-size:13px; background:#F8FAFC; border:1px solid #E5E7EB; }
+        .cv-side-footer a:last-child { color:#DC2626!important; }
+        .cadivor-topbar {
+            margin-top: 0;
+            margin-bottom: 22px;
+            padding: 12px 18px;
+            background: rgba(255,255,255,.97);
+            border: 1px solid #E5E7EB;
+            border-radius: 18px;
+            box-shadow: 0 12px 32px rgba(15,23,42,.055);
+            display: grid;
+            grid-template-columns: 280px 1fr auto;
+            align-items: center;
+            gap: 22px;
+            width: 100%;
+        }
+        .cadivor-brand { display:flex; align-items:center; gap:14px; min-width:260px; }
+        .cadivor-logo-mark {
+            width: 46px; height: 46px; border-radius: 14px;
+            display:flex; align-items:center; justify-content:center;
+            background:#2563EB; color:#FFFFFF!important; font-weight:900; font-size:22px;
+            box-shadow:0 12px 22px rgba(37,99,235,.22);
+        }
+        .cadivor-logo-text { color:#0F172A!important; font-size:22px; font-weight:950; line-height:1; letter-spacing:-.02em; }
+        .cadivor-logo-subtitle { color:#64748B!important; font-size:11.5px; font-weight:800; margin-top:4px; letter-spacing:.02em; }
+        .cadivor-topbar-center { color:#0F172A!important; font-size:15px; font-weight:850; justify-self:start; }
+        .cadivor-user { display:flex; align-items:center; gap:12px; justify-content:flex-end; min-width:280px; }
+        .cadivor-user-label { color:#94A3B8!important; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.08em; text-align:right; }
+        .cadivor-user-email { color:#64748B!important; font-size:12px; font-weight:700; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .cadivor-user-name { color:#0F172A!important; font-size:15px; font-weight:900; text-align:right; line-height:1.15; }
+        .cadivor-user-company { color:#64748B!important; font-size:12px; font-weight:700; text-align:right; margin-top:2px; }
+        .cadivor-avatar { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:950; border:1px solid #BFDBFE; overflow:hidden; }
+        .cadivor-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+
+        .cv-dashboard-header {
+            display:flex; align-items:flex-start; justify-content:space-between; gap:24px;
+            margin: 2px 0 14px 0;
+        }
+        .cv-eyebrow {
+            display:inline-flex; align-items:center; gap:8px;
+            padding:7px 11px; border-radius:999px;
+            background:#EFF6FF; color:#2563EB!important;
+            font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase;
+            margin-bottom:10px;
+        }
+        .cv-title { font-size:40px; line-height:1.05; font-weight:950; color:#0F172A!important; letter-spacing:-.045em; margin:0 0 8px 0; }
+        .cv-subtitle { color:#64748B!important; font-size:15px; line-height:1.55; max-width:760px; margin:0; }
+        .cv-action-row { display:flex; gap:10px; justify-content:flex-end; align-items:center; padding-top:8px; }
+        .cv-action-row-label { color:#94A3B8!important; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; text-align:right; padding-top:0; margin-bottom:8px; }
+        .cv-quick-card { background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px; padding:14px; box-shadow:0 14px 32px rgba(15,23,42,.055); display:grid; gap:8px; }
+        .cv-quick-copy { color:#64748B!important; font-size:12px; font-weight:700; margin-bottom:2px; text-align:right; }
+    .cv-quick-button { display:block; text-align:center; text-decoration:none!important; background:#2563EB; color:#FFFFFF!important; border-radius:10px; padding:11px 14px; font-weight:850; box-shadow:0 12px 24px rgba(37,99,235,.20); }
+    .cv-quick-button:hover { background:#1D4ED8; color:#FFFFFF!important; transform:translateY(-1px); transition:all .16s ease; }
+    .cv-quick-button.secondary { background:#F8FAFC; color:#2563EB!important; border:1px solid #BFDBFE; box-shadow:none; }
+    .cv-quick-button.secondary:hover { background:#EFF6FF; color:#1D4ED8!important; }
+        .cv-action-row div.stButton > button { min-width:132px!important; width:auto!important; }
+
+        .cv-metric {
+            background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px;
+            padding:18px 18px 16px 18px; box-shadow:0 14px 32px rgba(15,23,42,.055);
+            min-height:118px; position:relative; overflow:hidden;
+        }
+        .cv-metric:before { content:""; position:absolute; inset:0 0 auto 0; height:3px; background:#2563EB; opacity:.88; }
+        .cv-metric.cv-danger:before { background:#DC2626; }
+        .cv-metric.cv-warning:before { background:#F59E0B; }
+        .cv-metric.cv-success:before { background:#16A34A; }
+        .cv-metric-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+        .cv-metric-label { color:#64748B!important; font-size:12px; font-weight:850; letter-spacing:.035em; text-transform:uppercase; }
+        .cv-metric-icon { width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:#F8FAFC; border:1px solid #E5E7EB; font-size:16px; }
+        .cv-metric-value { color:#0F172A!important; font-size:38px; line-height:1; font-weight:950; letter-spacing:-.04em; margin-bottom:8px; }
+        .cv-metric-note { color:#64748B!important; font-size:13px; font-weight:700; }
+        .cv-badge { display:inline-flex; padding:5px 9px; border-radius:999px; font-size:11px; font-weight:850; border:1px solid #BFDBFE; color:#2563EB!important; background:#EFF6FF; }
+        .cv-badge.success { color:#047857!important; background:#ECFDF5; border-color:#A7F3D0; }
+        .cv-badge.warning { color:#B45309!important; background:#FFFBEB; border-color:#FDE68A; }
+        .cv-badge.danger { color:#B91C1C!important; background:#FEF2F2; border-color:#FECACA; }
+
+        .cv-panel {
+            background:#FFFFFF; border:1px solid #E5E7EB; border-radius:16px;
+            padding:18px; box-shadow:0 14px 32px rgba(15,23,42,.055); margin-top:16px;
+        }
+        .cv-panel-title { color:#0F172A!important; font-size:18px; font-weight:950; letter-spacing:-.025em; margin-bottom:4px; }
+        .cv-panel-copy { color:#64748B!important; font-size:13px; margin-bottom:14px; }
+        .cv-snapshot-main { color:#0F172A!important; font-size:22px; font-weight:900; line-height:1.2; margin:10px 0 12px; }
+        .cv-snapshot-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+        .cv-snapshot-item { background:#F8FAFC; border:1px solid #E5E7EB; border-radius:12px; padding:12px; }
+        .cv-snapshot-item span { color:#64748B!important; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; display:block; margin-bottom:7px; }
+        .cv-snapshot-item strong { color:#0F172A!important; font-size:22px; font-weight:950; }
+        .cv-actions-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:16px; }
+        .cv-action-card { background:#FFFFFF; border:1px solid #E5E7EB; border-radius:15px; padding:16px; box-shadow:0 12px 28px rgba(15,23,42,.045); }
+        .cv-action-icon { width:34px; height:34px; border-radius:11px; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; font-weight:900; margin-bottom:10px; }
+        .cv-action-title { color:#0F172A!important; font-size:14px; font-weight:900; margin-bottom:4px; }
+        .cv-action-copy { color:#64748B!important; font-size:12px; line-height:1.45; }
+        .cv-section-spacer { margin-top:36px; }
+        @media(max-width:1000px){ .cv-app-sidebar{position:relative;width:auto;height:auto;box-shadow:none;border-right:0;border-bottom:1px solid #E5E7EB;} .main .block-container{padding-left:1rem!important;padding-right:1rem!important;} .cv-dashboard-header{display:block;} .cv-action-row{justify-content:flex-start;padding-top:14px;} .cv-actions-grid{grid-template-columns:1fr 1fr;} }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Cadivor v3.0 dashboard polish overrides: shell rhythm, KPI hierarchy, and table finish.
+    st.markdown(
+        """
+        <style>
+        :root { --cv-topbar-height: 64px!important; --cv-sidebar-width: 284px!important; }
+
+        /* Keep Streamlit chrome suppressed without showing native navigation during reruns. */
+        header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"],
+        [data-testid="stSidebar"], section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+            display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
+        }
+
+        /* Enterprise shell alignment. */
+        .cadivor-topbar {
+            position:fixed!important; top:0!important; left:0!important; right:0!important; z-index:999998!important;
+            height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+            margin:0!important; padding:0 20px!important; border-radius:0!important; border:0!important;
+            border-bottom:1px solid #E5E7EB!important; box-shadow:0 12px 28px rgba(15,23,42,.045)!important;
+            background:rgba(255,255,255,.985)!important;
+            grid-template-columns: var(--cv-sidebar-width) minmax(360px,1fr) auto!important;
+        }
+        .cadivor-brand { min-width:0!important; gap:12px!important; }
+        .cadivor-logo-mark { width:40px!important; height:40px!important; border-radius:12px!important; font-size:20px!important; }
+        .cadivor-logo-text { font-size:22px!important; }
+        .cadivor-logo-subtitle { font-size:9.5px!important; letter-spacing:.16em!important; text-transform:uppercase!important; }
+        .cadivor-topbar-center { display:flex!important; align-items:center!important; gap:16px!important; min-width:0!important; }
+        .cadivor-current-page { min-width:132px!important; font-size:14px!important; font-weight:950!important; }
+        .cadivor-search-pill {
+            max-width:360px!important; height:36px!important; background:#F8FAFC!important;
+            border:1px solid #E2E8F0!important; color:#94A3B8!important; font-size:12px!important;
+        }
+        .cadivor-top-icon { width:32px!important; height:32px!important; box-shadow:none!important; }
+        .cadivor-user { min-width:260px!important; }
+        .cadivor-user-label { font-size:9.5px!important; }
+        .cadivor-user-name { font-size:14px!important; }
+        .cadivor-user-company { font-size:11px!important; }
+        .cadivor-avatar { width:38px!important; height:38px!important; }
+
+        .cv-app-sidebar {
+            position:fixed!important; top:var(--cv-topbar-height)!important; left:0!important; bottom:0!important;
+            height:calc(100vh - var(--cv-topbar-height))!important; width:var(--cv-sidebar-width)!important;
+            padding:22px 16px 18px!important; z-index:999997!important;
+            box-shadow:14px 0 34px rgba(15,23,42,.035)!important;
+        }
+
+        [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"] > div,
+        .main .block-container, [data-testid="stMainBlockContainer"] {
+            padding-top:calc(var(--cv-topbar-height) + 12px)!important;
+            padding-left:calc(var(--cv-sidebar-width) + 22px)!important;
+            padding-right:22px!important; padding-bottom:56px!important; max-width:none!important; width:100%!important;
+        }
+
+        /* Dashboard rhythm: less wasted vertical space, more premium hierarchy. */
+        .cv-dashboard-header { margin-top:0!important; margin-bottom:12px!important; align-items:flex-end!important; }
+        .cv-eyebrow { margin-bottom:9px!important; padding:6px 10px!important; font-size:10.5px!important; }
+        .cv-title { font-size:36px!important; line-height:1.04!important; margin-bottom:10px!important; letter-spacing:-.045em!important; }
+        .cv-subtitle { max-width:760px!important; font-size:14px!important; line-height:1.55!important; }
+        .cv-quick-mini { max-width:340px!important; padding-top:0!important; margin-top:0!important; }
+        .cv-quick-mini .cv-action-row-label { margin-bottom:7px!important; }
+        .cv-mini-buttons { display:grid!important; grid-template-columns:1fr 1fr!important; gap:10px!important; }
+        .cv-quick-mini .cv-quick-button { min-width:0!important; padding:10px 15px!important; border-radius:12px!important; }
+
+        .cv-metric { min-height:112px!important; padding:18px 18px 16px!important; border-radius:17px!important; transition:transform .16s ease, box-shadow .16s ease!important; }
+        .cv-metric:hover { transform:translateY(-2px)!important; box-shadow:0 20px 42px rgba(15,23,42,.075)!important; }
+        .cv-metric-label { font-size:11px!important; letter-spacing:.06em!important; }
+        .cv-metric-icon { width:31px!important; height:31px!important; border-radius:10px!important; }
+        .cv-metric-value { font-size:42px!important; line-height:.95!important; margin-bottom:9px!important; }
+        .cv-metric-note { font-size:12px!important; font-weight:850!important; }
+
+        .cv-panel-title { font-size:18px!important; margin-bottom:3px!important; }
+        .cv-panel-copy { font-size:12.5px!important; margin-bottom:12px!important; }
+        div[data-testid="stPlotlyChart"] {
+            background:#FFFFFF!important; border:1px solid #E5E7EB!important; border-radius:17px!important;
+            box-shadow:0 14px 32px rgba(15,23,42,.045)!important; padding:10px!important;
+        }
+        .js-plotly-plot { border-radius:14px!important; overflow:hidden!important; }
+
+        .cv-panel { border-radius:17px!important; padding:19px!important; }
+        .cv-snapshot-grid { gap:11px!important; }
+        .cv-snapshot-item { border-radius:14px!important; }
+
+        /* Dataframes: softer enterprise table treatment. */
+        [data-testid="stDataFrame"] {
+            border-radius:16px!important; border:1px solid #E5E7EB!important; overflow:hidden!important;
+            box-shadow:0 14px 34px rgba(15,23,42,.045)!important; background:#FFFFFF!important;
+        }
+        [data-testid="stDataFrame"] [role="columnheader"] {
+            background:#F8FAFC!important; color:#64748B!important; font-size:12px!important; font-weight:900!important;
+        }
+        [data-testid="stDataFrame"] [role="gridcell"] {
+            background:#FFFFFF!important; color:#0F172A!important; border-bottom:1px solid #EEF2F7!important;
+        }
+        [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] { background:#F8FAFC!important; }
+
+        .cv-actions-grid { gap:14px!important; }
+        .cv-action-card { border-radius:17px!important; transition:transform .16s ease, box-shadow .16s ease!important; }
+        .cv-action-card:hover { transform:translateY(-2px)!important; box-shadow:0 18px 38px rgba(15,23,42,.07)!important; }
+
+        @media(max-width:1100px){
+            .cadivor-topbar{position:relative!important;grid-template-columns:1fr!important;height:auto!important;min-height:70px!important;padding:12px 16px!important;}
+            .cadivor-topbar-center{display:none!important;}
+            .cv-app-sidebar{position:relative!important;top:auto!important;width:auto!important;height:auto!important;}
+            .main .block-container,[data-testid="stMainBlockContainer"]{padding:1rem!important;}
+            .cv-dashboard-header{display:block!important;}
+            .cv-quick-mini{margin-left:0!important;margin-top:16px!important;max-width:none!important;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Load dashboard data once for this page.
     analysis_response = (
@@ -3503,43 +4044,88 @@ Unlock more power:
                     st.rerun()
 
 
-# Cadivor M4.6 — final visual gap compression.
-# This targets the remaining empty Streamlit wrapper space before the first real page section.
-components.html(
+
+# Cadivor M4.13 — stable top-gap correction.
+# This deliberately avoids JavaScript DOM compression, which caused menu/layout regressions.
+# It compresses only the first visible content row while preserving the fixed shell and dropdown menu.
+st.markdown(
     """
-    <script>
-    function cadivorCompressTopGap(){
-      const doc = window.parent.document;
-      const desiredTop = 76;
-      const firstContent = doc.querySelector('.cv-command-hero, .brc-hero, .cadivor-page-header, .cv-page-title, .cv-panel-title, h1, h2');
-      if (!firstContent) return;
+    <style id="cadivor-m413-stable-top-gap-fix">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
 
-      let firstRow = firstContent.closest('.element-container');
-      if (!firstRow) {
-        let el = firstContent.parentElement;
-        for (let i = 0; i < 10 && el; i++) {
-          const cls = el.className ? String(el.className) : '';
-          if (cls.includes('element-container')) { firstRow = el; break; }
-          el = el.parentElement;
-        }
-      }
-      if (!firstRow) return;
-
-      const currentTop = firstContent.getBoundingClientRect().top;
-      const delta = Math.round(currentTop - desiredTop);
-
-      // Only compress excessive whitespace; never push content upward into the top bar.
-      if (delta > 28) {
-        firstRow.style.marginTop = `-${delta}px`;
-      }
+    /* Keep app chrome stable. */
+    .cadivor-topbar {
+        position:fixed!important; top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+        z-index:1000002!important; margin:0!important; border-radius:0!important;
     }
-    cadivorCompressTopGap();
-    setTimeout(cadivorCompressTopGap, 100);
-    setTimeout(cadivorCompressTopGap, 350);
-    setTimeout(cadivorCompressTopGap, 800);
-    setTimeout(cadivorCompressTopGap, 1400);
-    window.addEventListener('resize', cadivorCompressTopGap);
-    </script>
+    .cv-app-sidebar {
+        position:fixed!important; top:var(--cv-topbar-height)!important; left:0!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        z-index:1000001!important;
+    }
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        max-width:none!important; width:100%!important; box-sizing:border-box!important;
+        padding-left:calc(var(--cv-sidebar-width) + 22px)!important;
+        padding-right:22px!important;
+        padding-top:calc(var(--cv-topbar-height) + 12px)!important;
+        padding-bottom:52px!important;
+    }
+
+    /* Collapse wrapper rows that contain only fixed-position shell HTML. */
+    .element-container:has(#cadivor-topbar-root),
+    .element-container:has(#cadivor-sidebar-root) {
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
+    }
+
+    /* The real issue is an accumulated Streamlit row before the first page section.
+       Move only the first content section upward. This avoids breaking the topbar menu. */
+    .element-container:has(.cv-command-hero),
+    .element-container:has(.brc-hero),
+    .element-container:has(.cadivor-page-header) {
+        margin-top:-210px!important;
+    }
+
+    /* Pages that start with a plain card instead of a hero. */
+    .element-container:has(.card-title):first-of-type,
+    .element-container:has(.brc-card):first-of-type {
+        margin-top:-210px!important;
+    }
+
+    /* Restore premium topbar profile dropdown styling. */
+    .cadivor-user-wrap { position:relative!important; justify-self:end!important; }
+    .cadivor-user-wrap:hover .cadivor-user-menu { opacity:1!important; transform:translateY(0)!important; pointer-events:auto!important; }
+    .cadivor-user { cursor:pointer!important; }
+    .cadivor-user-menu {
+        position:absolute!important; right:0!important; top:calc(100% + 8px)!important; min-width:248px!important;
+        background:#FFFFFF!important; border:1px solid #E5E7EB!important; border-radius:16px!important;
+        box-shadow:0 24px 52px rgba(15,23,42,.14)!important; padding:8px!important;
+        opacity:0!important; transform:translateY(-4px)!important; pointer-events:none!important;
+        transition:opacity .14s ease, transform .14s ease!important; z-index:1000006!important;
+    }
+    .cadivor-user-menu a {
+        display:flex!important; align-items:center!important; justify-content:space-between!important; gap:12px!important;
+        padding:10px 12px!important; border-radius:11px!important; text-decoration:none!important;
+        color:#0F172A!important; font-size:13px!important; font-weight:800!important;
+    }
+    .cadivor-user-menu a:hover { background:#F8FAFC!important; color:#2563EB!important; }
+    .cadivor-user-menu .danger:hover { background:#FEF2F2!important; color:#DC2626!important; }
+    .cadivor-user-menu-divider { height:1px!important; background:#EEF2F7!important; margin:6px 4px!important; }
+    .cadivor-user-menu-meta { padding:10px 12px 8px!important; }
+    .cadivor-user-menu-meta strong { display:block!important; color:#0F172A!important; font-size:13px!important; }
+    .cadivor-user-menu-meta span { display:block!important; color:#64748B!important; font-size:12px!important; margin-top:2px!important; }
+
+    @media(max-width:1100px){
+        .element-container:has(.cv-command-hero),
+        .element-container:has(.brc-hero),
+        .element-container:has(.cadivor-page-header),
+        .element-container:has(.card-title):first-of-type,
+        .element-container:has(.brc-card):first-of-type { margin-top:0!important; }
+        .cadivor-topbar, .cv-app-sidebar { position:relative!important; top:auto!important; width:auto!important; height:auto!important; }
+        .main .block-container, [data-testid="stMainBlockContainer"] { padding:16px!important; }
+    }
+    </style>
     """,
-    height=0,
+    unsafe_allow_html=True,
 )
