@@ -1275,7 +1275,6 @@ shell_email = profile_for_shell.get("email") or current_user.get("email", "")
 shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:2] or "C"
 
 import urllib.parse as _urlparse
-import json as _json
 
 # Global Cadivor application shell CSS. Keep this outside individual pages so
 # Dashboard, BOM Analyzer, Monitoring, Reports, Pricing, Settings, and About
@@ -1414,7 +1413,8 @@ for _nav in NAV_OPTIONS:
     _href = "?page=" + _urlparse.quote(_nav)
     _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
 
-_sidebar_html = f"""
+st.markdown(
+    f'''
     <div id="cadivor-sidebar-root" class="cv-app-sidebar">
       <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
       <div class="cv-side-section first">Navigation</div>
@@ -1423,17 +1423,8 @@ _sidebar_html = f"""
       <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span></div>
       <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
     </div>
-    """
-components.html(
-    f"""
-    <script>
-    const doc = window.parent.document;
-    const existing = doc.getElementById('cadivor-sidebar-root');
-    if (existing) existing.remove();
-    doc.body.insertAdjacentHTML('beforeend', {_json.dumps(_sidebar_html)});
-    </script>
-    """,
-    height=0,
+    ''',
+    unsafe_allow_html=True,
 )
 
 # Cadivor v2.8 fixed enterprise shell overrides.
@@ -1613,52 +1604,6 @@ inject_premium_css()
 inject_v32_ux_css()
 render_topbar(profile_for_shell, app_mode)
 
-
-# Cadivor M4.12 — authoritative stable shell spacing.
-st.markdown(
-    """
-    <style id="cadivor-m412-stable-shell">
-    :root { --cv-topbar-height: 64px!important; --cv-sidebar-width: 284px!important; }
-    #MainMenu, footer, header[data-testid="stHeader"], [data-testid="stToolbar"],
-    [data-testid="stDecoration"], [data-testid="stStatusWidget"], .stDeployButton,
-    [data-testid="stSidebar"], [data-testid="collapsedControl"] {
-        display:none!important; visibility:hidden!important; height:0!important; min-height:0!important;
-    }
-    .stApp, [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
-    #cadivor-topbar-root, .cadivor-topbar {
-        position:fixed!important; top:0!important; left:0!important; right:0!important;
-        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
-        width:100vw!important; z-index:1000005!important; margin:0!important; border-radius:0!important;
-    }
-    #cadivor-sidebar-root, .cv-app-sidebar {
-        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
-        width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
-        z-index:1000004!important;
-    }
-    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
-        margin:0!important; padding:0!important; width:100vw!important; max-width:100vw!important;
-    }
-    .main .block-container, [data-testid="stMainBlockContainer"] {
-        max-width:none!important; width:100%!important; box-sizing:border-box!important;
-        margin:0!important;
-        padding-top:calc(var(--cv-topbar-height) + 14px)!important;
-        padding-left:calc(var(--cv-sidebar-width) + 24px)!important;
-        padding-right:24px!important;
-        padding-bottom:48px!important;
-    }
-    iframe[title="streamlit-component" i] { min-height:0!important; height:0!important; display:block!important; }
-    .cv-command-hero, .brc-hero, .cadivor-page-header { margin-top:0!important; }
-    @media(max-width:1100px){
-        #cadivor-topbar-root, .cadivor-topbar, #cadivor-sidebar-root, .cv-app-sidebar{
-            position:relative!important; top:auto!important; width:auto!important; height:auto!important; min-height:auto!important;
-        }
-        .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
 # Cadivor M4.5 — shell gap fix.
 # This replaces the stacked M4.2/M4.4 spacing patches with one layout authority.
 # The earlier patches applied top padding to multiple nested Streamlit containers,
@@ -1732,7 +1677,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# M4.12: removed JS shell compression. Topbar/sidebar are now zero-height parent-document components.
 
 # Cadivor v3.1 UX polish layer: dropdowns, premium empty states, and clickable action cards.
 st.markdown(
@@ -4100,5 +4044,88 @@ Unlock more power:
                     st.rerun()
 
 
-# M4.12: removed unsafe visual gap compression component.
 
+# Cadivor M4.13 — stable top-gap correction.
+# This deliberately avoids JavaScript DOM compression, which caused menu/layout regressions.
+# It compresses only the first visible content row while preserving the fixed shell and dropdown menu.
+st.markdown(
+    """
+    <style id="cadivor-m413-stable-top-gap-fix">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+
+    /* Keep app chrome stable. */
+    .cadivor-topbar {
+        position:fixed!important; top:0!important; left:0!important; right:0!important;
+        height:var(--cv-topbar-height)!important; min-height:var(--cv-topbar-height)!important;
+        z-index:1000002!important; margin:0!important; border-radius:0!important;
+    }
+    .cv-app-sidebar {
+        position:fixed!important; top:var(--cv-topbar-height)!important; left:0!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        z-index:1000001!important;
+    }
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        max-width:none!important; width:100%!important; box-sizing:border-box!important;
+        padding-left:calc(var(--cv-sidebar-width) + 22px)!important;
+        padding-right:22px!important;
+        padding-top:calc(var(--cv-topbar-height) + 12px)!important;
+        padding-bottom:52px!important;
+    }
+
+    /* Collapse wrapper rows that contain only fixed-position shell HTML. */
+    .element-container:has(#cadivor-topbar-root),
+    .element-container:has(#cadivor-sidebar-root) {
+        height:0!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important;
+    }
+
+    /* The real issue is an accumulated Streamlit row before the first page section.
+       Move only the first content section upward. This avoids breaking the topbar menu. */
+    .element-container:has(.cv-command-hero),
+    .element-container:has(.brc-hero),
+    .element-container:has(.cadivor-page-header) {
+        margin-top:-210px!important;
+    }
+
+    /* Pages that start with a plain card instead of a hero. */
+    .element-container:has(.card-title):first-of-type,
+    .element-container:has(.brc-card):first-of-type {
+        margin-top:-210px!important;
+    }
+
+    /* Restore premium topbar profile dropdown styling. */
+    .cadivor-user-wrap { position:relative!important; justify-self:end!important; }
+    .cadivor-user-wrap:hover .cadivor-user-menu { opacity:1!important; transform:translateY(0)!important; pointer-events:auto!important; }
+    .cadivor-user { cursor:pointer!important; }
+    .cadivor-user-menu {
+        position:absolute!important; right:0!important; top:calc(100% + 8px)!important; min-width:248px!important;
+        background:#FFFFFF!important; border:1px solid #E5E7EB!important; border-radius:16px!important;
+        box-shadow:0 24px 52px rgba(15,23,42,.14)!important; padding:8px!important;
+        opacity:0!important; transform:translateY(-4px)!important; pointer-events:none!important;
+        transition:opacity .14s ease, transform .14s ease!important; z-index:1000006!important;
+    }
+    .cadivor-user-menu a {
+        display:flex!important; align-items:center!important; justify-content:space-between!important; gap:12px!important;
+        padding:10px 12px!important; border-radius:11px!important; text-decoration:none!important;
+        color:#0F172A!important; font-size:13px!important; font-weight:800!important;
+    }
+    .cadivor-user-menu a:hover { background:#F8FAFC!important; color:#2563EB!important; }
+    .cadivor-user-menu .danger:hover { background:#FEF2F2!important; color:#DC2626!important; }
+    .cadivor-user-menu-divider { height:1px!important; background:#EEF2F7!important; margin:6px 4px!important; }
+    .cadivor-user-menu-meta { padding:10px 12px 8px!important; }
+    .cadivor-user-menu-meta strong { display:block!important; color:#0F172A!important; font-size:13px!important; }
+    .cadivor-user-menu-meta span { display:block!important; color:#64748B!important; font-size:12px!important; margin-top:2px!important; }
+
+    @media(max-width:1100px){
+        .element-container:has(.cv-command-hero),
+        .element-container:has(.brc-hero),
+        .element-container:has(.cadivor-page-header),
+        .element-container:has(.card-title):first-of-type,
+        .element-container:has(.brc-card):first-of-type { margin-top:0!important; }
+        .cadivor-topbar, .cv-app-sidebar { position:relative!important; top:auto!important; width:auto!important; height:auto!important; }
+        .main .block-container, [data-testid="stMainBlockContainer"] { padding:16px!important; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
