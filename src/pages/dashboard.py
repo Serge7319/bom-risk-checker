@@ -758,16 +758,18 @@ def render_dashboard(
                 parts = int(item.get("total_parts", 0) or 0)
                 cls = _health_class(h)
                 high_cls = "bad" if high else "good"
+                analysis_id = html.escape(str(item.get("id") or ""), quote=True)
+                detail_href = f"?page=Analysis%20Details&analysis_id={analysis_id}" if analysis_id else "?page=BOM%20Analyzer"
                 meta = f"{filename} • {_relative_date(item.get('created_at'))} • {parts} parts"
                 rows_html.append(
-                    f'<div class="cv-v4-analysis-row">'
+                    f'<a class="cv-v4-analysis-row" href="{detail_href}" target="_self" style="text-decoration:none!important;color:inherit!important;">'
                     f'<div><div class="cv-v4-analysis-title">{project}</div>'
                     f'<div class="cv-v4-analysis-meta">{html.escape(meta)}</div></div>'
                     f'<div class="cv-v4-row-pills">'
                     f'<span class="cv-v4-score {cls}">{h} health</span>'
                     f'<span class="cv-v4-score {high_cls}">{high} high</span>'
-                    f'<a class="cv-v4-open" href="?page=BOM%20Analyzer" target="_self">View →</a>'
-                    f'</div></div>'
+                    f'<span class="cv-v4-open">View →</span>'
+                    f'</div></a>'
                 )
             st.markdown(f'<div class="cv-v4-analysis-list">{"".join(rows_html)}</div>', unsafe_allow_html=True)
         else:
