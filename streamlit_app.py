@@ -1866,7 +1866,7 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
 
-    # Cadivor Dashboard v2 — engineering intelligence command center.
+    # Cadivor Dashboard v3 — Enterprise Engineering Intelligence.
     # Content-only update: no shell/topbar/sidebar changes.
     def _cv_icon(kind="sparkles"):
         icons = {
@@ -1922,56 +1922,76 @@ if app_mode == "Dashboard":
     st.markdown(
         f'''
         <style>
-        .cv-v2-hero {{
-            border:1px solid rgba(147,197,253,.92); border-radius:22px;
-            background:radial-gradient(circle at 86% 12%, rgba(37,99,235,.12), transparent 33%), linear-gradient(135deg, rgba(255,255,255,.98), rgba(239,246,255,.86));
-            box-shadow:0 24px 58px rgba(15,23,42,.075); padding:26px 30px; margin:0 0 16px 0;
-            display:grid; grid-template-columns:minmax(0,1fr) 270px; gap:26px; align-items:center;
-        }}
-        .cv-v2-eyebrow {{ display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB!important; font-size:10px; font-weight:950; letter-spacing:.11em; text-transform:uppercase; margin-bottom:13px; }}
-        .cv-v2-eyebrow svg, .cv-v2-btn svg, .cv-v2-section-label svg {{ width:15px; height:15px; }}
-        .cv-v2-title {{ color:#071126!important; font-size:34px; line-height:1.03; font-weight:950; letter-spacing:-.052em; margin:0 0 10px 0; }}
-        .cv-v2-subtitle {{ color:#475569!important; font-size:14px; line-height:1.48; max-width:760px; margin:0 0 16px 0; }}
-        .cv-v2-actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
-        .cv-v2-btn {{ display:inline-flex; align-items:center; gap:8px; padding:11px 15px; border-radius:12px; font-size:13px; font-weight:900; text-decoration:none!important; transition:all .16s ease; }}
-        .cv-v2-btn.primary {{ background:#2563EB; color:#FFFFFF!important; box-shadow:0 14px 28px rgba(37,99,235,.22); border:1px solid #2563EB; }}
-        .cv-v2-btn.secondary {{ background:#FFFFFF; color:#2563EB!important; border:1px solid #BFDBFE; }}
-        .cv-v2-btn:hover {{ transform:translateY(-2px); box-shadow:0 18px 38px rgba(15,23,42,.10); }}
-        .cv-v2-health-card {{ background:rgba(255,255,255,.96); border:1px solid #E2E8F0; border-radius:18px; padding:21px; box-shadow:0 18px 44px rgba(15,23,42,.070); }}
-        .cv-v2-health-label {{ color:#64748B!important; font-size:11px; font-weight:950; letter-spacing:.085em; text-transform:uppercase; margin-bottom:10px; }}
-        .cv-v2-health-value {{ color:#071126!important; font-size:42px; font-weight:950; letter-spacing:-.05em; line-height:.95; margin-bottom:8px; }}
-        .cv-v2-health-note {{ color:#2563EB!important; font-size:12px; font-weight:900; margin-bottom:10px; }}
-        .cv-v2-meter {{ height:8px; border-radius:999px; background:#E2E8F0; overflow:hidden; }}
-        .cv-v2-meter span {{ display:block; height:100%; width:{max(0, min(100, int(avg_health_score or 0)))}%; background:linear-gradient(90deg,#2563EB,#16A34A); border-radius:999px; }}
-        .cv-v2-intelligence {{ display:grid; grid-template-columns:1.12fr 1fr 1fr; gap:14px; margin:0 0 16px 0; }}
-        .cv-v2-intel-card {{ background:rgba(255,255,255,.97); border:1px solid #E2E8F0; border-radius:18px; box-shadow:0 18px 44px rgba(15,23,42,.060); padding:16px; display:flex; gap:13px; min-height:112px; transition:all .16s ease; }}
-        .cv-v2-intel-card:hover {{ transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 26px 60px rgba(15,23,42,.085); }}
-        .cv-v2-icon {{ width:38px; height:38px; border-radius:13px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; border:1px solid #DBEAFE; background:#EFF6FF; color:#2563EB!important; }}
-        .cv-v2-icon svg {{ width:19px; height:19px; }}
-        .cv-v2-icon.warn {{ background:#FFFBEB; border-color:#FDE68A; color:#B45309!important; }}
-        .cv-v2-icon.danger {{ background:#FEF2F2; border-color:#FECACA; color:#DC2626!important; }}
-        .cv-v2-intel-kicker {{ color:#64748B!important; font-size:10px; font-weight:950; letter-spacing:.09em; text-transform:uppercase; margin-bottom:5px; }}
-        .cv-v2-intel-title {{ color:#0B1220!important; font-size:14px; font-weight:950; letter-spacing:-.02em; margin-bottom:5px; }}
-        .cv-v2-intel-copy {{ color:#52647A!important; font-size:12px; line-height:1.42; font-weight:700; }}
-        .cv-v2-badge {{ display:inline-flex; margin-top:8px; border-radius:999px; padding:5px 9px; background:#F8FAFC; border:1px solid #E2E8F0; color:#334155!important; font-size:10.5px; font-weight:900; }}
-        .cv-v2-section-label {{ display:flex; align-items:center; gap:8px; color:#64748B!important; font-size:11px; font-weight:950; letter-spacing:.08em; text-transform:uppercase; margin:4px 0 10px; }}
-        @media(max-width:1180px){{ .cv-v2-hero{{grid-template-columns:1fr;}} .cv-v2-intelligence{{grid-template-columns:1fr;}} }}
+        /* Cadivor Dashboard v3 — Enterprise Engineering Intelligence. Content-only dashboard layer. */
+        .cv-v3-command {{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:18px; margin:0 0 18px 0; }}
+        .cv-v3-command-main {{ border:1px solid rgba(147,197,253,.92); border-radius:24px; background:radial-gradient(circle at 92% 12%, rgba(37,99,235,.11), transparent 32%), linear-gradient(135deg, rgba(255,255,255,.99), rgba(239,246,255,.88)); box-shadow:0 24px 62px rgba(15,23,42,.075); padding:24px 28px; }}
+        .cv-v3-kicker {{ display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB!important; font-size:10px; font-weight:950; letter-spacing:.12em; text-transform:uppercase; margin-bottom:13px; }}
+        .cv-v3-kicker svg, .cv-v3-action svg, .cv-v3-label svg, .cv-v3-icon svg {{ width:16px; height:16px; }}
+        .cv-v3-title {{ color:#071126!important; font-size:33px; line-height:1.03; font-weight:950; letter-spacing:-.055em; margin:0 0 8px; }}
+        .cv-v3-subtitle {{ color:#475569!important; font-size:14px; line-height:1.5; max-width:840px; margin:0 0 16px; }}
+        .cv-v3-summary-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:16px 0 16px; }}
+        .cv-v3-summary-item {{ background:rgba(255,255,255,.76); border:1px solid rgba(226,232,240,.95); border-radius:15px; padding:11px 12px; box-shadow:inset 0 1px 0 rgba(255,255,255,.75); }}
+        .cv-v3-summary-label {{ color:#64748B!important; font-size:9.8px; font-weight:950; letter-spacing:.09em; text-transform:uppercase; margin-bottom:5px; }}
+        .cv-v3-summary-value {{ color:#071126!important; font-size:22px; line-height:1; font-weight:950; letter-spacing:-.04em; }}
+        .cv-v3-summary-note {{ color:#64748B!important; font-size:11px; font-weight:800; margin-top:4px; }}
+        .cv-v3-actions {{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }}
+        .cv-v3-action {{ display:inline-flex; align-items:center; gap:8px; padding:11px 15px; border-radius:13px; font-size:12.5px; font-weight:950; text-decoration:none!important; transition:all .16s ease; }}
+        .cv-v3-action.primary {{ background:#2563EB; color:#FFFFFF!important; border:1px solid #2563EB; box-shadow:0 16px 30px rgba(37,99,235,.24); }}
+        .cv-v3-action.secondary {{ background:#FFFFFF; color:#2563EB!important; border:1px solid #BFDBFE; }}
+        .cv-v3-action:hover {{ transform:translateY(-2px); box-shadow:0 20px 42px rgba(15,23,42,.12); }}
+        .cv-v3-next {{ background:linear-gradient(180deg,#FFFFFF,#F8FAFC); border:1px solid #E2E8F0; border-radius:24px; box-shadow:0 24px 62px rgba(15,23,42,.065); padding:21px; display:flex; flex-direction:column; justify-content:space-between; }}
+        .cv-v3-next-top {{ display:flex; align-items:flex-start; gap:13px; }}
+        .cv-v3-icon {{ width:42px; height:42px; border-radius:15px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; color:#2563EB!important; background:#EFF6FF; border:1px solid #BFDBFE; }}
+        .cv-v3-icon.danger {{ color:#DC2626!important; background:#FEF2F2; border-color:#FECACA; }}
+        .cv-v3-icon.warn {{ color:#B45309!important; background:#FFFBEB; border-color:#FDE68A; }}
+        .cv-v3-next-title {{ color:#0B1220!important; font-size:15px; line-height:1.22; font-weight:950; letter-spacing:-.02em; margin-bottom:6px; }}
+        .cv-v3-next-copy {{ color:#52647A!important; font-size:12.5px; line-height:1.45; font-weight:760; }}
+        .cv-v3-health-meter {{ height:8px; border-radius:999px; background:#E2E8F0; overflow:hidden; margin-top:16px; }}
+        .cv-v3-health-meter span {{ display:block; height:100%; width:{max(0, min(100, int(avg_health_score or 0)))}%; background:linear-gradient(90deg,#2563EB,#16A34A); border-radius:999px; }}
+        .cv-v3-label {{ display:flex; align-items:center; gap:8px; color:#64748B!important; font-size:11px; font-weight:950; letter-spacing:.08em; text-transform:uppercase; margin:2px 0 10px; }}
+        .cv-v3-intel-grid {{ display:grid; grid-template-columns:1.15fr 1fr 1fr; gap:14px; margin:0 0 16px; }}
+        .cv-v3-intel-card {{ background:rgba(255,255,255,.98); border:1px solid #E2E8F0; border-radius:18px; box-shadow:0 18px 44px rgba(15,23,42,.055); padding:15px; display:grid; grid-template-columns:auto 1fr; gap:13px; min-height:104px; transition:all .16s ease; }}
+        .cv-v3-intel-card:hover {{ transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 26px 58px rgba(15,23,42,.080); }}
+        .cv-v3-intel-kicker {{ color:#64748B!important; font-size:10px; font-weight:950; letter-spacing:.09em; text-transform:uppercase; margin-bottom:5px; }}
+        .cv-v3-intel-title {{ color:#0B1220!important; font-size:14px; font-weight:950; letter-spacing:-.02em; margin-bottom:5px; }}
+        .cv-v3-intel-copy {{ color:#52647A!important; font-size:12px; line-height:1.42; font-weight:730; }}
+        .cv-v3-badge {{ display:inline-flex; margin-top:8px; border-radius:999px; padding:5px 9px; background:#F8FAFC; border:1px solid #E2E8F0; color:#334155!important; font-size:10.5px; font-weight:950; }}
+        .cv-metric {{ min-height:96px!important; padding:15px 17px 14px!important; }}
+        .cv-metric-value {{ font-size:38px!important; }}
+        .cv-panel-title {{ font-size:18px!important; }}
+        div[data-testid="stPlotlyChart"] {{ padding:10px!important; }}
+        .cv-v2-analysis-row {{ box-shadow:0 10px 26px rgba(15,23,42,.042)!important; }}
+        @media(max-width:1200px){{ .cv-v3-command{{grid-template-columns:1fr;}} .cv-v3-intel-grid{{grid-template-columns:1fr;}} .cv-v3-summary-grid{{grid-template-columns:repeat(2,minmax(0,1fr));}} }}
+        @media(max-width:760px){{ .cv-v3-summary-grid{{grid-template-columns:1fr;}} .cv-v3-title{{font-size:28px;}} }}
         </style>
-        <section class="cv-v2-hero">
-          <div>
-            <div class="cv-v2-eyebrow">{_cv_icon('sparkles')} Cadivor command center</div>
-            <h1 class="cv-v2-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
-            <p class="cv-v2-subtitle">Engineering intelligence for BOM health, supplier exposure, lifecycle changes, and replacement decisions.</p>
-            <div class="cv-v2-actions">
-              <a class="cv-v2-btn primary" href="?page=BOM%20Analyzer" target="_self">{_cv_icon('layers')} Run new BOM analysis</a>
-              <a class="cv-v2-btn secondary" href="?page=Alternative%20Finder" target="_self">{_cv_icon('git')} Find alternatives</a>
+        <section class="cv-v3-command">
+          <div class="cv-v3-command-main">
+            <div class="cv-v3-kicker">{_cv_icon('sparkles')} Enterprise engineering intelligence</div>
+            <h1 class="cv-v3-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
+            <p class="cv-v3-subtitle">Cadivor is monitoring BOM health, lifecycle movement, supplier exposure, and replacement readiness across your engineering portfolio.</p>
+            <div class="cv-v3-summary-grid">
+              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">Portfolio health</div><div class="cv-v3-summary-value">{avg_health_score}</div><div class="cv-v3-summary-note">{html.escape(str(health_badge))}</div></div>
+              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">High risk</div><div class="cv-v3-summary-value">{total_high_risk}</div><div class="cv-v3-summary-note">Components need review</div></div>
+              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">Monitoring</div><div class="cv-v3-summary-value">{alert_count}</div><div class="cv-v3-summary-note">{high_alert_count} high severity</div></div>
+              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">Alternatives</div><div class="cv-v3-summary-value">{alternatives_found}</div><div class="cv-v3-summary-note">Candidate records</div></div>
+            </div>
+            <div class="cv-v3-actions">
+              <a class="cv-v3-action primary" href="?page=BOM%20Analyzer" target="_self">{_cv_icon('layers')} Run BOM analysis</a>
+              <a class="cv-v3-action secondary" href="?page=Monitoring" target="_self">{_cv_icon('radar')} Review alerts</a>
+              <a class="cv-v3-action secondary" href="?page=Alternative%20Finder" target="_self">{_cv_icon('git')} Find alternatives</a>
             </div>
           </div>
-          <aside class="cv-v2-health-card">
-            <div class="cv-v2-health-label">Portfolio health</div>
-            <div class="cv-v2-health-value">{avg_health_score}</div>
-            <div class="cv-v2-health-note">{html.escape(str(health_badge))}</div>
-            <div class="cv-v2-meter"><span></span></div>
+          <aside class="cv-v3-next">
+            <div class="cv-v3-next-top">
+              <div class="cv-v3-icon {'danger' if total_high_risk else 'warn' if alert_count else ''}">{_cv_icon('alert' if total_high_risk else 'radar' if alert_count else 'shield')}</div>
+              <div>
+                <div class="cv-v3-intel-kicker">Recommended next action</div>
+                <div class="cv-v3-next-title">{html.escape(latest_project_for_hero)}</div>
+                <div class="cv-v3-next-copy">{html.escape(primary_action)}</div>
+                <span class="cv-v3-badge">{html.escape(str(primary_action_badge))}</span>
+              </div>
+            </div>
+            <div class="cv-v3-health-meter"><span></span></div>
           </aside>
         </section>
         ''',
@@ -1983,31 +2003,31 @@ if app_mode == "Dashboard":
 
     st.markdown(
         f'''
-        <div class="cv-v2-section-label">{_cv_icon('sparkles')} Executive intelligence</div>
-        <section class="cv-v2-intelligence">
-          <div class="cv-v2-intel-card">
-            <div class="cv-v2-icon {'danger' if total_high_risk else ''}">{_cv_icon('alert' if total_high_risk else 'shield')}</div>
+        <div class="cv-v3-label">{_cv_icon('sparkles')} Executive intelligence</div>
+        <section class="cv-v3-intel-grid">
+          <div class="cv-v3-intel-card">
+            <div class="cv-v3-icon {'danger' if total_high_risk else ''}">{_cv_icon('alert' if total_high_risk else 'shield')}</div>
             <div>
-              <div class="cv-v2-intel-kicker">Priority signal</div>
-              <div class="cv-v2-intel-title">{total_high_risk} component{'s' if total_high_risk != 1 else ''} need review</div>
-              <div class="cv-v2-intel-copy">{health_delta_text}</div>
-              <span class="cv-v2-badge">{html.escape(str(primary_action_badge))}</span>
+              <div class="cv-v3-intel-kicker">Priority signal</div>
+              <div class="cv-v3-intel-title">{total_high_risk} component{'s' if total_high_risk != 1 else ''} need review</div>
+              <div class="cv-v3-intel-copy">{health_delta_text}</div>
+              <span class="cv-v3-badge">{html.escape(str(primary_action_badge))}</span>
             </div>
           </div>
-          <div class="cv-v2-intel-card">
-            <div class="cv-v2-icon warn">{_cv_icon('radar')}</div>
+          <div class="cv-v3-intel-card">
+            <div class="cv-v3-icon warn">{_cv_icon('radar')}</div>
             <div>
-              <div class="cv-v2-intel-kicker">Supplier & lifecycle</div>
-              <div class="cv-v2-intel-title">{alert_count} active monitoring alert{'s' if alert_count != 1 else ''}</div>
-              <div class="cv-v2-intel-copy"><strong>{html.escape(top_alert_part)}</strong>: {html.escape(top_alert_message)}</div>
+              <div class="cv-v3-intel-kicker">Supplier & lifecycle</div>
+              <div class="cv-v3-intel-title">{alert_count} active monitoring alert{'s' if alert_count != 1 else ''}</div>
+              <div class="cv-v3-intel-copy"><strong>{html.escape(top_alert_part)}</strong>: {html.escape(top_alert_message)}</div>
             </div>
           </div>
-          <div class="cv-v2-intel-card">
-            <div class="cv-v2-icon">{_cv_icon('git')}</div>
+          <div class="cv-v3-intel-card">
+            <div class="cv-v3-icon">{_cv_icon('git')}</div>
             <div>
-              <div class="cv-v2-intel-kicker">Recommended next action</div>
-              <div class="cv-v2-intel-title">{html.escape(latest_project_for_hero)}</div>
-              <div class="cv-v2-intel-copy">{html.escape(primary_action)}</div>
+              <div class="cv-v3-intel-kicker">Replacement readiness</div>
+              <div class="cv-v3-intel-title">{alternatives_found} alternative candidate{'s' if alternatives_found != 1 else ''}</div>
+              <div class="cv-v3-intel-copy">Use Alternative Finder to validate lower-risk replacements for priority components.</div>
             </div>
           </div>
         </section>
