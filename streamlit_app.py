@@ -44,6 +44,7 @@ from src.ui.framework import (
     dashboard_insight_card,
 )
 from src.pages.dashboard import render_dashboard
+from src.pages.analysis_detail import render_analysis_detail
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -1266,7 +1267,7 @@ if "pending_app_mode" in st.session_state:
 else:
     app_mode = _qp_value("page", st.session_state.get("app_mode", "Dashboard"))
 
-if app_mode not in NAV_OPTIONS:
+if app_mode not in NAV_OPTIONS and app_mode != "Analysis Details":
     app_mode = "Dashboard"
 st.session_state["app_mode"] = app_mode
 
@@ -1375,6 +1376,16 @@ if app_mode == "Dashboard":
         light_plotly_layout=light_plotly_layout,
         empty_state=empty_state,
         get_user_profile=get_user_profile,
+        _qp_value=_qp_value,
+    )
+    st.stop()
+
+if app_mode == "Analysis Details":
+    render_analysis_detail(
+        current_user=current_user,
+        supabase=supabase,
+        load_analysis_history=load_analysis_history,
+        light_plotly_layout=light_plotly_layout,
         _qp_value=_qp_value,
     )
     st.stop()
