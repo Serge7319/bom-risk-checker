@@ -1764,20 +1764,6 @@ if app_mode == "Dashboard":
             .cv-actions-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
             .cv-title{font-size:31px!important;}
         }
-        /* M4.16 — Executive intelligence strip, dashboard-only. */
-        .cv-exec-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:12px 0 14px 0; }
-        .cv-exec-chip { background:rgba(255,255,255,.96); border:1px solid #E2E8F0; border-radius:16px; box-shadow:0 14px 32px rgba(15,23,42,.045); padding:13px 15px; display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:72px; transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
-        .cv-exec-chip:hover { transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 22px 48px rgba(15,23,42,.075); }
-        .cv-exec-kicker { color:#64748B!important; font-size:10.5px; font-weight:950; letter-spacing:.075em; text-transform:uppercase; margin-bottom:5px; }
-        .cv-exec-value { color:#071126!important; font-size:21px; font-weight:950; letter-spacing:-.04em; line-height:1; }
-        .cv-exec-note { color:#52647A!important; font-size:11.5px; font-weight:750; margin-top:4px; }
-        .cv-exec-icon { width:34px; height:34px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; background:#EFF6FF; color:#2563EB!important; border:1px solid #DBEAFE; font-size:15px; font-weight:950; }
-        .cv-exec-icon.warning { background:#FFFBEB; color:#B45309!important; border-color:#FDE68A; }
-        .cv-exec-icon.danger { background:#FEF2F2; color:#B91C1C!important; border-color:#FECACA; }
-        .cv-exec-icon.success { background:#ECFDF5; color:#047857!important; border-color:#A7F3D0; }
-        @media(max-width:1200px){ .cv-exec-strip{grid-template-columns:repeat(2,minmax(0,1fr));} }
-        @media(max-width:760px){ .cv-exec-strip{grid-template-columns:1fr;} }
-
         @media(max-width:760px){
             .cv-actions-grid{grid-template-columns:1fr!important;}
             .cv-metric-value{font-size:36px!important;}
@@ -1880,44 +1866,114 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
 
-    # Milestone 4.2 premium dashboard hero.
-    dashboard_command_center(
-        greeting_prefix,
-        user_name,
-        "Monitor BOM health, supplier exposure, saved analyses, alternatives, and active alerts from one Cadivor command center.",
-        avg_health_score,
-        health_badge,
-    )
+    # Cadivor Dashboard v2 — engineering intelligence command center.
+    # Content-only update: no shell/topbar/sidebar changes.
+    def _cv_icon(kind="sparkles"):
+        icons = {
+            "sparkles": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/></svg>',
+            "shield": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
+            "alert": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+            "radar": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 1 1 4.93 19.07"/><path d="M12 12 4.93 4.93"/><path d="M16.24 7.76A6 6 0 1 1 7.76 16.24"/><circle cx="12" cy="12" r="2"/></svg>',
+            "git": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v2a7 7 0 0 0 7 7h2"/><path d="M6 9v12"/></svg>',
+            "layers": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>',
+        }
+        return icons.get(kind, icons["sparkles"])
 
-    # Milestone 4.16 — Executive intelligence strip.
-    # Dashboard-content only; no shell, sidebar, or topbar changes.
-    portfolio_note = "Review recommended" if avg_health_score < 80 else "Healthy portfolio"
-    risk_note = "Needs review" if total_high_risk else "No high-risk parts"
-    alert_note = f"{high_alert_count} high severity" if alert_count else "No active alerts"
-    alt_note = "Recommendations saved" if alternatives_found else "Start replacement search"
-    portfolio_icon_kind = "success" if avg_health_score >= 80 else "warning" if avg_health_score >= 55 else "danger"
-    risk_icon_kind = "danger" if total_high_risk else "success"
-    alert_icon_kind = "warning" if alert_count else "success"
+    latest_project_for_hero = (latest_analysis.get("project_name") or latest_analysis.get("filename")) if latest_analysis else "Upload your first BOM"
+    top_alert_part = "No active alerts"
+    top_alert_message = "Monitoring is clear across saved components."
+    if alert_data:
+        top_alert_part = str(alert_data[0].get("part_number") or "Monitored component")
+        top_alert_message = str(alert_data[0].get("alert_message") or alert_data[0].get("alert_type") or "Lifecycle or sourcing change detected.")
+        if len(top_alert_message) > 118:
+            top_alert_message = top_alert_message[:115] + "..."
+
+    if total_high_risk > 0:
+        primary_action = "Review high-risk components before the next build release."
+        primary_action_badge = "Engineering review"
+    elif alert_count > 0:
+        primary_action = "Open Monitoring and resolve supplier or lifecycle changes."
+        primary_action_badge = "Monitoring review"
+    elif alternatives_found == 0:
+        primary_action = "Run Alternative Finder on your highest-volume components."
+        primary_action_badge = "Replacement search"
+    else:
+        primary_action = "Portfolio is stable. Continue periodic monitoring."
+        primary_action_badge = "Stable posture"
+
+    if len(analysis_data) >= 2:
+        try:
+            _sorted_health = sorted(
+                [a for a in analysis_data if a.get("health_score") is not None],
+                key=lambda x: str(x.get("created_at", "")),
+                reverse=True,
+            )
+            latest_health_for_delta = int(_sorted_health[0].get("health_score") or 0)
+            prior_health_for_delta = int(_sorted_health[1].get("health_score") or 0)
+            health_delta = latest_health_for_delta - prior_health_for_delta
+            delta_word = "improved" if health_delta > 0 else "declined" if health_delta < 0 else "held steady"
+            point_word = "points" if abs(health_delta) != 1 else "point"
+            health_delta_text = f"Portfolio health {delta_word} {abs(health_delta)} {point_word} versus the previous saved analysis."
+        except Exception:
+            health_delta_text = "Portfolio trend is being tracked across saved BOM analyses."
+    else:
+        health_delta_text = "Run another BOM analysis to unlock portfolio health trend intelligence."
+
     st.markdown(
         f'''
-        <div class="cv-exec-strip">
-          <div class="cv-exec-chip">
-            <div><div class="cv-exec-kicker">Portfolio</div><div class="cv-exec-value">{avg_health_score}</div><div class="cv-exec-note">{portfolio_note}</div></div>
-            <div class="cv-exec-icon {portfolio_icon_kind}">↗</div>
+        <style>
+        .cv-v2-hero {{
+            border:1px solid rgba(147,197,253,.92); border-radius:22px;
+            background:radial-gradient(circle at 86% 12%, rgba(37,99,235,.12), transparent 33%), linear-gradient(135deg, rgba(255,255,255,.98), rgba(239,246,255,.86));
+            box-shadow:0 24px 58px rgba(15,23,42,.075); padding:26px 30px; margin:0 0 16px 0;
+            display:grid; grid-template-columns:minmax(0,1fr) 270px; gap:26px; align-items:center;
+        }}
+        .cv-v2-eyebrow {{ display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB!important; font-size:10px; font-weight:950; letter-spacing:.11em; text-transform:uppercase; margin-bottom:13px; }}
+        .cv-v2-eyebrow svg, .cv-v2-btn svg, .cv-v2-section-label svg {{ width:15px; height:15px; }}
+        .cv-v2-title {{ color:#071126!important; font-size:34px; line-height:1.03; font-weight:950; letter-spacing:-.052em; margin:0 0 10px 0; }}
+        .cv-v2-subtitle {{ color:#475569!important; font-size:14px; line-height:1.48; max-width:760px; margin:0 0 16px 0; }}
+        .cv-v2-actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
+        .cv-v2-btn {{ display:inline-flex; align-items:center; gap:8px; padding:11px 15px; border-radius:12px; font-size:13px; font-weight:900; text-decoration:none!important; transition:all .16s ease; }}
+        .cv-v2-btn.primary {{ background:#2563EB; color:#FFFFFF!important; box-shadow:0 14px 28px rgba(37,99,235,.22); border:1px solid #2563EB; }}
+        .cv-v2-btn.secondary {{ background:#FFFFFF; color:#2563EB!important; border:1px solid #BFDBFE; }}
+        .cv-v2-btn:hover {{ transform:translateY(-2px); box-shadow:0 18px 38px rgba(15,23,42,.10); }}
+        .cv-v2-health-card {{ background:rgba(255,255,255,.96); border:1px solid #E2E8F0; border-radius:18px; padding:21px; box-shadow:0 18px 44px rgba(15,23,42,.070); }}
+        .cv-v2-health-label {{ color:#64748B!important; font-size:11px; font-weight:950; letter-spacing:.085em; text-transform:uppercase; margin-bottom:10px; }}
+        .cv-v2-health-value {{ color:#071126!important; font-size:42px; font-weight:950; letter-spacing:-.05em; line-height:.95; margin-bottom:8px; }}
+        .cv-v2-health-note {{ color:#2563EB!important; font-size:12px; font-weight:900; margin-bottom:10px; }}
+        .cv-v2-meter {{ height:8px; border-radius:999px; background:#E2E8F0; overflow:hidden; }}
+        .cv-v2-meter span {{ display:block; height:100%; width:{max(0, min(100, int(avg_health_score or 0)))}%; background:linear-gradient(90deg,#2563EB,#16A34A); border-radius:999px; }}
+        .cv-v2-intelligence {{ display:grid; grid-template-columns:1.12fr 1fr 1fr; gap:14px; margin:0 0 16px 0; }}
+        .cv-v2-intel-card {{ background:rgba(255,255,255,.97); border:1px solid #E2E8F0; border-radius:18px; box-shadow:0 18px 44px rgba(15,23,42,.060); padding:16px; display:flex; gap:13px; min-height:112px; transition:all .16s ease; }}
+        .cv-v2-intel-card:hover {{ transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 26px 60px rgba(15,23,42,.085); }}
+        .cv-v2-icon {{ width:38px; height:38px; border-radius:13px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; border:1px solid #DBEAFE; background:#EFF6FF; color:#2563EB!important; }}
+        .cv-v2-icon svg {{ width:19px; height:19px; }}
+        .cv-v2-icon.warn {{ background:#FFFBEB; border-color:#FDE68A; color:#B45309!important; }}
+        .cv-v2-icon.danger {{ background:#FEF2F2; border-color:#FECACA; color:#DC2626!important; }}
+        .cv-v2-intel-kicker {{ color:#64748B!important; font-size:10px; font-weight:950; letter-spacing:.09em; text-transform:uppercase; margin-bottom:5px; }}
+        .cv-v2-intel-title {{ color:#0B1220!important; font-size:14px; font-weight:950; letter-spacing:-.02em; margin-bottom:5px; }}
+        .cv-v2-intel-copy {{ color:#52647A!important; font-size:12px; line-height:1.42; font-weight:700; }}
+        .cv-v2-badge {{ display:inline-flex; margin-top:8px; border-radius:999px; padding:5px 9px; background:#F8FAFC; border:1px solid #E2E8F0; color:#334155!important; font-size:10.5px; font-weight:900; }}
+        .cv-v2-section-label {{ display:flex; align-items:center; gap:8px; color:#64748B!important; font-size:11px; font-weight:950; letter-spacing:.08em; text-transform:uppercase; margin:4px 0 10px; }}
+        @media(max-width:1180px){{ .cv-v2-hero{{grid-template-columns:1fr;}} .cv-v2-intelligence{{grid-template-columns:1fr;}} }}
+        </style>
+        <section class="cv-v2-hero">
+          <div>
+            <div class="cv-v2-eyebrow">{_cv_icon('sparkles')} Cadivor command center</div>
+            <h1 class="cv-v2-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
+            <p class="cv-v2-subtitle">Engineering intelligence for BOM health, supplier exposure, lifecycle changes, and replacement decisions.</p>
+            <div class="cv-v2-actions">
+              <a class="cv-v2-btn primary" href="?page=BOM%20Analyzer" target="_self">{_cv_icon('layers')} Run new BOM analysis</a>
+              <a class="cv-v2-btn secondary" href="?page=Alternative%20Finder" target="_self">{_cv_icon('git')} Find alternatives</a>
+            </div>
           </div>
-          <div class="cv-exec-chip">
-            <div><div class="cv-exec-kicker">High Risk</div><div class="cv-exec-value">{total_high_risk}</div><div class="cv-exec-note">{risk_note}</div></div>
-            <div class="cv-exec-icon {risk_icon_kind}">!</div>
-          </div>
-          <div class="cv-exec-chip">
-            <div><div class="cv-exec-kicker">Monitoring</div><div class="cv-exec-value">{alert_count}</div><div class="cv-exec-note">{alert_note}</div></div>
-            <div class="cv-exec-icon {alert_icon_kind}">●</div>
-          </div>
-          <div class="cv-exec-chip">
-            <div><div class="cv-exec-kicker">Alternatives</div><div class="cv-exec-value">{alternatives_found}</div><div class="cv-exec-note">{alt_note}</div></div>
-            <div class="cv-exec-icon">⇄</div>
-          </div>
-        </div>
+          <aside class="cv-v2-health-card">
+            <div class="cv-v2-health-label">Portfolio health</div>
+            <div class="cv-v2-health-value">{avg_health_score}</div>
+            <div class="cv-v2-health-note">{html.escape(str(health_badge))}</div>
+            <div class="cv-v2-meter"><span></span></div>
+          </aside>
+        </section>
         ''',
         unsafe_allow_html=True,
     )
@@ -1925,37 +1981,44 @@ if app_mode == "Dashboard":
     if _qp_value("focus", "") == "search":
         render_global_search_panel(current_user["id"])
 
-    # Milestone 4.2 insight strip: gives the dashboard an executive recommendation layer.
-    insight_col_1, insight_col_2, insight_col_3 = st.columns(3)
-    with insight_col_1:
-        dashboard_insight_card(
-            "Priority review",
-            f"{total_high_risk} high-risk part{'s' if total_high_risk != 1 else ''} across the saved portfolio.",
-            "Review" if total_high_risk else "Stable",
-            "danger" if total_high_risk else "success",
-            "!",
-        )
-    with insight_col_2:
-        dashboard_insight_card(
-            "Monitoring posture",
-            f"{alert_count} active alert{'s' if alert_count != 1 else ''}; {high_alert_count} marked high severity.",
-            "Watch" if alert_count else "Clear",
-            "warning" if alert_count else "success",
-            "●",
-        )
-    with insight_col_3:
-        dashboard_insight_card(
-            "Replacement intelligence",
-            f"{alternatives_found} alternative recommendation record{'s' if alternatives_found != 1 else ''} saved.",
-            "Explore" if alternatives_found else "Start",
-            "info" if alternatives_found else "muted",
-            "⇄",
-        )
+    st.markdown(
+        f'''
+        <div class="cv-v2-section-label">{_cv_icon('sparkles')} Executive intelligence</div>
+        <section class="cv-v2-intelligence">
+          <div class="cv-v2-intel-card">
+            <div class="cv-v2-icon {'danger' if total_high_risk else ''}">{_cv_icon('alert' if total_high_risk else 'shield')}</div>
+            <div>
+              <div class="cv-v2-intel-kicker">Priority signal</div>
+              <div class="cv-v2-intel-title">{total_high_risk} component{'s' if total_high_risk != 1 else ''} need review</div>
+              <div class="cv-v2-intel-copy">{health_delta_text}</div>
+              <span class="cv-v2-badge">{html.escape(str(primary_action_badge))}</span>
+            </div>
+          </div>
+          <div class="cv-v2-intel-card">
+            <div class="cv-v2-icon warn">{_cv_icon('radar')}</div>
+            <div>
+              <div class="cv-v2-intel-kicker">Supplier & lifecycle</div>
+              <div class="cv-v2-intel-title">{alert_count} active monitoring alert{'s' if alert_count != 1 else ''}</div>
+              <div class="cv-v2-intel-copy"><strong>{html.escape(top_alert_part)}</strong>: {html.escape(top_alert_message)}</div>
+            </div>
+          </div>
+          <div class="cv-v2-intel-card">
+            <div class="cv-v2-icon">{_cv_icon('git')}</div>
+            <div>
+              <div class="cv-v2-intel-kicker">Recommended next action</div>
+              <div class="cv-v2-intel-title">{html.escape(latest_project_for_hero)}</div>
+              <div class="cv-v2-intel-copy">{html.escape(primary_action)}</div>
+            </div>
+          </div>
+        </section>
+        ''',
+        unsafe_allow_html=True,
+    )
 
     # KPI row: compact, side-by-side, and information dense.
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
-        _metric("Portfolio Health", avg_health_score, health_badge, "↗", health_kind)
+        _metric("Portfolio Health", avg_health_score, health_badge, "🛡", health_kind)
     with kpi2:
         risk_kind = "danger" if total_high_risk else "success"
         _metric("High-Risk Parts", total_high_risk, "Needs Review" if total_high_risk else "No high-risk parts", "⚠", risk_kind)
@@ -2034,56 +2097,53 @@ if app_mode == "Dashboard":
     with activity_col:
         st.markdown('<div class="cv-panel-title">Recent Analyses</div><div class="cv-panel-copy">Latest saved BOM reviews and risk results.</div>', unsafe_allow_html=True)
         if analysis_data:
-            recent_df = pd.DataFrame(analysis_data).copy()
-            recent_df["created_at"] = pd.to_datetime(recent_df["created_at"], errors="coerce").dt.strftime("%Y-%m-%d")
-            if "project_name" not in recent_df.columns:
-                recent_df["project_name"] = recent_df.get("filename", "Untitled")
-            for col in ["project_name", "filename", "created_at", "total_parts", "health_score", "high_risk_count"]:
-                if col not in recent_df.columns:
-                    recent_df[col] = ""
-            recent_display_df = recent_df[["project_name", "filename", "created_at", "total_parts", "health_score", "high_risk_count"]].rename(
-                columns={
-                    "project_name": "Project",
-                    "filename": "File",
-                    "created_at": "Date",
-                    "total_parts": "Parts",
-                    "health_score": "Health",
-                    "high_risk_count": "High Risk",
-                }
-            ).head(7)
-
-            rows = []
-            for _, row in recent_display_df.iterrows():
-                health_value = int(row.get("Health", 0) or 0)
-                health_class = "good" if health_value >= 80 else "warn" if health_value >= 55 else "bad"
-                rows.append(
-                    "<tr>"
-                    f"<td><span class='cv-table-project'>{html.escape(str(row.get('Project', 'Untitled')))}</span></td>"
-                    f"<td class='cv-table-muted'>{html.escape(str(row.get('File', '—')))}</td>"
-                    f"<td class='cv-table-muted'>{html.escape(str(row.get('Date', '—')))}</td>"
-                    f"<td>{html.escape(str(row.get('Parts', '—')))}</td>"
-                    f"<td><span class='cv-health-pill {health_class}'>{health_value}</span></td>"
-                    f"<td>{html.escape(str(row.get('High Risk', '—')))}</td>"
-                    "</tr>"
-                )
-
             st.markdown(
-                """
-                <div class="cv-table-card">
-                  <table class="cv-table">
-                    <thead>
-                      <tr>
-                        <th>Project</th><th>File</th><th>Date</th><th>Parts</th><th>Health</th><th>High risk</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                """ + "".join(rows) + """
-                    </tbody>
-                  </table>
-                </div>
-                """,
+                '''
+                <style>
+                .cv-v2-analysis-list { display:grid; gap:10px; }
+                .cv-v2-analysis-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; gap:12px; align-items:center; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:15px; padding:12px 14px; box-shadow:0 12px 28px rgba(15,23,42,.045); transition:all .16s ease; }
+                .cv-v2-analysis-row:hover { transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 20px 46px rgba(15,23,42,.075); }
+                .cv-v2-analysis-name { color:#0B1220!important; font-size:13px; font-weight:950; letter-spacing:-.01em; margin-bottom:4px; }
+                .cv-v2-analysis-meta { color:#64748B!important; font-size:11.5px; font-weight:750; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                .cv-v2-chip { display:inline-flex; justify-content:center; min-width:56px; border-radius:999px; padding:6px 9px; font-size:11px; font-weight:950; border:1px solid #E2E8F0; background:#F8FAFC; color:#334155!important; }
+                .cv-v2-chip.good { color:#047857!important; background:#ECFDF5; border-color:#A7F3D0; }
+                .cv-v2-chip.warn { color:#B45309!important; background:#FFFBEB; border-color:#FDE68A; }
+                .cv-v2-chip.bad { color:#B91C1C!important; background:#FEF2F2; border-color:#FECACA; }
+                .cv-v2-view { color:#2563EB!important; font-size:12px; font-weight:950; }
+                @media(max-width:900px){ .cv-v2-analysis-row{grid-template-columns:1fr 1fr;} }
+                </style>
+                <div class="cv-v2-analysis-list">
+                ''',
                 unsafe_allow_html=True,
             )
+            for item in analysis_data[:6]:
+                project = html.escape(str(item.get("project_name") or item.get("filename") or "Saved BOM analysis"))
+                filename = html.escape(str(item.get("filename") or "—"))
+                created = item.get("created_at", "—")
+                try:
+                    created = pd.to_datetime(created).strftime("%b %d")
+                except Exception:
+                    pass
+                parts = html.escape(str(item.get("total_parts", "—")))
+                high = int(item.get("high_risk_count", 0) or 0)
+                health = int(item.get("health_score", 0) or 0)
+                health_class = "good" if health >= 80 else "warn" if health >= 55 else "bad"
+                risk_class = "bad" if high else "good"
+                st.markdown(
+                    f'''
+                    <div class="cv-v2-analysis-row">
+                      <div>
+                        <div class="cv-v2-analysis-name">{project}</div>
+                        <div class="cv-v2-analysis-meta">{filename} • {created} • {parts} parts</div>
+                      </div>
+                      <span class="cv-v2-chip {health_class}">{health} health</span>
+                      <span class="cv-v2-chip {risk_class}">{high} high</span>
+                      <span class="cv-v2-view">View →</span>
+                    </div>
+                    ''',
+                    unsafe_allow_html=True,
+                )
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("No analyses yet. Upload your first BOM to begin building portfolio intelligence.")
 
