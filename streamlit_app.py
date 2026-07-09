@@ -1764,6 +1764,20 @@ if app_mode == "Dashboard":
             .cv-actions-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
             .cv-title{font-size:31px!important;}
         }
+        /* M4.16 — Executive intelligence strip, dashboard-only. */
+        .cv-exec-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:12px 0 14px 0; }
+        .cv-exec-chip { background:rgba(255,255,255,.96); border:1px solid #E2E8F0; border-radius:16px; box-shadow:0 14px 32px rgba(15,23,42,.045); padding:13px 15px; display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:72px; transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+        .cv-exec-chip:hover { transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 22px 48px rgba(15,23,42,.075); }
+        .cv-exec-kicker { color:#64748B!important; font-size:10.5px; font-weight:950; letter-spacing:.075em; text-transform:uppercase; margin-bottom:5px; }
+        .cv-exec-value { color:#071126!important; font-size:21px; font-weight:950; letter-spacing:-.04em; line-height:1; }
+        .cv-exec-note { color:#52647A!important; font-size:11.5px; font-weight:750; margin-top:4px; }
+        .cv-exec-icon { width:34px; height:34px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; background:#EFF6FF; color:#2563EB!important; border:1px solid #DBEAFE; font-size:15px; font-weight:950; }
+        .cv-exec-icon.warning { background:#FFFBEB; color:#B45309!important; border-color:#FDE68A; }
+        .cv-exec-icon.danger { background:#FEF2F2; color:#B91C1C!important; border-color:#FECACA; }
+        .cv-exec-icon.success { background:#ECFDF5; color:#047857!important; border-color:#A7F3D0; }
+        @media(max-width:1200px){ .cv-exec-strip{grid-template-columns:repeat(2,minmax(0,1fr));} }
+        @media(max-width:760px){ .cv-exec-strip{grid-template-columns:1fr;} }
+
         @media(max-width:760px){
             .cv-actions-grid{grid-template-columns:1fr!important;}
             .cv-metric-value{font-size:36px!important;}
@@ -1873,6 +1887,39 @@ if app_mode == "Dashboard":
         "Monitor BOM health, supplier exposure, saved analyses, alternatives, and active alerts from one Cadivor command center.",
         avg_health_score,
         health_badge,
+    )
+
+    # Milestone 4.16 — Executive intelligence strip.
+    # Dashboard-content only; no shell, sidebar, or topbar changes.
+    portfolio_note = "Review recommended" if avg_health_score < 80 else "Healthy portfolio"
+    risk_note = "Needs review" if total_high_risk else "No high-risk parts"
+    alert_note = f"{high_alert_count} high severity" if alert_count else "No active alerts"
+    alt_note = "Recommendations saved" if alternatives_found else "Start replacement search"
+    portfolio_icon_kind = "success" if avg_health_score >= 80 else "warning" if avg_health_score >= 55 else "danger"
+    risk_icon_kind = "danger" if total_high_risk else "success"
+    alert_icon_kind = "warning" if alert_count else "success"
+    st.markdown(
+        f'''
+        <div class="cv-exec-strip">
+          <div class="cv-exec-chip">
+            <div><div class="cv-exec-kicker">Portfolio</div><div class="cv-exec-value">{avg_health_score}</div><div class="cv-exec-note">{portfolio_note}</div></div>
+            <div class="cv-exec-icon {portfolio_icon_kind}">↗</div>
+          </div>
+          <div class="cv-exec-chip">
+            <div><div class="cv-exec-kicker">High Risk</div><div class="cv-exec-value">{total_high_risk}</div><div class="cv-exec-note">{risk_note}</div></div>
+            <div class="cv-exec-icon {risk_icon_kind}">!</div>
+          </div>
+          <div class="cv-exec-chip">
+            <div><div class="cv-exec-kicker">Monitoring</div><div class="cv-exec-value">{alert_count}</div><div class="cv-exec-note">{alert_note}</div></div>
+            <div class="cv-exec-icon {alert_icon_kind}">●</div>
+          </div>
+          <div class="cv-exec-chip">
+            <div><div class="cv-exec-kicker">Alternatives</div><div class="cv-exec-value">{alternatives_found}</div><div class="cv-exec-note">{alt_note}</div></div>
+            <div class="cv-exec-icon">⇄</div>
+          </div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
     )
 
     if _qp_value("focus", "") == "search":
