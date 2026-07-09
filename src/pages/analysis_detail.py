@@ -12,7 +12,6 @@ import html
 from typing import Any
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
 
@@ -191,7 +190,19 @@ def render_analysis_detail(
         .cv-risk-stat .label{display:flex;align-items:center;gap:8px;color:#64748B!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;}
         .cv-risk-dot{width:9px;height:9px;border-radius:999px;display:inline-block;}.cv-risk-dot.high{background:#EF4444;}.cv-risk-dot.medium{background:#F59E0B;}.cv-risk-dot.low{background:#16A34A;}
         .cv-risk-stat strong{display:block;color:#0B1220!important;font-size:22px;font-weight:980;line-height:1;}.cv-risk-stat small{display:block;color:#64748B!important;font-size:11px;font-weight:800;margin-top:6px;}
-        @media(max-width:1180px){.cv-analysis-hero,.cv-analysis-grid{grid-template-columns:1fr}.cv-analysis-component{grid-template-columns:1fr}.cv-analysis-pills{justify-content:flex-start}.cv-analysis-summary{grid-template-columns:repeat(2,minmax(0,1fr));}}
+
+        .cv-readiness-list{display:grid;gap:12px;}
+        .cv-readiness-row{border:1px solid #E2E8F0;background:#F8FAFC;border-radius:16px;padding:13px;}
+        .cv-readiness-row strong{display:block;color:#0B1220!important;font-size:13px;font-weight:980;margin-bottom:4px;}
+        .cv-readiness-row span{display:block;color:#64748B!important;font-size:11px;font-weight:800;}
+        .cv-readiness-bar{height:9px;border-radius:999px;background:#E2E8F0;overflow:hidden;margin-top:10px;}
+        .cv-readiness-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563EB,#16A34A);}
+        .cv-readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+        .cv-readiness-metrics div{border:1px solid #E2E8F0;background:#FFFFFF;border-radius:16px;padding:12px;}
+        .cv-readiness-metrics span{display:block;color:#64748B!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;}
+        .cv-readiness-metrics strong{display:block;color:#0B1220!important;font-size:22px;font-weight:980;line-height:1;}
+        .cv-readiness-metrics small{display:block;color:#64748B!important;font-size:10.5px;font-weight:800;margin-top:6px;}
+        @media(max-width:1180px){.cv-analysis-hero,.cv-analysis-grid{grid-template-columns:1fr}.cv-analysis-component{grid-template-columns:1fr}.cv-analysis-pills{justify-content:flex-start}.cv-analysis-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.cv-readiness-metrics{grid-template-columns:1fr}}
         @media(max-width:700px){.cv-analysis-summary{grid-template-columns:1fr}.cv-analysis-title{font-size:30px}.cv-analysis-hero{padding:20px}}
         </style>
         """,
@@ -307,34 +318,38 @@ def render_analysis_detail(
 
     chart_col, alerts_col = st.columns([1.05, 1])
     with chart_col:
-        st.markdown('<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">Risk Distribution</div><div class="cv-analysis-section-meta">High, medium, and low risk components.</div></div></div>', unsafe_allow_html=True)
-        if high or medium or low:
-            risk_total = max(1, high + medium + low)
-            high_pct = (high / risk_total) * 100
-            medium_pct = (medium / risk_total) * 100
-            low_pct = (low / risk_total) * 100
-            def _pct_label(value):
-                return f"{round((value / risk_total) * 100)}%" if risk_total else "0%"
-            st.markdown(
-                f"""
-                <div class="cv-risk-compact">
-                  <div class="cv-risk-total"><span>Total components analyzed</span><strong>{risk_total}</strong></div>
-                  <div class="cv-risk-meter" aria-label="Risk distribution">
-                    <div class="cv-risk-seg high" style="width:{high_pct:.2f}%"></div>
-                    <div class="cv-risk-seg medium" style="width:{medium_pct:.2f}%"></div>
-                    <div class="cv-risk-seg low" style="width:{low_pct:.2f}%"></div>
-                  </div>
-                  <div class="cv-risk-stats">
-                    <div class="cv-risk-stat"><div class="label"><span class="cv-risk-dot high"></span>High</div><strong>{high}</strong><small>{_pct_label(high)} of BOM</small></div>
-                    <div class="cv-risk-stat"><div class="label"><span class="cv-risk-dot medium"></span>Medium</div><strong>{medium}</strong><small>{_pct_label(medium)} of BOM</small></div>
-                    <div class="cv-risk-stat"><div class="label"><span class="cv-risk-dot low"></span>Low</div><strong>{low}</strong><small>{_pct_label(low)} of BOM</small></div>
-                  </div>
+        st.markdown('<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">Lifecycle & Replacement Readiness</div><div class="cv-analysis-section-meta">Operational signals that are more actionable than a chart.</div></div></div>', unsafe_allow_html=True)
+        total = max(1, total_parts)
+        active_count = sum(1 for p in parts if "active" in str(p.get("lifecycle_status") or p.get("Lifecycle Status") or "").lower())
+        no_stock = sum(1 for p in parts if _num(p.get("stock_available") or p.get("Stock Available"), 0) <= 0)
+        monitored_alerts = len(alerts)
+        replacement_ready = len(alternatives)
+        active_pct = round((active_count / total) * 100) if parts else 0
+        stock_health = max(0, total_parts - no_stock)
+        stock_pct = round((stock_health / total) * 100) if parts else 0
+        st.markdown(
+            f"""
+            <div class="cv-risk-compact">
+              <div class="cv-risk-total"><span>Engineering readiness score</span><strong>{max(0, min(100, health))}</strong></div>
+              <div class="cv-readiness-list">
+                <div class="cv-readiness-row">
+                  <div><strong>Lifecycle Coverage</strong><span>{active_count} active components · {active_pct}% of BOM</span></div>
+                  <div class="cv-readiness-bar"><i style="width:{active_pct}%"></i></div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown('<div class="cv-analysis-empty">No risk distribution is available for this analysis yet.</div>', unsafe_allow_html=True)
+                <div class="cv-readiness-row">
+                  <div><strong>Stock Health</strong><span>{stock_health} parts with available stock · {no_stock} no-stock risk</span></div>
+                  <div class="cv-readiness-bar"><i style="width:{stock_pct}%"></i></div>
+                </div>
+                <div class="cv-readiness-metrics">
+                  <div><span>Supplier Alerts</span><strong>{monitored_alerts}</strong><small>attached to analysis</small></div>
+                  <div><span>Replacement Candidates</span><strong>{replacement_ready}</strong><small>ready for validation</small></div>
+                  <div><span>High-Risk Parts</span><strong>{high}</strong><small>need engineering review</small></div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with alerts_col:
         st.markdown('<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">Supplier & Lifecycle Alerts</div><div class="cv-analysis-section-meta">Alerts associated with this analysis.</div></div></div>', unsafe_allow_html=True)
         if alerts:
