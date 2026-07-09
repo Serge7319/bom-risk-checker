@@ -1866,13 +1866,174 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
 
-    # Milestone 4.2 premium dashboard hero.
-    dashboard_command_center(
-        greeting_prefix,
-        user_name,
-        "Monitor BOM health, supplier exposure, saved analyses, alternatives, and active alerts from one Cadivor command center.",
-        avg_health_score,
-        health_badge,
+    # Milestone 4.15.1 premium dashboard hero: compact executive summary without changing the shell.
+    hero_health_width = max(0, min(100, int(avg_health_score or 0)))
+    hero_risk_label = "High risk" if total_high_risk else "No high risk"
+    hero_alert_label = "Active alerts" if alert_count else "No alerts"
+    st.markdown(
+        f"""
+        <style>
+        .cv-415-hero {{
+            position:relative;
+            overflow:hidden;
+            display:grid;
+            grid-template-columns:minmax(0,1fr) 260px;
+            gap:26px;
+            align-items:center;
+            min-height:0!important;
+            padding:34px 34px!important;
+            margin:0 0 18px!important;
+            border:1px solid #BFDBFE;
+            border-radius:24px;
+            background:
+                radial-gradient(circle at 85% 10%, rgba(37,99,235,.13), transparent 32%),
+                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 52%,#EEF6FF 100%);
+            box-shadow:0 26px 70px rgba(37,99,235,.10), 0 12px 30px rgba(15,23,42,.055);
+        }}
+        .cv-415-hero:before {{
+            content:"";
+            position:absolute;
+            inset:auto -80px -120px auto;
+            width:260px;
+            height:260px;
+            border-radius:999px;
+            background:rgba(37,99,235,.08);
+            pointer-events:none;
+        }}
+        .cv-415-copy {{ position:relative; z-index:1; }}
+        .cv-415-eyebrow {{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding:7px 12px;
+            border-radius:999px;
+            background:rgba(239,246,255,.82);
+            color:#2563EB!important;
+            font-size:11px;
+            font-weight:950;
+            letter-spacing:.11em;
+            text-transform:uppercase;
+            margin-bottom:18px;
+            box-shadow:inset 0 0 0 1px rgba(191,219,254,.75);
+        }}
+        .cv-415-title {{
+            color:#0F172A!important;
+            font-size:34px!important;
+            line-height:1.04!important;
+            font-weight:980!important;
+            letter-spacing:-.055em!important;
+            margin:0 0 12px!important;
+        }}
+        .cv-415-subtitle {{
+            color:#52647A!important;
+            font-size:14.5px!important;
+            line-height:1.55!important;
+            max-width:760px;
+            margin:0 0 18px!important;
+        }}
+        .cv-415-metrics {{
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+            margin:0 0 20px!important;
+        }}
+        .cv-415-chip {{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            height:34px;
+            padding:0 12px;
+            border-radius:999px;
+            border:1px solid #E5E7EB;
+            background:rgba(255,255,255,.82);
+            box-shadow:0 8px 18px rgba(15,23,42,.045);
+            color:#64748B!important;
+            font-size:12px;
+            font-weight:850;
+        }}
+        .cv-415-chip strong {{ color:#0F172A!important; font-size:13px; font-weight:950; }}
+        .cv-415-actions {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
+        .cv-415-primary, .cv-415-secondary {{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:42px;
+            padding:0 18px;
+            border-radius:12px;
+            text-decoration:none!important;
+            font-size:13px;
+            font-weight:920;
+            transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+        }}
+        .cv-415-primary {{
+            background:#2563EB;
+            color:#FFFFFF!important;
+            box-shadow:0 16px 30px rgba(37,99,235,.22);
+        }}
+        .cv-415-secondary {{
+            background:rgba(255,255,255,.84);
+            color:#2563EB!important;
+            border:1px solid #BFDBFE;
+        }}
+        .cv-415-primary:hover, .cv-415-secondary:hover {{ transform:translateY(-2px); box-shadow:0 18px 34px rgba(37,99,235,.18); }}
+        .cv-415-score {{
+            position:relative;
+            z-index:1;
+            background:rgba(255,255,255,.9);
+            border:1px solid #E5E7EB;
+            border-radius:20px;
+            padding:24px 24px;
+            min-height:154px;
+            box-shadow:0 20px 44px rgba(15,23,42,.075);
+        }}
+        .cv-415-score-label {{
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:950;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            margin-bottom:10px;
+        }}
+        .cv-415-score-value {{ color:#0F172A!important; font-size:46px; line-height:1; font-weight:990; letter-spacing:-.06em; }}
+        .cv-415-score-status {{ color:#2563EB!important; font-size:13px; font-weight:950; margin-top:10px; }}
+        .cv-415-track {{ height:9px; border-radius:999px; background:#E5EAF2; overflow:hidden; margin-top:15px; }}
+        .cv-415-track span {{ display:block; height:100%; border-radius:999px; width:{hero_health_width}%; background:linear-gradient(90deg,#2563EB,#16A34A); }}
+        @media(max-width:1100px) {{
+            .cv-415-hero {{ grid-template-columns:1fr; padding:28px!important; }}
+            .cv-415-score {{ max-width:320px; }}
+        }}
+        @media(max-width:720px) {{
+            .cv-415-title {{ font-size:29px!important; }}
+            .cv-415-hero {{ padding:24px!important; border-radius:20px; }}
+            .cv-415-metrics {{ gap:8px; }}
+            .cv-415-chip {{ width:100%; justify-content:space-between; }}
+        }}
+        </style>
+        <section class="cv-415-hero">
+          <div class="cv-415-copy">
+            <div class="cv-415-eyebrow">Cadivor Command Center</div>
+            <h1 class="cv-415-title">{greeting_prefix}, {user_name}.</h1>
+            <p class="cv-415-subtitle">Monitor BOM health, supplier exposure, saved analyses, alternatives, and active alerts from one Cadivor command center.</p>
+            <div class="cv-415-metrics">
+              <div class="cv-415-chip">Portfolio <strong>{avg_health_score}</strong></div>
+              <div class="cv-415-chip">Saved analyses <strong>{total_analyses}</strong></div>
+              <div class="cv-415-chip">{hero_risk_label} <strong>{total_high_risk}</strong></div>
+              <div class="cv-415-chip">{hero_alert_label} <strong>{alert_count}</strong></div>
+            </div>
+            <div class="cv-415-actions">
+              <a class="cv-415-primary" href="?page=BOM%20Analyzer" target="_self">Run new BOM analysis</a>
+              <a class="cv-415-secondary" href="?page=Alternative%20Finder" target="_self">Find alternatives</a>
+            </div>
+          </div>
+          <aside class="cv-415-score">
+            <div class="cv-415-score-label">Portfolio Health</div>
+            <div class="cv-415-score-value">{avg_health_score}</div>
+            <div class="cv-415-score-status">{health_badge}</div>
+            <div class="cv-415-track"><span></span></div>
+          </aside>
+        </section>
+        """,
+        unsafe_allow_html=True,
     )
 
     if _qp_value("focus", "") == "search":
