@@ -1866,192 +1866,188 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
 
-    # Cadivor Dashboard v3 — Enterprise Engineering Intelligence.
-    # Content-only update: no shell/topbar/sidebar changes.
-    def _cv_icon(kind="sparkles"):
+    # ------------------------------------------------------------------
+    # Cadivor Dashboard v4 — Engineering Command Center
+    # Dashboard-content only. Does not touch shell/topbar/sidebar.
+    # ------------------------------------------------------------------
+    def _lucide_icon(name, size=18):
         icons = {
-            "sparkles": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/></svg>',
-            "shield": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
-            "alert": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
-            "radar": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 1 1 4.93 19.07"/><path d="M12 12 4.93 4.93"/><path d="M16.24 7.76A6 6 0 1 1 7.76 16.24"/><circle cx="12" cy="12" r="2"/></svg>',
-            "git": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v2a7 7 0 0 0 7 7h2"/><path d="M6 9v12"/></svg>',
-            "layers": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>',
+            "shield": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z'/><path d='m9 12 2 2 4-4'/></svg>""",
+            "alert": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/><path d='M12 9v4'/><path d='M12 17h.01'/></svg>""",
+            "activity": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>""",
+            "replace": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m16 3 4 4-4 4'/><path d='M20 7H8a4 4 0 0 0-4 4v1'/><path d='m8 21-4-4 4-4'/><path d='M4 17h12a4 4 0 0 0 4-4v-1'/></svg>""",
+            "sparkles": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9.93 2.25 8.5 7.5 3.25 8.93 8.5 10.36l1.43 5.25 1.43-5.25 5.25-1.43-5.25-1.43z'/><path d='M19 14.5 18.25 17 16 17.75l2.25.75L19 21l.75-2.5L22 17.75 19.75 17z'/></svg>""",
+            "file": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z'/><path d='M14 2v4a2 2 0 0 0 2 2h4'/><path d='M10 9H8'/><path d='M16 13H8'/><path d='M16 17H8'/></svg>""",
+            "clock": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 6v6l4 2'/></svg>""",
+            "arrow": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12h14'/><path d='m12 5 7 7-7 7'/></svg>""",
+            "boxes": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z'/><path d='m3.3 7 8.7 5 8.7-5'/><path d='M12 22V12'/></svg>""",
         }
-        return icons.get(kind, icons["sparkles"])
+        return icons.get(name, icons["sparkles"]).format(s=size)
 
-    latest_project_for_hero = (latest_analysis.get("project_name") or latest_analysis.get("filename")) if latest_analysis else "Upload your first BOM"
-    top_alert_part = "No active alerts"
-    top_alert_message = "Monitoring is clear across saved components."
-    if alert_data:
-        top_alert_part = str(alert_data[0].get("part_number") or "Monitored component")
-        top_alert_message = str(alert_data[0].get("alert_message") or alert_data[0].get("alert_type") or "Lifecycle or sourcing change detected.")
-        if len(top_alert_message) > 118:
-            top_alert_message = top_alert_message[:115] + "..."
-
-    if total_high_risk > 0:
-        primary_action = "Review high-risk components before the next build release."
-        primary_action_badge = "Engineering review"
-    elif alert_count > 0:
-        primary_action = "Open Monitoring and resolve supplier or lifecycle changes."
-        primary_action_badge = "Monitoring review"
-    elif alternatives_found == 0:
-        primary_action = "Run Alternative Finder on your highest-volume components."
-        primary_action_badge = "Replacement search"
-    else:
-        primary_action = "Portfolio is stable. Continue periodic monitoring."
-        primary_action_badge = "Stable posture"
-
-    if len(analysis_data) >= 2:
+    def _fmt_date(value):
+        if not value:
+            return "—"
         try:
-            _sorted_health = sorted(
-                [a for a in analysis_data if a.get("health_score") is not None],
-                key=lambda x: str(x.get("created_at", "")),
-                reverse=True,
-            )
-            latest_health_for_delta = int(_sorted_health[0].get("health_score") or 0)
-            prior_health_for_delta = int(_sorted_health[1].get("health_score") or 0)
-            health_delta = latest_health_for_delta - prior_health_for_delta
-            delta_word = "improved" if health_delta > 0 else "declined" if health_delta < 0 else "held steady"
-            point_word = "points" if abs(health_delta) != 1 else "point"
-            health_delta_text = f"Portfolio health {delta_word} {abs(health_delta)} {point_word} versus the previous saved analysis."
+            return pd.to_datetime(value).strftime("%b %d")
         except Exception:
-            health_delta_text = "Portfolio trend is being tracked across saved BOM analyses."
-    else:
-        health_delta_text = "Run another BOM analysis to unlock portfolio health trend intelligence."
+            return str(value)[:10]
+
+    def _relative_date(value):
+        if not value:
+            return "recently"
+        try:
+            dt = pd.to_datetime(value, errors="coerce")
+            if pd.isna(dt):
+                return str(value)[:10]
+            days = max(0, (pd.Timestamp.utcnow().tz_localize(None) - dt.tz_localize(None)).days)
+            if days == 0:
+                return "today"
+            if days == 1:
+                return "yesterday"
+            if days < 7:
+                return f"{days} days ago"
+            return dt.strftime("%b %d")
+        except Exception:
+            return str(value)[:10]
+
+    def _health_class(value):
+        try:
+            value = int(value or 0)
+        except Exception:
+            value = 0
+        return "good" if value >= 80 else "warn" if value >= 55 else "bad"
+
+    prev_health = None
+    if analysis_data and len(analysis_data) >= 2:
+        try:
+            prev_health = int(analysis_data[1].get("health_score", 0) or 0)
+        except Exception:
+            prev_health = None
+    health_delta = (avg_health_score - prev_health) if prev_health is not None else 0
+    health_delta_label = f"{health_delta:+d}" if prev_health is not None else "—"
+    trend_word = "improved" if health_delta >= 0 else "declined"
+    latest_project = (latest_analysis or {}).get("project_name") or (latest_analysis or {}).get("filename") or "No saved BOM yet"
+    latest_parts = int((latest_analysis or {}).get("total_parts", 0) or 0)
+    latest_health = int((latest_analysis or {}).get("health_score", avg_health_score) or 0)
+    latest_date = _fmt_date((latest_analysis or {}).get("created_at", ""))
+
+    top_alert = alert_data[0] if alert_data else None
+    top_alert_part = top_alert.get("part_number", "No active alert") if top_alert else "No active alert"
+    top_alert_msg = top_alert.get("alert_message", "No supplier or lifecycle alerts require immediate action.") if top_alert else "No supplier or lifecycle alerts require immediate action."
+    next_action_title = "Review high-risk components" if total_high_risk else "Run next BOM analysis"
+    next_action_copy = f"{total_high_risk} components need engineering review before the next release." if total_high_risk else "Upload another BOM to keep the workspace intelligence current."
 
     st.markdown(
-        f'''
-        <style>
-        /* Cadivor Dashboard v3 — Enterprise Engineering Intelligence. Content-only dashboard layer. */
-        .cv-v3-command {{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:18px; margin:0 0 18px 0; }}
-        .cv-v3-command-main {{ border:1px solid rgba(147,197,253,.92); border-radius:24px; background:radial-gradient(circle at 92% 12%, rgba(37,99,235,.11), transparent 32%), linear-gradient(135deg, rgba(255,255,255,.99), rgba(239,246,255,.88)); box-shadow:0 24px 62px rgba(15,23,42,.075); padding:24px 28px; }}
-        .cv-v3-kicker {{ display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB!important; font-size:10px; font-weight:950; letter-spacing:.12em; text-transform:uppercase; margin-bottom:13px; }}
-        .cv-v3-kicker svg, .cv-v3-action svg, .cv-v3-label svg, .cv-v3-icon svg {{ width:16px; height:16px; }}
-        .cv-v3-title {{ color:#071126!important; font-size:33px; line-height:1.03; font-weight:950; letter-spacing:-.055em; margin:0 0 8px; }}
-        .cv-v3-subtitle {{ color:#475569!important; font-size:14px; line-height:1.5; max-width:840px; margin:0 0 16px; }}
-        .cv-v3-summary-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:16px 0 16px; }}
-        .cv-v3-summary-item {{ background:rgba(255,255,255,.76); border:1px solid rgba(226,232,240,.95); border-radius:15px; padding:11px 12px; box-shadow:inset 0 1px 0 rgba(255,255,255,.75); }}
-        .cv-v3-summary-label {{ color:#64748B!important; font-size:9.8px; font-weight:950; letter-spacing:.09em; text-transform:uppercase; margin-bottom:5px; }}
-        .cv-v3-summary-value {{ color:#071126!important; font-size:22px; line-height:1; font-weight:950; letter-spacing:-.04em; }}
-        .cv-v3-summary-note {{ color:#64748B!important; font-size:11px; font-weight:800; margin-top:4px; }}
-        .cv-v3-actions {{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }}
-        .cv-v3-action {{ display:inline-flex; align-items:center; gap:8px; padding:11px 15px; border-radius:13px; font-size:12.5px; font-weight:950; text-decoration:none!important; transition:all .16s ease; }}
-        .cv-v3-action.primary {{ background:#2563EB; color:#FFFFFF!important; border:1px solid #2563EB; box-shadow:0 16px 30px rgba(37,99,235,.24); }}
-        .cv-v3-action.secondary {{ background:#FFFFFF; color:#2563EB!important; border:1px solid #BFDBFE; }}
-        .cv-v3-action:hover {{ transform:translateY(-2px); box-shadow:0 20px 42px rgba(15,23,42,.12); }}
-        .cv-v3-next {{ background:linear-gradient(180deg,#FFFFFF,#F8FAFC); border:1px solid #E2E8F0; border-radius:24px; box-shadow:0 24px 62px rgba(15,23,42,.065); padding:21px; display:flex; flex-direction:column; justify-content:space-between; }}
-        .cv-v3-next-top {{ display:flex; align-items:flex-start; gap:13px; }}
-        .cv-v3-icon {{ width:42px; height:42px; border-radius:15px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; color:#2563EB!important; background:#EFF6FF; border:1px solid #BFDBFE; }}
-        .cv-v3-icon.danger {{ color:#DC2626!important; background:#FEF2F2; border-color:#FECACA; }}
-        .cv-v3-icon.warn {{ color:#B45309!important; background:#FFFBEB; border-color:#FDE68A; }}
-        .cv-v3-next-title {{ color:#0B1220!important; font-size:15px; line-height:1.22; font-weight:950; letter-spacing:-.02em; margin-bottom:6px; }}
-        .cv-v3-next-copy {{ color:#52647A!important; font-size:12.5px; line-height:1.45; font-weight:760; }}
-        .cv-v3-health-meter {{ height:8px; border-radius:999px; background:#E2E8F0; overflow:hidden; margin-top:16px; }}
-        .cv-v3-health-meter span {{ display:block; height:100%; width:{max(0, min(100, int(avg_health_score or 0)))}%; background:linear-gradient(90deg,#2563EB,#16A34A); border-radius:999px; }}
-        .cv-v3-label {{ display:flex; align-items:center; gap:8px; color:#64748B!important; font-size:11px; font-weight:950; letter-spacing:.08em; text-transform:uppercase; margin:2px 0 10px; }}
-        .cv-v3-intel-grid {{ display:grid; grid-template-columns:1.15fr 1fr 1fr; gap:14px; margin:0 0 16px; }}
-        .cv-v3-intel-card {{ background:rgba(255,255,255,.98); border:1px solid #E2E8F0; border-radius:18px; box-shadow:0 18px 44px rgba(15,23,42,.055); padding:15px; display:grid; grid-template-columns:auto 1fr; gap:13px; min-height:104px; transition:all .16s ease; }}
-        .cv-v3-intel-card:hover {{ transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 26px 58px rgba(15,23,42,.080); }}
-        .cv-v3-intel-kicker {{ color:#64748B!important; font-size:10px; font-weight:950; letter-spacing:.09em; text-transform:uppercase; margin-bottom:5px; }}
-        .cv-v3-intel-title {{ color:#0B1220!important; font-size:14px; font-weight:950; letter-spacing:-.02em; margin-bottom:5px; }}
-        .cv-v3-intel-copy {{ color:#52647A!important; font-size:12px; line-height:1.42; font-weight:730; }}
-        .cv-v3-badge {{ display:inline-flex; margin-top:8px; border-radius:999px; padding:5px 9px; background:#F8FAFC; border:1px solid #E2E8F0; color:#334155!important; font-size:10.5px; font-weight:950; }}
-        .cv-metric {{ min-height:96px!important; padding:15px 17px 14px!important; }}
-        .cv-metric-value {{ font-size:38px!important; }}
-        .cv-panel-title {{ font-size:18px!important; }}
-        div[data-testid="stPlotlyChart"] {{ padding:10px!important; }}
-        .cv-v2-analysis-row {{ box-shadow:0 10px 26px rgba(15,23,42,.042)!important; }}
-        @media(max-width:1200px){{ .cv-v3-command{{grid-template-columns:1fr;}} .cv-v3-intel-grid{{grid-template-columns:1fr;}} .cv-v3-summary-grid{{grid-template-columns:repeat(2,minmax(0,1fr));}} }}
-        @media(max-width:760px){{ .cv-v3-summary-grid{{grid-template-columns:1fr;}} .cv-v3-title{{font-size:28px;}} }}
+        """
+        <style id="cadivor-dashboard-v4-command-center">
+        .cv-v4-eyebrow{display:flex;align-items:center;gap:8px;color:#64748B!important;font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.11em;margin:0 0 12px 0;}
+        .cv-v4-eyebrow svg{color:#2563EB;}
+        .cv-v4-command{background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 54%,#EEF6FF 100%);border:1px solid #BFDBFE;border-radius:24px;padding:22px 26px 24px;box-shadow:0 28px 70px rgba(15,23,42,.075);margin-bottom:16px;position:relative;overflow:hidden;}
+        .cv-v4-command:after{content:"";position:absolute;right:-120px;top:-160px;width:360px;height:360px;background:radial-gradient(circle,rgba(37,99,235,.13),rgba(37,99,235,0) 68%);pointer-events:none;}
+        .cv-v4-command-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:22px;align-items:center;position:relative;z-index:1;}
+        .cv-v4-kicker{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:999px;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.10em;margin-bottom:12px;}
+        .cv-v4-title{color:#0B1220!important;font-size:34px;font-weight:980;letter-spacing:-.055em;line-height:1.04;margin:0 0 8px;}
+        .cv-v4-copy{color:#52647A!important;font-size:13.5px;font-weight:750;line-height:1.55;margin:0 0 16px;max-width:780px;}
+        .cv-v4-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+        .cv-v4-btn{display:inline-flex;align-items:center;gap:8px;border-radius:12px;padding:11px 15px;text-decoration:none!important;font-weight:950;font-size:12.5px;border:1px solid #2563EB;background:#2563EB;color:#fff!important;box-shadow:0 16px 34px rgba(37,99,235,.22);}
+        .cv-v4-btn.secondary{background:#fff;color:#2563EB!important;border-color:#BFDBFE;box-shadow:none;}
+        .cv-v4-brief{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+        .cv-v4-brief-card{background:rgba(255,255,255,.88);border:1px solid #E2E8F0;border-radius:18px;padding:14px 15px;box-shadow:0 14px 34px rgba(15,23,42,.045);}
+        .cv-v4-brief-card strong{display:block;color:#0B1220!important;font-size:24px;font-weight:980;letter-spacing:-.045em;line-height:1;margin-bottom:5px;}
+        .cv-v4-brief-card span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+        .cv-v4-brief-card small{display:block;color:#334155!important;font-size:12px;font-weight:850;line-height:1.3;}
+        .cv-v4-insights{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:12px;margin:0 0 16px;}
+        .cv-v4-insight{background:#fff;border:1px solid #E2E8F0;border-radius:20px;padding:18px;box-shadow:0 16px 42px rgba(15,23,42,.055);display:grid;grid-template-columns:46px 1fr;gap:14px;align-items:flex-start;min-height:134px;}
+        .cv-v4-insight:hover,.cv-v4-action:hover,.cv-v4-analysis-row:hover{transform:translateY(-2px);box-shadow:0 24px 58px rgba(15,23,42,.085);border-color:#BFDBFE;transition:all .16s ease;}
+        .cv-v4-icon{width:44px;height:44px;border-radius:15px;display:flex;align-items:center;justify-content:center;border:1px solid #DBEAFE;background:#EFF6FF;color:#2563EB;}
+        .cv-v4-icon.danger{background:#FEF2F2;border-color:#FECACA;color:#DC2626}.cv-v4-icon.warning{background:#FFFBEB;border-color:#FDE68A;color:#B45309}.cv-v4-icon.success{background:#ECFDF5;border-color:#A7F3D0;color:#047857}
+        .cv-v4-label{color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.11em;margin-bottom:7px;}
+        .cv-v4-headline{color:#0B1220!important;font-size:16px;font-weight:980;letter-spacing:-.025em;line-height:1.15;margin-bottom:8px;}
+        .cv-v4-text{color:#475569!important;font-size:12.5px;font-weight:760;line-height:1.45;}
+        .cv-v4-pill{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;background:#F8FAFC;border:1px solid #E2E8F0;color:#334155!important;font-size:11px;font-weight:950;margin-top:10px;}
+        .cv-v4-metrics{display:grid;grid-template-columns:1.15fr repeat(3,1fr);gap:12px;margin-bottom:20px;}
+        .cv-v4-metric{background:#fff;border:1px solid #E2E8F0;border-radius:20px;padding:18px;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:138px;position:relative;overflow:hidden;}
+        .cv-v4-metric.primary{background:linear-gradient(135deg,#FFFFFF,#F8FBFF);border-color:#BFDBFE;}
+        .cv-v4-metric .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.cv-v4-metric .name{color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.10em}.cv-v4-metric .icon{color:#2563EB;background:#EFF6FF;border:1px solid #DBEAFE;border-radius:13px;width:36px;height:36px;display:flex;align-items:center;justify-content:center}.cv-v4-metric .value{color:#0B1220!important;font-size:40px;font-weight:980;letter-spacing:-.05em;line-height:1;margin-bottom:8px}.cv-v4-metric .note{color:#334155!important;font-size:12px;font-weight:850;line-height:1.35}.cv-v4-metric .delta{color:#047857!important;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:950;display:inline-flex;margin-top:10px}.cv-v4-metric .delta.bad{color:#B91C1C!important;background:#FEF2F2;border-color:#FECACA;}
+        .cv-panel-title{letter-spacing:-.035em!important}.cv-panel-copy{color:#64748B!important;font-weight:700!important;}
+        .cv-v4-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:4px 0 12px;}.cv-v4-section-title{color:#0B1220!important;font-size:19px;font-weight:980;letter-spacing:-.04em;line-height:1.05}.cv-v4-section-meta{color:#64748B!important;font-size:12px;font-weight:780;margin-top:5px;}.cv-v4-chip{border:1px solid #DBEAFE;background:#EFF6FF;color:#2563EB!important;border-radius:999px;padding:7px 10px;font-size:11px;font-weight:950;white-space:nowrap;}
+        .cv-v4-analysis-list{display:grid;gap:8px}.cv-v4-analysis-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:#fff;border:1px solid #E2E8F0;border-radius:17px;padding:13px 14px;box-shadow:0 10px 26px rgba(15,23,42,.04)}.cv-v4-analysis-title{color:#0B1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-v4-analysis-meta{color:#64748B!important;font-size:11.5px;font-weight:800}.cv-v4-row-pills{display:flex;gap:8px;align-items:center}.cv-v4-score{border-radius:999px;padding:6px 9px;font-size:11px;font-weight:950;border:1px solid #A7F3D0;background:#ECFDF5;color:#047857!important}.cv-v4-score.warn{border-color:#FDE68A;background:#FFFBEB;color:#B45309!important}.cv-v4-score.bad{border-color:#FECACA;background:#FEF2F2;color:#B91C1C!important}.cv-v4-open{color:#2563EB!important;font-size:12px;font-weight:950;text-decoration:none!important;}
+        .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
+        .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
+        @media(max-width:1180px){.cv-v4-command-grid,.cv-v4-insights,.cv-v4-metrics{grid-template-columns:1fr!important}.cv-v4-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.cv-v4-action-grid,.cv-v4-brief{grid-template-columns:1fr!important}.cv-v4-analysis-row{grid-template-columns:1fr}.cv-v4-row-pills{justify-content:flex-start}.cv-v4-title{font-size:28px}}
         </style>
-        <section class="cv-v3-command">
-          <div class="cv-v3-command-main">
-            <div class="cv-v3-kicker">{_cv_icon('sparkles')} Enterprise engineering intelligence</div>
-            <h1 class="cv-v3-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
-            <p class="cv-v3-subtitle">Cadivor is monitoring BOM health, lifecycle movement, supplier exposure, and replacement readiness across your engineering portfolio.</p>
-            <div class="cv-v3-summary-grid">
-              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">Portfolio health</div><div class="cv-v3-summary-value">{avg_health_score}</div><div class="cv-v3-summary-note">{html.escape(str(health_badge))}</div></div>
-              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">High risk</div><div class="cv-v3-summary-value">{total_high_risk}</div><div class="cv-v3-summary-note">Components need review</div></div>
-              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">Monitoring</div><div class="cv-v3-summary-value">{alert_count}</div><div class="cv-v3-summary-note">{high_alert_count} high severity</div></div>
-              <div class="cv-v3-summary-item"><div class="cv-v3-summary-label">Alternatives</div><div class="cv-v3-summary-value">{alternatives_found}</div><div class="cv-v3-summary-note">Candidate records</div></div>
-            </div>
-            <div class="cv-v3-actions">
-              <a class="cv-v3-action primary" href="?page=BOM%20Analyzer" target="_self">{_cv_icon('layers')} Run BOM analysis</a>
-              <a class="cv-v3-action secondary" href="?page=Monitoring" target="_self">{_cv_icon('radar')} Review alerts</a>
-              <a class="cv-v3-action secondary" href="?page=Alternative%20Finder" target="_self">{_cv_icon('git')} Find alternatives</a>
-            </div>
-          </div>
-          <aside class="cv-v3-next">
-            <div class="cv-v3-next-top">
-              <div class="cv-v3-icon {'danger' if total_high_risk else 'warn' if alert_count else ''}">{_cv_icon('alert' if total_high_risk else 'radar' if alert_count else 'shield')}</div>
-              <div>
-                <div class="cv-v3-intel-kicker">Recommended next action</div>
-                <div class="cv-v3-next-title">{html.escape(latest_project_for_hero)}</div>
-                <div class="cv-v3-next-copy">{html.escape(primary_action)}</div>
-                <span class="cv-v3-badge">{html.escape(str(primary_action_badge))}</span>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <section class="cv-v4-command">
+          <div class="cv-v4-command-grid">
+            <div>
+              <div class="cv-v4-kicker">{_lucide_icon('sparkles',14)} Engineering Command Center</div>
+              <h1 class="cv-v4-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
+              <p class="cv-v4-copy">Cadivor is tracking portfolio health, supplier lifecycle changes, replacement readiness, and the BOMs that need engineering attention first.</p>
+              <div class="cv-v4-actions">
+                <a class="cv-v4-btn" href="?page=BOM%20Analyzer" target="_self">Run new BOM analysis {_lucide_icon('arrow',14)}</a>
+                <a class="cv-v4-btn secondary" href="?page=Alternative%20Finder" target="_self">Find alternatives</a>
               </div>
             </div>
-            <div class="cv-v3-health-meter"><span></span></div>
-          </aside>
+            <div class="cv-v4-brief">
+              <div class="cv-v4-brief-card"><span>Portfolio Health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></div>
+              <div class="cv-v4-brief-card"><span>High Risk</span><strong>{total_high_risk}</strong><small>Components need review</small></div>
+              <div class="cv-v4-brief-card"><span>Supplier Alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></div>
+              <div class="cv-v4-brief-card"><span>Alternatives</span><strong>{alternatives_found}</strong><small>Replacement records saved</small></div>
+            </div>
+          </div>
         </section>
-        ''',
+        """,
         unsafe_allow_html=True,
     )
 
     if _qp_value("focus", "") == "search":
         render_global_search_panel(current_user["id"])
 
+    st.markdown(f'<div class="cv-v4-eyebrow">{_lucide_icon("sparkles",15)} Today\'s Engineering Briefing</div>', unsafe_allow_html=True)
+    insight_col_1, insight_col_2, insight_col_3 = st.columns(3)
+    with insight_col_1:
+        st.markdown(f"""
+        <div class="cv-v4-insight">
+          <div class="cv-v4-icon danger">{_lucide_icon('alert',20)}</div>
+          <div><div class="cv-v4-label">Priority Signal</div><div class="cv-v4-headline">{total_high_risk} components need review</div><div class="cv-v4-text">Portfolio health {trend_word} {abs(health_delta)} points versus the previous saved analysis.</div><span class="cv-v4-pill">Engineering review</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    with insight_col_2:
+        st.markdown(f"""
+        <div class="cv-v4-insight">
+          <div class="cv-v4-icon warning">{_lucide_icon('activity',20)}</div>
+          <div><div class="cv-v4-label">Supplier & Lifecycle</div><div class="cv-v4-headline">{alert_count} active monitoring alerts</div><div class="cv-v4-text"><strong>{html.escape(str(top_alert_part))}</strong>: {html.escape(str(top_alert_msg))}</div></div>
+        </div>
+        """, unsafe_allow_html=True)
+    with insight_col_3:
+        st.markdown(f"""
+        <div class="cv-v4-insight">
+          <div class="cv-v4-icon success">{_lucide_icon('replace',20)}</div>
+          <div><div class="cv-v4-label">Recommended Next Action</div><div class="cv-v4-headline">{html.escape(next_action_title)}</div><div class="cv-v4-text">{html.escape(next_action_copy)}</div></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Portfolio Overview</div><div class="cv-v4-section-meta">Health, risk, monitoring, and replacement readiness across saved BOM analyses.</div></div><div class="cv-v4-chip">Workspace intelligence</div></div>', unsafe_allow_html=True)
     st.markdown(
-        f'''
-        <div class="cv-v3-label">{_cv_icon('sparkles')} Executive intelligence</div>
-        <section class="cv-v3-intel-grid">
-          <div class="cv-v3-intel-card">
-            <div class="cv-v3-icon {'danger' if total_high_risk else ''}">{_cv_icon('alert' if total_high_risk else 'shield')}</div>
-            <div>
-              <div class="cv-v3-intel-kicker">Priority signal</div>
-              <div class="cv-v3-intel-title">{total_high_risk} component{'s' if total_high_risk != 1 else ''} need review</div>
-              <div class="cv-v3-intel-copy">{health_delta_text}</div>
-              <span class="cv-v3-badge">{html.escape(str(primary_action_badge))}</span>
-            </div>
-          </div>
-          <div class="cv-v3-intel-card">
-            <div class="cv-v3-icon warn">{_cv_icon('radar')}</div>
-            <div>
-              <div class="cv-v3-intel-kicker">Supplier & lifecycle</div>
-              <div class="cv-v3-intel-title">{alert_count} active monitoring alert{'s' if alert_count != 1 else ''}</div>
-              <div class="cv-v3-intel-copy"><strong>{html.escape(top_alert_part)}</strong>: {html.escape(top_alert_message)}</div>
-            </div>
-          </div>
-          <div class="cv-v3-intel-card">
-            <div class="cv-v3-icon">{_cv_icon('git')}</div>
-            <div>
-              <div class="cv-v3-intel-kicker">Replacement readiness</div>
-              <div class="cv-v3-intel-title">{alternatives_found} alternative candidate{'s' if alternatives_found != 1 else ''}</div>
-              <div class="cv-v3-intel-copy">Use Alternative Finder to validate lower-risk replacements for priority components.</div>
-            </div>
-          </div>
-        </section>
-        ''',
+        f"""
+        <div class="cv-v4-metrics">
+          <div class="cv-v4-metric primary"><div class="top"><div class="name">Portfolio Health</div><div class="icon">{_lucide_icon('shield',18)}</div></div><div class="value">{avg_health_score}</div><div class="note">{health_badge}</div><div class="delta {'bad' if health_delta < 0 else ''}">{health_delta_label} vs previous</div></div>
+          <div class="cv-v4-metric"><div class="top"><div class="name">High-Risk Parts</div><div class="icon">{_lucide_icon('alert',18)}</div></div><div class="value">{total_high_risk}</div><div class="note">Needs engineering review</div></div>
+          <div class="cv-v4-metric"><div class="top"><div class="name">Saved Analyses</div><div class="icon">{_lucide_icon('file',18)}</div></div><div class="value">{total_analyses}</div><div class="note">BOM reviews stored</div></div>
+          <div class="cv-v4-metric"><div class="top"><div class="name">Alternatives Found</div><div class="icon">{_lucide_icon('replace',18)}</div></div><div class="value">{alternatives_found}</div><div class="note">Candidate records saved</div></div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    # KPI row: compact, side-by-side, and information dense.
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    with kpi1:
-        _metric("Portfolio Health", avg_health_score, health_badge, "🛡", health_kind)
-    with kpi2:
-        risk_kind = "danger" if total_high_risk else "success"
-        _metric("High-Risk Parts", total_high_risk, "Needs Review" if total_high_risk else "No high-risk parts", "⚠", risk_kind)
-    with kpi3:
-        _metric("Saved Analyses", total_analyses, "BOM reviews stored", "▦", "")
-    with kpi4:
-        _metric("Alternatives Found", alternatives_found, "Candidate records saved", "⇄", "")
-
-    # Portfolio charts and risk composition.
     chart_col, dist_col = st.columns([1.45, 1])
-
     with chart_col:
-        st.markdown('<div class="cv-panel-title">Portfolio Health Trend</div><div class="cv-panel-copy">Average health score across saved BOM analyses.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Portfolio Health</div><div class="cv-v4-section-meta">Last saved analyses • {health_delta_label} vs previous</div></div></div>', unsafe_allow_html=True)
         if analysis_data and len(analysis_data) >= 2:
             trend_df = pd.DataFrame(analysis_data)
             trend_df["created_at"] = pd.to_datetime(trend_df["created_at"], errors="coerce")
@@ -2059,171 +2055,90 @@ if app_mode == "Dashboard":
             trend_df = trend_df.rename(columns={"created_at": "Date", "health_score": "Health Score"})
             fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
             fig.update_traces(line_color="#2563EB", marker_color="#2563EB", line_width=3)
-            st.plotly_chart(light_plotly_layout(fig, height=330), use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(light_plotly_layout(fig, height=320), use_container_width=True, config={"displayModeBar": False})
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
-
     with dist_col:
-        st.markdown('<div class="cv-panel-title">Risk Distribution</div><div class="cv-panel-copy">Component risk across all saved analyses.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Risk Distribution</div><div class="cv-v4-section-meta">Component risk across all saved analyses.</div></div></div>', unsafe_allow_html=True)
         if total_components > 0:
-            risk_distribution_df = pd.DataFrame({
-                "Risk Level": ["High", "Medium", "Low"],
-                "Components": [total_high_risk, total_medium_risk, total_low_risk],
-            })
-            fig = px.pie(
-                risk_distribution_df,
-                names="Risk Level",
-                values="Components",
-                hole=0.62,
-                color="Risk Level",
-                color_discrete_map={"High": "#DC2626", "Medium": "#F59E0B", "Low": "#16A34A"},
-            )
-            fig.update_traces(textposition="inside", textinfo="percent+label", marker=dict(line=dict(color="#FFFFFF", width=3)))
-            fig.update_layout(showlegend=True)
-            st.plotly_chart(light_plotly_layout(fig, height=330), use_container_width=True, config={"displayModeBar": False})
+            risk_distribution_df = pd.DataFrame({"Risk Level": ["High", "Medium", "Low"], "Components": [total_high_risk, total_medium_risk, total_low_risk]})
+            fig = px.pie(risk_distribution_df, names="Risk Level", values="Components", hole=.52, color="Risk Level", color_discrete_map={"High":"#DC2626","Medium":"#F59E0B","Low":"#16A34A"})
+            st.plotly_chart(light_plotly_layout(fig, height=320), use_container_width=True, config={"displayModeBar": False})
         else:
-            st.info("Risk distribution will appear after your first BOM analysis.")
+            st.info("Risk distribution appears after your first saved BOM analysis.")
 
-    # Snapshot + recent analyses.
-    snapshot_col, activity_col = st.columns([1.0, 1.55])
+    snapshot_col, analyses_col = st.columns([1, 1.55])
     with snapshot_col:
-        latest_project = (latest_analysis.get("project_name") or latest_analysis.get("filename")) if latest_analysis else "No saved BOM yet"
-        latest_date = latest_analysis.get("created_at", "—") if latest_analysis else "—"
-        latest_health = latest_analysis.get("health_score", 0) if latest_analysis else 0
-        latest_parts = latest_analysis.get("total_parts", 0) if latest_analysis else 0
-        if latest_date != "—":
-            try:
-                latest_date = pd.to_datetime(latest_date).strftime("%Y-%m-%d")
-            except Exception:
-                pass
         st.markdown(
             f"""
-            <div class="cv-panel">
-              <div class="cv-panel-title">Latest Engineering Snapshot</div>
-              <div class="cv-panel-copy">Most recent saved BOM and monitoring status.</div>
-              <div class="cv-snapshot-main">{latest_project}</div>
-              <div class="cv-snapshot-grid">
-                <div class="cv-snapshot-item"><span>Health</span><strong>{latest_health}</strong></div>
-                <div class="cv-snapshot-item"><span>Parts</span><strong>{latest_parts}</strong></div>
-                <div class="cv-snapshot-item"><span>Alerts</span><strong>{alert_count}</strong></div>
-                <div class="cv-snapshot-item"><span>High Severity</span><strong>{high_alert_count}</strong></div>
+            <div class="cv-v4-snapshot">
+              <div class="cv-v4-snapshot-title"><div><div class="cv-v4-label">Current Project</div><div class="cv-v4-project">{html.escape(str(latest_project))}</div></div><div class="cv-v4-icon">{_lucide_icon('file',18)}</div></div>
+              <div class="cv-v4-snapshot-grid">
+                <div class="cv-v4-snapshot-cell"><span>Health</span><strong>{latest_health}</strong></div>
+                <div class="cv-v4-snapshot-cell"><span>Parts</span><strong>{latest_parts}</strong></div>
+                <div class="cv-v4-snapshot-cell"><span>Alerts</span><strong>{alert_count}</strong></div>
+                <div class="cv-v4-snapshot-cell"><span>High Severity</span><strong>{high_alert_count}</strong></div>
               </div>
-              <p class="cv-panel-copy" style="margin-top:14px;margin-bottom:0;">Last updated: {latest_date}</p>
+              <p class="cv-v4-text" style="margin-top:14px;margin-bottom:0;">Last updated: {latest_date}</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
-
-    with activity_col:
-        st.markdown('<div class="cv-panel-title">Recent Analyses</div><div class="cv-panel-copy">Latest saved BOM reviews and risk results.</div>', unsafe_allow_html=True)
+    with analyses_col:
+        st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Recent Analyses</div><div class="cv-v4-section-meta">Latest BOM reviews and risk results.</div></div><div class="cv-v4-chip">Open review →</div></div>', unsafe_allow_html=True)
         if analysis_data:
-            st.markdown(
-                '''
-                <style>
-                .cv-v2-analysis-list { display:grid; gap:10px; }
-                .cv-v2-analysis-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; gap:12px; align-items:center; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:15px; padding:12px 14px; box-shadow:0 12px 28px rgba(15,23,42,.045); transition:all .16s ease; }
-                .cv-v2-analysis-row:hover { transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 20px 46px rgba(15,23,42,.075); }
-                .cv-v2-analysis-name { color:#0B1220!important; font-size:13px; font-weight:950; letter-spacing:-.01em; margin-bottom:4px; }
-                .cv-v2-analysis-meta { color:#64748B!important; font-size:11.5px; font-weight:750; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-                .cv-v2-chip { display:inline-flex; justify-content:center; min-width:56px; border-radius:999px; padding:6px 9px; font-size:11px; font-weight:950; border:1px solid #E2E8F0; background:#F8FAFC; color:#334155!important; }
-                .cv-v2-chip.good { color:#047857!important; background:#ECFDF5; border-color:#A7F3D0; }
-                .cv-v2-chip.warn { color:#B45309!important; background:#FFFBEB; border-color:#FDE68A; }
-                .cv-v2-chip.bad { color:#B91C1C!important; background:#FEF2F2; border-color:#FECACA; }
-                .cv-v2-view { color:#2563EB!important; font-size:12px; font-weight:950; }
-                @media(max-width:900px){ .cv-v2-analysis-row{grid-template-columns:1fr 1fr;} }
-                </style>
-                <div class="cv-v2-analysis-list">
-                ''',
-                unsafe_allow_html=True,
-            )
+            rows_html = []
             for item in analysis_data[:6]:
                 project = html.escape(str(item.get("project_name") or item.get("filename") or "Saved BOM analysis"))
                 filename = html.escape(str(item.get("filename") or "—"))
-                created = item.get("created_at", "—")
-                try:
-                    created = pd.to_datetime(created).strftime("%b %d")
-                except Exception:
-                    pass
-                parts = html.escape(str(item.get("total_parts", "—")))
+                h = int(item.get("health_score", 0) or 0)
                 high = int(item.get("high_risk_count", 0) or 0)
-                health = int(item.get("health_score", 0) or 0)
-                health_class = "good" if health >= 80 else "warn" if health >= 55 else "bad"
-                risk_class = "bad" if high else "good"
-                st.markdown(
-                    f'''
-                    <div class="cv-v2-analysis-row">
-                      <div>
-                        <div class="cv-v2-analysis-name">{project}</div>
-                        <div class="cv-v2-analysis-meta">{filename} • {created} • {parts} parts</div>
-                      </div>
-                      <span class="cv-v2-chip {health_class}">{health} health</span>
-                      <span class="cv-v2-chip {risk_class}">{high} high</span>
-                      <span class="cv-v2-view">View →</span>
-                    </div>
-                    ''',
-                    unsafe_allow_html=True,
-                )
-            st.markdown("</div>", unsafe_allow_html=True)
+                parts = int(item.get("total_parts", 0) or 0)
+                cls = _health_class(h)
+                high_cls = "bad" if high else "good"
+                meta = f"{filename} • {_relative_date(item.get('created_at'))} • {parts} parts"
+                rows_html.append(f"""
+                <div class="cv-v4-analysis-row">
+                  <div><div class="cv-v4-analysis-title">{project}</div><div class="cv-v4-analysis-meta">{html.escape(meta)}</div></div>
+                  <div class="cv-v4-row-pills"><span class="cv-v4-score {cls}">{h} health</span><span class="cv-v4-score {high_cls}">{high} high</span><a class="cv-v4-open" href="?page=BOM%20Analyzer" target="_self">View →</a></div>
+                </div>
+                """)
+            st.markdown('<div class="cv-v4-analysis-list">' + ''.join(rows_html) + '</div>', unsafe_allow_html=True)
         else:
             st.info("No analyses yet. Upload your first BOM to begin building portfolio intelligence.")
 
-    # Activity and alert feed.
-    feed_col, alert_col = st.columns([1.25, 1])
+    feed_col, alert_col = st.columns([1.15, 1])
     with feed_col:
-        st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Activity Feed</div><div class="cv-panel-copy">Recent workspace events that help the dashboard feel alive.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv-section-spacer"></div><div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Activity Feed</div><div class="cv-v4-section-meta">Recent workspace events.</div></div></div>', unsafe_allow_html=True)
         if analysis_data:
             for item in analysis_data[:4]:
-                event_title = item.get("project_name") or item.get("filename") or "Saved BOM analysis"
-                event_date = item.get("created_at", "")
-                try:
-                    event_date = pd.to_datetime(event_date).strftime("%Y-%m-%d")
-                except Exception:
-                    pass
-                st.markdown(
-                    f"""
-                    <div class="cv-result-card">
-                      <div>
-                        <div class="cv-result-title">{event_title}</div>
-                        <div class="cv-result-meta">Analysis completed • Health {item.get('health_score', '—')} • {event_date}</div>
-                      </div>
-                      <span class="cv-status-pill success">Ready</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                event_title = html.escape(str(item.get("project_name") or item.get("filename") or "Saved BOM analysis"))
+                event_meta = f"Analysis completed • Health {item.get('health_score', '—')} • {_relative_date(item.get('created_at'))}"
+                st.markdown(f"""
+                <div class="cv-result-card"><div><div class="cv-result-title">{event_title}</div><div class="cv-result-meta">{html.escape(event_meta)}</div></div><span class="cv-status-pill success">Ready</span></div>
+                """, unsafe_allow_html=True)
         else:
             empty_state("No activity yet", "Upload your first BOM to start building a Cadivor activity history.", "Analyze a BOM", "?page=BOM%20Analyzer", "○")
     with alert_col:
-        st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Recent Alerts</div><div class="cv-panel-copy">Lifecycle, stock, and supplier changes will appear here.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv-section-spacer"></div><div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Recent Alerts</div><div class="cv-v4-section-meta">Lifecycle, stock, and supplier changes.</div></div></div>', unsafe_allow_html=True)
         if alert_data:
             for alert in alert_data[:4]:
                 severity = str(alert.get("severity", "")).lower()
                 pill = "danger" if "high" in severity else "warning" if "medium" in severity else "muted"
-                st.markdown(
-                    f"""
-                    <div class="cv-result-card">
-                      <div>
-                        <div class="cv-result-title">{alert.get('part_number', 'Part alert')}</div>
-                        <div class="cv-result-meta">{alert.get('alert_type', 'Monitoring alert')} • {alert.get('alert_message', '')}</div>
-                      </div>
-                      <span class="cv-status-pill {pill}">{alert.get('severity', 'Info')}</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                st.markdown(f"""
+                <div class="cv-result-card"><div><div class="cv-result-title">{html.escape(str(alert.get('part_number', 'Part alert')))}</div><div class="cv-result-meta">{html.escape(str(alert.get('alert_type', 'Monitoring alert')))} • {html.escape(str(alert.get('alert_message', '')))}</div></div><span class="cv-status-pill {pill}">{html.escape(str(alert.get('severity', 'Info')))}</span></div>
+                """, unsafe_allow_html=True)
         else:
             empty_state("No active alerts", "Your monitored components have no unresolved alerts right now.", "Open Monitoring", "?page=Monitoring", "●")
 
-    # Quick actions.
-    st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="cv-panel-title">Quick Actions</div><div class="cv-panel-copy">Jump into the workflows used most often by engineering and sourcing teams.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cv-section-spacer"></div><div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Quick Actions</div><div class="cv-v4-section-meta">Start the workflows engineers use most often.</div></div></div>', unsafe_allow_html=True)
     st.markdown(
-        """
-        <div class="cv-actions-grid">
-          <a class="cv-action-card" href="?page=BOM%20Analyzer" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">+</div><div class="cv-action-title">Analyze a BOM</div><div class="cv-action-copy">Upload CSV or Excel files and generate a risk profile.</div></a>
-          <a class="cv-action-card" href="?page=Alternative%20Finder" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">⇄</div><div class="cv-action-title">Find Alternatives</div><div class="cv-action-copy">Compare compatible replacement candidates and supplier coverage.</div></a>
-          <a class="cv-action-card" href="?page=Monitoring" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">!</div><div class="cv-action-title">Review Alerts</div><div class="cv-action-copy">Check stock, lifecycle, and risk changes across monitored parts.</div></a>
-          <a class="cv-action-card" href="?page=Reports" target="_self" style="text-decoration:none!important;color:inherit!important;"><div class="cv-action-icon">↧</div><div class="cv-action-title">Export Reports</div><div class="cv-action-copy">Download engineering-ready reports for review and sourcing.</div></a>
+        f"""
+        <div class="cv-v4-action-grid">
+          <a class="cv-v4-action" href="?page=BOM%20Analyzer" target="_self"><div class="icon">{_lucide_icon('file',18)}</div><div class="title">Analyze a BOM</div><div class="copy">Upload CSV or Excel and generate lifecycle, sourcing, and risk intelligence.</div><div class="meta">CSV / Excel • analysis workflow →</div></a>
+          <a class="cv-v4-action" href="?page=Alternative%20Finder" target="_self"><div class="icon">{_lucide_icon('replace',18)}</div><div class="title">Find Alternatives</div><div class="copy">Search compatible replacement candidates and supplier-backed options.</div><div class="meta">Replacement validation →</div></a>
+          <a class="cv-v4-action" href="?page=Monitoring" target="_self"><div class="icon">{_lucide_icon('activity',18)}</div><div class="title">Review Alerts</div><div class="copy">Check stock, lifecycle, and risk changes across monitored components.</div><div class="meta">{alert_count} active alerts →</div></a>
+          <a class="cv-v4-action" href="?page=Reports" target="_self"><div class="icon">{_lucide_icon('boxes',18)}</div><div class="title">Export Reports</div><div class="copy">Download engineering-ready reports for sourcing and management review.</div><div class="meta">PDF / Excel reports →</div></a>
         </div>
         """,
         unsafe_allow_html=True,
