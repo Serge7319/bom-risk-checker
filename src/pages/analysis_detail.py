@@ -202,6 +202,7 @@ def render_analysis_detail(
         .cv-readiness-metrics span{display:block;color:#64748B!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;}
         .cv-readiness-metrics strong{display:block;color:#0B1220!important;font-size:22px;font-weight:980;line-height:1;}
         .cv-readiness-metrics small{display:block;color:#64748B!important;font-size:10.5px;font-weight:800;margin-top:6px;}
+        .cv-risk-compact:hover,.cv-analysis-card:hover{border-color:#BFDBFE;box-shadow:0 22px 52px rgba(15,23,42,.075);transition:all .16s ease;}
         @media(max-width:1180px){.cv-analysis-hero,.cv-analysis-grid{grid-template-columns:1fr}.cv-analysis-component{grid-template-columns:1fr}.cv-analysis-pills{justify-content:flex-start}.cv-analysis-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.cv-readiness-metrics{grid-template-columns:1fr}}
         @media(max-width:700px){.cv-analysis-summary{grid-template-columns:1fr}.cv-analysis-title{font-size:30px}.cv-analysis-hero{padding:20px}}
         </style>
@@ -318,7 +319,7 @@ def render_analysis_detail(
 
     chart_col, alerts_col = st.columns([1.05, 1])
     with chart_col:
-        st.markdown('<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">Lifecycle & Replacement Readiness</div><div class="cv-analysis-section-meta">Operational signals that are more actionable than a chart.</div></div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">Lifecycle & Replacement Intelligence</div><div class="cv-analysis-section-meta">Operational readiness, stock health, supplier alerts, and replacement signals.</div></div></div>', unsafe_allow_html=True)
         total = max(1, total_parts)
         active_count = sum(1 for p in parts if "active" in str(p.get("lifecycle_status") or p.get("Lifecycle Status") or "").lower())
         no_stock = sum(1 for p in parts if _num(p.get("stock_available") or p.get("Stock Available"), 0) <= 0)
@@ -330,7 +331,7 @@ def render_analysis_detail(
         st.markdown(
             f"""
             <div class="cv-risk-compact">
-              <div class="cv-risk-total"><span>Engineering readiness score</span><strong>{max(0, min(100, health))}</strong></div>
+              <div class="cv-risk-total"><span>Workspace readiness score</span><strong>{max(0, min(100, health))}</strong></div>
               <div class="cv-readiness-list">
                 <div class="cv-readiness-row">
                   <div><strong>Lifecycle Coverage</strong><span>{active_count} active components · {active_pct}% of BOM</span></div>
@@ -342,7 +343,7 @@ def render_analysis_detail(
                 </div>
                 <div class="cv-readiness-metrics">
                   <div><span>Supplier Alerts</span><strong>{monitored_alerts}</strong><small>attached to analysis</small></div>
-                  <div><span>Replacement Candidates</span><strong>{replacement_ready}</strong><small>ready for validation</small></div>
+                  <div><span>Validated Alternatives</span><strong>{replacement_ready}</strong><small>linked to this analysis</small></div>
                   <div><span>High-Risk Parts</span><strong>{high}</strong><small>need engineering review</small></div>
                 </div>
               </div>
@@ -409,4 +410,4 @@ def render_analysis_detail(
             alt_rows.append(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{original} → {recommendation}</div><div class="cv-analysis-row-meta">{supplier}</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill good">Alternative</span></div></div>')
         st.markdown(f'<div class="cv-analysis-row-list">{"".join(alt_rows)}</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="cv-analysis-empty">No replacement candidates are linked yet. Use Alternative Finder to validate lower-risk replacements.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv-analysis-empty">No validated replacement candidates are linked yet. Use Alternative Finder to review lower-risk options.</div>', unsafe_allow_html=True)
