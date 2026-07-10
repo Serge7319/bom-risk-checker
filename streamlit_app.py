@@ -45,6 +45,7 @@ from src.ui.framework import (
 )
 from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
+from src.pages.reports import render_reports_center
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -1548,99 +1549,13 @@ if app_mode == "Monitoring":
 
 # ---------- Reports ----------
 if app_mode == "Reports":
-    # Milestone 5.4.6: Reports Center reliable render.
-    # This page intentionally uses native Streamlit elements instead of the shared
-    # action_card/empty_state helpers so the content cannot be hidden by shell CSS.
-    st.markdown(
-        """
-        <div class="cv-dashboard-header cv-fade-in">
-          <div>
-            <div class="cv-eyebrow">Reports Center</div>
-            <h1 class="cv-title">Engineering reports</h1>
-            <p class="cv-subtitle">Generate, download, and share executive-ready BOM risk reports. Full report automation is scheduled after BOM Intelligence 2.0.</p>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    render_reports_center(
+        current_user=current_user,
+        supabase=supabase,
+        load_analysis_history=load_analysis_history,
+        _qp_value=_qp_value,
     )
-
-    saved_analyses = st.session_state.get("saved_analyses", []) or []
-    latest = saved_analyses[0] if saved_analyses else {}
-    total_reports = len(saved_analyses)
-    total_parts = sum(int(a.get("parts", 0) or a.get("part_count", 0) or 0) for a in saved_analyses)
-    avg_health = round(sum(float(a.get("health", 0) or a.get("health_score", 0) or 0) for a in saved_analyses) / total_reports) if total_reports else 0
-    high_risk_total = sum(int(a.get("high_risk", 0) or a.get("high_risk_parts", 0) or 0) for a in saved_analyses)
-
-    st.markdown("### Report command center")
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Saved analyses", total_reports)
-    k2.metric("Parts reviewed", total_parts)
-    k3.metric("Average health", avg_health if total_reports else "—")
-    k4.metric("High-risk parts", high_risk_total)
-
-    st.markdown("### Report templates")
-    t1, t2, t3 = st.columns(3)
-    with t1:
-        st.markdown("""
-        <div class="cv-panel" style="min-height:170px">
-          <div class="cv-eyebrow">Executive PDF</div>
-          <h3>Leadership risk summary</h3>
-          <p>Portfolio health, high-risk components, monitoring posture, and recommended next actions.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.button("Generate executive report", use_container_width=True, key="reports_exec_btn")
-    with t2:
-        st.markdown("""
-        <div class="cv-panel" style="min-height:170px">
-          <div class="cv-eyebrow">Engineering Review</div>
-          <h3>Component risk packet</h3>
-          <p>Detailed part-level lifecycle, sourcing, stock, supplier, and risk review for engineering teams.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.button("Prepare engineering packet", use_container_width=True, key="reports_eng_btn")
-    with t3:
-        st.markdown("""
-        <div class="cv-panel" style="min-height:170px">
-          <div class="cv-eyebrow">Procurement Export</div>
-          <h3>Sourcing workbook</h3>
-          <p>CSV-ready export for procurement, lifecycle checks, supplier follow-up, and alternatives review.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.button("Build sourcing export", use_container_width=True, key="reports_proc_btn")
-
-    rows = []
-    for a in saved_analyses[:10]:
-        rows.append({
-            "Project": a.get("project_name") or a.get("name") or "Saved analysis",
-            "File": a.get("file_name") or a.get("uploaded_file") or "—",
-            "Health": a.get("health") or a.get("health_score") or "—",
-            "High Risk": a.get("high_risk") or a.get("high_risk_parts") or 0,
-            "Parts": a.get("parts") or a.get("part_count") or "—",
-            "Updated": a.get("created_at") or a.get("date") or "—",
-        })
-
-    st.markdown("### Recent report sources")
-    if rows:
-        report_df = pd.DataFrame(rows)
-        st.dataframe(report_df, use_container_width=True, hide_index=True)
-        st.download_button(
-            "Download report source CSV",
-            report_df.to_csv(index=False).encode("utf-8"),
-            file_name="cadivor_report_sources.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    else:
-        st.info("No saved analyses are available yet. Analyze a BOM first, then return here to generate reports.")
-
-    st.markdown("### Automation roadmap")
-    r1, r2, r3 = st.columns(3)
-    r1.info("Scheduled email reports — planned")
-    r2.info("PDF export automation — planned")
-    r3.info("Team approval workflow — planned")
-
     st.stop()
-
 
 # ---------- Pricing ----------
 if app_mode == "Pricing":
