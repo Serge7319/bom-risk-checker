@@ -1548,152 +1548,354 @@ if app_mode == "Monitoring":
 
 # ---------- Reports ----------
 if app_mode == "Reports":
+    # Milestone 5.4.1 — Reports Center V2
+    # This block is intentionally self-contained and does not depend on the old
+    # cv-dashboard-header spacing styles. That prevents the empty Reports page
+    # issue and makes the rendered change obvious after deployment.
+
+    def _report_value(row, *keys, default="—"):
+        for key in keys:
+            value = row.get(key)
+            if value not in (None, ""):
+                return value
+        return default
+
+    def _report_date(value):
+        if not value:
+            return "—"
+        text = str(value)
+        return text[:10] if len(text) >= 10 else text
+
+    reports = analysis_history.data if getattr(analysis_history, "data", None) else []
+    total_reports = len(reports)
+    total_parts_reviewed = sum(int(_report_value(r, "part_count", "parts_count", "total_parts", default=0) or 0) for r in reports)
+    avg_health = round(
+        sum(int(_report_value(r, "bom_health_score", "health_score", default=0) or 0) for r in reports) / total_reports
+    ) if total_reports else 0
+    total_high_risk = sum(int(_report_value(r, "high_risk_count", "high_risk_parts", default=0) or 0) for r in reports)
+
+    csv_rows = []
+    for row in reports:
+        csv_rows.append({
+            "Project": _report_value(row, "project_name", "name", default="Untitled BOM"),
+            "File": _report_value(row, "filename", "uploaded_file", "file_name", default="—"),
+            "Date": _report_date(_report_value(row, "created_at", default="")),
+            "Parts": _report_value(row, "part_count", "parts_count", "total_parts", default=0),
+            "Health": _report_value(row, "bom_health_score", "health_score", default=0),
+            "High Risk": _report_value(row, "high_risk_count", "high_risk_parts", default=0),
+        })
+
     st.markdown(
         """
         <style>
-        .cv-reports-page { padding-top: 18px; }
-        .cv-reports-hero {
-            border:1px solid #B7D4FF; border-radius:28px; padding:34px 36px;
-            background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 52%,#EAF3FF 100%);
-            box-shadow:0 28px 70px rgba(15,23,42,.08); margin-bottom:24px;
-        }
-        .cv-reports-kicker { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px;
-            background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB; font-size:12px; font-weight:950;
-            letter-spacing:.13em; text-transform:uppercase; margin-bottom:18px; }
-        .cv-reports-title { margin:0; color:#071225; font-size:44px; line-height:1.03; letter-spacing:-.045em; font-weight:950; }
-        .cv-reports-subtitle { color:#53657F; font-size:16px; line-height:1.65; max-width:820px; margin:16px 0 0; font-weight:700; }
-        .cv-report-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; margin:22px 0 26px; }
-        .cv-report-card { background:#fff; border:1px solid #DDE7F3; border-radius:22px; padding:22px; min-height:142px;
-            box-shadow:0 18px 48px rgba(15,23,42,.07); transition:all .16s ease; }
-        .cv-report-card:hover { transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 24px 60px rgba(37,99,235,.12); }
-        .cv-report-icon { width:38px; height:38px; display:flex; align-items:center; justify-content:center; border-radius:14px;
-            background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB; font-weight:950; margin-bottom:14px; }
-        .cv-report-label { color:#64748B; font-size:12px; font-weight:950; text-transform:uppercase; letter-spacing:.11em; margin-bottom:8px; }
-        .cv-report-value { color:#071225; font-size:28px; font-weight:950; line-height:1; margin-bottom:8px; }
-        .cv-report-copy { color:#52647D; font-size:13px; font-weight:750; line-height:1.45; }
-        .cv-template-row { display:grid; grid-template-columns:1.2fr .8fr .8fr auto; gap:14px; align-items:center;
-            background:#FFFFFF; border:1px solid #DDE7F3; border-radius:18px; padding:16px 18px; margin-bottom:10px;
-            box-shadow:0 12px 32px rgba(15,23,42,.05); }
-        .cv-template-title { font-weight:950; color:#071225; }
-        .cv-template-meta { color:#64748B; font-size:12px; font-weight:850; }
-        .cv-pill-blue { display:inline-flex; align-items:center; border-radius:999px; padding:7px 12px; background:#EFF6FF; color:#2563EB;
-            border:1px solid #BFDBFE; font-weight:900; font-size:12px; }
-        .cv-pill-green { display:inline-flex; align-items:center; border-radius:999px; padding:7px 12px; background:#ECFDF5; color:#059669;
-            border:1px solid #A7F3D0; font-weight:900; font-size:12px; }
-        .cv-report-section-title { margin:28px 0 6px; color:#071225; font-size:24px; font-weight:950; letter-spacing:-.035em; }
-        .cv-report-section-subtitle { color:#64748B; font-size:13px; font-weight:800; margin-bottom:14px; }
-        @media(max-width:1200px){ .cv-report-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .cv-template-row{grid-template-columns:1fr;} }
+          .cv-reports-v2 { padding: 18px 0 56px; }
+          .cv-reports-hero {
+            border: 1px solid #BFDBFE;
+            border-radius: 28px;
+            padding: 32px 34px;
+            background:
+              radial-gradient(circle at 88% 0%, rgba(37,99,235,.15), transparent 34%),
+              linear-gradient(135deg, #FFFFFF 0%, #F8FBFF 58%, #EFF6FF 100%);
+            box-shadow: 0 26px 80px rgba(15,23,42,.08);
+            margin-bottom: 22px;
+          }
+          .cv-reports-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            padding: 8px 13px;
+            border-radius: 999px;
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            color: #2563EB;
+            font-size: 11px;
+            font-weight: 950;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            margin-bottom: 18px;
+          }
+          .cv-reports-hero h1 {
+            margin: 0 0 12px;
+            color: #0F172A;
+            font-size: clamp(34px, 4vw, 54px);
+            line-height: .98;
+            letter-spacing: -.055em;
+            font-weight: 950;
+          }
+          .cv-reports-hero p {
+            max-width: 820px;
+            margin: 0;
+            color: #475569;
+            font-size: 16px;
+            line-height: 1.65;
+            font-weight: 750;
+          }
+          .cv-report-kpis {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+            margin: 18px 0 24px;
+          }
+          .cv-report-kpi,
+          .cv-report-card,
+          .cv-report-row,
+          .cv-report-roadmap {
+            background: rgba(255,255,255,.92);
+            border: 1px solid #E2E8F0;
+            border-radius: 22px;
+            box-shadow: 0 18px 52px rgba(15,23,42,.07);
+          }
+          .cv-report-kpi { padding: 20px; min-height: 130px; }
+          .cv-report-label {
+            color: #64748B;
+            font-size: 11px;
+            font-weight: 950;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+          }
+          .cv-report-value {
+            color: #0F172A;
+            font-size: 36px;
+            line-height: 1;
+            font-weight: 950;
+            letter-spacing: -.045em;
+          }
+          .cv-report-note {
+            margin-top: 10px;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .cv-report-section-head {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 20px;
+            margin: 24px 0 12px;
+          }
+          .cv-report-section-head h2 {
+            margin: 0 0 4px;
+            color: #0F172A;
+            font-size: 24px;
+            font-weight: 950;
+            letter-spacing: -.04em;
+          }
+          .cv-report-section-head p {
+            margin: 0;
+            color: #64748B;
+            font-size: 13px;
+            font-weight: 750;
+          }
+          .cv-report-template-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+          }
+          .cv-report-card {
+            padding: 22px;
+            min-height: 210px;
+            transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+          }
+          .cv-report-card:hover {
+            transform: translateY(-3px);
+            border-color: #93C5FD;
+            box-shadow: 0 28px 72px rgba(37,99,235,.13);
+          }
+          .cv-report-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #EFF6FF;
+            color: #2563EB;
+            border: 1px solid #BFDBFE;
+            font-size: 20px;
+            font-weight: 950;
+            margin-bottom: 18px;
+          }
+          .cv-report-card h3 {
+            margin: 0 0 10px;
+            color: #0F172A;
+            font-size: 18px;
+            font-weight: 950;
+            letter-spacing: -.025em;
+          }
+          .cv-report-card p {
+            margin: 0 0 18px;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1.55;
+            font-weight: 750;
+          }
+          .cv-report-link {
+            color: #2563EB;
+            font-size: 13px;
+            font-weight: 950;
+            text-decoration: none !important;
+          }
+          .cv-report-list { display: grid; gap: 12px; }
+          .cv-report-row {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr .55fr .55fr .55fr auto;
+            gap: 16px;
+            align-items: center;
+            padding: 16px 18px;
+          }
+          .cv-report-row strong {
+            color: #0F172A;
+            font-size: 14px;
+            font-weight: 950;
+          }
+          .cv-report-row span {
+            color: #64748B;
+            font-size: 12px;
+            font-weight: 800;
+          }
+          .cv-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: fit-content;
+            padding: 8px 11px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 950;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            color: #334155;
+            white-space: nowrap;
+          }
+          .cv-pill.good { background:#ECFDF5; border-color:#86EFAC; color:#047857; }
+          .cv-pill.bad { background:#FEF2F2; border-color:#FCA5A5; color:#DC2626; }
+          .cv-report-roadmap { padding: 22px; }
+          .cv-roadmap-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+          .cv-roadmap-item { padding: 16px; border:1px solid #E2E8F0; border-radius:18px; background:#F8FAFC; }
+          .cv-roadmap-item strong { display:block; color:#0F172A; font-size:14px; font-weight:950; margin-bottom:6px; }
+          .cv-roadmap-item span { color:#64748B; font-size:12px; font-weight:750; line-height:1.45; }
+          @media (max-width: 1100px) {
+            .cv-report-kpis, .cv-report-template-grid, .cv-roadmap-grid { grid-template-columns: 1fr 1fr; }
+            .cv-report-row { grid-template-columns: 1fr; }
+          }
+          @media (max-width: 760px) {
+            .cv-report-kpis, .cv-report-template-grid, .cv-roadmap-grid { grid-template-columns: 1fr; }
+            .cv-reports-hero { padding: 24px; }
+          }
         </style>
-        <div class="cv-reports-page">
-          <div class="cv-reports-hero">
-            <div class="cv-reports-kicker">▣ Reports Center</div>
-            <h1 class="cv-reports-title">Engineering reports</h1>
-            <p class="cv-reports-subtitle">Generate launch-ready BOM intelligence reports for engineering review, sourcing decisions, supplier escalation, and management updates.</p>
+        <div class="cv-reports-v2">
+          <section class="cv-reports-hero">
+            <div class="cv-reports-eyebrow">▣ Reports Center</div>
+            <h1>Engineering reports</h1>
+            <p>Create executive-ready BOM review packets from saved Cadivor analyses. Reports summarize portfolio health, high-risk components, lifecycle alerts, supplier exposure, and replacement readiness.</p>
+          </section>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="cv-report-kpis">
+          <div class="cv-report-kpi"><div class="cv-report-label">Saved analyses</div><div class="cv-report-value">{total_reports}</div><div class="cv-report-note">Available report sources</div></div>
+          <div class="cv-report-kpi"><div class="cv-report-label">Average health</div><div class="cv-report-value">{avg_health}</div><div class="cv-report-note">Across saved BOM reviews</div></div>
+          <div class="cv-report-kpi"><div class="cv-report-label">High-risk parts</div><div class="cv-report-value">{total_high_risk}</div><div class="cv-report-note">Need engineering review</div></div>
+          <div class="cv-report-kpi"><div class="cv-report-label">Parts reviewed</div><div class="cv-report-value">{total_parts_reviewed}</div><div class="cv-report-note">Tracked in saved analyses</div></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="cv-report-section-head">
+          <div><h2>Report templates</h2><p>Select the type of report Cadivor should prepare from your saved BOM intelligence.</p></div>
+        </div>
+        <div class="cv-report-template-grid">
+          <div class="cv-report-card"><div class="cv-report-icon">📄</div><h3>Executive BOM Review</h3><p>Board-ready summary with health score, high-risk count, alert posture, and recommended next action.</p><a class="cv-report-link" href="?page=Dashboard" target="_self">Review portfolio →</a></div>
+          <div class="cv-report-card"><div class="cv-report-icon">🧪</div><h3>Engineering Risk Packet</h3><p>Component-level risk, lifecycle status, stock posture, supplier count, and parts needing technical review.</p><a class="cv-report-link" href="?page=BOM%20Analyzer" target="_self">Open BOM Analyzer →</a></div>
+          <div class="cv-report-card"><div class="cv-report-icon">⇄</div><h3>Replacement Readiness</h3><p>Alternative candidate coverage, validation status, and sourcing notes for risky components.</p><a class="cv-report-link" href="?page=Alternative%20Finder" target="_self">Find alternatives →</a></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="cv-report-section-head">
+          <div><h2>Recent report sources</h2><p>Saved BOM analyses that can be exported or opened for a detailed report.</p></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if reports:
+        rows_html = []
+        for row in reports[:8]:
+            project = html.escape(str(_report_value(row, "project_name", "name", default="Untitled BOM")))
+            filename = html.escape(str(_report_value(row, "filename", "uploaded_file", "file_name", default="—")))
+            date = html.escape(str(_report_date(_report_value(row, "created_at", default=""))))
+            parts = int(_report_value(row, "part_count", "parts_count", "total_parts", default=0) or 0)
+            health = int(_report_value(row, "bom_health_score", "health_score", default=0) or 0)
+            high = int(_report_value(row, "high_risk_count", "high_risk_parts", default=0) or 0)
+            health_class = "good" if health >= 80 else "bad" if health < 60 else ""
+            high_class = "good" if high == 0 else "bad"
+            analysis_id = row.get("id") or row.get("analysis_id") or ""
+            href = f"?page=Analysis%20Details&analysis_id={html.escape(str(analysis_id))}" if analysis_id else "?page=BOM%20Analyzer"
+            rows_html.append(
+                f"""
+                <div class="cv-report-row">
+                  <div><strong>{project}</strong><br><span>{filename}</span></div>
+                  <span>{date}</span>
+                  <span>{parts} parts</span>
+                  <span class="cv-pill {health_class}">{health} health</span>
+                  <span class="cv-pill {high_class}">{high} high</span>
+                  <a class="cv-report-link" href="{href}" target="_self">Open report →</a>
+                </div>
+                """
+            )
+        st.markdown('<div class="cv-report-list">' + ''.join(rows_html) + '</div>', unsafe_allow_html=True)
+    else:
+        empty_state(
+            "No saved analyses yet",
+            "Analyze and save a BOM first. Cadivor will use saved analyses as report sources.",
+            "Open BOM Analyzer",
+            "?page=BOM%20Analyzer",
+            "□",
+        )
+
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    if csv_rows:
+        export_df = pd.DataFrame(csv_rows)
+        st.download_button(
+            "Download Reports CSV",
+            export_df.to_csv(index=False).encode("utf-8"),
+            file_name="cadivor_reports_index.csv",
+            mime="text/csv",
+            use_container_width=False,
+        )
+
+    st.markdown(
+        """
+        <div class="cv-report-section-head">
+          <div><h2>Automation roadmap</h2><p>Report workflows planned as Cadivor moves toward team-ready BOM intelligence.</p></div>
+        </div>
+        <div class="cv-report-roadmap">
+          <div class="cv-roadmap-grid">
+            <div class="cv-roadmap-item"><strong>PDF export</strong><span>Branded executive PDF packets for BOM reviews and stakeholder sharing.</span></div>
+            <div class="cv-roadmap-item"><strong>Scheduled delivery</strong><span>Weekly lifecycle, stock, and supplier change digests by email.</span></div>
+            <div class="cv-roadmap-item"><strong>Team approvals</strong><span>Engineering review states, assignments, and sign-off history.</span></div>
+            <div class="cv-roadmap-item"><strong>Audit trail</strong><span>Versioned report history for design reviews and sourcing decisions.</span></div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    reports_history = pd.DataFrame(analysis_history.data or [])
-    total_reports = len(reports_history)
-
-    if not reports_history.empty:
-        reports_history["health_score"] = pd.to_numeric(reports_history.get("health_score", 0), errors="coerce").fillna(0).astype(int)
-        reports_history["high_risk_count"] = pd.to_numeric(reports_history.get("high_risk_count", 0), errors="coerce").fillna(0).astype(int)
-        avg_health = int(round(reports_history["health_score"].mean()))
-        high_risk_total = int(reports_history["high_risk_count"].sum())
-        latest_name = str(reports_history.iloc[0].get("project_name") or reports_history.iloc[0].get("filename") or "Latest BOM")
-    else:
-        avg_health = 0
-        high_risk_total = 0
-        latest_name = "No saved analyses yet"
-
-    st.markdown(
-        f"""
-        <div class="cv-report-grid">
-          <div class="cv-report-card"><div class="cv-report-icon">▤</div><div class="cv-report-label">Saved analyses</div><div class="cv-report-value">{total_reports}</div><div class="cv-report-copy">BOM reviews available for report generation.</div></div>
-          <div class="cv-report-card"><div class="cv-report-icon">◈</div><div class="cv-report-label">Average health</div><div class="cv-report-value">{avg_health}</div><div class="cv-report-copy">Portfolio health across saved BOM analyses.</div></div>
-          <div class="cv-report-card"><div class="cv-report-icon">△</div><div class="cv-report-label">High-risk parts</div><div class="cv-report-value">{high_risk_total}</div><div class="cv-report-copy">Components that may require engineering review.</div></div>
-          <div class="cv-report-card"><div class="cv-report-icon">↗</div><div class="cv-report-label">Latest report source</div><div class="cv-report-value" style="font-size:18px;line-height:1.2;">{html.escape(latest_name)}</div><div class="cv-report-copy">Most recent analysis ready for export.</div></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="cv-report-section-title">Report templates</div><div class="cv-report-section-subtitle">Choose the report format that matches the review conversation.</div>', unsafe_allow_html=True)
-
-    templates = [
-        ("Executive Risk Brief", "One-page management summary", "PDF-ready", "Best for founders and leadership updates"),
-        ("Engineering Review Packet", "Risk, lifecycle, supplier, and component details", "Engineering", "Best for design review and corrective action"),
-        ("Sourcing Export", "CSV/Excel-friendly supplier and risk data", "Spreadsheet", "Best for purchasing and supplier conversations"),
-    ]
-    for title, meta, badge, desc in templates:
-        st.markdown(
-            f"""
-            <div class="cv-template-row">
-              <div><div class="cv-template-title">{title}</div><div class="cv-template-meta">{meta}</div></div>
-              <div class="cv-template-meta">{desc}</div>
-              <div><span class="cv-pill-blue">{badge}</span></div>
-              <div><span class="cv-pill-green">Available</span></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div class="cv-report-section-title">Recent report sources</div><div class="cv-report-section-subtitle">Saved BOM analyses that can be opened or exported.</div>', unsafe_allow_html=True)
-
-    if not reports_history.empty:
-        display_df = reports_history.copy()
-        if "project_name" not in display_df.columns:
-            display_df["project_name"] = display_df.get("filename", "Untitled BOM")
-        if "filename" not in display_df.columns:
-            display_df["filename"] = "Unknown file"
-        if "medium_risk_count" not in display_df.columns:
-            display_df["medium_risk_count"] = 0
-        if "created_at" in display_df.columns:
-            display_df["created_at"] = pd.to_datetime(display_df["created_at"], errors="coerce").dt.strftime("%Y-%m-%d")
-
-        report_display = display_df[["project_name", "filename", "health_score", "high_risk_count", "medium_risk_count", "created_at"]].rename(
-            columns={
-                "project_name": "Project",
-                "filename": "Source File",
-                "health_score": "Health",
-                "high_risk_count": "High Risk",
-                "medium_risk_count": "Medium Risk",
-                "created_at": "Saved",
-            }
-        )
-        st.dataframe(report_display, hide_index=True, use_container_width=True)
-
-        csv_bytes = report_display.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download report source CSV",
-            data=csv_bytes,
-            file_name="cadivor_report_sources.csv",
-            mime="text/csv",
-            type="primary",
-            use_container_width=False,
-        )
-    else:
-        empty_state(
-            "No report sources yet",
-            "Analyze a BOM first. Saved analyses will appear here as report-ready engineering records.",
-            "Open BOM Analyzer",
-            "?page=BOM%20Analyzer",
-            "▤",
-        )
-
-    st.markdown('<div class="cv-report-section-title">Automation roadmap</div><div class="cv-report-section-subtitle">Planned report workflows for Cadivor Business workspaces.</div>', unsafe_allow_html=True)
-    r1, r2, r3 = st.columns(3)
-    with r1:
-        action_card("Scheduled Reports", "Send weekly BOM risk summaries to engineering and sourcing stakeholders.", "?page=Reports", "⏱")
-    with r2:
-        action_card("Shareable Review Links", "Create secure analysis links for teammates and external reviewers.", "?page=Workspace", "↗")
-    with r3:
-        action_card("Executive PDF Export", "Generate a branded management report from any saved analysis.", "?page=BOM%20Analyzer", "PDF")
-
     st.stop()
+
 
 # ---------- Pricing ----------
 if app_mode == "Pricing":
