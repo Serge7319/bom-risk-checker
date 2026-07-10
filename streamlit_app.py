@@ -45,6 +45,7 @@ from src.ui.framework import (
 )
 from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
+from src.pages.reports import render_reports_center
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -1548,126 +1549,12 @@ if app_mode == "Monitoring":
 
 # ---------- Reports ----------
 if app_mode == "Reports":
-    # Milestone 5.4.2 — Reports Center hard repair.
-    # This block intentionally avoids the old Reports helper cards so the page cannot render blank.
-    try:
-        reports_response = (
-            supabase.table("analyses")
-            .select("id, project_name, file_name, health_score, high_risk_count, medium_risk_count, created_at")
-            .eq("user_id", current_user["id"])
-            .order("created_at", desc=True)
-            .limit(8)
-            .execute()
-        )
-        report_sources = reports_response.data or []
-    except Exception:
-        report_sources = []
-
-    total_reports = len(report_sources)
-    avg_health = 0
-    total_high_risk = 0
-    if report_sources:
-        avg_health = round(sum(int(r.get("health_score") or 0) for r in report_sources) / len(report_sources))
-        total_high_risk = sum(int(r.get("high_risk_count") or 0) for r in report_sources)
-
-    st.markdown(
-        f"""
-        <style>
-        .cv-reports-hero {{ background: linear-gradient(135deg, #FFFFFF 0%, #F8FBFF 58%, #EEF5FF 100%); border: 1px solid #BFDBFE; border-radius: 28px; padding: 34px 36px; box-shadow: 0 28px 80px rgba(37,99,235,.08); margin-bottom: 22px; }}
-        .cv-reports-eyebrow {{ display:inline-flex; align-items:center; gap:8px; padding: 8px 14px; border-radius: 999px; background:#EFF6FF; color:#2563EB!important; font-size:11px; font-weight:950; letter-spacing:.12em; text-transform:uppercase; border:1px solid #BFDBFE; margin-bottom:22px; }}
-        .cv-reports-title {{ color:#0F172A!important; font-size:42px; line-height:1.02; font-weight:950; margin:0 0 14px; letter-spacing:-.045em; }}
-        .cv-reports-subtitle {{ color:#475569!important; font-size:16px; line-height:1.65; max-width:780px; font-weight:700; margin:0; }}
-        .cv-reports-kpis {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px; margin:22px 0 24px; }}
-        .cv-report-kpi {{ background:#FFFFFF; border:1px solid #E2E8F0; border-radius:22px; padding:22px; box-shadow:0 18px 48px rgba(15,23,42,.055); min-height:132px; }}
-        .cv-report-kpi-label {{ color:#64748B!important; font-size:11px; font-weight:950; letter-spacing:.12em; text-transform:uppercase; margin-bottom:14px; }}
-        .cv-report-kpi-value {{ color:#0F172A!important; font-size:34px; font-weight:950; letter-spacing:-.04em; line-height:1; margin-bottom:10px; }}
-        .cv-report-kpi-note {{ color:#334155!important; font-size:13px; font-weight:800; line-height:1.4; }}
-        .cv-reports-section-head {{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin:28px 0 14px; }}
-        .cv-reports-section-title {{ color:#0F172A!important; font-size:24px; font-weight:950; letter-spacing:-.035em; margin:0; }}
-        .cv-reports-section-copy {{ color:#64748B!important; font-size:13px; font-weight:750; margin-top:4px; }}
-        .cv-report-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; margin-bottom:22px; }}
-        .cv-report-template {{ background:#FFFFFF; border:1px solid #E2E8F0; border-radius:22px; padding:24px; box-shadow:0 18px 48px rgba(15,23,42,.055); min-height:210px; transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease; }}
-        .cv-report-template:hover, .cv-report-row:hover {{ transform:translateY(-2px); border-color:#BFDBFE; box-shadow:0 24px 62px rgba(15,23,42,.085); }}
-        .cv-report-icon {{ width:42px; height:42px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:#EFF6FF; color:#2563EB!important; border:1px solid #BFDBFE; font-weight:950; margin-bottom:18px; }}
-        .cv-report-template-title {{ color:#0F172A!important; font-size:17px; font-weight:950; margin-bottom:8px; }}
-        .cv-report-template-copy {{ color:#475569!important; font-size:13px; font-weight:750; line-height:1.55; margin-bottom:18px; }}
-        .cv-report-chip-row {{ display:flex; flex-wrap:wrap; gap:8px; }}
-        .cv-report-chip {{ border:1px solid #DBEAFE; background:#EFF6FF; color:#2563EB!important; border-radius:999px; padding:6px 10px; font-size:11px; font-weight:900; }}
-        .cv-report-list {{ display:grid; gap:12px; }}
-        .cv-report-row {{ background:#FFFFFF; border:1px solid #E2E8F0; border-radius:18px; padding:16px 18px; display:grid; grid-template-columns:1.4fr 1fr auto auto auto; align-items:center; gap:16px; box-shadow:0 14px 36px rgba(15,23,42,.045); transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease; }}
-        .cv-report-row-title {{ color:#0F172A!important; font-size:14px; font-weight:950; margin-bottom:4px; }}
-        .cv-report-row-meta {{ color:#64748B!important; font-size:12px; font-weight:800; }}
-        .cv-pill-good {{ color:#047857!important; background:#ECFDF5; border:1px solid #A7F3D0; }}
-        .cv-pill-bad {{ color:#DC2626!important; background:#FEF2F2; border:1px solid #FECACA; }}
-        .cv-report-pill {{ border-radius:999px; padding:7px 11px; font-size:12px; font-weight:950; white-space:nowrap; }}
-        .cv-report-link {{ color:#2563EB!important; font-weight:950; text-decoration:none!important; white-space:nowrap; }}
-        .cv-report-empty {{ background:#FFFFFF; border:1px dashed #CBD5E1; border-radius:22px; padding:32px; text-align:center; color:#64748B!important; font-weight:800; }}
-        @media(max-width:1100px) {{ .cv-reports-kpis, .cv-report-grid {{ grid-template-columns:1fr 1fr; }} .cv-report-row {{ grid-template-columns:1fr; }} }}
-        @media(max-width:760px) {{ .cv-reports-kpis, .cv-report-grid {{ grid-template-columns:1fr; }} .cv-reports-title {{ font-size:34px; }} }}
-        </style>
-        <div class="cv-reports-hero">
-          <div class="cv-reports-eyebrow">▣ Reports Center</div>
-          <h1 class="cv-reports-title">Engineering reports</h1>
-          <p class="cv-reports-subtitle">Generate executive-ready BOM risk packages, engineering review summaries, sourcing exports, and lifecycle intelligence from one Cadivor workspace.</p>
-        </div>
-        <div class="cv-reports-kpis">
-          <div class="cv-report-kpi"><div class="cv-report-kpi-label">Saved analyses</div><div class="cv-report-kpi-value">{saved_bom_count}</div><div class="cv-report-kpi-note">BOM records available for report generation</div></div>
-          <div class="cv-report-kpi"><div class="cv-report-kpi-label">Report sources</div><div class="cv-report-kpi-value">{total_reports}</div><div class="cv-report-kpi-note">Recent analyses loaded into this center</div></div>
-          <div class="cv-report-kpi"><div class="cv-report-kpi-label">Average health</div><div class="cv-report-kpi-value">{avg_health}</div><div class="cv-report-kpi-note">Across recent saved BOM reviews</div></div>
-          <div class="cv-report-kpi"><div class="cv-report-kpi-label">High-risk parts</div><div class="cv-report-kpi-value">{total_high_risk}</div><div class="cv-report-kpi-note">Needs engineering review before release</div></div>
-        </div>
-        <div class="cv-reports-section-head"><div><h2 class="cv-reports-section-title">Report templates</h2><div class="cv-reports-section-copy">Choose the report format that matches the stakeholder.</div></div></div>
-        <div class="cv-report-grid">
-          <div class="cv-report-template"><div class="cv-report-icon">PDF</div><div class="cv-report-template-title">Executive BOM Risk Report</div><div class="cv-report-template-copy">Board-ready summary with health score, high-risk parts, supplier alerts, and recommended actions.</div><div class="cv-report-chip-row"><span class="cv-report-chip">Leadership</span><span class="cv-report-chip">PDF-ready</span></div></div>
-          <div class="cv-report-template"><div class="cv-report-icon">XLS</div><div class="cv-report-template-title">Engineering Review Workbook</div><div class="cv-report-template-copy">Spreadsheet export for component-level review, lifecycle notes, supplier status, and risk triage.</div><div class="cv-report-chip-row"><span class="cv-report-chip">Engineering</span><span class="cv-report-chip">Excel</span></div></div>
-          <div class="cv-report-template"><div class="cv-report-icon">CSV</div><div class="cv-report-template-title">Procurement Sourcing Export</div><div class="cv-report-template-copy">Lightweight CSV for sourcing teams to review risky parts, saved analyses, and replacement readiness.</div><div class="cv-report-chip-row"><span class="cv-report-chip">Sourcing</span><span class="cv-report-chip">CSV</span></div></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    render_reports_center(
+        current_user=current_user,
+        supabase=supabase,
+        load_analysis_history=load_analysis_history,
+        _qp_value=_qp_value,
     )
-
-    st.markdown('<div class="cv-reports-section-head"><div><h2 class="cv-reports-section-title">Recent report sources</h2><div class="cv-reports-section-copy">Open a saved BOM workspace or export the recent source list.</div></div></div>', unsafe_allow_html=True)
-
-    if report_sources:
-        rows_html = []
-        for r in report_sources:
-            project = html.escape(str(r.get("project_name") or "Untitled BOM"))
-            file_name = html.escape(str(r.get("file_name") or "Uploaded BOM"))
-            health = int(r.get("health_score") or 0)
-            high = int(r.get("high_risk_count") or 0)
-            created = str(r.get("created_at") or "")[:10]
-            health_class = "cv-pill-good" if health >= 70 else "cv-pill-bad"
-            high_class = "cv-pill-good" if high == 0 else "cv-pill-bad"
-            analysis_id = html.escape(str(r.get("id") or ""))
-            rows_html.append(f"""
-                <div class="cv-report-row">
-                  <div><div class="cv-report-row-title">{project}</div><div class="cv-report-row-meta">{file_name} • {created}</div></div>
-                  <div class="cv-report-row-meta">Executive risk package</div>
-                  <span class="cv-report-pill {health_class}">{health} health</span>
-                  <span class="cv-report-pill {high_class}">{high} high</span>
-                  <a class="cv-report-link" href="?page=Analysis%20Details&analysis_id={analysis_id}" target="_self">Open report →</a>
-                </div>
-            """)
-        st.markdown('<div class="cv-report-list">' + ''.join(rows_html) + '</div>', unsafe_allow_html=True)
-
-        export_df = pd.DataFrame(report_sources)[["project_name", "file_name", "health_score", "high_risk_count", "medium_risk_count", "created_at"]]
-        export_df = export_df.rename(columns={"project_name": "Project", "file_name": "File", "health_score": "Health Score", "high_risk_count": "High Risk Parts", "medium_risk_count": "Medium Risk Parts", "created_at": "Created At"})
-        st.download_button("Download report source CSV", data=export_df.to_csv(index=False).encode("utf-8"), file_name="cadivor_report_sources.csv", mime="text/csv")
-    else:
-        st.markdown('<div class="cv-report-empty">No saved analyses are ready for reporting yet. Run a BOM analysis first, then return here to generate report packages.</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="cv-reports-section-head"><div><h2 class="cv-reports-section-title">Automation roadmap</h2><div class="cv-reports-section-copy">Planned reporting features after the core workflow is stable.</div></div></div>
-        <div class="cv-report-grid">
-          <div class="cv-report-template"><div class="cv-report-icon">↻</div><div class="cv-report-template-title">Scheduled stakeholder reports</div><div class="cv-report-template-copy">Automatically email weekly lifecycle, stock, and risk summaries to engineering and sourcing leaders.</div><div class="cv-report-chip-row"><span class="cv-report-chip">Planned</span></div></div>
-          <div class="cv-report-template"><div class="cv-report-icon">▤</div><div class="cv-report-template-title">Revision comparison reports</div><div class="cv-report-template-copy">Compare BOM revision A vs B and highlight risk changes, lifecycle changes, and newly introduced exposure.</div><div class="cv-report-chip-row"><span class="cv-report-chip">Enterprise</span></div></div>
-          <div class="cv-report-template"><div class="cv-report-icon">✦</div><div class="cv-report-template-title">AI engineering narrative</div><div class="cv-report-template-copy">Generate concise engineering summaries explaining the risks, what changed, and what to do next.</div><div class="cv-report-chip-row"><span class="cv-report-chip">AI</span></div></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     st.stop()
 
 
