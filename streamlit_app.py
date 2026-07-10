@@ -1548,149 +1548,97 @@ if app_mode == "Monitoring":
 
 # ---------- Reports ----------
 if app_mode == "Reports":
-    reports_data = analysis_history.data if getattr(analysis_history, "data", None) else []
-    reports_count = len(reports_data)
-    export_ready_count = reports_count
-    high_risk_total = sum(int(item.get("high_risk_parts") or 0) for item in reports_data)
-    latest_report = reports_data[0] if reports_data else {}
-    latest_name = html.escape(_safe_text(latest_report.get("project_name"), "No saved analysis yet"))
-    latest_file = html.escape(_safe_text(latest_report.get("filename"), "Analyze a BOM to create your first report"))
-
-    report_rows = []
-    for item in reports_data[:6]:
-        project = html.escape(_safe_text(item.get("project_name"), "Untitled analysis"))
-        filename = html.escape(_safe_text(item.get("filename"), "Unknown file"))
-        health = int(item.get("health_score") or 0)
-        high = int(item.get("high_risk_parts") or 0)
-        created = _safe_text(item.get("created_at"), "")[:10] or "—"
-        status_class = "good" if health >= 80 else "warn" if health >= 55 else "bad"
-        high_class = "bad" if high else "good"
-        analysis_id = html.escape(str(item.get("id", "")))
-        report_rows.append(f"""
-            <div class="cv-report-row">
-              <div>
-                <div class="cv-report-name">{project}</div>
-                <div class="cv-report-meta">{filename} • {created}</div>
-              </div>
-              <div class="cv-report-pills">
-                <span class="cv-pill {status_class}">{health} health</span>
-                <span class="cv-pill {high_class}">{high} high</span>
-                <a class="cv-report-link" href="?page=Analysis%20Details&analysis={analysis_id}" target="_self">Open →</a>
-              </div>
-            </div>
-        """)
-    rows_html = "".join(report_rows) or """
-        <div class="cv-empty-report">
-          <strong>No saved reports yet</strong>
-          <span>Analyze a BOM or open a saved analysis to generate your first executive report.</span>
-        </div>
-    """
-
+    # Milestone 5.4.6: Reports Center reliable render.
+    # This page intentionally uses native Streamlit elements instead of the shared
+    # action_card/empty_state helpers so the content cannot be hidden by shell CSS.
     st.markdown(
-        f"""
-        <style>
-        .cv-reports-v545 {{ display:flex; flex-direction:column; gap:22px; padding-bottom:56px; }}
-        .cv-reports-hero {{ background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 56%,#EAF3FF 100%); border:1px solid #B9D7FF; border-radius:24px; padding:34px 34px; box-shadow:0 24px 70px rgba(15,23,42,.07); }}
-        .cv-reports-top {{ display:flex; align-items:flex-start; justify-content:space-between; gap:28px; }}
-        .cv-reports-label {{ display:inline-flex; align-items:center; gap:8px; width:max-content; padding:8px 12px; border-radius:999px; background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB!important; font-size:11px; letter-spacing:.15em; text-transform:uppercase; font-weight:950; margin-bottom:18px; }}
-        .cv-reports-title {{ color:#0F172A!important; font-size:42px; line-height:1.02; font-weight:950; letter-spacing:-.055em; margin:0 0 14px; }}
-        .cv-reports-subtitle {{ color:#475569!important; font-size:16px; line-height:1.65; max-width:780px; font-weight:650; margin:0; }}
-        .cv-reports-cta-row {{ display:flex; gap:12px; flex-wrap:wrap; margin-top:24px; }}
-        .cv-primary-btn, .cv-secondary-btn {{ display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:12px; font-size:13px; font-weight:900; text-decoration:none!important; }}
-        .cv-primary-btn {{ background:#2563EB; color:#FFFFFF!important; box-shadow:0 16px 34px rgba(37,99,235,.22); }}
-        .cv-secondary-btn {{ background:#FFFFFF; color:#2563EB!important; border:1px solid #BFDBFE; }}
-        .cv-reports-summary {{ display:grid; grid-template-columns:repeat(2,minmax(150px,1fr)); gap:12px; min-width:430px; }}
-        .cv-report-mini {{ background:rgba(255,255,255,.86); border:1px solid #E2E8F0; border-radius:17px; padding:17px 18px; }}
-        .cv-report-mini span {{ display:block; color:#64748B!important; font-size:10px; letter-spacing:.13em; text-transform:uppercase; font-weight:950; margin-bottom:7px; }}
-        .cv-report-mini strong {{ display:block; color:#0F172A!important; font-size:26px; font-weight:950; letter-spacing:-.045em; }}
-        .cv-report-mini small {{ color:#475569!important; font-size:12px; font-weight:800; }}
-        .cv-report-grid {{ display:grid; grid-template-columns:1.05fr 1fr; gap:22px; align-items:start; }}
-        .cv-report-card {{ background:#FFFFFF; border:1px solid #E2E8F0; border-radius:22px; padding:24px; box-shadow:0 18px 48px rgba(15,23,42,.055); }}
-        .cv-section-kicker {{ color:#2563EB!important; font-size:11px; letter-spacing:.14em; text-transform:uppercase; font-weight:950; margin-bottom:8px; }}
-        .cv-section-title {{ color:#0F172A!important; font-size:22px; line-height:1.1; letter-spacing:-.035em; font-weight:950; margin-bottom:8px; }}
-        .cv-section-copy {{ color:#64748B!important; font-size:13px; line-height:1.55; font-weight:700; margin-bottom:18px; }}
-        .cv-template-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }}
-        .cv-template {{ border:1px solid #E2E8F0; border-radius:17px; padding:16px; background:linear-gradient(180deg,#FFFFFF,#F8FAFC); }}
-        .cv-template-icon {{ width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:#EFF6FF; border:1px solid #BFDBFE; color:#2563EB!important; font-weight:950; margin-bottom:12px; }}
-        .cv-template strong {{ display:block; color:#0F172A!important; font-size:14px; font-weight:950; margin-bottom:6px; }}
-        .cv-template span {{ color:#64748B!important; font-size:12px; line-height:1.5; font-weight:700; }}
-        .cv-report-list {{ display:flex; flex-direction:column; gap:10px; }}
-        .cv-report-row {{ display:flex; align-items:center; justify-content:space-between; gap:16px; border:1px solid #E2E8F0; background:#FFFFFF; border-radius:16px; padding:14px 16px; }}
-        .cv-report-name {{ color:#0F172A!important; font-size:14px; font-weight:950; margin-bottom:5px; }}
-        .cv-report-meta {{ color:#64748B!important; font-size:12px; font-weight:750; }}
-        .cv-report-pills {{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; justify-content:flex-end; }}
-        .cv-pill {{ display:inline-flex; align-items:center; justify-content:center; min-height:29px; padding:0 11px; border-radius:999px; font-size:12px; font-weight:950; border:1px solid #E2E8F0; }}
-        .cv-pill.good {{ color:#047857!important; background:#ECFDF5; border-color:#A7F3D0; }}
-        .cv-pill.warn {{ color:#B45309!important; background:#FFFBEB; border-color:#FDE68A; }}
-        .cv-pill.bad {{ color:#DC2626!important; background:#FEF2F2; border-color:#FECACA; }}
-        .cv-report-link {{ color:#2563EB!important; font-size:12px; font-weight:950; text-decoration:none!important; white-space:nowrap; }}
-        .cv-automation-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }}
-        .cv-roadmap-card {{ background:#FFFFFF; border:1px solid #E2E8F0; border-radius:18px; padding:18px; box-shadow:0 14px 34px rgba(15,23,42,.045); }}
-        .cv-roadmap-card strong {{ display:block; color:#0F172A!important; font-size:14px; font-weight:950; margin-bottom:7px; }}
-        .cv-roadmap-card span {{ color:#64748B!important; font-size:12px; line-height:1.55; font-weight:700; }}
-        .cv-empty-report {{ border:1px dashed #CBD5E1; border-radius:16px; padding:22px; background:#F8FAFC; text-align:center; }}
-        .cv-empty-report strong {{ display:block; color:#0F172A!important; font-size:14px; margin-bottom:6px; }}
-        .cv-empty-report span {{ color:#64748B!important; font-size:12px; font-weight:700; }}
-        @media (max-width: 1100px) {{ .cv-reports-top, .cv-report-grid {{ grid-template-columns:1fr; display:grid; }} .cv-reports-summary, .cv-template-grid, .cv-automation-grid {{ grid-template-columns:1fr; min-width:0; }} }}
-        </style>
-        <div class="cv-reports-v545">
-          <section class="cv-reports-hero">
-            <div class="cv-reports-top">
-              <div>
-                <div class="cv-reports-label">▣ Reports Center</div>
-                <h1 class="cv-reports-title">Engineering reports</h1>
-                <p class="cv-reports-subtitle">Generate executive-ready BOM reviews, supplier risk summaries, lifecycle reports, and exportable sourcing intelligence from saved analyses.</p>
-                <div class="cv-reports-cta-row">
-                  <a class="cv-primary-btn" href="?page=BOM%20Analyzer" target="_self">Create new report →</a>
-                  <a class="cv-secondary-btn" href="?page=Dashboard" target="_self">Review dashboard</a>
-                </div>
-              </div>
-              <div class="cv-reports-summary">
-                <div class="cv-report-mini"><span>Saved analyses</span><strong>{reports_count}</strong><small>report-ready BOMs</small></div>
-                <div class="cv-report-mini"><span>High-risk parts</span><strong>{high_risk_total}</strong><small>across saved BOMs</small></div>
-                <div class="cv-report-mini"><span>Export-ready</span><strong>{export_ready_count}</strong><small>CSV/PDF pipeline</small></div>
-                <div class="cv-report-mini"><span>Latest source</span><strong>{latest_name}</strong><small>{latest_file}</small></div>
-              </div>
-            </div>
-          </section>
-          <section class="cv-report-grid">
-            <div class="cv-report-card">
-              <div class="cv-section-kicker">Report templates</div>
-              <div class="cv-section-title">Choose an engineering report type</div>
-              <div class="cv-section-copy">These templates are prepared for launch. PDF automation can be connected after the core analysis workflow is stable.</div>
-              <div class="cv-template-grid">
-                <div class="cv-template"><div class="cv-template-icon">PDF</div><strong>Executive BOM Review</strong><span>Health score, risk summary, supplier concerns, and recommended next action.</span></div>
-                <div class="cv-template"><div class="cv-template-icon">!</div><strong>Risk Register</strong><span>High-risk and medium-risk parts organized for engineering review.</span></div>
-                <div class="cv-template"><div class="cv-template-icon">⇄</div><strong>Replacement Readiness</strong><span>Alternative-part status and sourcing readiness for risky components.</span></div>
-                <div class="cv-template"><div class="cv-template-icon">⏱</div><strong>Lifecycle Monitoring</strong><span>Stock, lifecycle, and supplier-change alerts for monitored components.</span></div>
-              </div>
-            </div>
-            <div class="cv-report-card">
-              <div class="cv-section-kicker">Recent report sources</div>
-              <div class="cv-section-title">Saved BOM analyses</div>
-              <div class="cv-section-copy">Open an analysis workspace to export or review the full engineering record.</div>
-              <div class="cv-report-list">{rows_html}</div>
-            </div>
-          </section>
-          <section class="cv-automation-grid">
-            <div class="cv-roadmap-card"><strong>CSV export available</strong><span>Use saved analysis data as the current reliable export path while PDF generation is finalized.</span></div>
-            <div class="cv-roadmap-card"><strong>PDF automation next</strong><span>Executive-ready PDF reports should be generated from the Analysis Details workspace.</span></div>
-            <div class="cv-roadmap-card"><strong>Scheduled reports planned</strong><span>Recurring email reports can be added once monitoring and notifications are finalized.</span></div>
-          </section>
+        """
+        <div class="cv-dashboard-header cv-fade-in">
+          <div>
+            <div class="cv-eyebrow">Reports Center</div>
+            <h1 class="cv-title">Engineering reports</h1>
+            <p class="cv-subtitle">Generate, download, and share executive-ready BOM risk reports. Full report automation is scheduled after BOM Intelligence 2.0.</p>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    if reports_data:
-        report_export_df = pd.DataFrame(reports_data)
+    saved_analyses = st.session_state.get("saved_analyses", []) or []
+    latest = saved_analyses[0] if saved_analyses else {}
+    total_reports = len(saved_analyses)
+    total_parts = sum(int(a.get("parts", 0) or a.get("part_count", 0) or 0) for a in saved_analyses)
+    avg_health = round(sum(float(a.get("health", 0) or a.get("health_score", 0) or 0) for a in saved_analyses) / total_reports) if total_reports else 0
+    high_risk_total = sum(int(a.get("high_risk", 0) or a.get("high_risk_parts", 0) or 0) for a in saved_analyses)
+
+    st.markdown("### Report command center")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Saved analyses", total_reports)
+    k2.metric("Parts reviewed", total_parts)
+    k3.metric("Average health", avg_health if total_reports else "—")
+    k4.metric("High-risk parts", high_risk_total)
+
+    st.markdown("### Report templates")
+    t1, t2, t3 = st.columns(3)
+    with t1:
+        st.markdown("""
+        <div class="cv-panel" style="min-height:170px">
+          <div class="cv-eyebrow">Executive PDF</div>
+          <h3>Leadership risk summary</h3>
+          <p>Portfolio health, high-risk components, monitoring posture, and recommended next actions.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.button("Generate executive report", use_container_width=True, key="reports_exec_btn")
+    with t2:
+        st.markdown("""
+        <div class="cv-panel" style="min-height:170px">
+          <div class="cv-eyebrow">Engineering Review</div>
+          <h3>Component risk packet</h3>
+          <p>Detailed part-level lifecycle, sourcing, stock, supplier, and risk review for engineering teams.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.button("Prepare engineering packet", use_container_width=True, key="reports_eng_btn")
+    with t3:
+        st.markdown("""
+        <div class="cv-panel" style="min-height:170px">
+          <div class="cv-eyebrow">Procurement Export</div>
+          <h3>Sourcing workbook</h3>
+          <p>CSV-ready export for procurement, lifecycle checks, supplier follow-up, and alternatives review.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.button("Build sourcing export", use_container_width=True, key="reports_proc_btn")
+
+    rows = []
+    for a in saved_analyses[:10]:
+        rows.append({
+            "Project": a.get("project_name") or a.get("name") or "Saved analysis",
+            "File": a.get("file_name") or a.get("uploaded_file") or "—",
+            "Health": a.get("health") or a.get("health_score") or "—",
+            "High Risk": a.get("high_risk") or a.get("high_risk_parts") or 0,
+            "Parts": a.get("parts") or a.get("part_count") or "—",
+            "Updated": a.get("created_at") or a.get("date") or "—",
+        })
+
+    st.markdown("### Recent report sources")
+    if rows:
+        report_df = pd.DataFrame(rows)
+        st.dataframe(report_df, use_container_width=True, hide_index=True)
         st.download_button(
-            "Download saved analyses CSV",
-            data=report_export_df.to_csv(index=False).encode("utf-8"),
-            file_name="cadivor_saved_analyses.csv",
+            "Download report source CSV",
+            report_df.to_csv(index=False).encode("utf-8"),
+            file_name="cadivor_report_sources.csv",
             mime="text/csv",
-            use_container_width=False,
+            use_container_width=True,
         )
+    else:
+        st.info("No saved analyses are available yet. Analyze a BOM first, then return here to generate reports.")
+
+    st.markdown("### Automation roadmap")
+    r1, r2, r3 = st.columns(3)
+    r1.info("Scheduled email reports — planned")
+    r2.info("PDF export automation — planned")
+    r3.info("Team approval workflow — planned")
+
     st.stop()
 
 
