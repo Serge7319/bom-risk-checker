@@ -31,6 +31,7 @@ import html
 import re
 import json
 from datetime import datetime, timezone
+
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
@@ -195,6 +196,128 @@ def load_analysis_history(user_id):
         .execute()
     )
 
+    return response.data if response.data else []
+
+
+def _decision_context_key(analysis_id=None):
+    """Return a stable decision scope for saved analyses or standalone searches."""
+    if analysis_id is None:
+        return "standalone"
+
+    analysis_value = str(analysis_id).strip()
+    return analysis_value if analysis_value else "standalone"
+
+
+def save_analysis_decision(user_id, payload):
+    """Insert or update a persistent Alternative Finder engineering decision."""
+    if not user_id:
+        raise ValueError("A signed-in user is required to save a decision.")
+
+    original_part = str(payload.get("original_part", "")).strip()
+    alternative_part = str(payload.get("alternative_part", "")).strip()
+    analysis_id = payload.get("analysis_id")
+    context_key = _decision_context_key(analysis_id)
+
+    if not original_part or not alternative_part:
+        raise ValueError("Original and alternative part numbers are required.")
+
+    record = {
+        "user_id": user_id,
+        "analysis_id": str(analysis_id).strip() if analysis_id else None,
+        "context_key": context_key,
+        "project_name": str(payload.get("project_name", "")).strip(),
+        "original_part": original_part,
+        "alternative_part": alternative_part,
+        "decision": str(payload.get("decision", "Saved")).strip() or "Saved",
+        "engineering_note": str(payload.get("engineering_note", "")).strip(),
+        "recommendation_score": int(payload.get("recommendation_score", 0) or 0),
+        "recommendation_rating": str(payload.get("recommendation_rating", "")),
+        "compatibility_confidence": int(
+            payload.get("compatibility_confidence", 0) or 0
+        ),
+        "compatibility_rating": str(payload.get("compatibility_rating", "")),
+        "lifecycle": str(payload.get("lifecycle", "")),
+        "risk": str(payload.get("risk", "")),
+        "supplier": str(payload.get("supplier", "")),
+        "stock": int(float(payload.get("stock", 0) or 0)),
+        "unit_price": float(payload.get("unit_price", 0) or 0),
+        "package": str(payload.get("package", "")),
+        "stock_delta": str(payload.get("stock_delta", "")),
+        "price_delta": str(payload.get("price_delta", "")),
+        "source_snapshot": payload.get("source_snapshot", {}) or {},
+        "comparison_snapshot": payload.get("comparison_snapshot", {}) or {},
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    existing = (
+        supabase.table("analysis_decisions")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("context_key", context_key)
+        .eq("original_part", original_part)
+        .eq("alternative_part", alternative_part)
+        .limit(1)
+        .execute()
+    )
+
+    if existing.data:
+        decision_id = existing.data[0]["id"]
+        response = (
+            supabase.table("analysis_decisions")
+            .update(record)
+            .eq("id", decision_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+    else:
+        record["created_at"] = datetime.now(timezone.utc).isoformat()
+        response = (
+            supabase.table("analysis_decisions")
+            .insert(record)
+            .execute()
+        )
+
+    if not response.data:
+        raise RuntimeError("Supabase did not return the saved decision.")
+
+    return response.data[0]
+
+
+def load_analysis_decisions(
+    user_id,
+    original_part=None,
+    analysis_id=None,
+    limit=25,
+):
+    """Load persistent engineering decisions for the active analysis context."""
+    context_key = _decision_context_key(analysis_id)
+
+    query = (
+        supabase.table("analysis_decisions")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("context_key", context_key)
+    )
+
+    if original_part:
+        query = query.eq("original_part", str(original_part).strip())
+
+    response = (
+        query.order("updated_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return response.data if response.data else []
+
+
+def delete_analysis_decision(user_id, decision_id):
+    response = (
+        supabase.table("analysis_decisions")
+        .delete()
+        .eq("id", decision_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
     return response.data if response.data else []
 
 def run_global_search(user_id, query, limit=8):
@@ -2449,7 +2572,7 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <style id="cadivor-alternative-finder-62a1">
-        /* Milestone 6.3A — engineering decision workspace */
+        /* Milestone 6.2C.1 — analysis-linked engineering decision records */
         .st-key-af62_hero,
         .st-key-af62_search,
         .st-key-af62_summary,
@@ -3254,6 +3377,85 @@ if app_mode == "Alternative Finder":
             .af63-decision-head{flex-direction:column;}
             .af63-decision-grid{grid-template-columns:1fr;}
         }
+
+        /* Milestone 6.2C — Persistent Engineering Decision Records */
+        .af62c-persist-note{
+            display:flex;
+            align-items:flex-start;
+            gap:9px;
+            padding:11px 12px;
+            border-radius:14px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#1E40AF!important;
+            font-size:10px;
+            line-height:1.45;
+            font-weight:800;
+            margin:10px 0 0;
+        }
+
+        .af62c-persist-note:before{
+            content:"";
+            width:8px;
+            height:8px;
+            min-width:8px;
+            margin-top:3px;
+            border-radius:50%;
+            background:#2563EB;
+            box-shadow:0 0 0 3px rgba(37,99,235,.12);
+        }
+
+        .af62c-history-head{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            margin-bottom:10px;
+        }
+
+        .af62c-history-count{
+            display:inline-flex;
+            align-items:center;
+            padding:6px 9px;
+            border-radius:999px;
+            background:#F8FAFC;
+            border:1px solid #CBD5E1;
+            color:#475569!important;
+            font-size:9px;
+            font-weight:950;
+        }
+
+        .af62c-db-success{
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            min-height:42px;
+            padding:0 12px;
+            border-radius:12px;
+            background:#ECFDF5;
+            border:1px solid #A7F3D0;
+            color:#047857!important;
+            font-size:11px;
+            font-weight:950;
+        }
+
+        .af62c-db-warning{
+            padding:10px 12px;
+            border-radius:12px;
+            background:#FFFBEB;
+            border:1px solid #FDE68A;
+            color:#92400E!important;
+            font-size:10px;
+            line-height:1.45;
+            font-weight:800;
+        }
+
+        .st-key-af62c_delete button{
+            border-radius:10px!important;
+            border-color:#FCA5A5!important;
+            color:#B91C1C!important;
+            font-weight:900!important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3288,6 +3490,12 @@ if app_mode == "Alternative Finder":
 
     if "alternative_decision_notes" not in st.session_state:
         st.session_state["alternative_decision_notes"] = {}
+
+    if "alternative_decision_db_status" not in st.session_state:
+        st.session_state["alternative_decision_db_status"] = ""
+
+    if "alternative_decision_db_error" not in st.session_state:
+        st.session_state["alternative_decision_db_error"] = ""
 
     with st.container(border=True, key="af62_hero"):
         st.markdown(
@@ -3799,6 +4007,42 @@ if app_mode == "Alternative Finder":
             isinstance(item, dict) and item.get("candidate_key") == candidate_key
             for item in shortlist
         )
+        persistent_candidate_record = None
+        try:
+            existing_candidate_records = load_analysis_decisions(
+                current_user["id"],
+                original_part=str(original_part),
+                analysis_id=st.session_state.get("analysis_id"),
+                limit=50,
+            )
+            persistent_candidate_record = next(
+                (
+                    record
+                    for record in existing_candidate_records
+                    if str(record.get("alternative_part", "")).strip().upper()
+                    == str(selected_alternative).strip().upper()
+                ),
+                None,
+            )
+        except Exception:
+            existing_candidate_records = []
+
+        if persistent_candidate_record:
+            persisted_decision = str(
+                persistent_candidate_record.get("decision", "Saved")
+            )
+            decisions[candidate_key] = persisted_decision
+            st.session_state["alternative_engineering_decisions"] = decisions
+
+            persisted_note = str(
+                persistent_candidate_record.get("engineering_note", "") or ""
+            )
+            if candidate_key not in decision_notes and persisted_note:
+                decision_notes[candidate_key] = persisted_note
+                st.session_state["alternative_decision_notes"] = decision_notes
+
+            already_saved = True
+
         current_decision = decisions.get(candidate_key, "Pending review")
         decision_status_class = (
             "approved" if current_decision == "Approved"
@@ -3861,7 +4105,16 @@ if app_mode == "Alternative Finder":
             gap="small",
         )
 
+        active_analysis_id = st.session_state.get("analysis_id")
+        active_project_name = (
+            st.session_state.get("project_name")
+            or st.session_state.get("current_project_name")
+            or ""
+        )
+
         decision_payload = {
+            "analysis_id": active_analysis_id,
+            "project_name": str(active_project_name),
             "original_part": str(original_part),
             "alternative_part": str(selected_alternative),
             "decision": current_decision,
@@ -3878,8 +4131,41 @@ if app_mode == "Alternative Finder":
             "package": package_value,
             "stock_delta": stock_delta,
             "price_delta": price_delta,
+            "source_snapshot": {
+                "original": original_data,
+                "selected_alternative": selected_row.to_dict(),
+            },
+            "comparison_snapshot": {
+                "engineering_matches": recommendation_points,
+                "warnings": warning_points,
+                "advantages": advantage_points,
+                "tradeoffs": tradeoff_points,
+            },
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+        def _persist_decision(decision_value):
+            persistent_payload = dict(decision_payload)
+            persistent_payload["decision"] = decision_value
+            persistent_payload["engineering_note"] = engineering_note
+
+            try:
+                saved_record = save_analysis_decision(
+                    current_user["id"],
+                    persistent_payload,
+                )
+                st.session_state["alternative_engineering_decisions"][
+                    candidate_key
+                ] = decision_value
+                st.session_state["alternative_decision_db_status"] = (
+                    f'{decision_value} decision saved permanently.'
+                )
+                st.session_state["alternative_decision_db_error"] = ""
+                return saved_record
+            except Exception as save_error:
+                st.session_state["alternative_decision_db_status"] = ""
+                st.session_state["alternative_decision_db_error"] = str(save_error)
+                return None
 
         with approve_col:
             if st.button(
@@ -3887,10 +4173,8 @@ if app_mode == "Alternative Finder":
                 use_container_width=True,
                 key="af63_approve",
             ):
-                st.session_state["alternative_engineering_decisions"][
-                    candidate_key
-                ] = "Approved"
-                st.rerun()
+                if _persist_decision("Approved"):
+                    st.rerun()
 
         with reject_col:
             if st.button(
@@ -3898,15 +4182,13 @@ if app_mode == "Alternative Finder":
                 use_container_width=True,
                 key="af63_reject",
             ):
-                st.session_state["alternative_engineering_decisions"][
-                    candidate_key
-                ] = "Rejected"
-                st.rerun()
+                if _persist_decision("Rejected"):
+                    st.rerun()
 
         with save_col:
             if already_saved:
                 st.markdown(
-                    '<div class="af63-saved-message">✓ Saved</div>',
+                    '<div class="af62c-db-success">✓ Saved permanently</div>',
                     unsafe_allow_html=True,
                 )
             elif st.button(
@@ -3915,14 +4197,15 @@ if app_mode == "Alternative Finder":
                 use_container_width=True,
                 key="af63_save",
             ):
-                shortlist.append(
-                    {
-                        "candidate_key": candidate_key,
-                        **decision_payload,
-                    }
-                )
-                st.session_state["alternative_candidate_shortlist"] = shortlist
-                st.rerun()
+                if _persist_decision("Saved"):
+                    shortlist.append(
+                        {
+                            "candidate_key": candidate_key,
+                            **decision_payload,
+                        }
+                    )
+                    st.session_state["alternative_candidate_shortlist"] = shortlist
+                    st.rerun()
 
         with export_col:
             export_payload = dict(decision_payload)
@@ -3933,6 +4216,7 @@ if app_mode == "Alternative Finder":
                 export_payload,
                 indent=2,
                 ensure_ascii=False,
+                default=str,
             ).encode("utf-8")
             st.download_button(
                 "Export Decision Record",
@@ -3946,14 +4230,127 @@ if app_mode == "Alternative Finder":
                 key="af63_download",
             )
 
+        db_status = st.session_state.get("alternative_decision_db_status", "")
+        db_error = st.session_state.get("alternative_decision_db_error", "")
+
+        if db_status:
+            st.success(db_status)
+
+        if db_error:
+            st.error(
+                "The decision could not be saved to Supabase. Apply the included "
+                "analysis_decisions migration, then try again. "
+                f"Database message: {db_error}"
+            )
+
         st.markdown(
-            '<div class="af63-action-help">'
-            'Approval and rejection are stored for the current session. '
-            'The exported decision record can be attached to an engineering review '
-            'or retained with the BOM change package.'
+            '<div class="af62c-persist-note">'
+            'Approvals, rejections, saved candidates, notes, scores, sourcing data, '
+            'and comparison evidence are now written to your Supabase workspace.'
             '</div>',
             unsafe_allow_html=True,
         )
+
+        try:
+            part_decision_history = load_analysis_decisions(
+                current_user["id"],
+                original_part=str(original_part),
+                analysis_id=st.session_state.get("analysis_id"),
+                limit=25,
+            )
+        except Exception:
+            part_decision_history = []
+
+        with st.expander(
+            f"Engineering decision history for {str(original_part).strip()}",
+            expanded=False,
+        ):
+            st.markdown(
+                f"""
+                <div class="af62c-history-head">
+                  <div class="af62b-compare-sub">
+                    Previous saved reviews for this original component.
+                  </div>
+                  <div class="af62c-history-count">
+                    {len(part_decision_history)} records
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if not part_decision_history:
+                st.info(
+                    "No persistent engineering decisions have been saved for "
+                    "this component yet."
+                )
+            else:
+                history_rows = []
+                for record in part_decision_history:
+                    history_rows.append(
+                        {
+                            "Decision": record.get("decision", ""),
+                            "Project": record.get("project_name", "")
+                            or (
+                                "Standalone Alternative Finder"
+                                if record.get("context_key") == "standalone"
+                                else record.get("context_key", "")
+                            ),
+                            "Original": record.get("original_part", ""),
+                            "Alternative": record.get("alternative_part", ""),
+                            "Score": record.get("recommendation_score", 0),
+                            "Compatibility": record.get(
+                                "compatibility_confidence", 0
+                            ),
+                            "Risk": record.get("risk", ""),
+                            "Supplier": record.get("supplier", ""),
+                            "Note": record.get("engineering_note", ""),
+                            "Updated": record.get("updated_at")
+                            or record.get("created_at", ""),
+                        }
+                    )
+
+                st.dataframe(
+                    pd.DataFrame(history_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                decision_options = {
+                    (
+                        f'{record.get("alternative_part", "Unknown")} — '
+                        f'{record.get("decision", "Saved")} — '
+                        f'{record.get("updated_at") or record.get("created_at", "")}'
+                    ): record.get("id")
+                    for record in part_decision_history
+                    if record.get("id")
+                }
+
+                if decision_options:
+                    delete_label = st.selectbox(
+                        "Select a decision record to delete",
+                        list(decision_options.keys()),
+                        key="af62c_delete_select",
+                    )
+                    if st.button(
+                        "Delete Selected Decision",
+                        type="secondary",
+                        key="af62c_delete",
+                    ):
+                        try:
+                            delete_analysis_decision(
+                                current_user["id"],
+                                decision_options[delete_label],
+                            )
+                            st.session_state["alternative_decision_db_status"] = (
+                                "Engineering decision deleted."
+                            )
+                            st.session_state["alternative_decision_db_error"] = ""
+                            st.rerun()
+                        except Exception as delete_error:
+                            st.error(
+                                f"Could not delete the decision: {delete_error}"
+                            )
 
         def _af62b_items(points, empty_text):
             if not points:
