@@ -208,6 +208,60 @@ def _decision_context_key(analysis_id=None):
     return analysis_value if analysis_value else "standalone"
 
 
+def _make_json_safe(value, _seen=None):
+    """Convert nested supplier and pandas values into JSON-safe data.
+
+    Circular references are replaced with a readable marker so Supabase's
+    JSON encoder cannot fail while saving source/comparison snapshots.
+    """
+    if _seen is None:
+        _seen = set()
+
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    value_id = id(value)
+    if value_id in _seen:
+        return "[circular reference omitted]"
+
+    if isinstance(value, dict):
+        _seen.add(value_id)
+        try:
+            return {
+                str(key): _make_json_safe(item, _seen)
+                for key, item in value.items()
+            }
+        finally:
+            _seen.discard(value_id)
+
+    if isinstance(value, (list, tuple, set)):
+        _seen.add(value_id)
+        try:
+            return [_make_json_safe(item, _seen) for item in value]
+        finally:
+            _seen.discard(value_id)
+
+    if hasattr(value, "to_dict"):
+        try:
+            return _make_json_safe(value.to_dict(), _seen)
+        except Exception:
+            pass
+
+    if hasattr(value, "item"):
+        try:
+            return _make_json_safe(value.item(), _seen)
+        except Exception:
+            pass
+
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+
+    return str(value)
+
+
 def save_analysis_decision(user_id, payload):
     """Insert or update a persistent Alternative Finder engineering decision."""
     if not user_id:
@@ -244,8 +298,12 @@ def save_analysis_decision(user_id, payload):
         "package": str(payload.get("package", "")),
         "stock_delta": str(payload.get("stock_delta", "")),
         "price_delta": str(payload.get("price_delta", "")),
-        "source_snapshot": payload.get("source_snapshot", {}) or {},
-        "comparison_snapshot": payload.get("comparison_snapshot", {}) or {},
+        "source_snapshot": _make_json_safe(
+            payload.get("source_snapshot", {}) or {}
+        ),
+        "comparison_snapshot": _make_json_safe(
+            payload.get("comparison_snapshot", {}) or {}
+        ),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -2572,7 +2630,7 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <style id="cadivor-alternative-finder-62a1">
-        /* Milestone 6.2C.2 — safe decision export serialization */
+        /* Milestone 6.2C.3 — safe Supabase snapshot serialization */
         .st-key-af62_hero,
         .st-key-af62_search,
         .st-key-af62_summary,
@@ -4212,37 +4270,6 @@ if app_mode == "Alternative Finder":
             export_payload["decision"] = st.session_state.get(
                 "alternative_engineering_decisions", {}
             ).get(candidate_key, "Pending review")
-            def make_json_safe(value):
-                """Convert nested supplier and pandas values into JSON-safe data."""
-                if value is None:
-                    return None
-
-                if isinstance(value, (str, int, float, bool)):
-                    return value
-
-                if isinstance(value, dict):
-                    return {
-                        str(key): make_json_safe(item)
-                        for key, item in value.items()
-                    }
-
-                if isinstance(value, (list, tuple, set)):
-                    return [make_json_safe(item) for item in value]
-
-                if hasattr(value, "item"):
-                    try:
-                        return make_json_safe(value.item())
-                    except Exception:
-                        pass
-
-                if hasattr(value, "isoformat"):
-                    try:
-                        return value.isoformat()
-                    except Exception:
-                        pass
-
-                return str(value)
-
             safe_export_payload = {
                 "original_part": export_payload.get("original_part"),
                 "alternative_part": export_payload.get("alternative_part"),
@@ -4275,7 +4302,7 @@ if app_mode == "Alternative Finder":
             }
 
             export_bytes = json.dumps(
-                make_json_safe(safe_export_payload),
+                _make_json_safe(safe_export_payload),
                 indent=2,
                 ensure_ascii=False,
                 allow_nan=False,
@@ -4305,13 +4332,14 @@ if app_mode == "Alternative Finder":
                 f"Database message: {db_error}"
             )
 
-        st.markdown(
-            '<div class="af62c-persist-note">'
-            'Approvals, rejections, saved candidates, notes, scores, sourcing data, '
-            'and comparison evidence are now written to your Supabase workspace.'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        if not db_error:
+            st.markdown(
+                '<div class="af62c-persist-note">'
+                'Approvals, rejections, saved candidates, notes, scores, sourcing data, '
+                'and comparison evidence are written to your Supabase workspace.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
         try:
             part_decision_history = load_analysis_decisions(
