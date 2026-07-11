@@ -28,6 +28,7 @@ from src.monitoring_engine import (
 )
 import time
 import html
+import re
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
