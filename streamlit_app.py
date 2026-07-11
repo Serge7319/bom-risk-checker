@@ -2446,18 +2446,265 @@ if app_mode == "Admin":
 if app_mode == "Alternative Finder":
     st.markdown(
         """
-        <div class="card">
-            <div class="card-title">🔎 Alternative Component Finder</div>
-            <div class="card-text">
-                Search for replacement parts, compare sourcing risk,
-                and identify lower-risk alternatives.
-            </div>
-        </div>
+        <style id="cadivor-alternative-finder-62a">
+        .st-key-af62_hero,
+        .st-key-af62_search,
+        .st-key-af62_summary,
+        .st-key-af62_tips {
+            background:#FFFFFF!important;
+            border:1px solid #E2E8F0!important;
+            border-radius:22px!important;
+            box-shadow:0 18px 46px rgba(15,23,42,.055)!important;
+        }
+
+        .st-key-af62_hero {
+            padding:28px 30px!important;
+            margin-bottom:18px!important;
+            background:
+                radial-gradient(circle at 92% 10%,rgba(37,99,235,.10),transparent 30%),
+                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 65%,#EEF5FF 100%)!important;
+            border-color:#BFDBFE!important;
+        }
+
+        .st-key-af62_search,
+        .st-key-af62_summary,
+        .st-key-af62_tips {
+            padding:22px!important;
+        }
+
+        .st-key-af62_search {
+            margin-bottom:18px!important;
+        }
+
+        .af62-eyebrow {
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding:7px 11px;
+            border-radius:999px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            font-size:10px;
+            font-weight:950;
+            letter-spacing:.11em;
+            text-transform:uppercase;
+            margin-bottom:16px;
+        }
+
+        .af62-title {
+            color:#0B1220!important;
+            font-size:36px;
+            line-height:1.05;
+            font-weight:980;
+            letter-spacing:-.045em;
+            margin:0 0 10px;
+        }
+
+        .af62-copy {
+            color:#52647A!important;
+            font-size:15px;
+            line-height:1.65;
+            font-weight:680;
+            max-width:850px;
+            margin:0;
+        }
+
+        .af62-card-head {
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:14px;
+            margin-bottom:16px;
+        }
+
+        .af62-card-title {
+            color:#0B1220!important;
+            font-size:19px;
+            line-height:1.15;
+            font-weight:960;
+            letter-spacing:-.035em;
+            margin:0;
+        }
+
+        .af62-card-subtitle {
+            color:#64748B!important;
+            font-size:12px;
+            line-height:1.45;
+            font-weight:720;
+            margin-top:5px;
+        }
+
+        .af62-icon {
+            width:42px;
+            height:42px;
+            border-radius:14px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            flex:0 0 auto;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+        }
+
+        .af62-icon.green {
+            background:#ECFDF5;
+            border-color:#A7F3D0;
+            color:#059669!important;
+        }
+
+        .af62-icon.amber {
+            background:#FFFBEB;
+            border-color:#FDE68A;
+            color:#D97706!important;
+        }
+
+        .af62-search-label {
+            color:#334155!important;
+            font-size:12px;
+            font-weight:850;
+            margin-bottom:7px;
+        }
+
+        .st-key-af62_search [data-testid="stTextInput"] input {
+            min-height:50px!important;
+            border-radius:13px!important;
+            border:1px solid #CBD5E1!important;
+            background:#FFFFFF!important;
+            color:#0F172A!important;
+            font-size:14px!important;
+            font-weight:720!important;
+            padding-left:15px!important;
+        }
+
+        .st-key-af62_search [data-testid="stTextInput"] input:focus {
+            border-color:#60A5FA!important;
+            box-shadow:0 0 0 4px rgba(37,99,235,.12)!important;
+        }
+
+        .st-key-af62_search div.stButton > button {
+            width:100%!important;
+            min-height:50px!important;
+            border-radius:13px!important;
+            font-size:13px!important;
+            font-weight:900!important;
+        }
+
+        .af62-summary-grid {
+            display:grid;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:10px;
+            margin-top:4px;
+        }
+
+        .af62-field {
+            padding:12px;
+            border-radius:14px;
+            background:#F8FAFC;
+            border:1px solid #E2E8F0;
+            min-height:72px;
+        }
+
+        .af62-field span {
+            display:block;
+            color:#64748B!important;
+            font-size:9px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.09em;
+            margin-bottom:7px;
+        }
+
+        .af62-field strong {
+            display:block;
+            color:#0B1220!important;
+            font-size:13px;
+            font-weight:900;
+            line-height:1.35;
+            overflow-wrap:anywhere;
+        }
+
+        .af62-search-status {
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            margin-top:14px;
+            padding:7px 10px;
+            border-radius:999px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            font-size:10px;
+            font-weight:900;
+        }
+
+        .af62-search-status:before {
+            content:"";
+            width:7px;
+            height:7px;
+            border-radius:50%;
+            background:#2563EB;
+            box-shadow:0 0 0 3px rgba(37,99,235,.12);
+        }
+
+        .af62-tips {
+            display:grid;
+            gap:11px;
+        }
+
+        .af62-tip {
+            display:grid;
+            grid-template-columns:28px minmax(0,1fr);
+            gap:10px;
+            align-items:start;
+            color:#52647A!important;
+            font-size:12px;
+            line-height:1.5;
+            font-weight:720;
+        }
+
+        .af62-tip-num {
+            width:26px;
+            height:26px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            border-radius:9px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            font-size:10px;
+            font-weight:950;
+        }
+
+        .af62-examples {
+            display:flex;
+            flex-wrap:wrap;
+            gap:8px;
+            margin-top:14px;
+        }
+
+        .af62-chip {
+            display:inline-flex;
+            align-items:center;
+            padding:7px 9px;
+            border-radius:999px;
+            background:#F8FAFC;
+            border:1px solid #E2E8F0;
+            color:#334155!important;
+            font-size:10px;
+            font-weight:850;
+        }
+
+        @media(max-width:900px){
+            .af62-title{font-size:30px;}
+            .af62-summary-grid{grid-template-columns:1fr;}
+        }
+        </style>
         """,
         unsafe_allow_html=True,
     )
-
-    st.markdown("### Step 1 — Search Original Component")
 
     if "suggested_alternatives" not in st.session_state:
         st.session_state["suggested_alternatives"] = []
@@ -2465,14 +2712,120 @@ if app_mode == "Alternative Finder":
     if "alternative_search_attempted" not in st.session_state:
         st.session_state["alternative_search_attempted"] = False
 
-    original_part = st.text_input("Enter original manufacturer part number")
+    if "alternative_original_part" not in st.session_state:
+        st.session_state["alternative_original_part"] = ""
 
-    if st.button("Find Alternatives", type="primary"):
+    with st.container(border=True, key="af62_hero"):
+        st.markdown(
+            """
+            <div class="af62-eyebrow">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+              Alternative Component Finder
+            </div>
+            <div class="af62-title">Find a stronger replacement path.</div>
+            <p class="af62-copy">Search a manufacturer part number, compare sourcing intelligence, and prepare an engineering-compatible replacement workflow without leaving the Cadivor workspace.</p>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with st.container(border=True, key="af62_search"):
+        st.markdown(
+            """
+            <div class="af62-card-head">
+              <div>
+                <div class="af62-card-title">Search original component</div>
+                <div class="af62-card-subtitle">Start with the complete manufacturer part number used in your design.</div>
+              </div>
+              <div class="af62-icon">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        search_input_col, search_button_col = st.columns([4.5, 1.25], gap="medium")
+        with search_input_col:
+            original_part = st.text_input(
+                "Manufacturer part number",
+                key="alternative_original_part",
+                placeholder="Example: ATMEGA328P-PU",
+            )
+        with search_button_col:
+            st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
+            find_alternatives_clicked = st.button(
+                "Find Alternatives →",
+                type="primary",
+                use_container_width=True,
+                key="alternative_find_button_62a",
+            )
+
+    summary_col, tips_col = st.columns([1.35, 0.85], gap="medium")
+
+    current_search = (original_part or "").strip()
+    current_display = html.escape(current_search) if current_search else "No component entered"
+    current_status = "Ready to search" if current_search else "Waiting for a part number"
+
+    with summary_col:
+        with st.container(border=True, key="af62_summary"):
+            st.markdown(
+                f"""
+                <div class="af62-card-head">
+                  <div>
+                    <div class="af62-card-title">Current search</div>
+                    <div class="af62-card-subtitle">The original component Cadivor will use as the comparison baseline.</div>
+                  </div>
+                  <div class="af62-icon green">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>
+                  </div>
+                </div>
+                <div class="af62-summary-grid">
+                  <div class="af62-field"><span>Part Number</span><strong>{current_display}</strong></div>
+                  <div class="af62-field"><span>Manufacturer</span><strong>—</strong></div>
+                  <div class="af62-field"><span>Lifecycle</span><strong>—</strong></div>
+                  <div class="af62-field"><span>Risk</span><strong>—</strong></div>
+                  <div class="af62-field"><span>Package</span><strong>—</strong></div>
+                  <div class="af62-field"><span>Datasheet</span><strong>—</strong></div>
+                </div>
+                <div class="af62-search-status">{current_status}</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    with tips_col:
+        with st.container(border=True, key="af62_tips"):
+            st.markdown(
+                """
+                <div class="af62-card-head">
+                  <div>
+                    <div class="af62-card-title">Search tips</div>
+                    <div class="af62-card-subtitle">A precise part number produces the strongest comparison set.</div>
+                  </div>
+                  <div class="af62-icon amber">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.69.66-1.19 1.15-1.75A6 6 0 1 0 7.76 12.25c.48.55.97 1.05 1.15 1.75"></path></svg>
+                  </div>
+                </div>
+                <div class="af62-tips">
+                  <div class="af62-tip"><div class="af62-tip-num">1</div><div>Enter the complete manufacturer part number, including package or suffix details.</div></div>
+                  <div class="af62-tip"><div class="af62-tip-num">2</div><div>Use the exact part used in the BOM so electrical and package comparisons remain meaningful.</div></div>
+                  <div class="af62-tip"><div class="af62-tip-num">3</div><div>Cadivor will rank candidates using compatibility, lifecycle, stock, supplier, and cost signals.</div></div>
+                </div>
+                <div class="af62-examples">
+                  <span class="af62-chip">ATMEGA328P-PU</span>
+                  <span class="af62-chip">STM32F103C8T6</span>
+                  <span class="af62-chip">TPS54331DR</span>
+                  <span class="af62-chip">LM358N</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    if find_alternatives_clicked:
         if not original_part:
             st.warning("Please enter an original part number.")
         else:
             with st.spinner(
-                "🔍 Searching suppliers • ⚡ Comparing electrical specs • 🧠 Ranking alternatives..."
+                "Searching suppliers • Comparing electrical specs • Ranking alternatives..."
             ):
                 st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
                     original_part
