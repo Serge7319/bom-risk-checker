@@ -543,6 +543,9 @@ def render_dashboard(
             "clock": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 6v6l4 2'/></svg>""",
             "arrow": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12h14'/><path d='m12 5 7 7-7 7'/></svg>""",
             "boxes": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z'/><path d='m3.3 7 8.7 5 8.7-5'/><path d='M12 22V12'/></svg>""",
+            "bell": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M10.27 21a2 2 0 0 0 3.46 0'/><path d='M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.8 18 12.17 18 8A6 6 0 0 0 6 8c0 4.17-1.41 5.8-2.74 7.33'/></svg>""",
+            "chart": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 3v18h18'/><path d='m7 16 4-5 4 3 5-7'/></svg>""",
+            "folder": """<svg width='{s}' height='{s}' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/></svg>""",
         }
         return icons.get(name, icons["sparkles"]).format(s=size)
 
@@ -637,7 +640,7 @@ def render_dashboard(
         .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
         .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
         /* Milestone 6.0A — premium, calm dashboard intelligence */
-        /* Milestone 6.0B.3 — premium KPI cards and matched panel heights */
+        /* Milestone 6.0B.4 — target visual implementation and chart repair */
         .cv-6b-kpi-strip{
             display:grid;
             grid-template-columns:repeat(4,minmax(0,1fr));
@@ -645,10 +648,12 @@ def render_dashboard(
             margin:8px 0 34px;
         }
         .cv-6b-kpi{
-            display:block;
-            position:relative;
+            display:grid;
+            grid-template-columns:48px minmax(0,1fr);
+            gap:14px;
+            align-items:start;
             min-width:0;
-            min-height:150px;
+            min-height:154px;
             padding:18px;
             color:inherit!important;
             text-decoration:none!important;
@@ -665,19 +670,18 @@ def render_dashboard(
             transform:translateY(-2px);
         }
         .cv-6b-kpi-icon{
-            position:absolute;
-            top:16px;
-            right:16px;
-            width:38px;
-            height:38px;
-            border-radius:12px;
+            width:46px;
+            height:46px;
+            border-radius:14px;
             display:flex;
             align-items:center;
             justify-content:center;
             background:#EFF6FF;
             border:1px solid #BFDBFE;
             color:#2563EB!important;
+            margin-top:1px;
         }
+        .cv-6b-kpi-copy{min-width:0;}
         .cv-6b-kpi.warn .cv-6b-kpi-icon{
             background:#FFF7ED;
             border-color:#FED7AA;
@@ -731,17 +735,25 @@ def render_dashboard(
             display:flex;
             flex-direction:column;
         }
-        .cv-6b-chart-shell{
-            height:390px;
-            overflow:hidden;
-            border-radius:20px;
-            background:#FFFFFF;
-            border:1px solid #E2E8F0;
-            box-shadow:0 16px 42px rgba(15,23,42,.05);
-            padding:8px 10px 0;
+        .cv-6b-trend-chart-anchor + div [data-testid="stPlotlyChart"],
+        .cv-6b-trend-chart-anchor ~ div [data-testid="stPlotlyChart"]{
+            height:390px!important;
+            min-height:390px!important;
+            background:#FFFFFF!important;
+            border:1px solid #E2E8F0!important;
+            border-radius:20px!important;
+            box-shadow:0 16px 42px rgba(15,23,42,.05)!important;
+            padding:10px!important;
+            overflow:hidden!important;
         }
-        .cv-6b-chart-shell > div{
-            height:100%;
+        .cv-6b-trend-chart-anchor + div [data-testid="stPlotlyChart"] > div,
+        .cv-6b-trend-chart-anchor ~ div [data-testid="stPlotlyChart"] > div,
+        .cv-6b-trend-chart-anchor ~ div .js-plotly-plot,
+        .cv-6b-trend-chart-anchor ~ div .plot-container,
+        .cv-6b-trend-chart-anchor ~ div .svg-container{
+            height:100%!important;
+            border-radius:16px!important;
+            overflow:hidden!important;
         }
         .cv-6b-project-panel .cv-6b-project-link{
             margin-top:auto;
@@ -825,9 +837,9 @@ def render_dashboard(
             margin-bottom:4px;
         }
         .cv-6b-shortcut{
-            display:flex;
+            display:grid;
+            grid-template-columns:40px minmax(0,1fr) auto;
             align-items:center;
-            justify-content:space-between;
             gap:12px;
             min-height:72px;
             padding:14px;
@@ -858,6 +870,13 @@ def render_dashboard(
             font-weight:760;
             line-height:1.35;
         }
+        .cv-6b-shortcut-icon{
+            width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+            background:#EFF6FF;border:1px solid #BFDBFE;color:#2563EB!important;
+        }
+        .cv-6b-shortcut-icon.green{background:#ECFDF5;border-color:#A7F3D0;color:#16A34A!important;}
+        .cv-6b-shortcut-icon.purple{background:#F5F3FF;border-color:#DDD6FE;color:#7C3AED!important;}
+        .cv-6b-shortcut-icon.amber{background:#FFFBEB;border-color:#FDE68A;color:#D97706!important;}
         .cv-6b-arrow{
             color:#2563EB!important;
             font-size:15px;
@@ -979,32 +998,40 @@ def render_dashboard(
         f"""
         <div class="cv-6b-kpi-strip">
           <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open portfolio analyses and reports">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('shield',18)}</div>
-            <span>Portfolio Health</span>
-            <strong>{avg_health_score}</strong>
-            <small>{health_delta_label} vs previous</small>
-            <small style="color:#2563EB!important;margin-top:14px;">View details →</small>
+            <div class="cv-6b-kpi-icon">{_lucide_icon('shield',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>Portfolio Health</span>
+              <strong>{avg_health_score}</strong>
+              <small style="color:#DC2626!important;">{health_delta_label} vs previous</small>
+              <small style="color:#2563EB!important;margin-top:14px;">View details →</small>
+            </div>
           </a>
           <a class="cv-6b-kpi warn" href="?page=BOM%20Analyzer" target="_self" title="Open BOM analyses requiring review">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('alert',18)}</div>
-            <span>High Risk</span>
-            <strong>{total_high_risk}</strong>
-            <small>Components requiring review</small>
-            <small style="color:#2563EB!important;margin-top:14px;">Open analyzer →</small>
+            <div class="cv-6b-kpi-icon">{_lucide_icon('alert',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>High Risk</span>
+              <strong>{total_high_risk}</strong>
+              <small>Components requiring review</small>
+              <small style="color:#2563EB!important;margin-top:14px;">Open analyzer →</small>
+            </div>
           </a>
           <a class="cv-6b-kpi danger" href="?page=Monitoring" target="_self" title="Open supplier and lifecycle monitoring">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('bell',18)}</div>
-            <span>Supplier Alerts</span>
-            <strong>{alert_count}</strong>
-            <small>{high_alert_count} high severity</small>
-            <small style="color:#2563EB!important;margin-top:14px;">Review alerts →</small>
+            <div class="cv-6b-kpi-icon">{_lucide_icon('bell',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>Supplier Alerts</span>
+              <strong>{alert_count}</strong>
+              <small>{high_alert_count} high severity</small>
+              <small style="color:#2563EB!important;margin-top:14px;">Review alerts →</small>
+            </div>
           </a>
           <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open saved analyses and report sources">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('file',18)}</div>
-            <span>Saved Analyses</span>
-            <strong>{total_analyses}</strong>
-            <small>Engineering records available</small>
-            <small style="color:#2563EB!important;margin-top:14px;">Open reports →</small>
+            <div class="cv-6b-kpi-icon">{_lucide_icon('file',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>Saved Analyses</span>
+              <strong>{total_analyses}</strong>
+              <small>Engineering records available</small>
+              <small style="color:#2563EB!important;margin-top:14px;">Open reports →</small>
+            </div>
           </a>
         </div>
         """,
@@ -1039,13 +1066,12 @@ def render_dashboard(
                 marker_color="#2563EB",
                 line_width=3,
             )
-            st.markdown('<div class="cv-6b-chart-shell">', unsafe_allow_html=True)
+            st.markdown('<div class="cv-6b-trend-chart-anchor"></div>', unsafe_allow_html=True)
             st.plotly_chart(
                 light_plotly_layout(fig, height=365),
                 use_container_width=True,
                 config={"displayModeBar": False},
             )
-            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
 
@@ -1108,18 +1134,22 @@ def render_dashboard(
         f"""
         <div class="cv-6b-shortcuts">
           <a class="cv-6b-shortcut" href="?page=Monitoring" target="_self">
+            <div class="cv-6b-shortcut-icon green">{_lucide_icon('chart',20)}</div>
             <div><strong>Monitoring</strong><span>{alert_count} active supplier and lifecycle alerts</span></div>
             <div class="cv-6b-arrow">→</div>
           </a>
           <a class="cv-6b-shortcut" href="?page=Reports" target="_self">
+            <div class="cv-6b-shortcut-icon">{_lucide_icon('file',20)}</div>
             <div><strong>Reports</strong><span>Saved analyses, PDFs, and engineering exports</span></div>
             <div class="cv-6b-arrow">→</div>
           </a>
           <a class="cv-6b-shortcut" href="?page=Alternative%20Finder" target="_self">
+            <div class="cv-6b-shortcut-icon purple">{_lucide_icon('replace',20)}</div>
             <div><strong>Alternative Finder</strong><span>{alternatives_found} saved replacement candidates</span></div>
             <div class="cv-6b-arrow">→</div>
           </a>
           <a class="cv-6b-shortcut" href="?page=Workspace" target="_self">
+            <div class="cv-6b-shortcut-icon amber">{_lucide_icon('folder',20)}</div>
             <div><strong>Workspace</strong><span>Usage, plan, and workspace management</span></div>
             <div class="cv-6b-arrow">→</div>
           </a>
