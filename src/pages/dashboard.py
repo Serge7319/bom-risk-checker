@@ -640,7 +640,7 @@ def render_dashboard(
         .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
         .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
         /* Milestone 6.0A — premium, calm dashboard intelligence */
-        /* Milestone 6.0B.4 — target visual implementation and chart repair */
+        /* Milestone 6.0C — final dashboard card composition */
         .cv-6b-kpi-strip{
             display:grid;
             grid-template-columns:repeat(4,minmax(0,1fr));
@@ -918,6 +918,243 @@ def render_dashboard(
         .cv-v4-metric .value{font-size:36px!important;}
         @media(max-width:1180px){.cv-v4-command-grid,.cv-v4-insights,.cv-v4-metrics,.cv-6a-briefing{grid-template-columns:1fr!important}.cv-v4-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:760px){.cv-v4-action-grid,.cv-v4-brief{grid-template-columns:1fr!important}.cv-v4-analysis-row{grid-template-columns:1fr}.cv-v4-row-pills{justify-content:flex-start}.cv-v4-title{font-size:28px}.cv-6a-command .cv-v4-brief{grid-template-columns:1fr!important}}
+
+        /* Milestone 6.0C — final card composition */
+        .st-key-dashboard_trend_card,
+        .st-key-dashboard_project_card {
+            height: 430px;
+            min-height: 430px;
+            padding: 20px 20px 16px!important;
+            background: #FFFFFF!important;
+            border: 1px solid #E2E8F0!important;
+            border-radius: 22px!important;
+            box-shadow: 0 18px 46px rgba(15,23,42,.06)!important;
+            overflow: hidden!important;
+        }
+
+        .st-key-dashboard_trend_card [data-testid="stVerticalBlock"],
+        .st-key-dashboard_project_card [data-testid="stVerticalBlock"] {
+            gap: 0!important;
+        }
+
+        .cv-6c-card-header {
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:16px;
+            margin:0 0 12px;
+        }
+
+        .cv-6c-card-title {
+            color:#0B1220!important;
+            font-size:19px;
+            font-weight:980;
+            line-height:1.08;
+            letter-spacing:-.04em;
+            margin:0;
+        }
+
+        .cv-6c-card-subtitle {
+            color:#64748B!important;
+            font-size:12px;
+            font-weight:780;
+            line-height:1.4;
+            margin-top:5px;
+        }
+
+        .cv-6c-card-action {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            flex:0 0 auto;
+            border:1px solid #BFDBFE;
+            background:#EFF6FF;
+            color:#2563EB!important;
+            border-radius:999px;
+            padding:8px 11px;
+            text-decoration:none!important;
+            font-size:11px;
+            font-weight:950;
+            white-space:nowrap;
+        }
+
+        .st-key-dashboard_trend_card [data-testid="stPlotlyChart"] {
+            height:338px!important;
+            min-height:338px!important;
+            padding:0!important;
+            margin:0!important;
+            border:0!important;
+            border-radius:16px!important;
+            box-shadow:none!important;
+            background:#FFFFFF!important;
+            overflow:hidden!important;
+        }
+
+        .st-key-dashboard_trend_card [data-testid="stPlotlyChart"] > div,
+        .st-key-dashboard_trend_card .js-plotly-plot,
+        .st-key-dashboard_trend_card .plot-container,
+        .st-key-dashboard_trend_card .svg-container {
+            height:100%!important;
+            border-radius:16px!important;
+            overflow:hidden!important;
+        }
+
+        .cv-6c-project-body {
+            display:flex;
+            flex-direction:column;
+            min-height:338px;
+        }
+
+        .cv-6c-project-top {
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:14px;
+            margin-bottom:18px;
+        }
+
+        .cv-6c-project-label {
+            color:#64748B!important;
+            font-size:10px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.1em;
+            margin-bottom:7px;
+        }
+
+        .cv-6c-project-name {
+            color:#0B1220!important;
+            font-size:22px;
+            font-weight:980;
+            line-height:1.15;
+            letter-spacing:-.04em;
+        }
+
+        .cv-6c-project-icon {
+            width:44px;
+            height:44px;
+            border-radius:14px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            flex:0 0 auto;
+        }
+
+        .cv-6c-project-stats {
+            display:grid;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:12px;
+            margin-bottom:16px;
+        }
+
+        .cv-6c-project-stat {
+            min-height:92px;
+            padding:14px;
+            background:linear-gradient(180deg,#FFFFFF,#F8FAFC);
+            border:1px solid #E2E8F0;
+            border-radius:16px;
+        }
+
+        .cv-6c-project-stat span {
+            display:block;
+            color:#64748B!important;
+            font-size:10px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.08em;
+            margin-bottom:8px;
+        }
+
+        .cv-6c-project-stat strong {
+            display:block;
+            color:#0B1220!important;
+            font-size:25px;
+            font-weight:980;
+            line-height:1;
+        }
+
+        .cv-6c-project-stat small {
+            display:block;
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:780;
+            margin-top:7px;
+        }
+
+        .cv-6c-project-date {
+            color:#52647A!important;
+            font-size:12px;
+            font-weight:850;
+            margin-bottom:14px;
+        }
+
+        .cv-6c-project-link {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            margin-top:auto;
+            padding:12px 14px;
+            border-radius:14px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            text-decoration:none!important;
+            font-size:12px;
+            font-weight:950;
+        }
+
+        .cv-6b-shortcuts {
+            gap:14px!important;
+        }
+
+        .cv-6b-shortcut {
+            grid-template-columns:48px minmax(0,1fr) auto!important;
+            min-height:98px!important;
+            padding:16px!important;
+            border-radius:18px!important;
+        }
+
+        .cv-6b-shortcut-icon {
+            width:46px!important;
+            height:46px!important;
+            border-radius:14px!important;
+        }
+
+        .cv-6b-shortcut strong {
+            font-size:14px!important;
+            line-height:1.2!important;
+            margin-bottom:6px!important;
+            letter-spacing:-.015em!important;
+        }
+
+        .cv-6b-shortcut span {
+            font-size:12px!important;
+            line-height:1.42!important;
+            font-weight:760!important;
+            max-width:210px;
+        }
+
+        .cv-6b-arrow {
+            font-size:18px!important;
+        }
+
+        @media(max-width:1100px) {
+            .st-key-dashboard_trend_card,
+            .st-key-dashboard_project_card {
+                height:auto;
+                min-height:0;
+            }
+        }
+
+        @media(max-width:760px) {
+            .cv-6b-shortcut {
+                min-height:88px!important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1041,82 +1278,110 @@ def render_dashboard(
     trend_col, project_col = st.columns([1.65, 0.78], gap="medium")
 
     with trend_col:
-        st.markdown(
-            f"""
-            <div class="cv-v4-section-head cv-6b-column-heading">
-              <div>
-                <div class="cv-v4-section-title">Portfolio Health Trend</div>
-                <div class="cv-v4-section-meta">Health across saved analyses • {health_delta_label} vs previous</div>
-              </div>
-              <a class="cv-v4-chip" href="?page=Reports" target="_self" style="text-decoration:none!important;">Open analyses →</a>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if analysis_data and len(analysis_data) >= 2:
-            trend_df = pd.DataFrame(analysis_data)
-            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"], errors="coerce")
-            trend_df = trend_df.dropna(subset=["created_at"]).sort_values("created_at")
-            trend_df = trend_df.rename(
-                columns={"created_at": "Date", "health_score": "Health Score"}
+        with st.container(border=True, key="dashboard_trend_card"):
+            st.markdown(
+                f"""
+                <div class="cv-6c-card-header">
+                  <div>
+                    <div class="cv-6c-card-title">Portfolio Health Trend</div>
+                    <div class="cv-6c-card-subtitle">Health across saved analyses • {health_delta_label} vs previous</div>
+                  </div>
+                  <a class="cv-6c-card-action" href="?page=Reports" target="_self">Open analyses →</a>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
-            fig.update_traces(
-                line_color="#2563EB",
-                marker_color="#2563EB",
-                line_width=3,
-            )
-            st.markdown('<div class="cv-6b-trend-chart-anchor"></div>', unsafe_allow_html=True)
-            st.plotly_chart(
-                light_plotly_layout(fig, height=365),
-                use_container_width=True,
-                config={"displayModeBar": False},
-            )
-        else:
-            st.info("Run at least two BOM analyses to generate a portfolio health trend.")
+
+            if analysis_data and len(analysis_data) >= 2:
+                trend_df = pd.DataFrame(analysis_data)
+                trend_df["created_at"] = pd.to_datetime(
+                    trend_df["created_at"], errors="coerce"
+                )
+                trend_df = trend_df.dropna(subset=["created_at"]).sort_values(
+                    "created_at"
+                )
+                trend_df = trend_df.rename(
+                    columns={"created_at": "Date", "health_score": "Health Score"}
+                )
+
+                fig = px.line(
+                    trend_df,
+                    x="Date",
+                    y="Health Score",
+                    markers=True,
+                )
+                fig.update_traces(
+                    line_color="#2563EB",
+                    marker_color="#2563EB",
+                    line_width=3,
+                    marker_size=7,
+                )
+                fig.update_yaxes(range=[0, 105])
+
+                st.plotly_chart(
+                    light_plotly_layout(fig, height=330),
+                    use_container_width=True,
+                    config={"displayModeBar": False},
+                )
+            else:
+                st.info(
+                    "Run at least two BOM analyses to generate a portfolio health trend."
+                )
 
     with project_col:
         latest_analysis_id = ""
         if analysis_data:
             latest_analysis_id = str(analysis_data[0].get("id") or "")
+
         project_href = (
-            f"?page=Analysis%20Details&analysis_id={html.escape(latest_analysis_id, quote=True)}"
+            f"?page=Analysis%20Details&analysis_id="
+            f"{html.escape(latest_analysis_id, quote=True)}"
             if latest_analysis_id
             else "?page=BOM%20Analyzer"
         )
-        st.markdown(
-            """
-            <div class="cv-6b-column-heading">
-              <div>
-                <div class="cv-v4-section-title">Current Working BOM</div>
-                <div class="cv-v4-section-meta">Continue the most recently saved engineering review.</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <div class="cv-6b-panel cv-6b-project-panel">
-              <div class="cv-6b-project-head">
-                <div>
-                  <div class="cv-v4-label">Active Analysis</div>
-                  <div class="cv-6b-project-title">{html.escape(str(latest_project))}</div>
+
+        with st.container(border=True, key="dashboard_project_card"):
+            st.markdown(
+                f"""
+                <div class="cv-6c-card-header">
+                  <div>
+                    <div class="cv-6c-card-title">Current Working BOM</div>
+                    <div class="cv-6c-card-subtitle">Continue the most recently saved engineering review.</div>
+                  </div>
                 </div>
-                <div class="cv-v4-icon">{_lucide_icon('file',18)}</div>
-              </div>
-              <div class="cv-6b-project-meta">
-                <div class="cv-6b-project-stat"><span>Health</span><strong>{latest_health}</strong></div>
-                <div class="cv-6b-project-stat"><span>Parts</span><strong>{latest_parts}</strong></div>
-              </div>
-              <div class="cv-v4-text" style="margin-bottom:13px;">Last updated {html.escape(str(latest_date))}</div>
-              <a class="cv-6b-project-link" href="{project_href}" target="_self">
-                <span>Continue analysis</span><span>→</span>
-              </a>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+
+                <div class="cv-6c-project-body">
+                  <div class="cv-6c-project-top">
+                    <div>
+                      <div class="cv-6c-project-label">Active Analysis</div>
+                      <div class="cv-6c-project-name">{html.escape(str(latest_project))}</div>
+                    </div>
+                    <div class="cv-6c-project-icon">{_lucide_icon('file',20)}</div>
+                  </div>
+
+                  <div class="cv-6c-project-stats">
+                    <div class="cv-6c-project-stat">
+                      <span>Health</span>
+                      <strong>{latest_health}</strong>
+                      <small>{"Excellent" if latest_health >= 80 else "Review recommended" if latest_health >= 55 else "Critical"}</small>
+                    </div>
+                    <div class="cv-6c-project-stat">
+                      <span>Parts</span>
+                      <strong>{latest_parts}</strong>
+                      <small>Components</small>
+                    </div>
+                  </div>
+
+                  <div class="cv-6c-project-date">Last updated {html.escape(str(latest_date))}</div>
+
+                  <a class="cv-6c-project-link" href="{project_href}" target="_self">
+                    <span>Continue analysis</span>
+                    <span>→</span>
+                  </a>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     st.markdown(
         """
