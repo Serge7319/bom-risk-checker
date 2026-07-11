@@ -2447,7 +2447,7 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <style id="cadivor-alternative-finder-62a1">
-        /* Milestone 6.2B.1 — results cleanup and focused actions */
+        /* Milestone 6.3A — engineering decision workspace */
         .st-key-af62_hero,
         .st-key-af62_search,
         .st-key-af62_summary,
@@ -3073,6 +3073,185 @@ if app_mode == "Alternative Finder":
         @media(max-width:760px){
             .af62b-action-note{padding-top:0;}
         }
+
+        /* Milestone 6.3A — Engineering Decision Workspace */
+        .af63-score-label{
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            margin-top:8px;
+            padding:5px 8px;
+            border-radius:999px;
+            background:#ECFDF5;
+            border:1px solid #A7F3D0;
+            color:#047857!important;
+            font-size:9px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.06em;
+        }
+
+        .af63-score-label.medium{
+            background:#FFFBEB;
+            border-color:#FDE68A;
+            color:#B45309!important;
+        }
+
+        .af63-score-label.low{
+            background:#FEF2F2;
+            border-color:#FECACA;
+            color:#B91C1C!important;
+        }
+
+        .af63-decision-shell{
+            margin:18px 0 14px;
+            padding:18px;
+            border-radius:20px;
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            box-shadow:0 14px 34px rgba(15,23,42,.045);
+        }
+
+        .af63-decision-head{
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:16px;
+            margin-bottom:15px;
+        }
+
+        .af63-decision-title{
+            color:#0B1220!important;
+            font-size:18px;
+            font-weight:980;
+            letter-spacing:-.035em;
+            line-height:1.1;
+        }
+
+        .af63-decision-copy{
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:760;
+            line-height:1.45;
+            margin-top:5px;
+        }
+
+        .af63-decision-status{
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            padding:7px 10px;
+            border-radius:999px;
+            background:#F8FAFC;
+            border:1px solid #CBD5E1;
+            color:#475569!important;
+            font-size:10px;
+            font-weight:950;
+            white-space:nowrap;
+        }
+
+        .af63-decision-status.approved{
+            background:#ECFDF5;
+            border-color:#A7F3D0;
+            color:#047857!important;
+        }
+
+        .af63-decision-status.rejected{
+            background:#FEF2F2;
+            border-color:#FECACA;
+            color:#B91C1C!important;
+        }
+
+        .af63-decision-status.saved{
+            background:#EFF6FF;
+            border-color:#BFDBFE;
+            color:#1D4ED8!important;
+        }
+
+        .af63-decision-grid{
+            display:grid;
+            grid-template-columns:repeat(4,minmax(0,1fr));
+            gap:10px;
+            margin-bottom:14px;
+        }
+
+        .af63-decision-metric{
+            padding:13px 14px;
+            border-radius:15px;
+            background:#F8FAFC;
+            border:1px solid #E2E8F0;
+        }
+
+        .af63-decision-metric span{
+            display:block;
+            color:#64748B!important;
+            font-size:9px;
+            font-weight:950;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+            margin-bottom:7px;
+        }
+
+        .af63-decision-metric strong{
+            display:block;
+            color:#0B1220!important;
+            font-size:15px;
+            font-weight:950;
+            line-height:1.25;
+        }
+
+        .af63-action-help{
+            color:#64748B!important;
+            font-size:10px;
+            line-height:1.45;
+            font-weight:740;
+            padding-top:5px;
+        }
+
+        .st-key-af63_approve button{
+            background:#16A34A!important;
+            border-color:#16A34A!important;
+            color:#FFFFFF!important;
+            border-radius:12px!important;
+            font-weight:900!important;
+        }
+
+        .st-key-af63_reject button{
+            background:#FFFFFF!important;
+            border-color:#FCA5A5!important;
+            color:#B91C1C!important;
+            border-radius:12px!important;
+            font-weight:900!important;
+        }
+
+        .st-key-af63_save button,
+        .st-key-af63_download button{
+            border-radius:12px!important;
+            font-weight:900!important;
+        }
+
+        .af63-saved-message{
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            min-height:42px;
+            padding:0 12px;
+            border-radius:12px;
+            background:#ECFDF5;
+            border:1px solid #A7F3D0;
+            color:#047857!important;
+            font-size:11px;
+            font-weight:950;
+        }
+
+        @media(max-width:1000px){
+            .af63-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+        }
+
+        @media(max-width:700px){
+            .af63-decision-head{flex-direction:column;}
+            .af63-decision-grid{grid-template-columns:1fr;}
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3101,6 +3280,12 @@ if app_mode == "Alternative Finder":
 
     if "alternative_candidate_shortlist" not in st.session_state:
         st.session_state["alternative_candidate_shortlist"] = []
+
+    if "alternative_engineering_decisions" not in st.session_state:
+        st.session_state["alternative_engineering_decisions"] = {}
+
+    if "alternative_decision_notes" not in st.session_state:
+        st.session_state["alternative_decision_notes"] = {}
 
     with st.container(border=True, key="af62_hero"):
         st.markdown(
@@ -3398,7 +3583,7 @@ if app_mode == "Alternative Finder":
         )
 
         selected_alternative = st.selectbox(
-            "Explore recommendation",
+            "Recommended candidate",
             alternative_options,
             index=best_index,
             key="alternative_selected_candidate_62b",
@@ -3524,6 +3709,17 @@ if app_mode == "Alternative Finder":
             else "Medium" if drop_in_confidence >= 50
             else "Low"
         )
+
+        recommendation_label = (
+            "Strong" if recommendation_score >= 75
+            else "Review" if recommendation_score >= 55
+            else "Weak"
+        )
+        recommendation_label_class = (
+            "" if recommendation_score >= 75
+            else "medium" if recommendation_score >= 55
+            else "low"
+        )
         confidence_class = (
             "good" if confidence_label == "High"
             else "warn" if confidence_label == "Medium"
@@ -3542,8 +3738,9 @@ if app_mode == "Alternative Finder":
                     <div class="af62b-best-copy">{html.escape(recommendation_copy)}</div>
                   </div>
                   <div class="af62b-score">
-                    <strong>{recommendation_score}</strong>
+                    <strong>{recommendation_score}/100</strong>
                     <span>Recommendation score</span>
+                    <div class="af63-score-label {recommendation_label_class}">{recommendation_label}</div>
                   </div>
                 </div>
 
@@ -3587,57 +3784,174 @@ if app_mode == "Alternative Finder":
                 """,
                 unsafe_allow_html=True,
             )
-
         candidate_key = (
             f"{str(original_part).strip().upper()}::"
             f"{str(selected_alternative).strip().upper()}"
         )
+
         shortlist = st.session_state.get("alternative_candidate_shortlist", [])
+        decisions = st.session_state.get("alternative_engineering_decisions", {})
+        decision_notes = st.session_state.get("alternative_decision_notes", {})
+
         already_saved = any(
             isinstance(item, dict) and item.get("candidate_key") == candidate_key
             for item in shortlist
         )
+        current_decision = decisions.get(candidate_key, "Pending review")
+        decision_status_class = (
+            "approved" if current_decision == "Approved"
+            else "rejected" if current_decision == "Rejected"
+            else "saved" if already_saved
+            else ""
+        )
 
-        save_col, action_note_col = st.columns([0.26, 0.74], gap="medium")
+        st.markdown(
+            f"""
+            <div class="af63-decision-shell">
+              <div class="af63-decision-head">
+                <div>
+                  <div class="af63-decision-title">Engineering Decision Workspace</div>
+                  <div class="af63-decision-copy">Record the disposition of this recommendation after reviewing compatibility, sourcing, and cost trade-offs.</div>
+                </div>
+                <div class="af63-decision-status {decision_status_class}">
+                  {html.escape(current_decision if current_decision != "Pending review" else "Pending engineering review")}
+                </div>
+              </div>
+
+              <div class="af63-decision-grid">
+                <div class="af63-decision-metric">
+                  <span>Candidate</span>
+                  <strong>{html.escape(str(selected_alternative))}</strong>
+                </div>
+                <div class="af63-decision-metric">
+                  <span>Compatibility</span>
+                  <strong>{drop_in_confidence}% · {confidence_label}</strong>
+                </div>
+                <div class="af63-decision-metric">
+                  <span>Engineering Risk</span>
+                  <strong>{html.escape(risk_value)}</strong>
+                </div>
+                <div class="af63-decision-metric">
+                  <span>Cost Impact</span>
+                  <strong>{html.escape(price_delta)}</strong>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        note_value = decision_notes.get(candidate_key, "")
+        engineering_note = st.text_area(
+            "Engineering decision note",
+            value=note_value,
+            placeholder=(
+                "Example: Approve for prototype only. Package change requires PCB "
+                "footprint revision before production release."
+            ),
+            height=88,
+            key=f"af63_note_{candidate_key}",
+        )
+        st.session_state["alternative_decision_notes"][candidate_key] = engineering_note
+
+        approve_col, reject_col, save_col, export_col = st.columns(
+            [0.22, 0.22, 0.22, 0.34],
+            gap="small",
+        )
+
+        decision_payload = {
+            "original_part": str(original_part),
+            "alternative_part": str(selected_alternative),
+            "decision": current_decision,
+            "engineering_note": engineering_note,
+            "recommendation_score": recommendation_score,
+            "recommendation_rating": recommendation_label,
+            "compatibility_confidence": drop_in_confidence,
+            "compatibility_rating": confidence_label,
+            "lifecycle": lifecycle_value,
+            "risk": risk_value,
+            "supplier": supplier_value,
+            "stock": int(stock_value),
+            "unit_price": price_value,
+            "package": package_value,
+            "stock_delta": stock_delta,
+            "price_delta": price_delta,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        with approve_col:
+            if st.button(
+                "Approve Candidate",
+                use_container_width=True,
+                key="af63_approve",
+            ):
+                st.session_state["alternative_engineering_decisions"][
+                    candidate_key
+                ] = "Approved"
+                st.rerun()
+
+        with reject_col:
+            if st.button(
+                "Reject Candidate",
+                use_container_width=True,
+                key="af63_reject",
+            ):
+                st.session_state["alternative_engineering_decisions"][
+                    candidate_key
+                ] = "Rejected"
+                st.rerun()
+
         with save_col:
             if already_saved:
                 st.markdown(
-                    '<div class="af62b-shortlist-pill">Saved to shortlist</div>',
+                    '<div class="af63-saved-message">✓ Saved</div>',
                     unsafe_allow_html=True,
                 )
-            else:
-                if st.button(
-                    "Save Candidate",
-                    type="primary",
-                    use_container_width=True,
-                    key="af62b_save_candidate",
-                ):
-                    shortlist.append(
-                        {
-                            "candidate_key": candidate_key,
-                            "original_part": str(original_part),
-                            "alternative_part": str(selected_alternative),
-                            "recommendation_score": recommendation_score,
-                            "confidence": drop_in_confidence,
-                            "lifecycle": lifecycle_value,
-                            "risk": risk_value,
-                            "supplier": supplier_value,
-                            "stock": stock_value,
-                            "unit_price": price_value,
-                            "package": package_value,
-                        }
-                    )
-                    st.session_state["alternative_candidate_shortlist"] = shortlist
-                    st.rerun()
+            elif st.button(
+                "Save Candidate",
+                type="primary",
+                use_container_width=True,
+                key="af63_save",
+            ):
+                shortlist.append(
+                    {
+                        "candidate_key": candidate_key,
+                        **decision_payload,
+                    }
+                )
+                st.session_state["alternative_candidate_shortlist"] = shortlist
+                st.rerun()
 
-        with action_note_col:
-            st.markdown(
-                '<div class="af62b-action-note">'
-                'Save the selected recommendation to your current-session shortlist. '
-                'Persistent workspace saving will be connected in a later data milestone.'
-                '</div>',
-                unsafe_allow_html=True,
+        with export_col:
+            export_payload = dict(decision_payload)
+            export_payload["decision"] = st.session_state.get(
+                "alternative_engineering_decisions", {}
+            ).get(candidate_key, "Pending review")
+            export_bytes = json.dumps(
+                export_payload,
+                indent=2,
+                ensure_ascii=False,
+            ).encode("utf-8")
+            st.download_button(
+                "Export Decision Record",
+                data=export_bytes,
+                file_name=(
+                    f"{str(original_part).strip()}_to_"
+                    f"{str(selected_alternative).strip()}_decision.json"
+                ),
+                mime="application/json",
+                use_container_width=True,
+                key="af63_download",
             )
+
+        st.markdown(
+            '<div class="af63-action-help">'
+            'Approval and rejection are stored for the current session. '
+            'The exported decision record can be attached to an engineering review '
+            'or retained with the BOM change package.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
         def _af62b_items(points, empty_text):
             if not points:
@@ -3894,6 +4208,8 @@ if app_mode == "Alternative Finder":
                 st.session_state["alternative_original_lookup_part"] = ""
                 st.session_state["alternative_original_lookup_error"] = ""
                 st.session_state["alternative_original_part"] = ""
+                st.session_state["alternative_engineering_decisions"] = {}
+                st.session_state["alternative_decision_notes"] = {}
                 st.rerun()
         with note_col:
             st.markdown(
