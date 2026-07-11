@@ -2446,7 +2446,8 @@ if app_mode == "Admin":
 if app_mode == "Alternative Finder":
     st.markdown(
         """
-        <style id="cadivor-alternative-finder-62a">
+        <style id="cadivor-alternative-finder-62a1">
+        /* Milestone 6.2A.1 — populated original component intelligence */
         .st-key-af62_hero,
         .st-key-af62_search,
         .st-key-af62_summary,
@@ -2648,6 +2649,53 @@ if app_mode == "Alternative Finder":
             box-shadow:0 0 0 3px rgba(37,99,235,.12);
         }
 
+        .af62-search-status.success {
+            background:#ECFDF5;
+            border-color:#A7F3D0;
+            color:#047857!important;
+        }
+
+        .af62-search-status.success:before {
+            background:#10B981;
+            box-shadow:0 0 0 3px rgba(16,185,129,.12);
+        }
+
+        .af62-search-status.warning {
+            background:#FFFBEB;
+            border-color:#FDE68A;
+            color:#B45309!important;
+        }
+
+        .af62-search-status.warning:before {
+            background:#F59E0B;
+            box-shadow:0 0 0 3px rgba(245,158,11,.12);
+        }
+
+        .af62-data-link {
+            color:#2563EB!important;
+            text-decoration:none!important;
+            font-weight:900!important;
+        }
+
+        .af62-data-link:hover {
+            text-decoration:underline!important;
+        }
+
+        .af62-field.risk-low {
+            background:#F0FDF4;
+            border-color:#BBF7D0;
+        }
+
+        .af62-field.risk-medium {
+            background:#FFFBEB;
+            border-color:#FDE68A;
+        }
+
+        .af62-field.risk-high {
+            background:#FEF2F2;
+            border-color:#FECACA;
+        }
+
         .af62-tips {
             display:grid;
             gap:11px;
@@ -2715,6 +2763,18 @@ if app_mode == "Alternative Finder":
     if "alternative_original_part" not in st.session_state:
         st.session_state["alternative_original_part"] = ""
 
+    if "alternative_original_data" not in st.session_state:
+        st.session_state["alternative_original_data"] = {}
+
+    if "alternative_original_risk" not in st.session_state:
+        st.session_state["alternative_original_risk"] = {}
+
+    if "alternative_original_lookup_part" not in st.session_state:
+        st.session_state["alternative_original_lookup_part"] = ""
+
+    if "alternative_original_lookup_error" not in st.session_state:
+        st.session_state["alternative_original_lookup_error"] = ""
+
     with st.container(border=True, key="af62_hero"):
         st.markdown(
             """
@@ -2760,11 +2820,171 @@ if app_mode == "Alternative Finder":
                 key="alternative_find_button_62a",
             )
 
+    if find_alternatives_clicked:
+        searched_part = (original_part or "").strip()
+
+        if not searched_part:
+            st.warning("Please enter an original part number.")
+        else:
+            with st.spinner(
+                "Searching suppliers • Loading original component intelligence • "
+                "Comparing electrical specs • Ranking alternatives..."
+            ):
+                try:
+                    original_lookup = get_best_part_data(searched_part) or {}
+                    if not isinstance(original_lookup, dict):
+                        original_lookup = {}
+
+                    try:
+                        original_risk = calculate_risk(original_lookup) or {}
+                    except Exception:
+                        original_risk = {}
+
+                    st.session_state["alternative_original_data"] = original_lookup
+                    st.session_state["alternative_original_risk"] = original_risk
+                    st.session_state["alternative_original_lookup_part"] = searched_part
+                    st.session_state["alternative_original_lookup_error"] = ""
+
+                except Exception as lookup_error:
+                    st.session_state["alternative_original_data"] = {}
+                    st.session_state["alternative_original_risk"] = {}
+                    st.session_state["alternative_original_lookup_part"] = searched_part
+                    st.session_state["alternative_original_lookup_error"] = str(
+                        lookup_error
+                    )
+
+                st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
+                    searched_part
+                )
+                st.session_state["alternative_search_attempted"] = True
+
     summary_col, tips_col = st.columns([1.35, 0.85], gap="medium")
 
     current_search = (original_part or "").strip()
-    current_display = html.escape(current_search) if current_search else "No component entered"
-    current_status = "Ready to search" if current_search else "Waiting for a part number"
+    current_display = (
+        html.escape(current_search) if current_search else "No component entered"
+    )
+
+    lookup_part = st.session_state.get("alternative_original_lookup_part", "")
+    lookup_matches_input = bool(
+        current_search
+        and lookup_part
+        and current_search.strip().upper() == lookup_part.strip().upper()
+    )
+
+    original_summary_data = (
+        st.session_state.get("alternative_original_data", {})
+        if lookup_matches_input
+        else {}
+    )
+    original_summary_risk = (
+        st.session_state.get("alternative_original_risk", {})
+        if lookup_matches_input
+        else {}
+    )
+    original_lookup_error = (
+        st.session_state.get("alternative_original_lookup_error", "")
+        if lookup_matches_input
+        else ""
+    )
+
+    def _af62_first(data, keys, fallback="—"):
+        if not isinstance(data, dict):
+            return fallback
+        for key in keys:
+            value = data.get(key)
+            if value is not None and str(value).strip() not in {"", "None", "nan"}:
+                return str(value).strip()
+        return fallback
+
+    manufacturer_display = html.escape(
+        _af62_first(
+            original_summary_data,
+            [
+                "manufacturer",
+                "Manufacturer",
+                "manufacturer_name",
+                "brand",
+            ],
+        )
+    )
+
+    lifecycle_display = html.escape(
+        _af62_first(
+            original_summary_data,
+            [
+                "lifecycle_status",
+                "Lifecycle Status",
+                "lifecycle",
+                "status",
+            ],
+        )
+    )
+
+    package_display = html.escape(
+        _af62_first(
+            original_summary_data,
+            [
+                "package",
+                "Package",
+                "package_type",
+                "case_package",
+            ],
+        )
+    )
+
+    risk_display_raw = _af62_first(
+        original_summary_risk,
+        ["risk_level", "Risk Level"],
+        fallback=_af62_first(
+            original_summary_data,
+            ["risk_level", "Risk Level", "estimated_risk"],
+        ),
+    )
+    risk_display = html.escape(risk_display_raw)
+
+    risk_class = ""
+    if risk_display_raw.lower() == "low":
+        risk_class = "risk-low"
+    elif risk_display_raw.lower() == "medium":
+        risk_class = "risk-medium"
+    elif risk_display_raw.lower() == "high":
+        risk_class = "risk-high"
+
+    datasheet_url = _af62_first(
+        original_summary_data,
+        [
+            "datasheet_url",
+            "datasheet",
+            "Datasheet URL",
+            "product_detail_url",
+            "product_url",
+            "url",
+        ],
+        fallback="",
+    )
+
+    if datasheet_url.startswith(("https://", "http://")):
+        safe_datasheet_url = html.escape(datasheet_url, quote=True)
+        datasheet_display = (
+            f'<a class="af62-data-link" href="{safe_datasheet_url}" '
+            f'target="_blank" rel="noopener noreferrer">Open source page →</a>'
+        )
+    else:
+        datasheet_display = "Not available"
+
+    if original_lookup_error:
+        current_status = "Supplier lookup unavailable"
+        current_status_class = "warning"
+    elif lookup_matches_input and original_summary_data:
+        current_status = "Component intelligence loaded"
+        current_status_class = "success"
+    elif current_search:
+        current_status = "Ready to search"
+        current_status_class = ""
+    else:
+        current_status = "Waiting for a part number"
+        current_status_class = ""
 
     with summary_col:
         with st.container(border=True, key="af62_summary"):
@@ -2781,13 +3001,13 @@ if app_mode == "Alternative Finder":
                 </div>
                 <div class="af62-summary-grid">
                   <div class="af62-field"><span>Part Number</span><strong>{current_display}</strong></div>
-                  <div class="af62-field"><span>Manufacturer</span><strong>—</strong></div>
-                  <div class="af62-field"><span>Lifecycle</span><strong>—</strong></div>
-                  <div class="af62-field"><span>Risk</span><strong>—</strong></div>
-                  <div class="af62-field"><span>Package</span><strong>—</strong></div>
-                  <div class="af62-field"><span>Datasheet</span><strong>—</strong></div>
+                  <div class="af62-field"><span>Manufacturer</span><strong>{manufacturer_display}</strong></div>
+                  <div class="af62-field"><span>Lifecycle</span><strong>{lifecycle_display}</strong></div>
+                  <div class="af62-field {risk_class}"><span>Risk</span><strong>{risk_display}</strong></div>
+                  <div class="af62-field"><span>Package</span><strong>{package_display}</strong></div>
+                  <div class="af62-field"><span>Datasheet / Source</span><strong>{datasheet_display}</strong></div>
                 </div>
-                <div class="af62-search-status">{current_status}</div>
+                <div class="af62-search-status {current_status_class}">{current_status}</div>
                 """,
                 unsafe_allow_html=True,
             )
@@ -2819,19 +3039,6 @@ if app_mode == "Alternative Finder":
                 """,
                 unsafe_allow_html=True,
             )
-
-    if find_alternatives_clicked:
-        if not original_part:
-            st.warning("Please enter an original part number.")
-        else:
-            with st.spinner(
-                "Searching suppliers • Comparing electrical specs • Ranking alternatives..."
-            ):
-                st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
-                    original_part
-                )
-                st.session_state["alternative_search_attempted"] = True
-
     if st.session_state["suggested_alternatives"]:
         alternatives_df = pd.DataFrame(
             st.session_state["suggested_alternatives"]
@@ -2867,7 +3074,24 @@ if app_mode == "Alternative Finder":
             """
         )
 
-        original_data = get_best_part_data(original_part)
+        stored_original_data = st.session_state.get(
+            "alternative_original_data", {}
+        )
+        stored_lookup_part = st.session_state.get(
+            "alternative_original_lookup_part", ""
+        )
+
+        if (
+            isinstance(stored_original_data, dict)
+            and stored_original_data
+            and str(stored_lookup_part).strip().upper()
+            == str(original_part).strip().upper()
+        ):
+            original_data = stored_original_data
+        else:
+            original_data = get_best_part_data(original_part) or {}
+            st.session_state["alternative_original_data"] = original_data
+            st.session_state["alternative_original_lookup_part"] = original_part
 
         original_stock = float(original_data.get("stock_total", 0) or 0)
         alternative_stock = float(selected_row.get("Stock", 0) or 0)
@@ -3040,6 +3264,11 @@ if app_mode == "Alternative Finder":
         if st.button("🔄 New Alternative Search"):
             st.session_state["suggested_alternatives"] = []
             st.session_state["alternative_search_attempted"] = False
+            st.session_state["alternative_original_data"] = {}
+            st.session_state["alternative_original_risk"] = {}
+            st.session_state["alternative_original_lookup_part"] = ""
+            st.session_state["alternative_original_lookup_error"] = ""
+            st.session_state["alternative_original_part"] = ""
             st.rerun()
 
     elif st.session_state["alternative_search_attempted"]:
