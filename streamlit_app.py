@@ -2447,7 +2447,7 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <style id="cadivor-alternative-finder-62a1">
-        /* Milestone 6.2B — best recommendation experience */
+        /* Milestone 6.2B.1 — results cleanup and focused actions */
         .st-key-af62_hero,
         .st-key-af62_search,
         .st-key-af62_summary,
@@ -3026,6 +3026,53 @@ if app_mode == "Alternative Finder":
             .af62b-metrics{grid-template-columns:1fr;}
             .af62b-analysis-grid{grid-template-columns:1fr;}
         }
+
+        /* Milestone 6.2B.1 — results cleanup and focused actions */
+        .af62b-action-note{
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:760;
+            line-height:1.45;
+            padding-top:8px;
+        }
+        .af62b-shortlist-pill{
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            padding:7px 10px;
+            border-radius:999px;
+            background:#ECFDF5;
+            border:1px solid #A7F3D0;
+            color:#047857!important;
+            font-size:10px;
+            font-weight:950;
+        }
+        .af62b-shortlist-pill:before{
+            content:"";
+            width:7px;
+            height:7px;
+            border-radius:50%;
+            background:#10B981;
+        }
+        .af62b-advanced-copy{
+            color:#64748B!important;
+            font-size:12px;
+            font-weight:740;
+            line-height:1.5;
+            margin:0 0 12px;
+        }
+        .st-key-af62b_compact_table [data-testid="stDataFrame"]{
+            max-height:430px!important;
+            overflow:auto!important;
+        }
+        .st-key-af62b_save_candidate button,
+        .st-key-af62b_advanced_compare button{
+            border-radius:12px!important;
+            font-weight:900!important;
+        }
+        @media(max-width:760px){
+            .af62b-action-note{padding-top:0;}
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3051,6 +3098,9 @@ if app_mode == "Alternative Finder":
 
     if "alternative_original_lookup_error" not in st.session_state:
         st.session_state["alternative_original_lookup_error"] = ""
+
+    if "alternative_candidate_shortlist" not in st.session_state:
+        st.session_state["alternative_candidate_shortlist"] = []
 
     with st.container(border=True, key="af62_hero"):
         st.markdown(
@@ -3538,6 +3588,57 @@ if app_mode == "Alternative Finder":
                 unsafe_allow_html=True,
             )
 
+        candidate_key = (
+            f"{str(original_part).strip().upper()}::"
+            f"{str(selected_alternative).strip().upper()}"
+        )
+        shortlist = st.session_state.get("alternative_candidate_shortlist", [])
+        already_saved = any(
+            isinstance(item, dict) and item.get("candidate_key") == candidate_key
+            for item in shortlist
+        )
+
+        save_col, action_note_col = st.columns([0.26, 0.74], gap="medium")
+        with save_col:
+            if already_saved:
+                st.markdown(
+                    '<div class="af62b-shortlist-pill">Saved to shortlist</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                if st.button(
+                    "Save Candidate",
+                    type="primary",
+                    use_container_width=True,
+                    key="af62b_save_candidate",
+                ):
+                    shortlist.append(
+                        {
+                            "candidate_key": candidate_key,
+                            "original_part": str(original_part),
+                            "alternative_part": str(selected_alternative),
+                            "recommendation_score": recommendation_score,
+                            "confidence": drop_in_confidence,
+                            "lifecycle": lifecycle_value,
+                            "risk": risk_value,
+                            "supplier": supplier_value,
+                            "stock": stock_value,
+                            "unit_price": price_value,
+                            "package": package_value,
+                        }
+                    )
+                    st.session_state["alternative_candidate_shortlist"] = shortlist
+                    st.rerun()
+
+        with action_note_col:
+            st.markdown(
+                '<div class="af62b-action-note">'
+                'Save the selected recommendation to your current-session shortlist. '
+                'Persistent workspace saving will be connected in a later data milestone.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
         def _af62b_items(points, empty_text):
             if not points:
                 return f'<div class="af62b-analysis-empty">{html.escape(empty_text)}</div>'
@@ -3668,6 +3769,116 @@ if app_mode == "Alternative Finder":
                 hide_index=True,
             )
 
+        with st.expander("Advanced multi-part comparison", expanded=False):
+            st.markdown(
+                '<div class="af62b-advanced-copy">'
+                'Compare the original component against multiple candidates when the '
+                'ranked recommendation needs a broader sourcing or engineering review.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            advanced_input = st.text_input(
+                "Alternative part numbers",
+                value=", ".join(alternative_options),
+                help="Enter comma-separated manufacturer part numbers.",
+                key="af62b_advanced_input",
+            )
+
+            if st.button(
+                "Run Advanced Comparison",
+                type="secondary",
+                key="af62b_advanced_compare",
+            ):
+                advanced_parts = [
+                    part.strip()
+                    for part in advanced_input.split(",")
+                    if part.strip()
+                ]
+
+                if not advanced_parts:
+                    st.warning("Enter at least one alternative part number.")
+                elif not original_part:
+                    st.warning("Enter a valid original part number.")
+                else:
+                    with st.spinner(
+                        "Comparing supplier, lifecycle, stock, and risk signals..."
+                    ):
+                        advanced_df = compare_parts(
+                            original_part,
+                            advanced_parts,
+                        )
+
+                    if advanced_df is None or advanced_df.empty:
+                        st.warning("No comparison data was returned.")
+                    else:
+                        def _af62b_risk_badge(level):
+                            if level == "High":
+                                return "🔴 High"
+                            if level == "Medium":
+                                return "🟡 Medium"
+                            return "🟢 Low"
+
+                        if "Risk Level" in advanced_df.columns:
+                            advanced_df["Risk Level Display"] = (
+                                advanced_df["Risk Level"].apply(
+                                    _af62b_risk_badge
+                                )
+                            )
+
+                        sort_columns = [
+                            column
+                            for column in [
+                                "Risk Score",
+                                "Total Market Stock",
+                            ]
+                            if column in advanced_df.columns
+                        ]
+                        if sort_columns:
+                            ascending = [
+                                column == "Risk Score"
+                                for column in sort_columns
+                            ]
+                            advanced_df = advanced_df.sort_values(
+                                by=sort_columns,
+                                ascending=ascending,
+                            )
+
+                        preferred_columns = [
+                            "Role",
+                            "MPN Searched",
+                            "Manufacturer",
+                            "Best Source",
+                            "Supplier Count",
+                            "Total Market Stock",
+                            "Lifecycle Status",
+                            "Risk Score",
+                            "Risk Level Display",
+                            "Product URL",
+                        ]
+                        display_columns = [
+                            column
+                            for column in preferred_columns
+                            if column in advanced_df.columns
+                        ]
+
+                        st.dataframe(
+                            advanced_df[display_columns]
+                            if display_columns
+                            else advanced_df,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+                        csv = advanced_df.to_csv(index=False).encode("utf-8")
+                        st.download_button(
+                            "Download Advanced Comparison CSV",
+                            data=csv,
+                            file_name="alternative_comparison.csv",
+                            mime="text/csv",
+                            key="af62b_advanced_download",
+                        )
+
         reset_col, note_col = st.columns([0.28, 0.72], gap="medium")
         with reset_col:
             if st.button(
@@ -3692,103 +3903,6 @@ if app_mode == "Alternative Finder":
 
     elif st.session_state["alternative_search_attempted"]:
         st.warning("No suggested alternatives found.")
-
-    suggested_part_numbers = []
-
-    if st.session_state["suggested_alternatives"]:
-        suggested_part_numbers = [
-            alt.get("Alternative Part", "")
-            for alt in st.session_state["suggested_alternatives"]
-            if isinstance(alt, dict)
-        ]
-
-    if suggested_part_numbers:
-        st.divider()
-        st.subheader("Step 2: Compare Alternatives")
-
-        alternatives_input = st.text_input(
-            "Enter alternative part numbers (comma-separated)",
-            value=", ".join(suggested_part_numbers),
-        )
-
-        if st.button("Compare Parts", type="primary"):
-            if original_part:
-                alternatives = [
-                    part.strip()
-                    for part in alternatives_input.split(",")
-                    if part.strip()
-                ] if alternatives_input else []
-
-                st.success(f"Comparing: {original_part} vs {alternatives}")
-
-                comparison_df = compare_parts(original_part, alternatives)
-
-                def risk_badge(level):
-                    if level == "High":
-                        return "🔴 High"
-                    if level == "Medium":
-                        return "🟡 Medium"
-                    return "🟢 Low"
-
-                comparison_df["Risk Level Display"] = comparison_df["Risk Level"].apply(
-                    risk_badge
-                )
-
-                comparison_df = comparison_df.sort_values(
-                    by=["Risk Score", "Total Market Stock"],
-                    ascending=[True, False],
-                )
-
-                st.markdown("### Step 3 — Comparison Results")
-
-                display_cols = [
-                    "Role",
-                    "MPN Searched",
-                    "Manufacturer",
-                    "Best Source",
-                    "Supplier Count",
-                    "Total Market Stock",
-                    "Lifecycle Status",
-                    "Risk Score",
-                    "Risk Level Display",
-                    "Product URL",
-                ]
-
-                comparison_display_df = comparison_df[display_cols]
-
-                st.dataframe(
-                    comparison_display_df,
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-                alternatives_only = comparison_df[
-                    comparison_df["Role"] == "Alternative"
-                ]
-
-                if not alternatives_only.empty:
-                    best_alt = alternatives_only.sort_values(
-                        by=["Risk Score", "Total Market Stock"],
-                        ascending=[True, False],
-                    ).iloc[0]
-
-                    st.success(
-                        f"✅ Recommended Alternative: **{best_alt['Matched MPN']}** "
-                        f"(Risk: {best_alt['Risk Level']}, "
-                        f"Stock: {best_alt['Total Market Stock']})"
-                    )
-
-                csv = comparison_df.to_csv(index=False).encode("utf-8")
-
-                st.download_button(
-                    "Download Comparison (CSV)",
-                    data=csv,
-                    file_name="alternative_comparison.csv",
-                    mime="text/csv",
-                )
-
-            else:
-                st.warning("Please enter a valid part number.")
 
     st.stop()
 if app_mode == "BOM Analyzer":
