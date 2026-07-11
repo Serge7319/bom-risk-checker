@@ -637,6 +637,178 @@ def render_dashboard(
         .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
         .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
         /* Milestone 6.0A — premium, calm dashboard intelligence */
+        /* Milestone 6.0B — focused executive dashboard */
+        .cv-6b-kpi-strip{
+            display:grid;
+            grid-template-columns:repeat(4,minmax(0,1fr));
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            border-radius:18px;
+            box-shadow:0 14px 36px rgba(15,23,42,.045);
+            margin:4px 0 18px;
+            overflow:hidden;
+        }
+        .cv-6b-kpi{
+            padding:15px 18px;
+            border-right:1px solid #E2E8F0;
+            min-width:0;
+        }
+        .cv-6b-kpi:last-child{border-right:none;}
+        .cv-6b-kpi span{
+            display:block;
+            color:#64748B!important;
+            font-size:10px;
+            font-weight:950;
+            letter-spacing:.09em;
+            text-transform:uppercase;
+            margin-bottom:5px;
+        }
+        .cv-6b-kpi strong{
+            color:#0B1220!important;
+            font-size:25px;
+            line-height:1;
+            font-weight:980;
+            letter-spacing:-.035em;
+        }
+        .cv-6b-kpi small{
+            display:block;
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:760;
+            margin-top:6px;
+            line-height:1.35;
+        }
+        .cv-6b-main-grid{
+            display:grid;
+            grid-template-columns:minmax(0,1.55fr) minmax(310px,.7fr);
+            gap:16px;
+            align-items:stretch;
+            margin-bottom:18px;
+        }
+        .cv-6b-panel{
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            border-radius:20px;
+            padding:20px;
+            box-shadow:0 16px 42px rgba(15,23,42,.05);
+        }
+        .cv-6b-project-head{
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:14px;
+            margin-bottom:16px;
+        }
+        .cv-6b-project-title{
+            color:#0B1220!important;
+            font-size:21px;
+            line-height:1.2;
+            font-weight:980;
+            letter-spacing:-.035em;
+            margin-top:4px;
+        }
+        .cv-6b-project-meta{
+            display:grid;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:10px;
+            margin-bottom:15px;
+        }
+        .cv-6b-project-stat{
+            background:#F8FAFC;
+            border:1px solid #E2E8F0;
+            border-radius:14px;
+            padding:12px;
+        }
+        .cv-6b-project-stat span{
+            display:block;
+            color:#64748B!important;
+            font-size:9.5px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.08em;
+            margin-bottom:5px;
+        }
+        .cv-6b-project-stat strong{
+            color:#0B1220!important;
+            font-size:21px;
+            font-weight:980;
+        }
+        .cv-6b-project-link{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            padding:11px 13px;
+            border-radius:13px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            text-decoration:none!important;
+            font-size:12px;
+            font-weight:900;
+        }
+        .cv-6b-project-link:hover{
+            background:#DBEAFE;
+            transform:translateY(-1px);
+            transition:all .16s ease;
+        }
+        .cv-6b-shortcuts{
+            display:grid;
+            grid-template-columns:repeat(4,minmax(0,1fr));
+            gap:10px;
+            margin-bottom:4px;
+        }
+        .cv-6b-shortcut{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            min-height:72px;
+            padding:14px;
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            border-radius:16px;
+            color:inherit!important;
+            text-decoration:none!important;
+            box-shadow:0 10px 28px rgba(15,23,42,.035);
+        }
+        .cv-6b-shortcut:hover{
+            border-color:#BFDBFE;
+            background:#F8FBFF;
+            transform:translateY(-1px);
+            transition:all .16s ease;
+        }
+        .cv-6b-shortcut strong{
+            display:block;
+            color:#0B1220!important;
+            font-size:12px;
+            font-weight:950;
+            margin-bottom:3px;
+        }
+        .cv-6b-shortcut span{
+            display:block;
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:760;
+            line-height:1.35;
+        }
+        .cv-6b-arrow{
+            color:#2563EB!important;
+            font-size:15px;
+            font-weight:950;
+            flex:0 0 auto;
+        }
+        @media(max-width:1100px){
+            .cv-6b-main-grid{grid-template-columns:1fr;}
+            .cv-6b-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr));}
+        }
+        @media(max-width:760px){
+            .cv-6b-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr));}
+            .cv-6b-kpi:nth-child(2){border-right:none;}
+            .cv-6b-kpi:nth-child(-n+2){border-bottom:1px solid #E2E8F0;}
+            .cv-6b-shortcuts{grid-template-columns:1fr;}
+        }
+
         .cv-6a-command{padding:24px 26px!important;margin-bottom:18px!important;}
         .cv-6a-command .cv-v4-command-grid{grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr)!important;gap:24px!important;}
         .cv-6a-command .cv-v4-title{font-size:36px!important;max-width:760px!important;}
@@ -726,200 +898,149 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Portfolio Intelligence</div><div class="cv-v4-section-meta">A concise view of health, risk, monitoring, and replacement readiness.</div></div><div class="cv-v4-chip">Workspace intelligence</div></div>', unsafe_allow_html=True)
     st.markdown(
-        f"""
-        <div class="cv-v4-metrics">
-          <div class="cv-v4-metric primary"><div class="top"><div class="name">Portfolio Health</div><div class="icon">{_lucide_icon('shield',18)}</div></div><div class="value">{avg_health_score}</div><div class="note">{health_badge}</div><div class="delta {'bad' if health_delta < 0 else ''}">{health_delta_label} vs previous</div></div>
-          <div class="cv-v4-metric"><div class="top"><div class="name">High-Risk Parts</div><div class="icon">{_lucide_icon('alert',18)}</div></div><div class="value">{total_high_risk}</div><div class="note">Needs engineering review</div></div>
-          <div class="cv-v4-metric"><div class="top"><div class="name">Saved Analyses</div><div class="icon">{_lucide_icon('file',18)}</div></div><div class="value">{total_analyses}</div><div class="note">BOM reviews stored</div></div>
-          <div class="cv-v4-metric"><div class="top"><div class="name">Alternatives Found</div><div class="icon">{_lucide_icon('replace',18)}</div></div><div class="value">{alternatives_found}</div><div class="note">Candidate records saved</div></div>
+        """
+        <div class="cv-v4-section-head">
+          <div>
+            <div class="cv-v4-section-title">Portfolio Snapshot</div>
+            <div class="cv-v4-section-meta">Only the essential signals needed to decide where to go next.</div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    chart_col, dist_col = st.columns([1.45, 1])
-    with chart_col:
-        st.markdown(f'<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Portfolio Health</div><div class="cv-v4-section-meta">Last saved analyses • {health_delta_label} vs previous</div></div></div>', unsafe_allow_html=True)
-        if analysis_data and len(analysis_data) >= 2:
-            trend_df = pd.DataFrame(analysis_data)
-            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"], errors="coerce")
-            trend_df = trend_df.dropna(subset=["created_at"]).sort_values("created_at")
-            trend_df = trend_df.rename(columns={"created_at": "Date", "health_score": "Health Score"})
-            fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
-            fig.update_traces(line_color="#2563EB", marker_color="#2563EB", line_width=3)
-            st.plotly_chart(light_plotly_layout(fig, height=320), use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.info("Run at least two BOM analyses to generate a portfolio health trend.")
-    with dist_col:
-        st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Risk Distribution</div><div class="cv-v4-section-meta">Component risk across all saved analyses.</div></div></div>', unsafe_allow_html=True)
-        if total_components > 0:
-            risk_distribution_df = pd.DataFrame({"Risk Level": ["High", "Medium", "Low"], "Components": [total_high_risk, total_medium_risk, total_low_risk]})
-            fig = px.pie(risk_distribution_df, names="Risk Level", values="Components", hole=.52, color="Risk Level", color_discrete_map={"High":"#DC2626","Medium":"#F59E0B","Low":"#16A34A"})
-            st.plotly_chart(light_plotly_layout(fig, height=320), use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.info("Risk distribution appears after your first saved BOM analysis.")
+    st.markdown(
+        f"""
+        <div class="cv-6b-kpi-strip">
+          <div class="cv-6b-kpi">
+            <span>Portfolio Health</span>
+            <strong>{avg_health_score}</strong>
+            <small>{health_delta_label} vs previous</small>
+          </div>
+          <div class="cv-6b-kpi">
+            <span>High Risk</span>
+            <strong>{total_high_risk}</strong>
+            <small>Components requiring review</small>
+          </div>
+          <div class="cv-6b-kpi">
+            <span>Supplier Alerts</span>
+            <strong>{alert_count}</strong>
+            <small>{high_alert_count} high severity</small>
+          </div>
+          <div class="cv-6b-kpi">
+            <span>Saved Analyses</span>
+            <strong>{total_analyses}</strong>
+            <small>Engineering records available</small>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    snapshot_col, analyses_col = st.columns([1, 1.55])
-    with snapshot_col:
+    trend_col, project_col = st.columns([1.65, 0.78], gap="medium")
+
+    with trend_col:
         st.markdown(
             f"""
-            <div class="cv-v4-snapshot">
-              <div class="cv-v4-snapshot-title"><div><div class="cv-v4-label">Current Project</div><div class="cv-v4-project">{html.escape(str(latest_project))}</div></div><div class="cv-v4-icon">{_lucide_icon('file',18)}</div></div>
-              <div class="cv-v4-snapshot-grid">
-                <div class="cv-v4-snapshot-cell"><span>Health</span><strong>{latest_health}</strong></div>
-                <div class="cv-v4-snapshot-cell"><span>Parts</span><strong>{latest_parts}</strong></div>
-                <div class="cv-v4-snapshot-cell"><span>Alerts</span><strong>{alert_count}</strong></div>
-                <div class="cv-v4-snapshot-cell"><span>High Severity</span><strong>{high_alert_count}</strong></div>
+            <div class="cv-v4-section-head">
+              <div>
+                <div class="cv-v4-section-title">Portfolio Health Trend</div>
+                <div class="cv-v4-section-meta">Health across saved analyses • {health_delta_label} vs previous</div>
               </div>
-              <p class="cv-v4-text" style="margin-top:14px;margin-bottom:0;">Last updated: {latest_date}</p>
+              <a class="cv-v4-chip" href="?page=Reports" target="_self" style="text-decoration:none!important;">Open analyses →</a>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    with analyses_col:
-        st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Recent Analyses</div><div class="cv-v4-section-meta">Latest BOM reviews and risk results.</div></div><div class="cv-v4-chip">Open review →</div></div>', unsafe_allow_html=True)
-        if analysis_data:
-            rows_html = []
-            for item in analysis_data[:6]:
-                project = html.escape(str(item.get("project_name") or item.get("filename") or "Saved BOM analysis"))
-                filename = html.escape(str(item.get("filename") or "—"))
-                h = int(item.get("health_score", 0) or 0)
-                high = int(item.get("high_risk_count", 0) or 0)
-                parts = int(item.get("total_parts", 0) or 0)
-                cls = _health_class(h)
-                high_cls = "bad" if high else "good"
-                analysis_id = html.escape(str(item.get("id") or ""), quote=True)
-                detail_href = f"?page=Analysis%20Details&analysis_id={analysis_id}" if analysis_id else "?page=BOM%20Analyzer"
-                meta = f"{filename} • {_relative_date(item.get('created_at'))} • {parts} parts"
-                rows_html.append(
-                    f'<a class="cv-v4-analysis-row" href="{detail_href}" target="_self" style="text-decoration:none!important;color:inherit!important;">'
-                    f'<div><div class="cv-v4-analysis-title">{project}</div>'
-                    f'<div class="cv-v4-analysis-meta">{html.escape(meta)}</div></div>'
-                    f'<div class="cv-v4-row-pills">'
-                    f'<span class="cv-v4-score {cls}">{h} health</span>'
-                    f'<span class="cv-v4-score {high_cls}">{high} high</span>'
-                    f'<span class="cv-v4-open">View →</span>'
-                    f'</div></a>'
-                )
-            st.markdown(f'<div class="cv-v4-analysis-list">{"".join(rows_html)}</div>', unsafe_allow_html=True)
+        if analysis_data and len(analysis_data) >= 2:
+            trend_df = pd.DataFrame(analysis_data)
+            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"], errors="coerce")
+            trend_df = trend_df.dropna(subset=["created_at"]).sort_values("created_at")
+            trend_df = trend_df.rename(
+                columns={"created_at": "Date", "health_score": "Health Score"}
+            )
+            fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
+            fig.update_traces(
+                line_color="#2563EB",
+                marker_color="#2563EB",
+                line_width=3,
+            )
+            st.plotly_chart(
+                light_plotly_layout(fig, height=285),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
         else:
-            st.info("No analyses yet. Upload your first BOM to begin building portfolio intelligence.")
+            st.info("Run at least two BOM analyses to generate a portfolio health trend.")
 
-    feed_col, alert_col = st.columns([1.15, 1])
-    with feed_col:
-        st.markdown('<div class="cv-section-spacer"></div><div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Activity Feed</div><div class="cv-v4-section-meta">Recent workspace events.</div></div></div>', unsafe_allow_html=True)
+    with project_col:
+        latest_analysis_id = ""
         if analysis_data:
-            for item in analysis_data[:4]:
-                event_title = html.escape(str(item.get("project_name") or item.get("filename") or "Saved BOM analysis"))
-                event_meta = f"Analysis completed • Health {item.get('health_score', '—')} • {_relative_date(item.get('created_at'))}"
-                st.markdown(f"""
-                <div class="cv-result-card"><div><div class="cv-result-title">{event_title}</div><div class="cv-result-meta">{html.escape(event_meta)}</div></div><span class="cv-status-pill success">Ready</span></div>
-                """, unsafe_allow_html=True)
-        else:
-            empty_state("No activity yet", "Upload your first BOM to start building a Cadivor activity history.", "Analyze a BOM", "?page=BOM%20Analyzer", "○")
-    with alert_col:
-        st.markdown('<div class="cv-section-spacer"></div><div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Recent Alerts</div><div class="cv-v4-section-meta">Lifecycle, stock, and supplier changes.</div></div></div>', unsafe_allow_html=True)
-        if alert_data:
-            for alert in alert_data[:4]:
-                severity = str(alert.get("severity", "")).lower()
-                pill = "danger" if "high" in severity else "warning" if "medium" in severity else "muted"
-                st.markdown(f"""
-                <div class="cv-result-card"><div><div class="cv-result-title">{html.escape(str(alert.get('part_number', 'Part alert')))}</div><div class="cv-result-meta">{html.escape(str(alert.get('alert_type', 'Monitoring alert')))} • {html.escape(str(alert.get('alert_message', '')))}</div></div><span class="cv-status-pill {pill}">{html.escape(str(alert.get('severity', 'Info')))}</span></div>
-                """, unsafe_allow_html=True)
-        else:
-            empty_state("No active alerts", "Your monitored components have no unresolved alerts right now.", "Open Monitoring", "?page=Monitoring", "●")
+            latest_analysis_id = str(analysis_data[0].get("id") or "")
+        project_href = (
+            f"?page=Analysis%20Details&analysis_id={html.escape(latest_analysis_id, quote=True)}"
+            if latest_analysis_id
+            else "?page=BOM%20Analyzer"
+        )
+        st.markdown(
+            f"""
+            <div class="cv-6b-panel">
+              <div class="cv-6b-project-head">
+                <div>
+                  <div class="cv-v4-label">Current Working BOM</div>
+                  <div class="cv-6b-project-title">{html.escape(str(latest_project))}</div>
+                </div>
+                <div class="cv-v4-icon">{_lucide_icon('file',18)}</div>
+              </div>
+              <div class="cv-6b-project-meta">
+                <div class="cv-6b-project-stat"><span>Health</span><strong>{latest_health}</strong></div>
+                <div class="cv-6b-project-stat"><span>Parts</span><strong>{latest_parts}</strong></div>
+              </div>
+              <div class="cv-v4-text" style="margin-bottom:13px;">Last updated {html.escape(str(latest_date))}</div>
+              <a class="cv-6b-project-link" href="{project_href}" target="_self">
+                <span>Continue analysis</span><span>→</span>
+              </a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.markdown('<div class="cv-section-spacer"></div><div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Quick Actions</div><div class="cv-v4-section-meta">Start the workflows engineers use most often.</div></div></div>', unsafe_allow_html=True)
     st.markdown(
-        f"""
-        <div class="cv-v4-action-grid">
-          <a class="cv-v4-action" href="?page=BOM%20Analyzer" target="_self"><div class="icon">{_lucide_icon('file',18)}</div><div class="title">Analyze a BOM</div><div class="copy">Upload CSV or Excel and generate lifecycle, sourcing, and risk intelligence.</div><div class="meta">CSV / Excel • analysis workflow →</div></a>
-          <a class="cv-v4-action" href="?page=Alternative%20Finder" target="_self"><div class="icon">{_lucide_icon('replace',18)}</div><div class="title">Find Alternatives</div><div class="copy">Search compatible replacement candidates and supplier-backed options.</div><div class="meta">Replacement validation →</div></a>
-          <a class="cv-v4-action" href="?page=Monitoring" target="_self"><div class="icon">{_lucide_icon('activity',18)}</div><div class="title">Review Alerts</div><div class="copy">Check stock, lifecycle, and risk changes across monitored components.</div><div class="meta">{alert_count} active alerts →</div></a>
-          <a class="cv-v4-action" href="?page=Reports" target="_self"><div class="icon">{_lucide_icon('boxes',18)}</div><div class="title">Export Reports</div><div class="copy">Download engineering-ready reports for sourcing and management review.</div><div class="meta">PDF / Excel reports →</div></a>
+        """
+        <div class="cv-v4-section-head" style="margin-top:18px;">
+          <div>
+            <div class="cv-v4-section-title">Workspace Shortcuts</div>
+            <div class="cv-v4-section-meta">Detailed information remains available in the page designed for it.</div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # Saved analysis actions remain available, but in a compact workflow.
-    st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="cv-panel-title">Saved BOM Actions</div><div class="cv-panel-copy">Open a saved BOM in the analyzer or delete old analyses from the workspace.</div>', unsafe_allow_html=True)
-
-    history = load_analysis_history(current_user["id"])
-
-    if not history:
-        st.info("No saved BOM analyses yet.")
-    else:
-        history_df = pd.DataFrame(history)
-        analysis_options = {
-            f"{row.get('project_name') or row.get('filename', 'Untitled')} — {row.get('created_at', '')}": row["id"]
-            for _, row in history_df.drop_duplicates(subset=["id"]).iterrows()
-        }
-
-        saved_col, open_col, delete_col = st.columns([3.8, .9, .9])
-        with saved_col:
-            selected_saved_analysis_label = st.selectbox(
-                "Choose a saved analysis",
-                list(analysis_options.keys()),
-                label_visibility="collapsed",
-            )
-        selected_saved_analysis_id = analysis_options[selected_saved_analysis_label]
-
-        with open_col:
-            if st.button("Open", use_container_width=True):
-                saved_parts = (
-                    supabase.table("analysis_parts")
-                    .select("*")
-                    .eq("analysis_id", selected_saved_analysis_id)
-                    .eq("user_id", current_user["id"])
-                    .execute()
-                )
-
-                if not saved_parts.data:
-                    st.warning("No saved parts were found for this analysis.")
-                else:
-                    saved_results_df = pd.DataFrame(saved_parts.data)
-                    saved_results_df = saved_results_df.rename(
-                        columns={
-                            "mpn": "MPN",
-                            "manufacturer": "Manufacturer",
-                            "risk_score": "Risk Score",
-                            "risk_level": "Risk Level",
-                            "risk_reasons": "Risk Reasons",
-                            "lifecycle_status": "Lifecycle Status",
-                            "stock_available": "Stock Available",
-                            "supplier_count": "Supplier Count",
-                        }
-                    )
-                    saved_results_df["Best Source"] = ""
-                    saved_results_df["Total Market Stock"] = saved_results_df["Stock Available"]
-                    saved_results_df["Sources Available"] = ""
-                    saved_results_df["Lead Time Weeks"] = None
-                    saved_results_df["Product URL"] = ""
-                    saved_results_df["Has Alternates"] = False
-                    saved_results_df["Alternate Count"] = 0
-                    saved_results_df["Alternative Part Numbers"] = ""
-                    saved_results_df["Normalized MPN"] = saved_results_df["MPN"]
-                    st.session_state["results_df"] = saved_results_df
-                    st.session_state["pending_app_mode"] = "BOM Analyzer"
-                    st.success("Saved analysis loaded. Opening BOM Analyzer...")
-                    st.rerun()
-
-        with delete_col:
-            if st.button("Delete", use_container_width=True):
-                try:
-                    for table_name in ["analysis_parts", "part_monitor_history", "monitor_alerts", "alternative_recommendations"]:
-                        supabase.table(table_name).delete().eq("analysis_id", selected_saved_analysis_id).eq("user_id", current_user["id"]).execute()
-
-                    supabase.table("analyses").delete().eq("id", selected_saved_analysis_id).eq("user_id", current_user["id"]).execute()
-                    st.session_state.pop("results_df", None)
-                    st.success("Saved analysis deleted.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Could not delete saved analysis: {e}")
+    st.markdown(
+        f"""
+        <div class="cv-6b-shortcuts">
+          <a class="cv-6b-shortcut" href="?page=Monitoring" target="_self">
+            <div><strong>Monitoring</strong><span>{alert_count} active supplier and lifecycle alerts</span></div>
+            <div class="cv-6b-arrow">→</div>
+          </a>
+          <a class="cv-6b-shortcut" href="?page=Reports" target="_self">
+            <div><strong>Reports</strong><span>Saved analyses, PDFs, and engineering exports</span></div>
+            <div class="cv-6b-arrow">→</div>
+          </a>
+          <a class="cv-6b-shortcut" href="?page=Alternative%20Finder" target="_self">
+            <div><strong>Alternative Finder</strong><span>{alternatives_found} saved replacement candidates</span></div>
+            <div class="cv-6b-arrow">→</div>
+          </a>
+          <a class="cv-6b-shortcut" href="?page=Workspace" target="_self">
+            <div><strong>Workspace</strong><span>Usage, plan, and workspace management</span></div>
+            <div class="cv-6b-arrow">→</div>
+          </a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.stop()
 
