@@ -1547,17 +1547,14 @@ if app_mode == "Monitoring":
     else:
         st.info("No monitoring history available yet.")
 
+
 # ---------- Reports ----------
 if app_mode == "Reports":
-    # Milestone 5.4.8 — Direct Reports Center render.
-    # This intentionally renders inside streamlit_app.py so the active route
-    # cannot be affected by an outdated or disconnected page module.
+    # Milestone 5.5 — Functional Reports Center
     try:
         report_records = load_analysis_history(current_user["id"]) or []
     except Exception:
         report_records = []
-
-    report_df = pd.DataFrame(report_records)
 
     def _report_int(value, default=0):
         try:
@@ -1567,12 +1564,168 @@ if app_mode == "Reports":
         except Exception:
             return default
 
+    def _report_float(value, default=0.0):
+        try:
+            if value is None or (isinstance(value, float) and pd.isna(value)):
+                return default
+            return float(value)
+        except Exception:
+            return default
+
     def _report_value(row, *keys, default=None):
         for key in keys:
             value = row.get(key)
             if value is not None and str(value).strip() not in ("", "nan", "None"):
                 return value
         return default
+
+    def _analysis_label(row):
+        project = _report_value(row, "project_name", "name", default="Saved BOM")
+        created = str(_report_value(row, "created_at", "date", default=""))
+        created_date = created.split("T")[0] if "T" in created else created[:10]
+        return f"{project} — {created_date or 'undated'}"
+
+    def _load_report_parts(analysis_id):
+        if not analysis_id:
+            return pd.DataFrame()
+        try:
+            response = (
+                supabase.table("analysis_parts")
+                .select("*")
+                .eq("analysis_id", analysis_id)
+                .eq("user_id", current_user["id"])
+                .execute()
+            )
+            return pd.DataFrame(response.data or [])
+        except Exception:
+            try:
+                response = (
+                    supabase.table("analysis_parts")
+                    .select("*")
+                    .eq("analysis_id", analysis_id)
+                    .execute()
+                )
+                return pd.DataFrame(response.data or [])
+            except Exception:
+                return pd.DataFrame()
+
+    def _build_executive_pdf(analysis_row, parts_df):
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=42,
+            leftMargin=42,
+            topMargin=42,
+            bottomMargin=42,
+        )
+        styles = getSampleStyleSheet()
+        story = []
+
+        project = _report_value(analysis_row, "project_name", "name", default="Saved BOM")
+        filename = _report_value(analysis_row, "filename", "uploaded_file", "file_name", default="—")
+        health = _report_int(_report_value(analysis_row, "health_score", default=0))
+        high_risk = _report_int(_report_value(analysis_row, "high_risk_count", "high_risk_parts", default=0))
+        medium_risk = _report_int(_report_value(analysis_row, "medium_risk_count", "medium_risk_parts", default=0))
+        total_parts = _report_int(_report_value(analysis_row, "total_parts", "part_count", "parts_count", default=len(parts_df)))
+
+        story.append(Paragraph("Cadivor Executive BOM Report", styles["Title"]))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph(f"Project: {html.escape(str(project))}", styles["Heading2"]))
+        story.append(Paragraph(f"Source file: {html.escape(str(filename))}", styles["BodyText"]))
+        story.append(Spacer(1, 12))
+
+        summary_table = Table(
+            [
+                ["Health Score", "Total Parts", "High Risk", "Medium Risk"],
+                [str(health), str(total_parts), str(high_risk), str(medium_risk)],
+            ],
+            colWidths=[115, 115, 115, 115],
+        )
+        summary_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFF6FF")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ]
+            )
+        )
+        story.append(summary_table)
+        story.append(Spacer(1, 16))
+
+        if health >= 80:
+            recommendation = "Portfolio health is strong. Continue lifecycle and supplier monitoring."
+        elif health >= 60:
+            recommendation = "Review elevated-risk parts and validate supplier coverage before release."
+        else:
+            recommendation = "Immediate engineering and sourcing review is recommended before production release."
+
+        story.append(Paragraph("Recommended action", styles["Heading2"]))
+        story.append(Paragraph(recommendation, styles["BodyText"]))
+        story.append(Spacer(1, 16))
+
+        story.append(Paragraph("Priority component review", styles["Heading2"]))
+        if parts_df.empty:
+            story.append(Paragraph("No component-level records were available for this saved analysis.", styles["BodyText"]))
+        else:
+            work = parts_df.copy()
+            risk_col = next((c for c in ["risk_level", "Risk Level", "risk"] if c in work.columns), None)
+            score_col = next((c for c in ["risk_score", "Risk Score"] if c in work.columns), None)
+
+            if score_col:
+                work["_sort_score"] = pd.to_numeric(work[score_col], errors="coerce").fillna(0)
+                work = work.sort_values("_sort_score", ascending=False)
+            elif risk_col:
+                rank = {"High": 3, "Medium": 2, "Low": 1}
+                work["_risk_rank"] = work[risk_col].astype(str).map(rank).fillna(0)
+                work = work.sort_values("_risk_rank", ascending=False)
+
+            def first_col(candidates):
+                return next((c for c in candidates if c in work.columns), None)
+
+            mpn_col = first_col(["mpn", "MPN", "part_number", "manufacturer_part_number"])
+            manufacturer_col = first_col(["manufacturer", "Manufacturer"])
+            lifecycle_col = first_col(["lifecycle_status", "Lifecycle Status"])
+            stock_col = first_col(["stock_available", "stock", "Stock Available", "total_market_stock"])
+
+            table_data = [["Part", "Manufacturer", "Risk", "Lifecycle", "Stock"]]
+            for _, row in work.head(12).iterrows():
+                table_data.append(
+                    [
+                        str(row.get(mpn_col, "—")) if mpn_col else "—",
+                        str(row.get(manufacturer_col, "—")) if manufacturer_col else "—",
+                        str(row.get(risk_col, "—")) if risk_col else "—",
+                        str(row.get(lifecycle_col, "—")) if lifecycle_col else "—",
+                        str(row.get(stock_col, "—")) if stock_col else "—",
+                    ]
+                )
+
+            parts_table = Table(table_data, repeatRows=1, colWidths=[105, 110, 65, 110, 70])
+            parts_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.append(parts_table)
+
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
 
     total_reports = len(report_records)
     total_parts = sum(
@@ -1592,85 +1745,34 @@ if app_mode == "Reports":
 
     st.markdown(
         """
-        <style id="cadivor-reports-direct-v548">
+        <style id="cadivor-reports-functional-v55">
         .cv-rpt-hero {
-            border:1px solid #BFDBFE;
-            border-radius:24px;
-            padding:30px 32px;
-            margin-bottom:20px;
-            background:
-                radial-gradient(circle at 90% 10%, rgba(37,99,235,.10), transparent 32%),
-                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 65%,#EEF5FF 100%);
+            border:1px solid #BFDBFE;border-radius:24px;padding:30px 32px;margin-bottom:20px;
+            background:radial-gradient(circle at 90% 10%,rgba(37,99,235,.10),transparent 32%),
+                       linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 65%,#EEF5FF 100%);
             box-shadow:0 22px 58px rgba(15,23,42,.07);
         }
-        .cv-rpt-eyebrow {
-            display:inline-flex;
-            padding:7px 11px;
-            border:1px solid #BFDBFE;
-            border-radius:999px;
-            background:#EFF6FF;
-            color:#2563EB!important;
-            font-size:10px;
-            font-weight:900;
-            letter-spacing:.12em;
-            text-transform:uppercase;
-            margin-bottom:16px;
-        }
-        .cv-rpt-title {
-            color:#0F172A!important;
-            font-size:38px;
-            line-height:1.05;
-            font-weight:950;
-            letter-spacing:-.04em;
-            margin:0 0 10px;
-        }
-        .cv-rpt-copy {
-            color:#52647A!important;
-            font-size:15px;
-            line-height:1.65;
-            font-weight:650;
-            max-width:850px;
-            margin:0;
-        }
-        .cv-rpt-section {
-            color:#0F172A!important;
-            font-size:21px;
-            font-weight:950;
-            letter-spacing:-.03em;
-            margin:26px 0 4px;
-        }
-        .cv-rpt-sub {
-            color:#64748B!important;
-            font-size:13px;
-            font-weight:700;
-            margin-bottom:12px;
-        }
-        .cv-rpt-card {
-            min-height:172px;
-            background:#FFFFFF;
-            border:1px solid #E2E8F0;
-            border-radius:20px;
-            padding:21px;
-            box-shadow:0 16px 40px rgba(15,23,42,.055);
-        }
-        .cv-rpt-icon {
-            width:40px;height:40px;border-radius:13px;
-            display:flex;align-items:center;justify-content:center;
-            background:#EFF6FF;border:1px solid #BFDBFE;
-            color:#2563EB!important;font-size:18px;font-weight:900;
-            margin-bottom:14px;
-        }
-        .cv-rpt-card-title {
-            color:#0F172A!important;font-size:15px;font-weight:950;margin-bottom:7px;
-        }
-        .cv-rpt-card-copy {
-            color:#52647A!important;font-size:12px;line-height:1.55;font-weight:700;
-        }
+        .cv-rpt-eyebrow {display:inline-flex;padding:7px 11px;border:1px solid #BFDBFE;border-radius:999px;
+            background:#EFF6FF;color:#2563EB!important;font-size:10px;font-weight:900;letter-spacing:.12em;
+            text-transform:uppercase;margin-bottom:16px;}
+        .cv-rpt-title {color:#0F172A!important;font-size:38px;line-height:1.05;font-weight:950;
+            letter-spacing:-.04em;margin:0 0 10px;}
+        .cv-rpt-copy {color:#52647A!important;font-size:15px;line-height:1.65;font-weight:650;max-width:850px;margin:0;}
+        .cv-rpt-section {color:#0F172A!important;font-size:21px;font-weight:950;letter-spacing:-.03em;margin:26px 0 4px;}
+        .cv-rpt-sub {color:#64748B!important;font-size:13px;font-weight:700;margin-bottom:12px;}
+        .cv-rpt-card {min-height:172px;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:20px;
+            padding:21px;box-shadow:0 16px 40px rgba(15,23,42,.055);}
+        .cv-rpt-icon {width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+            background:#EFF6FF;border:1px solid #BFDBFE;color:#2563EB!important;font-size:18px;font-weight:900;margin-bottom:14px;}
+        .cv-rpt-card-title {color:#0F172A!important;font-size:15px;font-weight:950;margin-bottom:7px;}
+        .cv-rpt-card-copy {color:#52647A!important;font-size:12px;line-height:1.55;font-weight:700;}
+        .cv-rpt-workspace {background:#FFFFFF;border:1px solid #E2E8F0;border-radius:20px;padding:22px;
+            box-shadow:0 16px 40px rgba(15,23,42,.055);margin-top:12px;}
         </style>
         <div class="cv-rpt-hero">
           <div class="cv-rpt-eyebrow">Reports Center</div>
           <h1 class="cv-rpt-title">Engineering reports</h1>
-          <p class="cv-rpt-copy">Create executive-ready BOM summaries, engineering risk reviews, and sourcing reports from your saved Cadivor analyses.</p>
+          <p class="cv-rpt-copy">Generate executive-ready BOM summaries, engineering risk reviews, and sourcing exports from saved Cadivor analyses.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1688,27 +1790,15 @@ if app_mode == "Reports":
 
     st.markdown(
         '<div class="cv-rpt-section">Report templates</div>'
-        '<div class="cv-rpt-sub">Choose the package that matches the engineering or sourcing review.</div>',
+        '<div class="cv-rpt-sub">Each template now produces a real export from a saved analysis.</div>',
         unsafe_allow_html=True,
     )
 
     template_cols = st.columns(3)
     template_data = [
-        (
-            "Executive BOM Report",
-            "Portfolio health, priority risks, lifecycle exposure, and recommended actions for leadership.",
-            "▤",
-        ),
-        (
-            "Engineering Risk Review",
-            "Component-level risk, lifecycle status, stock position, and supplier coverage for engineers.",
-            "△",
-        ),
-        (
-            "Sourcing Summary",
-            "Procurement-focused stock, supplier, and replacement-readiness intelligence.",
-            "⇄",
-        ),
+        ("Executive BOM Report", "Leadership-ready PDF with portfolio health, priority risks, and recommended actions.", "▤"),
+        ("Engineering Risk Review", "Component-level CSV for engineering review and filtering.", "△"),
+        ("Sourcing Summary", "Procurement-focused CSV with stock, supplier, lifecycle, and replacement fields.", "⇄"),
     ]
     for col, (title, copy, icon) in zip(template_cols, template_data):
         with col:
@@ -1722,6 +1812,88 @@ if app_mode == "Reports":
                 """,
                 unsafe_allow_html=True,
             )
+
+    st.markdown(
+        '<div class="cv-rpt-section">Generate a report</div>'
+        '<div class="cv-rpt-sub">Select a saved BOM and download the report package you need.</div>',
+        unsafe_allow_html=True,
+    )
+
+    if report_records:
+        labels = [_analysis_label(row) for row in report_records]
+        selected_label = st.selectbox("Saved BOM analysis", labels, key="reports_selected_analysis")
+        selected_index = labels.index(selected_label)
+        selected_analysis = report_records[selected_index]
+        selected_analysis_id = _report_value(selected_analysis, "id", "analysis_id", default=None)
+        selected_parts_df = _load_report_parts(selected_analysis_id)
+
+        project_name = str(_report_value(selected_analysis, "project_name", "name", default="saved_bom"))
+        safe_project = re.sub(r"[^A-Za-z0-9_-]+", "_", project_name).strip("_") or "saved_bom"
+
+        download_cols = st.columns(3)
+
+        with download_cols[0]:
+            pdf_bytes = _build_executive_pdf(selected_analysis, selected_parts_df)
+            st.download_button(
+                "Download Executive PDF",
+                data=pdf_bytes,
+                file_name=f"{safe_project}_executive_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+        with download_cols[1]:
+            engineering_df = selected_parts_df.copy()
+            if engineering_df.empty:
+                engineering_df = pd.DataFrame(
+                    [{
+                        "project": project_name,
+                        "health_score": _report_int(_report_value(selected_analysis, "health_score", default=0)),
+                        "high_risk_parts": _report_int(_report_value(selected_analysis, "high_risk_count", "high_risk_parts", default=0)),
+                        "medium_risk_parts": _report_int(_report_value(selected_analysis, "medium_risk_count", "medium_risk_parts", default=0)),
+                    }]
+                )
+            st.download_button(
+                "Download Engineering CSV",
+                data=engineering_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"{safe_project}_engineering_review.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        with download_cols[2]:
+            sourcing_candidates = [
+                "mpn", "part_number", "manufacturer", "lifecycle_status",
+                "stock_available", "stock", "supplier_count", "unit_price",
+                "risk_level", "risk_score", "has_alternates", "alternate_count",
+            ]
+            if selected_parts_df.empty:
+                sourcing_df = pd.DataFrame(
+                    [{
+                        "project": project_name,
+                        "source_file": _report_value(selected_analysis, "filename", "uploaded_file", default="—"),
+                        "health_score": _report_int(_report_value(selected_analysis, "health_score", default=0)),
+                    }]
+                )
+            else:
+                existing_cols = [c for c in sourcing_candidates if c in selected_parts_df.columns]
+                sourcing_df = selected_parts_df[existing_cols].copy() if existing_cols else selected_parts_df.copy()
+
+            st.download_button(
+                "Download Sourcing CSV",
+                data=sourcing_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"{safe_project}_sourcing_summary.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        st.caption(
+            f"Selected: {project_name} • "
+            f"{_report_int(_report_value(selected_analysis, 'total_parts', 'part_count', 'parts_count', default=len(selected_parts_df)))} parts • "
+            f"Health {_report_int(_report_value(selected_analysis, 'health_score', default=0))}"
+        )
+    else:
+        st.info("No saved analyses are available yet. Analyze a BOM to create your first report source.")
 
     st.markdown(
         '<div class="cv-rpt-section">Recent report sources</div>'
@@ -1745,31 +1917,20 @@ if app_mode == "Reports":
                     "Parts": _report_int(_report_value(row, "total_parts", "part_count", "parts_count", default=0)),
                 }
             )
-
         report_sources_df = pd.DataFrame(display_rows)
         st.dataframe(report_sources_df, hide_index=True, use_container_width=True)
 
-        csv_bytes = report_sources_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download report-source CSV",
-            data=csv_bytes,
-            file_name="cadivor_report_sources.csv",
-            mime="text/csv",
-        )
-    else:
-        st.info("No saved analyses are available yet. Analyze a BOM to create your first report source.")
-
     st.markdown(
-        '<div class="cv-rpt-section">Report automation roadmap</div>'
-        '<div class="cv-rpt-sub">Planned reporting capabilities after the core export workflow is stable.</div>',
+        '<div class="cv-rpt-section">Next reporting milestones</div>'
+        '<div class="cv-rpt-sub">The next releases will build on this functional export foundation.</div>',
         unsafe_allow_html=True,
     )
     roadmap_cols = st.columns(4)
     roadmap = [
-        ("Branded PDFs", "Executive summaries with Cadivor branding and risk tables."),
-        ("Scheduled Reports", "Recurring weekly or monthly delivery for monitored portfolios."),
-        ("Team Sharing", "Shareable report links for engineering and sourcing teams."),
-        ("Audit History", "Track generated, exported, and reviewed report packages."),
+        ("5.6 Branded PDFs", "Cadivor logo, cover page, visual risk summary, and document metadata."),
+        ("5.7 Scheduled Reports", "Weekly and monthly report delivery for monitored portfolios."),
+        ("5.8 Report History", "Store generated report records with status, owner, and timestamps."),
+        ("5.9 Team Sharing", "Shareable report links and controlled workspace access."),
     ]
     for col, (title, copy) in zip(roadmap_cols, roadmap):
         with col:
@@ -1784,6 +1945,7 @@ if app_mode == "Reports":
             )
 
     st.stop()
+
 
 # ---------- Pricing ----------
 if app_mode == "Pricing":
