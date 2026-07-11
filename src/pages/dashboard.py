@@ -637,32 +637,57 @@ def render_dashboard(
         .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
         .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
         /* Milestone 6.0A — premium, calm dashboard intelligence */
-        /* Milestone 6.0B.2 — heading alignment correction */
+        /* Milestone 6.0B.3 — premium KPI cards and matched panel heights */
         .cv-6b-kpi-strip{
             display:grid;
             grid-template-columns:repeat(4,minmax(0,1fr));
-            background:#FFFFFF;
-            border:1px solid #E2E8F0;
-            border-radius:18px;
-            box-shadow:0 14px 36px rgba(15,23,42,.045);
-            margin:4px 0 30px;
-            overflow:hidden;
+            gap:14px;
+            margin:8px 0 34px;
         }
         .cv-6b-kpi{
             display:block;
-            padding:15px 18px;
-            border-right:1px solid #E2E8F0;
+            position:relative;
             min-width:0;
+            min-height:150px;
+            padding:18px;
             color:inherit!important;
             text-decoration:none!important;
             background:#FFFFFF;
-            transition:background .16s ease, transform .16s ease;
+            border:1px solid #E2E8F0;
+            border-radius:18px;
+            box-shadow:0 12px 30px rgba(15,23,42,.045);
+            transition:background .16s ease, transform .16s ease, border-color .16s ease, box-shadow .16s ease;
         }
         .cv-6b-kpi:hover{
             background:#F8FBFF;
-            transform:translateY(-1px);
+            border-color:#BFDBFE;
+            box-shadow:0 16px 36px rgba(37,99,235,.08);
+            transform:translateY(-2px);
         }
-        .cv-6b-kpi:last-child{border-right:none;}
+        .cv-6b-kpi-icon{
+            position:absolute;
+            top:16px;
+            right:16px;
+            width:38px;
+            height:38px;
+            border-radius:12px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+        }
+        .cv-6b-kpi.warn .cv-6b-kpi-icon{
+            background:#FFF7ED;
+            border-color:#FED7AA;
+            color:#C2410C!important;
+        }
+        .cv-6b-kpi.danger .cv-6b-kpi-icon{
+            background:#FEF2F2;
+            border-color:#FECACA;
+            color:#B91C1C!important;
+        }
         .cv-6b-kpi span{
             display:block;
             color:#64748B!important;
@@ -702,9 +727,21 @@ def render_dashboard(
             box-shadow:0 16px 42px rgba(15,23,42,.05);
         }
         .cv-6b-project-panel{
-            min-height:352px;
+            height:390px;
             display:flex;
             flex-direction:column;
+        }
+        .cv-6b-chart-shell{
+            height:390px;
+            overflow:hidden;
+            border-radius:20px;
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            box-shadow:0 16px 42px rgba(15,23,42,.05);
+            padding:8px 10px 0;
+        }
+        .cv-6b-chart-shell > div{
+            height:100%;
         }
         .cv-6b-project-panel .cv-6b-project-link{
             margin-top:auto;
@@ -833,8 +870,7 @@ def render_dashboard(
         }
         @media(max-width:760px){
             .cv-6b-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr));}
-            .cv-6b-kpi:nth-child(2){border-right:none;}
-            .cv-6b-kpi:nth-child(-n+2){border-bottom:1px solid #E2E8F0;}
+            
             .cv-6b-shortcuts{grid-template-columns:1fr;}
         }
 
@@ -943,24 +979,32 @@ def render_dashboard(
         f"""
         <div class="cv-6b-kpi-strip">
           <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open portfolio analyses and reports">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('shield',18)}</div>
             <span>Portfolio Health</span>
             <strong>{avg_health_score}</strong>
-            <small>{health_delta_label} vs previous • View details →</small>
+            <small>{health_delta_label} vs previous</small>
+            <small style="color:#2563EB!important;margin-top:14px;">View details →</small>
           </a>
-          <a class="cv-6b-kpi" href="?page=BOM%20Analyzer" target="_self" title="Open BOM analyses requiring review">
+          <a class="cv-6b-kpi warn" href="?page=BOM%20Analyzer" target="_self" title="Open BOM analyses requiring review">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('alert',18)}</div>
             <span>High Risk</span>
             <strong>{total_high_risk}</strong>
-            <small>Components requiring review • Open analyzer →</small>
+            <small>Components requiring review</small>
+            <small style="color:#2563EB!important;margin-top:14px;">Open analyzer →</small>
           </a>
-          <a class="cv-6b-kpi" href="?page=Monitoring" target="_self" title="Open supplier and lifecycle monitoring">
+          <a class="cv-6b-kpi danger" href="?page=Monitoring" target="_self" title="Open supplier and lifecycle monitoring">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('bell',18)}</div>
             <span>Supplier Alerts</span>
             <strong>{alert_count}</strong>
-            <small>{high_alert_count} high severity • Review alerts →</small>
+            <small>{high_alert_count} high severity</small>
+            <small style="color:#2563EB!important;margin-top:14px;">Review alerts →</small>
           </a>
           <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open saved analyses and report sources">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('file',18)}</div>
             <span>Saved Analyses</span>
             <strong>{total_analyses}</strong>
-            <small>Engineering records available • Open reports →</small>
+            <small>Engineering records available</small>
+            <small style="color:#2563EB!important;margin-top:14px;">Open reports →</small>
           </a>
         </div>
         """,
@@ -995,11 +1039,13 @@ def render_dashboard(
                 marker_color="#2563EB",
                 line_width=3,
             )
+            st.markdown('<div class="cv-6b-chart-shell">', unsafe_allow_html=True)
             st.plotly_chart(
-                light_plotly_layout(fig, height=285),
+                light_plotly_layout(fig, height=365),
                 use_container_width=True,
                 config={"displayModeBar": False},
             )
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
 
