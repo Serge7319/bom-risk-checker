@@ -1549,12 +1549,240 @@ if app_mode == "Monitoring":
 
 # ---------- Reports ----------
 if app_mode == "Reports":
-    render_reports_center(
-        current_user=current_user,
-        supabase=supabase,
-        load_analysis_history=load_analysis_history,
-        _qp_value=_qp_value,
+    # Milestone 5.4.8 — Direct Reports Center render.
+    # This intentionally renders inside streamlit_app.py so the active route
+    # cannot be affected by an outdated or disconnected page module.
+    try:
+        report_records = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        report_records = []
+
+    report_df = pd.DataFrame(report_records)
+
+    def _report_int(value, default=0):
+        try:
+            if value is None or (isinstance(value, float) and pd.isna(value)):
+                return default
+            return int(float(value))
+        except Exception:
+            return default
+
+    def _report_value(row, *keys, default=None):
+        for key in keys:
+            value = row.get(key)
+            if value is not None and str(value).strip() not in ("", "nan", "None"):
+                return value
+        return default
+
+    total_reports = len(report_records)
+    total_parts = sum(
+        _report_int(_report_value(row, "total_parts", "part_count", "parts_count", default=0))
+        for row in report_records
     )
+    total_high_risk = sum(
+        _report_int(_report_value(row, "high_risk_count", "high_risk_parts", default=0))
+        for row in report_records
+    )
+    health_values = [
+        _report_int(_report_value(row, "health_score", default=0))
+        for row in report_records
+        if _report_value(row, "health_score", default=None) is not None
+    ]
+    average_health = round(sum(health_values) / len(health_values)) if health_values else 0
+
+    st.markdown(
+        """
+        <style id="cadivor-reports-direct-v548">
+        .cv-rpt-hero {
+            border:1px solid #BFDBFE;
+            border-radius:24px;
+            padding:30px 32px;
+            margin-bottom:20px;
+            background:
+                radial-gradient(circle at 90% 10%, rgba(37,99,235,.10), transparent 32%),
+                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 65%,#EEF5FF 100%);
+            box-shadow:0 22px 58px rgba(15,23,42,.07);
+        }
+        .cv-rpt-eyebrow {
+            display:inline-flex;
+            padding:7px 11px;
+            border:1px solid #BFDBFE;
+            border-radius:999px;
+            background:#EFF6FF;
+            color:#2563EB!important;
+            font-size:10px;
+            font-weight:900;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            margin-bottom:16px;
+        }
+        .cv-rpt-title {
+            color:#0F172A!important;
+            font-size:38px;
+            line-height:1.05;
+            font-weight:950;
+            letter-spacing:-.04em;
+            margin:0 0 10px;
+        }
+        .cv-rpt-copy {
+            color:#52647A!important;
+            font-size:15px;
+            line-height:1.65;
+            font-weight:650;
+            max-width:850px;
+            margin:0;
+        }
+        .cv-rpt-section {
+            color:#0F172A!important;
+            font-size:21px;
+            font-weight:950;
+            letter-spacing:-.03em;
+            margin:26px 0 4px;
+        }
+        .cv-rpt-sub {
+            color:#64748B!important;
+            font-size:13px;
+            font-weight:700;
+            margin-bottom:12px;
+        }
+        .cv-rpt-card {
+            min-height:172px;
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            border-radius:20px;
+            padding:21px;
+            box-shadow:0 16px 40px rgba(15,23,42,.055);
+        }
+        .cv-rpt-icon {
+            width:40px;height:40px;border-radius:13px;
+            display:flex;align-items:center;justify-content:center;
+            background:#EFF6FF;border:1px solid #BFDBFE;
+            color:#2563EB!important;font-size:18px;font-weight:900;
+            margin-bottom:14px;
+        }
+        .cv-rpt-card-title {
+            color:#0F172A!important;font-size:15px;font-weight:950;margin-bottom:7px;
+        }
+        .cv-rpt-card-copy {
+            color:#52647A!important;font-size:12px;line-height:1.55;font-weight:700;
+        }
+        </style>
+        <div class="cv-rpt-hero">
+          <div class="cv-rpt-eyebrow">Reports Center</div>
+          <h1 class="cv-rpt-title">Engineering reports</h1>
+          <p class="cv-rpt-copy">Create executive-ready BOM summaries, engineering risk reviews, and sourcing reports from your saved Cadivor analyses.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    metric_cols = st.columns(4)
+    with metric_cols[0]:
+        st.metric("Saved Analyses", total_reports)
+    with metric_cols[1]:
+        st.metric("Average Health", average_health)
+    with metric_cols[2]:
+        st.metric("High-Risk Parts", total_high_risk)
+    with metric_cols[3]:
+        st.metric("Tracked Parts", total_parts)
+
+    st.markdown(
+        '<div class="cv-rpt-section">Report templates</div>'
+        '<div class="cv-rpt-sub">Choose the package that matches the engineering or sourcing review.</div>',
+        unsafe_allow_html=True,
+    )
+
+    template_cols = st.columns(3)
+    template_data = [
+        (
+            "Executive BOM Report",
+            "Portfolio health, priority risks, lifecycle exposure, and recommended actions for leadership.",
+            "▤",
+        ),
+        (
+            "Engineering Risk Review",
+            "Component-level risk, lifecycle status, stock position, and supplier coverage for engineers.",
+            "△",
+        ),
+        (
+            "Sourcing Summary",
+            "Procurement-focused stock, supplier, and replacement-readiness intelligence.",
+            "⇄",
+        ),
+    ]
+    for col, (title, copy, icon) in zip(template_cols, template_data):
+        with col:
+            st.markdown(
+                f"""
+                <div class="cv-rpt-card">
+                  <div class="cv-rpt-icon">{icon}</div>
+                  <div class="cv-rpt-card-title">{title}</div>
+                  <div class="cv-rpt-card-copy">{copy}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.markdown(
+        '<div class="cv-rpt-section">Recent report sources</div>'
+        '<div class="cv-rpt-sub">Saved BOM analyses available for reporting and export.</div>',
+        unsafe_allow_html=True,
+    )
+
+    if report_records:
+        display_rows = []
+        for row in report_records[:10]:
+            created_at = str(_report_value(row, "created_at", "date", default=""))
+            created_date = created_at.split("T")[0] if "T" in created_at else created_at[:10]
+            display_rows.append(
+                {
+                    "Project": _report_value(row, "project_name", "name", default="Saved BOM"),
+                    "Source File": _report_value(row, "filename", "uploaded_file", "file_name", default="—"),
+                    "Date": created_date or "—",
+                    "Health": _report_int(_report_value(row, "health_score", default=0)),
+                    "High Risk": _report_int(_report_value(row, "high_risk_count", "high_risk_parts", default=0)),
+                    "Medium Risk": _report_int(_report_value(row, "medium_risk_count", "medium_risk_parts", default=0)),
+                    "Parts": _report_int(_report_value(row, "total_parts", "part_count", "parts_count", default=0)),
+                }
+            )
+
+        report_sources_df = pd.DataFrame(display_rows)
+        st.dataframe(report_sources_df, hide_index=True, use_container_width=True)
+
+        csv_bytes = report_sources_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download report-source CSV",
+            data=csv_bytes,
+            file_name="cadivor_report_sources.csv",
+            mime="text/csv",
+        )
+    else:
+        st.info("No saved analyses are available yet. Analyze a BOM to create your first report source.")
+
+    st.markdown(
+        '<div class="cv-rpt-section">Report automation roadmap</div>'
+        '<div class="cv-rpt-sub">Planned reporting capabilities after the core export workflow is stable.</div>',
+        unsafe_allow_html=True,
+    )
+    roadmap_cols = st.columns(4)
+    roadmap = [
+        ("Branded PDFs", "Executive summaries with Cadivor branding and risk tables."),
+        ("Scheduled Reports", "Recurring weekly or monthly delivery for monitored portfolios."),
+        ("Team Sharing", "Shareable report links for engineering and sourcing teams."),
+        ("Audit History", "Track generated, exported, and reviewed report packages."),
+    ]
+    for col, (title, copy) in zip(roadmap_cols, roadmap):
+        with col:
+            st.markdown(
+                f"""
+                <div class="cv-rpt-card" style="min-height:135px;">
+                  <div class="cv-rpt-card-title">{title}</div>
+                  <div class="cv-rpt-card-copy">{copy}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
     st.stop()
 
 # ---------- Pricing ----------
