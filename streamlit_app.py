@@ -2572,7 +2572,7 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <style id="cadivor-alternative-finder-62a1">
-        /* Milestone 6.2C.1 — analysis-linked engineering decision records */
+        /* Milestone 6.2C.2 — safe decision export serialization */
         .st-key-af62_hero,
         .st-key-af62_search,
         .st-key-af62_summary,
@@ -4212,11 +4212,73 @@ if app_mode == "Alternative Finder":
             export_payload["decision"] = st.session_state.get(
                 "alternative_engineering_decisions", {}
             ).get(candidate_key, "Pending review")
+            def make_json_safe(value):
+                """Convert nested supplier and pandas values into JSON-safe data."""
+                if value is None:
+                    return None
+
+                if isinstance(value, (str, int, float, bool)):
+                    return value
+
+                if isinstance(value, dict):
+                    return {
+                        str(key): make_json_safe(item)
+                        for key, item in value.items()
+                    }
+
+                if isinstance(value, (list, tuple, set)):
+                    return [make_json_safe(item) for item in value]
+
+                if hasattr(value, "item"):
+                    try:
+                        return make_json_safe(value.item())
+                    except Exception:
+                        pass
+
+                if hasattr(value, "isoformat"):
+                    try:
+                        return value.isoformat()
+                    except Exception:
+                        pass
+
+                return str(value)
+
+            safe_export_payload = {
+                "original_part": export_payload.get("original_part"),
+                "alternative_part": export_payload.get("alternative_part"),
+                "decision": export_payload.get("decision"),
+                "engineering_note": export_payload.get("engineering_note"),
+                "recommendation_score": export_payload.get(
+                    "recommendation_score"
+                ),
+                "recommendation_rating": export_payload.get(
+                    "recommendation_rating"
+                ),
+                "compatibility_confidence": export_payload.get(
+                    "compatibility_confidence"
+                ),
+                "compatibility_rating": export_payload.get(
+                    "compatibility_rating"
+                ),
+                "lifecycle": export_payload.get("lifecycle"),
+                "risk": export_payload.get("risk"),
+                "supplier": export_payload.get("supplier"),
+                "stock": export_payload.get("stock"),
+                "unit_price": export_payload.get("unit_price"),
+                "package": export_payload.get("package"),
+                "stock_delta": export_payload.get("stock_delta"),
+                "price_delta": export_payload.get("price_delta"),
+                "generated_at": export_payload.get("generated_at"),
+                "comparison_snapshot": export_payload.get(
+                    "comparison_snapshot", {}
+                ),
+            }
+
             export_bytes = json.dumps(
-                export_payload,
+                make_json_safe(safe_export_payload),
                 indent=2,
                 ensure_ascii=False,
-                default=str,
+                allow_nan=False,
             ).encode("utf-8")
             st.download_button(
                 "Export Decision Record",
