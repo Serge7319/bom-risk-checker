@@ -636,7 +636,32 @@ def render_dashboard(
         .cv-v4-analysis-list{display:grid;gap:8px}.cv-v4-analysis-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:#fff;border:1px solid #E2E8F0;border-radius:17px;padding:13px 14px;box-shadow:0 10px 26px rgba(15,23,42,.04)}.cv-v4-analysis-title{color:#0B1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-v4-analysis-meta{color:#64748B!important;font-size:11.5px;font-weight:800}.cv-v4-row-pills{display:flex;gap:8px;align-items:center}.cv-v4-score{border-radius:999px;padding:6px 9px;font-size:11px;font-weight:950;border:1px solid #A7F3D0;background:#ECFDF5;color:#047857!important}.cv-v4-score.warn{border-color:#FDE68A;background:#FFFBEB;color:#B45309!important}.cv-v4-score.bad{border-color:#FECACA;background:#FEF2F2;color:#B91C1C!important}.cv-v4-open{color:#2563EB!important;font-size:12px;font-weight:950;text-decoration:none!important;}
         .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
         .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
-        @media(max-width:1180px){.cv-v4-command-grid,.cv-v4-insights,.cv-v4-metrics{grid-template-columns:1fr!important}.cv-v4-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.cv-v4-action-grid,.cv-v4-brief{grid-template-columns:1fr!important}.cv-v4-analysis-row{grid-template-columns:1fr}.cv-v4-row-pills{justify-content:flex-start}.cv-v4-title{font-size:28px}}
+        /* Milestone 6.0A — premium, calm dashboard intelligence */
+        .cv-6a-command{padding:24px 26px!important;margin-bottom:18px!important;}
+        .cv-6a-command .cv-v4-command-grid{grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr)!important;gap:24px!important;}
+        .cv-6a-command .cv-v4-title{font-size:36px!important;max-width:760px!important;}
+        .cv-6a-command .cv-v4-copy{max-width:720px!important;margin-bottom:18px!important;}
+        .cv-6a-command .cv-v4-brief{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+        .cv-6a-command .cv-v4-brief-card{padding:15px 16px!important;min-height:92px!important;}
+        .cv-6a-command .cv-v4-brief-card strong{font-size:27px!important;}
+        .cv-6a-briefing{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:14px;margin-bottom:18px;}
+        .cv-6a-focus,.cv-6a-actions-card{background:#fff;border:1px solid #E2E8F0;border-radius:20px;padding:20px;box-shadow:0 16px 42px rgba(15,23,42,.052);}
+        .cv-6a-focus{display:grid;grid-template-columns:48px 1fr;gap:15px;align-items:start;}
+        .cv-6a-focus-icon{width:46px;height:46px;border-radius:15px;display:flex;align-items:center;justify-content:center;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;}
+        .cv-6a-label{color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;}
+        .cv-6a-headline{color:#0B1220!important;font-size:20px;font-weight:980;letter-spacing:-.035em;line-height:1.2;margin-bottom:7px;}
+        .cv-6a-text{color:#52647A!important;font-size:12.5px;font-weight:760;line-height:1.55;}
+        .cv-6a-actions-card{display:grid;gap:10px;}
+        .cv-6a-action-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 12px;border:1px solid #E2E8F0;border-radius:14px;background:#F8FAFC;text-decoration:none!important;}
+        .cv-6a-action-row:hover{border-color:#BFDBFE;background:#EFF6FF;transform:translateY(-1px);transition:all .16s ease;}
+        .cv-6a-action-row strong{display:block;color:#0B1220!important;font-size:12.5px;font-weight:950;margin-bottom:3px;}
+        .cv-6a-action-row span{display:block;color:#64748B!important;font-size:11px;font-weight:760;}
+        .cv-6a-action-arrow{color:#2563EB!important;font-weight:950;font-size:14px;}
+        .cv-v4-metrics{grid-template-columns:1.15fr repeat(3,1fr)!important;gap:12px!important;margin-bottom:18px!important;}
+        .cv-v4-metric{min-height:124px!important;padding:17px!important;}
+        .cv-v4-metric .value{font-size:36px!important;}
+        @media(max-width:1180px){.cv-v4-command-grid,.cv-v4-insights,.cv-v4-metrics,.cv-6a-briefing{grid-template-columns:1fr!important}.cv-v4-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media(max-width:760px){.cv-v4-action-grid,.cv-v4-brief{grid-template-columns:1fr!important}.cv-v4-analysis-row{grid-template-columns:1fr}.cv-v4-row-pills{justify-content:flex-start}.cv-v4-title{font-size:28px}.cv-6a-command .cv-v4-brief{grid-template-columns:1fr!important}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -644,22 +669,22 @@ def render_dashboard(
 
     st.markdown(
         f"""
-        <section class="cv-v4-command">
+        <section class="cv-v4-command cv-6a-command">
           <div class="cv-v4-command-grid">
             <div>
               <div class="cv-v4-kicker">{_lucide_icon('sparkles',14)} Engineering Command Center</div>
               <h1 class="cv-v4-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
-              <p class="cv-v4-copy">Cadivor is tracking portfolio health, supplier lifecycle changes, replacement readiness, and the BOMs that need engineering attention first.</p>
+              <p class="cv-v4-copy">Your portfolio has <strong>{total_high_risk} high-risk components</strong> and <strong>{alert_count} active supplier alerts</strong>. Start with the most important engineering decision, then move into the detailed workspace only when needed.</p>
               <div class="cv-v4-actions">
-                <a class="cv-v4-btn" href="?page=BOM%20Analyzer" target="_self">Run new BOM analysis {_lucide_icon('arrow',14)}</a>
-                <a class="cv-v4-btn secondary" href="?page=Alternative%20Finder" target="_self">Find alternatives</a>
+                <a class="cv-v4-btn" href="?page=BOM%20Analyzer" target="_self">Analyze New BOM {_lucide_icon('arrow',14)}</a>
+                <a class="cv-v4-btn secondary" href="?page=Alternative%20Finder" target="_self">Replacement Finder</a>
               </div>
             </div>
             <div class="cv-v4-brief">
               <div class="cv-v4-brief-card"><span>Portfolio Health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></div>
-              <div class="cv-v4-brief-card"><span>High Risk</span><strong>{total_high_risk}</strong><small>Components need review</small></div>
+              <div class="cv-v4-brief-card"><span>High Risk</span><strong>{total_high_risk}</strong><small>Components requiring review</small></div>
               <div class="cv-v4-brief-card"><span>Supplier Alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></div>
-              <div class="cv-v4-brief-card"><span>Alternatives</span><strong>{alternatives_found}</strong><small>Replacement records saved</small></div>
+              <div class="cv-v4-brief-card"><span>Saved Analyses</span><strong>{total_analyses}</strong><small>Engineering records available</small></div>
             </div>
           </div>
         </section>
@@ -670,31 +695,38 @@ def render_dashboard(
     if _qp_value("focus", "") == "search":
         render_global_search_panel(current_user["id"])
 
-    st.markdown(f'<div class="cv-v4-eyebrow">{_lucide_icon("sparkles",15)} Today\'s Engineering Briefing</div>', unsafe_allow_html=True)
-    insight_col_1, insight_col_2, insight_col_3 = st.columns(3)
-    with insight_col_1:
-        st.markdown(f"""
-        <div class="cv-v4-insight">
-          <div class="cv-v4-icon danger">{_lucide_icon('alert',20)}</div>
-          <div><div class="cv-v4-label">Priority Signal</div><div class="cv-v4-headline">{total_high_risk} components need review</div><div class="cv-v4-text">Portfolio health {trend_word} {abs(health_delta)} points versus the previous saved analysis.</div><span class="cv-v4-pill">Engineering review</span></div>
+    st.markdown(f'<div class="cv-v4-eyebrow">{_lucide_icon("sparkles",15)} Today\'s Engineering Brief</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="cv-6a-briefing">
+          <div class="cv-6a-focus">
+            <div class="cv-6a-focus-icon">{_lucide_icon('alert',20)}</div>
+            <div>
+              <div class="cv-6a-label">Primary Engineering Priority</div>
+              <div class="cv-6a-headline">{html.escape(next_action_title)}</div>
+              <div class="cv-6a-text">{html.escape(next_action_copy)} Portfolio health has {trend_word} by {abs(health_delta)} points compared with the previous saved analysis.</div>
+            </div>
+          </div>
+          <div class="cv-6a-actions-card">
+            <a class="cv-6a-action-row" href="?page=Monitoring" target="_self">
+              <div><strong>Review supplier alerts</strong><span>{alert_count} active • {high_alert_count} high severity</span></div>
+              <div class="cv-6a-action-arrow">→</div>
+            </a>
+            <a class="cv-6a-action-row" href="?page=Alternative%20Finder" target="_self">
+              <div><strong>Validate replacements</strong><span>{alternatives_found} saved candidate records</span></div>
+              <div class="cv-6a-action-arrow">→</div>
+            </a>
+            <a class="cv-6a-action-row" href="?page=Reports" target="_self">
+              <div><strong>Generate engineering report</strong><span>PDF and CSV reporting workspace</span></div>
+              <div class="cv-6a-action-arrow">→</div>
+            </a>
+          </div>
         </div>
-        """, unsafe_allow_html=True)
-    with insight_col_2:
-        st.markdown(f"""
-        <div class="cv-v4-insight">
-          <div class="cv-v4-icon warning">{_lucide_icon('activity',20)}</div>
-          <div><div class="cv-v4-label">Supplier & Lifecycle</div><div class="cv-v4-headline">{alert_count} active monitoring alerts</div><div class="cv-v4-text"><strong>{html.escape(str(top_alert_part))}</strong>: {html.escape(str(top_alert_msg))}</div></div>
-        </div>
-        """, unsafe_allow_html=True)
-    with insight_col_3:
-        st.markdown(f"""
-        <div class="cv-v4-insight">
-          <div class="cv-v4-icon success">{_lucide_icon('replace',20)}</div>
-          <div><div class="cv-v4-label">Recommended Next Action</div><div class="cv-v4-headline">{html.escape(next_action_title)}</div><div class="cv-v4-text">{html.escape(next_action_copy)}</div></div>
-        </div>
-        """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
-    st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Portfolio Overview</div><div class="cv-v4-section-meta">Health, risk, monitoring, and replacement readiness across saved BOM analyses.</div></div><div class="cv-v4-chip">Workspace intelligence</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="cv-v4-section-head"><div><div class="cv-v4-section-title">Portfolio Intelligence</div><div class="cv-v4-section-meta">A concise view of health, risk, monitoring, and replacement readiness.</div></div><div class="cv-v4-chip">Workspace intelligence</div></div>', unsafe_allow_html=True)
     st.markdown(
         f"""
         <div class="cv-v4-metrics">
