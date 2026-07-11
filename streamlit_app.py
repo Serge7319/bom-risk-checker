@@ -2447,7 +2447,7 @@ if app_mode == "Alternative Finder":
     st.markdown(
         """
         <style id="cadivor-alternative-finder-62a1">
-        /* Milestone 6.2A.1 — populated original component intelligence */
+        /* Milestone 6.2B — best recommendation experience */
         .st-key-af62_hero,
         .st-key-af62_search,
         .st-key-af62_summary,
@@ -2749,6 +2749,283 @@ if app_mode == "Alternative Finder":
             .af62-title{font-size:30px;}
             .af62-summary-grid{grid-template-columns:1fr;}
         }
+
+        /* Milestone 6.2B — Best Recommendation Experience */
+        .af62b-section-head{
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:16px;
+            margin:28px 0 12px;
+        }
+
+        .af62b-section-title{
+            color:#0B1220!important;
+            font-size:22px;
+            font-weight:980;
+            letter-spacing:-.04em;
+            line-height:1.1;
+        }
+
+        .af62b-section-meta{
+            color:#64748B!important;
+            font-size:12px;
+            font-weight:760;
+            line-height:1.45;
+            margin-top:5px;
+        }
+
+        .af62b-found-pill{
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            padding:7px 10px;
+            border-radius:999px;
+            background:#ECFDF5;
+            border:1px solid #A7F3D0;
+            color:#047857!important;
+            font-size:10px;
+            font-weight:950;
+            white-space:nowrap;
+        }
+
+        .af62b-found-pill:before{
+            content:"";
+            width:7px;
+            height:7px;
+            border-radius:50%;
+            background:#10B981;
+            box-shadow:0 0 0 3px rgba(16,185,129,.12);
+        }
+
+        .st-key-af62b_best_card{
+            padding:22px!important;
+            border:1px solid #BFDBFE!important;
+            border-radius:22px!important;
+            background:
+                radial-gradient(circle at 95% 0%, rgba(37,99,235,.12), transparent 32%),
+                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%)!important;
+            box-shadow:0 20px 52px rgba(37,99,235,.10)!important;
+        }
+
+        .af62b-best-top{
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:18px;
+            margin-bottom:18px;
+        }
+
+        .af62b-eyebrow{
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            padding:7px 10px;
+            border-radius:999px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            font-size:10px;
+            font-weight:950;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+            margin-bottom:11px;
+        }
+
+        .af62b-best-part{
+            color:#0B1220!important;
+            font-size:30px;
+            font-weight:980;
+            line-height:1;
+            letter-spacing:-.05em;
+            margin-bottom:9px;
+        }
+
+        .af62b-best-copy{
+            color:#52647A!important;
+            font-size:13px;
+            line-height:1.55;
+            font-weight:750;
+            max-width:720px;
+        }
+
+        .af62b-score{
+            width:112px;
+            min-width:112px;
+            height:112px;
+            border-radius:24px;
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+            background:#FFFFFF;
+            border:1px solid #BFDBFE;
+            box-shadow:0 14px 34px rgba(37,99,235,.10);
+        }
+
+        .af62b-score strong{
+            color:#2563EB!important;
+            font-size:31px;
+            line-height:1;
+            font-weight:980;
+        }
+
+        .af62b-score span{
+            color:#64748B!important;
+            font-size:9px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.08em;
+            margin-top:7px;
+            text-align:center;
+        }
+
+        .af62b-metrics{
+            display:grid;
+            grid-template-columns:repeat(5,minmax(0,1fr));
+            gap:10px;
+            margin-top:4px;
+        }
+
+        .af62b-metric{
+            min-width:0;
+            padding:14px;
+            border-radius:16px;
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+        }
+
+        .af62b-metric span{
+            display:block;
+            color:#64748B!important;
+            font-size:9px;
+            font-weight:950;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+            margin-bottom:7px;
+        }
+
+        .af62b-metric strong{
+            display:block;
+            color:#0B1220!important;
+            font-size:16px;
+            line-height:1.25;
+            font-weight:950;
+            overflow-wrap:anywhere;
+        }
+
+        .af62b-metric.good{
+            background:#F0FDF4;
+            border-color:#BBF7D0;
+        }
+
+        .af62b-metric.warn{
+            background:#FFFBEB;
+            border-color:#FDE68A;
+        }
+
+        .af62b-analysis-grid{
+            display:grid;
+            grid-template-columns:repeat(4,minmax(0,1fr));
+            gap:12px;
+            margin:16px 0 6px;
+        }
+
+        .af62b-analysis-card{
+            min-height:126px;
+            padding:15px;
+            border-radius:17px;
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            box-shadow:0 10px 26px rgba(15,23,42,.035);
+        }
+
+        .af62b-analysis-card.good{
+            background:#F0FDF4;
+            border-color:#BBF7D0;
+        }
+
+        .af62b-analysis-card.warning{
+            background:#FFFBEB;
+            border-color:#FDE68A;
+        }
+
+        .af62b-analysis-card.tradeoff{
+            background:#FEF2F2;
+            border-color:#FECACA;
+        }
+
+        .af62b-analysis-title{
+            color:#0B1220!important;
+            font-size:12px;
+            font-weight:950;
+            margin-bottom:10px;
+        }
+
+        .af62b-analysis-list{
+            display:grid;
+            gap:7px;
+        }
+
+        .af62b-analysis-item{
+            color:#52647A!important;
+            font-size:11px;
+            font-weight:740;
+            line-height:1.4;
+        }
+
+        .af62b-analysis-empty{
+            color:#94A3B8!important;
+            font-size:11px;
+            font-weight:740;
+        }
+
+        .af62b-compare-head{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:14px;
+            margin:18px 0 10px;
+        }
+
+        .af62b-compare-title{
+            color:#0B1220!important;
+            font-size:17px;
+            font-weight:970;
+            letter-spacing:-.025em;
+        }
+
+        .af62b-compare-sub{
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:740;
+            margin-top:3px;
+        }
+
+        .af62b-compact-table [data-testid="stDataFrame"]{
+            border:1px solid #E2E8F0;
+            border-radius:16px;
+            overflow:hidden;
+        }
+
+        .af62b-reset-note{
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:740;
+            margin-top:8px;
+        }
+
+        @media(max-width:1100px){
+            .af62b-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}
+            .af62b-analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+        }
+
+        @media(max-width:760px){
+            .af62b-best-top{flex-direction:column;}
+            .af62b-score{width:100%;height:auto;min-height:88px;}
+            .af62b-metrics{grid-template-columns:1fr;}
+            .af62b-analysis-grid{grid-template-columns:1fr;}
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3044,35 +3321,43 @@ if app_mode == "Alternative Finder":
             st.session_state["suggested_alternatives"]
         )
 
-        st.success("Suggested alternatives found.")
-
-        st.dataframe(
-            alternatives_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        selected_alternative = st.selectbox(
-            "Select alternative to compare",
-            alternatives_df["Alternative Part"],
-        )
-
-        selected_row = alternatives_df[
-            alternatives_df["Alternative Part"] == selected_alternative
-        ].iloc[0]
-
         best_alternative = max(
             st.session_state["suggested_alternatives"],
             key=lambda x: x.get("Recommendation Score", 0),
         )
 
-        st.success(
-            f"""
-            🏆 Best Recommended Alternative: {best_alternative['Alternative Part']}
-
-            {best_alternative['Recommendation']}
-            """
+        best_part_number = str(best_alternative.get("Alternative Part", "") or "")
+        alternative_options = alternatives_df["Alternative Part"].astype(str).tolist()
+        best_index = (
+            alternative_options.index(best_part_number)
+            if best_part_number in alternative_options
+            else 0
         )
+
+        st.markdown(
+            f"""
+            <div class="af62b-section-head">
+              <div>
+                <div class="af62b-section-title">Replacement intelligence</div>
+                <div class="af62b-section-meta">Cadivor ranked the strongest candidates using engineering compatibility, lifecycle, stock, supplier, and cost signals.</div>
+              </div>
+              <div class="af62b-found-pill">{len(alternatives_df)} candidates found</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        selected_alternative = st.selectbox(
+            "Explore recommendation",
+            alternative_options,
+            index=best_index,
+            key="alternative_selected_candidate_62b",
+            help="Choose another candidate to refresh the recommendation and comparison workspace.",
+        )
+
+        selected_row = alternatives_df[
+            alternatives_df["Alternative Part"].astype(str) == selected_alternative
+        ].iloc[0]
 
         stored_original_data = st.session_state.get(
             "alternative_original_data", {}
@@ -3093,35 +3378,197 @@ if app_mode == "Alternative Finder":
             st.session_state["alternative_original_data"] = original_data
             st.session_state["alternative_original_lookup_part"] = original_part
 
+        def _af62b_value(row, keys, fallback="—"):
+            for key in keys:
+                try:
+                    value = row.get(key)
+                except Exception:
+                    value = None
+                if value is not None and str(value).strip() not in {"", "None", "nan"}:
+                    return str(value).strip()
+            return fallback
+
+        recommendation_score = int(float(selected_row.get("Recommendation Score", 0) or 0))
+        drop_in_confidence = int(float(selected_row.get("Drop-In Confidence", 0) or 0))
+        lifecycle_value = _af62b_value(selected_row, ["Lifecycle"], "Unknown")
+        risk_value = _af62b_value(selected_row, ["Estimated Risk"], "Unknown")
+        supplier_value = _af62b_value(
+            selected_row,
+            ["Supplier", "Best Source", "Source"],
+            "Supplier not listed",
+        )
+        stock_value = float(selected_row.get("Stock", 0) or 0)
+        price_value = float(selected_row.get("Unit Price", 0) or 0)
+        package_value = _af62b_value(selected_row, ["Package"], "Not verified")
+        recommendation_copy = _af62b_value(
+            selected_row,
+            ["Recommendation"],
+            "Candidate identified from available engineering and sourcing signals.",
+        )
+
         original_stock = float(original_data.get("stock_total", 0) or 0)
-        alternative_stock = float(selected_row.get("Stock", 0) or 0)
+        alternative_stock = stock_value
 
         original_price = float(original_data.get("unit_price", 0.0) or 0.0)
-        alternative_price = float(selected_row.get("Unit Price", 0.0) or 0.0)
+        alternative_price = price_value
 
         if original_stock > 0 and alternative_stock > 0:
             stock_ratio = alternative_stock / original_stock
-
             if stock_ratio > 1:
                 stock_delta = f"🟢 {stock_ratio:.0f}× more stock available"
             else:
                 stock_delta = f"🔴 {(1 / stock_ratio):.1f}× less stock available"
-
         elif original_stock > 0 and alternative_stock == 0:
             stock_delta = "🔴 No stock available"
-
         else:
             stock_delta = "N/A"
 
         if original_price > 0:
-            price_pct = ((alternative_price - original_price) / original_price) * 100
-
+            price_pct = (
+                (alternative_price - original_price) / original_price
+            ) * 100
             if price_pct < 0:
                 price_delta = f"🟢 {abs(price_pct):.1f}% lower cost"
             else:
                 price_delta = f"🔴 {price_pct:.1f}% higher cost"
         else:
             price_delta = "N/A"
+
+        drop_in_reasons = str(
+            selected_row.get("Drop-In Reasons", "") or ""
+        )
+        reason_list = [
+            reason.strip()
+            for reason in drop_in_reasons.split(";")
+            if reason.strip()
+        ]
+
+        recommendation_points = []
+        warning_points = []
+        advantage_points = []
+        tradeoff_points = []
+
+        for reason in reason_list:
+            lowered = reason.lower()
+            if "could not be verified" in lowered:
+                warning_points.append(reason)
+            elif reason.startswith("⚠") or reason.startswith("ℹ"):
+                warning_points.append(reason)
+            else:
+                recommendation_points.append(reason)
+
+        if stock_delta != "N/A":
+            if "more stock" in stock_delta.lower():
+                advantage_points.append(stock_delta)
+            else:
+                tradeoff_points.append(stock_delta)
+
+        if price_delta != "N/A":
+            if "lower cost" in price_delta.lower():
+                advantage_points.append(price_delta)
+            else:
+                tradeoff_points.append(price_delta)
+
+        confidence_label = (
+            "High" if drop_in_confidence >= 75
+            else "Medium" if drop_in_confidence >= 50
+            else "Low"
+        )
+        confidence_class = (
+            "good" if confidence_label == "High"
+            else "warn" if confidence_label == "Medium"
+            else ""
+        )
+        lifecycle_class = "good" if lifecycle_value.lower() == "active" else "warn"
+        risk_class_62b = "good" if risk_value.lower() == "low" else "warn"
+
+        with st.container(border=True, key="af62b_best_card"):
+            st.markdown(
+                f"""
+                <div class="af62b-best-top">
+                  <div>
+                    <div class="af62b-eyebrow">★ Recommended replacement</div>
+                    <div class="af62b-best-part">{html.escape(selected_alternative)}</div>
+                    <div class="af62b-best-copy">{html.escape(recommendation_copy)}</div>
+                  </div>
+                  <div class="af62b-score">
+                    <strong>{recommendation_score}</strong>
+                    <span>Recommendation score</span>
+                  </div>
+                </div>
+
+                <div class="af62b-metrics">
+                  <div class="af62b-metric {lifecycle_class}">
+                    <span>Lifecycle</span>
+                    <strong>{html.escape(lifecycle_value)}</strong>
+                  </div>
+                  <div class="af62b-metric {risk_class_62b}">
+                    <span>Estimated Risk</span>
+                    <strong>{html.escape(risk_value)}</strong>
+                  </div>
+                  <div class="af62b-metric">
+                    <span>Available Stock</span>
+                    <strong>{int(stock_value):,}</strong>
+                  </div>
+                  <div class="af62b-metric">
+                    <span>Supplier</span>
+                    <strong>{html.escape(supplier_value)}</strong>
+                  </div>
+                  <div class="af62b-metric {confidence_class}">
+                    <span>Compatibility Confidence</span>
+                    <strong>{drop_in_confidence}% · {confidence_label}</strong>
+                  </div>
+                </div>
+
+                <div class="af62b-metrics" style="margin-top:10px;grid-template-columns:repeat(3,minmax(0,1fr));">
+                  <div class="af62b-metric">
+                    <span>Package</span>
+                    <strong>{html.escape(package_value)}</strong>
+                  </div>
+                  <div class="af62b-metric">
+                    <span>Unit Price</span>
+                    <strong>{"$" + format(price_value, ".4g") if price_value > 0 else "Not available"}</strong>
+                  </div>
+                  <div class="af62b-metric">
+                    <span>Recommendation Rank</span>
+                    <strong>{"Best match" if selected_alternative == best_part_number else "Alternative candidate"}</strong>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        def _af62b_items(points, empty_text):
+            if not points:
+                return f'<div class="af62b-analysis-empty">{html.escape(empty_text)}</div>'
+            return '<div class="af62b-analysis-list">' + ''.join(
+                f'<div class="af62b-analysis-item">{html.escape(str(point))}</div>'
+                for point in points[:5]
+            ) + '</div>'
+
+        st.markdown(
+            f"""
+            <div class="af62b-analysis-grid">
+              <div class="af62b-analysis-card good">
+                <div class="af62b-analysis-title">Engineering Matches</div>
+                {_af62b_items(recommendation_points, "No verified compatibility matches were returned.")}
+              </div>
+              <div class="af62b-analysis-card warning">
+                <div class="af62b-analysis-title">Warnings</div>
+                {_af62b_items(warning_points, "No engineering warnings were identified.")}
+              </div>
+              <div class="af62b-analysis-card good">
+                <div class="af62b-analysis-title">Sourcing Advantages</div>
+                {_af62b_items(advantage_points, "No sourcing advantage was calculated.")}
+              </div>
+              <div class="af62b-analysis-card tradeoff">
+                <div class="af62b-analysis-title">Trade-offs</div>
+                {_af62b_items(tradeoff_points, "No material trade-off was calculated.")}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         comparison_df = pd.DataFrame(
             [
@@ -3162,12 +3609,14 @@ if app_mode == "Alternative Finder":
                 },
                 {
                     "Attribute": "Package",
-                    "Original": original_data.get("package") or "Not available from supplier data",
+                    "Original": original_data.get("package")
+                    or "Not available from supplier data",
                     "Selected Alternative": selected_row.get("Package", ""),
                 },
                 {
                     "Attribute": "Pin Count",
-                    "Original": original_data.get("pin_count") or "Not available from supplier data",
+                    "Original": original_data.get("pin_count")
+                    or "Not available from supplier data",
                     "Selected Alternative": selected_row.get("Pin Count", ""),
                 },
                 {
@@ -3187,89 +3636,59 @@ if app_mode == "Alternative Finder":
                     "Original": "—",
                     "Selected Alternative": selected_row.get("Drop-In Rating", ""),
                 },
-                {
-                    "Attribute": "Drop-In Reasons",
-                    "Original": "—",
-                    "Selected Alternative": selected_row.get("Drop-In Reasons", ""),
-                },
             ]
         )
-        summary_points = []
-
-        drop_in_reasons = selected_row.get("Drop-In Reasons", "")
-        reason_list = [
-            reason.strip()
-            for reason in drop_in_reasons.split(";")
-            if reason.strip()
-        ]
-
-        recommendation_points = []
-        warning_points = []
-        advantage_points = []
-        tradeoff_points = []
-
-        for reason in reason_list:
-            if "could not be verified" in reason.lower():
-                warning_points.append(reason)
-            elif reason.startswith("⚠") or reason.startswith("ℹ"):
-                warning_points.append(reason)
-            else:
-                recommendation_points.append(reason)
-
-        if stock_delta != "N/A":
-            if "more stock" in stock_delta.lower():
-                advantage_points.append(stock_delta)
-            else:
-                tradeoff_points.append(stock_delta)
-
-        if price_delta != "N/A":
-            if "lower cost" in price_delta.lower():
-                advantage_points.append(price_delta)
-            else:
-                tradeoff_points.append(price_delta)
-
-        st.subheader("Why this alternative?")
 
         st.markdown(
-            f"**{selected_row.get('Alternative Part', '')}** is recommended because:"
+            """
+            <div class="af62b-compare-head">
+              <div>
+                <div class="af62b-compare-title">Side-by-side engineering comparison</div>
+                <div class="af62b-compare-sub">Review the selected recommendation against the original component.</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        st.markdown("**Recommended because:**")
-        for point in recommendation_points:
-            st.markdown(f"- {point}")
+        with st.container(key="af62b_compact_table"):
+            st.dataframe(
+                comparison_df,
+                use_container_width=True,
+                hide_index=True,
+            )
 
-        if warning_points:
-            st.markdown("**Warnings:**")
-            for point in warning_points:
-                st.markdown(f"- {point}")
+        with st.expander(
+            f"View all {len(alternatives_df)} ranked alternatives",
+            expanded=False,
+        ):
+            st.dataframe(
+                alternatives_df,
+                use_container_width=True,
+                hide_index=True,
+            )
 
-        if advantage_points:
-            st.markdown("**Advantages:**")
-            for point in advantage_points:
-                st.markdown(f"- {point}")
-
-        if tradeoff_points:
-            st.markdown("**Tradeoffs:**")
-            for point in tradeoff_points:
-                st.markdown(f"- {point}")
-        
-        st.subheader("Side-by-Side Comparison")
-
-        st.dataframe(
-            comparison_df,
-            use_container_width=True,
-            hide_index=True,
-        )      
-
-        if st.button("🔄 New Alternative Search"):
-            st.session_state["suggested_alternatives"] = []
-            st.session_state["alternative_search_attempted"] = False
-            st.session_state["alternative_original_data"] = {}
-            st.session_state["alternative_original_risk"] = {}
-            st.session_state["alternative_original_lookup_part"] = ""
-            st.session_state["alternative_original_lookup_error"] = ""
-            st.session_state["alternative_original_part"] = ""
-            st.rerun()
+        reset_col, note_col = st.columns([0.28, 0.72], gap="medium")
+        with reset_col:
+            if st.button(
+                "New Alternative Search",
+                type="secondary",
+                use_container_width=True,
+                key="alternative_reset_62b",
+            ):
+                st.session_state["suggested_alternatives"] = []
+                st.session_state["alternative_search_attempted"] = False
+                st.session_state["alternative_original_data"] = {}
+                st.session_state["alternative_original_risk"] = {}
+                st.session_state["alternative_original_lookup_part"] = ""
+                st.session_state["alternative_original_lookup_error"] = ""
+                st.session_state["alternative_original_part"] = ""
+                st.rerun()
+        with note_col:
+            st.markdown(
+                '<div class="af62b-reset-note">The detailed alternative library is collapsed by default so engineers can focus on the strongest recommendation first.</div>',
+                unsafe_allow_html=True,
+            )
 
     elif st.session_state["alternative_search_attempted"]:
         st.warning("No suggested alternatives found.")
