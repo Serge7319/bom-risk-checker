@@ -640,7 +640,7 @@ def render_dashboard(
         .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
         .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
         /* Milestone 6.0A — premium, calm dashboard intelligence */
-        /* Milestone 6.0C — final dashboard card composition */
+        /* Milestone 6.1 — premium UX polish */
         .cv-6b-kpi-strip{
             display:grid;
             grid-template-columns:repeat(4,minmax(0,1fr));
@@ -1155,6 +1155,182 @@ def render_dashboard(
                 min-height:88px!important;
             }
         }
+
+        /* Milestone 6.1 — Premium UX Polish */
+        .cv-v4-command,
+        .cv-6a-briefing,
+        .cv-6b-kpi-strip,
+        .st-key-dashboard_trend_card,
+        .st-key-dashboard_project_card,
+        .cv-6b-shortcuts {
+            animation:cv61FadeUp .34s ease both;
+        }
+
+        .cv-6a-briefing { animation-delay:.04s; }
+        .cv-6b-kpi-strip { animation-delay:.08s; }
+        .st-key-dashboard_trend_card,
+        .st-key-dashboard_project_card { animation-delay:.12s; }
+        .cv-6b-shortcuts { animation-delay:.16s; }
+
+        @keyframes cv61FadeUp {
+            from { opacity:0; transform:translateY(8px); }
+            to { opacity:1; transform:translateY(0); }
+        }
+
+        .cv-v4-btn,
+        .cv-6a-action-row,
+        .cv-6b-kpi,
+        .cv-6c-card-action,
+        .cv-6c-project-link,
+        .cv-6b-shortcut {
+            outline:none!important;
+        }
+
+        .cv-v4-btn:focus-visible,
+        .cv-6a-action-row:focus-visible,
+        .cv-6b-kpi:focus-visible,
+        .cv-6c-card-action:focus-visible,
+        .cv-6c-project-link:focus-visible,
+        .cv-6b-shortcut:focus-visible {
+            box-shadow:0 0 0 4px rgba(37,99,235,.16), 0 16px 36px rgba(15,23,42,.08)!important;
+            border-color:#60A5FA!important;
+        }
+
+        .cv-6b-kpi {
+            position:relative;
+            overflow:hidden;
+        }
+
+        .cv-6b-kpi:after {
+            content:"";
+            position:absolute;
+            left:0;
+            right:0;
+            bottom:0;
+            height:3px;
+            background:#2563EB;
+            transform:scaleX(0);
+            transform-origin:left;
+            transition:transform .18s ease;
+        }
+
+        .cv-6b-kpi.warn:after { background:#F59E0B; }
+        .cv-6b-kpi.danger:after { background:#EF4444; }
+
+        .cv-6b-kpi:hover:after,
+        .cv-6b-kpi:focus-visible:after {
+            transform:scaleX(1);
+        }
+
+        .cv-6b-kpi-icon,
+        .cv-6b-shortcut-icon,
+        .cv-6c-project-icon {
+            transition:transform .18s ease, box-shadow .18s ease;
+        }
+
+        .cv-6b-kpi:hover .cv-6b-kpi-icon,
+        .cv-6b-shortcut:hover .cv-6b-shortcut-icon,
+        .cv-6c-project-link:hover ~ .cv-6c-project-icon {
+            transform:scale(1.04);
+        }
+
+        .cv-6b-shortcut:hover .cv-6b-arrow,
+        .cv-6c-project-link:hover span:last-child,
+        .cv-6c-card-action:hover {
+            transform:translateX(3px);
+            transition:transform .18s ease;
+        }
+
+        .cv-6c-health-meter {
+            height:7px;
+            border-radius:999px;
+            background:#E2E8F0;
+            overflow:hidden;
+            margin-top:10px;
+        }
+
+        .cv-6c-health-meter > span {
+            display:block;
+            height:100%;
+            border-radius:999px;
+            background:linear-gradient(90deg,#22C55E,#16A34A);
+        }
+
+        .cv-6c-health-meter.warning > span {
+            background:linear-gradient(90deg,#FBBF24,#F59E0B);
+        }
+
+        .cv-6c-health-meter.danger > span {
+            background:linear-gradient(90deg,#F87171,#EF4444);
+        }
+
+        .cv-6c-project-status {
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            margin-top:8px;
+            padding:5px 8px;
+            border-radius:999px;
+            background:#ECFDF5;
+            border:1px solid #A7F3D0;
+            color:#047857!important;
+            font-size:10px;
+            font-weight:950;
+        }
+
+        .cv-6c-project-status:before {
+            content:"";
+            width:6px;
+            height:6px;
+            border-radius:50%;
+            background:#10B981;
+            box-shadow:0 0 0 3px rgba(16,185,129,.12);
+        }
+
+        .cv-6c-project-status.warning {
+            background:#FFFBEB;
+            border-color:#FDE68A;
+            color:#B45309!important;
+        }
+
+        .cv-6c-project-status.warning:before {
+            background:#F59E0B;
+            box-shadow:0 0 0 3px rgba(245,158,11,.12);
+        }
+
+        .cv-6c-project-status.danger {
+            background:#FEF2F2;
+            border-color:#FECACA;
+            color:#B91C1C!important;
+        }
+
+        .cv-6c-project-status.danger:before {
+            background:#EF4444;
+            box-shadow:0 0 0 3px rgba(239,68,68,.12);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .cv-v4-command,
+            .cv-6a-briefing,
+            .cv-6b-kpi-strip,
+            .st-key-dashboard_trend_card,
+            .st-key-dashboard_project_card,
+            .cv-6b-shortcuts {
+                animation:none!important;
+            }
+
+            .cv-v4-btn,
+            .cv-6a-action-row,
+            .cv-6b-kpi,
+            .cv-6c-card-action,
+            .cv-6c-project-link,
+            .cv-6b-shortcut,
+            .cv-6b-kpi-icon,
+            .cv-6b-shortcut-icon,
+            .cv-6c-project-icon {
+                transition:none!important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1355,6 +1531,9 @@ def render_dashboard(
                     <div>
                       <div class="cv-6c-project-label">Active Analysis</div>
                       <div class="cv-6c-project-name">{html.escape(str(latest_project))}</div>
+                      <div class="cv-6c-project-status {"warning" if 55 <= latest_health < 80 else "danger" if latest_health < 55 else ""}">
+                        {"Review recommended" if latest_health < 80 else "Ready to continue"}
+                      </div>
                     </div>
                     <div class="cv-6c-project-icon">{_lucide_icon('file',20)}</div>
                   </div>
@@ -1364,6 +1543,9 @@ def render_dashboard(
                       <span>Health</span>
                       <strong>{latest_health}</strong>
                       <small>{"Excellent" if latest_health >= 80 else "Review recommended" if latest_health >= 55 else "Critical"}</small>
+                      <div class="cv-6c-health-meter {"warning" if 55 <= latest_health < 80 else "danger" if latest_health < 55 else ""}">
+                        <span style="width:{max(0, min(100, latest_health))}%"></span>
+                      </div>
                     </div>
                     <div class="cv-6c-project-stat">
                       <span>Parts</span>
