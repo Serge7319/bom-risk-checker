@@ -6113,6 +6113,27 @@ if app_mode == "BOM Analyzer":
                         selected_saved_analysis.get("id") or ""
                     ).strip()
 
+                    # Resolve selected-analysis values before any open/delete action
+                    # or confirmation panel uses them.
+                    selected_project = (
+                        selected_saved_analysis.get("project_name")
+                        or selected_saved_analysis.get("filename")
+                        or "Saved BOM analysis"
+                    )
+                    selected_file = (
+                        selected_saved_analysis.get("filename")
+                        or "Source file unavailable"
+                    )
+                    selected_health = int(
+                        selected_saved_analysis.get("health_score") or 0
+                    )
+                    selected_high = int(
+                        selected_saved_analysis.get("high_risk_count") or 0
+                    )
+                    selected_medium = int(
+                        selected_saved_analysis.get("medium_risk_count") or 0
+                    )
+
                     action_col, delete_col = st.columns([0.55, 0.45], gap="medium")
 
                     with action_col:
@@ -6211,25 +6232,6 @@ if app_mode == "BOM Analyzer":
                                 st.session_state.pop("bom8_pending_delete_id", None)
                                 st.session_state.pop("bom8_pending_delete_label", None)
                                 st.rerun()
-
-                    selected_project = (
-                        selected_saved_analysis.get("project_name")
-                        or selected_saved_analysis.get("filename")
-                        or "Saved BOM analysis"
-                    )
-                    selected_file = (
-                        selected_saved_analysis.get("filename")
-                        or "Source file unavailable"
-                    )
-                    selected_health = int(
-                        selected_saved_analysis.get("health_score") or 0
-                    )
-                    selected_high = int(
-                        selected_saved_analysis.get("high_risk_count") or 0
-                    )
-                    selected_medium = int(
-                        selected_saved_analysis.get("medium_risk_count") or 0
-                    )
 
                     st.markdown(
                         f"""
