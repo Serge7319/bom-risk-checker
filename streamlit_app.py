@@ -2454,11 +2454,26 @@ if app_mode == "Reports":
 
     total_reports = len(report_records)
     total_parts = sum(
-        _report_int(_report_value(row, "total_parts", "part_count", "parts_count", default=0))
+        _report_int(
+            _report_value(
+                row,
+                "total_parts",
+                "part_count",
+                "parts_count",
+                default=0,
+            )
+        )
         for row in report_records
     )
     total_high_risk = sum(
-        _report_int(_report_value(row, "high_risk_count", "high_risk_parts", default=0))
+        _report_int(
+            _report_value(
+                row,
+                "high_risk_count",
+                "high_risk_parts",
+                default=0,
+            )
+        )
         for row in report_records
     )
     health_values = [
@@ -2466,81 +2481,262 @@ if app_mode == "Reports":
         for row in report_records
         if _report_value(row, "health_score", default=None) is not None
     ]
-    average_health = round(sum(health_values) / len(health_values)) if health_values else 0
+    average_health = (
+        round(sum(health_values) / len(health_values))
+        if health_values
+        else 0
+    )
 
     st.markdown(
         """
-        <style id="cadivor-reports-functional-v55">
-        .cv-rpt-hero {
-            border:1px solid #BFDBFE;border-radius:24px;padding:30px 32px;margin-bottom:20px;
-            background:radial-gradient(circle at 90% 10%,rgba(37,99,235,.10),transparent 32%),
-                       linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 65%,#EEF5FF 100%);
-            box-shadow:0 22px 58px rgba(15,23,42,.07);
+        <style id="cadivor-reports-professional-v9a">
+        .cv-r9-hero{
+            border:1px solid #BFDBFE;border-radius:26px;padding:30px 32px;
+            background:
+                radial-gradient(circle at 88% 8%,rgba(37,99,235,.13),transparent 34%),
+                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 62%,#EEF5FF 100%);
+            box-shadow:0 22px 58px rgba(15,23,42,.07);margin-bottom:18px;
         }
-        .cv-rpt-eyebrow {display:inline-flex;padding:7px 11px;border:1px solid #BFDBFE;border-radius:999px;
-            background:#EFF6FF;color:#2563EB!important;font-size:10px;font-weight:900;letter-spacing:.12em;
-            text-transform:uppercase;margin-bottom:16px;}
-        .cv-rpt-title {color:#0F172A!important;font-size:38px;line-height:1.05;font-weight:950;
-            letter-spacing:-.04em;margin:0 0 10px;}
-        .cv-rpt-copy {color:#52647A!important;font-size:15px;line-height:1.65;font-weight:650;max-width:850px;margin:0;}
-        .cv-rpt-section {color:#0F172A!important;font-size:21px;font-weight:950;letter-spacing:-.03em;margin:26px 0 4px;}
-        .cv-rpt-sub {color:#64748B!important;font-size:13px;font-weight:700;margin-bottom:12px;}
-        .cv-rpt-card {min-height:172px;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:20px;
-            padding:21px;box-shadow:0 16px 40px rgba(15,23,42,.055);}
-        .cv-rpt-icon {width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;
-            background:#EFF6FF;border:1px solid #BFDBFE;color:#2563EB!important;font-size:18px;font-weight:900;margin-bottom:14px;}
-        .cv-rpt-card-title {color:#0F172A!important;font-size:15px;font-weight:950;margin-bottom:7px;}
-        .cv-rpt-card-copy {color:#52647A!important;font-size:12px;line-height:1.55;font-weight:700;}
-        .cv-rpt-workspace {background:#FFFFFF;border:1px solid #E2E8F0;border-radius:20px;padding:22px;
-            box-shadow:0 16px 40px rgba(15,23,42,.055);margin-top:12px;}
+        .cv-r9-eyebrow{
+            display:inline-flex;align-items:center;gap:7px;padding:7px 11px;
+            border:1px solid #BFDBFE;border-radius:999px;background:#EFF6FF;
+            color:#2563EB!important;font-size:10px;font-weight:950;
+            letter-spacing:.12em;text-transform:uppercase;margin-bottom:15px;
+        }
+        .cv-r9-title{
+            color:#0F172A!important;font-size:38px;line-height:1.05;font-weight:980;
+            letter-spacing:-.045em;margin:0 0 11px;
+        }
+        .cv-r9-copy{
+            color:#52647A!important;font-size:15px;line-height:1.62;font-weight:680;
+            max-width:880px;margin:0;
+        }
+        .cv-r9-metrics{
+            display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+            gap:12px;margin:18px 0 24px;
+        }
+        .cv-r9-metric{
+            border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;padding:17px;
+            box-shadow:0 14px 34px rgba(15,23,42,.05);
+        }
+        .cv-r9-metric span{
+            display:block;color:#64748B!important;font-size:9px;font-weight:950;
+            letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px;
+        }
+        .cv-r9-metric strong{
+            display:block;color:#0F172A!important;font-size:27px;font-weight:980;
+            letter-spacing:-.03em;
+        }
+        .cv-r9-metric small{
+            display:block;color:#64748B!important;font-size:10px;font-weight:760;
+            margin-top:6px;line-height:1.4;
+        }
+        .cv-r9-section{
+            color:#0F172A!important;font-size:22px;font-weight:980;
+            letter-spacing:-.03em;margin:25px 0 5px;
+        }
+        .cv-r9-sub{
+            color:#64748B!important;font-size:12px;font-weight:740;margin-bottom:12px;
+        }
+        .cv-r9-template{
+            min-height:195px;border:1px solid #E2E8F0;background:#FFFFFF;
+            border-radius:21px;padding:19px;box-shadow:0 15px 38px rgba(15,23,42,.05);
+        }
+        .cv-r9-template-icon{
+            width:42px;height:42px;border-radius:13px;display:flex;
+            align-items:center;justify-content:center;background:#EFF6FF;
+            border:1px solid #BFDBFE;color:#2563EB!important;font-size:19px;
+            font-weight:950;margin-bottom:13px;
+        }
+        .cv-r9-template h4{
+            margin:0 0 7px;color:#0F172A!important;font-size:15px;font-weight:970;
+        }
+        .cv-r9-template p{
+            margin:0;color:#52647A!important;font-size:11px;font-weight:720;
+            line-height:1.52;min-height:50px;
+        }
+        .cv-r9-formats{display:flex;gap:6px;flex-wrap:wrap;margin-top:13px}
+        .cv-r9-format{
+            display:inline-flex;border:1px solid #DBEAFE;background:#EFF6FF;
+            color:#1D4ED8!important;border-radius:999px;padding:5px 8px;
+            font-size:9px;font-weight:950;
+        }
+        .cv-r9-selected{
+            border:1px solid #BFDBFE;background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
+            border-radius:22px;padding:20px;box-shadow:0 17px 42px rgba(37,99,235,.07);
+            margin:12px 0 15px;
+        }
+        .cv-r9-selected-grid{
+            display:grid;grid-template-columns:1.35fr repeat(4,minmax(0,1fr));
+            gap:10px;
+        }
+        .cv-r9-selected-cell{
+            border:1px solid #DCE5F1;background:rgba(255,255,255,.9);
+            border-radius:14px;padding:12px;min-width:0;
+        }
+        .cv-r9-selected-cell span{
+            display:block;color:#64748B!important;font-size:8px;font-weight:950;
+            letter-spacing:.09em;text-transform:uppercase;margin-bottom:6px;
+        }
+        .cv-r9-selected-cell strong{
+            display:block;color:#0F172A!important;font-size:13px;font-weight:950;
+            overflow-wrap:anywhere;
+        }
+        .cv-r9-preview-card{
+            border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;
+            padding:17px;box-shadow:0 14px 34px rgba(15,23,42,.04);margin-bottom:12px;
+        }
+        .cv-r9-preview-title{
+            color:#0F172A!important;font-size:14px;font-weight:970;margin-bottom:7px;
+        }
+        .cv-r9-preview-copy{
+            color:#52647A!important;font-size:11px;font-weight:720;line-height:1.55;
+        }
+        .cv-r9-history{
+            border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;padding:16px;
+        }
+        .cv-r9-empty{
+            border:1px dashed #CBD5E1;background:#F8FAFC;border-radius:18px;
+            padding:22px;text-align:center;color:#64748B!important;font-size:12px;
+            font-weight:760;
+        }
+        @media(max-width:1050px){
+            .cv-r9-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .cv-r9-selected-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        }
+        @media(max-width:650px){
+            .cv-r9-metrics,.cv-r9-selected-grid{grid-template-columns:1fr}
+            .cv-r9-title{font-size:31px}
+        }
         </style>
-        <div class="cv-rpt-hero">
-          <div class="cv-rpt-eyebrow">Reports Center</div>
-          <h1 class="cv-rpt-title">Engineering reports</h1>
-          <p class="cv-rpt-copy">Generate executive-ready BOM summaries, engineering risk reviews, and sourcing exports from saved Cadivor analyses.</p>
+        <div class="cv-r9-hero">
+          <div class="cv-r9-eyebrow">▤ Cadivor Report Library</div>
+          <h1 class="cv-r9-title">Turn BOM intelligence into decisions.</h1>
+          <p class="cv-r9-copy">
+            Select a saved BOM, preview the engineering story, and generate the right
+            deliverable for leadership, design review, sourcing, lifecycle management,
+            or replacement planning.
+          </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    metric_cols = st.columns(4)
-    with metric_cols[0]:
-        st.metric("Saved Analyses", total_reports)
-    with metric_cols[1]:
-        st.metric("Average Health", average_health)
-    with metric_cols[2]:
-        st.metric("High-Risk Parts", total_high_risk)
-    with metric_cols[3]:
-        st.metric("Tracked Parts", total_parts)
-
     st.markdown(
-        '<div class="cv-rpt-section">Report templates</div>'
-        '<div class="cv-rpt-sub">Each template now produces a real export from a saved analysis.</div>',
+        f"""
+        <div class="cv-r9-metrics">
+          <div class="cv-r9-metric">
+            <span>Saved Analyses</span>
+            <strong>{total_reports}</strong>
+            <small>Report-ready BOM engineering records</small>
+          </div>
+          <div class="cv-r9-metric">
+            <span>Average Health</span>
+            <strong>{average_health}</strong>
+            <small>Across all saved BOM analyses</small>
+          </div>
+          <div class="cv-r9-metric">
+            <span>High-Risk Findings</span>
+            <strong>{total_high_risk}</strong>
+            <small>Components requiring engineering review</small>
+          </div>
+          <div class="cv-r9-metric">
+            <span>Tracked Components</span>
+            <strong>{total_parts}</strong>
+            <small>Saved component intelligence records</small>
+          </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    template_cols = st.columns(3)
-    template_data = [
-        ("Executive BOM Report", "Leadership-ready PDF with portfolio health, priority risks, and recommended actions.", "▤"),
-        ("Engineering Risk Review", "Component-level CSV for engineering review and filtering.", "△"),
-        ("Sourcing Summary", "Procurement-focused CSV with stock, supplier, lifecycle, and replacement fields.", "⇄"),
+    st.markdown(
+        '<div class="cv-r9-section">Professional report library</div>'
+        '<div class="cv-r9-sub">Choose the deliverable that matches the audience and engineering decision.</div>',
+        unsafe_allow_html=True,
+    )
+
+    first_templates = st.columns(3)
+    first_template_data = [
+        (
+            "Executive BOM Summary",
+            "Leadership-ready health, priority risks, decision brief, and recommended actions.",
+            "▤",
+            ["PDF", "Excel"],
+        ),
+        (
+            "Engineering Risk Review",
+            "Component-level lifecycle, stock, supplier diversity, lead-time, and risk evidence.",
+            "△",
+            ["PDF", "CSV"],
+        ),
+        (
+            "Procurement & Sourcing",
+            "Supplier concentration, market stock, cost exposure, and secondary-source priorities.",
+            "⇄",
+            ["Excel", "CSV"],
+        ),
     ]
-    for col, (title, copy, icon) in zip(template_cols, template_data):
+    for col, (title, copy, icon, formats) in zip(
+        first_templates,
+        first_template_data,
+    ):
         with col:
+            format_html = "".join(
+                f'<span class="cv-r9-format">{fmt}</span>'
+                for fmt in formats
+            )
             st.markdown(
                 f"""
-                <div class="cv-rpt-card">
-                  <div class="cv-rpt-icon">{icon}</div>
-                  <div class="cv-rpt-card-title">{title}</div>
-                  <div class="cv-rpt-card-copy">{copy}</div>
+                <div class="cv-r9-template">
+                  <div class="cv-r9-template-icon">{icon}</div>
+                  <h4>{title}</h4>
+                  <p>{copy}</p>
+                  <div class="cv-r9-formats">{format_html}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    second_templates = st.columns(2)
+    second_template_data = [
+        (
+            "Lifecycle Exposure Report",
+            "Lifecycle states, obsolete or replacement-suggested components, and alert-oriented review data.",
+            "◷",
+            ["PDF", "Excel", "CSV"],
+        ),
+        (
+            "Alternative Replacement Report",
+            "Components requiring alternatives, candidate availability, and saved replacement-readiness fields.",
+            "↔",
+            ["PDF", "Excel", "CSV"],
+        ),
+    ]
+    for col, (title, copy, icon, formats) in zip(
+        second_templates,
+        second_template_data,
+    ):
+        with col:
+            format_html = "".join(
+                f'<span class="cv-r9-format">{fmt}</span>'
+                for fmt in formats
+            )
+            st.markdown(
+                f"""
+                <div class="cv-r9-template">
+                  <div class="cv-r9-template-icon">{icon}</div>
+                  <h4>{title}</h4>
+                  <p>{copy}</p>
+                  <div class="cv-r9-formats">{format_html}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
     st.markdown(
-        '<div class="cv-rpt-section">Generate a report</div>'
-        '<div class="cv-rpt-sub">Select a saved BOM and download the report package you need.</div>',
+        '<div class="cv-r9-section">Build a report package</div>'
+        '<div class="cv-r9-sub">Search for a saved BOM, confirm the selected engineering record, preview the content, and download the required files.</div>',
         unsafe_allow_html=True,
     )
 
@@ -2563,7 +2759,13 @@ if app_mode == "Reports":
             matching_label = None
             for row, label in zip(report_records, labels):
                 row_id = str(
-                    _report_value(row, "id", "analysis_id", default="") or ""
+                    _report_value(
+                        row,
+                        "id",
+                        "analysis_id",
+                        default="",
+                    )
+                    or ""
                 ).strip()
                 if row_id == incoming_report_analysis_id:
                     matching_label = label
@@ -2573,132 +2775,560 @@ if app_mode == "Reports":
                 st.session_state["reports_selected_analysis"] = matching_label
                 st.session_state["reports_route_token"] = report_route_token
 
-        selected_label = st.selectbox(
-            "Saved BOM analysis",
-            labels,
-            key="reports_selected_analysis",
-        )
+        search_col, select_col = st.columns([0.34, 0.66], gap="medium")
+        with search_col:
+            report_search = st.text_input(
+                "Search saved analyses",
+                placeholder="Project or source filename",
+                key="reports_analysis_search",
+            )
+
+        filtered_labels = labels
+        if report_search.strip():
+            needle = report_search.strip().lower()
+            filtered_labels = [
+                label
+                for label in labels
+                if needle in label.lower()
+            ]
+
+        if not filtered_labels:
+            st.warning("No saved analyses match that search.")
+            filtered_labels = labels
+
+        current_selected = st.session_state.get("reports_selected_analysis")
+        if current_selected not in filtered_labels:
+            st.session_state["reports_selected_analysis"] = filtered_labels[0]
+
+        with select_col:
+            selected_label = st.selectbox(
+                "Saved BOM analysis",
+                filtered_labels,
+                key="reports_selected_analysis",
+            )
+
         selected_index = labels.index(selected_label)
         selected_analysis = report_records[selected_index]
-        selected_analysis_id = _report_value(selected_analysis, "id", "analysis_id", default=None)
+        selected_analysis_id = _report_value(
+            selected_analysis,
+            "id",
+            "analysis_id",
+            default=None,
+        )
         selected_parts_df = _load_report_parts(selected_analysis_id)
 
-        project_name = str(_report_value(selected_analysis, "project_name", "name", default="saved_bom"))
-        safe_project = re.sub(r"[^A-Za-z0-9_-]+", "_", project_name).strip("_") or "saved_bom"
-
-        download_cols = st.columns(3)
-
-        with download_cols[0]:
-            pdf_bytes = _build_executive_pdf(selected_analysis, selected_parts_df)
-            st.download_button(
-                "Download Executive PDF",
-                data=pdf_bytes,
-                file_name=f"{safe_project}_executive_report.pdf",
-                mime="application/pdf",
-                use_container_width=True,
+        project_name = str(
+            _report_value(
+                selected_analysis,
+                "project_name",
+                "name",
+                default="Saved BOM",
             )
-
-        with download_cols[1]:
-            engineering_df = selected_parts_df.copy()
-            if engineering_df.empty:
-                engineering_df = pd.DataFrame(
-                    [{
-                        "project": project_name,
-                        "health_score": _report_int(_report_value(selected_analysis, "health_score", default=0)),
-                        "high_risk_parts": _report_int(_report_value(selected_analysis, "high_risk_count", "high_risk_parts", default=0)),
-                        "medium_risk_parts": _report_int(_report_value(selected_analysis, "medium_risk_count", "medium_risk_parts", default=0)),
-                    }]
-                )
-            st.download_button(
-                "Download Engineering CSV",
-                data=engineering_df.to_csv(index=False).encode("utf-8"),
-                file_name=f"{safe_project}_engineering_review.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-
-        with download_cols[2]:
-            sourcing_candidates = [
-                "mpn", "part_number", "manufacturer", "lifecycle_status",
-                "stock_available", "stock", "supplier_count", "unit_price",
-                "risk_level", "risk_score", "has_alternates", "alternate_count",
-            ]
-            if selected_parts_df.empty:
-                sourcing_df = pd.DataFrame(
-                    [{
-                        "project": project_name,
-                        "source_file": _report_value(selected_analysis, "filename", "uploaded_file", default="—"),
-                        "health_score": _report_int(_report_value(selected_analysis, "health_score", default=0)),
-                    }]
-                )
-            else:
-                existing_cols = [c for c in sourcing_candidates if c in selected_parts_df.columns]
-                sourcing_df = selected_parts_df[existing_cols].copy() if existing_cols else selected_parts_df.copy()
-
-            st.download_button(
-                "Download Sourcing CSV",
-                data=sourcing_df.to_csv(index=False).encode("utf-8"),
-                file_name=f"{safe_project}_sourcing_summary.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-
-        st.caption(
-            f"Selected: {project_name} • "
-            f"{_report_int(_report_value(selected_analysis, 'total_parts', 'part_count', 'parts_count', default=len(selected_parts_df)))} parts • "
-            f"Health {_report_int(_report_value(selected_analysis, 'health_score', default=0))}"
         )
-    else:
-        st.info("No saved analyses are available yet. Analyze a BOM to create your first report source.")
-
-    st.markdown(
-        '<div class="cv-rpt-section">Recent report sources</div>'
-        '<div class="cv-rpt-sub">Saved BOM analyses available for reporting and export.</div>',
-        unsafe_allow_html=True,
-    )
-
-    if report_records:
-        display_rows = []
-        for row in report_records[:10]:
-            created_at = str(_report_value(row, "created_at", "date", default=""))
-            created_date = created_at.split("T")[0] if "T" in created_at else created_at[:10]
-            display_rows.append(
-                {
-                    "Project": _report_value(row, "project_name", "name", default="Saved BOM"),
-                    "Source File": _report_value(row, "filename", "uploaded_file", "file_name", default="—"),
-                    "Date": created_date or "—",
-                    "Health": _report_int(_report_value(row, "health_score", default=0)),
-                    "High Risk": _report_int(_report_value(row, "high_risk_count", "high_risk_parts", default=0)),
-                    "Medium Risk": _report_int(_report_value(row, "medium_risk_count", "medium_risk_parts", default=0)),
-                    "Parts": _report_int(_report_value(row, "total_parts", "part_count", "parts_count", default=0)),
-                }
+        source_file = str(
+            _report_value(
+                selected_analysis,
+                "filename",
+                "uploaded_file",
+                "file_name",
+                default="—",
             )
-        report_sources_df = pd.DataFrame(display_rows)
-        st.dataframe(report_sources_df, hide_index=True, use_container_width=True)
+        )
+        health_score = _report_int(
+            _report_value(selected_analysis, "health_score", default=0)
+        )
+        high_risk = _report_int(
+            _report_value(
+                selected_analysis,
+                "high_risk_count",
+                "high_risk_parts",
+                default=0,
+            )
+        )
+        medium_risk = _report_int(
+            _report_value(
+                selected_analysis,
+                "medium_risk_count",
+                "medium_risk_parts",
+                default=0,
+            )
+        )
+        part_count = _report_int(
+            _report_value(
+                selected_analysis,
+                "total_parts",
+                "part_count",
+                "parts_count",
+                default=len(selected_parts_df),
+            )
+        )
+        created_at = str(
+            _report_value(
+                selected_analysis,
+                "created_at",
+                "updated_at",
+                "date",
+                default="",
+            )
+        )
+        created_date = (
+            created_at.split("T")[0]
+            if "T" in created_at
+            else created_at[:10]
+        ) or "—"
 
-    st.markdown(
-        '<div class="cv-rpt-section">Next reporting milestones</div>'
-        '<div class="cv-rpt-sub">The next releases will build on this functional export foundation.</div>',
-        unsafe_allow_html=True,
-    )
-    roadmap_cols = st.columns(4)
-    roadmap = [
-        ("5.6 Branded PDFs", "Cadivor logo, cover page, visual risk summary, and document metadata."),
-        ("5.7 Scheduled Reports", "Weekly and monthly report delivery for monitored portfolios."),
-        ("5.8 Report History", "Store generated report records with status, owner, and timestamps."),
-        ("5.9 Team Sharing", "Shareable report links and controlled workspace access."),
-    ]
-    for col, (title, copy) in zip(roadmap_cols, roadmap):
-        with col:
+        safe_project = (
+            re.sub(r"[^A-Za-z0-9_-]+", "_", project_name).strip("_")
+            or "saved_bom"
+        )
+
+        st.markdown(
+            f"""
+            <div class="cv-r9-selected">
+              <div class="cv-r9-selected-grid">
+                <div class="cv-r9-selected-cell">
+                  <span>Selected BOM</span>
+                  <strong>{html.escape(project_name)}</strong>
+                </div>
+                <div class="cv-r9-selected-cell">
+                  <span>Health</span>
+                  <strong>{health_score}/100</strong>
+                </div>
+                <div class="cv-r9-selected-cell">
+                  <span>Parts</span>
+                  <strong>{part_count}</strong>
+                </div>
+                <div class="cv-r9-selected-cell">
+                  <span>High / Medium Risk</span>
+                  <strong>{high_risk} / {medium_risk}</strong>
+                </div>
+                <div class="cv-r9-selected-cell">
+                  <span>Saved</span>
+                  <strong>{html.escape(created_date)}</strong>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        lifecycle_columns = [
+            column
+            for column in [
+                "mpn",
+                "MPN",
+                "part_number",
+                "manufacturer",
+                "lifecycle_status",
+                "Lifecycle Status",
+                "risk_level",
+                "risk_score",
+                "stock_available",
+                "supplier_count",
+            ]
+            if column in selected_parts_df.columns
+        ]
+        lifecycle_df = (
+            selected_parts_df[lifecycle_columns].copy()
+            if lifecycle_columns
+            else selected_parts_df.copy()
+        )
+
+        alternative_columns = [
+            column
+            for column in [
+                "mpn",
+                "MPN",
+                "part_number",
+                "manufacturer",
+                "risk_level",
+                "risk_score",
+                "has_alternates",
+                "alternate_count",
+                "alternate_part_numbers",
+                "lifecycle_status",
+                "stock_available",
+            ]
+            if column in selected_parts_df.columns
+        ]
+        alternative_df = (
+            selected_parts_df[alternative_columns].copy()
+            if alternative_columns
+            else selected_parts_df.copy()
+        )
+
+        sourcing_candidates = [
+            "mpn",
+            "part_number",
+            "manufacturer",
+            "lifecycle_status",
+            "stock_available",
+            "stock",
+            "supplier_count",
+            "unit_price",
+            "risk_level",
+            "risk_score",
+            "has_alternates",
+            "alternate_count",
+        ]
+        if selected_parts_df.empty:
+            engineering_df = pd.DataFrame(
+                [
+                    {
+                        "project": project_name,
+                        "health_score": health_score,
+                        "high_risk_parts": high_risk,
+                        "medium_risk_parts": medium_risk,
+                    }
+                ]
+            )
+            sourcing_df = pd.DataFrame(
+                [
+                    {
+                        "project": project_name,
+                        "source_file": source_file,
+                        "health_score": health_score,
+                    }
+                ]
+            )
+            lifecycle_df = pd.DataFrame(
+                [{"project": project_name, "message": "No saved component rows."}]
+            )
+            alternative_df = pd.DataFrame(
+                [{"project": project_name, "message": "No saved component rows."}]
+            )
+        else:
+            engineering_df = selected_parts_df.copy()
+            existing_cols = [
+                column
+                for column in sourcing_candidates
+                if column in selected_parts_df.columns
+            ]
+            sourcing_df = (
+                selected_parts_df[existing_cols].copy()
+                if existing_cols
+                else selected_parts_df.copy()
+            )
+
+        pdf_bytes = _build_executive_pdf(
+            selected_analysis,
+            selected_parts_df,
+        )
+        executive_csv = pd.DataFrame(
+            [
+                {
+                    "project": project_name,
+                    "source_file": source_file,
+                    "health_score": health_score,
+                    "part_count": part_count,
+                    "high_risk_parts": high_risk,
+                    "medium_risk_parts": medium_risk,
+                    "saved_date": created_date,
+                }
+            ]
+        ).to_csv(index=False).encode("utf-8")
+
+        preview_tabs = st.tabs(
+            [
+                "Executive Preview",
+                "Risk Preview",
+                "Sourcing Preview",
+                "Lifecycle Preview",
+                "Alternatives Preview",
+            ]
+        )
+
+        with preview_tabs[0]:
+            recommendation = (
+                "Continue controlled monitoring and release review."
+                if health_score >= 85 and high_risk == 0
+                else "Resolve priority engineering risks before production release."
+                if high_risk > 0
+                else "Review medium-risk sourcing and lifecycle exposure."
+            )
             st.markdown(
                 f"""
-                <div class="cv-rpt-card" style="min-height:135px;">
-                  <div class="cv-rpt-card-title">{title}</div>
-                  <div class="cv-rpt-card-copy">{copy}</div>
+                <div class="cv-r9-preview-card">
+                  <div class="cv-r9-preview-title">Executive decision brief</div>
+                  <div class="cv-r9-preview-copy">
+                    <b>{html.escape(project_name)}</b> contains {part_count} saved components
+                    with a health score of {health_score}/100. The analysis includes
+                    {high_risk} high-risk and {medium_risk} medium-risk components.
+                    <br><br><b>Recommended action:</b> {html.escape(recommendation)}
+                  </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+
+        with preview_tabs[1]:
+            if engineering_df.empty:
+                st.info("No component-level risk data is available.")
+            else:
+                st.dataframe(
+                    engineering_df.head(12),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        with preview_tabs[2]:
+            if sourcing_df.empty:
+                st.info("No sourcing fields are available for this analysis.")
+            else:
+                st.dataframe(
+                    sourcing_df.head(12),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        with preview_tabs[3]:
+            if lifecycle_df.empty:
+                st.info("No lifecycle fields are available for this analysis.")
+            else:
+                st.dataframe(
+                    lifecycle_df.head(12),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        with preview_tabs[4]:
+            if alternative_df.empty:
+                st.info("No alternative-readiness fields are available for this analysis.")
+            else:
+                st.dataframe(
+                    alternative_df.head(12),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        st.markdown(
+            '<div class="cv-r9-section">Download report package</div>'
+            '<div class="cv-r9-sub">Downloads are generated from the selected saved BOM analysis.</div>',
+            unsafe_allow_html=True,
+        )
+
+        if "reports_session_history" not in st.session_state:
+            st.session_state["reports_session_history"] = []
+
+        def _record_session_report(report_type: str, file_name: str) -> None:
+            st.session_state["reports_session_history"].insert(
+                0,
+                {
+                    "Project": project_name,
+                    "Report": report_type,
+                    "File": file_name,
+                    "Generated": pd.Timestamp.utcnow().strftime(
+                        "%Y-%m-%d %H:%M UTC"
+                    ),
+                },
+            )
+            st.session_state["reports_session_history"] = (
+                st.session_state["reports_session_history"][:12]
+            )
+
+        executive_col, risk_col, sourcing_col = st.columns(3)
+        with executive_col:
+            executive_pdf_name = f"{safe_project}_executive_summary.pdf"
+            if st.download_button(
+                "Download Executive PDF",
+                data=pdf_bytes,
+                file_name=executive_pdf_name,
+                mime="application/pdf",
+                use_container_width=True,
+            ):
+                _record_session_report(
+                    "Executive BOM Summary",
+                    executive_pdf_name,
+                )
+
+            executive_csv_name = f"{safe_project}_executive_summary.csv"
+            if st.download_button(
+                "Download Executive CSV",
+                data=executive_csv,
+                file_name=executive_csv_name,
+                mime="text/csv",
+                use_container_width=True,
+            ):
+                _record_session_report(
+                    "Executive BOM Summary",
+                    executive_csv_name,
+                )
+
+        with risk_col:
+            risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
+            if st.download_button(
+                "Download Risk Review CSV",
+                data=engineering_df.to_csv(index=False).encode("utf-8"),
+                file_name=risk_csv_name,
+                mime="text/csv",
+                use_container_width=True,
+            ):
+                _record_session_report(
+                    "Engineering Risk Review",
+                    risk_csv_name,
+                )
+
+            lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
+            if st.download_button(
+                "Download Lifecycle CSV",
+                data=lifecycle_df.to_csv(index=False).encode("utf-8"),
+                file_name=lifecycle_csv_name,
+                mime="text/csv",
+                use_container_width=True,
+            ):
+                _record_session_report(
+                    "Lifecycle Exposure Report",
+                    lifecycle_csv_name,
+                )
+
+        with sourcing_col:
+            sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
+            if st.download_button(
+                "Download Sourcing CSV",
+                data=sourcing_df.to_csv(index=False).encode("utf-8"),
+                file_name=sourcing_csv_name,
+                mime="text/csv",
+                use_container_width=True,
+            ):
+                _record_session_report(
+                    "Procurement & Sourcing",
+                    sourcing_csv_name,
+                )
+
+            alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
+            if st.download_button(
+                "Download Alternatives CSV",
+                data=alternative_df.to_csv(index=False).encode("utf-8"),
+                file_name=alternatives_csv_name,
+                mime="text/csv",
+                use_container_width=True,
+            ):
+                _record_session_report(
+                    "Alternative Replacement Report",
+                    alternatives_csv_name,
+                )
+
+        action_cols = st.columns(3)
+        with action_cols[0]:
+            st.link_button(
+                "Open Analysis Details",
+                f"?page=Analysis%20Details&analysis_id={selected_analysis_id}",
+                use_container_width=True,
+            )
+        with action_cols[1]:
+            st.link_button(
+                "Open in BOM Analyzer",
+                f"?page=BOM%20Analyzer&analysis_id={selected_analysis_id}",
+                use_container_width=True,
+            )
+        with action_cols[2]:
+            st.link_button(
+                "Open Alternative Finder",
+                f"?page=Alternative%20Finder&analysis_id={selected_analysis_id}",
+                use_container_width=True,
+            )
+
+        st.markdown(
+            '<div class="cv-r9-section">Recent generated reports</div>'
+            '<div class="cv-r9-sub">Milestone 9A keeps a current-session download history. Persistent history arrives in Milestone 9B.</div>',
+            unsafe_allow_html=True,
+        )
+
+        session_history = st.session_state.get(
+            "reports_session_history",
+            [],
+        )
+        if session_history:
+            st.dataframe(
+                pd.DataFrame(session_history),
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.markdown(
+                '<div class="cv-r9-empty">No reports have been downloaded during this session yet.</div>',
+                unsafe_allow_html=True,
+            )
+
+        with st.expander(
+            f"Browse all {len(report_records)} report-ready analyses",
+            expanded=False,
+        ):
+            display_rows = []
+            for row in report_records:
+                row_created_at = str(
+                    _report_value(
+                        row,
+                        "created_at",
+                        "date",
+                        default="",
+                    )
+                )
+                row_created_date = (
+                    row_created_at.split("T")[0]
+                    if "T" in row_created_at
+                    else row_created_at[:10]
+                )
+                display_rows.append(
+                    {
+                        "Project": _report_value(
+                            row,
+                            "project_name",
+                            "name",
+                            default="Saved BOM",
+                        ),
+                        "Source File": _report_value(
+                            row,
+                            "filename",
+                            "uploaded_file",
+                            "file_name",
+                            default="—",
+                        ),
+                        "Date": row_created_date or "—",
+                        "Health": _report_int(
+                            _report_value(
+                                row,
+                                "health_score",
+                                default=0,
+                            )
+                        ),
+                        "High Risk": _report_int(
+                            _report_value(
+                                row,
+                                "high_risk_count",
+                                "high_risk_parts",
+                                default=0,
+                            )
+                        ),
+                        "Medium Risk": _report_int(
+                            _report_value(
+                                row,
+                                "medium_risk_count",
+                                "medium_risk_parts",
+                                default=0,
+                            )
+                        ),
+                        "Parts": _report_int(
+                            _report_value(
+                                row,
+                                "total_parts",
+                                "part_count",
+                                "parts_count",
+                                default=0,
+                            )
+                        ),
+                    }
+                )
+            st.dataframe(
+                pd.DataFrame(display_rows),
+                hide_index=True,
+                use_container_width=True,
+            )
+    else:
+        st.markdown(
+            '<div class="cv-r9-empty">No saved BOM analyses are available. Analyze and save a BOM before generating reports.</div>',
+            unsafe_allow_html=True,
+        )
 
     st.stop()
 
