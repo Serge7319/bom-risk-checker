@@ -170,16 +170,37 @@ div.stButton > button[kind="secondary"]:not(:disabled):hover,
 [data-testid="stHorizontalBlock"]:has(.cadivor-metric-card),
 [data-testid="stHorizontalBlock"]:has(.cv-kpi-card),
 [data-testid="stHorizontalBlock"]:has(.cv-report-kpi),
-[data-testid="stHorizontalBlock"]:has(.cv-dashboard-kpi) {
-  gap: 12px !important;
+[data-testid="stHorizontalBlock"]:has(.cv-dashboard-kpi),
+[data-testid="stHorizontalBlock"]:has(.cv-snapshot-item) {
+  gap: 0 !important;
+  align-items: stretch !important;
 }
 
 [data-testid="stHorizontalBlock"]:has(.cadivor-metric-card) > [data-testid="column"],
 [data-testid="stHorizontalBlock"]:has(.cv-kpi-card) > [data-testid="column"],
 [data-testid="stHorizontalBlock"]:has(.cv-report-kpi) > [data-testid="column"],
-[data-testid="stHorizontalBlock"]:has(.cv-dashboard-kpi) > [data-testid="column"] {
-  padding: 0 !important;
+[data-testid="stHorizontalBlock"]:has(.cv-dashboard-kpi) > [data-testid="column"],
+[data-testid="stHorizontalBlock"]:has(.cv-snapshot-item) > [data-testid="column"] {
+  box-sizing: border-box !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
   min-width: 0 !important;
+}
+
+[data-testid="stHorizontalBlock"]:has(.cadivor-metric-card) > [data-testid="column"]:first-child,
+[data-testid="stHorizontalBlock"]:has(.cv-kpi-card) > [data-testid="column"]:first-child,
+[data-testid="stHorizontalBlock"]:has(.cv-report-kpi) > [data-testid="column"]:first-child,
+[data-testid="stHorizontalBlock"]:has(.cv-dashboard-kpi) > [data-testid="column"]:first-child,
+[data-testid="stHorizontalBlock"]:has(.cv-snapshot-item) > [data-testid="column"]:first-child {
+  padding-left: 0 !important;
+}
+
+[data-testid="stHorizontalBlock"]:has(.cadivor-metric-card) > [data-testid="column"]:last-child,
+[data-testid="stHorizontalBlock"]:has(.cv-kpi-card) > [data-testid="column"]:last-child,
+[data-testid="stHorizontalBlock"]:has(.cv-report-kpi) > [data-testid="column"]:last-child,
+[data-testid="stHorizontalBlock"]:has(.cv-dashboard-kpi) > [data-testid="column"]:last-child,
+[data-testid="stHorizontalBlock"]:has(.cv-snapshot-item) > [data-testid="column"]:last-child {
+  padding-right: 0 !important;
 }
 
 /* ------------------------------------------------------------
@@ -198,14 +219,27 @@ div.stButton > button[kind="secondary"]:not(:disabled):hover,
 
 [data-testid="stHorizontalBlock"]:has(.cv-report-card),
 [data-testid="stHorizontalBlock"]:has(.cv-report-template) {
-  gap: 12px !important;
+  gap: 0 !important;
   margin-bottom: 0 !important;
+  align-items: stretch !important;
 }
 
 [data-testid="stHorizontalBlock"]:has(.cv-report-card) > [data-testid="column"],
 [data-testid="stHorizontalBlock"]:has(.cv-report-template) > [data-testid="column"] {
-  padding: 0 !important;
+  box-sizing: border-box !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
   min-width: 0 !important;
+}
+
+[data-testid="stHorizontalBlock"]:has(.cv-report-card) > [data-testid="column"]:first-child,
+[data-testid="stHorizontalBlock"]:has(.cv-report-template) > [data-testid="column"]:first-child {
+  padding-left: 0 !important;
+}
+
+[data-testid="stHorizontalBlock"]:has(.cv-report-card) > [data-testid="column"]:last-child,
+[data-testid="stHorizontalBlock"]:has(.cv-report-template) > [data-testid="column"]:last-child {
+  padding-right: 0 !important;
 }
 
 /* Compact known report package and preview wrappers. */
@@ -299,6 +333,21 @@ div.stButton > button[kind="secondary"]:not(:disabled):hover,
   border: 1px solid var(--cv10-border) !important;
   border-radius: var(--cv10-radius-sm) !important;
   overflow: hidden !important;
+}
+
+
+/* Report-page safety: create real internal gutters without widening Streamlit rows. */
+.cv-report-kpi,
+.cv-report-selected-summary .cv-snapshot-item,
+.cv-report-selected-summary .cv-report-kpi {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.cv-report-selected-summary {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
 }
 
 @media (max-width: 760px) {
