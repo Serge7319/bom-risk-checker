@@ -494,42 +494,43 @@ def render_analysis_detail(*, current_user, supabase, load_analysis_history, lig
                             0,
                         )
                         rows.append(
-                            f"""
-                            <div class="cv-analysis-component">
-                              <div>
-                                <div class="head">{html.escape(mpn_value)}</div>
-                                <div class="sub">{html.escape(mfg_value)}</div>
-                              </div>
-                              <div>
-                                <div class="head">{html.escape(status_value)}</div>
-                                <div class="sub">Lifecycle</div>
-                              </div>
-                              <div>
-                                <div class="head">{stock_value:,}</div>
-                                <div class="sub">Stock</div>
-                              </div>
-                              <div>
-                                <div class="head">{supplier_count}</div>
-                                <div class="sub">Suppliers</div>
-                              </div>
-                              <div class="cv-analysis-pills">
-                                <span class="cv-analysis-pill {class_value}">
-                                  {html.escape(level_value)}
-                                </span>
-                              </div>
-                            </div>
-                            """
+                            (
+                                '<div class="cv-analysis-component">'
+                                '<div>'
+                                f'<div class="head">{html.escape(mpn_value)}</div>'
+                                f'<div class="sub">{html.escape(mfg_value)}</div>'
+                                '</div>'
+                                '<div>'
+                                f'<div class="head">{html.escape(status_value)}</div>'
+                                '<div class="sub">Lifecycle</div>'
+                                '</div>'
+                                '<div>'
+                                f'<div class="head">{stock_value:,}</div>'
+                                '<div class="sub">Stock</div>'
+                                '</div>'
+                                '<div>'
+                                f'<div class="head">{supplier_count}</div>'
+                                '<div class="sub">Suppliers</div>'
+                                '</div>'
+                                '<div class="cv-analysis-pills">'
+                                f'<span class="cv-analysis-pill {class_value}">'
+                                f'{html.escape(level_value)}'
+                                '</span>'
+                                '</div>'
+                                '</div>'
+                            )
                         )
+                    component_table_html = (
+                        '<div class="cv-analysis-table-wrap">'
+                        '<div class="cv-analysis-table-head">'
+                        '<strong>Filtered Components</strong>'
+                        f'<span>{len(filtered_parts)} records</span>'
+                        '</div>'
+                        + "".join(rows)
+                        + '</div>'
+                    )
                     st.markdown(
-                        f"""
-                        <div class="cv-analysis-table-wrap">
-                          <div class="cv-analysis-table-head">
-                            <strong>Filtered Components</strong>
-                            <span>{len(filtered_parts)} records</span>
-                          </div>
-                          {''.join(rows)}
-                        </div>
-                        """,
+                        component_table_html,
                         unsafe_allow_html=True,
                     )
 
