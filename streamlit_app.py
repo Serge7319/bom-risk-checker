@@ -3677,17 +3677,27 @@ if app_mode == "Workspace":
                 """,
                 unsafe_allow_html=True,
             )
-            st.markdown('<div class="cv-ws-card"><h3>Recent workspace activity</h3><p>The latest collaboration and administration events.</p></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="cv-ws-card"><h3>Recent workspace activity</h3><p>Activity is collapsed by default so the overview remains compact. The complete audit timeline remains available in the Activity tab.</p></div>',
+                unsafe_allow_html=True,
+            )
             if activity_error:
                 st.warning(f"Activity could not be loaded: {activity_error}")
             elif not activity_rows:
                 st.info("No workspace activity has been recorded yet.")
             else:
-                for item in activity_rows[:6]:
-                    st.markdown(
-                        f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(item.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(item.get("actor_name"), "Cadivor"))} · {html.escape(str(item.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
-                        unsafe_allow_html=True,
-                    )
+                latest_activity = activity_rows[0]
+                st.markdown(
+                    f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(latest_activity.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(latest_activity.get("actor_name"), "Cadivor"))} · {html.escape(str(latest_activity.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
+                    unsafe_allow_html=True,
+                )
+                with st.expander(f"View recent activity ({min(len(activity_rows), 6)} events)", expanded=False):
+                    for item in activity_rows[:6]:
+                        st.markdown(
+                            f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(item.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(item.get("actor_name"), "Cadivor"))} · {html.escape(str(item.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                    st.caption("Open the Activity tab for the complete workspace audit timeline.")
         with right:
             st.markdown(
                 f"""
@@ -3800,7 +3810,12 @@ if app_mode == "Workspace":
             if can_administer:
                 invite_lookup = {f"{row.get('email')} — {str(row.get('created_at',''))[:10]}": row for row in pending_invites}
                 selected_invite_label = st.selectbox("Select an invitation to cancel", list(invite_lookup.keys()))
-                if st.button("Cancel Selected Invitation"):
+                if st.button(
+                    "Cancel Selected Invitation",
+                    type="primary",
+                    use_container_width=False,
+                    key="cancel_selected_workspace_invitation",
+                ):
                     selected_invite = invite_lookup[selected_invite_label]
                     error = cancel_invite(supabase, workspace_id, str(selected_invite.get("id")), user_id, owner_name, _safe_text(selected_invite.get("email"), ""))
                     if error:
