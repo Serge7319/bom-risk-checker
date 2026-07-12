@@ -1,10 +1,4 @@
-"""Cadivor saved analysis detail page.
-
-This page turns each saved BOM analysis into a durable engineering record.
-Dashboard links can now open a specific analysis instead of sending every user
-back to the BOM Analyzer.
-"""
-
+"""Cadivor saved-analysis workspace with persistent tab navigation."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -34,12 +28,11 @@ def _num(value: Any, default: int = 0) -> int:
 def _date(value: Any) -> str:
     if not value:
         return "—"
-    text = str(value)
     try:
-        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         return dt.strftime("%b %d, %Y")
     except Exception:
-        return text[:10]
+        return str(value)[:10]
 
 
 def _relative_date(value: Any) -> str:
@@ -53,8 +46,7 @@ def _relative_date(value: Any) -> str:
         if delta.days <= 0:
             hours = int(delta.total_seconds() // 3600)
             if hours <= 0:
-                minutes = max(1, int(delta.total_seconds() // 60))
-                return f"{minutes} min ago"
+                return f"{max(1, int(delta.total_seconds() // 60))} min ago"
             return f"{hours} hr ago"
         if delta.days == 1:
             return "Yesterday"
@@ -87,15 +79,12 @@ def _health_class(score: Any) -> str:
 def _lucide(name: str, size: int = 18) -> str:
     icons = {
         "arrow-left": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
-        "file": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+        "file": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/>',
         "shield": '<path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z"/><path d="m9 12 2 2 4-4"/>',
         "alert": '<path d="m21.7 18-8.5-15a1.4 1.4 0 0 0-2.4 0L2.3 18a1.4 1.4 0 0 0 1.2 2h17a1.4 1.4 0 0 0 1.2-2Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
         "layers": '<path d="m12 2 10 5-10 5L2 7l10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
-        "activity": '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
         "replace": '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
         "download": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
-        "factory": '<path d="M2 20h20"/><path d="M6 20V8l6 4V8l6 4v8"/><path d="M18 10V4h3v16"/>',
-        "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     }
     body = icons.get(name, icons["file"])
     return (
@@ -111,26 +100,20 @@ def _query_table(supabase, table: str, *, user_id: str, analysis_id: str, order:
             query = query.order(order, desc=True)
         if limit:
             query = query.limit(limit)
-        response = query.execute()
-        return response.data or []
+        return query.execute().data or []
     except Exception:
         return []
 
 
-def _analysis_link(analysis_id: str) -> str:
-    return f"?page=Analysis%20Details&analysis_id={html.escape(str(analysis_id), quote=True)}"
+def _section_header(title: str, subtitle: str) -> None:
+    st.markdown(
+        f'<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">{html.escape(title)}</div>'
+        f'<div class="cv-analysis-section-meta">{html.escape(subtitle)}</div></div></div>',
+        unsafe_allow_html=True,
+    )
 
 
-def render_analysis_detail(
-    *,
-    current_user,
-    supabase,
-    load_analysis_history,
-    light_plotly_layout=None,
-    _qp_value=None,
-):
-    """Render a dedicated saved-analysis workspace."""
-
+def render_analysis_detail(*, current_user, supabase, load_analysis_history, light_plotly_layout=None, _qp_value=None):
     analysis_id = ""
     if _qp_value:
         analysis_id = _safe(_qp_value("analysis_id", ""), "")
@@ -139,113 +122,44 @@ def render_analysis_detail(
 
     st.markdown(
         """
-        <style>
-        .cv-analysis-shell{display:grid;gap:18px;}
-        .cv-analysis-back{display:inline-flex;align-items:center;gap:8px;color:#2563EB!important;text-decoration:none!important;font-size:12px;font-weight:950;margin-bottom:2px;}
-        .cv-analysis-hero{background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 58%,#EAF2FF 100%);border:1px solid #BFDBFE;border-radius:26px;padding:26px 28px;box-shadow:0 24px 70px rgba(15,23,42,.075);display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.9fr);gap:22px;align-items:center;}
-        .cv-analysis-eyebrow{display:inline-flex;align-items:center;gap:8px;border:1px solid #BFDBFE;background:#EFF6FF;color:#2563EB!important;border-radius:999px;padding:8px 12px;font-size:11px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px;}
-        .cv-analysis-title{color:#0B1220!important;font-size:38px;font-weight:980;line-height:1.02;letter-spacing:-.045em;margin:0 0 10px 0;}
-        .cv-analysis-sub{color:#475569!important;font-size:14px;font-weight:750;line-height:1.65;max-width:820px;margin:0;}
-        .cv-analysis-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;}
-        .cv-analysis-btn{display:inline-flex;align-items:center;gap:8px;text-decoration:none!important;border-radius:12px;padding:12px 14px;font-size:12px;font-weight:950;border:1px solid #BFDBFE;background:#F8FAFC;color:#2563EB!important;}
-        .cv-analysis-btn.primary{background:#2563EB;color:#FFFFFF!important;border-color:#2563EB;box-shadow:0 16px 30px rgba(37,99,235,.23);}
-        .cv-analysis-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
-        .cv-analysis-mini{background:rgba(255,255,255,.9);border:1px solid #E2E8F0;border-radius:18px;padding:15px 16px;box-shadow:0 12px 28px rgba(15,23,42,.045);}
-        .cv-analysis-mini span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;}
-        .cv-analysis-mini strong{display:block;color:#0B1220!important;font-size:25px;font-weight:980;line-height:1;}
-        .cv-analysis-mini small{display:block;color:#475569!important;font-size:11.5px;font-weight:800;margin-top:6px;}
-        .cv-analysis-section{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-top:12px;margin-bottom:8px;}
-        .cv-analysis-section-title{color:#0B1220!important;font-size:21px;font-weight:980;letter-spacing:-.025em;line-height:1.1;}
-        .cv-analysis-section-meta{color:#64748B!important;font-size:12px;font-weight:800;margin-top:4px;}
-        .cv-analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
-        .cv-analysis-card{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 44px rgba(15,23,42,.055);}
-        .cv-analysis-card-title{display:flex;align-items:center;justify-content:space-between;gap:14px;color:#0B1220!important;font-size:16px;font-weight:980;margin-bottom:12px;}
-        .cv-analysis-icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #BFDBFE;color:#2563EB!important;}
-        .cv-analysis-row-list{display:grid;gap:9px;}
-        .cv-analysis-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;padding:13px 14px;box-shadow:0 10px 25px rgba(15,23,42,.035);}
-        .cv-analysis-row:hover{border-color:#BFDBFE;box-shadow:0 18px 42px rgba(15,23,42,.07);transform:translateY(-1px);transition:all .16s ease;}
-        .cv-analysis-row-title{color:#0B1220!important;font-size:13px;font-weight:980;margin-bottom:4px;}
-        .cv-analysis-row-meta{color:#64748B!important;font-size:11.5px;font-weight:800;line-height:1.45;}
-        .cv-analysis-pills{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
-        .cv-analysis-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:7px 9px;font-size:11px;font-weight:950;border:1px solid #BFDBFE;background:#EFF6FF;color:#2563EB!important;white-space:nowrap;}
-        .cv-analysis-pill.good{border-color:#A7F3D0;background:#ECFDF5;color:#047857!important;}.cv-analysis-pill.warn{border-color:#FDE68A;background:#FFFBEB;color:#B45309!important;}.cv-analysis-pill.bad{border-color:#FECACA;background:#FEF2F2;color:#B91C1C!important;}
-        .cv-analysis-table-wrap{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:22px;padding:0;box-shadow:0 18px 44px rgba(15,23,42,.055);overflow:hidden;}
-        .cv-analysis-table-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #E2E8F0;gap:14px;}
-        .cv-analysis-table-head strong{color:#0B1220!important;font-size:16px;font-weight:980;}.cv-analysis-table-head span{color:#64748B!important;font-size:12px;font-weight:800;}
-        .cv-analysis-component-list{display:grid;}
-        .cv-analysis-component{display:grid;grid-template-columns:1.2fr 1fr .75fr .75fr auto;gap:12px;align-items:center;padding:13px 20px;border-bottom:1px solid #EEF2F7;}
-        .cv-analysis-component:last-child{border-bottom:0;}.cv-analysis-component:hover{background:#F8FAFC;}
-        .cv-analysis-component .head{color:#0B1220!important;font-size:13px;font-weight:980;}.cv-analysis-component .sub{color:#64748B!important;font-size:11px;font-weight:800;margin-top:3px;}
-        .cv-analysis-empty{border:1px dashed #CBD5E1;background:#F8FAFC;border-radius:18px;padding:24px;text-align:center;color:#64748B!important;font-size:13px;font-weight:800;}
-
-        .cv-risk-compact{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:22px;padding:18px 18px 16px;box-shadow:0 18px 44px rgba(15,23,42,.055);}
-        .cv-risk-total{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:14px;}
-        .cv-risk-total strong{color:#0B1220!important;font-size:28px;font-weight:980;letter-spacing:-.035em;}
-        .cv-risk-total span{color:#64748B!important;font-size:11px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;}
-        .cv-risk-meter{display:flex;height:14px;border-radius:999px;overflow:hidden;background:#EEF2F7;border:1px solid #E2E8F0;margin-bottom:14px;}
-        .cv-risk-seg{height:100%;min-width:0;}
-        .cv-risk-seg.high{background:#EF4444;}.cv-risk-seg.medium{background:#F59E0B;}.cv-risk-seg.low{background:#16A34A;}
-        .cv-risk-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
-        .cv-risk-stat{border:1px solid #E2E8F0;background:#F8FAFC;border-radius:16px;padding:12px;}
-        .cv-risk-stat .label{display:flex;align-items:center;gap:8px;color:#64748B!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;}
-        .cv-risk-dot{width:9px;height:9px;border-radius:999px;display:inline-block;}.cv-risk-dot.high{background:#EF4444;}.cv-risk-dot.medium{background:#F59E0B;}.cv-risk-dot.low{background:#16A34A;}
-        .cv-risk-stat strong{display:block;color:#0B1220!important;font-size:22px;font-weight:980;line-height:1;}.cv-risk-stat small{display:block;color:#64748B!important;font-size:11px;font-weight:800;margin-top:6px;}
-
-        .cv-readiness-list{display:grid;gap:12px;}
-        .cv-readiness-row{border:1px solid #E2E8F0;background:#F8FAFC;border-radius:16px;padding:13px;}
-        .cv-readiness-row strong{display:block;color:#0B1220!important;font-size:13px;font-weight:980;margin-bottom:4px;}
-        .cv-readiness-row span{display:block;color:#64748B!important;font-size:11px;font-weight:800;}
-        .cv-readiness-bar{height:9px;border-radius:999px;background:#E2E8F0;overflow:hidden;margin-top:10px;}
-        .cv-readiness-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563EB,#16A34A);}
-        .cv-readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
-        .cv-readiness-metrics div{border:1px solid #E2E8F0;background:#FFFFFF;border-radius:16px;padding:12px;}
-        .cv-readiness-metrics span{display:block;color:#64748B!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;}
-        .cv-readiness-metrics strong{display:block;color:#0B1220!important;font-size:22px;font-weight:980;line-height:1;}
-        .cv-readiness-metrics small{display:block;color:#64748B!important;font-size:10.5px;font-weight:800;margin-top:6px;}
-        .cv-risk-compact:hover,.cv-analysis-card:hover{border-color:#BFDBFE;box-shadow:0 22px 52px rgba(15,23,42,.075);transition:all .16s ease;}
-        .cv-workspace-tabs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:16px 0 6px 0;padding:7px;border:1px solid #E2E8F0;background:rgba(255,255,255,.78);backdrop-filter:blur(12px);border-radius:16px;box-shadow:0 14px 34px rgba(15,23,42,.045);}
-        .cv-workspace-tab{display:inline-flex;align-items:center;gap:7px;padding:10px 12px;border-radius:12px;color:#475569!important;text-decoration:none!important;font-size:12px;font-weight:950;border:1px solid transparent;}
-        .cv-workspace-tab.active{background:#EFF6FF;border-color:#BFDBFE;color:#2563EB!important;box-shadow:0 8px 18px rgba(37,99,235,.08);}
-        .cv-workspace-tab:hover{background:#F8FAFC;border-color:#E2E8F0;color:#2563EB!important;}
-        .cv-decision-brief{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:14px;align-items:start;background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%);border:1px solid #BFDBFE;border-radius:18px;padding:15px 16px;margin-bottom:12px;}
-        .cv-decision-brief h3{margin:0 0 5px 0;color:#0B1220!important;font-size:14px;font-weight:980;letter-spacing:-.015em;}
-        .cv-decision-brief p{margin:0;color:#475569!important;font-size:12px;font-weight:800;line-height:1.55;}
-        .cv-decision-score{display:inline-flex;align-items:center;justify-content:center;min-width:72px;border-radius:999px;padding:8px 10px;border:1px solid #A7F3D0;background:#ECFDF5;color:#047857!important;font-size:12px;font-weight:980;}
-        @media(max-width:1180px){.cv-analysis-hero,.cv-analysis-grid{grid-template-columns:1fr}.cv-analysis-component{grid-template-columns:1fr}.cv-analysis-pills{justify-content:flex-start}.cv-analysis-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.cv-readiness-metrics{grid-template-columns:1fr}}
-        @media(max-width:700px){.cv-analysis-summary{grid-template-columns:1fr}.cv-analysis-title{font-size:30px}.cv-analysis-hero{padding:20px}}
+        <style id="cadivor-analysis-tabs-v82">
+        .cv-analysis-back{display:inline-flex;align-items:center;gap:8px;color:#2563EB!important;text-decoration:none!important;font-size:12px;font-weight:950;margin-bottom:10px}
+        .cv-analysis-hero{background:linear-gradient(135deg,#fff 0%,#f8fbff 58%,#eaf2ff 100%);border:1px solid #bfdbfe;border-radius:26px;padding:26px 28px;box-shadow:0 24px 70px rgba(15,23,42,.075);display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.9fr);gap:22px;align-items:center;margin-bottom:14px}
+        .cv-analysis-eyebrow{display:inline-flex;align-items:center;gap:8px;border:1px solid #bfdbfe;background:#eff6ff;color:#2563eb!important;border-radius:999px;padding:8px 12px;font-size:11px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}
+        .cv-analysis-title{color:#0b1220!important;font-size:38px;font-weight:980;line-height:1.02;letter-spacing:-.045em;margin:0 0 10px}
+        .cv-analysis-sub{color:#475569!important;font-size:14px;font-weight:750;line-height:1.65;max-width:820px;margin:0}
+        .cv-analysis-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.cv-analysis-btn{display:inline-flex;align-items:center;gap:8px;text-decoration:none!important;border-radius:12px;padding:12px 14px;font-size:12px;font-weight:950;border:1px solid #bfdbfe;background:#f8fafc;color:#2563eb!important}.cv-analysis-btn.primary{background:#2563eb;color:#fff!important;border-color:#2563eb;box-shadow:0 16px 30px rgba(37,99,235,.23)}
+        .cv-analysis-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-analysis-mini{background:rgba(255,255,255,.9);border:1px solid #e2e8f0;border-radius:18px;padding:15px 16px;box-shadow:0 12px 28px rgba(15,23,42,.045)}.cv-analysis-mini span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-analysis-mini strong{display:block;color:#0b1220!important;font-size:25px;font-weight:980;line-height:1}.cv-analysis-mini small{display:block;color:#475569!important;font-size:11px;font-weight:800;margin-top:6px}
+        .cv-analysis-section{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:14px 0 8px}.cv-analysis-section-title{color:#0b1220!important;font-size:21px;font-weight:980;letter-spacing:-.025em}.cv-analysis-section-meta{color:#64748b!important;font-size:12px;font-weight:800;margin-top:4px}
+        .cv-analysis-card,.cv-risk-compact{background:#fff;border:1px solid #e2e8f0;border-radius:22px;padding:20px;box-shadow:0 18px 44px rgba(15,23,42,.055)}.cv-analysis-card-title{display:flex;align-items:center;justify-content:space-between;gap:14px;color:#0b1220!important;font-size:16px;font-weight:980;margin-bottom:12px}.cv-analysis-icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#eff6ff;border:1px solid #bfdbfe;color:#2563eb!important}
+        .cv-analysis-row-list{display:grid;gap:9px}.cv-analysis-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:13px 14px}.cv-analysis-row-title{color:#0b1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-analysis-row-meta{color:#64748b!important;font-size:11px;font-weight:800;line-height:1.45}.cv-analysis-pills{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.cv-analysis-pill{display:inline-flex;border-radius:999px;padding:7px 9px;font-size:11px;font-weight:950;border:1px solid #bfdbfe;background:#eff6ff;color:#2563eb!important}.cv-analysis-pill.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857!important}.cv-analysis-pill.warn{border-color:#fde68a;background:#fffbeb;color:#b45309!important}.cv-analysis-pill.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c!important}
+        .cv-analysis-empty{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:18px;padding:24px;text-align:center;color:#64748b!important;font-size:13px;font-weight:800}.cv-readiness-list{display:grid;gap:12px}.cv-readiness-row{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:13px}.cv-readiness-row strong{display:block;color:#0b1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-readiness-row span{display:block;color:#64748b!important;font-size:11px;font-weight:800}.cv-readiness-bar{height:9px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:10px}.cv-readiness-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#16a34a)}.cv-readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.cv-readiness-metrics div{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:12px}.cv-readiness-metrics span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-readiness-metrics strong{display:block;color:#0b1220!important;font-size:22px;font-weight:980}.cv-readiness-metrics small{display:block;color:#64748b!important;font-size:10px;font-weight:800;margin-top:6px}
+        .cv-analysis-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 18px 44px rgba(15,23,42,.055);overflow:hidden}.cv-analysis-table-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #e2e8f0}.cv-analysis-component{display:grid;grid-template-columns:1.2fr 1fr .75fr .75fr auto;gap:12px;align-items:center;padding:13px 20px;border-bottom:1px solid #eef2f7}.cv-analysis-component .head{color:#0b1220!important;font-size:13px;font-weight:980}.cv-analysis-component .sub{color:#64748b!important;font-size:11px;font-weight:800;margin-top:3px}
+        [data-testid="stTabs"]{margin-top:8px}[data-testid="stTabs"] [data-baseweb="tab-list"]{position:sticky;top:64px;z-index:40;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:6px;box-shadow:0 12px 28px rgba(15,23,42,.06);gap:6px}[data-testid="stTabs"] [data-baseweb="tab"]{height:42px;border-radius:11px;padding:0 18px;font-weight:900;color:#475569}[data-testid="stTabs"] [aria-selected="true"]{background:#eff6ff!important;color:#2563eb!important}
+        @media(max-width:1180px){.cv-analysis-hero{grid-template-columns:1fr}.cv-analysis-component{grid-template-columns:1fr}.cv-readiness-metrics{grid-template-columns:1fr}}@media(max-width:700px){.cv-analysis-summary{grid-template-columns:1fr}.cv-analysis-title{font-size:30px}.cv-analysis-hero{padding:20px}}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
     if not analysis_id:
-        st.markdown('<a class="cv-analysis-back" href="?page=Dashboard" target="_self">' + _lucide("arrow-left", 16) + ' Back to Dashboard</a>', unsafe_allow_html=True)
-        st.error("No analysis was selected. Open an analysis from the Dashboard Recent Analyses section.")
+        st.error("No analysis was selected. Open one saved analysis from the Saved BOM Manager.")
         return
 
     user_id = current_user.get("id")
     try:
-        analysis_response = (
-            supabase.table("analyses")
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("id", analysis_id)
-            .limit(1)
-            .execute()
-        )
-        analysis = (analysis_response.data or [None])[0]
+        response = supabase.table("analyses").select("*").eq("user_id", user_id).eq("id", analysis_id).limit(1).execute()
+        analysis = (response.data or [None])[0]
     except Exception as exc:
         st.error(f"Could not load this analysis: {exc}")
         return
-
     if not analysis:
-        st.markdown('<a class="cv-analysis-back" href="?page=Dashboard" target="_self">' + _lucide("arrow-left", 16) + ' Back to Dashboard</a>', unsafe_allow_html=True)
         st.warning("This saved analysis could not be found, or you do not have access to it.")
         return
 
     parts = _query_table(supabase, "analysis_parts", user_id=user_id, analysis_id=analysis_id)
-    alerts = _query_table(supabase, "monitor_alerts", user_id=user_id, analysis_id=analysis_id, order="created_at", limit=10)
-    alternatives = _query_table(supabase, "alternative_recommendations", user_id=user_id, analysis_id=analysis_id, order="created_at", limit=10)
+    alerts = _query_table(supabase, "monitor_alerts", user_id=user_id, analysis_id=analysis_id, order="created_at", limit=50)
+    alternatives = _query_table(supabase, "alternative_recommendations", user_id=user_id, analysis_id=analysis_id, order="created_at", limit=50)
 
     project = _safe(analysis.get("project_name") or analysis.get("filename"), "Saved BOM Analysis")
     filename = _safe(analysis.get("filename"))
@@ -258,192 +172,77 @@ def render_analysis_detail(
     risk_status = "Review Recommended" if health < 80 or high else "Healthy"
     health_cls = _health_class(health)
 
-    st.markdown('<a class="cv-analysis-back" href="?page=Dashboard" target="_self">' + _lucide("arrow-left", 16) + ' Back to Dashboard</a>', unsafe_allow_html=True)
-
+    st.markdown('<a class="cv-analysis-back" href="?page=BOM%20Analyzer" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
     st.markdown(
-        f"""
-        <div class="cv-analysis-hero">
-          <div>
-            <div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div>
-            <h1 class="cv-analysis-title">{html.escape(project)}</h1>
-            <p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Review risk, lifecycle status, supplier alerts, replacement readiness, and export-ready data from one workspace.</p>
-            <div class="cv-analysis-actions">
-              <a class="cv-analysis-btn primary" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open in BOM Analyzer →</a>
-              <a class="cv-analysis-btn" href="?page=Alternative%20Finder" target="_self">Find Alternatives</a>
-              <a class="cv-analysis-btn" href="?page=Reports" target="_self">Export Report</a>
-            </div>
-          </div>
-          <div class="cv-analysis-summary">
-            <div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div>
-            <div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div>
-            <div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div>
-            <div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div>
-          </div>
-        </div>
-        """,
+        f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p><div class="cv-analysis-actions"><a class="cv-analysis-btn primary" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open in BOM Analyzer →</a><a class="cv-analysis-btn" href="?page=Alternative%20Finder" target="_self">Find Alternatives</a><a class="cv-analysis-btn" href="?page=Reports" target="_self">Reports Center</a></div></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        """
-        <div class="cv-workspace-tabs">
-          <a class="cv-workspace-tab active" href="#overview">Overview</a>
-          <a class="cv-workspace-tab" href="#intelligence">Intelligence</a>
-          <a class="cv-workspace-tab" href="#components">Components</a>
-          <a class="cv-workspace-tab" href="#alternatives">Alternatives</a>
-          <a class="cv-workspace-tab" href="#reports">Reports</a>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    overview_tab, intelligence_tab, components_tab, alternatives_tab, reports_tab = st.tabs([
+        "Overview", "Intelligence", "Components", "Alternatives", "Reports"
+    ])
 
-    st.markdown(
-        '<div id="overview" class="cv-analysis-section"><div><div class="cv-analysis-section-title">Decision Brief</div><div class="cv-analysis-section-meta">AI-style engineering signals for this BOM investigation.</div></div></div>',
-        unsafe_allow_html=True,
-    )
+    with overview_tab:
+        _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
+        summary_col, risk_col = st.columns([1.05, 1])
+        with summary_col:
+            action_text = "Review high-risk components before release." if high else "Continue periodic monitoring for supplier and lifecycle changes."
+            st.markdown(f'''<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Recommended Next Action</span><div class="cv-analysis-icon">{_lucide('shield',18)}</div></div><div class="cv-analysis-row-list"><div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{html.escape(action_text)}</div><div class="cv-analysis-row-meta">{high} high-risk components • {len(alerts)} saved alerts • {len(alternatives)} replacement records</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {health_cls}">{health} health</span></div></div><div class="cv-analysis-row"><div><div class="cv-analysis-row-title">Source file</div><div class="cv-analysis-row-meta">{html.escape(filename)} • saved {_relative_date(created)}</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill">Saved</span></div></div></div></div>''', unsafe_allow_html=True)
+        with risk_col:
+            risk_html = "".join(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{label}</div><div class="cv-analysis-row-meta">Component count in this analysis</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {cls}">{value}</span></div></div>' for label,value,cls in [("High Risk",high,"bad" if high else "good"),("Medium Risk",medium,"warn" if medium else "good"),("Low Risk",low,"good")])
+            st.markdown(f'<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Risk Breakdown</span><div class="cv-analysis-icon">{_lucide("alert",18)}</div></div><div class="cv-analysis-row-list">{risk_html}</div></div>', unsafe_allow_html=True)
 
-    summary_col, risk_col = st.columns([1.05, 1])
-    with summary_col:
-        action_text = "Review high-risk components before release." if high else "Continue periodic monitoring for supplier and lifecycle changes."
-        brief_text = (
-            f"Cadivor found {high} high-risk component{'s' if high != 1 else ''}, {medium} medium-risk component{'s' if medium != 1 else ''}, "
-            f"and {len(alerts)} supplier or lifecycle alert{'s' if len(alerts) != 1 else ''}. "
-            f"Use this workspace to review risk drivers, validate replacement readiness, and export a release-ready report."
-        )
-        st.markdown(
-            f"""
-            <div class="cv-decision-brief">
-              <div class="cv-analysis-icon">{_lucide('activity',18)}</div>
-              <div><h3>Engineering decision brief</h3><p>{html.escape(brief_text)}</p></div>
-              <div class="cv-decision-score">{health} health</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <div class="cv-analysis-card">
-              <div class="cv-analysis-card-title"><span>Recommended Next Action</span><div class="cv-analysis-icon">{_lucide('shield',18)}</div></div>
-              <div class="cv-analysis-row-list">
-                <div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{html.escape(action_text)}</div><div class="cv-analysis-row-meta">{high} high-risk components • {len(alerts)} saved alerts • {len(alternatives)} replacement records</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {health_cls}">{health} health</span></div></div>
-                <div class="cv-analysis-row"><div><div class="cv-analysis-row-title">Source file</div><div class="cv-analysis-row-meta">{html.escape(filename)} • saved {_relative_date(created)}</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill">Saved</span></div></div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with risk_col:
-        risk_html = "".join(
-            [
-                f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{label}</div><div class="cv-analysis-row-meta">Component count in this analysis</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {cls}">{value}</span></div></div>'
-                for label, value, cls in [
-                    ("High Risk", high, "bad" if high else "good"),
-                    ("Medium Risk", medium, "warn" if medium else "good"),
-                    ("Low Risk", low, "good"),
-                ]
-            ]
-        )
-        st.markdown(
-            f"""
-            <div class="cv-analysis-card">
-              <div class="cv-analysis-card-title"><span>Risk Breakdown</span><div class="cv-analysis-icon">{_lucide('alert',18)}</div></div>
-              <div class="cv-analysis-row-list">{risk_html}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    chart_col, alerts_col = st.columns([1.05, 1])
-    with chart_col:
-        st.markdown('<div id="intelligence" class="cv-analysis-section"><div><div class="cv-analysis-section-title">Lifecycle & Replacement Intelligence</div><div class="cv-analysis-section-meta">Operational readiness, stock health, supplier alerts, and replacement signals.</div></div></div>', unsafe_allow_html=True)
+    with intelligence_tab:
+        _section_header("Lifecycle & Replacement Intelligence", "Operational readiness, stock health, supplier alerts, and replacement signals.")
         total = max(1, total_parts)
         active_count = sum(1 for p in parts if "active" in str(p.get("lifecycle_status") or p.get("Lifecycle Status") or "").lower())
         no_stock = sum(1 for p in parts if _num(p.get("stock_available") or p.get("Stock Available"), 0) <= 0)
-        monitored_alerts = len(alerts)
-        replacement_ready = len(alternatives)
         active_pct = round((active_count / total) * 100) if parts else 0
         stock_health = max(0, total_parts - no_stock)
         stock_pct = round((stock_health / total) * 100) if parts else 0
-        st.markdown(
-            f"""
-            <div class="cv-risk-compact">
-              <div class="cv-risk-total"><span>Workspace readiness score</span><strong>{max(0, min(100, health))}</strong></div>
-              <div class="cv-readiness-list">
-                <div class="cv-readiness-row">
-                  <div><strong>Lifecycle Coverage</strong><span>{active_count} active components · {active_pct}% of BOM</span></div>
-                  <div class="cv-readiness-bar"><i style="width:{active_pct}%"></i></div>
-                </div>
-                <div class="cv-readiness-row">
-                  <div><strong>Stock Health</strong><span>{stock_health} parts with available stock · {no_stock} no-stock risk</span></div>
-                  <div class="cv-readiness-bar"><i style="width:{stock_pct}%"></i></div>
-                </div>
-                <div class="cv-readiness-metrics">
-                  <div><span>Supplier Alerts</span><strong>{monitored_alerts}</strong><small>attached to analysis</small></div>
-                  <div><span>Validated Alternatives</span><strong>{replacement_ready}</strong><small>linked to this analysis</small></div>
-                  <div><span>High-Risk Parts</span><strong>{high}</strong><small>need engineering review</small></div>
-                </div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with alerts_col:
-        st.markdown('<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">Supplier & Lifecycle Alerts</div><div class="cv-analysis-section-meta">Alerts associated with this analysis.</div></div></div>', unsafe_allow_html=True)
-        if alerts:
-            rows = []
-            for alert in alerts[:5]:
-                part = html.escape(_safe(alert.get("part_number") or alert.get("mpn"), "Component"))
-                alert_type = html.escape(_safe(alert.get("alert_type"), "Alert"))
-                msg = html.escape(_safe(alert.get("alert_message"), "Supplier or lifecycle change detected."))
-                severity = _safe(alert.get("severity") or alert.get("severity_display"), "High")
-                rows.append(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{part}</div><div class="cv-analysis-row-meta">{alert_type} • {msg}</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill bad">{html.escape(severity)}</span></div></div>')
-            st.markdown(f'<div class="cv-analysis-row-list">{"".join(rows)}</div>', unsafe_allow_html=True)
+        intel_col, alerts_col = st.columns([1.05,1])
+        with intel_col:
+            st.markdown(f'''<div class="cv-risk-compact"><div class="cv-readiness-list"><div class="cv-readiness-row"><div><strong>Lifecycle Coverage</strong><span>{active_count} active components · {active_pct}% of BOM</span></div><div class="cv-readiness-bar"><i style="width:{active_pct}%"></i></div></div><div class="cv-readiness-row"><div><strong>Stock Health</strong><span>{stock_health} parts with available stock · {no_stock} no-stock risk</span></div><div class="cv-readiness-bar"><i style="width:{stock_pct}%"></i></div></div><div class="cv-readiness-metrics"><div><span>Supplier Alerts</span><strong>{len(alerts)}</strong><small>attached to analysis</small></div><div><span>Validated Alternatives</span><strong>{len(alternatives)}</strong><small>linked to analysis</small></div><div><span>High-Risk Parts</span><strong>{high}</strong><small>need review</small></div></div></div></div>''', unsafe_allow_html=True)
+        with alerts_col:
+            if alerts:
+                rows=[]
+                for alert in alerts[:8]:
+                    part=html.escape(_safe(alert.get("part_number") or alert.get("mpn"),"Component")); msg=html.escape(_safe(alert.get("alert_message"),"Supplier or lifecycle change detected.")); severity=html.escape(_safe(alert.get("severity"),"High"))
+                    rows.append(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{part}</div><div class="cv-analysis-row-meta">{msg}</div></div><span class="cv-analysis-pill bad">{severity}</span></div>')
+                st.markdown('<div class="cv-analysis-row-list">'+''.join(rows)+'</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="cv-analysis-empty">No saved supplier or lifecycle alerts are attached to this analysis.</div>', unsafe_allow_html=True)
+
+    with components_tab:
+        _section_header("Component Risk Report", "All saved component records for this analysis, sorted by risk score.")
+        if parts:
+            top_parts=sorted(parts,key=lambda x:_num(x.get("risk_score"),0),reverse=True)
+            rows=[]
+            for p in top_parts:
+                mpn=html.escape(_safe(p.get("mpn") or p.get("MPN"),"Unknown MPN")); mfg=html.escape(_safe(p.get("manufacturer") or p.get("Manufacturer"),"Unknown manufacturer")); status=html.escape(_safe(p.get("lifecycle_status") or p.get("Lifecycle Status"),"Unknown")); stock=_num(p.get("stock_available") or p.get("Stock Available"),0); score=_num(p.get("risk_score") or p.get("Risk Score"),0); level=_safe(p.get("risk_level") or p.get("Risk Level"),"Low"); cls=_risk_class(level,score); supplier_count=_num(p.get("supplier_count") or p.get("Supplier Count"),0)
+                rows.append(f'<div class="cv-analysis-component"><div><div class="head">{mpn}</div><div class="sub">{mfg}</div></div><div><div class="head">{status}</div><div class="sub">Lifecycle</div></div><div><div class="head">{stock:,}</div><div class="sub">Stock</div></div><div><div class="head">{supplier_count}</div><div class="sub">Suppliers</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {cls}">{html.escape(level)}</span></div></div>')
+            st.markdown(f'<div class="cv-analysis-table-wrap"><div class="cv-analysis-table-head"><strong>Components</strong><span>{len(parts)} total parts</span></div>{"".join(rows)}</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="cv-analysis-empty">No saved supplier alerts are attached to this analysis yet.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="cv-analysis-empty">No saved component rows were found for this analysis.</div>', unsafe_allow_html=True)
 
-    st.markdown('<div id="components" class="cv-analysis-section"><div><div class="cv-analysis-section-title">Component Risk Report</div><div class="cv-analysis-section-meta">Parts saved for this analysis. Open in BOM Analyzer for full filtering and exports.</div></div><a class="cv-analysis-btn" href="?page=BOM%20Analyzer&analysis_id=' + html.escape(str(analysis_id), quote=True) + '" target="_self">Open full report →</a></div>', unsafe_allow_html=True)
+    with alternatives_tab:
+        _section_header("Replacement Readiness", "Alternative recommendation records linked to this analysis.")
+        if alternatives:
+            rows=[]
+            for alt in alternatives:
+                original=html.escape(_safe(alt.get("original_mpn") or alt.get("mpn") or alt.get("part_number"),"Original component")); recommendation=html.escape(_safe(alt.get("alternative_mpn") or alt.get("recommended_mpn") or alt.get("candidate_mpn") or alt.get("replacement_mpn"),"Candidate available")); supplier=html.escape(_safe(alt.get("supplier") or alt.get("source"),"Supplier review"))
+                rows.append(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{original} → {recommendation}</div><div class="cv-analysis-row-meta">{supplier}</div></div><span class="cv-analysis-pill good">Alternative</span></div>')
+            st.markdown('<div class="cv-analysis-row-list">'+''.join(rows)+'</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="cv-analysis-empty">No validated replacement candidates are linked yet. Use Alternative Finder to review lower-risk options.</div>', unsafe_allow_html=True)
+            st.link_button("Open Alternative Finder", "?page=Alternative%20Finder", use_container_width=False)
 
-    if parts:
-        top_parts = sorted(parts, key=lambda x: _num(x.get("risk_score"), 0), reverse=True)[:12]
-        rows = []
-        for p in top_parts:
-            mpn = html.escape(_safe(p.get("mpn") or p.get("MPN"), "Unknown MPN"))
-            mfg = html.escape(_safe(p.get("manufacturer") or p.get("Manufacturer"), "Unknown manufacturer"))
-            status = html.escape(_safe(p.get("lifecycle_status") or p.get("Lifecycle Status"), "Unknown"))
-            stock = _num(p.get("stock_available") or p.get("Stock Available"), 0)
-            risk_score = _num(p.get("risk_score") or p.get("Risk Score"), 0)
-            level = _safe(p.get("risk_level") or p.get("Risk Level"), "Low")
-            cls = _risk_class(level, risk_score)
-            supplier_count = _num(p.get("supplier_count") or p.get("Supplier Count"), 0)
-            rows.append(
-                f'<div class="cv-analysis-component">'
-                f'<div><div class="head">{mpn}</div><div class="sub">{mfg}</div></div>'
-                f'<div><div class="head">{status}</div><div class="sub">Lifecycle</div></div>'
-                f'<div><div class="head">{stock:,}</div><div class="sub">Stock</div></div>'
-                f'<div><div class="head">{supplier_count}</div><div class="sub">Suppliers</div></div>'
-                f'<div class="cv-analysis-pills"><span class="cv-analysis-pill {cls}">{html.escape(level)}</span></div>'
-                f'</div>'
-            )
-        st.markdown(
-            f"""
-            <div class="cv-analysis-table-wrap">
-              <div class="cv-analysis-table-head"><div><strong>Top Components</strong><br><span>Sorted by risk score where available.</span></div><span>{len(parts)} total parts</span></div>
-              <div class="cv-analysis-component-list">{"".join(rows)}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown('<div class="cv-analysis-empty">No saved part rows were found for this analysis. The summary record exists, but detailed component data is missing.</div>', unsafe_allow_html=True)
-
-    st.markdown('<div id="alternatives" class="cv-analysis-section"><div><div class="cv-analysis-section-title">Replacement Readiness</div><div class="cv-analysis-section-meta">Alternative recommendation records linked to this analysis.</div></div></div>', unsafe_allow_html=True)
-    if alternatives:
-        alt_rows = []
-        for alt in alternatives[:6]:
-            original = html.escape(_safe(alt.get("original_mpn") or alt.get("mpn") or alt.get("part_number"), "Original component"))
-            recommendation = html.escape(_safe(alt.get("alternative_mpn") or alt.get("recommended_mpn") or alt.get("candidate_mpn") or alt.get("replacement_mpn"), "Candidate available"))
-            supplier = html.escape(_safe(alt.get("supplier") or alt.get("source"), "Supplier review"))
-            alt_rows.append(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{original} → {recommendation}</div><div class="cv-analysis-row-meta">{supplier}</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill good">Alternative</span></div></div>')
-        st.markdown(f'<div class="cv-analysis-row-list">{"".join(alt_rows)}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="cv-analysis-empty">No validated replacement candidates are linked yet. Use Alternative Finder to review lower-risk options.</div>', unsafe_allow_html=True)
+    with reports_tab:
+        _section_header("Reports & Exports", "Open Cadivor reporting tools for this saved engineering record.")
+        rep1, rep2 = st.columns(2)
+        with rep1:
+            st.markdown(f'''<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Engineering Report</span><div class="cv-analysis-icon">{_lucide('download',18)}</div></div><div class="cv-analysis-row-meta">Generate PDF and CSV deliverables from the Reports Center for <b>{html.escape(project)}</b>.</div></div>''', unsafe_allow_html=True)
+            st.link_button("Open Reports Center", "?page=Reports", use_container_width=True)
+        with rep2:
+            st.markdown(f'''<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Full BOM Workspace</span><div class="cv-analysis-icon">{_lucide('file',18)}</div></div><div class="cv-analysis-row-meta">Return to the BOM Analyzer for detailed filtering and engineering exports.</div></div>''', unsafe_allow_html=True)
+            st.link_button("Open in BOM Analyzer", f"?page=BOM%20Analyzer&analysis_id={analysis_id}", use_container_width=True)
