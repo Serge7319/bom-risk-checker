@@ -5593,32 +5593,407 @@ if app_mode == "Alternative Finder":
 if app_mode == "BOM Analyzer":
 
     st.markdown(
-    """
-    <div class="card">
-        <div class="card-title">📤 Upload BOM</div>
-        <div class="card-text">
-            Upload a CSV or Excel BOM to analyze lifecycle, sourcing, and supply chain risk.
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+        """
+        <style id="cadivor-bom-intelligence-v1">
+        .bom8-hero{
+            border:1px solid #b9d4ff;
+            border-radius:24px;
+            padding:26px 28px;
+            margin-bottom:22px;
+            background:
+                radial-gradient(circle at 95% 5%,rgba(37,99,235,.15),transparent 34%),
+                linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);
+            box-shadow:0 18px 46px rgba(15,23,42,.07);
+        }
+        .bom8-eyebrow{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            border:1px solid #bfdbfe;
+            border-radius:999px;
+            padding:7px 11px;
+            color:#2563eb;
+            background:#eff6ff;
+            font-size:10px;
+            font-weight:900;
+            letter-spacing:.11em;
+            text-transform:uppercase;
+            margin-bottom:14px;
+        }
+        .bom8-hero h1{
+            color:#0f172a;
+            font-size:34px;
+            line-height:1.08;
+            letter-spacing:-.035em;
+            margin:0 0 10px;
+            font-weight:900;
+        }
+        .bom8-hero p{
+            color:#52647c;
+            font-size:15px;
+            line-height:1.58;
+            margin:0;
+            max-width:900px;
+            font-weight:600;
+        }
+        .bom8-kpis{
+            display:grid;
+            grid-template-columns:repeat(4,minmax(0,1fr));
+            gap:12px;
+            margin:0 0 24px;
+        }
+        .bom8-kpi{
+            border:1px solid #dbe3ef;
+            border-radius:18px;
+            background:#fff;
+            padding:17px 18px;
+            min-height:112px;
+            box-shadow:0 12px 30px rgba(15,23,42,.045);
+        }
+        .bom8-kpi-label{
+            color:#64748b;
+            font-size:9px;
+            font-weight:900;
+            letter-spacing:.10em;
+            text-transform:uppercase;
+            margin-bottom:8px;
+        }
+        .bom8-kpi-value{
+            color:#0f172a;
+            font-size:29px;
+            line-height:1;
+            font-weight:900;
+            margin-bottom:8px;
+        }
+        .bom8-kpi-note{
+            color:#64748b;
+            font-size:11px;
+            line-height:1.4;
+            font-weight:650;
+        }
+        .bom8-section-head{
+            display:flex;
+            align-items:flex-end;
+            justify-content:space-between;
+            gap:18px;
+            margin:4px 0 12px;
+        }
+        .bom8-section-head h2{
+            color:#0f172a;
+            font-size:22px;
+            margin:0 0 4px;
+            letter-spacing:-.025em;
+        }
+        .bom8-section-head p{
+            color:#64748b;
+            font-size:12px;
+            margin:0;
+            font-weight:650;
+        }
+        .bom8-upload-card{
+            border:1px solid #d8e1ed;
+            border-radius:22px;
+            background:#fff;
+            padding:22px 24px;
+            box-shadow:0 16px 38px rgba(15,23,42,.055);
+            min-height:100%;
+        }
+        .bom8-upload-title{
+            color:#0f172a;
+            font-size:20px;
+            font-weight:900;
+            margin-bottom:5px;
+        }
+        .bom8-upload-copy{
+            color:#64748b;
+            font-size:12px;
+            line-height:1.5;
+            margin-bottom:14px;
+            font-weight:600;
+        }
+        .bom8-checklist{
+            display:grid;
+            gap:10px;
+            margin-top:10px;
+        }
+        .bom8-check{
+            display:flex;
+            gap:10px;
+            align-items:flex-start;
+            border:1px solid #e2e8f0;
+            border-radius:14px;
+            padding:12px 13px;
+            background:#f8fafc;
+        }
+        .bom8-check-icon{
+            flex:0 0 24px;
+            width:24px;
+            height:24px;
+            border-radius:8px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:#ecfdf5;
+            border:1px solid #a7f3d0;
+            color:#059669;
+            font-size:12px;
+            font-weight:900;
+        }
+        .bom8-check strong{
+            display:block;
+            color:#0f172a;
+            font-size:12px;
+            margin-bottom:2px;
+        }
+        .bom8-check span{
+            display:block;
+            color:#64748b;
+            font-size:10.5px;
+            line-height:1.4;
+        }
+        .bom8-trust-strip{
+            display:grid;
+            grid-template-columns:repeat(3,minmax(0,1fr));
+            gap:10px;
+            margin-top:14px;
+        }
+        .bom8-trust{
+            border:1px solid #dbeafe;
+            border-radius:13px;
+            background:#eff6ff;
+            padding:10px 11px;
+            color:#1e3a8a;
+            font-size:10px;
+            font-weight:800;
+            text-align:center;
+        }
+        .bom8-history-note{
+            border:1px solid #dbe3ef;
+            border-radius:16px;
+            background:#fff;
+            padding:13px 15px;
+            color:#52647c;
+            font-size:11px;
+            line-height:1.45;
+            margin-top:8px;
+        }
+        .st-key-bom8_sample button{
+            border:1px solid #bfdbfe!important;
+            background:#eff6ff!important;
+            color:#1d4ed8!important;
+            font-weight:800!important;
+        }
+        .st-key-bom_file_uploader [data-testid="stFileUploader"]{
+            border-radius:16px!important;
+        }
+        @media(max-width:1100px){
+            .bom8-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}
+        }
+        @media(max-width:720px){
+            .bom8-kpis,.bom8-trust-strip{grid-template-columns:1fr;}
+            .bom8-hero{padding:22px 20px;}
+            .bom8-hero h1{font-size:28px;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.subheader("📈 Recent BOM Analyses")
+    history_data = analysis_history.data or []
+    history_df = pd.DataFrame(history_data)
 
-    history_data = analysis_history.data
-
-    if history_data:
-
-        history_df = pd.DataFrame(history_data)
+    if not history_df.empty:
         if "project_name" not in history_df.columns:
-            history_df["project_name"] = history_df["filename"]
+            history_df["project_name"] = history_df.get("filename", "Saved analysis")
 
-        history_df["created_at"] = pd.to_datetime(
-            history_df["created_at"]
+        numeric_defaults = {
+            "health_score": 0,
+            "high_risk_count": 0,
+            "medium_risk_count": 0,
+        }
+        for column_name, default_value in numeric_defaults.items():
+            if column_name not in history_df.columns:
+                history_df[column_name] = default_value
+            history_df[column_name] = pd.to_numeric(
+                history_df[column_name], errors="coerce"
+            ).fillna(default_value)
+
+        saved_analysis_count = int(len(history_df))
+        average_health = int(round(history_df["health_score"].mean()))
+        total_high_risk = int(history_df["high_risk_count"].sum())
+        best_health = int(history_df["health_score"].max())
+    else:
+        saved_analysis_count = 0
+        average_health = 0
+        total_high_risk = 0
+        best_health = 0
+
+    st.markdown(
+        f"""
+        <section class="bom8-hero">
+          <div class="bom8-eyebrow">BOM intelligence workspace</div>
+          <h1>Turn a parts list into an engineering risk decision.</h1>
+          <p>
+            Upload a CSV or Excel BOM to evaluate lifecycle exposure, sourcing risk,
+            component availability, and portfolio health. Cadivor converts the file
+            into a prioritized engineering review rather than another raw spreadsheet.
+          </p>
+        </section>
+
+        <section class="bom8-kpis">
+          <div class="bom8-kpi">
+            <div class="bom8-kpi-label">Saved analyses</div>
+            <div class="bom8-kpi-value">{saved_analysis_count}</div>
+            <div class="bom8-kpi-note">Previous BOM engineering reviews</div>
+          </div>
+          <div class="bom8-kpi">
+            <div class="bom8-kpi-label">Average health</div>
+            <div class="bom8-kpi-value">{average_health}</div>
+            <div class="bom8-kpi-note">Across all saved analyses</div>
+          </div>
+          <div class="bom8-kpi">
+            <div class="bom8-kpi-label">High-risk findings</div>
+            <div class="bom8-kpi-value">{total_high_risk}</div>
+            <div class="bom8-kpi-note">Components requiring engineering review</div>
+          </div>
+          <div class="bom8-kpi">
+            <div class="bom8-kpi-label">Best recorded health</div>
+            <div class="bom8-kpi-value">{best_health}</div>
+            <div class="bom8-kpi-note">Highest-performing saved BOM</div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="bom8-section-head">
+          <div>
+            <h2>Start a new BOM analysis</h2>
+            <p>Prepare the project, confirm the expected columns, and upload the source file.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    input_col, guidance_col = st.columns([0.64, 0.36], gap="large")
+
+    with input_col:
+        st.markdown(
+            """
+            <div class="bom8-upload-card">
+              <div class="bom8-upload-title">Upload engineering BOM</div>
+              <div class="bom8-upload-copy">
+                Give the analysis a recognizable project or revision name, then select
+                the CSV or Excel file used by your engineering or sourcing team.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        project_name = st.text_input(
+            "Project / BOM Name",
+            placeholder="Example: Motor Controller Rev A",
+            key="bom8_project_name",
+        )
+
+        sample_bom = pd.DataFrame(
+            {
+                "mpn": ["TPS5430DDAR", "LM555CN/NOPB"],
+                "quantity": [5, 2],
+            }
+        )
+        sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download Sample BOM Template",
+            data=sample_csv,
+            file_name="sample_bom_template.csv",
+            mime="text/csv",
+            key="bom8_sample",
+        )
+
+        uploaded_file = st.file_uploader(
+            "Upload your BOM file",
+            type=["csv", "xlsx"],
+            key="bom_file_uploader",
+            help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
+        )
+
+        st.markdown(
+            """
+            <div class="bom8-trust-strip">
+              <div class="bom8-trust">CSV and XLSX</div>
+              <div class="bom8-trust">Duplicate MPN merge</div>
+              <div class="bom8-trust">Engineering risk scoring</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with guidance_col:
+        st.markdown(
+            """
+            <div class="bom8-upload-card">
+              <div class="bom8-upload-title">File readiness</div>
+              <div class="bom8-upload-copy">
+                A clean source file creates a stronger and more defensible analysis.
+              </div>
+              <div class="bom8-checklist">
+                <div class="bom8-check">
+                  <div class="bom8-check-icon">1</div>
+                  <div>
+                    <strong>Manufacturer part number</strong>
+                    <span>Include an <b>mpn</b> column or a recognized part-number equivalent.</span>
+                  </div>
+                </div>
+                <div class="bom8-check">
+                  <div class="bom8-check-icon">2</div>
+                  <div>
+                    <strong>Quantity</strong>
+                    <span>Include a numeric <b>quantity</b> or <b>qty</b> column.</span>
+                  </div>
+                </div>
+                <div class="bom8-check">
+                  <div class="bom8-check-icon">3</div>
+                  <div>
+                    <strong>One BOM revision</strong>
+                    <span>Use a project name that identifies the board and revision.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+        <div class="bom8-section-head" style="margin-top:28px;">
+          <div>
+            <h2>Recent BOM analyses</h2>
+            <p>Review the latest portfolio health and risk results already stored in your workspace.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not history_df.empty:
+        display_history_df = history_df.copy()
+        if "filename" not in display_history_df.columns:
+            display_history_df["filename"] = "—"
+        if "created_at" not in display_history_df.columns:
+            display_history_df["created_at"] = pd.NaT
+
+        display_history_df["created_at"] = pd.to_datetime(
+            display_history_df["created_at"], errors="coerce"
         ).dt.strftime("%Y-%m-%d")
 
-        display_history = history_df[
+        display_history = display_history_df[
             [
                 "project_name",
                 "filename",
@@ -5629,55 +6004,38 @@ if app_mode == "BOM Analyzer":
             ]
         ].rename(
             columns={
-                "project_name": "Project Name",
-                "filename": "Uploaded File",
-                "health_score": "Health Score",
-                "high_risk_count": "High Risk Parts",
-                "medium_risk_count": "Medium Risk Parts",
-                "created_at": "Created At",
+                "project_name": "Project",
+                "filename": "Source File",
+                "health_score": "Health",
+                "high_risk_count": "High Risk",
+                "medium_risk_count": "Medium Risk",
+                "created_at": "Date",
             }
         )
 
         st.dataframe(
-            display_history,
+            display_history.head(8),
             use_container_width=True,
             hide_index=True,
         )
 
+        if len(display_history) > 8:
+            with st.expander(f"View all {len(display_history)} saved analyses"):
+                st.dataframe(
+                    display_history,
+                    use_container_width=True,
+                    hide_index=True,
+                )
     else:
-        st.info("No previous BOM analyses found.")
-
-
-    project_name = st.text_input(
-        "Project / BOM Name",
-        placeholder="Example: Motor Controller Rev A"
-    )
-
-    sample_bom = pd.DataFrame(
-        {
-            "mpn": ["TPS5430DDAR", "LM555CN/NOPB"],
-            "quantity": [5, 2],
-        }
-    )
-
-    sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        label="Download Sample BOM Template",
-        data=sample_csv,
-        file_name="sample_bom_template.csv",
-        mime="text/csv",
-    )
-
-    st.caption(
-        "Required columns: mpn and quantity. Duplicate part numbers will be merged automatically."
-    )
-
-    uploaded_file = st.file_uploader(
-        "Upload your BOM file", 
-        type=["csv", "xlsx"],
-        key="bom_file_uploader",
-    )
+        st.markdown(
+            """
+            <div class="bom8-history-note">
+              No saved analyses yet. Your first completed BOM review will appear here
+              with its health score and risk distribution.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
     if uploaded_file is None:
