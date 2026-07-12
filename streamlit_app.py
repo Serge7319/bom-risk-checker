@@ -2712,14 +2712,14 @@ if app_mode == "Reports":
             for fmt in formats
         )
         first_template_cards.append(
-            f'''
-            <div class="cv-r9-template">
-              <div class="cv-r9-template-icon">{icon}</div>
-              <h4>{title}</h4>
-              <p>{copy}</p>
-              <div class="cv-r9-formats">{format_html}</div>
-            </div>
-            '''
+            (
+                f'<div class="cv-r9-template">'
+                f'<div class="cv-r9-template-icon">{icon}</div>'
+                f'<h4>{title}</h4>'
+                f'<p>{copy}</p>'
+                f'<div class="cv-r9-formats">{format_html}</div>'
+                f'</div>'
+            )
         )
 
     st.markdown(
@@ -2751,14 +2751,14 @@ if app_mode == "Reports":
             for fmt in formats
         )
         second_template_cards.append(
-            f'''
-            <div class="cv-r9-template">
-              <div class="cv-r9-template-icon">{icon}</div>
-              <h4>{title}</h4>
-              <p>{copy}</p>
-              <div class="cv-r9-formats">{format_html}</div>
-            </div>
-            '''
+            (
+                f'<div class="cv-r9-template">'
+                f'<div class="cv-r9-template-icon">{icon}</div>'
+                f'<h4>{title}</h4>'
+                f'<p>{copy}</p>'
+                f'<div class="cv-r9-formats">{format_html}</div>'
+                f'</div>'
+            )
         )
 
     st.markdown(
