@@ -409,17 +409,17 @@ def generate_engineering_change_package_pdf(
     project_name,
     comparison_snapshot=None,
 ):
-    """Generate a professional ECO-ready engineering change package PDF."""
+    """Generate a wrapped, ECO-ready engineering change package PDF."""
     buffer = BytesIO()
     generated_at = datetime.now(timezone.utc)
     comparison_snapshot = comparison_snapshot or {}
 
     def _safe_list(value):
         if isinstance(value, (list, tuple, set)):
-            return [str(item) for item in value if str(item).strip()]
+            return [str(item).strip() for item in value if str(item).strip()]
         if value in (None, "", {}):
             return []
-        return [str(value)]
+        return [str(value).strip()]
 
     matches = _safe_list(comparison_snapshot.get("engineering_matches", []))
     warnings = _safe_list(comparison_snapshot.get("warnings", []))
@@ -470,7 +470,7 @@ def generate_engineering_change_package_pdf(
         canvas.drawString(
             42,
             19,
-            f"{original_part} → {alternative_part} • Engineering Change Package",
+            f"{original_part} to {alternative_part} - Engineering Change Package",
         )
         canvas.drawRightString(width - 42, 19, f"Page {doc.page}")
         canvas.restoreState()
@@ -487,20 +487,20 @@ def generate_engineering_change_package_pdf(
     )
 
     styles = getSampleStyleSheet()
-    title_style = styles["Title"]
+    title_style = styles["Title"].clone("cadivor_pdf_title")
     title_style.fontName = "Helvetica-Bold"
     title_style.fontSize = 22
     title_style.leading = 26
     title_style.textColor = colors.HexColor("#0B1220")
     title_style.alignment = 0
 
-    subtitle_style = styles["BodyText"]
+    subtitle_style = styles["BodyText"].clone("cadivor_pdf_subtitle")
     subtitle_style.fontName = "Helvetica"
     subtitle_style.fontSize = 9.5
     subtitle_style.leading = 14
     subtitle_style.textColor = colors.HexColor("#475569")
 
-    section_style = styles["Heading2"]
+    section_style = styles["Heading2"].clone("cadivor_pdf_section")
     section_style.fontName = "Helvetica-Bold"
     section_style.fontSize = 12
     section_style.leading = 15
@@ -508,17 +508,76 @@ def generate_engineering_change_package_pdf(
     section_style.spaceBefore = 14
     section_style.spaceAfter = 8
 
-    body_style = styles["BodyText"]
+    body_style = styles["BodyText"].clone("cadivor_pdf_body")
     body_style.fontName = "Helvetica"
-    body_style.fontSize = 8.5
-    body_style.leading = 12
+    body_style.fontSize = 8.2
+    body_style.leading = 10.4
     body_style.textColor = colors.HexColor("#334155")
+    body_style.wordWrap = "CJK"
 
-    small_style = styles["BodyText"]
+    compact_style = styles["BodyText"].clone("cadivor_pdf_compact")
+    compact_style.fontName = "Helvetica"
+    compact_style.fontSize = 7.4
+    compact_style.leading = 9.2
+    compact_style.textColor = colors.HexColor("#334155")
+    compact_style.wordWrap = "CJK"
+
+    small_style = styles["BodyText"].clone("cadivor_pdf_small")
     small_style.fontName = "Helvetica"
-    small_style.fontSize = 7.5
-    small_style.leading = 10
+    small_style.fontSize = 7.2
+    small_style.leading = 9
     small_style.textColor = colors.HexColor("#475569")
+    small_style.wordWrap = "CJK"
+
+    label_style = styles["BodyText"].clone("cadivor_pdf_label")
+    label_style.fontName = "Helvetica-Bold"
+    label_style.fontSize = 7.2
+    label_style.leading = 9
+    label_style.textColor = colors.HexColor("#0F172A")
+    label_style.wordWrap = "CJK"
+
+    header_cell_style = styles["BodyText"].clone("cadivor_pdf_header_cell")
+    header_cell_style.fontName = "Helvetica-Bold"
+    header_cell_style.fontSize = 7.5
+    header_cell_style.leading = 9
+    header_cell_style.textColor = colors.white
+    header_cell_style.wordWrap = "CJK"
+
+    def _clean_text(value):
+        text_value = str(value if value is not None else "-")
+        replacements = {
+            "✓": "Match:",
+            "⚠": "Warning:",
+            "●": "",
+            "🔴": "",
+            "🟢": "",
+            "🟡": "",
+            "□": "-",
+            "→": "to",
+            "•": "-",
+        }
+        for old, new in replacements.items():
+            text_value = text_value.replace(old, new)
+        return html.escape(text_value.strip())
+
+    def _p(value, style=body_style, bold=False, color=None):
+        content = _clean_text(value)
+        if bold:
+            content = f"<b>{content}</b>"
+        if color:
+            content = f'<font color="{color}">{content}</font>'
+        return Paragraph(content, style)
+
+    def _bullet_block(items, prefix, empty_message, color, style=compact_style):
+        if not items:
+            return _p(empty_message, style)
+        lines = []
+        for item in items:
+            lines.append(
+                f'<font color="{color}"><b>{html.escape(prefix)}</b></font> '
+                f'{_clean_text(item)}'
+            )
+        return Paragraph("<br/><br/>".join(lines), style)
 
     decision_upper = str(decision or "Pending review").upper()
     decision_color = {
@@ -541,12 +600,17 @@ def generate_engineering_change_package_pdf(
 
     summary = Table(
         [
-            ["PROJECT", "ENGINEER", "DECISION DATE", "STATUS"],
             [
-                str(project_name or "Standalone Alternative Finder"),
-                str(engineer_name or "Cadivor user"),
-                generated_at.strftime("%b %d, %Y • %H:%M UTC"),
-                decision_upper,
+                _p("PROJECT", label_style),
+                _p("ENGINEER", label_style),
+                _p("DECISION DATE", label_style),
+                _p("STATUS", label_style),
+            ],
+            [
+                _p(project_name or "Standalone Alternative Finder", compact_style),
+                _p(engineer_name or "Cadivor user", compact_style),
+                _p(generated_at.strftime("%b %d, %Y - %H:%M UTC"), compact_style),
+                _p(decision_upper, compact_style, bold=True, color=decision_color),
             ],
         ],
         colWidths=[145, 125, 145, 85],
@@ -555,11 +619,6 @@ def generate_engineering_change_package_pdf(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFF6FF")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1D4ED8")),
-                ("TEXTCOLOR", (3, 1), (3, 1), colors.HexColor(decision_color)),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (3, 1), (3, 1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#CBD5E1")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -575,13 +634,13 @@ def generate_engineering_change_package_pdf(
     story.append(Paragraph("Executive Decision Summary", section_style))
     decision_summary = Table(
         [
-            ["Original Component", str(original_part)],
-            ["Selected Replacement", str(alternative_part)],
-            ["Recommendation Score", f"{int(recommendation_score)}/100"],
-            ["Compatibility Confidence", f"{int(compatibility_confidence)}%"],
-            ["Engineering Risk", str(risk)],
-            ["Lifecycle", str(lifecycle)],
-            ["Decision", str(decision)],
+            [_p("Original Component", label_style), _p(original_part)],
+            [_p("Selected Replacement", label_style), _p(alternative_part)],
+            [_p("Recommendation Score", label_style), _p(f"{int(recommendation_score)}/100")],
+            [_p("Compatibility Confidence", label_style), _p(f"{int(compatibility_confidence)}%")],
+            [_p("Engineering Risk", label_style), _p(risk)],
+            [_p("Lifecycle", label_style), _p(lifecycle)],
+            [_p("Decision", label_style), _p(decision)],
         ],
         colWidths=[180, 320],
     )
@@ -589,9 +648,8 @@ def generate_engineering_change_package_pdf(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F8FAFC")),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
                 ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 8),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
@@ -604,9 +662,24 @@ def generate_engineering_change_package_pdf(
     story.append(Paragraph("Sourcing and Package Impact", section_style))
     sourcing = Table(
         [
-            ["Supplier", "Available Stock", "Unit Price", "Package"],
-            [str(supplier), f"{int(stock):,}", f"${float(unit_price):.4g}", str(package)],
-            ["Stock Impact", str(stock_delta), "Cost Impact", str(price_delta)],
+            [
+                _p("Supplier", header_cell_style),
+                _p("Available Stock", header_cell_style),
+                _p("Unit Price", header_cell_style),
+                _p("Package", header_cell_style),
+            ],
+            [
+                _p(supplier, compact_style),
+                _p(f"{int(stock):,}", compact_style),
+                _p(f"${float(unit_price):.4g}", compact_style),
+                _p(package, compact_style),
+            ],
+            [
+                _p("Stock Impact", label_style),
+                _p(stock_delta, compact_style),
+                _p("Cost Impact", label_style),
+                _p(price_delta, compact_style),
+            ],
         ],
         colWidths=[120, 130, 120, 130],
     )
@@ -614,16 +687,12 @@ def generate_engineering_change_package_pdf(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563EB")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, 2), (0, 2), "Helvetica-Bold"),
-                ("FONTNAME", (2, 2), (2, 2), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.3),
                 ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#CBD5E1")),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
                     colors.white,
                     colors.HexColor("#F8FAFC"),
                 ]),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 7),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 7),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
@@ -636,19 +705,35 @@ def generate_engineering_change_package_pdf(
     story.append(Paragraph("Engineering Evidence", section_style))
     evidence = Table(
         [
-            ["ENGINEERING MATCHES", "WARNINGS"],
+            [_p("ENGINEERING MATCHES", label_style), _p("WARNINGS", label_style)],
             [
-                "\n".join(f"✓ {item}" for item in matches)
-                or "No confirmed engineering matches were recorded.",
-                "\n".join(f"⚠ {item}" for item in warnings)
-                or "No material warnings were recorded.",
+                _bullet_block(
+                    matches,
+                    "MATCH:",
+                    "No confirmed engineering matches were recorded.",
+                    "#059669",
+                ),
+                _bullet_block(
+                    warnings,
+                    "WARNING:",
+                    "No material warnings were recorded.",
+                    "#D97706",
+                ),
             ],
-            ["SOURCING ADVANTAGES", "TRADE-OFFS"],
+            [_p("SOURCING ADVANTAGES", label_style), _p("TRADE-OFFS", label_style)],
             [
-                "\n".join(f"• {item}" for item in advantages)
-                or "No sourcing advantage was calculated.",
-                "\n".join(f"• {item}" for item in tradeoffs)
-                or "No material trade-off was calculated.",
+                _bullet_block(
+                    advantages,
+                    "ADVANTAGE:",
+                    "No sourcing advantage was calculated.",
+                    "#059669",
+                ),
+                _bullet_block(
+                    tradeoffs,
+                    "TRADE-OFF:",
+                    "No material trade-off was calculated.",
+                    "#DC2626",
+                ),
             ],
         ],
         colWidths=[250, 250],
@@ -660,9 +745,6 @@ def generate_engineering_change_package_pdf(
                 ("BACKGROUND", (1, 0), (1, 1), colors.HexColor("#FFFBEB")),
                 ("BACKGROUND", (0, 2), (0, 3), colors.HexColor("#ECFDF5")),
                 ("BACKGROUND", (1, 2), (1, 3), colors.HexColor("#FEF2F2")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#CBD5E1")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -677,18 +759,25 @@ def generate_engineering_change_package_pdf(
 
     comparison_rows = comparison_snapshot.get("comparison_table", [])
     if isinstance(comparison_rows, list) and comparison_rows:
-        clean_rows = [["Attribute", "Original", "Selected Alternative"]]
+        clean_rows = [
+            [
+                _p("Attribute", header_cell_style),
+                _p("Original", header_cell_style),
+                _p("Selected Alternative", header_cell_style),
+            ]
+        ]
         for row in comparison_rows[:18]:
             if isinstance(row, dict):
                 clean_rows.append(
                     [
-                        str(row.get("Attribute", row.get("attribute", ""))),
-                        str(row.get("Original", row.get("original", ""))),
-                        str(
+                        _p(row.get("Attribute", row.get("attribute", "")), compact_style, bold=True),
+                        _p(row.get("Original", row.get("original", "")), compact_style),
+                        _p(
                             row.get(
                                 "Selected Alternative",
                                 row.get("selected_alternative", ""),
-                            )
+                            ),
+                            compact_style,
                         ),
                     ]
                 )
@@ -699,15 +788,12 @@ def generate_engineering_change_package_pdf(
                 TableStyle(
                     [
                         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
-                        ("FONTSIZE", (0, 0), (-1, -1), 7.7),
                         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
                             colors.white,
                             colors.HexColor("#F8FAFC"),
                         ]),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
                         ("LEFTPADDING", (0, 0), (-1, -1), 6),
                         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
                         ("TOPPADDING", (0, 0), (-1, -1), 5),
@@ -719,7 +805,7 @@ def generate_engineering_change_package_pdf(
 
     story.append(Paragraph("Engineering Review Notes", section_style))
     note_box = Table(
-        [[engineering_note or "No engineering review notes were recorded."]],
+        [[_p(engineering_note or "No engineering review notes were recorded.", body_style)]],
         colWidths=[500],
     )
     note_box.setStyle(
@@ -727,7 +813,7 @@ def generate_engineering_change_package_pdf(
             [
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
                 ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#CBD5E1")),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 10),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 10),
                 ("TOPPADDING", (0, 0), (-1, -1), 9),
@@ -739,7 +825,7 @@ def generate_engineering_change_package_pdf(
 
     story.append(Paragraph("Recommended Next Actions", section_style))
     actions = Table(
-        [[f"□ {step}"] for step in next_steps],
+        [[_p(f"- {step}", body_style)] for step in next_steps],
         colWidths=[500],
     )
     actions.setStyle(
@@ -748,7 +834,7 @@ def generate_engineering_change_package_pdf(
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
                 ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#BFDBFE")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#DBEAFE")),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.3),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 9),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 9),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
@@ -4924,7 +5010,7 @@ if app_mode == "Alternative Finder":
                 key="af63_change_package",
             )
             st.caption(
-                "Create an ECO-ready PDF with engineering evidence, notes, sourcing impact, and next actions."
+                "Create a polished ECO-ready PDF with wrapped evidence, notes, sourcing impact, and next actions."
             )
 
         db_error = st.session_state.get("alternative_decision_db_error", "")
