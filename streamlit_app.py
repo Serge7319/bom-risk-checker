@@ -51,6 +51,12 @@ from src.ui.framework import (
 from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
+from src.customer_profile_service import (
+    ensure_customer_profile,
+    update_customer_profile,
+    ensure_user_preferences,
+    update_user_preferences,
+)
 from src.workspace_service import (
     ensure_personal_workspace,
     list_members,
@@ -161,6 +167,52 @@ def get_user_profile(current_user):
     timezone = _safe_text(current_user.get("timezone"), _safe_text(metadata.get("timezone"), ""))
     workspace_name = _safe_text(current_user.get("workspace_name"), _safe_text(company, "Cadivor Workspace"))
     plan = _safe_text(current_user.get("plan"), "Starter")
+
+    # Milestone 11A.1: overlay persistent customer profile fields when
+    # the new profile migration is available.
+    user_id = _safe_text(
+        current_user.get("id"),
+        _safe_text(getattr(auth_user, "id", "")),
+    )
+    if user_id:
+        try:
+            customer_profile, customer_profile_error = ensure_customer_profile(
+                supabase,
+                user_id,
+                email,
+                full_name,
+            )
+            if customer_profile and not customer_profile_error:
+                full_name = _safe_text(
+                    customer_profile.get("full_name"),
+                    full_name,
+                )
+                company = _safe_text(
+                    customer_profile.get("company_name"),
+                    company,
+                )
+                role_title = _safe_text(
+                    customer_profile.get("job_title"),
+                    role_title,
+                )
+                avatar_url = _safe_text(
+                    customer_profile.get("avatar_url"),
+                    avatar_url,
+                )
+                phone = _safe_text(
+                    customer_profile.get("phone"),
+                    phone,
+                )
+                country = _safe_text(
+                    customer_profile.get("country"),
+                    country,
+                )
+                timezone = _safe_text(
+                    customer_profile.get("timezone"),
+                    timezone,
+                )
+        except Exception:
+            pass
 
     initials_source = full_name or email or "Cadivor"
     initials = "".join([part[0] for part in initials_source.replace("@", " ").split()[:2]]).upper()[:2] or "C"
@@ -3469,93 +3521,555 @@ if app_mode == "Pricing":
 # ---------- Settings ----------
 if app_mode == "Settings":
     profile = get_user_profile(current_user)
+    auth_user = st.session_state.get("user")
+    user_id = _safe_text(
+        getattr(auth_user, "id", ""),
+        _safe_text(current_user.get("id"), ""),
+    )
+    auth_email = _safe_text(
+        getattr(auth_user, "email", ""),
+        profile.get("email", ""),
+    )
+
+    customer_profile, profile_error = ensure_customer_profile(
+        supabase,
+        user_id,
+        auth_email,
+        profile.get("full_name", ""),
+    )
+    preferences, preferences_error = ensure_user_preferences(
+        supabase,
+        user_id,
+    )
+
+    customer_profile = customer_profile or {}
+    preferences = preferences or {}
+
     st.markdown(
-        f"""
-        <div class="cv-dashboard-header cv-fade-in">
-          <div>
-            <div class="cv-eyebrow">My Profile</div>
-            <h1 class="cv-title">Profile settings</h1>
-            <p class="cv-subtitle">Manage the personal information Cadivor displays across your workspace. Optional fields save when matching Supabase columns exist.</p>
-          </div>
-        </div>
+        """
+        <style id="cadivor-customer-settings-v11a1">
+        .cv-customer-hero{
+            border:1px solid #BFDBFE;
+            border-radius:24px;
+            padding:26px 28px;
+            margin-bottom:18px;
+            background:
+                radial-gradient(circle at 95% 5%,rgba(37,99,235,.13),transparent 34%),
+                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%);
+            box-shadow:0 18px 46px rgba(15,23,42,.065);
+        }
+        .cv-customer-kicker{
+            color:#2563EB;
+            font-size:10px;
+            font-weight:950;
+            letter-spacing:.11em;
+            text-transform:uppercase;
+            margin-bottom:9px;
+        }
+        .cv-customer-title{
+            color:#0F172A;
+            font-size:31px;
+            line-height:1.08;
+            font-weight:950;
+            letter-spacing:-.04em;
+            margin:0 0 8px;
+        }
+        .cv-customer-copy{
+            color:#52647A;
+            font-size:14px;
+            line-height:1.55;
+            font-weight:680;
+            margin:0;
+            max-width:900px;
+        }
+        .cv-profile-card{
+            border:1px solid #E2E8F0;
+            border-radius:20px;
+            background:#FFFFFF;
+            padding:20px;
+            box-shadow:0 14px 36px rgba(15,23,42,.05);
+        }
+        .cv-profile-top{
+            display:flex;
+            align-items:center;
+            gap:15px;
+            margin-bottom:16px;
+        }
+        .cv-profile-avatar{
+            width:72px;
+            height:72px;
+            flex:0 0 72px;
+            border-radius:20px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            overflow:hidden;
+            border:1px solid #BFDBFE;
+            background:#EFF6FF;
+            color:#1D4ED8;
+            font-size:22px;
+            font-weight:950;
+        }
+        .cv-profile-avatar img{
+            width:100%;
+            height:100%;
+            object-fit:cover;
+        }
+        .cv-profile-name{
+            color:#0F172A;
+            font-size:18px;
+            font-weight:950;
+            margin-bottom:4px;
+        }
+        .cv-profile-role{
+            color:#64748B;
+            font-size:12px;
+            font-weight:720;
+        }
+        .cv-profile-facts{
+            display:grid;
+            grid-template-columns:1fr;
+            gap:9px;
+        }
+        .cv-profile-fact{
+            border:1px solid #E2E8F0;
+            border-radius:13px;
+            padding:11px 12px;
+            background:#F8FAFC;
+        }
+        .cv-profile-fact span{
+            display:block;
+            color:#64748B;
+            font-size:9px;
+            font-weight:950;
+            letter-spacing:.09em;
+            text-transform:uppercase;
+            margin-bottom:5px;
+        }
+        .cv-profile-fact strong{
+            display:block;
+            color:#0F172A;
+            font-size:12px;
+            font-weight:900;
+            overflow-wrap:anywhere;
+        }
+        .cv-settings-note{
+            border:1px solid #DBEAFE;
+            border-radius:15px;
+            padding:13px 15px;
+            background:#EFF6FF;
+            color:#1E3A8A;
+            font-size:11px;
+            line-height:1.5;
+            font-weight:700;
+        }
+        .cv-security-row{
+            border:1px solid #E2E8F0;
+            border-radius:15px;
+            padding:14px;
+            background:#FFFFFF;
+            margin-bottom:10px;
+        }
+        .cv-security-row strong{
+            display:block;
+            color:#0F172A;
+            font-size:13px;
+            margin-bottom:4px;
+        }
+        .cv-security-row span{
+            display:block;
+            color:#64748B;
+            font-size:11px;
+            line-height:1.45;
+        }
+        </style>
         """,
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns([1.0, 1.6])
-    with left:
-        avatar_markup = f'<img src="{profile["avatar_url"]}" alt="Profile photo" />' if profile.get("avatar_url") else profile["initials"]
-        st.markdown(
-            f"""
-            <div class="cv-panel cv-fade-in">
-              <div style="display:flex;align-items:center;gap:16px;">
-                <div class="cadivor-avatar" style="width:68px;height:68px;font-size:22px;">{avatar_markup}</div>
-                <div>
-                  <div class="cv-panel-title" style="margin-bottom:4px;">{profile["full_name"]}</div>
-                  <div class="cv-panel-copy" style="margin-bottom:0;">{profile["role_title"] or "Cadivor workspace member"}</div>
-                </div>
-              </div>
-              <div class="cv-section-rule"></div>
-              <div class="cv-snapshot-grid" style="grid-template-columns:1fr;">
-                <div class="cv-snapshot-item"><span>Email</span><strong style="font-size:13px;">{profile["email"]}</strong></div>
-                <div class="cv-snapshot-item"><span>Company</span><strong>{profile["company"] or "Not set"}</strong></div>
-                <div class="cv-snapshot-item"><span>Plan</span><strong>{profile["plan"]}</strong></div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    st.markdown(
+        """
+        <section class="cv-customer-hero">
+          <div class="cv-customer-kicker">Customer account</div>
+          <h1 class="cv-customer-title">Profile & preferences</h1>
+          <p class="cv-customer-copy">
+            Manage the personal identity, display defaults, and notification
+            preferences Cadivor uses across engineering workspaces and reports.
+          </p>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    migration_required = (
+        profile_error == "migration_required"
+        or preferences_error == "migration_required"
+    )
+    if migration_required:
+        st.error(
+            "Milestone 11A.1 database tables are not available yet. "
+            "Run the included Supabase migration, then refresh this page."
         )
+
+    profile_tab, preferences_tab, workspace_tab, security_tab, billing_tab = st.tabs(
+        ["Profile", "Preferences", "Workspace", "Security", "Billing"]
+    )
+
+    with profile_tab:
+        summary_col, form_col = st.columns([0.36, 0.64], gap="large")
+
+        with summary_col:
+            avatar_url_value = _safe_text(
+                customer_profile.get("avatar_url"),
+                profile.get("avatar_url", ""),
+            )
+            initials_value = profile.get("initials", "C")
+            avatar_markup = (
+                f'<img src="{html.escape(avatar_url_value, quote=True)}" alt="Profile photo">'
+                if avatar_url_value
+                else html.escape(initials_value)
+            )
+            display_name = _safe_text(
+                customer_profile.get("full_name"),
+                profile.get("full_name", "Cadivor user"),
+            )
+            display_job = _safe_text(
+                customer_profile.get("job_title"),
+                profile.get("role_title", "Cadivor workspace member"),
+            )
+            display_company = _safe_text(
+                customer_profile.get("company_name"),
+                profile.get("company", "Not set"),
+            )
+
+            st.markdown(
+                f"""
+                <div class="cv-profile-card">
+                  <div class="cv-profile-top">
+                    <div class="cv-profile-avatar">{avatar_markup}</div>
+                    <div>
+                      <div class="cv-profile-name">{html.escape(display_name)}</div>
+                      <div class="cv-profile-role">{html.escape(display_job)}</div>
+                    </div>
+                  </div>
+                  <div class="cv-profile-facts">
+                    <div class="cv-profile-fact">
+                      <span>Email</span>
+                      <strong>{html.escape(auth_email)}</strong>
+                    </div>
+                    <div class="cv-profile-fact">
+                      <span>Company</span>
+                      <strong>{html.escape(display_company)}</strong>
+                    </div>
+                    <div class="cv-profile-fact">
+                      <span>Plan</span>
+                      <strong>{html.escape(profile.get("plan", "Starter"))}</strong>
+                    </div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with form_col:
+            st.subheader("Profile information")
+            st.caption(
+                "This information personalizes your account, team presence, "
+                "workspace records, and future report attribution."
+            )
+
+            full_name_value = st.text_input(
+                "Full name",
+                value=_safe_text(
+                    customer_profile.get("full_name"),
+                    profile.get("full_name", ""),
+                ),
+                placeholder="Joshua Kashambala",
+                key="customer_profile_full_name",
+            )
+            company_value = st.text_input(
+                "Company / organization",
+                value=_safe_text(
+                    customer_profile.get("company_name"),
+                    profile.get("company", ""),
+                ),
+                placeholder="Egres Technologies",
+                key="customer_profile_company",
+            )
+            job_title_value = st.text_input(
+                "Job title",
+                value=_safe_text(
+                    customer_profile.get("job_title"),
+                    profile.get("role_title", ""),
+                ),
+                placeholder="Founder, Engineering Lead, Sourcing Manager",
+                key="customer_profile_job_title",
+            )
+
+            phone_col, country_col = st.columns(2)
+            with phone_col:
+                phone_value = st.text_input(
+                    "Phone",
+                    value=_safe_text(
+                        customer_profile.get("phone"),
+                        profile.get("phone", ""),
+                    ),
+                    placeholder="+1 555 000 0000",
+                    key="customer_profile_phone",
+                )
+            with country_col:
+                country_value = st.text_input(
+                    "Country",
+                    value=_safe_text(
+                        customer_profile.get("country"),
+                        profile.get("country", ""),
+                    ),
+                    placeholder="United States",
+                    key="customer_profile_country",
+                )
+
+            timezone_value = st.text_input(
+                "Time zone",
+                value=_safe_text(
+                    customer_profile.get("timezone"),
+                    profile.get("timezone", ""),
+                ),
+                placeholder="America/New_York",
+                key="customer_profile_timezone",
+            )
+            avatar_value = st.text_input(
+                "Profile image URL",
+                value=_safe_text(
+                    customer_profile.get("avatar_url"),
+                    profile.get("avatar_url", ""),
+                ),
+                placeholder="https://example.com/profile.jpg",
+                key="customer_profile_avatar",
+            )
+            bio_value = st.text_area(
+                "Professional bio",
+                value=_safe_text(customer_profile.get("bio"), ""),
+                placeholder=(
+                    "Optional short description shown in future collaboration "
+                    "and approval workflows."
+                ),
+                height=110,
+                key="customer_profile_bio",
+            )
+
+            if st.button(
+                "Save Profile",
+                type="primary",
+                use_container_width=True,
+                disabled=migration_required,
+                key="save_customer_profile",
+            ):
+                saved_profile, save_error = update_customer_profile(
+                    supabase,
+                    user_id,
+                    {
+                        "full_name": full_name_value.strip(),
+                        "company_name": company_value.strip(),
+                        "job_title": job_title_value.strip(),
+                        "phone": phone_value.strip(),
+                        "country": country_value.strip(),
+                        "timezone": timezone_value.strip(),
+                        "avatar_url": avatar_value.strip(),
+                        "bio": bio_value.strip(),
+                    },
+                )
+                if save_error:
+                    st.error(f"Unable to save profile: {save_error}")
+                else:
+                    st.success("Customer profile saved.")
+                    st.rerun()
+
+    with preferences_tab:
+        st.subheader("Application preferences")
+        st.caption(
+            "Set the defaults Cadivor should use when presenting engineering "
+            "information and sending product notifications."
+        )
+
+        appearance_options = ["System", "Light", "Dark"]
+        saved_appearance = _safe_text(
+            preferences.get("appearance"),
+            "system",
+        ).title()
+        if saved_appearance not in appearance_options:
+            saved_appearance = "System"
+
+        density_options = ["Comfortable", "Compact"]
+        saved_density = _safe_text(
+            preferences.get("density"),
+            "comfortable",
+        ).title()
+        if saved_density not in density_options:
+            saved_density = "Comfortable"
+
+        units_options = ["Metric", "Imperial"]
+        saved_units = _safe_text(
+            preferences.get("default_units"),
+            "metric",
+        ).title()
+        if saved_units not in units_options:
+            saved_units = "Metric"
+
+        currency_options = ["USD", "EUR", "GBP", "CAD"]
+        saved_currency = _safe_text(
+            preferences.get("default_currency"),
+            "USD",
+        ).upper()
+        if saved_currency not in currency_options:
+            saved_currency = "USD"
+
+        display_col, default_col = st.columns(2, gap="large")
+        with display_col:
+            appearance_value = st.selectbox(
+                "Appearance",
+                appearance_options,
+                index=appearance_options.index(saved_appearance),
+                key="customer_preference_appearance",
+                help="Theme selection is stored now; full dark-theme support arrives in a later UI milestone.",
+            )
+            density_value = st.selectbox(
+                "Interface density",
+                density_options,
+                index=density_options.index(saved_density),
+                key="customer_preference_density",
+            )
+
+        with default_col:
+            units_value = st.selectbox(
+                "Default units",
+                units_options,
+                index=units_options.index(saved_units),
+                key="customer_preference_units",
+            )
+            currency_value = st.selectbox(
+                "Default currency",
+                currency_options,
+                index=currency_options.index(saved_currency),
+                key="customer_preference_currency",
+            )
+
+        st.subheader("Notification preferences")
+        email_notifications = st.toggle(
+            "Account and product email",
+            value=bool(preferences.get("email_notifications", True)),
+            key="customer_pref_email",
+        )
+        workspace_notifications = st.toggle(
+            "Workspace collaboration updates",
+            value=bool(preferences.get("workspace_notifications", True)),
+            key="customer_pref_workspace",
+        )
+        monitoring_notifications = st.toggle(
+            "Monitoring and lifecycle alerts",
+            value=bool(preferences.get("monitoring_notifications", True)),
+            key="customer_pref_monitoring",
+        )
+        report_notifications = st.toggle(
+            "Report generation updates",
+            value=bool(preferences.get("report_notifications", True)),
+            key="customer_pref_reports",
+        )
+
+        if st.button(
+            "Save Preferences",
+            type="primary",
+            use_container_width=True,
+            disabled=migration_required,
+            key="save_customer_preferences",
+        ):
+            saved_preferences, save_error = update_user_preferences(
+                supabase,
+                user_id,
+                {
+                    "appearance": appearance_value.lower(),
+                    "density": density_value.lower(),
+                    "default_units": units_value.lower(),
+                    "default_currency": currency_value,
+                    "email_notifications": email_notifications,
+                    "workspace_notifications": workspace_notifications,
+                    "monitoring_notifications": monitoring_notifications,
+                    "report_notifications": report_notifications,
+                },
+            )
+            if save_error:
+                st.error(f"Unable to save preferences: {save_error}")
+            else:
+                st.success("Preferences saved.")
+                st.rerun()
 
         st.markdown(
             """
-            <div class="cv-panel">
-              <div class="cv-panel-title">Security</div>
-              <div class="cv-panel-copy">Password changes and two-factor authentication will be added in a later security sprint.</div>
-              <span class="cv-status-pill muted">Coming soon</span>
+            <div class="cv-settings-note">
+              Appearance and density preferences are now stored persistently.
+              Their full application across every page will be introduced after
+              the customer-settings foundation is stable.
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with right:
-        st.markdown('<div class="cv-panel-title">Profile information</div><div class="cv-panel-copy">Use this information to personalize Cadivor, reports, notifications, and future team workspaces.</div>', unsafe_allow_html=True)
-        full_name = st.text_input("Full name", value=profile.get("full_name", ""), placeholder="Joshua Kashambala")
-        company_name = st.text_input("Company / organization", value=profile.get("company", ""), placeholder="Egres Technologies")
-        role_title = st.text_input("Job title", value=profile.get("role_title", ""), placeholder="Founder, Engineering Lead, Sourcing Manager")
-        phone = st.text_input("Phone", value=profile.get("phone", ""), placeholder="+1 555 000 0000")
-        country = st.text_input("Country", value=profile.get("country", ""), placeholder="United States")
-        timezone_value = st.text_input("Time zone", value=profile.get("timezone", ""), placeholder="America/New_York")
-        profile_image_url = st.text_input("Profile image URL", value=profile.get("avatar_url", ""), placeholder="https://...")
+    with workspace_tab:
+        st.subheader("Workspace settings")
+        st.caption(
+            "Workspace identity, members, invitations, and engineering defaults "
+            "are managed from the collaboration workspace."
+        )
+        st.link_button(
+            "Open Workspace",
+            "?page=Workspace",
+            use_container_width=True,
+        )
 
-        save_col, cancel_col = st.columns([.75, .75])
-        with save_col:
-            if st.button("Save Changes", use_container_width=True):
-                updates = {
-                    "full_name": full_name.strip(),
-                    "company_name": company_name.strip(),
-                    "role_title": role_title.strip(),
-                    "phone": phone.strip(),
-                    "country": country.strip(),
-                    "timezone": timezone_value.strip(),
-                    "profile_image_url": profile_image_url.strip(),
-                }
-                try:
-                    saved, skipped = update_user_profile_fields(current_user["id"], updates)
-                    if saved:
-                        st.success("Profile updated.")
-                    if skipped:
-                        st.info("Some optional profile fields need matching columns in your Supabase users table before they can be saved permanently.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Unable to update profile: {e}")
-        with cancel_col:
-            if st.button("Cancel", use_container_width=True):
-                st.rerun()
+    with security_tab:
+        st.subheader("Security")
+        st.markdown(
+            f"""
+            <div class="cv-security-row">
+              <strong>Authenticated email</strong>
+              <span>{html.escape(auth_email)}</span>
+            </div>
+            <div class="cv-security-row">
+              <strong>Password management</strong>
+              <span>Password reset and change-password controls will be connected
+              in Milestone 11C using Supabase Auth.</span>
+            </div>
+            <div class="cv-security-row">
+              <strong>Two-factor authentication</strong>
+              <span>Planned for the security and authentication phase.</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        st.caption("Recommended optional columns: full_name, company_name, role_title, phone, country, timezone, profile_image_url.")
+    with billing_tab:
+        st.subheader("Plan & billing")
+        st.caption(
+            "Review Cadivor plans and upgrade the current account when the team "
+            "requires higher BOM, monitoring, report, or member limits."
+        )
+        st.markdown(
+            f"""
+            <div class="cv-profile-card">
+              <div class="cv-profile-fact">
+                <span>Current plan</span>
+                <strong>{html.escape(profile.get("plan", "Starter"))}</strong>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.link_button(
+            "View Plans",
+            "?page=Pricing",
+            use_container_width=True,
+        )
 
     st.stop()
-
 
 
 # ---------- Workspace ----------
