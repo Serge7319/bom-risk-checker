@@ -5547,24 +5547,39 @@ if app_mode == "Alternative Finder":
                             key="af62b_advanced_download",
                         )
 
+        # Milestone 7.0.1 — safe Alternative Finder reset callback
+        def _reset_alternative_search():
+            """Clear the Alternative Finder before its widgets are recreated."""
+            st.session_state["suggested_alternatives"] = []
+            st.session_state["alternative_search_attempted"] = False
+            st.session_state["alternative_original_data"] = {}
+            st.session_state["alternative_original_risk"] = {}
+            st.session_state["alternative_original_lookup_part"] = ""
+            st.session_state["alternative_original_lookup_error"] = ""
+            st.session_state["alternative_original_part"] = ""
+            st.session_state["alternative_engineering_decisions"] = {}
+            st.session_state["alternative_decision_notes"] = {}
+
+            # Clear selection and comparison state from the previous result set.
+            for state_key in (
+                "alternative_selected_candidate",
+                "alternative_compare_parts",
+                "alternative_advanced_parts",
+                "alternative_decision_db_status",
+                "alternative_decision_db_error",
+                "alternative_decision_flash",
+            ):
+                st.session_state.pop(state_key, None)
+
         reset_col, note_col = st.columns([0.28, 0.72], gap="medium")
         with reset_col:
-            if st.button(
+            st.button(
                 "New Alternative Search",
                 type="secondary",
                 use_container_width=True,
                 key="alternative_reset_62b",
-            ):
-                st.session_state["suggested_alternatives"] = []
-                st.session_state["alternative_search_attempted"] = False
-                st.session_state["alternative_original_data"] = {}
-                st.session_state["alternative_original_risk"] = {}
-                st.session_state["alternative_original_lookup_part"] = ""
-                st.session_state["alternative_original_lookup_error"] = ""
-                st.session_state["alternative_original_part"] = ""
-                st.session_state["alternative_engineering_decisions"] = {}
-                st.session_state["alternative_decision_notes"] = {}
-                st.rerun()
+                on_click=_reset_alternative_search,
+            )
         with note_col:
             st.markdown(
                 '<div class="af62b-reset-note">The detailed alternative library is collapsed by default so engineers can focus on the strongest recommendation first.</div>',
