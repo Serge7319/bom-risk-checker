@@ -470,7 +470,7 @@ def generate_engineering_change_package_pdf(
         canvas.drawString(
             42,
             19,
-            f"{original_part} to {alternative_part} - Engineering Change Package",
+            f"{original_part} -> {alternative_part} - Engineering Change Package",
         )
         canvas.drawRightString(width - 42, 19, f"Page {doc.page}")
         canvas.restoreState()
@@ -546,19 +546,30 @@ def generate_engineering_change_package_pdf(
     def _clean_text(value):
         text_value = str(value if value is not None else "-")
         replacements = {
-            "✓": "Match:",
-            "⚠": "Warning:",
+            "✓": "",
+            "⚠": "",
+            "ℹ": "",
             "●": "",
             "🔴": "",
             "🟢": "",
             "🟡": "",
+            "■": "",
+            "▪": "",
             "□": "-",
             "→": "to",
             "•": "-",
         }
         for old, new in replacements.items():
             text_value = text_value.replace(old, new)
-        return html.escape(text_value.strip())
+
+        text_value = re.sub(
+            r"^\s*(warning|match|advantage|trade[- ]?off)\s*:\s*",
+            "",
+            text_value,
+            flags=re.IGNORECASE,
+        )
+        text_value = re.sub(r"\s+", " ", text_value).strip()
+        return html.escape(text_value)
 
     def _p(value, style=body_style, bold=False, color=None):
         content = _clean_text(value)
@@ -571,12 +582,42 @@ def generate_engineering_change_package_pdf(
     def _bullet_block(items, prefix, empty_message, color, style=compact_style):
         if not items:
             return _p(empty_message, style)
+
         lines = []
         for item in items:
+            cleaned_item = re.sub(
+                r"^\s*(warning|match|advantage|trade[- ]?off)\s*:\s*",
+                "",
+                str(item),
+                flags=re.IGNORECASE,
+            )
+            cleaned_item = cleaned_item.replace("■", "").replace("▪", "").strip()
+
+            if prefix == "ADVANTAGE:":
+                stock_match = re.search(
+                    r"([0-9]+(?:\.[0-9]+)?)\s*[x×]\s*more stock",
+                    cleaned_item,
+                    flags=re.IGNORECASE,
+                )
+                cost_match = re.search(
+                    r"([0-9]+(?:\.[0-9]+)?)%\s*lower cost",
+                    cleaned_item,
+                    flags=re.IGNORECASE,
+                )
+                if stock_match:
+                    cleaned_item = (
+                        f"Approximately {stock_match.group(1)}x greater supplier inventory"
+                    )
+                elif cost_match:
+                    cleaned_item = (
+                        f"Estimated unit cost reduced by {cost_match.group(1)}%"
+                    )
+
             lines.append(
                 f'<font color="{color}"><b>{html.escape(prefix)}</b></font> '
-                f'{_clean_text(item)}'
+                f'{_clean_text(cleaned_item)}'
             )
+
         return Paragraph("<br/><br/>".join(lines), style)
 
     decision_upper = str(decision or "Pending review").upper()
@@ -731,7 +772,7 @@ def generate_engineering_change_package_pdf(
                 _bullet_block(
                     tradeoffs,
                     "TRADE-OFF:",
-                    "No material trade-off was calculated.",
+                    "No significant trade-offs identified.",
                     "#DC2626",
                 ),
             ],
@@ -3594,6 +3635,113 @@ if app_mode == "Alternative Finder":
             border-color:#FDE68A;
         }
 
+        .af7-intelligence-card{
+            border:1px solid #cbdcfb;
+            border-radius:22px;
+            padding:22px 24px;
+            margin:18px 0 16px;
+            background:
+                radial-gradient(circle at 100% 0%, rgba(37,99,235,.12), transparent 35%),
+                linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);
+            box-shadow:0 18px 42px rgba(15,23,42,.07);
+        }
+        .af7-intelligence-top{
+            display:flex;
+            justify-content:space-between;
+            gap:18px;
+            align-items:flex-start;
+            margin-bottom:14px;
+        }
+        .af7-intelligence-eyebrow{
+            color:#2563eb;
+            font-size:11px;
+            font-weight:900;
+            letter-spacing:.11em;
+            text-transform:uppercase;
+            margin-bottom:7px;
+        }
+        .af7-intelligence-title{
+            color:#0f172a;
+            font-size:22px;
+            line-height:1.15;
+            font-weight:900;
+            margin-bottom:6px;
+        }
+        .af7-intelligence-summary{
+            color:#475569;
+            font-size:14px;
+            line-height:1.55;
+            max-width:980px;
+        }
+        .af7-confidence-badge{
+            flex:0 0 auto;
+            border:1px solid #bfdbfe;
+            border-radius:999px;
+            background:#eff6ff;
+            color:#1d4ed8;
+            padding:8px 12px;
+            font-size:12px;
+            font-weight:850;
+            white-space:nowrap;
+        }
+        .af7-factor-grid{
+            display:grid;
+            grid-template-columns:repeat(5,minmax(0,1fr));
+            gap:10px;
+            margin-top:16px;
+        }
+        .af7-factor{
+            border:1px solid #dbe3ef;
+            border-radius:16px;
+            background:rgba(255,255,255,.88);
+            padding:13px 14px;
+            min-height:104px;
+        }
+        .af7-factor span{
+            display:block;
+            color:#64748b;
+            font-size:9px;
+            font-weight:900;
+            letter-spacing:.10em;
+            text-transform:uppercase;
+            margin-bottom:7px;
+        }
+        .af7-factor strong{
+            display:block;
+            color:#0f172a;
+            font-size:16px;
+            line-height:1.25;
+            margin-bottom:8px;
+        }
+        .af7-factor p{
+            color:#64748b;
+            font-size:11px;
+            line-height:1.38;
+            margin:0;
+        }
+        .af7-meter{
+            height:6px;
+            border-radius:999px;
+            background:#e2e8f0;
+            overflow:hidden;
+            margin-top:10px;
+        }
+        .af7-meter > i{
+            display:block;
+            height:100%;
+            border-radius:999px;
+            background:#2563eb;
+        }
+        .af7-meter.good > i{background:#10b981;}
+        .af7-meter.warn > i{background:#f59e0b;}
+        .af7-meter.bad > i{background:#ef4444;}
+        .af7-explain-note{
+            color:#64748b;
+            font-size:11px;
+            line-height:1.45;
+            margin-top:12px;
+        }
+
         .af62b-analysis-grid{
             display:grid;
             grid-template-columns:repeat(4,minmax(0,1fr));
@@ -3688,6 +3836,7 @@ if app_mode == "Alternative Finder":
         @media(max-width:1100px){
             .af62b-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}
             .af62b-analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+            .af7-factor-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
         }
 
         @media(max-width:760px){
@@ -3695,6 +3844,7 @@ if app_mode == "Alternative Finder":
             .af62b-score{width:100%;height:auto;min-height:88px;}
             .af62b-metrics{grid-template-columns:1fr;}
             .af62b-analysis-grid{grid-template-columns:1fr;}
+            .af7-factor-grid{grid-template-columns:1fr;}
         }
 
         /* Milestone 6.2B.1 — results cleanup and focused actions */
@@ -4549,6 +4699,152 @@ if app_mode == "Alternative Finder":
                 """,
                 unsafe_allow_html=True,
             )
+        # Milestone 7.0 — Explainable Engineering Intelligence
+        lifecycle_strength = (
+            100 if lifecycle_value.lower() == "active"
+            else 55 if lifecycle_value.lower() in {"nrnd", "not recommended for new designs"}
+            else 25
+        )
+        risk_strength = (
+            92 if risk_value.lower() == "low"
+            else 58 if risk_value.lower() == "medium"
+            else 24
+        )
+        supply_strength = (
+            96 if stock_value >= 50000
+            else 82 if stock_value >= 10000
+            else 62 if stock_value >= 1000
+            else 30
+        )
+
+        if original_price > 0 and alternative_price > 0:
+            cost_strength = max(
+                10,
+                min(
+                    100,
+                    int(
+                        70
+                        + ((original_price - alternative_price) / original_price) * 55
+                    ),
+                ),
+            )
+        else:
+            cost_strength = 50
+
+        warning_count = len(warning_points)
+        if drop_in_confidence >= 75:
+            intelligence_summary = (
+                f"{selected_alternative} shows strong compatibility with the original "
+                f"component and is suitable for focused engineering validation."
+            )
+        elif drop_in_confidence >= 50:
+            intelligence_summary = (
+                f"{selected_alternative} is a plausible replacement, but Cadivor identified "
+                f"{warning_count} verification item{'s' if warning_count != 1 else ''} "
+                f"that should be resolved before production release."
+            )
+        else:
+            intelligence_summary = (
+                f"{selected_alternative} should not be treated as a drop-in replacement. "
+                f"The available evidence supports comparison and testing only, with "
+                f"additional electrical and package verification required."
+            )
+
+        if "lower cost" in price_delta.lower():
+            intelligence_summary += " The candidate also improves estimated unit cost."
+        elif "higher cost" in price_delta.lower():
+            intelligence_summary += " The candidate introduces a sourcing cost increase."
+
+        if "more stock" in stock_delta.lower():
+            intelligence_summary += " Current supplier inventory is stronger than the original."
+
+        compatibility_detail = (
+            f"{drop_in_confidence}% confidence"
+            if drop_in_confidence > 0
+            else "Not verified"
+        )
+        lifecycle_detail = (
+            "Active lifecycle supports continued sourcing."
+            if lifecycle_value.lower() == "active"
+            else f"Lifecycle status: {lifecycle_value}."
+        )
+        risk_detail = (
+            "Few material engineering risks detected."
+            if risk_value.lower() == "low"
+            else "Requires additional engineering review."
+        )
+        supply_detail = (
+            f"{int(stock_value):,} units currently identified."
+            if stock_value > 0
+            else "Inventory was not confirmed."
+        )
+        cost_detail = (
+            price_delta.replace("🟢", "").replace("🔴", "").strip()
+            if price_delta != "N/A"
+            else "Cost comparison unavailable."
+        )
+
+        def _af7_meter_class(value):
+            if value >= 75:
+                return "good"
+            if value >= 50:
+                return "warn"
+            return "bad"
+
+        st.markdown(
+            f"""
+            <div class="af7-intelligence-card">
+              <div class="af7-intelligence-top">
+                <div>
+                  <div class="af7-intelligence-eyebrow">Cadivor engineering intelligence</div>
+                  <div class="af7-intelligence-title">Why this recommendation?</div>
+                  <div class="af7-intelligence-summary">{html.escape(intelligence_summary)}</div>
+                </div>
+                <div class="af7-confidence-badge">{recommendation_score}/100 recommendation</div>
+              </div>
+
+              <div class="af7-factor-grid">
+                <div class="af7-factor">
+                  <span>Compatibility</span>
+                  <strong>{html.escape(compatibility_detail)}</strong>
+                  <p>{len(recommendation_points)} verified match signal{'s' if len(recommendation_points) != 1 else ''}; {warning_count} warning{'s' if warning_count != 1 else ''}.</p>
+                  <div class="af7-meter {_af7_meter_class(drop_in_confidence)}"><i style="width:{max(2, min(100, drop_in_confidence))}%"></i></div>
+                </div>
+                <div class="af7-factor">
+                  <span>Lifecycle</span>
+                  <strong>{html.escape(lifecycle_value)}</strong>
+                  <p>{html.escape(lifecycle_detail)}</p>
+                  <div class="af7-meter {_af7_meter_class(lifecycle_strength)}"><i style="width:{lifecycle_strength}%"></i></div>
+                </div>
+                <div class="af7-factor">
+                  <span>Engineering Risk</span>
+                  <strong>{html.escape(risk_value)}</strong>
+                  <p>{html.escape(risk_detail)}</p>
+                  <div class="af7-meter {_af7_meter_class(risk_strength)}"><i style="width:{risk_strength}%"></i></div>
+                </div>
+                <div class="af7-factor">
+                  <span>Supply Position</span>
+                  <strong>{int(stock_value):,} units</strong>
+                  <p>{html.escape(supply_detail)}</p>
+                  <div class="af7-meter {_af7_meter_class(supply_strength)}"><i style="width:{supply_strength}%"></i></div>
+                </div>
+                <div class="af7-factor">
+                  <span>Cost Impact</span>
+                  <strong>{"$" + format(price_value, ".4g") if price_value > 0 else "Not available"}</strong>
+                  <p>{html.escape(cost_detail)}</p>
+                  <div class="af7-meter {_af7_meter_class(cost_strength)}"><i style="width:{cost_strength}%"></i></div>
+                </div>
+              </div>
+
+              <div class="af7-explain-note">
+                These factor bars explain the evidence supporting Cadivor's recommendation.
+                The official recommendation score remains the output of the ranking engine.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         def _af62b_items(points, empty_text):
             if not points:
                 return f'<div class="af62b-analysis-empty">{html.escape(empty_text)}</div>'
@@ -4574,7 +4870,7 @@ if app_mode == "Alternative Finder":
               </div>
               <div class="af62b-analysis-card tradeoff">
                 <div class="af62b-analysis-title">Trade-offs</div>
-                {_af62b_items(tradeoff_points, "No material trade-off was calculated.")}
+                {_af62b_items(tradeoff_points, "No significant trade-offs identified.")}
               </div>
             </div>
             """,
