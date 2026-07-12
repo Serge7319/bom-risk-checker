@@ -51,6 +51,12 @@ from src.ui.framework import (
 from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
+from src.ui.navigation import navigate_to, internal_nav_button
+from src.onboarding_service import (
+    ensure_onboarding_progress,
+    update_onboarding_progress,
+    completion_count,
+)
 from src.customer_profile_service import (
     ensure_customer_profile,
     update_customer_profile,
@@ -2059,11 +2065,81 @@ if "pending_app_mode" in st.session_state:
 else:
     app_mode = _qp_value("page", st.session_state.get("app_mode", "Dashboard"))
 
-if app_mode not in NAV_OPTIONS and app_mode != "Analysis Details":
+if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
     app_mode = "Dashboard"
 st.session_state["app_mode"] = app_mode
 
 profile_for_shell = get_user_profile(current_user) if "get_user_profile" in globals() else current_user
+
+auth_user_for_onboarding = st.session_state.get("user")
+onboarding_user_id = _safe_text(
+    getattr(auth_user_for_onboarding, "id", ""),
+    _safe_text(current_user.get("id"), ""),
+)
+onboarding_progress = {}
+onboarding_error = None
+if onboarding_user_id:
+    onboarding_progress, onboarding_error = ensure_onboarding_progress(
+        supabase,
+        onboarding_user_id,
+    )
+    onboarding_progress = onboarding_progress or {}
+
+    # Synchronize steps that can be inferred from existing Cadivor data.
+    inferred_profile_complete = bool(
+        profile_for_shell.get("full_name")
+        and (
+            profile_for_shell.get("company")
+            or profile_for_shell.get("company_name")
+            or profile_for_shell.get("role_title")
+        )
+    )
+    inferred_workspace_complete = False
+    try:
+        inferred_workspace_complete = bool(
+            supabase.table("workspace_members")
+            .select("workspace_id")
+            .eq("user_id", onboarding_user_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+    except Exception:
+        pass
+
+    inferred_alternative_complete = False
+    try:
+        inferred_alternative_complete = bool(
+            supabase.table("analysis_decisions")
+            .select("id")
+            .eq("user_id", onboarding_user_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+    except Exception:
+        pass
+
+    sync_updates = {
+        "profile_completed": inferred_profile_complete,
+        "workspace_completed": inferred_workspace_complete,
+        "first_bom_completed": saved_bom_count > 0,
+        "first_alternative_completed": inferred_alternative_complete,
+        "first_report_completed": bool(
+            st.session_state.get("reports_session_history")
+        ),
+    }
+    if any(
+        bool(onboarding_progress.get(key)) != bool(value)
+        for key, value in sync_updates.items()
+    ):
+        synced, sync_error = update_onboarding_progress(
+            supabase,
+            onboarding_user_id,
+            sync_updates,
+        )
+        if synced and not sync_error:
+            onboarding_progress = synced
 shell_name = profile_for_shell.get("full_name") or profile_for_shell.get("email", "Cadivor User").split("@")[0].title()
 shell_company = profile_for_shell.get("company_name") or profile_for_shell.get("company") or selected_plan_name
 shell_email = profile_for_shell.get("email") or current_user.get("email", "")
@@ -2158,8 +2234,244 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ---------- Customer Onboarding ----------
+if app_mode == "Onboarding":
+    progress = onboarding_progress or {}
+    completed_steps = completion_count(progress)
+    total_steps = 5
+    percent_complete = int((completed_steps / total_steps) * 100)
+
+    st.markdown(
+        """
+        <style id="cadivor-onboarding-v11a2">
+        .cv-onboard-hero{
+            border:1px solid #BFDBFE;
+            border-radius:26px;
+            padding:30px 32px;
+            background:
+                radial-gradient(circle at 92% 8%,rgba(37,99,235,.14),transparent 34%),
+                linear-gradient(135deg,#FFFFFF 0%,#F7FAFF 100%);
+            box-shadow:0 22px 54px rgba(15,23,42,.07);
+            margin-bottom:18px;
+        }
+        .cv-onboard-kicker{
+            color:#2563EB;font-size:10px;font-weight:950;
+            letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;
+        }
+        .cv-onboard-title{
+            color:#0F172A;font-size:36px;line-height:1.06;font-weight:950;
+            letter-spacing:-.045em;margin:0 0 10px;
+        }
+        .cv-onboard-copy{
+            color:#52647A;font-size:14px;line-height:1.6;font-weight:690;
+            max-width:860px;margin:0;
+        }
+        .cv-onboard-progress{
+            height:10px;border-radius:999px;background:#E2E8F0;
+            overflow:hidden;margin-top:20px;
+        }
+        .cv-onboard-progress i{
+            display:block;height:100%;border-radius:999px;background:#2563EB;
+        }
+        .cv-onboard-progress-copy{
+            color:#475569;font-size:11px;font-weight:850;margin-top:8px;
+        }
+        .cv-onboard-grid{
+            display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:14px;margin:18px 0;
+        }
+        .cv-onboard-card{
+            border:1px solid #E2E8F0;border-radius:19px;background:#FFFFFF;
+            padding:18px;box-shadow:0 13px 34px rgba(15,23,42,.05);
+        }
+        .cv-onboard-card.done{border-color:#A7F3D0;background:#F0FDF4}
+        .cv-onboard-step{
+            color:#2563EB;font-size:9px;font-weight:950;letter-spacing:.1em;
+            text-transform:uppercase;margin-bottom:7px;
+        }
+        .cv-onboard-card h3{
+            color:#0F172A;font-size:16px;font-weight:950;margin:0 0 7px;
+        }
+        .cv-onboard-card p{
+            color:#64748B;font-size:11px;line-height:1.5;font-weight:720;margin:0;
+        }
+        .cv-onboard-status{
+            display:inline-flex;margin-top:12px;border-radius:999px;padding:5px 8px;
+            font-size:9px;font-weight:950;background:#EFF6FF;color:#1D4ED8;
+            border:1px solid #BFDBFE;
+        }
+        .cv-onboard-card.done .cv-onboard-status{
+            background:#ECFDF5;color:#047857;border-color:#A7F3D0;
+        }
+        @media(max-width:760px){.cv-onboard-grid{grid-template-columns:1fr}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <section class="cv-onboard-hero">
+          <div class="cv-onboard-kicker">Welcome to Cadivor</div>
+          <h1 class="cv-onboard-title">Set up your engineering workspace.</h1>
+          <p class="cv-onboard-copy">
+            Complete these guided steps to personalize Cadivor, establish your
+            workspace, analyze a BOM, review a replacement, and generate a report.
+          </p>
+          <div class="cv-onboard-progress"><i style="width:{percent_complete}%"></i></div>
+          <div class="cv-onboard-progress-copy">
+            {completed_steps} of {total_steps} steps complete · {percent_complete}%
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    steps = [
+        (
+            "1",
+            "Complete your profile",
+            "Add your company, title, time zone, and customer preferences.",
+            bool(progress.get("profile_completed")),
+        ),
+        (
+            "2",
+            "Configure the workspace",
+            "Confirm the workspace identity, settings, and collaboration foundation.",
+            bool(progress.get("workspace_completed")),
+        ),
+        (
+            "3",
+            "Analyze your first BOM",
+            "Upload a CSV or Excel BOM and save its engineering risk analysis.",
+            bool(progress.get("first_bom_completed")),
+        ),
+        (
+            "4",
+            "Review a replacement",
+            "Compare an alternative component and save an engineering decision.",
+            bool(progress.get("first_alternative_completed")),
+        ),
+        (
+            "5",
+            "Generate a report",
+            "Create an executive or engineering report for a saved BOM.",
+            bool(progress.get("first_report_completed")),
+        ),
+    ]
+
+    cards = []
+    for number, title, copy, done in steps:
+        cards.append(
+            f'<div class="cv-onboard-card {"done" if done else ""}">'
+            f'<div class="cv-onboard-step">Step {number}</div>'
+            f'<h3>{html.escape(title)}</h3>'
+            f'<p>{html.escape(copy)}</p>'
+            f'<span class="cv-onboard-status">{"Complete" if done else "Next action"}</span>'
+            f'</div>'
+        )
+    st.markdown(
+        '<div class="cv-onboard-grid">' + "".join(cards) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    action_cols = st.columns(5)
+    with action_cols[0]:
+        internal_nav_button(
+            "Profile",
+            "Settings",
+            key="onboarding_open_profile",
+            use_container_width=True,
+        )
+    with action_cols[1]:
+        internal_nav_button(
+            "Workspace",
+            "Workspace",
+            key="onboarding_open_workspace",
+            use_container_width=True,
+        )
+    with action_cols[2]:
+        internal_nav_button(
+            "BOM Analyzer",
+            "BOM Analyzer",
+            key="onboarding_open_bom",
+            use_container_width=True,
+        )
+    with action_cols[3]:
+        internal_nav_button(
+            "Alternatives",
+            "Alternative Finder",
+            key="onboarding_open_alternatives",
+            use_container_width=True,
+        )
+    with action_cols[4]:
+        internal_nav_button(
+            "Reports",
+            "Reports",
+            key="onboarding_open_reports",
+            use_container_width=True,
+        )
+
+    finish_col, skip_col = st.columns(2)
+    with finish_col:
+        if st.button(
+            "Mark Setup Complete",
+            type="primary",
+            use_container_width=True,
+            disabled=completed_steps < total_steps,
+            key="onboarding_complete",
+        ):
+            update_onboarding_progress(
+                supabase,
+                onboarding_user_id,
+                {
+                    "welcome_seen": True,
+                    "dismissed": False,
+                    "completed_at": pd.Timestamp.utcnow().isoformat(),
+                },
+            )
+            st.success("Cadivor setup completed.")
+            navigate_to("Dashboard")
+
+    with skip_col:
+        if st.button(
+            "Skip for Now",
+            use_container_width=True,
+            key="onboarding_skip",
+        ):
+            update_onboarding_progress(
+                supabase,
+                onboarding_user_id,
+                {
+                    "welcome_seen": True,
+                    "dismissed": True,
+                },
+            )
+            navigate_to("Dashboard")
+
+    st.stop()
+
+
 # ---------- Dashboard ----------
 if app_mode == "Dashboard":
+    if (
+        onboarding_progress
+        and not onboarding_progress.get("dismissed")
+        and completion_count(onboarding_progress) < 5
+    ):
+        onboarding_done = completion_count(onboarding_progress)
+        st.info(
+            f"Customer setup is {onboarding_done}/5 complete. "
+            "Continue onboarding to finish your profile, workspace, first BOM, "
+            "replacement review, and report."
+        )
+        if st.button(
+            "Continue Customer Setup",
+            type="primary",
+            key="dashboard_continue_onboarding",
+        ):
+            navigate_to("Onboarding")
+
     render_dashboard(
         current_user=current_user,
         supabase=supabase,
@@ -3309,22 +3621,28 @@ if app_mode == "Reports":
 
         action_cols = st.columns(3)
         with action_cols[0]:
-            st.link_button(
+            internal_nav_button(
                 "Open Analysis Details",
-                f"?page=Analysis%20Details&analysis_id={selected_analysis_id}",
+                "Analysis Details",
+                key="reports_open_analysis_details",
                 use_container_width=True,
+                analysis_id=selected_analysis_id,
             )
         with action_cols[1]:
-            st.link_button(
+            internal_nav_button(
                 "Open in BOM Analyzer",
-                f"?page=BOM%20Analyzer&analysis_id={selected_analysis_id}",
+                "BOM Analyzer",
+                key="reports_open_bom_analyzer",
                 use_container_width=True,
+                analysis_id=selected_analysis_id,
             )
         with action_cols[2]:
-            st.link_button(
+            internal_nav_button(
                 "Open Alternative Finder",
-                f"?page=Alternative%20Finder&analysis_id={selected_analysis_id}",
+                "Alternative Finder",
+                key="reports_open_alternative_finder",
                 use_container_width=True,
+                analysis_id=selected_analysis_id,
             )
 
         st.markdown(
@@ -3701,6 +4019,13 @@ if app_mode == "Settings":
         unsafe_allow_html=True,
     )
 
+    internal_nav_button(
+        "Open Customer Setup",
+        "Onboarding",
+        key="settings_open_onboarding",
+        type="secondary",
+    )
+
     migration_required = (
         profile_error == "migration_required"
         or preferences_error == "migration_required"
@@ -4019,9 +4344,10 @@ if app_mode == "Settings":
             "Workspace identity, members, invitations, and engineering defaults "
             "are managed from the collaboration workspace."
         )
-        st.link_button(
+        internal_nav_button(
             "Open Workspace",
-            "?page=Workspace",
+            "Workspace",
+            key="settings_open_workspace",
             use_container_width=True,
         )
 
@@ -4063,9 +4389,10 @@ if app_mode == "Settings":
             """,
             unsafe_allow_html=True,
         )
-        st.link_button(
+        internal_nav_button(
             "View Plans",
-            "?page=Pricing",
+            "Pricing",
+            key="settings_view_plans",
             use_container_width=True,
         )
 
