@@ -347,17 +347,20 @@ def load_analysis_decisions(
     original_part=None,
     analysis_id=None,
     limit=25,
+    include_all_contexts=False,
 ):
-    """Load persistent engineering decisions for the active analysis context."""
+    """Load active engineering decisions, with optional cross-context history."""
     context_key = _decision_context_key(analysis_id)
 
     query = (
         supabase.table("analysis_decisions")
         .select("*")
         .eq("user_id", user_id)
-        .eq("context_key", context_key)
         .is_("archived_at", "null")
     )
+
+    if not include_all_contexts:
+        query = query.eq("context_key", context_key)
 
     if original_part:
         query = query.eq("original_part", str(original_part).strip())
@@ -3672,6 +3675,13 @@ if app_mode == "Alternative Finder":
             color:#B91C1C!important;
             font-weight:900!important;
         }
+
+        .st-key-af63_change_package button,
+        .st-key-af63_download button{
+            min-height:44px!important;
+            border-radius:12px!important;
+            font-weight:900!important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -4213,445 +4223,6 @@ if app_mode == "Alternative Finder":
                 """,
                 unsafe_allow_html=True,
             )
-        candidate_key = (
-            f"{str(original_part).strip().upper()}::"
-            f"{str(selected_alternative).strip().upper()}"
-        )
-
-        shortlist = st.session_state.get("alternative_candidate_shortlist", [])
-        decisions = st.session_state.get("alternative_engineering_decisions", {})
-        decision_notes = st.session_state.get("alternative_decision_notes", {})
-
-        already_saved = any(
-            isinstance(item, dict) and item.get("candidate_key") == candidate_key
-            for item in shortlist
-        )
-        persistent_candidate_record = None
-        try:
-            existing_candidate_records = load_analysis_decisions(
-                current_user["id"],
-                original_part=str(original_part),
-                analysis_id=st.session_state.get("analysis_id"),
-                limit=50,
-            )
-            persistent_candidate_record = next(
-                (
-                    record
-                    for record in existing_candidate_records
-                    if str(record.get("alternative_part", "")).strip().upper()
-                    == str(selected_alternative).strip().upper()
-                ),
-                None,
-            )
-        except Exception:
-            existing_candidate_records = []
-
-        if persistent_candidate_record:
-            persisted_decision = str(
-                persistent_candidate_record.get("decision", "Saved")
-            )
-            decisions[candidate_key] = persisted_decision
-            st.session_state["alternative_engineering_decisions"] = decisions
-
-            persisted_note = str(
-                persistent_candidate_record.get("engineering_note", "") or ""
-            )
-            if candidate_key not in decision_notes and persisted_note:
-                decision_notes[candidate_key] = persisted_note
-                st.session_state["alternative_decision_notes"] = decision_notes
-
-            already_saved = True
-
-        current_decision = decisions.get(candidate_key, "Pending review")
-        decision_status_class = (
-            "approved" if current_decision == "Approved"
-            else "rejected" if current_decision == "Rejected"
-            else "saved" if already_saved
-            else ""
-        )
-
-        st.markdown(
-            f"""
-            <div class="af63-decision-shell">
-              <div class="af63-decision-head">
-                <div>
-                  <div class="af63-decision-title">Engineering Decision Workspace</div>
-                  <div class="af63-decision-copy">Record the disposition of this recommendation after reviewing compatibility, sourcing, and cost trade-offs.</div>
-                </div>
-                <div class="af63-decision-status {decision_status_class}">
-                  {html.escape(current_decision if current_decision != "Pending review" else "Pending engineering review")}
-                </div>
-              </div>
-
-              <div class="af63-decision-grid">
-                <div class="af63-decision-metric">
-                  <span>Candidate</span>
-                  <strong>{html.escape(str(selected_alternative))}</strong>
-                </div>
-                <div class="af63-decision-metric">
-                  <span>Compatibility</span>
-                  <strong>{drop_in_confidence}% · {confidence_label}</strong>
-                </div>
-                <div class="af63-decision-metric">
-                  <span>Engineering Risk</span>
-                  <strong>{html.escape(risk_value)}</strong>
-                </div>
-                <div class="af63-decision-metric">
-                  <span>Cost Impact</span>
-                  <strong>{html.escape(price_delta)}</strong>
-                </div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        note_value = decision_notes.get(candidate_key, "")
-        engineering_note = st.text_area(
-            "Engineering decision note",
-            value=note_value,
-            placeholder=(
-                "Example: Approve for prototype only. Package change requires PCB "
-                "footprint revision before production release."
-            ),
-            height=88,
-            key=f"af63_note_{candidate_key}",
-        )
-        st.session_state["alternative_decision_notes"][candidate_key] = engineering_note
-
-        approve_col, reject_col, save_col, export_col = st.columns(
-            [0.22, 0.22, 0.22, 0.34],
-            gap="small",
-        )
-
-        active_analysis_id = st.session_state.get("analysis_id")
-        active_project_name = (
-            st.session_state.get("project_name")
-            or st.session_state.get("current_project_name")
-            or ""
-        )
-
-        decision_engineer_name = (
-            profile_for_shell.get("full_name")
-            or profile_for_shell.get("name")
-            or current_user.get("full_name")
-            or current_user.get("name")
-            or current_user.get("email")
-            or "Cadivor user"
-        )
-
-        decision_payload = {
-            "analysis_id": active_analysis_id,
-            "project_name": str(active_project_name),
-            "engineer_name": str(decision_engineer_name),
-            "original_part": str(original_part),
-            "alternative_part": str(selected_alternative),
-            "decision": current_decision,
-            "engineering_note": engineering_note,
-            "recommendation_score": recommendation_score,
-            "recommendation_rating": recommendation_label,
-            "compatibility_confidence": drop_in_confidence,
-            "compatibility_rating": confidence_label,
-            "lifecycle": lifecycle_value,
-            "risk": risk_value,
-            "supplier": supplier_value,
-            "stock": int(stock_value),
-            "unit_price": price_value,
-            "package": package_value,
-            "stock_delta": stock_delta,
-            "price_delta": price_delta,
-            "source_snapshot": {
-                "original": original_data,
-                "selected_alternative": selected_row.to_dict(),
-            },
-            "comparison_snapshot": {
-                "engineering_matches": recommendation_points,
-                "warnings": warning_points,
-                "advantages": advantage_points,
-                "tradeoffs": tradeoff_points,
-            },
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        def _persist_decision(decision_value):
-            persistent_payload = dict(decision_payload)
-            persistent_payload["decision"] = decision_value
-            persistent_payload["engineering_note"] = engineering_note
-
-            try:
-                saved_record = save_analysis_decision(
-                    current_user["id"],
-                    persistent_payload,
-                )
-                st.session_state["alternative_engineering_decisions"][
-                    candidate_key
-                ] = decision_value
-                st.session_state["alternative_decision_db_status"] = ""
-                st.session_state["alternative_decision_flash"] = (
-                    "Engineering Decision Record created"
-                )
-                st.session_state["alternative_decision_db_error"] = ""
-                return saved_record
-            except Exception as save_error:
-                st.session_state["alternative_decision_db_status"] = ""
-                st.session_state["alternative_decision_db_error"] = str(save_error)
-                return None
-
-        with approve_col:
-            if st.button(
-                "Approve Candidate",
-                use_container_width=True,
-                key="af63_approve",
-            ):
-                if _persist_decision("Approved"):
-                    st.rerun()
-
-        with reject_col:
-            if st.button(
-                "Reject Candidate",
-                use_container_width=True,
-                key="af63_reject",
-            ):
-                if _persist_decision("Rejected"):
-                    st.rerun()
-
-        with save_col:
-            if already_saved:
-                st.markdown(
-                    '<div class="af62c-db-success">✓ Saved permanently</div>',
-                    unsafe_allow_html=True,
-                )
-            elif st.button(
-                "Save Candidate",
-                type="primary",
-                use_container_width=True,
-                key="af63_save",
-            ):
-                if _persist_decision("Saved"):
-                    shortlist.append(
-                        {
-                            "candidate_key": candidate_key,
-                            **decision_payload,
-                        }
-                    )
-                    st.session_state["alternative_candidate_shortlist"] = shortlist
-                    st.rerun()
-
-        with export_col:
-            export_payload = dict(decision_payload)
-            export_payload["decision"] = st.session_state.get(
-                "alternative_engineering_decisions", {}
-            ).get(candidate_key, "Pending review")
-            safe_export_payload = {
-                "original_part": export_payload.get("original_part"),
-                "alternative_part": export_payload.get("alternative_part"),
-                "decision": export_payload.get("decision"),
-                "engineering_note": export_payload.get("engineering_note"),
-                "recommendation_score": export_payload.get(
-                    "recommendation_score"
-                ),
-                "recommendation_rating": export_payload.get(
-                    "recommendation_rating"
-                ),
-                "compatibility_confidence": export_payload.get(
-                    "compatibility_confidence"
-                ),
-                "compatibility_rating": export_payload.get(
-                    "compatibility_rating"
-                ),
-                "lifecycle": export_payload.get("lifecycle"),
-                "risk": export_payload.get("risk"),
-                "supplier": export_payload.get("supplier"),
-                "stock": export_payload.get("stock"),
-                "unit_price": export_payload.get("unit_price"),
-                "package": export_payload.get("package"),
-                "stock_delta": export_payload.get("stock_delta"),
-                "price_delta": export_payload.get("price_delta"),
-                "generated_at": export_payload.get("generated_at"),
-                "comparison_snapshot": export_payload.get(
-                    "comparison_snapshot", {}
-                ),
-            }
-
-            export_bytes = json.dumps(
-                _make_json_safe(safe_export_payload),
-                indent=2,
-                ensure_ascii=False,
-                allow_nan=False,
-            ).encode("utf-8")
-            st.download_button(
-                "Export Decision Record",
-                data=export_bytes,
-                file_name=(
-                    f"{str(original_part).strip()}_to_"
-                    f"{str(selected_alternative).strip()}_decision.json"
-                ),
-                mime="application/json",
-                use_container_width=True,
-                key="af63_download",
-            )
-
-        pdf_package = generate_engineering_change_package_pdf(
-            original_part=str(original_part),
-            alternative_part=str(selected_alternative),
-            decision=st.session_state.get(
-                "alternative_engineering_decisions", {}
-            ).get(candidate_key, "Pending review"),
-            engineering_note=engineering_note,
-            recommendation_score=recommendation_score,
-            compatibility_confidence=drop_in_confidence,
-            lifecycle=lifecycle_value,
-            risk=risk_value,
-            supplier=supplier_value,
-            stock=stock_value,
-            unit_price=price_value,
-            package=package_value,
-            stock_delta=stock_delta,
-            price_delta=price_delta,
-            engineer_name=decision_engineer_name,
-            project_name=active_project_name,
-        )
-
-        package_col, package_note_col = st.columns([0.34, 0.66], gap="medium")
-        with package_col:
-            st.download_button(
-                "Generate Engineering Change Package",
-                data=pdf_package,
-                file_name=(
-                    f"{str(original_part).strip()}_to_"
-                    f"{str(selected_alternative).strip()}_change_package.pdf"
-                ),
-                mime="application/pdf",
-                use_container_width=True,
-                key="af63_change_package",
-            )
-        with package_note_col:
-            st.markdown(
-                '<div class="af63-action-help">'
-                'Creates a shareable PDF containing the engineering decision, '
-                'comparison summary, sourcing impact, approval status, engineer, '
-                'date, and recorded note.'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-
-        db_error = st.session_state.get("alternative_decision_db_error", "")
-        decision_flash = st.session_state.get("alternative_decision_flash", "")
-
-        if decision_flash:
-            st.toast(decision_flash, icon="✅")
-            st.session_state["alternative_decision_flash"] = ""
-
-        if db_error:
-            st.error(
-                "The decision could not be saved to Supabase. Apply the included "
-                "analysis_decisions migration, then try again. "
-                f"Database message: {db_error}"
-            )
-
-        try:
-            part_decision_history = load_analysis_decisions(
-                current_user["id"],
-                original_part=str(original_part),
-                analysis_id=st.session_state.get("analysis_id"),
-                limit=25,
-            )
-        except Exception:
-            part_decision_history = []
-
-        with st.expander(
-            f"Engineering decision history for {str(original_part).strip()}",
-            expanded=False,
-        ):
-            st.markdown(
-                f"""
-                <div class="af62c-history-head">
-                  <div class="af62b-compare-sub">
-                    Previous saved reviews for this original component.
-                  </div>
-                  <div class="af62c-history-count">
-                    {len(part_decision_history)} records
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            if not part_decision_history:
-                st.info(
-                    "No persistent engineering decisions have been saved for "
-                    "this component yet."
-                )
-            else:
-                history_rows = []
-                for record in part_decision_history:
-                    history_rows.append(
-                        {
-                            "Date": record.get("updated_at")
-                            or record.get("created_at", ""),
-                            "Decision": record.get("decision", ""),
-                            "Engineer": record.get("engineer_name", "")
-                            or "Cadivor user",
-                            "Candidate": record.get("alternative_part", ""),
-                            "Project": record.get("project_name", "")
-                            or (
-                                "Standalone Alternative Finder"
-                                if record.get("context_key") == "standalone"
-                                else record.get("context_key", "")
-                            ),
-                            "Original": record.get("original_part", ""),
-                            "Score": record.get("recommendation_score", 0),
-                            "Compatibility": record.get(
-                                "compatibility_confidence", 0
-                            ),
-                            "Risk": record.get("risk", ""),
-                            "Supplier": record.get("supplier", ""),
-                            "Note": record.get("engineering_note", ""),
-                        }
-                    )
-
-                st.dataframe(
-                    pd.DataFrame(history_rows),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-                decision_options = {
-                    (
-                        f'{record.get("alternative_part", "Unknown")} — '
-                        f'{record.get("decision", "Saved")} — '
-                        f'{record.get("updated_at") or record.get("created_at", "")}'
-                    ): record.get("id")
-                    for record in part_decision_history
-                    if record.get("id")
-                }
-
-                if decision_options:
-                    archive_label = st.selectbox(
-                        "Select a decision record to archive",
-                        list(decision_options.keys()),
-                        key="af62c_archive_select",
-                    )
-                    if st.button(
-                        "Archive Decision",
-                        type="secondary",
-                        key="af62c_archive",
-                    ):
-                        try:
-                            archive_analysis_decision(
-                                current_user["id"],
-                                decision_options[archive_label],
-                            )
-                            st.session_state["alternative_decision_flash"] = (
-                                "Engineering Decision Record archived"
-                            )
-                            st.session_state["alternative_decision_db_error"] = ""
-                            st.rerun()
-                        except Exception as archive_error:
-                            st.error(
-                                f"Could not archive the decision: {archive_error}"
-                            )
-
         def _af62b_items(points, empty_text):
             if not points:
                 return f'<div class="af62b-analysis-empty">{html.escape(empty_text)}</div>'
@@ -4771,6 +4342,469 @@ if app_mode == "Alternative Finder":
                 use_container_width=True,
                 hide_index=True,
             )
+
+        st.markdown(
+            """
+            <div style="margin:22px 0 10px;">
+              <div class="af62b-compare-title">Engineering Review &amp; Approval</div>
+              <div class="af62b-compare-sub">Record the final disposition after reviewing compatibility evidence and the side-by-side comparison.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        candidate_key = (
+            f"{str(original_part).strip().upper()}::"
+            f"{str(selected_alternative).strip().upper()}"
+        )
+
+        shortlist = st.session_state.get("alternative_candidate_shortlist", [])
+        decisions = st.session_state.get("alternative_engineering_decisions", {})
+        decision_notes = st.session_state.get("alternative_decision_notes", {})
+
+        already_saved = any(
+            isinstance(item, dict) and item.get("candidate_key") == candidate_key
+            for item in shortlist
+        )
+        persistent_candidate_record = None
+        try:
+            existing_candidate_records = load_analysis_decisions(
+                current_user["id"],
+                original_part=str(original_part),
+                analysis_id=st.session_state.get("analysis_id"),
+                limit=50,
+            )
+            if not existing_candidate_records:
+                existing_candidate_records = load_analysis_decisions(
+                    current_user["id"],
+                    original_part=str(original_part),
+                    limit=50,
+                    include_all_contexts=True,
+                )
+            persistent_candidate_record = next(
+                (
+                    record
+                    for record in existing_candidate_records
+                    if str(record.get("alternative_part", "")).strip().upper()
+                    == str(selected_alternative).strip().upper()
+                ),
+                None,
+            )
+        except Exception:
+            existing_candidate_records = []
+
+        if persistent_candidate_record:
+            persisted_decision = str(
+                persistent_candidate_record.get("decision", "Saved")
+            )
+            decisions[candidate_key] = persisted_decision
+            st.session_state["alternative_engineering_decisions"] = decisions
+
+            persisted_note = str(
+                persistent_candidate_record.get("engineering_note", "") or ""
+            )
+            if candidate_key not in decision_notes and persisted_note:
+                decision_notes[candidate_key] = persisted_note
+                st.session_state["alternative_decision_notes"] = decision_notes
+
+            already_saved = True
+
+        current_decision = decisions.get(candidate_key, "Pending review")
+        decision_status_class = (
+            "approved" if current_decision == "Approved"
+            else "rejected" if current_decision == "Rejected"
+            else "saved" if already_saved
+            else ""
+        )
+
+        st.markdown(
+            f"""
+            <div class="af63-decision-shell">
+              <div class="af63-decision-head">
+                <div>
+                  <div class="af63-decision-title">Engineering Review &amp; Approval</div>
+                  <div class="af63-decision-copy">Approve, reject, or retain this candidate after reviewing the engineering and sourcing evidence above.</div>
+                </div>
+                <div class="af63-decision-status {decision_status_class}">
+                  {html.escape(current_decision if current_decision != "Pending review" else "Pending engineering review")}
+                </div>
+              </div>
+
+              <div class="af63-decision-grid">
+                <div class="af63-decision-metric">
+                  <span>Candidate</span>
+                  <strong>{html.escape(str(selected_alternative))}</strong>
+                </div>
+                <div class="af63-decision-metric">
+                  <span>Compatibility</span>
+                  <strong>{drop_in_confidence}% · {confidence_label}</strong>
+                </div>
+                <div class="af63-decision-metric">
+                  <span>Engineering Risk</span>
+                  <strong>{html.escape(risk_value)}</strong>
+                </div>
+                <div class="af63-decision-metric">
+                  <span>Cost Impact</span>
+                  <strong>{html.escape(price_delta)}</strong>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        note_value = decision_notes.get(candidate_key, "")
+        engineering_note = st.text_area(
+            "Engineering decision note",
+            value=note_value,
+            placeholder=(
+                "Example: Approve for prototype only. Package change requires PCB "
+                "footprint revision before production release."
+            ),
+            height=88,
+            key=f"af63_note_{candidate_key}",
+        )
+        st.session_state["alternative_decision_notes"][candidate_key] = engineering_note
+
+        approve_col, reject_col, save_col = st.columns(
+            [1, 1, 1],
+            gap="medium",
+        )
+
+        active_analysis_id = st.session_state.get("analysis_id")
+        active_project_name = (
+            st.session_state.get("project_name")
+            or st.session_state.get("current_project_name")
+            or ""
+        )
+
+        decision_engineer_name = (
+            profile_for_shell.get("full_name")
+            or profile_for_shell.get("name")
+            or current_user.get("full_name")
+            or current_user.get("name")
+            or current_user.get("email")
+            or "Cadivor user"
+        )
+
+        decision_payload = {
+            "analysis_id": active_analysis_id,
+            "project_name": str(active_project_name),
+            "engineer_name": str(decision_engineer_name),
+            "original_part": str(original_part),
+            "alternative_part": str(selected_alternative),
+            "decision": current_decision,
+            "engineering_note": engineering_note,
+            "recommendation_score": recommendation_score,
+            "recommendation_rating": recommendation_label,
+            "compatibility_confidence": drop_in_confidence,
+            "compatibility_rating": confidence_label,
+            "lifecycle": lifecycle_value,
+            "risk": risk_value,
+            "supplier": supplier_value,
+            "stock": int(stock_value),
+            "unit_price": price_value,
+            "package": package_value,
+            "stock_delta": stock_delta,
+            "price_delta": price_delta,
+            "source_snapshot": {
+                "original": original_data,
+                "selected_alternative": selected_row.to_dict(),
+            },
+            "comparison_snapshot": {
+                "engineering_matches": recommendation_points,
+                "warnings": warning_points,
+                "advantages": advantage_points,
+                "tradeoffs": tradeoff_points,
+            },
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        def _persist_decision(decision_value):
+            persistent_payload = dict(decision_payload)
+            persistent_payload["decision"] = decision_value
+            persistent_payload["engineering_note"] = engineering_note
+
+            try:
+                saved_record = save_analysis_decision(
+                    current_user["id"],
+                    persistent_payload,
+                )
+                st.session_state["alternative_engineering_decisions"][
+                    candidate_key
+                ] = decision_value
+                st.session_state["alternative_decision_db_status"] = ""
+                st.session_state["alternative_decision_flash"] = (
+                    "Engineering Decision Record created"
+                )
+                st.session_state["alternative_decision_db_error"] = ""
+                return saved_record
+            except Exception as save_error:
+                st.session_state["alternative_decision_db_status"] = ""
+                st.session_state["alternative_decision_db_error"] = str(save_error)
+                return None
+
+        with approve_col:
+            if st.button(
+                "Approve Candidate",
+                use_container_width=True,
+                key="af63_approve",
+            ):
+                if _persist_decision("Approved"):
+                    st.rerun()
+
+        with reject_col:
+            if st.button(
+                "Reject Candidate",
+                use_container_width=True,
+                key="af63_reject",
+            ):
+                if _persist_decision("Rejected"):
+                    st.rerun()
+
+        with save_col:
+            if already_saved:
+                st.markdown(
+                    '<div class="af62c-db-success">✓ Saved permanently</div>',
+                    unsafe_allow_html=True,
+                )
+            elif st.button(
+                "Save Candidate",
+                type="primary",
+                use_container_width=True,
+                key="af63_save",
+            ):
+                if _persist_decision("Saved"):
+                    shortlist.append(
+                        {
+                            "candidate_key": candidate_key,
+                            **decision_payload,
+                        }
+                    )
+                    st.session_state["alternative_candidate_shortlist"] = shortlist
+                    st.rerun()
+
+        st.markdown(
+            """
+            <div style="margin:16px 0 8px;">
+              <div class="af62b-analysis-title">Decision Outputs</div>
+              <div class="af62b-compare-sub">Generate formal records after the engineering disposition has been recorded.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        package_output_col, json_output_col = st.columns([1, 1], gap="medium")
+
+        with json_output_col:
+            export_payload = dict(decision_payload)
+            export_payload["decision"] = st.session_state.get(
+                "alternative_engineering_decisions", {}
+            ).get(candidate_key, "Pending review")
+            safe_export_payload = {
+                "original_part": export_payload.get("original_part"),
+                "alternative_part": export_payload.get("alternative_part"),
+                "decision": export_payload.get("decision"),
+                "engineering_note": export_payload.get("engineering_note"),
+                "recommendation_score": export_payload.get(
+                    "recommendation_score"
+                ),
+                "recommendation_rating": export_payload.get(
+                    "recommendation_rating"
+                ),
+                "compatibility_confidence": export_payload.get(
+                    "compatibility_confidence"
+                ),
+                "compatibility_rating": export_payload.get(
+                    "compatibility_rating"
+                ),
+                "lifecycle": export_payload.get("lifecycle"),
+                "risk": export_payload.get("risk"),
+                "supplier": export_payload.get("supplier"),
+                "stock": export_payload.get("stock"),
+                "unit_price": export_payload.get("unit_price"),
+                "package": export_payload.get("package"),
+                "stock_delta": export_payload.get("stock_delta"),
+                "price_delta": export_payload.get("price_delta"),
+                "generated_at": export_payload.get("generated_at"),
+                "comparison_snapshot": export_payload.get(
+                    "comparison_snapshot", {}
+                ),
+            }
+
+            export_bytes = json.dumps(
+                _make_json_safe(safe_export_payload),
+                indent=2,
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+            st.download_button(
+                "Export Decision Record",
+                data=export_bytes,
+                file_name=(
+                    f"{str(original_part).strip()}_to_"
+                    f"{str(selected_alternative).strip()}_decision.json"
+                ),
+                mime="application/json",
+                use_container_width=True,
+                key="af63_download",
+            )
+
+            st.caption("Structured JSON record for integrations and audit workflows.")
+
+        pdf_package = generate_engineering_change_package_pdf(
+            original_part=str(original_part),
+            alternative_part=str(selected_alternative),
+            decision=st.session_state.get(
+                "alternative_engineering_decisions", {}
+            ).get(candidate_key, "Pending review"),
+            engineering_note=engineering_note,
+            recommendation_score=recommendation_score,
+            compatibility_confidence=drop_in_confidence,
+            lifecycle=lifecycle_value,
+            risk=risk_value,
+            supplier=supplier_value,
+            stock=stock_value,
+            unit_price=price_value,
+            package=package_value,
+            stock_delta=stock_delta,
+            price_delta=price_delta,
+            engineer_name=decision_engineer_name,
+            project_name=active_project_name,
+        )
+
+        with package_output_col:
+            st.download_button(
+                "Generate Engineering Change Package",
+                data=pdf_package,
+                file_name=(
+                    f"{str(original_part).strip()}_to_"
+                    f"{str(selected_alternative).strip()}_change_package.pdf"
+                ),
+                mime="application/pdf",
+                use_container_width=True,
+                key="af63_change_package",
+            )
+            st.caption(
+                "Branded PDF with decision, evidence, sourcing impact, engineer, date, and note."
+            )
+
+        db_error = st.session_state.get("alternative_decision_db_error", "")
+        decision_flash = st.session_state.get("alternative_decision_flash", "")
+
+        if decision_flash:
+            st.toast(decision_flash, icon="✅")
+            st.session_state["alternative_decision_flash"] = ""
+
+        if db_error:
+            st.error(
+                "The decision could not be saved to Supabase. Apply the included "
+                "analysis_decisions migration, then try again. "
+                f"Database message: {db_error}"
+            )
+
+        try:
+            part_decision_history = load_analysis_decisions(
+                current_user["id"],
+                original_part=str(original_part),
+                analysis_id=st.session_state.get("analysis_id"),
+                limit=25,
+                include_all_contexts=True,
+            )
+        except Exception:
+            part_decision_history = []
+
+        with st.expander(
+            f"Engineering decision history for {str(original_part).strip()}",
+            expanded=False,
+        ):
+            st.markdown(
+                f"""
+                <div class="af62c-history-head">
+                  <div class="af62b-compare-sub">
+                    Previous saved reviews for this original component.
+                  </div>
+                  <div class="af62c-history-count">
+                    {len(part_decision_history)} records
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if not part_decision_history:
+                st.info(
+                    "No persistent engineering decisions have been saved for "
+                    "this component yet."
+                )
+            else:
+                history_rows = []
+                for record in part_decision_history:
+                    history_rows.append(
+                        {
+                            "Date": record.get("updated_at")
+                            or record.get("created_at", ""),
+                            "Decision": record.get("decision", ""),
+                            "Engineer": record.get("engineer_name", "")
+                            or "Cadivor user",
+                            "Candidate": record.get("alternative_part", ""),
+                            "Project": record.get("project_name", "")
+                            or (
+                                "Standalone Alternative Finder"
+                                if record.get("context_key") == "standalone"
+                                else record.get("context_key", "")
+                            ),
+                            "Original": record.get("original_part", ""),
+                            "Score": record.get("recommendation_score", 0),
+                            "Compatibility": record.get(
+                                "compatibility_confidence", 0
+                            ),
+                            "Risk": record.get("risk", ""),
+                            "Supplier": record.get("supplier", ""),
+                            "Note": record.get("engineering_note", ""),
+                        }
+                    )
+
+                st.dataframe(
+                    pd.DataFrame(history_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                decision_options = {
+                    (
+                        f'{record.get("alternative_part", "Unknown")} — '
+                        f'{record.get("decision", "Saved")} — '
+                        f'{record.get("updated_at") or record.get("created_at", "")}'
+                    ): record.get("id")
+                    for record in part_decision_history
+                    if record.get("id")
+                }
+
+                if decision_options:
+                    archive_label = st.selectbox(
+                        "Select a decision record to archive",
+                        list(decision_options.keys()),
+                        key="af62c_archive_select",
+                    )
+                    if st.button(
+                        "Archive Decision",
+                        type="secondary",
+                        key="af62c_archive",
+                    ):
+                        try:
+                            archive_analysis_decision(
+                                current_user["id"],
+                                decision_options[archive_label],
+                            )
+                            st.session_state["alternative_decision_flash"] = (
+                                "Engineering Decision Record archived"
+                            )
+                            st.session_state["alternative_decision_db_error"] = ""
+                            st.rerun()
+                        except Exception as archive_error:
+                            st.error(
+                                f"Could not archive the decision: {archive_error}"
+                            )
 
         with st.expander(
             f"View all {len(alternatives_df)} ranked alternatives",
