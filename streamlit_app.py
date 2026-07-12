@@ -51,6 +51,19 @@ from src.ui.framework import (
 from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
+from src.workspace_service import (
+    ensure_personal_workspace,
+    list_members,
+    list_invites,
+    create_invite,
+    cancel_invite,
+    update_member_role,
+    remove_member,
+    update_workspace,
+    list_activity,
+    list_notifications,
+    mark_notification_read,
+)
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -3548,90 +3561,377 @@ if app_mode == "Settings":
 # ---------- Workspace ----------
 if app_mode == "Workspace":
     profile = get_user_profile(current_user)
-    workspace_title = profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace"
+    auth_user = st.session_state.get("user")
+    user_id = str(getattr(auth_user, "id", current_user.get("id", "")))
+    owner_email = profile.get("email") or _safe_text(current_user.get("email"), "")
+    owner_name = profile.get("full_name") or "Cadivor user"
+    proposed_workspace_name = profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace"
+
+    workspace, workspace_error = ensure_personal_workspace(
+        supabase,
+        user_id,
+        owner_email,
+        owner_name,
+        proposed_workspace_name,
+        selected_plan_name,
+    )
+
+    st.markdown(
+        """
+        <style>
+        .cv-ws-hero{border:1px solid #BFDBFE;border-radius:24px;padding:26px 28px;background:linear-gradient(135deg,#FFFFFF 0%,#EFF6FF 100%);box-shadow:0 18px 45px rgba(15,23,42,.06);margin-bottom:18px}
+        .cv-ws-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#2563EB;margin-bottom:9px}
+        .cv-ws-hero h1{font-size:34px;line-height:1.05;margin:0 0 9px;color:#0F172A}
+        .cv-ws-hero p{max-width:780px;margin:0;color:#52647D;font-weight:600}
+        .cv-ws-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0 0 20px}
+        .cv-ws-metric,.cv-ws-card{box-sizing:border-box;border:1px solid #E2E8F0;border-radius:18px;background:#FFFFFF;box-shadow:0 12px 30px rgba(15,23,42,.045)}
+        .cv-ws-metric{padding:16px 18px;min-height:112px}
+        .cv-ws-label{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748B}
+        .cv-ws-value{font-size:27px;font-weight:850;color:#0F172A;margin:7px 0 2px}
+        .cv-ws-note{font-size:12px;color:#64748B;font-weight:600}
+        .cv-ws-card{padding:20px;margin-bottom:14px}
+        .cv-ws-card h3{margin:0 0 6px;font-size:18px;color:#0F172A}
+        .cv-ws-card p{margin:0;color:#64748B}
+        .cv-ws-member{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(100px,.6fr) minmax(110px,.6fr);gap:12px;align-items:center;border:1px solid #E2E8F0;border-radius:15px;padding:13px 15px;margin:9px 0;background:#FBFDFF}
+        .cv-ws-member strong{display:block;color:#0F172A}.cv-ws-member span{display:block;color:#64748B;font-size:12px;margin-top:2px}
+        .cv-ws-role{display:inline-flex!important;width:max-content;padding:5px 10px;border-radius:999px;background:#EFF6FF;color:#1D4ED8!important;font-weight:800;text-transform:capitalize}
+        .cv-ws-status{display:inline-flex!important;width:max-content;padding:5px 10px;border-radius:999px;background:#ECFDF5;color:#047857!important;font-weight:800;text-transform:capitalize}
+        .cv-ws-activity{border-left:3px solid #BFDBFE;padding:2px 0 16px 16px;margin-left:6px}
+        .cv-ws-activity strong{color:#0F172A}.cv-ws-activity span{display:block;color:#64748B;font-size:12px;margin-top:4px}
+        .cv-ws-warning{border:1px solid #FDE68A;background:#FFFBEB;border-radius:18px;padding:18px;color:#92400E;margin:16px 0}
+        @media(max-width:900px){.cv-ws-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media(max-width:620px){.cv-ws-metrics{grid-template-columns:1fr}.cv-ws-member{grid-template-columns:1fr}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if workspace_error == "migration_required":
+        st.markdown(
+            f"""
+            <div class="cv-ws-hero">
+              <div class="cv-ws-kicker">Workspace & Team Collaboration</div>
+              <h1>{html.escape(proposed_workspace_name)}</h1>
+              <p>The collaboration interface is installed. Apply the included Milestone 10B Supabase migration to activate persistent members, invitations, activity, and notifications.</p>
+            </div>
+            <div class="cv-ws-warning"><strong>Database setup required.</strong><br>Run <code>supabase_migrations/20260712_milestone_10b_workspace_collaboration.sql</code> in the Supabase SQL Editor, then reload this page.</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.info("Your existing BOM analyses and engineering decisions are not changed by this migration.")
+        st.stop()
+    if workspace_error or not workspace:
+        st.error(f"Unable to load the workspace: {workspace_error or 'Unknown workspace error'}")
+        st.stop()
+
+    workspace_id = str(workspace.get("id"))
+    current_role = str(workspace.get("current_role") or "viewer").lower()
+    can_administer = current_role in {"owner", "admin"}
+    is_owner = current_role == "owner"
+
+    members, members_error = list_members(supabase, workspace_id)
+    invites, invites_error = list_invites(supabase, workspace_id)
+    activity_rows, activity_error = list_activity(supabase, workspace_id, 75)
+    active_members = [row for row in members if row.get("status") == "active"]
+    pending_invites = [row for row in invites if row.get("status") == "pending"]
+
+    workspace_name = _safe_text(workspace.get("name"), proposed_workspace_name)
     st.markdown(
         f"""
-        <div class="cv-dashboard-header cv-fade-in">
-          <div>
-            <div class="cv-eyebrow">Workspace</div>
-            <h1 class="cv-title">{workspace_title}</h1>
-            <p class="cv-subtitle">Manage workspace identity, subscription usage, team foundations, and billing entry points. Team collaboration expands after core product workflows are complete.</p>
-          </div>
+        <div class="cv-ws-hero">
+          <div class="cv-ws-kicker">Team Engineering Workspace</div>
+          <h1>{html.escape(workspace_name)}</h1>
+          <p>Manage workspace identity, engineering access, team invitations, collaboration activity, and notification readiness from one controlled workspace.</p>
+        </div>
+        <div class="cv-ws-metrics">
+          <div class="cv-ws-metric"><div class="cv-ws-label">Plan</div><div class="cv-ws-value">{html.escape(selected_plan_name)}</div><div class="cv-ws-note">Current subscription</div></div>
+          <div class="cv-ws-metric"><div class="cv-ws-label">Members</div><div class="cv-ws-value">{len(active_members)}</div><div class="cv-ws-note">Active workspace users</div></div>
+          <div class="cv-ws-metric"><div class="cv-ws-label">Pending Invites</div><div class="cv-ws-value">{len(pending_invites)}</div><div class="cv-ws-note">Awaiting acceptance</div></div>
+          <div class="cv-ws-metric"><div class="cv-ws-label">Saved Analyses</div><div class="cv-ws-value">{saved_bom_count}</div><div class="cv-ws-note">Shared engineering records</div></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    w1, w2, w3, w4 = st.columns(4)
-    with w1:
-        st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">Current Plan</div><div class="cv-snapshot-main">{selected_plan_name}</div><p class="cv-panel-copy">{selected_plan.get("description", "Cadivor subscription")}</p></div>', unsafe_allow_html=True)
-    with w2:
-        st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">BOM Usage</div><div class="cv-snapshot-main">{monthly_upload_count} / {selected_plan["monthly_bom_limit"]}</div><p class="cv-panel-copy">Monthly analyses used.</p></div>', unsafe_allow_html=True)
-    with w3:
-        st.markdown(f'<div class="cv-panel"><div class="cv-panel-title">Saved BOMs</div><div class="cv-snapshot-main">{saved_bom_count} / {selected_plan["max_saved_boms"]}</div><p class="cv-panel-copy">Stored analyses in this workspace.</p></div>', unsafe_allow_html=True)
-    with w4:
-        st.markdown('<div class="cv-panel"><div class="cv-panel-title">Team Members</div><div class="cv-snapshot-main">1</div><p class="cv-panel-copy">Team workspaces coming soon.</p></div>', unsafe_allow_html=True)
+    overview_tab, members_tab, invitations_tab, activity_tab, settings_tab = st.tabs(
+        ["Overview", "Members", "Invitations", "Activity", "Settings"]
+    )
 
-    st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Workspace settings</div><div class="cv-panel-copy">Workspace profile, team access, billing, and integrations will grow here as Cadivor moves toward team-ready workflows.</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns([1.1, 1.4])
-    with c1:
+    with overview_tab:
+        left, right = st.columns([1.25, .75], gap="large")
+        with left:
+            st.markdown(
+                f"""
+                <div class="cv-ws-card">
+                  <h3>Workspace information</h3>
+                  <p>Persistent identity and collaboration boundaries for your engineering records.</p>
+                  <div class="cv-snapshot-grid" style="grid-template-columns:1fr 1fr;margin-top:15px">
+                    <div class="cv-snapshot-item"><span>Workspace</span><strong>{html.escape(workspace_name)}</strong></div>
+                    <div class="cv-snapshot-item"><span>Your role</span><strong>{html.escape(current_role.title())}</strong></div>
+                    <div class="cv-snapshot-item"><span>Owner</span><strong>{html.escape(owner_name)}</strong></div>
+                    <div class="cv-snapshot-item"><span>Created</span><strong>{html.escape(str(workspace.get('created_at',''))[:10] or 'Today')}</strong></div>
+                    <div class="cv-snapshot-item"><span>Time zone</span><strong>{html.escape(_safe_text(workspace.get('timezone'),'UTC'))}</strong></div>
+                    <div class="cv-snapshot-item"><span>Units</span><strong>{html.escape(_safe_text(workspace.get('unit_system'),'metric').title())}</strong></div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown('<div class="cv-ws-card"><h3>Recent workspace activity</h3><p>The latest collaboration and administration events.</p></div>', unsafe_allow_html=True)
+            if activity_error:
+                st.warning(f"Activity could not be loaded: {activity_error}")
+            elif not activity_rows:
+                st.info("No workspace activity has been recorded yet.")
+            else:
+                for item in activity_rows[:6]:
+                    st.markdown(
+                        f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(item.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(item.get("actor_name"), "Cadivor"))} · {html.escape(str(item.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
+                        unsafe_allow_html=True,
+                    )
+        with right:
+            st.markdown(
+                f"""
+                <div class="cv-ws-card">
+                  <h3>Collaboration readiness</h3>
+                  <p>Milestone 10B creates the team foundation without changing your existing BOM ownership model yet.</p>
+                  <div class="cv-snapshot-grid" style="grid-template-columns:1fr;margin-top:15px">
+                    <div class="cv-snapshot-item"><span>Member directory</span><strong>Active</strong></div>
+                    <div class="cv-snapshot-item"><span>Invitation records</span><strong>Active</strong></div>
+                    <div class="cv-snapshot-item"><span>Role controls</span><strong>{'Owner enabled' if is_owner else 'Permission controlled'}</strong></div>
+                    <div class="cv-snapshot-item"><span>Email delivery</span><strong>Not connected yet</strong></div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.caption("Invitations are stored persistently now. Automated invitation email and acceptance links arrive in the next collaboration capability.")
+
+    with members_tab:
+        st.subheader("Workspace members")
+        st.caption("Owners and admins manage access. Only the owner can change member roles in this foundation release.")
+        if members_error:
+            st.error(f"Members could not be loaded: {members_error}")
+        elif not active_members:
+            st.info("No active workspace members were found.")
+        else:
+            for member in active_members:
+                member_name = _safe_text(member.get("display_name"), _safe_text(member.get("email"), "Workspace member"))
+                member_email = _safe_text(member.get("email"), "")
+                member_role = _safe_text(member.get("role"), "viewer").lower()
+                st.markdown(
+                    f'<div class="cv-ws-member"><div><strong>{html.escape(member_name)}</strong><span>{html.escape(member_email)}</span></div><div><span class="cv-ws-role">{html.escape(member_role)}</span></div><div><span class="cv-ws-status">{html.escape(_safe_text(member.get("status"),"active"))}</span></div></div>',
+                    unsafe_allow_html=True,
+                )
+                if is_owner and member_role != "owner":
+                    c1, c2, c3 = st.columns([1.1, .7, 2.2])
+                    role_options = ["admin", "engineer", "viewer"]
+                    with c1:
+                        selected_role = st.selectbox(
+                            "Role",
+                            role_options,
+                            index=role_options.index(member_role) if member_role in role_options else 2,
+                            key=f"member_role_{member.get('id')}",
+                            label_visibility="collapsed",
+                        )
+                    with c2:
+                        if st.button("Update role", key=f"update_member_{member.get('id')}", use_container_width=True):
+                            error = update_member_role(supabase, workspace_id, str(member.get("id")), selected_role, user_id, owner_name, member_email)
+                            if error:
+                                st.error(error)
+                            else:
+                                st.success(f"{member_email} is now {selected_role}.")
+                                st.rerun()
+                    with c3:
+                        if st.button("Remove member", key=f"remove_member_{member.get('id')}"):
+                            st.session_state["workspace_remove_member"] = str(member.get("id"))
+                    if st.session_state.get("workspace_remove_member") == str(member.get("id")):
+                        st.warning(f"Remove {member_email} from this workspace? Their account will not be deleted.")
+                        yes_col, no_col = st.columns(2)
+                        with yes_col:
+                            if st.button("Yes, remove member", key=f"confirm_remove_{member.get('id')}", type="primary"):
+                                error = remove_member(supabase, workspace_id, str(member.get("id")), user_id, owner_name, member_email)
+                                st.session_state.pop("workspace_remove_member", None)
+                                if error:
+                                    st.error(error)
+                                else:
+                                    st.success("Member removed.")
+                                    st.rerun()
+                        with no_col:
+                            if st.button("Cancel", key=f"cancel_remove_{member.get('id')}"):
+                                st.session_state.pop("workspace_remove_member", None)
+                                st.rerun()
+
+    with invitations_tab:
+        st.subheader("Invite team members")
+        st.caption("Create persistent invitations for admins, engineers, or viewers. Email delivery is not connected in this release.")
+        if can_administer:
+            invite_email = st.text_input("Email address", placeholder="engineer@company.com", key="workspace_invite_email")
+            invite_role = st.selectbox("Workspace role", ["Engineer", "Viewer", "Admin"], key="workspace_invite_role")
+            if st.button("Create Invitation", type="primary", key="create_workspace_invite"):
+                created, error = create_invite(supabase, workspace_id, invite_email, invite_role.lower(), user_id, owner_name)
+                if error:
+                    st.error(error)
+                else:
+                    st.success("Workspace invitation created. Email delivery will be connected in a later capability.")
+                    st.rerun()
+        else:
+            st.info("Only workspace owners and admins can create invitations.")
+
+        st.markdown("#### Pending invitations")
+        if invites_error:
+            st.error(f"Invitations could not be loaded: {invites_error}")
+        elif not pending_invites:
+            st.info("No invitations are waiting for acceptance.")
+        else:
+            invite_df = pd.DataFrame(
+                [
+                    {
+                        "Email": row.get("email"),
+                        "Role": _safe_text(row.get("role"), "engineer").title(),
+                        "Status": _safe_text(row.get("status"), "pending").title(),
+                        "Invited By": _safe_text(row.get("invited_by_name"), owner_name),
+                        "Created": str(row.get("created_at", ""))[:10],
+                        "Expires": str(row.get("expires_at", ""))[:10],
+                    }
+                    for row in pending_invites
+                ]
+            )
+            st.dataframe(invite_df, use_container_width=True, hide_index=True)
+            if can_administer:
+                invite_lookup = {f"{row.get('email')} — {str(row.get('created_at',''))[:10]}": row for row in pending_invites}
+                selected_invite_label = st.selectbox("Select an invitation to cancel", list(invite_lookup.keys()))
+                if st.button("Cancel Selected Invitation"):
+                    selected_invite = invite_lookup[selected_invite_label]
+                    error = cancel_invite(supabase, workspace_id, str(selected_invite.get("id")), user_id, owner_name, _safe_text(selected_invite.get("email"), ""))
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("Invitation cancelled.")
+                        st.rerun()
+
+    with activity_tab:
+        st.subheader("Workspace activity")
+        st.caption("A persistent audit-oriented timeline of team and workspace administration events.")
+        if activity_error:
+            st.error(f"Activity could not be loaded: {activity_error}")
+        elif not activity_rows:
+            st.info("No workspace activity has been recorded yet.")
+        else:
+            activity_df = pd.DataFrame(
+                [
+                    {
+                        "Date": str(row.get("created_at", ""))[:19].replace("T", " "),
+                        "Actor": _safe_text(row.get("actor_name"), "Cadivor user"),
+                        "Action": _safe_text(row.get("action"), "workspace.event").replace(".", " ").title(),
+                        "Summary": _safe_text(row.get("summary"), "Workspace event"),
+                    }
+                    for row in activity_rows
+                ]
+            )
+            st.dataframe(activity_df, use_container_width=True, hide_index=True, height=430)
+
+    with settings_tab:
+        st.subheader("Workspace settings")
+        st.caption("Workspace owners and admins control the shared identity and engineering defaults.")
+        if can_administer:
+            settings_name = st.text_input("Workspace name", value=workspace_name, key="workspace_settings_name")
+            settings_timezone = st.text_input("Time zone", value=_safe_text(workspace.get("timezone"), profile.get("timezone") or "UTC"), key="workspace_settings_timezone")
+            settings_units = st.selectbox("Default unit system", ["metric", "imperial"], index=0 if _safe_text(workspace.get("unit_system"), "metric") == "metric" else 1, key="workspace_settings_units")
+            if st.button("Save Workspace Settings", type="primary"):
+                error = update_workspace(supabase, workspace_id, settings_name, settings_timezone, settings_units, user_id, owner_name)
+                if error:
+                    st.error(error)
+                else:
+                    st.success("Workspace settings saved.")
+                    st.rerun()
+        else:
+            st.info("Only workspace owners and admins can update workspace settings.")
         st.markdown(
             f"""
-            <div class="cv-panel">
-              <div class="cv-panel-title">Workspace identity</div>
-              <div class="cv-snapshot-grid" style="grid-template-columns:1fr;">
-                <div class="cv-snapshot-item"><span>Workspace</span><strong>{workspace_title}</strong></div>
-                <div class="cv-snapshot-item"><span>Organization</span><strong>{profile.get('company') or 'Not set'}</strong></div>
-                <div class="cv-snapshot-item"><span>Owner</span><strong>{profile.get('full_name')}</strong></div>
+            <div class="cv-ws-card">
+              <h3>Workspace identifiers</h3>
+              <p>Use these values when support or future API integrations need to identify this workspace.</p>
+              <div class="cv-snapshot-grid" style="grid-template-columns:1fr;margin-top:15px">
+                <div class="cv-snapshot-item"><span>Workspace ID</span><strong>{html.escape(workspace_id)}</strong></div>
+                <div class="cv-snapshot-item"><span>Owner ID</span><strong>{html.escape(_safe_text(workspace.get('owner_id'), user_id))}</strong></div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    with c2:
-        st.markdown(
-            """
-            <div class="cv-panel">
-              <div class="cv-panel-title">Team foundation</div>
-              <div class="cv-panel-copy">Cadivor is currently configured for single-user workspaces. Team roles, invitations, activity history, comments, and shared BOM ownership are planned after BOM Intelligence 2.0.</div>
-              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
-                <span class="cv-status-pill muted">Admin role</span>
-                <span class="cv-status-pill muted">Engineer role</span>
-                <span class="cv-status-pill muted">Viewer role</span>
-                <span class="cv-status-pill muted">Coming soon</span>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div class="cv-section-spacer"></div><div class="cv-panel-title">Workspace actions</div><div class="cv-panel-copy">Use these shortcuts to manage the current workspace experience.</div>', unsafe_allow_html=True)
-    a1, a2, a3, a4 = st.columns(4)
-    with a1:
-        action_card("Billing", "Review subscription and upgrade options.", "?page=Pricing", "$")
-    with a2:
-        action_card("Profile", "Update your display name, company, and role.", "?page=Settings", "◎")
-    with a3:
-        action_card("Notifications", "Prepare lifecycle, stock, and supplier alerts.", "?page=Notifications", "●")
-    with a4:
-        action_card("Integrations", "Supplier and API settings coming soon.", "?page=Help", "◇")
     st.stop()
 
 # ---------- Notifications ----------
 if app_mode == "Notifications":
+    profile = get_user_profile(current_user)
+    auth_user = st.session_state.get("user")
+    user_id = str(getattr(auth_user, "id", current_user.get("id", "")))
+    workspace, workspace_error = ensure_personal_workspace(
+        supabase,
+        user_id,
+        profile.get("email") or "",
+        profile.get("full_name") or "Cadivor user",
+        profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace",
+        selected_plan_name,
+    )
     st.markdown(
         """
         <div class="cv-dashboard-header">
           <div>
             <div class="cv-eyebrow">Notification Center</div>
-            <h1 class="cv-title">Alerts & updates</h1>
-            <p class="cv-subtitle">Cadivor will surface lifecycle, stock, pricing, and monitoring changes here as your workspace grows.</p>
+            <h1 class="cv-title">Workspace updates</h1>
+            <p class="cv-subtitle">Review collaboration events and workspace notifications alongside Cadivor monitoring alerts.</p>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    empty_state("No active notifications", "Your workspace has no unresolved alerts right now. Start monitoring parts to receive lifecycle, stock, and supplier updates.", "Open Monitoring", "?page=Monitoring", "●")
+    if workspace_error == "migration_required":
+        st.info("Apply the Milestone 10B Supabase migration to activate workspace notifications.")
+        st.stop()
+    if workspace_error or not workspace:
+        st.error(f"Unable to load notifications: {workspace_error or 'Workspace unavailable'}")
+        st.stop()
+
+    notification_rows, notification_error = list_notifications(supabase, str(workspace.get("id")), user_id, 75)
+    unread_rows = [row for row in notification_rows if not row.get("is_read")]
+    n1, n2, n3 = st.columns(3)
+    n1.metric("Unread", len(unread_rows))
+    n2.metric("Workspace Updates", len(notification_rows))
+    n3.metric("Monitoring Alerts", int(active_alert_count if 'active_alert_count' in globals() else 0))
+
+    workspace_updates_tab, monitoring_tab = st.tabs(["Workspace Updates", "Monitoring Alerts"])
+    with workspace_updates_tab:
+        if notification_error:
+            st.error(f"Notifications could not be loaded: {notification_error}")
+        elif not notification_rows:
+            empty_state("No workspace notifications", "Invitations, role changes, generated reports, and collaboration updates will appear here.", "Open Workspace", "?page=Workspace", "●")
+        else:
+            for row in notification_rows:
+                state = "Unread" if not row.get("is_read") else "Read"
+                st.markdown(
+                    f"""
+                    <div class="cv-panel" style="margin-bottom:10px">
+                      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                        <div><div class="cv-panel-title">{html.escape(_safe_text(row.get('title'),'Workspace update'))}</div><div class="cv-panel-copy">{html.escape(_safe_text(row.get('message'),''))}</div></div>
+                        <span class="cv-status-pill {'success' if state == 'Read' else 'warning'}">{state}</span>
+                      </div>
+                      <div class="cv-panel-copy" style="margin-top:8px">{html.escape(str(row.get('created_at',''))[:19].replace('T',' '))} UTC</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if not row.get("is_read") and st.button("Mark as read", key=f"read_notification_{row.get('id')}"):
+                    error = mark_notification_read(supabase, str(row.get("id")))
+                    if error:
+                        st.error(error)
+                    else:
+                        st.rerun()
+    with monitoring_tab:
+        st.info("Lifecycle, stock, and supplier events remain available in the Monitoring dashboard. Milestone 10B keeps them separate from team collaboration notifications to avoid duplicate records.")
+        if st.button("Open Monitoring Dashboard", type="primary"):
+            st.query_params["page"] = "Monitoring"
+            st.rerun()
     st.stop()
 
 # ---------- Help ----------
