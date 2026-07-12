@@ -30,7 +30,7 @@ def internal_nav_button(
     *,
     key: str,
     use_container_width: bool = False,
-    type: str = "secondary",
+    type: str = "primary",
     disabled: bool = False,
     **params: Any,
 ) -> bool:
