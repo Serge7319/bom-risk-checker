@@ -2540,9 +2540,30 @@ if app_mode == "Reports":
         .cv-r9-sub{
             color:#64748B!important;font-size:12px;font-weight:740;margin-bottom:12px;
         }
+        .cv-r9-template-grid{
+            display:grid;
+            gap:16px;
+            align-items:stretch;
+            width:100%;
+            margin:0 0 16px;
+        }
+        .cv-r9-template-grid.three{
+            grid-template-columns:repeat(3,minmax(0,1fr));
+        }
+        .cv-r9-template-grid.two{
+            grid-template-columns:repeat(2,minmax(0,1fr));
+        }
         .cv-r9-template{
-            min-height:195px;border:1px solid #E2E8F0;background:#FFFFFF;
-            border-radius:21px;padding:19px;box-shadow:0 15px 38px rgba(15,23,42,.05);
+            box-sizing:border-box;
+            width:100%;
+            min-width:0;
+            min-height:195px;
+            height:100%;
+            border:1px solid #E2E8F0;
+            background:#FFFFFF;
+            border-radius:21px;
+            padding:19px;
+            box-shadow:0 15px 38px rgba(15,23,42,.05);
         }
         .cv-r9-template-icon{
             width:42px;height:42px;border-radius:13px;display:flex;
@@ -2605,6 +2626,11 @@ if app_mode == "Reports":
         @media(max-width:1050px){
             .cv-r9-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
             .cv-r9-selected-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .cv-r9-template-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}
+        }
+        @media(max-width:760px){
+            .cv-r9-template-grid.three,
+            .cv-r9-template-grid.two{grid-template-columns:1fr}
         }
         @media(max-width:650px){
             .cv-r9-metrics,.cv-r9-selected-grid{grid-template-columns:1fr}
@@ -2658,7 +2684,6 @@ if app_mode == "Reports":
         unsafe_allow_html=True,
     )
 
-    first_templates = st.columns(3)
     first_template_data = [
         (
             "Executive BOM Summary",
@@ -2679,28 +2704,31 @@ if app_mode == "Reports":
             ["Excel", "CSV"],
         ),
     ]
-    for col, (title, copy, icon, formats) in zip(
-        first_templates,
-        first_template_data,
-    ):
-        with col:
-            format_html = "".join(
-                f'<span class="cv-r9-format">{fmt}</span>'
-                for fmt in formats
-            )
-            st.markdown(
-                f"""
-                <div class="cv-r9-template">
-                  <div class="cv-r9-template-icon">{icon}</div>
-                  <h4>{title}</h4>
-                  <p>{copy}</p>
-                  <div class="cv-r9-formats">{format_html}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
 
-    second_templates = st.columns(2)
+    first_template_cards = []
+    for title, copy, icon, formats in first_template_data:
+        format_html = "".join(
+            f'<span class="cv-r9-format">{fmt}</span>'
+            for fmt in formats
+        )
+        first_template_cards.append(
+            f'''
+            <div class="cv-r9-template">
+              <div class="cv-r9-template-icon">{icon}</div>
+              <h4>{title}</h4>
+              <p>{copy}</p>
+              <div class="cv-r9-formats">{format_html}</div>
+            </div>
+            '''
+        )
+
+    st.markdown(
+        '<div class="cv-r9-template-grid three">'
+        + "".join(first_template_cards)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
     second_template_data = [
         (
             "Lifecycle Exposure Report",
@@ -2715,26 +2743,30 @@ if app_mode == "Reports":
             ["PDF", "Excel", "CSV"],
         ),
     ]
-    for col, (title, copy, icon, formats) in zip(
-        second_templates,
-        second_template_data,
-    ):
-        with col:
-            format_html = "".join(
-                f'<span class="cv-r9-format">{fmt}</span>'
-                for fmt in formats
-            )
-            st.markdown(
-                f"""
-                <div class="cv-r9-template">
-                  <div class="cv-r9-template-icon">{icon}</div>
-                  <h4>{title}</h4>
-                  <p>{copy}</p>
-                  <div class="cv-r9-formats">{format_html}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+
+    second_template_cards = []
+    for title, copy, icon, formats in second_template_data:
+        format_html = "".join(
+            f'<span class="cv-r9-format">{fmt}</span>'
+            for fmt in formats
+        )
+        second_template_cards.append(
+            f'''
+            <div class="cv-r9-template">
+              <div class="cv-r9-template-icon">{icon}</div>
+              <h4>{title}</h4>
+              <p>{copy}</p>
+              <div class="cv-r9-formats">{format_html}</div>
+            </div>
+            '''
+        )
+
+    st.markdown(
+        '<div class="cv-r9-template-grid two">'
+        + "".join(second_template_cards)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         '<div class="cv-r9-section">Build a report package</div>'
