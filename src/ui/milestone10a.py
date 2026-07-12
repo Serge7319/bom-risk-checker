@@ -1,16 +1,10 @@
 
-"""Cadivor Milestone 10A.1 — Safe CSS Hotfix.
+"""Cadivor Milestone 10A.2 — Report spacing and button visibility hotfix.
 
-This replaces the original Milestone 10A stylesheet, whose selectors were too
-broad and unintentionally changed spacing and button sizing across the app.
-
-Keep the existing import and function call in streamlit_app.py:
-
-    from src.ui.milestone10a import apply_milestone10a_design_system
-    apply_milestone10a_design_system()
-
-Only replace this file:
+Replace:
     src/ui/milestone10a.py
+
+Keep the existing import and call in streamlit_app.py.
 """
 
 from __future__ import annotations
@@ -19,15 +13,9 @@ import streamlit as st
 
 
 def apply_milestone10a_design_system() -> None:
-    """Apply a narrowly-scoped Cadivor polish layer without changing page layout."""
     st.markdown(
         r"""
-<style id="cadivor-milestone-10a1-safe-hotfix">
-/* ============================================================
-   CADIVOR MILESTONE 10A.1 — SAFE, NARROWLY-SCOPED HOTFIX
-   No global Streamlit column, vertical block, or button overrides.
-   ============================================================ */
-
+<style id="cadivor-milestone-10a2-hotfix">
 :root {
   --cv10-border: #E2E8F0;
   --cv10-border-strong: #CBD5E1;
@@ -36,6 +24,10 @@ def apply_milestone10a_design_system() -> None:
   --cv10-text: #0F172A;
   --cv10-muted: #64748B;
   --cv10-blue: #2563EB;
+  --cv10-blue-hover: #1D4ED8;
+  --cv10-blue-soft: #EFF6FF;
+  --cv10-disabled-bg: #F1F5F9;
+  --cv10-disabled-text: #94A3B8;
   --cv10-radius-sm: 12px;
   --cv10-radius-md: 16px;
   --cv10-shadow-sm: 0 8px 24px rgba(15,23,42,.045);
@@ -43,10 +35,9 @@ def apply_milestone10a_design_system() -> None:
 }
 
 /* ------------------------------------------------------------
-   REMOVE SIDE EFFECTS FROM THE ORIGINAL 10A LAYER
+   FRAMEWORK SPACING
    ------------------------------------------------------------ */
 
-/* Restore normal Streamlit spacing. */
 [data-testid="stVerticalBlock"] {
   gap: 1rem !important;
 }
@@ -56,54 +47,87 @@ def apply_milestone10a_design_system() -> None:
   align-items: stretch !important;
 }
 
-/* Restore existing app button sizing and hierarchy. */
+/* ------------------------------------------------------------
+   BUTTONS
+   ------------------------------------------------------------ */
+
+/* Standard buttons keep their native Streamlit hierarchy. */
 div.stButton > button,
-div.stDownloadButton > button,
 [data-testid="stLinkButton"] a {
   width: auto !important;
   min-height: 0 !important;
-  padding: 0.25rem 0.75rem !important;
-  border-radius: 0.5rem !important;
+  padding: 0.42rem 0.9rem !important;
+  border-radius: 0.55rem !important;
   font-size: inherit !important;
-  font-weight: inherit !important;
+  font-weight: 700 !important;
   letter-spacing: normal !important;
   transform: none !important;
 }
 
-/* Do not force every action into a giant primary blue button. */
-div.stButton > button:not([kind="primary"]),
-div.stDownloadButton > button:not([kind="primary"]),
+/* Active download buttons are intentionally blue throughout Cadivor. */
+div.stDownloadButton > button:not(:disabled) {
+  width: auto !important;
+  min-height: 0 !important;
+  padding: 0.42rem 0.9rem !important;
+  border-radius: 0.55rem !important;
+  background: var(--cv10-blue) !important;
+  border: 1px solid var(--cv10-blue) !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 8px 18px rgba(37,99,235,.16) !important;
+  opacity: 1 !important;
+}
+
+div.stDownloadButton > button:not(:disabled):hover {
+  background: var(--cv10-blue-hover) !important;
+  border-color: var(--cv10-blue-hover) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 10px 22px rgba(37,99,235,.22) !important;
+}
+
+/* Disabled buttons remain clearly disabled but readable. */
+div.stButton > button:disabled,
+div.stDownloadButton > button:disabled {
+  background: var(--cv10-disabled-bg) !important;
+  border: 1px solid var(--cv10-border-strong) !important;
+  color: var(--cv10-disabled-text) !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}
+
+/* Preserve primary Streamlit buttons. */
+div.stButton > button[kind="primary"]:not(:disabled) {
+  background: var(--cv10-blue) !important;
+  border-color: var(--cv10-blue) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 8px 18px rgba(37,99,235,.16) !important;
+}
+
+div.stButton > button[kind="primary"]:not(:disabled):hover {
+  background: var(--cv10-blue-hover) !important;
+  border-color: var(--cv10-blue-hover) !important;
+  color: #FFFFFF !important;
+}
+
+/* Secondary actions stay visible on white backgrounds. */
+div.stButton > button[kind="secondary"]:not(:disabled),
 [data-testid="stLinkButton"] a {
-  background: inherit !important;
-  color: inherit !important;
-  border-color: inherit !important;
-  box-shadow: inherit !important;
+  background: #FFFFFF !important;
+  border: 1px solid #94A3B8 !important;
+  color: var(--cv10-text) !important;
+  box-shadow: none !important;
 }
 
-div.stButton > button:hover,
-div.stDownloadButton > button:hover,
+div.stButton > button[kind="secondary"]:not(:disabled):hover,
 [data-testid="stLinkButton"] a:hover {
-  transform: none !important;
-}
-
-/* Restore framework-controlled card sizing. */
-.card,
-.kpi-card,
-.brc-card,
-.cadivor-metric-card,
-.cv-report-card,
-.cv-report-template,
-.cv-analysis-card,
-.cv-snapshot-item,
-.cv-action-card,
-.cv-insight-card {
-  min-height: unset !important;
-  height: auto !important;
-  transform: none !important;
+  border-color: var(--cv10-blue) !important;
+  color: var(--cv10-blue) !important;
+  background: var(--cv10-blue-soft) !important;
 }
 
 /* ------------------------------------------------------------
-   SAFE POLISH — ONLY KNOWN CADIVOR CLASSES
+   CARDS
    ------------------------------------------------------------ */
 
 .cv-panel,
@@ -127,7 +151,6 @@ div.stDownloadButton > button:hover,
   box-shadow: var(--cv10-shadow-hover) !important;
 }
 
-/* KPI cards: visual alignment only, no page-wide grid manipulation. */
 .cadivor-metric-card,
 .cv-kpi-card,
 .cv-report-kpi,
@@ -144,7 +167,6 @@ div.stDownloadButton > button:hover,
   box-shadow: var(--cv10-shadow-sm) !important;
 }
 
-/* Tighten only rows that actually contain known Cadivor KPI cards. */
 [data-testid="stHorizontalBlock"]:has(.cadivor-metric-card),
 [data-testid="stHorizontalBlock"]:has(.cv-kpi-card),
 [data-testid="stHorizontalBlock"]:has(.cv-report-kpi),
@@ -160,18 +182,24 @@ div.stDownloadButton > button:hover,
   min-width: 0 !important;
 }
 
-/* Reports library: reduce excessive internal whitespace without changing rows. */
+/* ------------------------------------------------------------
+   REPORT PAGE COMPACTION
+   ------------------------------------------------------------ */
+
+/* Compact report library cards without forcing tall rows. */
 .cv-report-card,
 .cv-report-template {
-  padding: 18px !important;
+  box-sizing: border-box !important;
+  padding: 15px 16px !important;
   margin: 0 !important;
-  min-height: 150px !important;
+  min-height: 126px !important;
   height: 100% !important;
 }
 
 [data-testid="stHorizontalBlock"]:has(.cv-report-card),
 [data-testid="stHorizontalBlock"]:has(.cv-report-template) {
   gap: 12px !important;
+  margin-bottom: 0 !important;
 }
 
 [data-testid="stHorizontalBlock"]:has(.cv-report-card) > [data-testid="column"],
@@ -180,7 +208,52 @@ div.stDownloadButton > button:hover,
   min-width: 0 !important;
 }
 
-/* Known custom badges only. */
+/* Compact known report package and preview wrappers. */
+.cv-report-builder,
+.cv-report-package,
+.cv-report-preview,
+.cv-report-downloads,
+.cv-report-history,
+.cv-report-source-summary {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.cv-report-builder + .cv-report-package,
+.cv-report-package + .cv-report-history,
+.cv-report-preview + .cv-report-downloads {
+  margin-top: 12px !important;
+}
+
+/* Rows containing report action/download groups should not create giant gaps. */
+[data-testid="stHorizontalBlock"]:has(.cv-report-action),
+[data-testid="stHorizontalBlock"]:has(.cv-report-download),
+[data-testid="stHorizontalBlock"]:has(.cv-report-output) {
+  gap: 12px !important;
+  align-items: start !important;
+}
+
+.cv-report-action,
+.cv-report-download,
+.cv-report-output {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Reduce unnecessary white space inside report sections. */
+.cv-report-section,
+.cv-report-preview-panel,
+.cv-report-decision-brief,
+.cv-report-selected-summary {
+  padding: 14px 16px !important;
+  margin: 0 !important;
+  border-radius: var(--cv10-radius-md) !important;
+}
+
+/* ------------------------------------------------------------
+   OTHER SAFE POLISH
+   ------------------------------------------------------------ */
+
 .cv-status-pill,
 .cadivor-badge,
 .cv-badge,
@@ -197,7 +270,6 @@ div.stDownloadButton > button:hover,
   white-space: nowrap !important;
 }
 
-/* Keep custom empty states polished. */
 .cv-empty-state,
 .cadivor-empty-state,
 .cv-analysis-empty {
@@ -209,7 +281,6 @@ div.stDownloadButton > button:hover,
   color: var(--cv10-muted) !important;
 }
 
-/* Light table treatment without changing table dimensions. */
 [data-testid="stDataFrame"],
 [data-testid="stTable"] {
   border: 1px solid var(--cv10-border) !important;
@@ -218,21 +289,18 @@ div.stDownloadButton > button:hover,
   background: var(--cv10-surface) !important;
 }
 
-/* Inputs: border polish only. */
 [data-baseweb="input"] > div,
 [data-baseweb="select"] > div,
 [data-baseweb="textarea"] > div {
   border-radius: var(--cv10-radius-sm) !important;
 }
 
-/* Expanders: visual polish only; no spacing or height overrides. */
 [data-testid="stExpander"] {
   border: 1px solid var(--cv10-border) !important;
   border-radius: var(--cv10-radius-sm) !important;
   overflow: hidden !important;
 }
 
-/* Responsive card heights only. */
 @media (max-width: 760px) {
   .cadivor-metric-card,
   .cv-kpi-card,
@@ -244,7 +312,7 @@ div.stDownloadButton > button:hover,
 
   .cv-report-card,
   .cv-report-template {
-    min-height: 132px !important;
+    min-height: 116px !important;
   }
 }
 </style>
@@ -254,7 +322,6 @@ div.stDownloadButton > button:hover,
 
 
 def section_header(title: str, subtitle: str = "") -> None:
-    """Render a consistent section header."""
     subtitle_html = f'<p class="cv-section-copy">{subtitle}</p>' if subtitle else ""
     st.markdown(
         f"""
@@ -268,7 +335,6 @@ def section_header(title: str, subtitle: str = "") -> None:
 
 
 def status_badge(label: str, tone: str = "muted") -> str:
-    """Return badge HTML for custom Cadivor markup."""
     allowed = {"good", "success", "warn", "warning", "bad", "danger", "muted"}
     safe_tone = tone if tone in allowed else "muted"
     return f'<span class="cv-status-pill {safe_tone}">{label}</span>'
