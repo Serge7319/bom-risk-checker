@@ -2234,6 +2234,103 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+# Milestone 11A.3 — universal Streamlit button contrast repair.
+st.markdown(
+    """
+    <style id="cadivor-button-contrast-v11a3">
+    /* Primary buttons */
+    button[data-testid="stBaseButton-primary"],
+    div.stButton > button[kind="primary"],
+    div.stDownloadButton > button {
+        background:#2563EB !important;
+        border:1px solid #2563EB !important;
+        color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
+        opacity:1 !important;
+        box-shadow:0 10px 24px rgba(37,99,235,.20) !important;
+    }
+
+    button[data-testid="stBaseButton-primary"] *,
+    div.stButton > button[kind="primary"] *,
+    div.stDownloadButton > button * {
+        color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
+        opacity:1 !important;
+    }
+
+    /* Secondary/internal navigation buttons */
+    button[data-testid="stBaseButton-secondary"],
+    div.stButton > button[kind="secondary"] {
+        background:#FFFFFF !important;
+        border:1px solid #93C5FD !important;
+        color:#1D4ED8 !important;
+        -webkit-text-fill-color:#1D4ED8 !important;
+        opacity:1 !important;
+        box-shadow:0 8px 18px rgba(37,99,235,.08) !important;
+    }
+
+    button[data-testid="stBaseButton-secondary"] *,
+    div.stButton > button[kind="secondary"] * {
+        color:#1D4ED8 !important;
+        -webkit-text-fill-color:#1D4ED8 !important;
+        opacity:1 !important;
+    }
+
+    button[data-testid="stBaseButton-secondary"]:hover,
+    div.stButton > button[kind="secondary"]:hover {
+        background:#EFF6FF !important;
+        border-color:#2563EB !important;
+        color:#1D4ED8 !important;
+    }
+
+    /* Disabled controls remain readable. */
+    button:disabled,
+    button[disabled] {
+        background:#E2E8F0 !important;
+        border-color:#CBD5E1 !important;
+        color:#64748B !important;
+        -webkit-text-fill-color:#64748B !important;
+        opacity:1 !important;
+        box-shadow:none !important;
+    }
+
+    button:disabled *,
+    button[disabled] * {
+        color:#64748B !important;
+        -webkit-text-fill-color:#64748B !important;
+        opacity:1 !important;
+    }
+
+    /* Explicit protection for the new customer-experience controls. */
+    [class*="st-key-onboarding_"] button,
+    .st-key-settings_open_onboarding button,
+    .st-key-settings_open_workspace button,
+    .st-key-settings_view_plans button,
+    [class*="st-key-reports_open_"] button,
+    [class*="st-key-analysis_open_"] button,
+    [class*="st-key-analysis_find_"] button,
+    [class*="st-key-analysis_monitor_"] button {
+        min-height:42px !important;
+        font-weight:850 !important;
+    }
+
+    [class*="st-key-onboarding_"] button p,
+    .st-key-settings_open_onboarding button p,
+    .st-key-settings_open_workspace button p,
+    .st-key-settings_view_plans button p,
+    [class*="st-key-reports_open_"] button p,
+    [class*="st-key-analysis_open_"] button p,
+    [class*="st-key-analysis_find_"] button p,
+    [class*="st-key-analysis_monitor_"] button p {
+        visibility:visible !important;
+        opacity:1 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # ---------- Customer Onboarding ----------
 if app_mode == "Onboarding":
     progress = onboarding_progress or {}
@@ -2375,42 +2472,41 @@ if app_mode == "Onboarding":
         unsafe_allow_html=True,
     )
 
+    next_incomplete_step = next(
+        (
+            index
+            for index, key in enumerate(
+                (
+                    "profile_completed",
+                    "workspace_completed",
+                    "first_bom_completed",
+                    "first_alternative_completed",
+                    "first_report_completed",
+                )
+            )
+            if not bool(progress.get(key))
+        ),
+        None,
+    )
+
+    onboarding_actions = [
+        ("Edit Profile", "Settings", "onboarding_open_profile"),
+        ("Open Workspace", "Workspace", "onboarding_open_workspace"),
+        ("Analyze a BOM", "BOM Analyzer", "onboarding_open_bom"),
+        ("Review Alternatives", "Alternative Finder", "onboarding_open_alternatives"),
+        ("Generate a Report", "Reports", "onboarding_open_reports"),
+    ]
+
     action_cols = st.columns(5)
-    with action_cols[0]:
-        internal_nav_button(
-            "Profile",
-            "Settings",
-            key="onboarding_open_profile",
-            use_container_width=True,
-        )
-    with action_cols[1]:
-        internal_nav_button(
-            "Workspace",
-            "Workspace",
-            key="onboarding_open_workspace",
-            use_container_width=True,
-        )
-    with action_cols[2]:
-        internal_nav_button(
-            "BOM Analyzer",
-            "BOM Analyzer",
-            key="onboarding_open_bom",
-            use_container_width=True,
-        )
-    with action_cols[3]:
-        internal_nav_button(
-            "Alternatives",
-            "Alternative Finder",
-            key="onboarding_open_alternatives",
-            use_container_width=True,
-        )
-    with action_cols[4]:
-        internal_nav_button(
-            "Reports",
-            "Reports",
-            key="onboarding_open_reports",
-            use_container_width=True,
-        )
+    for index, (label, destination, key) in enumerate(onboarding_actions):
+        with action_cols[index]:
+            internal_nav_button(
+                label,
+                destination,
+                key=key,
+                use_container_width=True,
+                type="primary" if index == next_incomplete_step else "secondary",
+            )
 
     finish_col, skip_col = st.columns(2)
     with finish_col:
@@ -2436,6 +2532,7 @@ if app_mode == "Onboarding":
     with skip_col:
         if st.button(
             "Skip for Now",
+            type="secondary",
             use_container_width=True,
             key="onboarding_skip",
         ):
@@ -2460,10 +2557,50 @@ if app_mode == "Dashboard":
         and completion_count(onboarding_progress) < 5
     ):
         onboarding_done = completion_count(onboarding_progress)
-        st.info(
-            f"Customer setup is {onboarding_done}/5 complete. "
-            "Continue onboarding to finish your profile, workspace, first BOM, "
-            "replacement review, and report."
+        onboarding_percent = int((onboarding_done / 5) * 100)
+        st.markdown(
+            f"""
+            <style id="cadivor-dashboard-setup-v11a3">
+            .cv-setup-reminder{{
+                border:1px solid #BFDBFE;border-radius:20px;background:#FFFFFF;
+                box-shadow:0 16px 38px rgba(15,23,42,.06);padding:18px 20px;
+                margin:0 0 18px;
+            }}
+            .cv-setup-reminder-top{{
+                display:flex;align-items:center;justify-content:space-between;
+                gap:14px;margin-bottom:10px;
+            }}
+            .cv-setup-reminder h3{{
+                color:#0F172A!important;font-size:16px;font-weight:950;margin:0;
+            }}
+            .cv-setup-reminder strong{{
+                color:#2563EB!important;font-size:12px;font-weight:950;
+            }}
+            .cv-setup-reminder p{{
+                color:#64748B!important;font-size:11px;line-height:1.5;
+                font-weight:720;margin:0 0 12px;
+            }}
+            .cv-setup-reminder-bar{{
+                height:8px;border-radius:999px;background:#E2E8F0;overflow:hidden;
+            }}
+            .cv-setup-reminder-bar i{{
+                display:block;height:100%;width:{onboarding_percent}%;
+                background:#2563EB;border-radius:999px;
+            }}
+            </style>
+            <section class="cv-setup-reminder">
+              <div class="cv-setup-reminder-top">
+                <h3>Complete your Cadivor setup</h3>
+                <strong>{onboarding_done}/5 complete</strong>
+              </div>
+              <p>
+                Finish customer setup to complete your profile, workspace,
+                first BOM, replacement review, and first report.
+              </p>
+              <div class="cv-setup-reminder-bar"><i></i></div>
+            </section>
+            """,
+            unsafe_allow_html=True,
         )
         if st.button(
             "Continue Customer Setup",
@@ -2650,6 +2787,19 @@ if app_mode == "Monitoring":
         )
     else:
         st.info("No monitoring history available yet.")
+
+
+def _mark_first_report_complete() -> None:
+    """Persist the first-report onboarding step as soon as a download is used."""
+    if not onboarding_user_id:
+        return
+    updated, error = update_onboarding_progress(
+        supabase,
+        onboarding_user_id,
+        {"first_report_completed": True, "welcome_seen": True},
+    )
+    if updated and not error:
+        st.session_state["onboarding_report_completed"] = True
 
 
 # ---------- Reports ----------
@@ -3546,6 +3696,7 @@ if app_mode == "Reports":
                 file_name=executive_pdf_name,
                 mime="application/pdf",
                 use_container_width=True,
+                on_click=_mark_first_report_complete,
             ):
                 _record_session_report(
                     "Executive BOM Summary",
@@ -3559,6 +3710,7 @@ if app_mode == "Reports":
                 file_name=executive_csv_name,
                 mime="text/csv",
                 use_container_width=True,
+                on_click=_mark_first_report_complete,
             ):
                 _record_session_report(
                     "Executive BOM Summary",
@@ -3573,6 +3725,7 @@ if app_mode == "Reports":
                 file_name=risk_csv_name,
                 mime="text/csv",
                 use_container_width=True,
+                on_click=_mark_first_report_complete,
             ):
                 _record_session_report(
                     "Engineering Risk Review",
@@ -3586,6 +3739,7 @@ if app_mode == "Reports":
                 file_name=lifecycle_csv_name,
                 mime="text/csv",
                 use_container_width=True,
+                on_click=_mark_first_report_complete,
             ):
                 _record_session_report(
                     "Lifecycle Exposure Report",
@@ -3600,6 +3754,7 @@ if app_mode == "Reports":
                 file_name=sourcing_csv_name,
                 mime="text/csv",
                 use_container_width=True,
+                on_click=_mark_first_report_complete,
             ):
                 _record_session_report(
                     "Procurement & Sourcing",
@@ -3613,6 +3768,7 @@ if app_mode == "Reports":
                 file_name=alternatives_csv_name,
                 mime="text/csv",
                 use_container_width=True,
+                on_click=_mark_first_report_complete,
             ):
                 _record_session_report(
                     "Alternative Replacement Report",
@@ -4019,11 +4175,52 @@ if app_mode == "Settings":
         unsafe_allow_html=True,
     )
 
+    settings_setup_done = completion_count(onboarding_progress or {})
+    settings_setup_percent = int((settings_setup_done / 5) * 100)
+    st.markdown(
+        f"""
+        <style id="cadivor-settings-setup-v11a3">
+        .cv-settings-setup{{
+            display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;
+            border:1px solid #DBEAFE;border-radius:17px;background:#FFFFFF;
+            padding:15px 17px;margin:0 0 14px;
+            box-shadow:0 12px 28px rgba(15,23,42,.05);
+        }}
+        .cv-settings-setup strong{{
+            display:block;color:#0F172A!important;font-size:13px;font-weight:950;
+            margin-bottom:4px;
+        }}
+        .cv-settings-setup span{{
+            color:#64748B!important;font-size:10px;font-weight:750;
+        }}
+        .cv-settings-setup b{{
+            color:#2563EB!important;font-size:12px;font-weight:950;
+        }}
+        .cv-settings-setup-bar{{
+            grid-column:1/-1;height:7px;border-radius:999px;background:#E2E8F0;
+            overflow:hidden;
+        }}
+        .cv-settings-setup-bar i{{
+            display:block;height:100%;width:{settings_setup_percent}%;
+            background:#2563EB;border-radius:999px;
+        }}
+        </style>
+        <section class="cv-settings-setup">
+          <div>
+            <strong>Customer setup</strong>
+            <span>Profile, workspace, BOM, replacement, and reporting readiness</span>
+          </div>
+          <b>{settings_setup_done}/5 complete</b>
+          <div class="cv-settings-setup-bar"><i></i></div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
     internal_nav_button(
-        "Open Customer Setup",
+        "Continue Customer Setup",
         "Onboarding",
         key="settings_open_onboarding",
-        type="secondary",
+        type="primary",
     )
 
     migration_required = (
