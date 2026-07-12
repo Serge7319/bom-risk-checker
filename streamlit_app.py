@@ -4420,11 +4420,7 @@ if app_mode == "Alternative Finder":
         st.markdown(
             f"""
             <div class="af63-decision-shell">
-              <div class="af63-decision-head">
-                <div>
-                  <div class="af63-decision-title">Engineering Review &amp; Approval</div>
-                  <div class="af63-decision-copy">Approve, reject, or retain this candidate after reviewing the engineering and sourcing evidence above.</div>
-                </div>
+              <div class="af63-decision-head" style="justify-content:flex-end; margin-bottom:12px;">
                 <div class="af63-decision-status {decision_status_class}">
                   {html.escape(current_decision if current_decision != "Pending review" else "Pending engineering review")}
                 </div>
@@ -4455,7 +4451,7 @@ if app_mode == "Alternative Finder":
 
         note_value = decision_notes.get(candidate_key, "")
         engineering_note = st.text_area(
-            "Engineering decision note",
+            "Decision note",
             value=note_value,
             placeholder=(
                 "Example: Approve for prototype only. Package change requires PCB "
@@ -4546,7 +4542,7 @@ if app_mode == "Alternative Finder":
 
         with approve_col:
             if st.button(
-                "Approve Candidate",
+                "Approve",
                 use_container_width=True,
                 key="af63_approve",
             ):
@@ -4555,7 +4551,7 @@ if app_mode == "Alternative Finder":
 
         with reject_col:
             if st.button(
-                "Reject Candidate",
+                "Reject",
                 use_container_width=True,
                 key="af63_reject",
             ):
@@ -4569,7 +4565,7 @@ if app_mode == "Alternative Finder":
                     unsafe_allow_html=True,
                 )
             elif st.button(
-                "Save Candidate",
+                "Save Review",
                 type="primary",
                 use_container_width=True,
                 key="af63_save",
@@ -4649,7 +4645,7 @@ if app_mode == "Alternative Finder":
                 key="af63_download",
             )
 
-            st.caption("Structured JSON record for integrations and audit workflows.")
+            st.caption("Download a structured copy of this engineering review.")
 
         pdf_package = generate_engineering_change_package_pdf(
             original_part=str(original_part),
@@ -4685,7 +4681,7 @@ if app_mode == "Alternative Finder":
                 key="af63_change_package",
             )
             st.caption(
-                "Branded PDF with decision, evidence, sourcing impact, engineer, date, and note."
+                "Generate a PDF for design reviews, ECOs, and project documentation."
             )
 
         db_error = st.session_state.get("alternative_decision_db_error", "")
