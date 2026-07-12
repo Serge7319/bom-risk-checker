@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 start_time = time.time()
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.stripe_helper import create_checkout_session
+from src.ui.milestone10a import apply_milestone10a_design_system
 from src.ui.framework import (
     inject_premium_css,
     inject_v32_ux_css,
@@ -2010,6 +2011,7 @@ import urllib.parse as _urlparse
 # Previous Milestone 4 patches stacked multiple CSS/JS shell blocks here, creating the large top gap.
 inject_premium_css()
 inject_v32_ux_css()
+apply_milestone10a_design_system()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
