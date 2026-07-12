@@ -1903,6 +1903,19 @@ st.markdown(
     div.stButton > button, div.stDownloadButton > button { background:var(--brc-blue)!important; color:#FFFFFF!important; border:1px solid var(--brc-blue)!important; border-radius:10px!important; min-height:42px!important; padding:.55rem 1.05rem!important; font-weight:750!important; box-shadow:0 12px 24px rgba(37,99,235,.20)!important; width:auto!important; min-width:150px!important; }
     div.stButton > button:hover, div.stDownloadButton > button:hover { background:#1D4ED8!important; border-color:#1D4ED8!important; color:#FFFFFF!important; }
     div.stButton > button *, div.stDownloadButton > button * { color:#FFFFFF!important; }
+    div.stButton > button:disabled,
+    div.stDownloadButton > button:disabled {
+        background:#E2E8F0!important;
+        border-color:#CBD5E1!important;
+        color:#94A3B8!important;
+        box-shadow:none!important;
+        cursor:not-allowed!important;
+        opacity:1!important;
+    }
+    div.stButton > button:disabled *,
+    div.stDownloadButton > button:disabled * {
+        color:#94A3B8!important;
+    }
     [data-testid="stSidebar"] div.stButton > button { width:100%!important; min-width:0!important; }
 
     div[data-testid="stTextInput"] input, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stFileUploader"] section { background:#fff!important; border:1px solid #CBD5E1!important; border-radius:10px!important; color:var(--brc-navy)!important; }
@@ -2533,7 +2546,38 @@ if app_mode == "Reports":
 
     if report_records:
         labels = [_analysis_label(row) for row in report_records]
-        selected_label = st.selectbox("Saved BOM analysis", labels, key="reports_selected_analysis")
+
+        incoming_report_analysis_id = str(
+            st.query_params.get("analysis_id", "") or ""
+        ).strip()
+        report_route_token = (
+            f"reports::{incoming_report_analysis_id}"
+            if incoming_report_analysis_id
+            else ""
+        )
+
+        if (
+            incoming_report_analysis_id
+            and st.session_state.get("reports_route_token") != report_route_token
+        ):
+            matching_label = None
+            for row, label in zip(report_records, labels):
+                row_id = str(
+                    _report_value(row, "id", "analysis_id", default="") or ""
+                ).strip()
+                if row_id == incoming_report_analysis_id:
+                    matching_label = label
+                    break
+
+            if matching_label:
+                st.session_state["reports_selected_analysis"] = matching_label
+                st.session_state["reports_route_token"] = report_route_token
+
+        selected_label = st.selectbox(
+            "Saved BOM analysis",
+            labels,
+            key="reports_selected_analysis",
+        )
         selected_index = labels.index(selected_label)
         selected_analysis = report_records[selected_index]
         selected_analysis_id = _report_value(selected_analysis, "id", "analysis_id", default=None)
@@ -4169,8 +4213,33 @@ if app_mode == "Alternative Finder":
     if "alternative_search_attempted" not in st.session_state:
         st.session_state["alternative_search_attempted"] = False
 
+    incoming_original_part = str(
+        st.query_params.get("original_part", "") or ""
+    ).strip()
+    incoming_analysis_id = str(
+        st.query_params.get("analysis_id", "") or ""
+    ).strip()
+    incoming_prefill_token = (
+        f"{incoming_analysis_id}::{incoming_original_part.upper()}"
+        if incoming_original_part
+        else ""
+    )
+
     if "alternative_original_part" not in st.session_state:
         st.session_state["alternative_original_part"] = ""
+
+    if (
+        incoming_original_part
+        and st.session_state.get("alternative_prefill_token") != incoming_prefill_token
+    ):
+        st.session_state["alternative_original_part"] = incoming_original_part
+        st.session_state["alternative_prefill_token"] = incoming_prefill_token
+        st.session_state["alternative_search_attempted"] = False
+        st.session_state["suggested_alternatives"] = []
+        st.session_state["alternative_original_data"] = {}
+        st.session_state["alternative_original_risk"] = {}
+        st.session_state["alternative_original_lookup_part"] = ""
+        st.session_state["alternative_original_lookup_error"] = ""
 
     if "alternative_original_data" not in st.session_state:
         st.session_state["alternative_original_data"] = {}
@@ -6376,11 +6445,11 @@ if app_mode == "BOM Analyzer":
                     selected_count = len(selected_ids)
 
                     selection_copy = (
-                        "Select exactly one analysis to open it."
+                        "Select one checkbox to enable Open Analysis."
                         if selected_count == 0
-                        else "Ready to open this analysis."
+                        else "One analysis selected. Open Analysis is ready."
                         if selected_count == 1
-                        else "Multiple analyses selected for bulk actions. Opening is available only when one analysis is selected."
+                        else "Multiple analyses selected. Use bulk delete or clear the selection; analyses open one at a time."
                     )
                     st.markdown(
                         f"""
