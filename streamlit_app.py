@@ -5902,6 +5902,12 @@ if app_mode == "BOM Analyzer":
         .bom81-selection-status strong{
             font-size:13px;
         }
+        .bom81-selection-status span{
+            color:#475569;
+            font-size:10.5px;
+            font-weight:750;
+            margin-left:3px;
+        }
         .st-key-bom81_request_bulk_delete button{
             border:1px solid #fecaca!important;
             background:#fff!important;
@@ -6369,11 +6375,19 @@ if app_mode == "BOM Analyzer":
 
                     selected_count = len(selected_ids)
 
+                    selection_copy = (
+                        "Select exactly one analysis to open it."
+                        if selected_count == 0
+                        else "Ready to open this analysis."
+                        if selected_count == 1
+                        else "Multiple analyses selected for bulk actions. Opening is available only when one analysis is selected."
+                    )
                     st.markdown(
                         f"""
                         <div class="bom81-selection-status">
                           <strong>{selected_count}</strong>
                           analysis{"es" if selected_count != 1 else ""} selected
+                          <span>{html.escape(selection_copy)}</span>
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -6386,7 +6400,7 @@ if app_mode == "BOM Analyzer":
 
                     with open_col:
                         if st.button(
-                            "Open Selected Analysis",
+                            "Open Selected Analysis" if selected_count == 1 else "Open Analysis (select 1)",
                             type="primary",
                             use_container_width=True,
                             disabled=selected_count != 1,
@@ -6540,9 +6554,9 @@ if app_mode == "BOM Analyzer":
                                 st.rerun()
 
                     st.caption(
-                        "Select exactly one row to open it. Select multiple rows to "
-                        "delete them together. The table is read-only except for the "
-                        "selection checkboxes."
+                        "Opening is a single-analysis action. Select exactly one row to open it. "
+                        "Selecting two or more rows does not open them together; it enables bulk deletion. "
+                        "The table is read-only except for the selection checkboxes."
                     )
             else:
                 st.markdown(
