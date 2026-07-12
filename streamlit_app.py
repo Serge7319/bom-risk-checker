@@ -5825,6 +5825,53 @@ if app_mode == "BOM Analyzer":
             color:#b91c1c!important;
             font-weight:850!important;
         }
+        .bom8-delete-confirmation{
+            display:flex;
+            gap:12px;
+            align-items:flex-start;
+            border:1px solid #fecaca;
+            border-radius:16px;
+            background:#fff7f7;
+            padding:14px 15px;
+            margin:14px 0 10px;
+        }
+        .bom8-delete-icon{
+            flex:0 0 28px;
+            width:28px;
+            height:28px;
+            border-radius:9px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:#fee2e2;
+            border:1px solid #fecaca;
+            color:#b91c1c;
+            font-weight:900;
+        }
+        .bom8-delete-confirmation strong{
+            display:block;
+            color:#991b1b;
+            font-size:13px;
+            margin-bottom:4px;
+        }
+        .bom8-delete-confirmation p{
+            margin:0;
+            color:#7f1d1d;
+            font-size:11px;
+            line-height:1.5;
+        }
+        .st-key-bom8_confirm_permanent_delete button{
+            border:1px solid #dc2626!important;
+            background:#dc2626!important;
+            color:#fff!important;
+            font-weight:850!important;
+        }
+        .st-key-bom8_cancel_delete_analysis button{
+            border:1px solid #cbd5e1!important;
+            background:#fff!important;
+            color:#334155!important;
+            font-weight:800!important;
+        }
         @media(max-width:900px){
             .bom8-saved-summary{grid-template-columns:1fr 1fr;}
         }
@@ -6081,52 +6128,89 @@ if app_mode == "BOM Analyzer":
                             st.rerun()
 
                     with delete_col:
-                        delete_confirmed = st.checkbox(
-                            "Confirm permanent deletion",
-                            key="bom8_confirm_delete_analysis",
-                        )
                         if st.button(
                             "Delete Selected Analysis",
                             type="secondary",
                             use_container_width=True,
-                            disabled=not delete_confirmed,
                             key="bom8_delete_saved_analysis",
                         ):
-                            try:
-                                # Delete child part records before the parent analysis.
-                                supabase.table("analysis_parts").delete().eq(
-                                    "analysis_id",
-                                    selected_saved_id,
-                                ).execute()
+                            st.session_state["bom8_pending_delete_id"] = selected_saved_id
+                            st.session_state["bom8_pending_delete_label"] = selected_saved_label
+                            st.rerun()
 
-                                # Remove related monitoring history when the column exists.
+                    pending_delete_id = str(
+                        st.session_state.get("bom8_pending_delete_id") or ""
+                    ).strip()
+
+                    if pending_delete_id == selected_saved_id:
+                        st.markdown(
+                            f"""
+                            <div class="bom8-delete-confirmation">
+                              <div class="bom8-delete-icon">!</div>
+                              <div>
+                                <strong>Delete this saved BOM analysis?</strong>
+                                <p>
+                                  You are about to permanently delete
+                                  <b>{html.escape(str(selected_project))}</b>.
+                                  Its saved component records and analysis history will
+                                  also be removed. This action cannot be undone.
+                                </p>
+                              </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        confirm_col, cancel_col = st.columns([0.5, 0.5], gap="medium")
+
+                        with confirm_col:
+                            if st.button(
+                                "Yes, Permanently Delete",
+                                type="primary",
+                                use_container_width=True,
+                                key="bom8_confirm_permanent_delete",
+                            ):
                                 try:
-                                    supabase.table("part_monitor_history").delete().eq(
+                                    supabase.table("analysis_parts").delete().eq(
                                         "analysis_id",
                                         selected_saved_id,
                                     ).execute()
-                                except Exception:
-                                    pass
 
-                                supabase.table("analyses").delete().eq(
-                                    "id",
-                                    selected_saved_id,
-                                ).eq(
-                                    "user_id",
-                                    current_user["id"],
-                                ).execute()
+                                    try:
+                                        supabase.table("part_monitor_history").delete().eq(
+                                            "analysis_id",
+                                            selected_saved_id,
+                                        ).execute()
+                                    except Exception:
+                                        pass
 
-                                st.success("Saved BOM analysis deleted.")
-                                st.session_state.pop(
-                                    "bom8_confirm_delete_analysis",
-                                    None,
-                                )
+                                    supabase.table("analyses").delete().eq(
+                                        "id",
+                                        selected_saved_id,
+                                    ).eq(
+                                        "user_id",
+                                        current_user["id"],
+                                    ).execute()
+
+                                    st.session_state.pop("bom8_pending_delete_id", None)
+                                    st.session_state.pop("bom8_pending_delete_label", None)
+                                    st.success("Saved BOM analysis permanently deleted.")
+                                    st.rerun()
+                                except Exception as delete_error:
+                                    st.error(
+                                        "The saved BOM analysis could not be deleted. "
+                                        f"Database message: {delete_error}"
+                                    )
+
+                        with cancel_col:
+                            if st.button(
+                                "Cancel",
+                                use_container_width=True,
+                                key="bom8_cancel_delete_analysis",
+                            ):
+                                st.session_state.pop("bom8_pending_delete_id", None)
+                                st.session_state.pop("bom8_pending_delete_label", None)
                                 st.rerun()
-                            except Exception as delete_error:
-                                st.error(
-                                    "The saved BOM analysis could not be deleted. "
-                                    f"Database message: {delete_error}"
-                                )
 
                     selected_project = (
                         selected_saved_analysis.get("project_name")
