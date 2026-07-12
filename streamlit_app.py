@@ -5791,6 +5791,46 @@ if app_mode == "BOM Analyzer":
             color:#1d4ed8!important;
             font-weight:850!important;
         }
+        .bom8-saved-summary{
+            display:grid;
+            grid-template-columns:1.2fr 1.2fr .55fr .75fr;
+            gap:10px;
+            margin:14px 0;
+        }
+        .bom8-saved-summary > div{
+            border:1px solid #dbe3ef;
+            border-radius:14px;
+            background:#f8fafc;
+            padding:12px 13px;
+        }
+        .bom8-saved-summary span{
+            display:block;
+            color:#64748b;
+            font-size:9px;
+            font-weight:900;
+            letter-spacing:.09em;
+            text-transform:uppercase;
+            margin-bottom:6px;
+        }
+        .bom8-saved-summary strong{
+            display:block;
+            color:#0f172a;
+            font-size:12px;
+            line-height:1.35;
+            overflow-wrap:anywhere;
+        }
+        .st-key-bom8_delete_saved_analysis button{
+            border:1px solid #fecaca!important;
+            background:#fff!important;
+            color:#b91c1c!important;
+            font-weight:850!important;
+        }
+        @media(max-width:900px){
+            .bom8-saved-summary{grid-template-columns:1fr 1fr;}
+        }
+        @media(max-width:620px){
+            .bom8-saved-summary{grid-template-columns:1fr;}
+        }
         .st-key-bom8_sample button{
             border:1px solid #bfdbfe!important;
             background:#eff6ff!important;
@@ -5813,7 +5853,7 @@ if app_mode == "BOM Analyzer":
         unsafe_allow_html=True,
     )
 
-    history_data = analysis_history.data or []
+    history_data = load_analysis_history(current_user["id"]) or []
     history_df = pd.DataFrame(history_data)
 
     if not history_df.empty:
@@ -5940,9 +5980,9 @@ if app_mode == "BOM Analyzer":
         st.markdown(
             """
             <div class="bom8-trust-strip">
-              <div class="bom8-trust">CSV and XLSX</div>
-              <div class="bom8-trust">Duplicate MPN merge</div>
-              <div class="bom8-trust">Engineering risk scoring</div>
+              <div class="bom8-trust">CSV/XLSX files accepted</div>
+              <div class="bom8-trust">Duplicate part numbers combined</div>
+              <div class="bom8-trust">Lifecycle and sourcing risk scored</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -5984,25 +6024,168 @@ if app_mode == "BOM Analyzer":
             unsafe_allow_html=True,
         )
 
-    # Milestone 8.0A.1 — keep saved analyses accessible without interrupting
-    # the new-analysis workflow.
+    # Milestone 8.0A.2 — saved BOM access and management.
     with st.container(key="bom8_saved_history"):
         with st.expander(
             f"Saved BOM analyses ({saved_analysis_count})",
             expanded=False,
         ):
             st.caption(
-                "Open a previous portfolio-health result without placing the full "
-                "history table between file upload and the current BOM analysis."
+                "Open a previous analysis to review its dashboard, detailed risk "
+                "report, and saved part records. Deleting removes the saved analysis "
+                "from this workspace."
             )
 
-            if not history_df.empty:
-                display_history_df = history_df.copy()
+            if history_data:
+                analysis_options = {}
+                for record in history_data:
+                    analysis_id_value = str(record.get("id") or "").strip()
+                    if not analysis_id_value:
+                        continue
 
+                    project_label = (
+                        record.get("project_name")
+                        or record.get("filename")
+                        or "Saved BOM analysis"
+                    )
+                    created_label = str(record.get("created_at") or "")[:10] or "No date"
+                    health_label = int(record.get("health_score") or 0)
+                    option_label = (
+                        f"{project_label} — Health {health_label} — {created_label}"
+                    )
+                    analysis_options[option_label] = record
+
+                if analysis_options:
+                    selected_saved_label = st.selectbox(
+                        "Select a saved BOM analysis",
+                        options=list(analysis_options.keys()),
+                        key="bom8_saved_analysis_selector",
+                    )
+                    selected_saved_analysis = analysis_options[selected_saved_label]
+                    selected_saved_id = str(
+                        selected_saved_analysis.get("id") or ""
+                    ).strip()
+
+                    action_col, delete_col = st.columns([0.55, 0.45], gap="medium")
+
+                    with action_col:
+                        if st.button(
+                            "Open Selected Analysis",
+                            type="primary",
+                            use_container_width=True,
+                            key="bom8_open_saved_analysis",
+                        ):
+                            st.query_params["page"] = "Analysis Details"
+                            st.query_params["analysis_id"] = selected_saved_id
+                            st.session_state["pending_app_mode"] = "Analysis Details"
+                            st.rerun()
+
+                    with delete_col:
+                        delete_confirmed = st.checkbox(
+                            "Confirm permanent deletion",
+                            key="bom8_confirm_delete_analysis",
+                        )
+                        if st.button(
+                            "Delete Selected Analysis",
+                            type="secondary",
+                            use_container_width=True,
+                            disabled=not delete_confirmed,
+                            key="bom8_delete_saved_analysis",
+                        ):
+                            try:
+                                # Delete child part records before the parent analysis.
+                                supabase.table("analysis_parts").delete().eq(
+                                    "analysis_id",
+                                    selected_saved_id,
+                                ).execute()
+
+                                # Remove related monitoring history when the column exists.
+                                try:
+                                    supabase.table("part_monitor_history").delete().eq(
+                                        "analysis_id",
+                                        selected_saved_id,
+                                    ).execute()
+                                except Exception:
+                                    pass
+
+                                supabase.table("analyses").delete().eq(
+                                    "id",
+                                    selected_saved_id,
+                                ).eq(
+                                    "user_id",
+                                    current_user["id"],
+                                ).execute()
+
+                                st.success("Saved BOM analysis deleted.")
+                                st.session_state.pop(
+                                    "bom8_confirm_delete_analysis",
+                                    None,
+                                )
+                                st.rerun()
+                            except Exception as delete_error:
+                                st.error(
+                                    "The saved BOM analysis could not be deleted. "
+                                    f"Database message: {delete_error}"
+                                )
+
+                    selected_project = (
+                        selected_saved_analysis.get("project_name")
+                        or selected_saved_analysis.get("filename")
+                        or "Saved BOM analysis"
+                    )
+                    selected_file = (
+                        selected_saved_analysis.get("filename")
+                        or "Source file unavailable"
+                    )
+                    selected_health = int(
+                        selected_saved_analysis.get("health_score") or 0
+                    )
+                    selected_high = int(
+                        selected_saved_analysis.get("high_risk_count") or 0
+                    )
+                    selected_medium = int(
+                        selected_saved_analysis.get("medium_risk_count") or 0
+                    )
+
+                    st.markdown(
+                        f"""
+                        <div class="bom8-saved-summary">
+                          <div>
+                            <span>Project</span>
+                            <strong>{html.escape(str(selected_project))}</strong>
+                          </div>
+                          <div>
+                            <span>Source file</span>
+                            <strong>{html.escape(str(selected_file))}</strong>
+                          </div>
+                          <div>
+                            <span>Health</span>
+                            <strong>{selected_health}</strong>
+                          </div>
+                          <div>
+                            <span>High / Medium risk</span>
+                            <strong>{selected_high} / {selected_medium}</strong>
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                display_history_df = pd.DataFrame(history_data)
                 if "filename" not in display_history_df.columns:
                     display_history_df["filename"] = "—"
                 if "created_at" not in display_history_df.columns:
                     display_history_df["created_at"] = pd.NaT
+                if "project_name" not in display_history_df.columns:
+                    display_history_df["project_name"] = display_history_df["filename"]
+
+                for numeric_column in (
+                    "health_score",
+                    "high_risk_count",
+                    "medium_risk_count",
+                ):
+                    if numeric_column not in display_history_df.columns:
+                        display_history_df[numeric_column] = 0
 
                 display_history_df["created_at"] = pd.to_datetime(
                     display_history_df["created_at"],
@@ -6038,12 +6221,13 @@ if app_mode == "BOM Analyzer":
                 st.markdown(
                     """
                     <div class="bom8-history-note">
-                      No saved analyses yet. Your first completed BOM review will appear
-                      here with its health score and risk distribution.
+                      No saved analyses yet. Your first completed BOM review will
+                      appear here with its health score and risk distribution.
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
+
 
 
     if uploaded_file is None:
