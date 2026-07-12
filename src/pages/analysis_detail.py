@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
+from src.ui.navigation import navigate_to, internal_nav_button
 
 
 def _safe(value: Any, fallback: str = "—") -> str:
@@ -640,15 +641,21 @@ def render_analysis_detail(*, current_user, supabase, load_analysis_history, lig
                         """,
                         unsafe_allow_html=True,
                     )
-                    st.link_button(
+                    internal_nav_button(
                         "Find Alternatives",
-                        _alternative_url(selected_mpn, analysis_id),
+                        "Alternative Finder",
+                        key=f"analysis_find_alternative_{analysis_id}_{selected_mpn}",
                         use_container_width=True,
+                        original_part=selected_mpn,
+                        analysis_id=analysis_id,
                     )
-                    st.link_button(
+                    internal_nav_button(
                         "Monitor Component",
-                        _monitor_url(selected_mpn, analysis_id),
+                        "Monitoring",
+                        key=f"analysis_monitor_component_{analysis_id}_{selected_mpn}",
                         use_container_width=True,
+                        mpn=selected_mpn,
+                        analysis_id=analysis_id,
                     )
                     if selected_url:
                         st.link_button(
@@ -786,16 +793,20 @@ def render_analysis_detail(*, current_user, supabase, load_analysis_history, lig
 
         action_a, action_b = st.columns(2)
         with action_a:
-            st.link_button(
+            internal_nav_button(
                 "Open Alternative Finder",
-                f"?page=Alternative%20Finder&analysis_id={analysis_id}",
+                "Alternative Finder",
+                key=f"analysis_open_alternatives_{analysis_id}",
                 use_container_width=True,
+                analysis_id=analysis_id,
             )
         with action_b:
-            st.link_button(
+            internal_nav_button(
                 "Review Components",
-                f"?page=Analysis%20Details&analysis_id={analysis_id}",
+                "Analysis Details",
+                key=f"analysis_review_components_{analysis_id}",
                 use_container_width=True,
+                analysis_id=analysis_id,
             )
 
     with reports_tab:
@@ -833,15 +844,19 @@ def render_analysis_detail(*, current_user, supabase, load_analysis_history, lig
 
         report_col, bom_col = st.columns(2)
         with report_col:
-            st.link_button(
+            internal_nav_button(
                 "Open Reports Center",
-                f"?page=Reports&analysis_id={analysis_id}",
+                "Reports",
+                key=f"analysis_open_reports_{analysis_id}",
                 use_container_width=True,
+                analysis_id=analysis_id,
             )
         with bom_col:
-            st.link_button(
+            internal_nav_button(
                 "Open Full BOM Workspace",
-                f"?page=BOM%20Analyzer&analysis_id={analysis_id}",
+                "BOM Analyzer",
+                key=f"analysis_open_bom_{analysis_id}",
                 use_container_width=True,
+                analysis_id=analysis_id,
             )
 
