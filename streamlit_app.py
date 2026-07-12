@@ -407,15 +407,83 @@ def generate_engineering_change_package_pdf(
     price_delta,
     engineer_name,
     project_name,
+    comparison_snapshot=None,
 ):
+    """Generate a professional ECO-ready engineering change package PDF."""
     buffer = BytesIO()
+    generated_at = datetime.now(timezone.utc)
+    comparison_snapshot = comparison_snapshot or {}
+
+    def _safe_list(value):
+        if isinstance(value, (list, tuple, set)):
+            return [str(item) for item in value if str(item).strip()]
+        if value in (None, "", {}):
+            return []
+        return [str(value)]
+
+    matches = _safe_list(comparison_snapshot.get("engineering_matches", []))
+    warnings = _safe_list(comparison_snapshot.get("warnings", []))
+    advantages = _safe_list(comparison_snapshot.get("advantages", []))
+    tradeoffs = _safe_list(comparison_snapshot.get("tradeoffs", []))
+
+    combined_warnings = " ".join(warnings).lower()
+    next_steps = []
+    if any(word in combined_warnings for word in ("package", "mounting", "footprint")):
+        next_steps.append("Verify PCB footprint, land pattern, and mounting constraints.")
+    if "voltage" in combined_warnings:
+        next_steps.append("Confirm voltage ratings against the circuit operating limits.")
+    if any(word in combined_warnings for word in ("architecture", "channel")):
+        next_steps.append("Validate the electrical architecture and functional behavior.")
+    if "pin" in combined_warnings:
+        next_steps.append("Confirm pin mapping before schematic or PCB release.")
+    if any(word in combined_warnings for word in ("thermal", "power", "current")):
+        next_steps.append("Review current, power dissipation, and thermal margins.")
+    if compatibility_confidence < 70:
+        next_steps.append("Complete bench validation before production approval.")
+    if str(decision).lower() == "approved":
+        next_steps.append("Update the BOM revision and retain this package with the change record.")
+    elif str(decision).lower() == "rejected":
+        next_steps.append("Document the rejection rationale and continue candidate review.")
+    else:
+        next_steps.append("Record an approval or rejection after engineering review.")
+
+    unique_steps = []
+    for step in next_steps:
+        if step not in unique_steps:
+            unique_steps.append(step)
+    next_steps = unique_steps[:7]
+
+    def _header_footer(canvas, doc):
+        canvas.saveState()
+        width, height = letter
+        canvas.setFillColor(colors.HexColor("#2563EB"))
+        canvas.rect(0, height - 12, width, 12, fill=1, stroke=0)
+        canvas.setFillColor(colors.HexColor("#0F172A"))
+        canvas.setFont("Helvetica-Bold", 9)
+        canvas.drawString(42, height - 28, "CADIVOR")
+        canvas.setFillColor(colors.HexColor("#64748B"))
+        canvas.setFont("Helvetica", 7)
+        canvas.drawString(42, height - 38, "ENGINEERING INTELLIGENCE")
+        canvas.setStrokeColor(colors.HexColor("#E2E8F0"))
+        canvas.line(42, 31, width - 42, 31)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.drawString(
+            42,
+            19,
+            f"{original_part} → {alternative_part} • Engineering Change Package",
+        )
+        canvas.drawRightString(width - 42, 19, f"Page {doc.page}")
+        canvas.restoreState()
+
     document = SimpleDocTemplate(
         buffer,
         pagesize=letter,
         rightMargin=42,
         leftMargin=42,
-        topMargin=40,
-        bottomMargin=40,
+        topMargin=52,
+        bottomMargin=42,
+        title=f"Cadivor Engineering Change Package: {original_part} to {alternative_part}",
+        author=str(engineer_name or "Cadivor"),
     )
 
     styles = getSampleStyleSheet()
@@ -424,46 +492,76 @@ def generate_engineering_change_package_pdf(
     title_style.fontSize = 22
     title_style.leading = 26
     title_style.textColor = colors.HexColor("#0B1220")
+    title_style.alignment = 0
 
-    heading_style = styles["Heading2"]
-    heading_style.fontName = "Helvetica-Bold"
-    heading_style.fontSize = 12
-    heading_style.textColor = colors.HexColor("#1D4ED8")
-    heading_style.spaceBefore = 12
-    heading_style.spaceAfter = 8
+    subtitle_style = styles["BodyText"]
+    subtitle_style.fontName = "Helvetica"
+    subtitle_style.fontSize = 9.5
+    subtitle_style.leading = 14
+    subtitle_style.textColor = colors.HexColor("#475569")
+
+    section_style = styles["Heading2"]
+    section_style.fontName = "Helvetica-Bold"
+    section_style.fontSize = 12
+    section_style.leading = 15
+    section_style.textColor = colors.HexColor("#0F172A")
+    section_style.spaceBefore = 14
+    section_style.spaceAfter = 8
 
     body_style = styles["BodyText"]
     body_style.fontName = "Helvetica"
-    body_style.fontSize = 9
-    body_style.leading = 13
+    body_style.fontSize = 8.5
+    body_style.leading = 12
     body_style.textColor = colors.HexColor("#334155")
 
+    small_style = styles["BodyText"]
+    small_style.fontName = "Helvetica"
+    small_style.fontSize = 7.5
+    small_style.leading = 10
+    small_style.textColor = colors.HexColor("#475569")
+
+    decision_upper = str(decision or "Pending review").upper()
+    decision_color = {
+        "APPROVED": "#059669",
+        "REJECTED": "#DC2626",
+        "SAVED": "#2563EB",
+    }.get(decision_upper, "#D97706")
+
     story = [
-        Paragraph("Cadivor Engineering Change Package", title_style),
-        Spacer(1, 6),
+        Spacer(1, 4),
+        Paragraph("Engineering Change Package", title_style),
+        Spacer(1, 4),
         Paragraph(
-            "Engineering decision record for a component replacement review.",
-            body_style,
+            "Formal component replacement review for design, sourcing, quality, "
+            "and change-control documentation.",
+            subtitle_style,
         ),
-        Spacer(1, 18),
+        Spacer(1, 16),
     ]
 
-    summary_data = [
-        ["Decision", str(decision)],
-        ["Project", str(project_name or "Standalone Alternative Finder")],
-        ["Engineer", str(engineer_name or "Cadivor user")],
-        ["Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
-    ]
-    summary_table = Table(summary_data, colWidths=[110, 390])
-    summary_table.setStyle(
+    summary = Table(
+        [
+            ["PROJECT", "ENGINEER", "DECISION DATE", "STATUS"],
+            [
+                str(project_name or "Standalone Alternative Finder"),
+                str(engineer_name or "Cadivor user"),
+                generated_at.strftime("%b %d, %Y • %H:%M UTC"),
+                decision_upper,
+            ],
+        ],
+        colWidths=[145, 125, 145, 85],
+    )
+    summary.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EFF6FF")),
-                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1D4ED8")),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFF6FF")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1D4ED8")),
+                ("TEXTCOLOR", (3, 1), (3, 1), colors.HexColor(decision_color)),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (3, 1), (3, 1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#CBD5E1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 8),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 8),
@@ -472,69 +570,211 @@ def generate_engineering_change_package_pdf(
             ]
         )
     )
-    story.append(summary_table)
+    story.append(summary)
 
-    story.extend(
+    story.append(Paragraph("Executive Decision Summary", section_style))
+    decision_summary = Table(
         [
-            Paragraph("Component Decision", heading_style),
-            Table(
-                [
-                    ["Attribute", "Original", "Approved / Selected"],
-                    ["Part Number", str(original_part), str(alternative_part)],
-                    ["Lifecycle", "—", str(lifecycle)],
-                    ["Engineering Risk", "—", str(risk)],
-                    ["Supplier", "—", str(supplier)],
-                    ["Available Stock", "—", f"{int(stock):,}"],
-                    ["Unit Price", "—", f"${float(unit_price):.4g}"],
-                    ["Package", "—", str(package)],
-                    ["Recommendation Score", "—", f"{int(recommendation_score)}/100"],
+            ["Original Component", str(original_part)],
+            ["Selected Replacement", str(alternative_part)],
+            ["Recommendation Score", f"{int(recommendation_score)}/100"],
+            ["Compatibility Confidence", f"{int(compatibility_confidence)}%"],
+            ["Engineering Risk", str(risk)],
+            ["Lifecycle", str(lifecycle)],
+            ["Decision", str(decision)],
+        ],
+        colWidths=[180, 320],
+    )
+    decision_summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F8FAFC")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#CBD5E1")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(decision_summary)
+
+    story.append(Paragraph("Sourcing and Package Impact", section_style))
+    sourcing = Table(
+        [
+            ["Supplier", "Available Stock", "Unit Price", "Package"],
+            [str(supplier), f"{int(stock):,}", f"${float(unit_price):.4g}", str(package)],
+            ["Stock Impact", str(stock_delta), "Cost Impact", str(price_delta)],
+        ],
+        colWidths=[120, 130, 120, 130],
+    )
+    sourcing.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563EB")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 2), (0, 2), "Helvetica-Bold"),
+                ("FONTNAME", (2, 2), (2, 2), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.3),
+                ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#CBD5E1")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
+                    colors.white,
+                    colors.HexColor("#F8FAFC"),
+                ]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(sourcing)
+
+    story.append(Paragraph("Engineering Evidence", section_style))
+    evidence = Table(
+        [
+            ["ENGINEERING MATCHES", "WARNINGS"],
+            [
+                "\n".join(f"✓ {item}" for item in matches)
+                or "No confirmed engineering matches were recorded.",
+                "\n".join(f"⚠ {item}" for item in warnings)
+                or "No material warnings were recorded.",
+            ],
+            ["SOURCING ADVANTAGES", "TRADE-OFFS"],
+            [
+                "\n".join(f"• {item}" for item in advantages)
+                or "No sourcing advantage was calculated.",
+                "\n".join(f"• {item}" for item in tradeoffs)
+                or "No material trade-off was calculated.",
+            ],
+        ],
+        colWidths=[250, 250],
+    )
+    evidence.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, 1), colors.HexColor("#ECFDF5")),
+                ("BACKGROUND", (1, 0), (1, 1), colors.HexColor("#FFFBEB")),
+                ("BACKGROUND", (0, 2), (0, 3), colors.HexColor("#ECFDF5")),
+                ("BACKGROUND", (1, 2), (1, 3), colors.HexColor("#FEF2F2")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#CBD5E1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#E2E8F0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
+    story.append(evidence)
+
+    comparison_rows = comparison_snapshot.get("comparison_table", [])
+    if isinstance(comparison_rows, list) and comparison_rows:
+        clean_rows = [["Attribute", "Original", "Selected Alternative"]]
+        for row in comparison_rows[:18]:
+            if isinstance(row, dict):
+                clean_rows.append(
                     [
-                        "Compatibility Confidence",
-                        "—",
-                        f"{int(compatibility_confidence)}%",
-                    ],
-                    ["Stock Impact", "—", str(stock_delta)],
-                    ["Cost Impact", "—", str(price_delta)],
-                ],
-                colWidths=[150, 160, 190],
-                repeatRows=1,
-                style=TableStyle(
+                        str(row.get("Attribute", row.get("attribute", ""))),
+                        str(row.get("Original", row.get("original", ""))),
+                        str(
+                            row.get(
+                                "Selected Alternative",
+                                row.get("selected_alternative", ""),
+                            )
+                        ),
+                    ]
+                )
+        if len(clean_rows) > 1:
+            story.append(Paragraph("Side-by-Side Comparison", section_style))
+            comparison = Table(clean_rows, colWidths=[160, 165, 175], repeatRows=1)
+            comparison.setStyle(
+                TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563EB")),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                         ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
-                        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-                        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 7.7),
+                        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
                             colors.white,
                             colors.HexColor("#F8FAFC"),
                         ]),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                        ("TOPPADDING", (0, 0), (-1, -1), 6),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                     ]
-                ),
-            ),
-            Paragraph("Engineering Note", heading_style),
-            Paragraph(
-                html.escape(
-                    engineering_note
-                    or "No engineering note was recorded."
-                ),
-                body_style,
-            ),
+                )
+            )
+            story.append(comparison)
+
+    story.append(Paragraph("Engineering Review Notes", section_style))
+    note_box = Table(
+        [[engineering_note or "No engineering review notes were recorded."]],
+        colWidths=[500],
+    )
+    note_box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#CBD5E1")),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+            ]
+        )
+    )
+    story.append(note_box)
+
+    story.append(Paragraph("Recommended Next Actions", section_style))
+    actions = Table(
+        [[f"□ {step}"] for step in next_steps],
+        colWidths=[500],
+    )
+    actions.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
+                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#BFDBFE")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#DBEAFE")),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(actions)
+
+    story.extend(
+        [
             Spacer(1, 14),
             Paragraph(
-                "Generated by Cadivor Engineering Intelligence.",
-                body_style,
+                "This package documents the engineering review state at the time "
+                "of generation. Final production release remains subject to the "
+                "organization's approved change-control process.",
+                small_style,
             ),
         ]
     )
 
-    document.build(story)
+    document.build(
+        story,
+        onFirstPage=_header_footer,
+        onLaterPages=_header_footer,
+    )
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -4666,11 +4906,14 @@ if app_mode == "Alternative Finder":
             price_delta=price_delta,
             engineer_name=decision_engineer_name,
             project_name=active_project_name,
+            comparison_snapshot=decision_payload.get(
+                "comparison_snapshot", {}
+            ),
         )
 
         with package_output_col:
             st.download_button(
-                "Generate Engineering Change Package",
+                "Generate Professional Change Package",
                 data=pdf_package,
                 file_name=(
                     f"{str(original_part).strip()}_to_"
@@ -4681,7 +4924,7 @@ if app_mode == "Alternative Finder":
                 key="af63_change_package",
             )
             st.caption(
-                "Generate a PDF for design reviews, ECOs, and project documentation."
+                "Create an ECO-ready PDF with engineering evidence, notes, sourcing impact, and next actions."
             )
 
         db_error = st.session_state.get("alternative_decision_db_error", "")
