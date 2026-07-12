@@ -5777,6 +5777,20 @@ if app_mode == "BOM Analyzer":
             line-height:1.45;
             margin-top:8px;
         }
+        .st-key-bom8_saved_history{
+            margin-top:18px;
+            margin-bottom:8px;
+        }
+        .st-key-bom8_saved_history details{
+            border:1px solid #dbe3ef!important;
+            border-radius:16px!important;
+            background:#ffffff!important;
+            box-shadow:0 10px 26px rgba(15,23,42,.04);
+        }
+        .st-key-bom8_saved_history summary{
+            color:#1d4ed8!important;
+            font-weight:850!important;
+        }
         .st-key-bom8_sample button{
             border:1px solid #bfdbfe!important;
             background:#eff6ff!important;
@@ -5970,72 +5984,66 @@ if app_mode == "BOM Analyzer":
             unsafe_allow_html=True,
         )
 
-    st.markdown(
-        """
-        <div class="bom8-section-head" style="margin-top:28px;">
-          <div>
-            <h2>Recent BOM analyses</h2>
-            <p>Review the latest portfolio health and risk results already stored in your workspace.</p>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Milestone 8.0A.1 — keep saved analyses accessible without interrupting
+    # the new-analysis workflow.
+    with st.container(key="bom8_saved_history"):
+        with st.expander(
+            f"Saved BOM analyses ({saved_analysis_count})",
+            expanded=False,
+        ):
+            st.caption(
+                "Open a previous portfolio-health result without placing the full "
+                "history table between file upload and the current BOM analysis."
+            )
 
-    if not history_df.empty:
-        display_history_df = history_df.copy()
-        if "filename" not in display_history_df.columns:
-            display_history_df["filename"] = "—"
-        if "created_at" not in display_history_df.columns:
-            display_history_df["created_at"] = pd.NaT
+            if not history_df.empty:
+                display_history_df = history_df.copy()
 
-        display_history_df["created_at"] = pd.to_datetime(
-            display_history_df["created_at"], errors="coerce"
-        ).dt.strftime("%Y-%m-%d")
+                if "filename" not in display_history_df.columns:
+                    display_history_df["filename"] = "—"
+                if "created_at" not in display_history_df.columns:
+                    display_history_df["created_at"] = pd.NaT
 
-        display_history = display_history_df[
-            [
-                "project_name",
-                "filename",
-                "health_score",
-                "high_risk_count",
-                "medium_risk_count",
-                "created_at",
-            ]
-        ].rename(
-            columns={
-                "project_name": "Project",
-                "filename": "Source File",
-                "health_score": "Health",
-                "high_risk_count": "High Risk",
-                "medium_risk_count": "Medium Risk",
-                "created_at": "Date",
-            }
-        )
+                display_history_df["created_at"] = pd.to_datetime(
+                    display_history_df["created_at"],
+                    errors="coerce",
+                ).dt.strftime("%Y-%m-%d")
 
-        st.dataframe(
-            display_history.head(8),
-            use_container_width=True,
-            hide_index=True,
-        )
+                display_history = display_history_df[
+                    [
+                        "project_name",
+                        "filename",
+                        "health_score",
+                        "high_risk_count",
+                        "medium_risk_count",
+                        "created_at",
+                    ]
+                ].rename(
+                    columns={
+                        "project_name": "Project",
+                        "filename": "Source File",
+                        "health_score": "Health",
+                        "high_risk_count": "High Risk",
+                        "medium_risk_count": "Medium Risk",
+                        "created_at": "Date",
+                    }
+                )
 
-        if len(display_history) > 8:
-            with st.expander(f"View all {len(display_history)} saved analyses"):
                 st.dataframe(
                     display_history,
                     use_container_width=True,
                     hide_index=True,
                 )
-    else:
-        st.markdown(
-            """
-            <div class="bom8-history-note">
-              No saved analyses yet. Your first completed BOM review will appear here
-              with its health score and risk distribution.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            else:
+                st.markdown(
+                    """
+                    <div class="bom8-history-note">
+                      No saved analyses yet. Your first completed BOM review will appear
+                      here with its health score and risk distribution.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
 
     if uploaded_file is None:
