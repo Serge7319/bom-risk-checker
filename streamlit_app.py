@@ -280,6 +280,7 @@ def save_analysis_decision(user_id, payload):
         "analysis_id": str(analysis_id).strip() if analysis_id else None,
         "context_key": context_key,
         "project_name": str(payload.get("project_name", "")).strip(),
+        "engineer_name": str(payload.get("engineer_name", "")).strip(),
         "original_part": original_part,
         "alternative_part": alternative_part,
         "decision": str(payload.get("decision", "Saved")).strip() or "Saved",
@@ -355,6 +356,7 @@ def load_analysis_decisions(
         .select("*")
         .eq("user_id", user_id)
         .eq("context_key", context_key)
+        .is_("archived_at", "null")
     )
 
     if original_part:
@@ -368,15 +370,171 @@ def load_analysis_decisions(
     return response.data if response.data else []
 
 
-def delete_analysis_decision(user_id, decision_id):
+def archive_analysis_decision(user_id, decision_id):
     response = (
         supabase.table("analysis_decisions")
-        .delete()
+        .update(
+            {
+                "archived_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         .eq("id", decision_id)
         .eq("user_id", user_id)
         .execute()
     )
     return response.data if response.data else []
+
+
+def generate_engineering_change_package_pdf(
+    *,
+    original_part,
+    alternative_part,
+    decision,
+    engineering_note,
+    recommendation_score,
+    compatibility_confidence,
+    lifecycle,
+    risk,
+    supplier,
+    stock,
+    unit_price,
+    package,
+    stock_delta,
+    price_delta,
+    engineer_name,
+    project_name,
+):
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=42,
+        leftMargin=42,
+        topMargin=40,
+        bottomMargin=40,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = styles["Title"]
+    title_style.fontName = "Helvetica-Bold"
+    title_style.fontSize = 22
+    title_style.leading = 26
+    title_style.textColor = colors.HexColor("#0B1220")
+
+    heading_style = styles["Heading2"]
+    heading_style.fontName = "Helvetica-Bold"
+    heading_style.fontSize = 12
+    heading_style.textColor = colors.HexColor("#1D4ED8")
+    heading_style.spaceBefore = 12
+    heading_style.spaceAfter = 8
+
+    body_style = styles["BodyText"]
+    body_style.fontName = "Helvetica"
+    body_style.fontSize = 9
+    body_style.leading = 13
+    body_style.textColor = colors.HexColor("#334155")
+
+    story = [
+        Paragraph("Cadivor Engineering Change Package", title_style),
+        Spacer(1, 6),
+        Paragraph(
+            "Engineering decision record for a component replacement review.",
+            body_style,
+        ),
+        Spacer(1, 18),
+    ]
+
+    summary_data = [
+        ["Decision", str(decision)],
+        ["Project", str(project_name or "Standalone Alternative Finder")],
+        ["Engineer", str(engineer_name or "Cadivor user")],
+        ["Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
+    ]
+    summary_table = Table(summary_data, colWidths=[110, 390])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EFF6FF")),
+                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#1D4ED8")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
+    story.append(summary_table)
+
+    story.extend(
+        [
+            Paragraph("Component Decision", heading_style),
+            Table(
+                [
+                    ["Attribute", "Original", "Approved / Selected"],
+                    ["Part Number", str(original_part), str(alternative_part)],
+                    ["Lifecycle", "—", str(lifecycle)],
+                    ["Engineering Risk", "—", str(risk)],
+                    ["Supplier", "—", str(supplier)],
+                    ["Available Stock", "—", f"{int(stock):,}"],
+                    ["Unit Price", "—", f"${float(unit_price):.4g}"],
+                    ["Package", "—", str(package)],
+                    ["Recommendation Score", "—", f"{int(recommendation_score)}/100"],
+                    [
+                        "Compatibility Confidence",
+                        "—",
+                        f"{int(compatibility_confidence)}%",
+                    ],
+                    ["Stock Impact", "—", str(stock_delta)],
+                    ["Cost Impact", "—", str(price_delta)],
+                ],
+                colWidths=[150, 160, 190],
+                repeatRows=1,
+                style=TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563EB")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
+                            colors.white,
+                            colors.HexColor("#F8FAFC"),
+                        ]),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                ),
+            ),
+            Paragraph("Engineering Note", heading_style),
+            Paragraph(
+                html.escape(
+                    engineering_note
+                    or "No engineering note was recorded."
+                ),
+                body_style,
+            ),
+            Spacer(1, 14),
+            Paragraph(
+                "Generated by Cadivor Engineering Intelligence.",
+                body_style,
+            ),
+        ]
+    )
+
+    document.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 
 def run_global_search(user_id, query, limit=8):
     """Search saved analyses, analysis parts, and alternative history for the dashboard command palette foundation."""
@@ -3508,7 +3666,7 @@ if app_mode == "Alternative Finder":
             font-weight:800;
         }
 
-        .st-key-af62c_delete button{
+        .st-key-af62c_archive button{
             border-radius:10px!important;
             border-color:#FCA5A5!important;
             color:#B91C1C!important;
@@ -3554,6 +3712,9 @@ if app_mode == "Alternative Finder":
 
     if "alternative_decision_db_error" not in st.session_state:
         st.session_state["alternative_decision_db_error"] = ""
+
+    if "alternative_decision_flash" not in st.session_state:
+        st.session_state["alternative_decision_flash"] = ""
 
     with st.container(border=True, key="af62_hero"):
         st.markdown(
@@ -4170,9 +4331,19 @@ if app_mode == "Alternative Finder":
             or ""
         )
 
+        decision_engineer_name = (
+            profile_for_shell.get("full_name")
+            or profile_for_shell.get("name")
+            or current_user.get("full_name")
+            or current_user.get("name")
+            or current_user.get("email")
+            or "Cadivor user"
+        )
+
         decision_payload = {
             "analysis_id": active_analysis_id,
             "project_name": str(active_project_name),
+            "engineer_name": str(decision_engineer_name),
             "original_part": str(original_part),
             "alternative_part": str(selected_alternative),
             "decision": current_decision,
@@ -4215,8 +4386,9 @@ if app_mode == "Alternative Finder":
                 st.session_state["alternative_engineering_decisions"][
                     candidate_key
                 ] = decision_value
-                st.session_state["alternative_decision_db_status"] = (
-                    f'{decision_value} decision saved permanently.'
+                st.session_state["alternative_decision_db_status"] = ""
+                st.session_state["alternative_decision_flash"] = (
+                    "Engineering Decision Record created"
                 )
                 st.session_state["alternative_decision_db_error"] = ""
                 return saved_record
@@ -4319,26 +4491,62 @@ if app_mode == "Alternative Finder":
                 key="af63_download",
             )
 
-        db_status = st.session_state.get("alternative_decision_db_status", "")
-        db_error = st.session_state.get("alternative_decision_db_error", "")
+        pdf_package = generate_engineering_change_package_pdf(
+            original_part=str(original_part),
+            alternative_part=str(selected_alternative),
+            decision=st.session_state.get(
+                "alternative_engineering_decisions", {}
+            ).get(candidate_key, "Pending review"),
+            engineering_note=engineering_note,
+            recommendation_score=recommendation_score,
+            compatibility_confidence=drop_in_confidence,
+            lifecycle=lifecycle_value,
+            risk=risk_value,
+            supplier=supplier_value,
+            stock=stock_value,
+            unit_price=price_value,
+            package=package_value,
+            stock_delta=stock_delta,
+            price_delta=price_delta,
+            engineer_name=decision_engineer_name,
+            project_name=active_project_name,
+        )
 
-        if db_status:
-            st.success(db_status)
+        package_col, package_note_col = st.columns([0.34, 0.66], gap="medium")
+        with package_col:
+            st.download_button(
+                "Generate Engineering Change Package",
+                data=pdf_package,
+                file_name=(
+                    f"{str(original_part).strip()}_to_"
+                    f"{str(selected_alternative).strip()}_change_package.pdf"
+                ),
+                mime="application/pdf",
+                use_container_width=True,
+                key="af63_change_package",
+            )
+        with package_note_col:
+            st.markdown(
+                '<div class="af63-action-help">'
+                'Creates a shareable PDF containing the engineering decision, '
+                'comparison summary, sourcing impact, approval status, engineer, '
+                'date, and recorded note.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        db_error = st.session_state.get("alternative_decision_db_error", "")
+        decision_flash = st.session_state.get("alternative_decision_flash", "")
+
+        if decision_flash:
+            st.toast(decision_flash, icon="✅")
+            st.session_state["alternative_decision_flash"] = ""
 
         if db_error:
             st.error(
                 "The decision could not be saved to Supabase. Apply the included "
                 "analysis_decisions migration, then try again. "
                 f"Database message: {db_error}"
-            )
-
-        if not db_error:
-            st.markdown(
-                '<div class="af62c-persist-note">'
-                'Approvals, rejections, saved candidates, notes, scores, sourcing data, '
-                'and comparison evidence are written to your Supabase workspace.'
-                '</div>',
-                unsafe_allow_html=True,
             )
 
         try:
@@ -4379,7 +4587,12 @@ if app_mode == "Alternative Finder":
                 for record in part_decision_history:
                     history_rows.append(
                         {
+                            "Date": record.get("updated_at")
+                            or record.get("created_at", ""),
                             "Decision": record.get("decision", ""),
+                            "Engineer": record.get("engineer_name", "")
+                            or "Cadivor user",
+                            "Candidate": record.get("alternative_part", ""),
                             "Project": record.get("project_name", "")
                             or (
                                 "Standalone Alternative Finder"
@@ -4387,7 +4600,6 @@ if app_mode == "Alternative Finder":
                                 else record.get("context_key", "")
                             ),
                             "Original": record.get("original_part", ""),
-                            "Alternative": record.get("alternative_part", ""),
                             "Score": record.get("recommendation_score", 0),
                             "Compatibility": record.get(
                                 "compatibility_confidence", 0
@@ -4395,8 +4607,6 @@ if app_mode == "Alternative Finder":
                             "Risk": record.get("risk", ""),
                             "Supplier": record.get("supplier", ""),
                             "Note": record.get("engineering_note", ""),
-                            "Updated": record.get("updated_at")
-                            or record.get("created_at", ""),
                         }
                     )
 
@@ -4417,29 +4627,29 @@ if app_mode == "Alternative Finder":
                 }
 
                 if decision_options:
-                    delete_label = st.selectbox(
-                        "Select a decision record to delete",
+                    archive_label = st.selectbox(
+                        "Select a decision record to archive",
                         list(decision_options.keys()),
-                        key="af62c_delete_select",
+                        key="af62c_archive_select",
                     )
                     if st.button(
-                        "Delete Selected Decision",
+                        "Archive Decision",
                         type="secondary",
-                        key="af62c_delete",
+                        key="af62c_archive",
                     ):
                         try:
-                            delete_analysis_decision(
+                            archive_analysis_decision(
                                 current_user["id"],
-                                decision_options[delete_label],
+                                decision_options[archive_label],
                             )
-                            st.session_state["alternative_decision_db_status"] = (
-                                "Engineering decision deleted."
+                            st.session_state["alternative_decision_flash"] = (
+                                "Engineering Decision Record archived"
                             )
                             st.session_state["alternative_decision_db_error"] = ""
                             st.rerun()
-                        except Exception as delete_error:
+                        except Exception as archive_error:
                             st.error(
-                                f"Could not delete the decision: {delete_error}"
+                                f"Could not archive the decision: {archive_error}"
                             )
 
         def _af62b_items(points, empty_text):
