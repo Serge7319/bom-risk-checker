@@ -253,8 +253,10 @@ def update_user_profile_fields(user_id, updates):
 
 def load_alternative_history(user_id):
     response = (
-        supabase.table("alternative_recommendations")
-        .select("*")
+        _workspace_query(
+            supabase.table("alternative_recommendations")
+            .select("*")
+        )
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .execute()
@@ -266,8 +268,10 @@ def load_alternative_history(user_id):
 
 def load_analysis_history(user_id):
     response = (
-        supabase.table("analyses")
-        .select("*")
+        _workspace_query(
+            supabase.table("analyses")
+            .select("*")
+        )
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .execute()
@@ -354,6 +358,7 @@ def save_analysis_decision(user_id, payload):
 
     record = {
         "user_id": user_id,
+        "workspace_id": active_workspace_id or None,
         "analysis_id": str(analysis_id).strip() if analysis_id else None,
         "context_key": context_key,
         "project_name": str(payload.get("project_name", "")).strip(),
@@ -386,8 +391,10 @@ def save_analysis_decision(user_id, payload):
     }
 
     existing = (
-        supabase.table("analysis_decisions")
-        .select("id")
+        _workspace_query(
+            supabase.table("analysis_decisions")
+            .select("id")
+        )
         .eq("user_id", user_id)
         .eq("context_key", context_key)
         .eq("original_part", original_part)
@@ -430,8 +437,10 @@ def load_analysis_decisions(
     context_key = _decision_context_key(analysis_id)
 
     query = (
-        supabase.table("analysis_decisions")
-        .select("*")
+        _workspace_query(
+            supabase.table("analysis_decisions")
+            .select("*")
+        )
         .eq("user_id", user_id)
         .is_("archived_at", "null")
     )
@@ -452,12 +461,14 @@ def load_analysis_decisions(
 
 def archive_analysis_decision(user_id, decision_id):
     response = (
-        supabase.table("analysis_decisions")
-        .update(
-            {
-                "archived_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
+        _workspace_query(
+            supabase.table("analysis_decisions")
+            .update(
+                {
+                    "archived_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
         )
         .eq("id", decision_id)
         .eq("user_id", user_id)
@@ -2053,9 +2064,101 @@ selected_plan_name = current_user["plan"]
 selected_plan = get_plan(selected_plan_name)
 monthly_upload_count = current_user["monthly_upload_count"]
 
+# Milestone 11B.2 — active organization data context.
+_context_user_id = _safe_text(current_user.get("id"), "")
+_context_email = _safe_text(current_user.get("email"), "")
+_context_name = _safe_text(
+    current_user.get("full_name"),
+    _context_email or "Cadivor user",
+)
+_context_company = (
+    _safe_text(current_user.get("company"), "")
+    or _safe_text(current_user.get("company_name"), "")
+    or "Cadivor"
+)
+_context_workspace_name = (
+    _context_company
+    if _context_company.lower().endswith("workspace")
+    else f"{_context_company} Workspace"
+)
+
+_default_context_workspace, _default_context_error = ensure_personal_workspace(
+    supabase,
+    _context_user_id,
+    _context_email,
+    _context_name,
+    _context_workspace_name,
+    selected_plan_name,
+)
+
+_context_workspaces, _context_workspaces_error = list_user_workspaces(
+    supabase,
+    _context_user_id,
+)
+_preferred_context_workspace_id, _context_preference_error = (
+    get_active_workspace_preference(
+        supabase,
+        _context_user_id,
+    )
+)
+
+_context_available_ids = {
+    str(item.get("id"))
+    for item in (_context_workspaces or [])
+    if item.get("id")
+}
+_context_requested_id = str(
+    st.session_state.get("active_workspace_id")
+    or _preferred_context_workspace_id
+    or ""
+)
+
+if _context_requested_id in _context_available_ids:
+    active_workspace, _active_workspace_error = get_workspace_by_id(
+        supabase,
+        _context_user_id,
+        _context_requested_id,
+    )
+else:
+    active_workspace = _default_context_workspace or (
+        _context_workspaces[0] if _context_workspaces else {}
+    )
+
+active_workspace = active_workspace or {}
+active_workspace_id = str(active_workspace.get("id") or "")
+active_workspace_name = _safe_text(
+    active_workspace.get("name"),
+    "Cadivor Workspace",
+)
+active_workspace_role = _safe_text(
+    active_workspace.get("current_role"),
+    "owner",
+).lower()
+
+if active_workspace_id:
+    st.session_state["active_workspace_id"] = active_workspace_id
+    st.session_state["active_workspace_name"] = active_workspace_name
+    st.session_state["active_workspace_role"] = active_workspace_role
+
+
+def _workspace_query(query):
+    if active_workspace_id:
+        return query.eq("workspace_id", active_workspace_id)
+    return query
+
+
+def _workspace_payload(payload):
+    result = dict(payload or {})
+    if active_workspace_id:
+        result["workspace_id"] = active_workspace_id
+    return result
+
+
 saved_bom_count_response = (
-    supabase.table("analyses")
-    .select("id", count="exact")
+    _workspace_query(
+        supabase.table("analyses")
+        .select("id", count="exact")
+    )
     .eq("user_id", current_user["id"])
     .execute()
 )
@@ -2115,8 +2218,10 @@ if onboarding_user_id:
     inferred_alternative_complete = False
     try:
         inferred_alternative_complete = bool(
-            supabase.table("analysis_decisions")
-            .select("id")
+            _workspace_query(
+                supabase.table("analysis_decisions")
+                .select("id")
+            )
             .eq("user_id", onboarding_user_id)
             .limit(1)
             .execute()
@@ -2624,6 +2729,8 @@ if app_mode == "Dashboard":
         empty_state=empty_state,
         get_user_profile=get_user_profile,
         _qp_value=_qp_value,
+        workspace_id=active_workspace_id,
+        workspace_name=active_workspace_name,
     )
     st.stop()
 
@@ -2634,6 +2741,7 @@ if app_mode == "Analysis Details":
         load_analysis_history=load_analysis_history,
         light_plotly_layout=light_plotly_layout,
         _qp_value=_qp_value,
+        workspace_id=active_workspace_id,
     )
     st.stop()
 
@@ -2645,8 +2753,10 @@ if app_mode == "Monitoring":
     )
 
     alert_history = (
-        supabase.table("monitor_alerts")
-        .select("*")
+        _workspace_query(
+            supabase.table("monitor_alerts")
+            .select("*")
+        )
         .eq("user_id", current_user["id"])
         .order("created_at", desc=True)
         .limit(50)
@@ -2656,8 +2766,10 @@ if app_mode == "Monitoring":
     alert_df = pd.DataFrame(alert_history.data)
 
     monitor_history = (
-        supabase.table("part_monitor_history")
-        .select("*")
+        _workspace_query(
+            supabase.table("part_monitor_history")
+            .select("*")
+        )
         .eq("user_id", current_user["id"])
         .order("created_at", desc=True)
         .limit(100)
@@ -2849,8 +2961,10 @@ if app_mode == "Reports":
             return pd.DataFrame()
         try:
             response = (
-                supabase.table("analysis_parts")
-                .select("*")
+                _workspace_query(
+                    supabase.table("analysis_parts")
+                    .select("*")
+                )
                 .eq("analysis_id", analysis_id)
                 .eq("user_id", current_user["id"])
                 .execute()
@@ -2859,8 +2973,10 @@ if app_mode == "Reports":
         except Exception:
             try:
                 response = (
-                    supabase.table("analysis_parts")
-                    .select("*")
+                    _workspace_query(
+                        supabase.table("analysis_parts")
+                        .select("*")
+                    )
                     .eq("analysis_id", analysis_id)
                     .execute()
                 )
@@ -8953,8 +9069,10 @@ if app_mode == "BOM Analyzer":
                 st.rerun()
 
             saved_analysis_count = (
-                supabase.table("analyses")
-                .select("id", count="exact")
+                _workspace_query(
+                    supabase.table("analyses")
+                    .select("id", count="exact")
+                )
                 .eq("user_id", current_user["id"])
                 .execute()
             )
@@ -9077,16 +9195,18 @@ Unlock more power:
 
             try:
                 analysis_response = supabase.table("analyses").insert(
-                    {
-                        "user_id": current_user["id"],
-                        "project_name": project_name or uploaded_file.name,
-                        "filename": uploaded_file.name,
-                        "total_parts": total_parts,
-                        "high_risk_count": high_count,
-                        "medium_risk_count": medium_count,
-                        "low_risk_count": low_count,
-                        "health_score": health_score,
-                    }
+                    _workspace_payload(
+                        {
+                            "user_id": current_user["id"],
+                            "project_name": project_name or uploaded_file.name,
+                            "filename": uploaded_file.name,
+                            "total_parts": total_parts,
+                            "high_risk_count": high_count,
+                            "medium_risk_count": medium_count,
+                            "low_risk_count": low_count,
+                            "health_score": health_score,
+                        }
+                    )
                 ).execute()
 
                 analysis_id = analysis_response.data[0]["id"]
@@ -9103,6 +9223,7 @@ Unlock more power:
                     {
                         "analysis_id": analysis_id,
                         "user_id": current_user["id"],
+                        "workspace_id": active_workspace_id,
                         "project_name": project_name or uploaded_file.name,
                         "mpn": part_row.get("MPN", ""),
                         "manufacturer": part_row.get("Manufacturer", ""),
@@ -9127,8 +9248,10 @@ Unlock more power:
 
             for _, row in results_df.iterrows():
                 latest_monitor = (
-                    supabase.table("part_monitor_history")
-                    .select("*")
+                    _workspace_query(
+                        supabase.table("part_monitor_history")
+                        .select("*")
+                    )
                     .eq("user_id", current_user["id"])
                     .eq("part_number", row.get("MPN", ""))
                     .order("created_at", desc=True)
@@ -9148,6 +9271,7 @@ Unlock more power:
                     current_user["id"],
                     analysis_id,
                     row,
+                    workspace_id=active_workspace_id,
                 )
 
                 if latest_monitor_data:
@@ -9157,6 +9281,7 @@ Unlock more power:
                         row.get("MPN", ""),
                         latest_monitor_data,
                         current_snapshot,
+                        workspace_id=active_workspace_id,
                     )
 
                     alert_records.extend(new_alert_records)
