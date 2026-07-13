@@ -40,6 +40,7 @@ def migration_missing(exc: Exception) -> bool:
         "relation",
         "workspace_members",
         "workspaces",
+        "user_workspace_preferences",
     )
     return any(signal in text for signal in signals)
 
@@ -409,3 +410,174 @@ def mark_notification_read(supabase: Any, notification_id: str) -> Optional[str]
         return None
     except Exception as exc:
         return _message(exc)
+
+
+def list_user_workspaces(
+    supabase: Any,
+    user_id: str,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Return every active organization/workspace available to a user."""
+    try:
+        rows = _data(
+            supabase.table("workspace_members")
+            .select("workspace_id,role,status,joined_at,workspaces(*)")
+            .eq("user_id", user_id)
+            .eq("status", "active")
+            .order("joined_at", desc=False)
+            .execute()
+        )
+        organizations: List[Dict[str, Any]] = []
+        for row in rows:
+            workspace = row.get("workspaces") or {}
+            if isinstance(workspace, list):
+                workspace = workspace[0] if workspace else {}
+            if not isinstance(workspace, dict) or not workspace.get("id"):
+                continue
+            item = dict(workspace)
+            item["current_role"] = row.get("role", "viewer")
+            item["membership_status"] = row.get("status", "active")
+            organizations.append(item)
+        return organizations, None
+    except Exception as exc:
+        return [], _message(exc)
+
+
+def get_workspace_by_id(
+    supabase: Any,
+    user_id: str,
+    workspace_id: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Load one workspace only when the user has an active membership."""
+    try:
+        rows = _data(
+            supabase.table("workspace_members")
+            .select("workspace_id,role,status,workspaces(*)")
+            .eq("user_id", user_id)
+            .eq("workspace_id", workspace_id)
+            .eq("status", "active")
+            .limit(1)
+            .execute()
+        )
+        if not rows:
+            return None, "Workspace access was not found."
+        row = rows[0]
+        workspace = row.get("workspaces") or {}
+        if isinstance(workspace, list):
+            workspace = workspace[0] if workspace else {}
+        if not isinstance(workspace, dict):
+            return None, "Workspace record was unavailable."
+        workspace = dict(workspace)
+        workspace["current_role"] = row.get("role", "viewer")
+        return workspace, None
+    except Exception as exc:
+        return None, _message(exc)
+
+
+def get_active_workspace_preference(
+    supabase: Any,
+    user_id: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Return the user's persisted active workspace preference."""
+    try:
+        rows = _data(
+            supabase.table("user_workspace_preferences")
+            .select("active_workspace_id")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not rows:
+            return None, None
+        value = rows[0].get("active_workspace_id")
+        return str(value) if value else None, None
+    except Exception as exc:
+        if migration_missing(exc) or "user_workspace_preferences" in _message(exc).lower():
+            return None, "migration_required"
+        return None, _message(exc)
+
+
+def set_active_workspace_preference(
+    supabase: Any,
+    user_id: str,
+    workspace_id: str,
+) -> Optional[str]:
+    """Persist the organization the user last opened."""
+    try:
+        existing = _data(
+            supabase.table("user_workspace_preferences")
+            .select("user_id")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        payload = {
+            "user_id": user_id,
+            "active_workspace_id": workspace_id,
+            "updated_at": _now_iso(),
+        }
+        if existing:
+            supabase.table("user_workspace_preferences").update(payload).eq(
+                "user_id", user_id
+            ).execute()
+        else:
+            payload["created_at"] = _now_iso()
+            supabase.table("user_workspace_preferences").insert(payload).execute()
+        return None
+    except Exception as exc:
+        return _message(exc)
+
+
+def create_organization_workspace(
+    supabase: Any,
+    user_id: str,
+    owner_email: str,
+    owner_name: str,
+    organization_name: str,
+    plan: str = "starter",
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Create a second organization and make the creator its owner."""
+    clean_name = (organization_name or "").strip()
+    if len(clean_name) < 2:
+        return None, "Enter an organization name with at least 2 characters."
+    try:
+        created = _data(
+            supabase.table("workspaces")
+            .insert(
+                {
+                    "name": clean_name,
+                    "owner_id": user_id,
+                    "plan": (plan or "starter").lower(),
+                    "organization_type": "company",
+                    "created_at": _now_iso(),
+                    "updated_at": _now_iso(),
+                }
+            )
+            .execute()
+        )
+        if not created:
+            return None, "Cadivor could not create the organization."
+        workspace = created[0]
+        supabase.table("workspace_members").insert(
+            {
+                "workspace_id": workspace["id"],
+                "user_id": user_id,
+                "email": owner_email,
+                "display_name": owner_name,
+                "role": "owner",
+                "status": "active",
+                "joined_at": _now_iso(),
+            }
+        ).execute()
+        record_activity(
+            supabase,
+            workspace["id"],
+            user_id,
+            owner_name,
+            "organization.created",
+            f"Created organization {clean_name}",
+            {"organization_name": clean_name},
+        )
+        workspace["current_role"] = "owner"
+        return workspace, None
+    except Exception as exc:
+        return None, _message(exc)
