@@ -1,6 +1,12 @@
-def build_monitor_record(user_id, analysis_id, part_data):
+def build_monitor_record(
+    user_id,
+    analysis_id,
+    part_data,
+    workspace_id=None,
+):
     return {
         "user_id": user_id,
+        "workspace_id": workspace_id,
         "analysis_id": analysis_id,
         "part_number": part_data.get("MPN", ""),
         "supplier": part_data.get("Best Source", ""),
@@ -19,9 +25,11 @@ def build_alert_record(
     severity,
     previous_value,
     current_value,
+    workspace_id=None,
 ):
     return {
         "user_id": user_id,
+        "workspace_id": workspace_id,
         "analysis_id": analysis_id,
         "part_number": part_number,
         "alert_type": alert_type,
@@ -31,7 +39,14 @@ def build_alert_record(
         "current_value": str(current_value),
     }
 
-def detect_monitor_alerts(user_id, analysis_id, part_number, previous_snapshot, current_snapshot):
+def detect_monitor_alerts(
+    user_id,
+    analysis_id,
+    part_number,
+    previous_snapshot,
+    current_snapshot,
+    workspace_id=None,
+):
     alerts = []
     messages = []
 
@@ -60,6 +75,7 @@ def detect_monitor_alerts(user_id, analysis_id, part_number, previous_snapshot, 
                 "High",
                 previous_stock,
                 current_stock,
+                workspace_id=workspace_id,
             )
         )
 
@@ -76,6 +92,7 @@ def detect_monitor_alerts(user_id, analysis_id, part_number, previous_snapshot, 
                 "Medium",
                 f"{previous_price:.2f}",
                 f"{current_price:.2f}",
+                workspace_id=workspace_id,
             )
         )
 
@@ -98,6 +115,7 @@ def detect_monitor_alerts(user_id, analysis_id, part_number, previous_snapshot, 
                 "High",
                 previous_lifecycle,
                 current_lifecycle,
+                workspace_id=workspace_id,
             )
         )
 
