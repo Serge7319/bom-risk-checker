@@ -25,6 +25,8 @@ def render_dashboard(
     empty_state,
     get_user_profile,
     _qp_value,
+    workspace_id=None,
+    workspace_name=None,
 ):
     """Render the Cadivor Dashboard page."""
 
@@ -436,9 +438,12 @@ def render_dashboard(
     )
 
     # Load dashboard data once for this page.
+    analysis_query = supabase.table("analyses").select("*")
+    if workspace_id:
+        analysis_query = analysis_query.eq("workspace_id", workspace_id)
+
     analysis_response = (
-        supabase.table("analyses")
-        .select("*")
+        analysis_query
         .eq("user_id", current_user["id"])
         .order("created_at", desc=True)
         .execute()
@@ -473,9 +478,12 @@ def render_dashboard(
         alternatives_found = 0
 
     try:
+        alert_query = supabase.table("monitor_alerts").select("*")
+        if workspace_id:
+            alert_query = alert_query.eq("workspace_id", workspace_id)
+
         alert_history = (
-            supabase.table("monitor_alerts")
-            .select("*")
+            alert_query
             .eq("user_id", current_user["id"])
             .order("created_at", desc=True)
             .limit(25)
