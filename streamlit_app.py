@@ -75,6 +75,11 @@ from src.workspace_service import (
     list_activity,
     list_notifications,
     mark_notification_read,
+    list_user_workspaces,
+    get_workspace_by_id,
+    get_active_workspace_preference,
+    set_active_workspace_preference,
+    create_organization_workspace,
 )
 try:
     import extra_streamlit_components as stx
@@ -4605,7 +4610,7 @@ if app_mode == "Workspace":
     owner_name = profile.get("full_name") or "Cadivor user"
     proposed_workspace_name = profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace"
 
-    workspace, workspace_error = ensure_personal_workspace(
+    default_workspace, workspace_error = ensure_personal_workspace(
         supabase,
         user_id,
         owner_email,
@@ -4614,6 +4619,31 @@ if app_mode == "Workspace":
         selected_plan_name,
     )
 
+    available_workspaces, organizations_error = list_user_workspaces(supabase, user_id)
+    preferred_workspace_id, preference_error = get_active_workspace_preference(
+        supabase,
+        user_id,
+    )
+
+    session_workspace_id = str(st.session_state.get("active_workspace_id") or "")
+    requested_workspace_id = session_workspace_id or str(preferred_workspace_id or "")
+    available_ids = {str(item.get("id")) for item in available_workspaces}
+
+    if requested_workspace_id and requested_workspace_id in available_ids:
+        workspace, active_workspace_error = get_workspace_by_id(
+            supabase,
+            user_id,
+            requested_workspace_id,
+        )
+        workspace_error = active_workspace_error
+    else:
+        workspace = default_workspace
+        if workspace and workspace.get("id"):
+            st.session_state["active_workspace_id"] = str(workspace.get("id"))
+
+    if not available_workspaces and workspace:
+        available_workspaces = [workspace]
+
     st.markdown(
         """
         <style>
@@ -4621,7 +4651,7 @@ if app_mode == "Workspace":
         .cv-ws-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#2563EB;margin-bottom:9px}
         .cv-ws-hero h1{font-size:34px;line-height:1.05;margin:0 0 9px;color:#0F172A}
         .cv-ws-hero p{max-width:780px;margin:0;color:#52647D;font-weight:600}
-        .cv-ws-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0 0 20px}
+        .cv-ws-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin:0 0 20px}
         .cv-ws-metric,.cv-ws-card{box-sizing:border-box;border:1px solid #E2E8F0;border-radius:18px;background:#FFFFFF;box-shadow:0 12px 30px rgba(15,23,42,.045)}
         .cv-ws-metric{padding:16px 18px;min-height:112px}
         .cv-ws-label{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748B}
@@ -4637,6 +4667,9 @@ if app_mode == "Workspace":
         .cv-ws-activity{border-left:3px solid #BFDBFE;padding:2px 0 16px 16px;margin-left:6px}
         .cv-ws-activity strong{color:#0F172A}.cv-ws-activity span{display:block;color:#64748B;font-size:12px;margin-top:4px}
         .cv-ws-warning{border:1px solid #FDE68A;background:#FFFBEB;border-radius:18px;padding:18px;color:#92400E;margin:16px 0}
+        .cv-org-card{border:1px solid #DBEAFE;border-radius:18px;background:#FFFFFF;padding:18px;box-shadow:0 12px 28px rgba(15,23,42,.045);margin-bottom:12px}
+        .cv-org-card strong{display:block;color:#0F172A;font-size:15px}.cv-org-card span{display:block;color:#64748B;font-size:11px;margin-top:4px}
+        .cv-org-active{display:inline-flex!important;width:max-content!important;margin-top:10px!important;padding:5px 9px;border-radius:999px;background:#ECFDF5;color:#047857!important;font-weight:850}
         @media(max-width:900px){.cv-ws-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:620px){.cv-ws-metrics{grid-template-columns:1fr}.cv-ws-member{grid-template-columns:1fr}}
         </style>
@@ -4686,13 +4719,14 @@ if app_mode == "Workspace":
           <div class="cv-ws-metric"><div class="cv-ws-label">Members</div><div class="cv-ws-value">{len(active_members)}</div><div class="cv-ws-note">Active workspace users</div></div>
           <div class="cv-ws-metric"><div class="cv-ws-label">Pending Invites</div><div class="cv-ws-value">{len(pending_invites)}</div><div class="cv-ws-note">Awaiting acceptance</div></div>
           <div class="cv-ws-metric"><div class="cv-ws-label">Saved Analyses</div><div class="cv-ws-value">{saved_bom_count}</div><div class="cv-ws-note">Shared engineering records</div></div>
+          <div class="cv-ws-metric"><div class="cv-ws-label">Organizations</div><div class="cv-ws-value">{len(available_workspaces)}</div><div class="cv-ws-note">Accessible workspaces</div></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    overview_tab, members_tab, invitations_tab, activity_tab, settings_tab = st.tabs(
-        ["Overview", "Members", "Invitations", "Activity", "Settings"]
+    overview_tab, organizations_tab, members_tab, invitations_tab, activity_tab, settings_tab = st.tabs(
+        ["Overview", "Organizations", "Members", "Invitations", "Activity", "Settings"]
     )
 
     with overview_tab:
@@ -4741,7 +4775,7 @@ if app_mode == "Workspace":
                 f"""
                 <div class="cv-ws-card">
                   <h3>Collaboration readiness</h3>
-                  <p>Milestone 10B creates the team foundation without changing your existing BOM ownership model yet.</p>
+                  <p>Organization switching, member boundaries, invitations, and role controls are active.</p>
                   <div class="cv-snapshot-grid" style="grid-template-columns:1fr;margin-top:15px">
                     <div class="cv-snapshot-item"><span>Member directory</span><strong>Active</strong></div>
                     <div class="cv-snapshot-item"><span>Invitation records</span><strong>Active</strong></div>
@@ -4752,7 +4786,125 @@ if app_mode == "Workspace":
                 """,
                 unsafe_allow_html=True,
             )
-            st.caption("Invitations are stored persistently now. Automated invitation email and acceptance links arrive in the next collaboration capability.")
+            st.caption("Organization membership is persistent. Saved BOM scoping and invitation acceptance links arrive in Milestone 11B.2.")
+
+    with organizations_tab:
+        st.subheader("Organizations")
+        st.caption(
+            "Switch between engineering organizations without signing out. "
+            "Each organization has its own members, invitations, activity, and settings."
+        )
+
+        if organizations_error:
+            st.error(f"Organizations could not be loaded: {organizations_error}")
+        else:
+            organization_lookup = {
+                f"{_safe_text(item.get('name'), 'Cadivor Workspace')} — {_safe_text(item.get('current_role'), 'viewer').title()}": item
+                for item in available_workspaces
+            }
+            current_label = next(
+                (
+                    label
+                    for label, item in organization_lookup.items()
+                    if str(item.get("id")) == workspace_id
+                ),
+                next(iter(organization_lookup), ""),
+            )
+
+            if organization_lookup:
+                selected_organization_label = st.selectbox(
+                    "Active organization",
+                    list(organization_lookup.keys()),
+                    index=list(organization_lookup.keys()).index(current_label)
+                    if current_label in organization_lookup
+                    else 0,
+                    key="workspace_organization_switcher",
+                )
+                selected_organization = organization_lookup[selected_organization_label]
+                selected_organization_id = str(selected_organization.get("id"))
+
+                switch_col, status_col = st.columns([0.35, 0.65])
+                with switch_col:
+                    switch_disabled = selected_organization_id == workspace_id
+                    if st.button(
+                        "Switch Organization",
+                        type="primary",
+                        disabled=switch_disabled,
+                        use_container_width=True,
+                        key="switch_active_organization",
+                    ):
+                        preference_save_error = set_active_workspace_preference(
+                            supabase,
+                            user_id,
+                            selected_organization_id,
+                        )
+                        if preference_save_error:
+                            st.error(preference_save_error)
+                        else:
+                            st.session_state["active_workspace_id"] = selected_organization_id
+                            st.success("Active organization changed.")
+                            st.rerun()
+                with status_col:
+                    if selected_organization_id == workspace_id:
+                        st.success(f"{workspace_name} is currently active.")
+                    else:
+                        st.info(
+                            "Switching changes the member directory, invitations, "
+                            "activity, and organization settings shown on this page."
+                        )
+
+            st.markdown("#### Organization directory")
+            org_columns = st.columns(2)
+            for index, item in enumerate(available_workspaces):
+                with org_columns[index % 2]:
+                    is_active_org = str(item.get("id")) == workspace_id
+                    st.markdown(
+                        f"""
+                        <div class="cv-org-card">
+                          <strong>{html.escape(_safe_text(item.get('name'), 'Cadivor Workspace'))}</strong>
+                          <span>{html.escape(_safe_text(item.get('current_role'), 'viewer').title())} access · {html.escape(_safe_text(item.get('plan'), 'starter').title())} plan</span>
+                          {'<span class="cv-org-active">Active organization</span>' if is_active_org else ''}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        st.markdown("#### Create another organization")
+        st.caption(
+            "Use a separate organization for another company, business unit, "
+            "client environment, or engineering team."
+        )
+        new_org_name = st.text_input(
+            "Organization name",
+            placeholder="Example: Egres Engineering",
+            key="new_organization_name",
+        )
+        if st.button(
+            "Create Organization",
+            type="primary",
+            key="create_organization_workspace",
+        ):
+            created_org, create_org_error = create_organization_workspace(
+                supabase,
+                user_id,
+                owner_email,
+                owner_name,
+                new_org_name,
+                selected_plan_name,
+            )
+            if create_org_error:
+                st.error(create_org_error)
+            elif created_org:
+                created_id = str(created_org.get("id"))
+                set_active_workspace_preference(supabase, user_id, created_id)
+                st.session_state["active_workspace_id"] = created_id
+                st.success(f"{_safe_text(created_org.get('name'), 'Organization')} was created.")
+                st.rerun()
+
+        st.info(
+            "Milestone 11B.1 establishes organization switching and membership boundaries. "
+            "Saved BOM records will be assigned to organizations in Milestone 11B.2."
+        )
 
     with members_tab:
         st.subheader("Workspace members")
