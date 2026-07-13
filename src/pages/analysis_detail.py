@@ -94,9 +94,25 @@ def _lucide(name: str, size: int = 18) -> str:
     )
 
 
-def _query_table(supabase, table: str, *, user_id: str, analysis_id: str, order: str | None = None, limit: int | None = None):
+def _query_table(
+    supabase,
+    table: str,
+    *,
+    user_id: str,
+    analysis_id: str,
+    workspace_id: str | None = None,
+    order: str | None = None,
+    limit: int | None = None,
+):
     try:
-        query = supabase.table(table).select("*").eq("user_id", user_id).eq("analysis_id", analysis_id)
+        query = (
+            supabase.table(table)
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("analysis_id", analysis_id)
+        )
+        if workspace_id:
+            query = query.eq("workspace_id", workspace_id)
         if order:
             query = query.order(order, desc=True)
         if limit:
@@ -155,7 +171,15 @@ def _health_summary(health: int, high: int, medium: int) -> tuple[str, str, int]
     return "Release Hold Recommended", "Material lifecycle or sourcing risks require remediation.", 45
 
 
-def render_analysis_detail(*, current_user, supabase, load_analysis_history, light_plotly_layout=None, _qp_value=None):
+def render_analysis_detail(
+    *,
+    current_user,
+    supabase,
+    load_analysis_history,
+    light_plotly_layout=None,
+    _qp_value=None,
+    workspace_id=None,
+):
     analysis_id = ""
     if _qp_value:
         analysis_id = _safe(_qp_value("analysis_id", ""), "")
@@ -211,7 +235,15 @@ def render_analysis_detail(*, current_user, supabase, load_analysis_history, lig
 
     user_id = current_user.get("id")
     try:
-        response = supabase.table("analyses").select("*").eq("user_id", user_id).eq("id", analysis_id).limit(1).execute()
+        analysis_query = (
+            supabase.table("analyses")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("id", analysis_id)
+        )
+        if workspace_id:
+            analysis_query = analysis_query.eq("workspace_id", workspace_id)
+        response = analysis_query.limit(1).execute()
         analysis = (response.data or [None])[0]
     except Exception as exc:
         st.error(f"Could not load this analysis: {exc}")
@@ -220,9 +252,31 @@ def render_analysis_detail(*, current_user, supabase, load_analysis_history, lig
         st.warning("This saved analysis could not be found, or you do not have access to it.")
         return
 
-    parts = _query_table(supabase, "analysis_parts", user_id=user_id, analysis_id=analysis_id)
-    alerts = _query_table(supabase, "monitor_alerts", user_id=user_id, analysis_id=analysis_id, order="created_at", limit=50)
-    alternatives = _query_table(supabase, "alternative_recommendations", user_id=user_id, analysis_id=analysis_id, order="created_at", limit=50)
+    parts = _query_table(
+        supabase,
+        "analysis_parts",
+        user_id=user_id,
+        analysis_id=analysis_id,
+        workspace_id=workspace_id,
+    )
+    alerts = _query_table(
+        supabase,
+        "monitor_alerts",
+        user_id=user_id,
+        analysis_id=analysis_id,
+        workspace_id=workspace_id,
+        order="created_at",
+        limit=50,
+    )
+    alternatives = _query_table(
+        supabase,
+        "alternative_recommendations",
+        user_id=user_id,
+        analysis_id=analysis_id,
+        workspace_id=workspace_id,
+        order="created_at",
+        limit=50,
+    )
 
     project = _safe(analysis.get("project_name") or analysis.get("filename"), "Saved BOM Analysis")
     filename = _safe(analysis.get("filename"))
