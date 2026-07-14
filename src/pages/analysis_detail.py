@@ -1171,19 +1171,32 @@ def render_analysis_detail(
                 ).lower()
             ]
 
-        st.caption(
-            f"Showing {len(filtered_comments)} of {len(comments)} engineering comments."
-        )
+        result_col, clear_col = st.columns([0.82, 0.18])
+        with result_col:
+            st.caption(
+                f"Showing {len(filtered_comments)} of {len(comments)} engineering comments."
+            )
+        with clear_col:
+            if st.button(
+                "Clear Filters",
+                key=f"analysis_comment_clear_filters_{analysis_id}",
+                use_container_width=True,
+                disabled=(history_context == "All discussions" and not history_search),
+            ):
+                st.session_state[f"analysis_comment_history_context_{analysis_id}"] = "All discussions"
+                st.session_state[f"analysis_comment_history_search_{analysis_id}"] = ""
+                st.rerun()
 
         if comments_error:
             st.error(f"Discussions could not be loaded: {comments_error}")
         elif not filtered_comments:
+            empty_message = (
+                "No engineering comments have been recorded for this BOM yet."
+                if not comments
+                else "No comments match the current search or context filter."
+            )
             st.markdown(
-                """
-                <div class="cv-analysis-empty">
-                  No engineering comments have been recorded for this BOM yet.
-                </div>
-                """,
+                f'<div class="cv-analysis-empty">{html.escape(empty_message)}</div>',
                 unsafe_allow_html=True,
             )
         else:
@@ -1400,6 +1413,20 @@ def render_analysis_detail(
             "Alternative Reviews",
             sum(1 for row in timeline_events if row.get("kind") == "alternative"),
         )
+
+        timeline_result_col, timeline_clear_col = st.columns([0.82, 0.18])
+        with timeline_result_col:
+            st.caption(f"Showing {len(filtered_timeline)} of {len(timeline_events)} timeline events.")
+        with timeline_clear_col:
+            if st.button(
+                "Clear Filters",
+                key=f"analysis_timeline_clear_filters_{analysis_id}",
+                use_container_width=True,
+                disabled=(timeline_kind == "All activity" and not timeline_search),
+            ):
+                st.session_state[f"analysis_timeline_kind_{analysis_id}"] = "All activity"
+                st.session_state[f"analysis_timeline_search_{analysis_id}"] = ""
+                st.rerun()
 
         if not filtered_timeline:
             st.markdown(
