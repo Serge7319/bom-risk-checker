@@ -239,6 +239,14 @@ def render_analysis_detail(
         .cv-comment{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:15px 16px;margin-bottom:11px;box-shadow:0 10px 26px rgba(15,23,42,.04)}
         .cv-comment.pinned{border-color:#fcd34d;background:#fffbeb}.cv-comment-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:9px}.cv-comment-author{color:#0f172a!important;font-size:13px;font-weight:980}.cv-comment-meta{color:#64748b!important;font-size:10px;font-weight:800;margin-top:3px}.cv-comment-body{color:#334155!important;font-size:12px;font-weight:700;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.cv-comment-badge{display:inline-flex;border-radius:999px;padding:5px 8px;border:1px solid #fde68a;background:#fef3c7;color:#92400e!important;font-size:9px;font-weight:950}
         .cv-follow-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:20px;padding:17px;margin-bottom:14px}
+        .cv-comment-context{display:inline-flex;border-radius:999px;padding:5px 8px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;font-size:9px;font-weight:950;margin-left:6px}
+        .cv-timeline{position:relative;margin:8px 0 0 10px;padding-left:24px;border-left:2px solid #dbeafe}
+        .cv-timeline-item{position:relative;border:1px solid #e2e8f0;background:#fff;border-radius:17px;padding:14px 16px;margin:0 0 12px 0;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+        .cv-timeline-item:before{content:"";position:absolute;left:-31px;top:18px;width:12px;height:12px;border-radius:50%;background:#2563eb;border:3px solid #eff6ff;box-shadow:0 0 0 1px #93c5fd}
+        .cv-timeline-item.alert:before{background:#dc2626}.cv-timeline-item.comment:before{background:#7c3aed}.cv-timeline-item.alternative:before{background:#059669}
+        .cv-timeline-title{color:#0f172a!important;font-size:13px;font-weight:980;margin-bottom:4px}
+        .cv-timeline-meta{color:#64748b!important;font-size:10px;font-weight:800;margin-bottom:7px}
+        .cv-timeline-body{color:#334155!important;font-size:12px;font-weight:700;line-height:1.55;overflow-wrap:anywhere}
         .cv-component-detail{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:22px;padding:20px;box-shadow:0 18px 45px rgba(37,99,235,.08)}
         .cv-component-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.cv-component-detail-grid div{border:1px solid #dbe3ef;background:rgba(255,255,255,.9);border-radius:14px;padding:12px}.cv-component-detail-grid span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}.cv-component-detail-grid strong{display:block;color:#0f172a!important;font-size:13px;font-weight:950;overflow-wrap:anywhere}
         .cv-readiness-list{display:grid;gap:12px}.cv-readiness-row{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:13px}.cv-readiness-row strong{display:block;color:#0b1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-readiness-row span{display:block;color:#64748b!important;font-size:11px;font-weight:800}.cv-readiness-bar{height:9px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:10px}.cv-readiness-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#16a34a)}.cv-readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.cv-readiness-metrics div{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:12px}.cv-readiness-metrics span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-readiness-metrics strong{display:block;color:#0b1220!important;font-size:22px;font-weight:980}.cv-readiness-metrics small{display:block;color:#64748b!important;font-size:10px;font-weight:800;margin-top:6px}
@@ -344,6 +352,7 @@ def render_analysis_detail(
         components_tab,
         alternatives_tab,
         discussions_tab,
+        timeline_tab,
         reports_tab,
     ) = st.tabs([
         "Overview",
@@ -351,6 +360,7 @@ def render_analysis_detail(
         "Components",
         "Alternatives",
         "Discussions",
+        "Timeline",
         "Reports",
     ])
 
@@ -996,6 +1006,29 @@ def render_analysis_detail(
             ["Discussion", "Engineering Note", "Decision Rationale", "Procurement Note"],
             key=f"analysis_comment_type_{analysis_id}",
         )
+
+        component_mpns = sorted(
+            {
+                _safe(row.get("mpn"), "").strip()
+                for row in parts
+                if _safe(row.get("mpn"), "").strip()
+            }
+        )
+        comment_context_options = ["General BOM discussion"] + [
+            f"Component: {mpn}" for mpn in component_mpns
+        ]
+        comment_context = st.selectbox(
+            "Discussion context",
+            comment_context_options,
+            key=f"analysis_comment_context_{analysis_id}",
+            help="Attach the comment to the entire BOM or to one specific component.",
+        )
+        selected_component_mpn = (
+            comment_context.replace("Component: ", "", 1)
+            if comment_context.startswith("Component: ")
+            else ""
+        )
+
         comment_body_key = f"analysis_comment_body_{analysis_id}"
         comment_reset_key = f"analysis_comment_reset_{analysis_id}"
 
@@ -1043,6 +1076,7 @@ def render_analysis_detail(
                 author_email=_safe(current_user.get("email"), ""),
                 body=comment_text,
                 comment_type=comment_kind.lower().replace(" ", "_"),
+                component_mpn=selected_component_mpn,
             )
             if comment_error:
                 st.error(comment_error)
@@ -1092,9 +1126,58 @@ def render_analysis_detail(
                 st.rerun()
 
         st.markdown("#### Discussion history")
+
+        history_context_options = ["All discussions", "General BOM discussion"] + [
+            f"Component: {mpn}" for mpn in component_mpns
+        ]
+        history_filter_col, history_search_col = st.columns([0.42, 0.58])
+        with history_filter_col:
+            history_context = st.selectbox(
+                "Filter by context",
+                history_context_options,
+                key=f"analysis_comment_history_context_{analysis_id}",
+            )
+        with history_search_col:
+            history_search = st.text_input(
+                "Search discussion history",
+                placeholder="Search author, type, component, or comment text",
+                key=f"analysis_comment_history_search_{analysis_id}",
+            ).strip().lower()
+
+        filtered_comments = list(comments)
+        if history_context == "General BOM discussion":
+            filtered_comments = [
+                row for row in filtered_comments
+                if not _safe(row.get("component_mpn"), "").strip()
+            ]
+        elif history_context.startswith("Component: "):
+            selected_history_mpn = history_context.replace("Component: ", "", 1)
+            filtered_comments = [
+                row for row in filtered_comments
+                if _safe(row.get("component_mpn"), "").strip() == selected_history_mpn
+            ]
+
+        if history_search:
+            filtered_comments = [
+                row for row in filtered_comments
+                if history_search in " ".join(
+                    [
+                        _safe(row.get("author_name"), ""),
+                        _safe(row.get("author_email"), ""),
+                        _safe(row.get("comment_type"), ""),
+                        _safe(row.get("component_mpn"), ""),
+                        _safe(row.get("body"), ""),
+                    ]
+                ).lower()
+            ]
+
+        st.caption(
+            f"Showing {len(filtered_comments)} of {len(comments)} engineering comments."
+        )
+
         if comments_error:
             st.error(f"Discussions could not be loaded: {comments_error}")
-        elif not comments:
+        elif not filtered_comments:
             st.markdown(
                 """
                 <div class="cv-analysis-empty">
@@ -1104,7 +1187,7 @@ def render_analysis_detail(
                 unsafe_allow_html=True,
             )
         else:
-            for comment in comments:
+            for comment in filtered_comments:
                 comment_id = _safe(comment.get("id"), "")
                 pinned = bool(comment.get("is_pinned"))
                 author_id = _safe(comment.get("user_id"), "")
@@ -1117,7 +1200,16 @@ def render_analysis_detail(
                       <div class="cv-comment-top">
                         <div>
                           <div class="cv-comment-author">{html.escape(_safe(comment.get('author_name'), comment.get('author_email') or 'Cadivor user'))}</div>
-                          <div class="cv-comment-meta">{html.escape(comment_type_value)} · {html.escape(created_at)} UTC</div>
+                          <div class="cv-comment-meta">
+                            {html.escape(comment_type_value)} · {html.escape(created_at)} UTC
+                            {
+                                '<span class="cv-comment-context">Component: ' +
+                                html.escape(_safe(comment.get("component_mpn"), "")) +
+                                '</span>'
+                                if _safe(comment.get("component_mpn"), "").strip()
+                                else '<span class="cv-comment-context">General BOM</span>'
+                            }
+                          </div>
                         </div>
                         {'<span class="cv-comment-badge">Pinned</span>' if pinned else ''}
                       </div>
@@ -1194,6 +1286,146 @@ def render_analysis_detail(
                                 None,
                             )
                             st.rerun()
+
+    with timeline_tab:
+        _section_header(
+            "Engineering Timeline",
+            "Review the chronological engineering history of this saved BOM without leaving the analysis workspace.",
+        )
+
+        timeline_events = []
+
+        if analysis.get("created_at"):
+            timeline_events.append(
+                {
+                    "timestamp": _safe(analysis.get("created_at"), ""),
+                    "kind": "analysis",
+                    "title": "BOM analysis created",
+                    "meta": _safe(current_user.get("full_name"), current_user.get("email") or "Cadivor user"),
+                    "body": f"{project} was saved as a permanent engineering analysis.",
+                }
+            )
+
+        for row in alerts:
+            timeline_events.append(
+                {
+                    "timestamp": _safe(row.get("created_at") or row.get("detected_at"), ""),
+                    "kind": "alert",
+                    "title": f"Monitoring alert · {_safe(row.get('part_number') or row.get('mpn'), 'Component')}",
+                    "meta": _safe(row.get("alert_type"), "Monitoring"),
+                    "body": _safe(row.get("alert_message") or row.get("message"), "A monitored component changed."),
+                }
+            )
+
+        for row in alternatives:
+            timeline_events.append(
+                {
+                    "timestamp": _safe(row.get("created_at"), ""),
+                    "kind": "alternative",
+                    "title": f"Alternative reviewed · {_safe(row.get('alternative_part'), 'Candidate')}",
+                    "meta": f"Original: {_safe(row.get('original_part'), 'Unknown')}",
+                    "body": (
+                        f"Recommendation score {_num(row.get('recommendation_score'))}/100 · "
+                        f"Estimated risk {_safe(row.get('estimated_risk'), 'Not recorded')}."
+                    ),
+                }
+            )
+
+        for row in comments:
+            component_label = _safe(row.get("component_mpn"), "").strip()
+            timeline_events.append(
+                {
+                    "timestamp": _safe(row.get("created_at"), ""),
+                    "kind": "comment",
+                    "title": (
+                        f"{_safe(row.get('comment_type'), 'discussion').replace('_', ' ').title()}"
+                        + (f" · {component_label}" if component_label else "")
+                    ),
+                    "meta": _safe(row.get("author_name"), row.get("author_email") or "Cadivor user"),
+                    "body": _safe(row.get("body"), ""),
+                }
+            )
+
+        timeline_events.sort(
+            key=lambda row: _safe(row.get("timestamp"), ""),
+            reverse=True,
+        )
+
+        timeline_kind = st.selectbox(
+            "Filter timeline",
+            ["All activity", "Analysis", "Monitoring alerts", "Alternative reviews", "Comments & notes"],
+            key=f"analysis_timeline_kind_{analysis_id}",
+        )
+        timeline_search = st.text_input(
+            "Search timeline",
+            placeholder="Search component, person, event, or note",
+            key=f"analysis_timeline_search_{analysis_id}",
+        ).strip().lower()
+
+        kind_map = {
+            "Analysis": "analysis",
+            "Monitoring alerts": "alert",
+            "Alternative reviews": "alternative",
+            "Comments & notes": "comment",
+        }
+        filtered_timeline = list(timeline_events)
+        if timeline_kind in kind_map:
+            filtered_timeline = [
+                row for row in filtered_timeline
+                if row.get("kind") == kind_map[timeline_kind]
+            ]
+        if timeline_search:
+            filtered_timeline = [
+                row for row in filtered_timeline
+                if timeline_search in " ".join(
+                    [
+                        _safe(row.get("title"), ""),
+                        _safe(row.get("meta"), ""),
+                        _safe(row.get("body"), ""),
+                    ]
+                ).lower()
+            ]
+
+        timeline_metric_cols = st.columns(4)
+        timeline_metric_cols[0].metric("Timeline Events", len(timeline_events))
+        timeline_metric_cols[1].metric(
+            "Comments & Notes",
+            sum(1 for row in timeline_events if row.get("kind") == "comment"),
+        )
+        timeline_metric_cols[2].metric(
+            "Monitoring Alerts",
+            sum(1 for row in timeline_events if row.get("kind") == "alert"),
+        )
+        timeline_metric_cols[3].metric(
+            "Alternative Reviews",
+            sum(1 for row in timeline_events if row.get("kind") == "alternative"),
+        )
+
+        if not filtered_timeline:
+            st.markdown(
+                """
+                <div class="cv-analysis-empty">
+                  No timeline events match the selected filters.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            timeline_html = ['<div class="cv-timeline">']
+            for event in filtered_timeline[:250]:
+                timestamp = _safe(event.get("timestamp"), "")[:19].replace("T", " ")
+                kind = _safe(event.get("kind"), "analysis")
+                timeline_html.append(
+                    f"""
+                    <div class="cv-timeline-item {html.escape(kind)}">
+                      <div class="cv-timeline-title">{html.escape(_safe(event.get('title'), 'Engineering event'))}</div>
+                      <div class="cv-timeline-meta">{html.escape(_safe(event.get('meta'), ''))} · {html.escape(timestamp)} UTC</div>
+                      <div class="cv-timeline-body">{html.escape(_safe(event.get('body'), ''))}</div>
+                    </div>
+                    """
+                )
+            timeline_html.append("</div>")
+            st.markdown("".join(timeline_html), unsafe_allow_html=True)
 
     with reports_tab:
         _section_header(
