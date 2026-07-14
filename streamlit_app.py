@@ -2748,6 +2748,12 @@ if app_mode == "Analysis Details":
         light_plotly_layout=light_plotly_layout,
         _qp_value=_qp_value,
         workspace_id=active_workspace_id,
+        workspace_role=active_workspace_role,
+        workspace_members=(
+            list_members(supabase, active_workspace_id)[0]
+            if active_workspace_id
+            else []
+        ),
     )
     st.stop()
 
