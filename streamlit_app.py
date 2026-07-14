@@ -63,6 +63,12 @@ from src.customer_profile_service import (
     ensure_user_preferences,
     update_user_preferences,
 )
+from src.collaboration_service import (
+    touch_workspace_presence,
+    list_workspace_presence,
+    list_audit_log,
+    mark_all_notifications_read,
+)
 from src.workspace_service import (
     ensure_personal_workspace,
     list_members,
@@ -4786,6 +4792,17 @@ if app_mode == "Workspace":
         .cv-org-card{border:1px solid #DBEAFE;border-radius:18px;background:#FFFFFF;padding:18px;box-shadow:0 12px 28px rgba(15,23,42,.045);margin-bottom:12px}
         .cv-org-card strong{display:block;color:#0F172A;font-size:15px}.cv-org-card span{display:block;color:#64748B;font-size:11px;margin-top:4px}
         .cv-org-active{display:inline-flex!important;width:max-content!important;margin-top:10px!important;padding:5px 9px;border-radius:999px;background:#ECFDF5;color:#047857!important;font-weight:850}
+        .cv-collab-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-bottom:14px}
+        .cv-presence-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;margin:8px 0;background:#FBFDFF}
+        .cv-presence-person{display:flex;align-items:center;gap:10px;min-width:0}
+        .cv-presence-dot{width:10px;height:10px;border-radius:999px;background:#22C55E;box-shadow:0 0 0 4px #DCFCE7}
+        .cv-presence-dot.idle{background:#F59E0B;box-shadow:0 0 0 4px #FEF3C7}
+        .cv-presence-dot.offline{background:#94A3B8;box-shadow:0 0 0 4px #F1F5F9}
+        .cv-presence-row strong{display:block;color:#0F172A;font-size:12px}.cv-presence-row span{display:block;color:#64748B;font-size:10px;margin-top:2px}
+        .cv-audit-row{display:grid;grid-template-columns:150px minmax(120px,.7fr) minmax(160px,1fr) minmax(0,1.7fr);gap:12px;align-items:center;border-bottom:1px solid #EEF2F7;padding:11px 4px}
+        .cv-audit-row.header{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;color:#64748B;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
+        .cv-audit-row strong{color:#0F172A;font-size:11px}.cv-audit-row span{color:#64748B;font-size:10px;overflow-wrap:anywhere}
+        @media(max-width:900px){.cv-collab-grid{grid-template-columns:1fr}.cv-audit-row{grid-template-columns:1fr 1fr}}
         @media(max-width:900px){.cv-ws-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:620px){.cv-ws-metrics{grid-template-columns:1fr}.cv-ws-member{grid-template-columns:1fr}}
         </style>
@@ -4813,12 +4830,32 @@ if app_mode == "Workspace":
 
     workspace_id = str(workspace.get("id"))
     current_role = str(workspace.get("current_role") or "viewer").lower()
+
+    presence_error = touch_workspace_presence(
+        supabase,
+        workspace_id,
+        user_id,
+        owner_name,
+        owner_email,
+        "Workspace",
+        workspace.get("name") or proposed_workspace_name,
+    )
     can_administer = current_role in {"owner", "admin"}
     is_owner = current_role == "owner"
 
     members, members_error = list_members(supabase, workspace_id)
     invites, invites_error = list_invites(supabase, workspace_id)
     activity_rows, activity_error = list_activity(supabase, workspace_id, 75)
+    presence_rows, presence_list_error = list_workspace_presence(
+        supabase,
+        workspace_id,
+        25,
+    )
+    audit_rows, audit_error = list_audit_log(
+        supabase,
+        workspace_id,
+        limit=250,
+    )
     active_members = [row for row in members if row.get("status") == "active"]
     pending_invites = [row for row in invites if row.get("status") == "pending"]
 
@@ -4841,8 +4878,26 @@ if app_mode == "Workspace":
         unsafe_allow_html=True,
     )
 
-    overview_tab, organizations_tab, members_tab, invitations_tab, activity_tab, settings_tab = st.tabs(
-        ["Overview", "Organizations", "Members", "Invitations", "Activity", "Settings"]
+    (
+        overview_tab,
+        collaboration_tab,
+        organizations_tab,
+        members_tab,
+        invitations_tab,
+        activity_tab,
+        audit_tab,
+        settings_tab,
+    ) = st.tabs(
+        [
+            "Overview",
+            "Team Activity",
+            "Organizations",
+            "Members",
+            "Invitations",
+            "Activity",
+            "Audit Log",
+            "Settings",
+        ]
     )
 
     with overview_tab:
@@ -4903,6 +4958,92 @@ if app_mode == "Workspace":
                 unsafe_allow_html=True,
             )
             st.caption("Organization membership is persistent. Saved BOM scoping and invitation acceptance links arrive in Milestone 11B.2.")
+
+    with collaboration_tab:
+        st.subheader("Team collaboration")
+        st.caption(
+            "See who is active, what the engineering team changed, and the "
+            "latest organization events without leaving the workspace."
+        )
+
+        if presence_error == "migration_required" or presence_list_error == "migration_required":
+            st.info(
+                "Run the Milestone 11C.1 migration to activate team presence "
+                "and the searchable audit log."
+            )
+        elif presence_list_error:
+            st.error(f"Team presence could not be loaded: {presence_list_error}")
+
+        now_utc = pd.Timestamp.utcnow()
+        online_members = []
+        idle_members = []
+        offline_members = []
+        for row in presence_rows:
+            seen = pd.to_datetime(row.get("last_seen_at"), utc=True, errors="coerce")
+            age_minutes = (
+                (now_utc - seen).total_seconds() / 60
+                if not pd.isna(seen)
+                else 999999
+            )
+            if age_minutes <= 10:
+                online_members.append(row)
+            elif age_minutes <= 60:
+                idle_members.append(row)
+            else:
+                offline_members.append(row)
+
+        collaboration_left, collaboration_right = st.columns([1.15, 0.85], gap="medium")
+        with collaboration_left:
+            st.markdown("#### Live team presence")
+            presence_display = online_members + idle_members + offline_members
+            if not presence_display:
+                st.markdown(
+                    '<div class="cv-analysis-empty">No team presence has been recorded yet.</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                presence_html = []
+                online_ids = {str(row.get("id")) for row in online_members}
+                idle_ids = {str(row.get("id")) for row in idle_members}
+                for row in presence_display[:12]:
+                    row_id = str(row.get("id"))
+                    state_class = "" if row_id in online_ids else "idle" if row_id in idle_ids else "offline"
+                    state_label = "Online" if row_id in online_ids else "Idle" if row_id in idle_ids else "Offline"
+                    presence_html.append(
+                        f'<div class="cv-presence-row">'
+                        f'<div class="cv-presence-person">'
+                        f'<i class="cv-presence-dot {state_class}"></i>'
+                        f'<div><strong>{html.escape(_safe_text(row.get("display_name"), row.get("email") or "Member"))}</strong>'
+                        f'<span>{html.escape(_safe_text(row.get("page_name"), "Cadivor"))}'
+                        f'{" · " + html.escape(_safe_text(row.get("object_label"), "")) if row.get("object_label") else ""}</span></div>'
+                        f'</div><span>{state_label}</span></div>'
+                    )
+                st.markdown("".join(presence_html), unsafe_allow_html=True)
+
+        with collaboration_right:
+            st.markdown("#### Collaboration snapshot")
+            c1, c2 = st.columns(2)
+            c1.metric("Online now", len(online_members))
+            c2.metric("Active this hour", len(online_members) + len(idle_members))
+            c3, c4 = st.columns(2)
+            c3.metric("Activity events", len(activity_rows))
+            c4.metric("Audit records", len(audit_rows))
+
+            st.markdown("#### Latest team events")
+            if not activity_rows:
+                st.caption("No collaboration activity has been recorded.")
+            else:
+                for row in activity_rows[:5]:
+                    st.markdown(
+                        f"""
+                        <div class="cv-ws-activity">
+                          <strong>{html.escape(_safe_text(row.get('actor_name'), 'Cadivor'))}</strong>
+                          <span>{html.escape(_safe_text(row.get('summary'), row.get('action_type') or 'Workspace event'))}</span>
+                          <span>{html.escape(str(row.get('created_at',''))[:19].replace('T',' '))} UTC</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
     with organizations_tab:
         st.subheader("Organizations")
@@ -5151,6 +5292,101 @@ if app_mode == "Workspace":
             )
             st.dataframe(activity_df, use_container_width=True, hide_index=True, height=430)
 
+    with audit_tab:
+        st.subheader("Engineering audit log")
+        st.caption(
+            "Search organization-level engineering events generated by BOM "
+            "analysis, decisions, monitoring, reports, and workspace actions."
+        )
+
+        if audit_error == "migration_required":
+            st.info("Run the Milestone 11C.1 migration to activate the audit log.")
+        elif audit_error:
+            st.error(f"Audit log could not be loaded: {audit_error}")
+        else:
+            action_options = ["All"] + sorted(
+                {
+                    _safe_text(row.get("action_type"), "")
+                    for row in audit_rows
+                    if row.get("action_type")
+                }
+            )
+            actor_lookup = {
+                _safe_text(row.get("actor_name"), row.get("actor_email") or "Unknown"): _safe_text(row.get("actor_user_id"), "")
+                for row in audit_rows
+                if row.get("actor_user_id")
+            }
+            filter_a, filter_b, filter_c = st.columns([0.28, 0.28, 0.44])
+            with filter_a:
+                selected_action = st.selectbox(
+                    "Action",
+                    action_options,
+                    key="audit_action_filter",
+                )
+            with filter_b:
+                selected_actor_label = st.selectbox(
+                    "Actor",
+                    ["All"] + sorted(actor_lookup.keys()),
+                    key="audit_actor_filter",
+                )
+            with filter_c:
+                audit_search = st.text_input(
+                    "Search audit records",
+                    placeholder="BOM, component, report, action...",
+                    key="audit_search_filter",
+                )
+
+            filtered_audit_rows, filtered_audit_error = list_audit_log(
+                supabase,
+                workspace_id,
+                limit=500,
+                action_type=selected_action,
+                actor_user_id=(
+                    actor_lookup.get(selected_actor_label, "")
+                    if selected_actor_label != "All"
+                    else ""
+                ),
+                search_text=audit_search,
+            )
+            if filtered_audit_error:
+                st.error(filtered_audit_error)
+            elif not filtered_audit_rows:
+                st.info("No audit records match the selected filters.")
+            else:
+                st.markdown(
+                    '<div class="cv-audit-row header"><span>Time</span><span>Actor</span><span>Action</span><span>Object / details</span></div>',
+                    unsafe_allow_html=True,
+                )
+                rows_html = []
+                for row in filtered_audit_rows[:100]:
+                    object_text = " · ".join(
+                        value
+                        for value in (
+                            _safe_text(row.get("object_type"), ""),
+                            _safe_text(row.get("object_label"), ""),
+                            _safe_text(row.get("summary"), ""),
+                        )
+                        if value
+                    )
+                    rows_html.append(
+                        f'<div class="cv-audit-row">'
+                        f'<span>{html.escape(str(row.get("created_at",""))[:19].replace("T"," "))}</span>'
+                        f'<strong>{html.escape(_safe_text(row.get("actor_name"), row.get("actor_email") or "System"))}</strong>'
+                        f'<span>{html.escape(_safe_text(row.get("action_type"), "event"))}</span>'
+                        f'<span>{html.escape(object_text)}</span>'
+                        f'</div>'
+                    )
+                st.markdown("".join(rows_html), unsafe_allow_html=True)
+
+                audit_export = pd.DataFrame(filtered_audit_rows).to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "Export Audit Log CSV",
+                    data=audit_export,
+                    file_name=f"{re.sub(r'[^A-Za-z0-9_-]+', '_', workspace_name)}_audit_log.csv",
+                    mime="text/csv",
+                    type="primary",
+                )
+
     with settings_tab:
         st.subheader("Workspace settings")
         st.caption("Workspace owners and admins control the shared identity and engineering defaults.")
@@ -5187,14 +5423,8 @@ if app_mode == "Notifications":
     profile = get_user_profile(current_user)
     auth_user = st.session_state.get("user")
     user_id = str(getattr(auth_user, "id", current_user.get("id", "")))
-    workspace, workspace_error = ensure_personal_workspace(
-        supabase,
-        user_id,
-        profile.get("email") or "",
-        profile.get("full_name") or "Cadivor user",
-        profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace",
-        selected_plan_name,
-    )
+    workspace = active_workspace
+    workspace_error = None if workspace else "Workspace unavailable"
     st.markdown(
         """
         <div class="cv-dashboard-header">
@@ -5220,6 +5450,23 @@ if app_mode == "Notifications":
     n1.metric("Unread", len(unread_rows))
     n2.metric("Workspace Updates", len(notification_rows))
     n3.metric("Monitoring Alerts", int(active_alert_count if 'active_alert_count' in globals() else 0))
+
+    if unread_rows:
+        if st.button(
+            "Mark All Workspace Notifications Read",
+            type="primary",
+            key="mark_all_workspace_notifications_read",
+        ):
+            mark_all_error = mark_all_notifications_read(
+                supabase,
+                str(workspace.get("id")),
+                user_id,
+            )
+            if mark_all_error:
+                st.error(mark_all_error)
+            else:
+                st.success("All workspace notifications were marked as read.")
+                st.rerun()
 
     workspace_updates_tab, monitoring_tab = st.tabs(["Workspace Updates", "Monitoring Alerts"])
     with workspace_updates_tab:
