@@ -996,6 +996,12 @@ def render_analysis_detail(
             ["Discussion", "Engineering Note", "Decision Rationale", "Procurement Note"],
             key=f"analysis_comment_type_{analysis_id}",
         )
+        comment_body_key = f"analysis_comment_body_{analysis_id}"
+        comment_reset_key = f"analysis_comment_reset_{analysis_id}"
+
+        if st.session_state.pop(comment_reset_key, False):
+            st.session_state[comment_body_key] = ""
+
         comment_text = st.text_area(
             "Comment",
             placeholder=(
@@ -1003,7 +1009,7 @@ def render_analysis_detail(
                 "@emailhandle or @firstname."
             ),
             height=120,
-            key=f"analysis_comment_body_{analysis_id}",
+            key=comment_body_key,
         )
         if workspace_members:
             mention_examples = []
@@ -1082,10 +1088,7 @@ def render_analysis_detail(
                             notification_type="analysis_comment",
                         )
                 st.success("Engineering comment posted.")
-                st.session_state.pop(
-                    f"analysis_comment_body_{analysis_id}",
-                    None,
-                )
+                st.session_state[comment_reset_key] = True
                 st.rerun()
 
         st.markdown("#### Discussion history")
