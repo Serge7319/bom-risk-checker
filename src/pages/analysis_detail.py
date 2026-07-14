@@ -3,11 +3,25 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import html
+import re
 from typing import Any
 
 import pandas as pd
 import streamlit as st
 from src.ui.navigation import navigate_to, internal_nav_button
+from src.discussion_service import (
+    add_analysis_comment,
+    create_workspace_notification,
+    delete_comment,
+    extract_mentions,
+    follow_analysis,
+    is_following_analysis,
+    list_analysis_comments,
+    list_analysis_followers,
+    resolve_mentioned_members,
+    set_comment_pinned,
+    unfollow_analysis,
+)
 
 
 def _safe(value: Any, fallback: str = "—") -> str:
@@ -179,6 +193,8 @@ def render_analysis_detail(
     light_plotly_layout=None,
     _qp_value=None,
     workspace_id=None,
+    workspace_role="viewer",
+    workspace_members=None,
 ):
     analysis_id = ""
     if _qp_value:
@@ -218,6 +234,11 @@ def render_analysis_detail(
         .cv-alert-actions{display:flex;gap:8px;flex-wrap:wrap}.cv-alert-action{display:inline-flex;text-decoration:none!important;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:10px;padding:7px 10px;font-size:10px;font-weight:900}
         .cv-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:14px}.cv-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:17px;padding:14px}.cv-kpi span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-kpi strong{display:block;color:#0f172a!important;font-size:22px;font-weight:980}.cv-kpi small{display:block;color:#64748b!important;font-size:10px;font-weight:800;margin-top:5px}
         .cv-report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.cv-report-card{border:1px solid #e2e8f0;background:#fff;border-radius:20px;padding:17px;box-shadow:0 14px 34px rgba(15,23,42,.045)}.cv-report-card h4{margin:0 0 6px;color:#0f172a!important;font-size:15px;font-weight:980}.cv-report-card p{margin:0 0 12px;color:#64748b!important;font-size:11px;font-weight:750;line-height:1.5}.cv-report-formats{display:flex;gap:7px;flex-wrap:wrap}.cv-format{border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:950}
+        .cv-discussion-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:14px}
+        .cv-discussion-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:17px;padding:14px}.cv-discussion-kpi span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-discussion-kpi strong{display:block;color:#0f172a!important;font-size:22px;font-weight:980}
+        .cv-comment{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:15px 16px;margin-bottom:11px;box-shadow:0 10px 26px rgba(15,23,42,.04)}
+        .cv-comment.pinned{border-color:#fcd34d;background:#fffbeb}.cv-comment-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:9px}.cv-comment-author{color:#0f172a!important;font-size:13px;font-weight:980}.cv-comment-meta{color:#64748b!important;font-size:10px;font-weight:800;margin-top:3px}.cv-comment-body{color:#334155!important;font-size:12px;font-weight:700;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.cv-comment-badge{display:inline-flex;border-radius:999px;padding:5px 8px;border:1px solid #fde68a;background:#fef3c7;color:#92400e!important;font-size:9px;font-weight:950}
+        .cv-follow-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:20px;padding:17px;margin-bottom:14px}
         .cv-component-detail{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:22px;padding:20px;box-shadow:0 18px 45px rgba(37,99,235,.08)}
         .cv-component-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.cv-component-detail-grid div{border:1px solid #dbe3ef;background:rgba(255,255,255,.9);border-radius:14px;padding:12px}.cv-component-detail-grid span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}.cv-component-detail-grid strong{display:block;color:#0f172a!important;font-size:13px;font-weight:950;overflow-wrap:anywhere}
         .cv-readiness-list{display:grid;gap:12px}.cv-readiness-row{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:13px}.cv-readiness-row strong{display:block;color:#0b1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-readiness-row span{display:block;color:#64748b!important;font-size:11px;font-weight:800}.cv-readiness-bar{height:9px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:10px}.cv-readiness-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#16a34a)}.cv-readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.cv-readiness-metrics div{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:12px}.cv-readiness-metrics span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-readiness-metrics strong{display:block;color:#0b1220!important;font-size:22px;font-weight:980}.cv-readiness-metrics small{display:block;color:#64748b!important;font-size:10px;font-weight:800;margin-top:6px}
@@ -278,6 +299,28 @@ def render_analysis_detail(
         limit=50,
     )
 
+    comments, comments_error = list_analysis_comments(
+        supabase,
+        workspace_id or "",
+        analysis_id,
+    )
+    followers, followers_error = list_analysis_followers(
+        supabase,
+        workspace_id=workspace_id or "",
+        analysis_id=analysis_id,
+    )
+    is_following, following_error = is_following_analysis(
+        supabase,
+        workspace_id=workspace_id or "",
+        analysis_id=analysis_id,
+        user_id=user_id,
+    )
+    workspace_members = workspace_members or []
+    can_manage_discussion = str(workspace_role or "viewer").lower() in {
+        "owner",
+        "admin",
+    }
+
     project = _safe(analysis.get("project_name") or analysis.get("filename"), "Saved BOM Analysis")
     filename = _safe(analysis.get("filename"))
     health = _num(analysis.get("health_score"))
@@ -295,8 +338,20 @@ def render_analysis_detail(
         unsafe_allow_html=True,
     )
 
-    overview_tab, intelligence_tab, components_tab, alternatives_tab, reports_tab = st.tabs([
-        "Overview", "Intelligence", "Components", "Alternatives", "Reports"
+    (
+        overview_tab,
+        intelligence_tab,
+        components_tab,
+        alternatives_tab,
+        discussions_tab,
+        reports_tab,
+    ) = st.tabs([
+        "Overview",
+        "Intelligence",
+        "Components",
+        "Alternatives",
+        "Discussions",
+        "Reports",
     ])
 
     with overview_tab:
@@ -862,6 +917,280 @@ def render_analysis_detail(
                 use_container_width=True,
                 analysis_id=analysis_id,
             )
+
+    with discussions_tab:
+        _section_header(
+            "Engineering Discussions",
+            "Keep review notes, mentions, and permanent engineering context attached to this saved BOM.",
+        )
+
+        pinned_count = sum(1 for row in comments if row.get("is_pinned"))
+        st.markdown(
+            f"""
+            <div class="cv-discussion-summary">
+              <div class="cv-discussion-kpi"><span>Comments</span><strong>{len(comments)}</strong></div>
+              <div class="cv-discussion-kpi"><span>Pinned Notes</span><strong>{pinned_count}</strong></div>
+              <div class="cv-discussion-kpi"><span>Followers</span><strong>{len(followers)}</strong></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"""
+            <div class="cv-follow-card">
+              <div class="cv-analysis-card-title">
+                <span>Follow this BOM</span>
+                <span class="cv-analysis-pill {'good' if is_following else ''}">
+                  {'Following' if is_following else 'Not following'}
+                </span>
+              </div>
+              <div class="cv-analysis-row-meta">
+                Followers receive collaboration notifications when new comments or mentions are added.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        follow_left, follow_right = st.columns([0.25, 0.75])
+        with follow_left:
+            if is_following:
+                if st.button(
+                    "Unfollow BOM",
+                    key=f"analysis_unfollow_{analysis_id}",
+                    use_container_width=True,
+                ):
+                    error = unfollow_analysis(
+                        supabase,
+                        workspace_id=workspace_id or "",
+                        analysis_id=analysis_id,
+                        user_id=user_id,
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("You are no longer following this BOM.")
+                        st.rerun()
+            else:
+                if st.button(
+                    "Follow BOM",
+                    type="primary",
+                    key=f"analysis_follow_{analysis_id}",
+                    use_container_width=True,
+                ):
+                    error = follow_analysis(
+                        supabase,
+                        workspace_id=workspace_id or "",
+                        analysis_id=analysis_id,
+                        user_id=user_id,
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("You are now following this BOM.")
+                        st.rerun()
+
+        st.markdown("#### Add an engineering comment")
+        comment_kind = st.selectbox(
+            "Comment type",
+            ["Discussion", "Engineering Note", "Decision Rationale", "Procurement Note"],
+            key=f"analysis_comment_type_{analysis_id}",
+        )
+        comment_text = st.text_area(
+            "Comment",
+            placeholder=(
+                "Record engineering context or mention a teammate with "
+                "@emailhandle or @firstname."
+            ),
+            height=120,
+            key=f"analysis_comment_body_{analysis_id}",
+        )
+        if workspace_members:
+            mention_examples = []
+            for member in workspace_members[:8]:
+                email_value = _safe(member.get("email"), "")
+                name_value = _safe(member.get("display_name"), "")
+                handle = email_value.split("@", 1)[0] if "@" in email_value else ""
+                if handle:
+                    mention_examples.append(f"@{handle}")
+                elif name_value:
+                    mention_examples.append(
+                        "@" + re.sub(r"[^A-Za-z0-9._+-]+", ".", name_value).strip(".")
+                    )
+            if mention_examples:
+                st.caption("Mention examples: " + ", ".join(mention_examples))
+
+        if st.button(
+            "Post Comment",
+            type="primary",
+            key=f"analysis_post_comment_{analysis_id}",
+        ):
+            created_comment, comment_error = add_analysis_comment(
+                supabase,
+                workspace_id=workspace_id or "",
+                analysis_id=analysis_id,
+                user_id=user_id,
+                author_name=_safe(
+                    current_user.get("full_name"),
+                    current_user.get("email") or "Cadivor user",
+                ),
+                author_email=_safe(current_user.get("email"), ""),
+                body=comment_text,
+                comment_type=comment_kind.lower().replace(" ", "_"),
+            )
+            if comment_error:
+                st.error(comment_error)
+            else:
+                mentions = extract_mentions(comment_text)
+                mentioned_members = resolve_mentioned_members(
+                    workspace_members,
+                    mentions,
+                )
+                notified_ids = set()
+                for member in mentioned_members:
+                    mentioned_user_id = _safe(member.get("user_id"), "")
+                    if mentioned_user_id and mentioned_user_id != user_id:
+                        create_workspace_notification(
+                            supabase,
+                            workspace_id=workspace_id or "",
+                            user_id=mentioned_user_id,
+                            title=f"You were mentioned in {project}",
+                            message=(
+                                f"{_safe(current_user.get('full_name'), 'A teammate')} "
+                                f"mentioned you in an engineering discussion."
+                            ),
+                            notification_type="analysis_mention",
+                        )
+                        notified_ids.add(mentioned_user_id)
+
+                for follower in followers:
+                    follower_id = _safe(follower.get("user_id"), "")
+                    if (
+                        follower_id
+                        and follower_id != user_id
+                        and follower_id not in notified_ids
+                    ):
+                        create_workspace_notification(
+                            supabase,
+                            workspace_id=workspace_id or "",
+                            user_id=follower_id,
+                            title=f"New comment on {project}",
+                            message=(
+                                f"{_safe(current_user.get('full_name'), 'A teammate')} "
+                                f"added an engineering comment."
+                            ),
+                            notification_type="analysis_comment",
+                        )
+                st.success("Engineering comment posted.")
+                st.session_state.pop(
+                    f"analysis_comment_body_{analysis_id}",
+                    None,
+                )
+                st.rerun()
+
+        st.markdown("#### Discussion history")
+        if comments_error:
+            st.error(f"Discussions could not be loaded: {comments_error}")
+        elif not comments:
+            st.markdown(
+                """
+                <div class="cv-analysis-empty">
+                  No engineering comments have been recorded for this BOM yet.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            for comment in comments:
+                comment_id = _safe(comment.get("id"), "")
+                pinned = bool(comment.get("is_pinned"))
+                author_id = _safe(comment.get("user_id"), "")
+                can_delete = can_manage_discussion or author_id == user_id
+                created_at = _safe(comment.get("created_at"), "")[:19].replace("T", " ")
+                comment_type_value = _safe(comment.get("comment_type"), "discussion").replace("_", " ").title()
+                st.markdown(
+                    f"""
+                    <div class="cv-comment {'pinned' if pinned else ''}">
+                      <div class="cv-comment-top">
+                        <div>
+                          <div class="cv-comment-author">{html.escape(_safe(comment.get('author_name'), comment.get('author_email') or 'Cadivor user'))}</div>
+                          <div class="cv-comment-meta">{html.escape(comment_type_value)} · {html.escape(created_at)} UTC</div>
+                        </div>
+                        {'<span class="cv-comment-badge">Pinned</span>' if pinned else ''}
+                      </div>
+                      <div class="cv-comment-body">{html.escape(_safe(comment.get('body'), ''))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                action_columns = st.columns([0.18, 0.18, 0.64])
+                if can_manage_discussion:
+                    with action_columns[0]:
+                        if st.button(
+                            "Unpin" if pinned else "Pin",
+                            key=f"analysis_pin_comment_{comment_id}",
+                            use_container_width=True,
+                        ):
+                            error = set_comment_pinned(
+                                supabase,
+                                workspace_id=workspace_id or "",
+                                comment_id=comment_id,
+                                is_pinned=not pinned,
+                            )
+                            if error:
+                                st.error(error)
+                            else:
+                                st.rerun()
+                if can_delete:
+                    with action_columns[1]:
+                        if st.button(
+                            "Delete",
+                            key=f"analysis_delete_comment_{comment_id}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[
+                                f"confirm_delete_comment_{comment_id}"
+                            ] = True
+
+                if st.session_state.get(
+                    f"confirm_delete_comment_{comment_id}",
+                    False,
+                ):
+                    st.warning(
+                        "Delete this comment? This removes it from the visible engineering record."
+                    )
+                    confirm_delete, cancel_delete = st.columns(2)
+                    with confirm_delete:
+                        if st.button(
+                            "Yes, Delete Comment",
+                            type="primary",
+                            key=f"analysis_confirm_delete_comment_{comment_id}",
+                        ):
+                            error = delete_comment(
+                                supabase,
+                                workspace_id=workspace_id or "",
+                                comment_id=comment_id,
+                                user_id=user_id,
+                                can_manage=can_manage_discussion,
+                            )
+                            if error:
+                                st.error(error)
+                            else:
+                                st.session_state.pop(
+                                    f"confirm_delete_comment_{comment_id}",
+                                    None,
+                                )
+                                st.rerun()
+                    with cancel_delete:
+                        if st.button(
+                            "Cancel",
+                            key=f"analysis_cancel_delete_comment_{comment_id}",
+                        ):
+                            st.session_state.pop(
+                                f"confirm_delete_comment_{comment_id}",
+                                None,
+                            )
+                            st.rerun()
 
     with reports_tab:
         _section_header(
