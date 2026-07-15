@@ -14,6 +14,7 @@ from src.ai_report_intelligence import (
 )
 from src.role_report_generator import build_role_report_pdf
 from src.alternative_reasoning import build_alternative_reasoning
+from src.monitoring_intelligence import build_monitoring_action_center
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2771,6 +2772,19 @@ if app_mode == "Analysis Details":
     )
     st.stop()
 
+st.markdown(
+    """
+    <style>
+      .cv123-monitor-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
+      .cv123-monitor-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv123-monitor-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv123-monitor-title{font-size:25px;font-weight:950;color:#0f172a;letter-spacing:-.035em;margin-bottom:6px}.cv123-monitor-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.55;max-width:900px}
+      .cv123-monitor-badge{border:1px solid #bfdbfe;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;background:#eff6ff;color:#1d4ed8}.cv123-monitor-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv123-monitor-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv123-monitor-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+      .cv123-alert-card{border:1px solid #dbe3ef;background:#fff;border-radius:18px;padding:15px;margin-bottom:10px;box-shadow:0 10px 28px rgba(15,23,42,.045)}.cv123-alert-head{display:flex;justify-content:space-between;gap:12px}.cv123-alert-part{font-size:14px;font-weight:950;color:#0f172a}.cv123-alert-type{font-size:9px;font-weight:950;color:#2563eb;text-transform:uppercase;letter-spacing:.07em}.cv123-alert-message{font-size:11px;font-weight:720;color:#475569;line-height:1.5;margin:8px 0}.cv123-alert-meta{display:flex;gap:7px;flex-wrap:wrap}.cv123-alert-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#1d4ed8}.cv123-alert-action{border-top:1px solid #e2e8f0;margin-top:11px;padding-top:11px;font-size:11px;font-weight:780;color:#0f172a}
+      @media(max-width:900px){.cv123-monitor-top{display:block}.cv123-monitor-badge{display:inline-block;margin-top:10px}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if app_mode == "Monitoring":
     return_analysis_id = _qp_value("return_analysis_id")
     if return_analysis_id:
@@ -2781,164 +2795,233 @@ if app_mode == "Monitoring":
         ):
             navigate_to("Analysis Details", analysis_id=return_analysis_id)
 
-    st.subheader("Monitoring Dashboard")
-
-    st.info(
-        "Track historical stock, pricing, and lifecycle changes across monitored parts."
-    )
-
     alert_history = (
         _workspace_query(
-            supabase.table("monitor_alerts")
-            .select("*")
-        )
-        .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
-        .limit(50)
-        .execute()
-    )
-
-    alert_df = pd.DataFrame(alert_history.data)
-
-    monitor_history = (
-        _workspace_query(
-            supabase.table("part_monitor_history")
-            .select("*")
+            supabase.table("monitor_alerts").select("*")
         )
         .eq("user_id", current_user["id"])
         .order("created_at", desc=True)
         .limit(100)
         .execute()
     )
+    alert_df = pd.DataFrame(alert_history.data)
 
+    monitor_history = (
+        _workspace_query(
+            supabase.table("part_monitor_history").select("*")
+        )
+        .eq("user_id", current_user["id"])
+        .order("created_at", desc=True)
+        .limit(250)
+        .execute()
+    )
     monitor_df = pd.DataFrame(monitor_history.data)
 
-    alert_count = len(alert_df)
-
-    high_alert_count = (
-        alert_df["severity"]
-        .astype(str)
-        .str.contains("High", case=False, na=False)
-        .sum()
-        if not alert_df.empty
-        else 0
+    monitoring_center = build_monitoring_action_center(
+        alert_df,
+        monitor_df,
     )
 
-    obsolete_count = (
-        monitor_df["lifecycle_status"]
-        .astype(str)
-        .str.contains("obsolete", case=False, na=False)
-        .sum()
-        if not monitor_df.empty
-        else 0
-    )
-
-    no_stock_count = (
-        (monitor_df["stock"] <= 0).sum()
-        if not monitor_df.empty
-        else 0
+    st.markdown(
+        f"""
+        <section class="cv123-monitor-hero">
+          <div class="cv123-monitor-top">
+            <div>
+              <div class="cv123-monitor-eyebrow">AI Monitoring & Action Center</div>
+              <div class="cv123-monitor-title">{html.escape(monitoring_center['posture'])}</div>
+              <div class="cv123-monitor-copy">{html.escape(monitoring_center['summary'])}</div>
+            </div>
+            <span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">
+              {monitoring_center['active_alerts']} active alert(s)
+            </span>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
     )
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Active Alerts", monitoring_center["active_alerts"])
+    kpi2.metric("Immediate Actions", monitoring_center["immediate_actions"])
+    kpi3.metric("Engineering Actions", monitoring_center["engineering_actions"])
+    kpi4.metric("Procurement Actions", monitoring_center["procurement_actions"])
 
-    with kpi1:
-        st.metric("Active Alerts", alert_count)
+    action_tab, alert_table_tab, component_tab = st.tabs(
+        [
+            "Priority Action Queue",
+            "Alert History",
+            "Monitored Components",
+        ]
+    )
 
-    with kpi2:
-        st.metric("High Severity", high_alert_count)
-
-    with kpi3:
-        st.metric("Obsolete Parts", obsolete_count)
-
-    with kpi4:
-        st.metric("No Stock Parts", no_stock_count)
-
-
-    st.subheader("Recent Monitoring Alerts")
-
-    if not alert_df.empty:
-        alert_display_df = alert_df.rename(
-            columns={
-                "part_number": "Part Number",
-                "alert_type": "Alert Type",
-                "alert_message": "Alert Message",
-                "severity": "Severity",
-                "previous_value": "Previous Value",
-                "current_value": "Current Value",
-                "created_at": "Detected At",
-            }
+    with action_tab:
+        st.caption(
+            "Cadivor converts raw monitoring changes into prioritized engineering and "
+            "procurement actions with owners, deadlines, and expected impact."
         )
 
-        alert_display_df["Severity Display"] = (
-            alert_display_df["Severity"]
-            .replace(
-                {
-                    "High": "🔴 High",
-                    "Medium": "🟡 Medium",
-                    "Low": "🟢 Low",
-                }
+        prioritized = monitoring_center["prioritized_alerts"]
+        if prioritized.empty:
+            st.success(
+                "No active exception requires action. Continue scheduled monitoring."
             )
-        )
-
-        st.dataframe(
-            alert_display_df[
-                [
-                    "Part Number",
-                    "Alert Type",
-                    "Severity Display",
-                    "Alert Message",
-                    "Previous Value",
-                    "Current Value",
-                    "Detected At",
-                ]
-            ],
-            hide_index=True,
-            use_container_width=True,
-        )
-    else:
-        st.info("No monitoring alerts detected yet.")
-
-    if not monitor_df.empty:
-        monitor_display_df = monitor_df.rename(
-            columns={
-                "part_number": "Part Number",
-                "supplier": "Supplier",
-                "lifecycle_status": "Lifecycle Status",
-                "stock": "Stock Available",
-                "unit_price": "Unit Price",
-                "risk_level": "Risk Level",
-                "created_at": "Last Checked",
-            }
-        )
-
-        monitor_display_df["Risk Level Display"] = (
-            monitor_display_df["Risk Level"]
-            .replace(
-                {
-                    "High": "🔴 High",
-                    "Medium": "🟡 Medium",
-                    "Low": "🟢 Low",
-                }
+        else:
+            severity_filter = st.selectbox(
+                "Filter by severity",
+                ["All", "Critical", "High", "Medium", "Low"],
+                key="monitor_action_severity_filter",
             )
-        )
-
-        st.dataframe(
-            monitor_display_df[
+            owner_filter = st.selectbox(
+                "Filter by owner",
                 [
-                    "Part Number",
-                    "Supplier",
-                    "Lifecycle Status",
-                    "Stock Available",
-                    "Unit Price",
-                    "Risk Level Display",
-                    "Last Checked",
+                    "All",
+                    "Engineering",
+                    "Component Engineering",
+                    "Procurement",
+                    "Supply Chain",
+                    "Engineering & Supply Chain",
+                ],
+                key="monitor_action_owner_filter",
+            )
+
+            filtered = prioritized.copy()
+            if severity_filter != "All":
+                filtered = filtered[
+                    filtered["Severity"].astype(str).str.lower()
+                    == severity_filter.lower()
                 ]
-            ],
-            hide_index=True,
-            use_container_width=True,
-        )
-    else:
-        st.info("No monitoring history available yet.")
+            if owner_filter != "All":
+                filtered = filtered[
+                    filtered["Owner"].astype(str).str.lower()
+                    == owner_filter.lower()
+                ]
+
+            st.caption(
+                f"Showing {len(filtered)} of {len(prioritized)} prioritized monitoring action(s)."
+            )
+
+            for index, row in filtered.head(20).iterrows():
+                tone = (
+                    "bad"
+                    if int(row["Priority"]) >= 75
+                    else "warn"
+                    if int(row["Priority"]) >= 45
+                    else "good"
+                )
+                st.markdown(
+                    f"""
+                    <section class="cv123-alert-card">
+                      <div class="cv123-alert-head">
+                        <div>
+                          <div class="cv123-alert-type">{html.escape(str(row['Alert Type']))}</div>
+                          <div class="cv123-alert-part">{html.escape(str(row['Part Number']))}</div>
+                        </div>
+                        <span class="cv123-monitor-badge {tone}">
+                          Priority {int(row['Priority'])}/100
+                        </span>
+                      </div>
+                      <div class="cv123-alert-message">{html.escape(str(row['Change']))}</div>
+                      <div class="cv123-alert-meta">
+                        <span class="cv123-alert-pill">Owner: {html.escape(str(row['Owner']))}</span>
+                        <span class="cv123-alert-pill">Deadline: {html.escape(str(row['Deadline']))}</span>
+                        <span class="cv123-alert-pill">Severity: {html.escape(str(row['Severity']))}</span>
+                        <span class="cv123-alert-pill">Current: {html.escape(str(row['Current Value']))}</span>
+                      </div>
+                      <div class="cv123-alert-action">
+                        Recommended action: {html.escape(str(row['Recommended Action']))}<br>
+                        Expected impact: {html.escape(str(row['Expected Impact']))}
+                      </div>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                action_cols = st.columns(3)
+                with action_cols[0]:
+                    if st.button(
+                        "Find Alternative",
+                        key=f"monitor_alt_{index}_{row['Part Number']}",
+                        use_container_width=True,
+                        type="primary",
+                    ):
+                        navigate_to(
+                            "Alternative Finder",
+                            original_part=str(row["Part Number"]),
+                            return_analysis_id=return_analysis_id,
+                        )
+                with action_cols[1]:
+                    st.download_button(
+                        "Export Action",
+                        data=pd.DataFrame([row]).to_csv(index=False).encode("utf-8"),
+                        file_name=f"{str(row['Part Number']).replace('/', '_')}_monitoring_action.csv",
+                        mime="text/csv",
+                        key=f"monitor_export_{index}_{row['Part Number']}",
+                        use_container_width=True,
+                    )
+                with action_cols[2]:
+                    st.caption(f"Detected: {row['Detected At']}")
+
+    with alert_table_tab:
+        prioritized = monitoring_center["prioritized_alerts"]
+        if prioritized.empty:
+            st.info("No monitoring alerts are available.")
+        else:
+            alert_columns = [
+                "Part Number",
+                "Priority",
+                "Severity",
+                "Alert Type",
+                "Change",
+                "Previous Value",
+                "Current Value",
+                "Owner",
+                "Deadline",
+                "Detected At",
+            ]
+            st.dataframe(
+                prioritized[alert_columns],
+                hide_index=True,
+                use_container_width=True,
+            )
+            st.download_button(
+                "Download Monitoring Action Queue CSV",
+                data=prioritized.to_csv(index=False).encode("utf-8"),
+                file_name="cadivor_monitoring_action_queue.csv",
+                mime="text/csv",
+                key="monitor_action_queue_csv",
+                type="primary",
+            )
+
+    with component_tab:
+        latest_components = monitoring_center["latest_components"]
+        if latest_components.empty:
+            st.info("No monitoring history is available yet.")
+        else:
+            search_component = st.text_input(
+                "Search monitored components",
+                placeholder="Part number or supplier",
+                key="monitor_component_search",
+            )
+            visible_components = latest_components.copy()
+            if search_component.strip():
+                query = search_component.strip().lower()
+                mask = visible_components.astype(str).apply(
+                    lambda column: column.str.lower().str.contains(
+                        query,
+                        na=False,
+                        regex=False,
+                    )
+                ).any(axis=1)
+                visible_components = visible_components[mask]
+
+            st.caption(
+                f"Showing {len(visible_components)} monitored component record(s)."
+            )
+            st.dataframe(
+                visible_components,
+                hide_index=True,
+                use_container_width=True,
+            )
 
 
 def _mark_first_report_complete() -> None:
