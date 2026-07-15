@@ -218,6 +218,14 @@ def render_analysis_detail(
         .cv-advisor-kicker{color:#2563eb!important;font-size:10px;font-weight:980;letter-spacing:.11em;text-transform:uppercase;margin-bottom:8px}.cv-advisor-title{color:#0f172a!important;font-size:26px;font-weight:980;letter-spacing:-.035em;margin:0 0 7px}.cv-advisor-copy{color:#52647a!important;font-size:12px;font-weight:760;line-height:1.55;margin:0}
         .cv-advisor-score-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin:14px 0}.cv-advisor-score{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:15px;box-shadow:0 10px 24px rgba(15,23,42,.04)}.cv-advisor-score span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-advisor-score strong{display:block;color:#0f172a!important;font-size:19px;font-weight:980}.cv-advisor-score small{display:block;color:#64748b!important;font-size:10px;font-weight:750;margin-top:5px}
         .cv-advisor-action{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;margin-bottom:10px;box-shadow:0 10px 26px rgba(15,23,42,.04)}.cv-advisor-action-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.cv-advisor-rank{width:29px;height:29px;flex:0 0 29px;border-radius:10px;background:#eff6ff;color:#2563eb!important;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:980}.cv-advisor-action h4{color:#0f172a!important;font-size:14px;font-weight:980;margin:0 0 5px}.cv-advisor-action p{color:#52647a!important;font-size:11px;font-weight:720;line-height:1.5;margin:0}.cv-advisor-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.cv-advisor-tag{display:inline-flex;border-radius:999px;padding:5px 8px;border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8!important;font-size:9px;font-weight:950}
+        .cv-copilot-readiness{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff 0%,#f3f8ff 65%,#e8f1ff 100%);border-radius:24px;padding:22px;box-shadow:0 20px 50px rgba(37,99,235,.08);margin-bottom:14px}
+        .cv-copilot-readiness-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cv-copilot-readiness h2{color:#0f172a!important;font-size:25px;font-weight:980;letter-spacing:-.035em;margin:0 0 6px}.cv-copilot-readiness p{color:#52647a!important;font-size:12px;font-weight:740;line-height:1.55;margin:0}
+        .cv-copilot-action{border:1px solid #dbe3ef;background:#fff;border-radius:22px;padding:19px;margin-bottom:13px;box-shadow:0 14px 36px rgba(15,23,42,.055)}.cv-copilot-action-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:flex-start}.cv-copilot-action h3{color:#0f172a!important;font-size:16px;font-weight:980;margin:0 0 5px}.cv-copilot-action-sub{color:#64748b!important;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.07em}
+        .cv-copilot-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:13px 0}.cv-copilot-panel{border:1px solid #e2e8f0;background:#f8fafc;border-radius:15px;padding:13px}.cv-copilot-panel span{display:block;color:#2563eb!important;font-size:9px;font-weight:980;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.cv-copilot-panel p{color:#334155!important;font-size:11px;font-weight:720;line-height:1.55;margin:0}
+        .cv-impact-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0}.cv-impact-box{border:1px solid #e2e8f0;border-radius:13px;padding:10px;background:#fff}.cv-impact-box span{display:block;color:#64748b!important;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}.cv-impact-meter{font-size:12px;letter-spacing:1px;color:#2563eb!important;white-space:nowrap}
+        .cv-improvement{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.cv-improvement div{border:1px solid #dbeafe;background:#eff6ff;border-radius:13px;padding:10px}.cv-improvement span{display:block;color:#64748b!important;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}.cv-improvement strong{color:#0f172a!important;font-size:13px;font-weight:980}
+        .cv-copilot-exec{border:1px solid #c7d2fe;background:linear-gradient(135deg,#eef2ff,#fff);border-radius:20px;padding:18px;margin:14px 0}.cv-copilot-exec span{display:block;color:#4f46e5!important;font-size:9px;font-weight:980;text-transform:uppercase;letter-spacing:.09em;margin-bottom:7px}.cv-copilot-exec p{color:#1e293b!important;font-size:12px;font-weight:760;line-height:1.65;margin:0}
+        @media(max-width:900px){.cv-copilot-two,.cv-impact-grid,.cv-improvement{grid-template-columns:1fr 1fr}.cv-copilot-action-head{grid-template-columns:auto 1fr}}
         .cv-advisor-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.cv-advisor-summary{border:1px solid #e2e8f0;background:#fff;border-radius:19px;padding:17px}.cv-advisor-summary span{display:block;color:#2563eb!important;font-size:9px;font-weight:980;letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px}.cv-advisor-summary p{color:#334155!important;font-size:12px;font-weight:720;line-height:1.6;margin:0}
         @media(max-width:900px){.cv-advisor-score-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv-advisor-summary-grid{grid-template-columns:1fr}}
         .cv-analysis-card,.cv-risk-compact{background:#fff;border:1px solid #e2e8f0;border-radius:22px;padding:20px;box-shadow:0 18px 44px rgba(15,23,42,.055)}.cv-analysis-card-title{display:flex;align-items:center;justify-content:space-between;gap:14px;color:#0b1220!important;font-size:16px;font-weight:980;margin-bottom:12px}.cv-analysis-icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#eff6ff;border:1px solid #bfdbfe;color:#2563eb!important}
@@ -381,76 +389,201 @@ def render_analysis_detail(
 
     with advisor_tab:
         _section_header(
-            "AI Engineering & Supply Advisor",
-            "Actionable guidance for engineering, procurement, supply chain, and management.",
+            "Engineering Copilot",
+            "Production-readiness guidance with engineering, procurement, and supply-chain reasoning.",
         )
-        assessment = html.escape(_safe(advisor.get("overall_assessment"), "Focused Review Recommended"))
+
+        readiness = _safe(
+            advisor.get("production_readiness"),
+            "Prototype Ready — Production Review Needed",
+        )
+        readiness_tone = _safe(advisor.get("readiness_tone"), "warn")
         st.markdown(
             f"""
-            <section class="cv-advisor-hero">
-              <div class="cv-advisor-kicker">Cadivor Decision Intelligence</div>
-              <h2 class="cv-advisor-title">{assessment}</h2>
-              <p class="cv-advisor-copy">Cadivor evaluated the lifecycle, availability, supplier, monitoring, and replacement records attached to this BOM.</p>
+            <section class="cv-copilot-readiness">
+              <div class="cv-copilot-readiness-top">
+                <div>
+                  <div class="cv-advisor-kicker">Cadivor Engineering Copilot Assessment</div>
+                  <h2>{html.escape(readiness)}</h2>
+                  <p>{html.escape(_safe(advisor.get('readiness_reason'), 'Focused review is recommended.'))}</p>
+                </div>
+                <span class="cv-analysis-pill {html.escape(readiness_tone)}">
+                  {_num(advisor.get('confidence'), 0)}% confidence
+                </span>
+              </div>
             </section>
+
             <div class="cv-advisor-score-grid">
-              <div class="cv-advisor-score"><span>Overall Assessment</span><strong>{assessment}</strong><small>Current release posture</small></div>
-              <div class="cv-advisor-score"><span>Engineering Risk</span><strong>{_num(advisor.get('engineering_risk_score'),0)}/100</strong><small>Lifecycle and component exposure</small></div>
-              <div class="cv-advisor-score"><span>Supply Risk</span><strong>{_num(advisor.get('supply_risk_score'),0)}/100</strong><small>Stock, sourcing, and lead-time exposure</small></div>
-              <div class="cv-advisor-score"><span>Advisor Confidence</span><strong>{_num(advisor.get('confidence'),0)}%</strong><small>Based on available BOM intelligence</small></div>
+              <div class="cv-advisor-score">
+                <span>Production Readiness</span>
+                <strong>{html.escape(readiness)}</strong>
+                <small>Current release posture</small>
+              </div>
+              <div class="cv-advisor-score">
+                <span>Engineering Exposure</span>
+                <strong>{_num(advisor.get('engineering_exposure_score'), 0)}/100</strong>
+                <small>Lifecycle and design exposure</small>
+              </div>
+              <div class="cv-advisor-score">
+                <span>Supply Chain Exposure</span>
+                <strong>{_num(advisor.get('supply_exposure_score'), 0)}/100</strong>
+                <small>Availability, sourcing, and lead-time exposure</small>
+              </div>
+              <div class="cv-advisor-score">
+                <span>Estimated Resolution Effort</span>
+                <strong>{_num(advisor.get('estimated_total_effort'), 0)} hrs</strong>
+                <small>Across the recommended actions</small>
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        st.markdown("#### Top Priority Actions")
-        action_html = []
-        for index, action in enumerate(advisor.get("priority_actions") or [], 1):
-            urgency = _safe(action.get("urgency"), "Medium")
-            action_html.append(
+        st.markdown(
+            f"""
+            <div class="cv-copilot-exec">
+              <span>Executive Recommendation</span>
+              <p>{html.escape(_safe(advisor.get('executive_recommendation'), 'No executive recommendation available.'))}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("#### Engineering Copilot Recommendations")
+
+        for index, action in enumerate(advisor.get("priority_actions") or [], start=1):
+            urgency = _safe(action.get("business_priority"), "Moderate")
+            urgency_class = "bad" if urgency.lower() in {"critical", "high"} else "warn"
+            impacts = action.get("impacts") or {}
+            improvement = action.get("improvement") or {}
+
+            def _meter(value):
+                level = max(1, min(5, _num(value, 1)))
+                return "■" * level + "□" * (5 - level)
+
+            st.markdown(
                 f"""
-                <div class="cv-advisor-action">
-                  <div class="cv-advisor-action-top">
-                    <div style="display:flex;gap:11px;align-items:flex-start">
-                      <div class="cv-advisor-rank">{index}</div>
-                      <div>
-                        <h4>{html.escape(_safe(action.get('title'), 'Review BOM risk'))}</h4>
-                        <p><strong>Reason:</strong> {html.escape(_safe(action.get('reason'), 'Risk signal detected.'))}</p>
-                        <p><strong>Expected impact:</strong> {html.escape(_safe(action.get('impact'), 'Improves readiness.'))}</p>
-                      </div>
+                <section class="cv-copilot-action">
+                  <div class="cv-copilot-action-head">
+                    <div class="cv-advisor-rank">{index}</div>
+                    <div>
+                      <div class="cv-copilot-action-sub">{html.escape(_safe(action.get('category'), 'Recommendation'))}</div>
+                      <h3>{html.escape(_safe(action.get('title'), 'Review component risk'))}</h3>
                     </div>
-                    <span class="cv-analysis-pill {'bad' if urgency.lower() in ('immediate','high') else 'warn'}">{html.escape(urgency)}</span>
+                    <span class="cv-analysis-pill {urgency_class}">
+                      {html.escape(urgency)}
+                    </span>
                   </div>
+
+                  <div class="cv-copilot-two">
+                    <div class="cv-copilot-panel">
+                      <span>Recommended Action</span>
+                      <p>{html.escape(_safe(action.get('recommendation'), 'Review this component.'))}</p>
+                    </div>
+                    <div class="cv-copilot-panel">
+                      <span>Why Cadivor Recommended This</span>
+                      <p>{html.escape(_safe(action.get('why'), 'A risk signal was detected.'))}</p>
+                    </div>
+                    <div class="cv-copilot-panel">
+                      <span>If Ignored</span>
+                      <p>{html.escape(_safe(action.get('if_ignored'), 'The risk may increase closer to release.'))}</p>
+                    </div>
+                    <div class="cv-copilot-panel">
+                      <span>Recommended Team</span>
+                      <p><b>{html.escape(_safe(action.get('owner'), 'Engineering'))}</b><br>
+                      Support: {html.escape(_safe(action.get('support_owner'), 'Procurement'))}<br>
+                      Target: {html.escape(_safe(action.get('schedule'), 'Before release'))}</p>
+                    </div>
+                  </div>
+
+                  <div class="cv-impact-grid">
+                    <div class="cv-impact-box"><span>Engineering</span><div class="cv-impact-meter">{_meter(impacts.get('engineering'))}</div></div>
+                    <div class="cv-impact-box"><span>Procurement</span><div class="cv-impact-meter">{_meter(impacts.get('procurement'))}</div></div>
+                    <div class="cv-impact-box"><span>Production</span><div class="cv-impact-meter">{_meter(impacts.get('production'))}</div></div>
+                    <div class="cv-impact-box"><span>Schedule</span><div class="cv-impact-meter">{_meter(impacts.get('schedule'))}</div></div>
+                    <div class="cv-impact-box"><span>Cost</span><div class="cv-impact-meter">{_meter(impacts.get('cost'))}</div></div>
+                  </div>
+
                   <div class="cv-advisor-tags">
-                    <span class="cv-advisor-tag">Owner: {html.escape(_safe(action.get('owner'),'Engineering'))}</span>
-                    <span class="cv-advisor-tag">Effort: {html.escape(_safe(action.get('effort'),'Low'))}</span>
-                    <span class="cv-advisor-tag">Priority: {_num(action.get('score'),0)}/100</span>
+                    <span class="cv-advisor-tag">Effort: {html.escape(_safe(action.get('effort'), '1 hour'))}</span>
+                    <span class="cv-advisor-tag">Confidence: {_num(action.get('confidence'), 0)}%</span>
+                    <span class="cv-advisor-tag">Signals used: {_num(action.get('signal_count'), 0)}</span>
+                    <span class="cv-advisor-tag">Priority score: {_num(action.get('score'), 0)}/100</span>
                   </div>
-                </div>
-                """
+
+                  <div class="cv-improvement">
+                    <div><span>BOM Health</span><strong>{_num(improvement.get('health_before'), health)} → {_num(improvement.get('health_after'), health)}</strong></div>
+                    <div><span>Health Gain</span><strong>+{_num(improvement.get('health_gain'), 0)}</strong></div>
+                    <div><span>Supply Risk Reduction</span><strong>-{_num(improvement.get('supply_risk_reduction'), 0)}</strong></div>
+                    <div><span>Issues Resolved</span><strong>{_num(improvement.get('lifecycle_issues_removed'), 0) + _num(improvement.get('sourcing_issues_removed'), 0)}</strong></div>
+                  </div>
+                </section>
+                """,
+                unsafe_allow_html=True,
             )
-        st.markdown("".join(action_html), unsafe_allow_html=True)
+
+            with st.expander(
+                f"Evidence used for recommendation {index}",
+                expanded=False,
+            ):
+                signals = action.get("signals") or []
+                if not signals:
+                    st.caption("No detailed signal record is available.")
+                else:
+                    for signal in signals:
+                        status = "Available" if signal.get("available") else "Missing"
+                        st.markdown(
+                            f"**{_safe(signal.get('name'), 'Signal')} — {status}**  \n"
+                            f"{_safe(signal.get('detail'), 'No detail available.')}"
+                        )
+
+            button_cols = st.columns(3)
+            route = _safe(action.get("action_route"), "component")
+            mpn = _safe(action.get("part_number"), "")
+            with button_cols[0]:
+                internal_nav_button(
+                    "Review Component",
+                    "Analysis Details",
+                    key=f"copilot_review_{analysis_id}_{index}",
+                    use_container_width=True,
+                    analysis_id=analysis_id,
+                )
+            with button_cols[1]:
+                internal_nav_button(
+                    "Find Alternative",
+                    "Alternative Finder",
+                    key=f"copilot_alternative_{analysis_id}_{index}",
+                    use_container_width=True,
+                    analysis_id=analysis_id,
+                    original_part=mpn,
+                )
+            with button_cols[2]:
+                internal_nav_button(
+                    "Open Monitoring",
+                    "Monitoring",
+                    key=f"copilot_monitor_{analysis_id}_{index}",
+                    use_container_width=True,
+                    analysis_id=analysis_id,
+                    mpn=mpn,
+                )
 
         st.markdown("#### Cross-Functional Brief")
-        st.markdown(
-            f"""
-            <div class="cv-advisor-summary-grid">
-              <div class="cv-advisor-summary"><span>Engineering</span><p>{html.escape(_safe(advisor.get('engineering_summary'),'No summary available.'))}</p></div>
-              <div class="cv-advisor-summary"><span>Procurement</span><p>{html.escape(_safe(advisor.get('procurement_summary'),'No summary available.'))}</p></div>
-              <div class="cv-advisor-summary"><span>Supply Chain</span><p>{html.escape(_safe(advisor.get('supply_chain_summary'),'No summary available.'))}</p></div>
-              <div class="cv-advisor-summary"><span>Executive</span><p>{html.escape(_safe(advisor.get('executive_summary'),'No summary available.'))}</p></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        brief_cols = st.columns(3)
+        with brief_cols[0]:
+            st.info(_safe(advisor.get("engineering_summary"), "No engineering summary available."))
+        with brief_cols[1]:
+            st.info(_safe(advisor.get("procurement_summary"), "No procurement summary available."))
+        with brief_cols[2]:
+            st.info(_safe(advisor.get("supply_chain_summary"), "No supply-chain summary available."))
 
         metrics = advisor.get("metrics") or {}
         st.markdown("#### Decision Signals")
         signal_cols = st.columns(6)
-        signal_cols[0].metric("Lifecycle Concerns", _num(metrics.get("obsolete_or_replacement"), 0))
+        signal_cols[0].metric("Lifecycle Concerns", _num(metrics.get("lifecycle_concerns"), 0))
         signal_cols[1].metric("No-Stock Parts", _num(metrics.get("no_stock"), 0))
-        signal_cols[2].metric("Limited Sources", _num(metrics.get("sole_source"), 0))
+        signal_cols[2].metric("Limited Sources", _num(metrics.get("limited_sources"), 0))
         signal_cols[3].metric("Long-Lead Parts", _num(metrics.get("long_lead"), 0))
-        signal_cols[4].metric("Active Alerts", _num(metrics.get("monitoring_alerts"), 0))
+        signal_cols[4].metric("Active Alerts", _num(metrics.get("active_alerts"), 0))
         signal_cols[5].metric("Saved Alternatives", _num(metrics.get("saved_alternatives"), 0))
 
     with overview_tab:
