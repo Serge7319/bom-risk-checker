@@ -361,11 +361,100 @@ def render_analysis_detail(
         alternatives=alternatives,
     )
 
+    focused_component_mpn = _safe(_qp_value("focus_mpn"), "")
+    focused_component = None
+    if focused_component_mpn:
+        focused_component = next(
+            (
+                row
+                for row in parts
+                if _safe(row.get("mpn") or row.get("part_number")).upper()
+                == focused_component_mpn.upper()
+            ),
+            None,
+        )
+
     st.markdown('<a class="cv-analysis-back" href="?page=BOM%20Analyzer" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
     st.markdown(
         f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p><div class="cv-analysis-actions"><a class="cv-analysis-btn primary" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open in BOM Analyzer →</a><a class="cv-analysis-btn" href="?page=Alternative%20Finder&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Find Alternatives</a><a class="cv-analysis-btn" href="?page=Monitoring&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Monitor Components</a><a class="cv-analysis-btn" href="?page=Reports&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Reports Center</a></div></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
         unsafe_allow_html=True,
     )
+
+    if focused_component:
+        focused_risk = _safe(
+            focused_component.get("risk_level")
+            or focused_component.get("risk_level_display"),
+            "Unknown",
+        )
+        focused_lifecycle = _safe(
+            focused_component.get("lifecycle_status"),
+            "Unknown",
+        )
+        focused_stock = _num(focused_component.get("stock_available"), 0)
+        focused_suppliers = _num(focused_component.get("supplier_count"), 0)
+        focused_reasons = _safe(
+            focused_component.get("risk_reasons"),
+            "No detailed risk explanation is available.",
+        )
+
+        st.markdown(
+            f"""
+            <section class="cv-copilot-readiness">
+              <div class="cv-copilot-readiness-top">
+                <div>
+                  <div class="cv-advisor-kicker">Focused Component Review</div>
+                  <h2>{html.escape(focused_component_mpn)}</h2>
+                  <p>{html.escape(focused_reasons)}</p>
+                </div>
+                <span class="cv-analysis-pill {'bad' if focused_risk.lower() == 'high' else 'warn' if focused_risk.lower() == 'medium' else 'good'}">
+                  {html.escape(focused_risk)}
+                </span>
+              </div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        focus_cols = st.columns(4)
+        focus_cols[0].metric("Lifecycle", focused_lifecycle)
+        focus_cols[1].metric("Available Stock", f"{focused_stock:,}")
+        focus_cols[2].metric("Supplier Sources", focused_suppliers)
+        focus_cols[3].metric(
+            "Risk Score",
+            f"{_num(focused_component.get('risk_score'), 0)}/100",
+        )
+
+        action_cols = st.columns(3)
+        with action_cols[0]:
+            internal_nav_button(
+                "Back to Engineering Copilot",
+                "Analysis Details",
+                key=f"focus_back_{analysis_id}_{focused_component_mpn}",
+                use_container_width=True,
+                analysis_id=analysis_id,
+            )
+        with action_cols[1]:
+            internal_nav_button(
+                "Find Alternatives",
+                "Alternative Finder",
+                key=f"focus_alt_{analysis_id}_{focused_component_mpn}",
+                use_container_width=True,
+                analysis_id=analysis_id,
+                original_part=focused_component_mpn,
+                return_analysis_id=analysis_id,
+            )
+        with action_cols[2]:
+            internal_nav_button(
+                "Open Monitoring",
+                "Monitoring",
+                key=f"focus_monitor_{analysis_id}_{focused_component_mpn}",
+                use_container_width=True,
+                analysis_id=analysis_id,
+                mpn=focused_component_mpn,
+                return_analysis_id=analysis_id,
+            )
+
+        st.divider()
 
     (
         advisor_tab,
@@ -547,6 +636,7 @@ def render_analysis_detail(
                     key=f"copilot_review_{analysis_id}_{index}",
                     use_container_width=True,
                     analysis_id=analysis_id,
+                    focus_mpn=mpn,
                 )
             with button_cols[1]:
                 internal_nav_button(
@@ -556,6 +646,7 @@ def render_analysis_detail(
                     use_container_width=True,
                     analysis_id=analysis_id,
                     original_part=mpn,
+                    return_analysis_id=analysis_id,
                 )
             with button_cols[2]:
                 internal_nav_button(
@@ -565,6 +656,7 @@ def render_analysis_detail(
                     use_container_width=True,
                     analysis_id=analysis_id,
                     mpn=mpn,
+                    return_analysis_id=analysis_id,
                 )
 
         st.markdown("#### Cross-Functional Brief")
