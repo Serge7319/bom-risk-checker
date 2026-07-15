@@ -13,6 +13,7 @@ from src.ai_report_intelligence import (
     build_ai_procurement_pdf,
 )
 from src.role_report_generator import build_role_report_pdf
+from src.alternative_reasoning import build_alternative_reasoning
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -6966,6 +6967,12 @@ if app_mode == "Alternative Finder":
         .af7-meter.good > i{background:#10b981;}
         .af7-meter.warn > i{background:#f59e0b;}
         .af7-meter.bad > i{background:#ef4444;}
+        .af122-decision{border:1px solid #bfdbfe;background:linear-gradient(135deg,#ffffff,#eff6ff);border-radius:22px;padding:18px;margin:14px 0;box-shadow:0 14px 36px rgba(37,99,235,.07)}
+        .af122-decision-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.af122-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:6px}.af122-title{font-size:20px;font-weight:950;color:#0f172a;letter-spacing:-.025em}.af122-copy{font-size:11px;font-weight:700;color:#52647a;line-height:1.55;margin-top:5px}
+        .af122-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.af122-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.af122-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.af122-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+        .af122-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}.af122-metric{border:1px solid #dbe3ef;background:#fff;border-radius:14px;padding:11px}.af122-metric span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:5px}.af122-metric strong{font-size:12px;font-weight:900;color:#0f172a;line-height:1.35}
+        .af122-lists{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.af122-list{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:13px}.af122-list.good{border-color:#bbf7d0;background:#f0fdf4}.af122-list.warn{border-color:#fde68a;background:#fffbeb}.af122-list.bad{border-color:#fecaca;background:#fef2f2}.af122-list h4{font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#0f172a;margin:0 0 8px}.af122-list div{font-size:10px;font-weight:700;color:#475569;line-height:1.5;margin:5px 0;padding-left:12px;position:relative}.af122-list div:before{content:"•";position:absolute;left:0;color:#2563eb}
+        @media(max-width:900px){.af122-grid,.af122-lists{grid-template-columns:1fr}.af122-decision-top{display:block}.af122-badge{display:inline-block;margin-top:10px}}
         .af7-explain-note{
             color:#64748b;
             font-size:11px;
@@ -7899,6 +7906,18 @@ if app_mode == "Alternative Finder":
         lifecycle_class = "good" if lifecycle_value.lower() == "active" else "warn"
         risk_class_62b = "good" if risk_value.lower() == "low" else "warn"
 
+        alternative_reasoning = build_alternative_reasoning(
+            original_part=original_part,
+            original_data=original_data,
+            candidate=selected_row.to_dict(),
+            recommendation_score=recommendation_score,
+            compatibility_confidence=drop_in_confidence,
+            engineering_matches=recommendation_points,
+            warnings=warning_points,
+            stock_delta=stock_delta,
+            price_delta=price_delta,
+        )
+
         with st.container(border=True, key="af62b_best_card"):
             st.markdown(
                 f"""
@@ -8095,6 +8114,78 @@ if app_mode == "Alternative Finder":
               <div class="af7-explain-note">
                 These factor bars explain the evidence supporting Cadivor's recommendation.
                 The official recommendation score remains the output of the ranking engine.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        def _af122_items(items, empty_text):
+            values = list(items or [])
+            if not values:
+                return f"<div>{html.escape(empty_text)}</div>"
+            return "".join(
+                f"<div>{html.escape(str(item))}</div>"
+                for item in values[:6]
+            )
+
+        st.markdown(
+            f"""
+            <section class="af122-decision">
+              <div class="af122-decision-top">
+                <div>
+                  <div class="af122-eyebrow">Cadivor replacement decision</div>
+                  <div class="af122-title">{html.escape(alternative_reasoning['disposition'])}</div>
+                  <div class="af122-copy">{html.escape(alternative_reasoning['approval_guidance'])}</div>
+                </div>
+                <div class="af122-badge {html.escape(alternative_reasoning['disposition_tone'])}">
+                  {alternative_reasoning['decision_confidence']}% decision confidence
+                </div>
+              </div>
+
+              <div class="af122-grid">
+                <div class="af122-metric">
+                  <span>Recommended Use</span>
+                  <strong>{html.escape(alternative_reasoning['use_case'])}</strong>
+                </div>
+                <div class="af122-metric">
+                  <span>Estimated Engineering Effort</span>
+                  <strong>{alternative_reasoning['estimated_effort_hours']} hours</strong>
+                </div>
+                <div class="af122-metric">
+                  <span>Open Verification Items</span>
+                  <strong>{alternative_reasoning['verification_count'] + alternative_reasoning['hard_blocker_count']}</strong>
+                </div>
+              </div>
+            </section>
+
+            <div class="af122-lists">
+              <div class="af122-list good">
+                <h4>Confirmed Evidence</h4>
+                {_af122_items(alternative_reasoning['confirmed_matches'], 'No compatibility evidence has been confirmed.')}
+              </div>
+              <div class="af122-list warn">
+                <h4>Verification Required</h4>
+                {_af122_items(alternative_reasoning['verification_required'], 'No additional verification items were identified.')}
+              </div>
+              <div class="af122-list bad">
+                <h4>Approval Blockers</h4>
+                {_af122_items(alternative_reasoning['blockers'], 'No hard approval blockers were identified.')}
+              </div>
+            </div>
+
+            <div class="af122-lists">
+              <div class="af122-list good">
+                <h4>Business Value</h4>
+                {_af122_items(alternative_reasoning['business_value'], 'No confirmed commercial benefit was calculated.')}
+              </div>
+              <div class="af122-list warn">
+                <h4>Expected Engineering Work</h4>
+                {_af122_items(alternative_reasoning['expected_work'], 'No additional engineering work was calculated.')}
+              </div>
+              <div class="af122-list">
+                <h4>Decision Rule</h4>
+                <div>Qualification approval requires compatibility evidence, no unresolved hard blockers, and a completed engineering review record.</div>
               </div>
             </div>
             """,
@@ -8373,6 +8464,11 @@ if app_mode == "Alternative Finder":
             "recommendation_rating": recommendation_label,
             "compatibility_confidence": drop_in_confidence,
             "compatibility_rating": confidence_label,
+            "copilot_disposition": alternative_reasoning.get("disposition"),
+            "copilot_decision_confidence": alternative_reasoning.get("decision_confidence"),
+            "copilot_approval_blockers": alternative_reasoning.get("blockers"),
+            "copilot_verification_required": alternative_reasoning.get("verification_required"),
+            "copilot_estimated_effort_hours": alternative_reasoning.get("estimated_effort_hours"),
             "lifecycle": lifecycle_value,
             "risk": risk_value,
             "supplier": supplier_value,
