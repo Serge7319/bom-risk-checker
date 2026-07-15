@@ -426,13 +426,17 @@ def render_analysis_detail(
 
         action_cols = st.columns(3)
         with action_cols[0]:
-            internal_nav_button(
+            if st.button(
                 "Back to Engineering Copilot",
-                "Analysis Details",
                 key=f"focus_back_{analysis_id}_{focused_component_mpn}",
                 use_container_width=True,
-                analysis_id=analysis_id,
-            )
+                type="secondary",
+            ):
+                navigate_to(
+                    "Analysis Details",
+                    analysis_id=analysis_id,
+                    focus_mpn=None,
+                )
         with action_cols[1]:
             internal_nav_button(
                 "Find Alternatives",
@@ -477,206 +481,212 @@ def render_analysis_detail(
     ])
 
     with advisor_tab:
-        _section_header(
-            "Engineering Copilot",
-            "Production-readiness guidance with engineering, procurement, and supply-chain reasoning.",
-        )
+        if focused_component:
+            st.info(
+                "Focused component review is active. Use **Back to Engineering Copilot** "
+                "above to return to the full recommendation list."
+            )
+        else:
+            _section_header(
+                "Engineering Copilot",
+                "Production-readiness guidance with engineering, procurement, and supply-chain reasoning.",
+            )
 
-        readiness = _safe(
-            advisor.get("production_readiness"),
-            "Prototype Ready — Production Review Needed",
-        )
-        readiness_tone = _safe(advisor.get("readiness_tone"), "warn")
-        st.markdown(
-            f"""
-            <section class="cv-copilot-readiness">
-              <div class="cv-copilot-readiness-top">
-                <div>
-                  <div class="cv-advisor-kicker">Cadivor Engineering Copilot Assessment</div>
-                  <h2>{html.escape(readiness)}</h2>
-                  <p>{html.escape(_safe(advisor.get('readiness_reason'), 'Focused review is recommended.'))}</p>
-                </div>
-                <span class="cv-analysis-pill {html.escape(readiness_tone)}">
-                  {_num(advisor.get('confidence'), 0)}% confidence
-                </span>
-              </div>
-            </section>
-
-            <div class="cv-advisor-score-grid">
-              <div class="cv-advisor-score">
-                <span>Production Readiness</span>
-                <strong>{html.escape(readiness)}</strong>
-                <small>Current release posture</small>
-              </div>
-              <div class="cv-advisor-score">
-                <span>Engineering Exposure</span>
-                <strong>{_num(advisor.get('engineering_exposure_score'), 0)}/100</strong>
-                <small>Lifecycle and design exposure</small>
-              </div>
-              <div class="cv-advisor-score">
-                <span>Supply Chain Exposure</span>
-                <strong>{_num(advisor.get('supply_exposure_score'), 0)}/100</strong>
-                <small>Availability, sourcing, and lead-time exposure</small>
-              </div>
-              <div class="cv-advisor-score">
-                <span>Estimated Resolution Effort</span>
-                <strong>{_num(advisor.get('estimated_total_effort'), 0)} hrs</strong>
-                <small>Across the recommended actions</small>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-            <div class="cv-copilot-exec">
-              <span>Executive Recommendation</span>
-              <p>{html.escape(_safe(advisor.get('executive_recommendation'), 'No executive recommendation available.'))}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("#### Engineering Copilot Recommendations")
-
-        for index, action in enumerate(advisor.get("priority_actions") or [], start=1):
-            urgency = _safe(action.get("business_priority"), "Moderate")
-            urgency_class = "bad" if urgency.lower() in {"critical", "high"} else "warn"
-            impacts = action.get("impacts") or {}
-            improvement = action.get("improvement") or {}
-
-            def _meter(value):
-                level = max(1, min(5, _num(value, 1)))
-                return "■" * level + "□" * (5 - level)
-
+            readiness = _safe(
+                advisor.get("production_readiness"),
+                "Prototype Ready — Production Review Needed",
+            )
+            readiness_tone = _safe(advisor.get("readiness_tone"), "warn")
             st.markdown(
                 f"""
-                <section class="cv-copilot-action">
-                  <div class="cv-copilot-action-head">
-                    <div class="cv-advisor-rank">{index}</div>
+                <section class="cv-copilot-readiness">
+                  <div class="cv-copilot-readiness-top">
                     <div>
-                      <div class="cv-copilot-action-sub">{html.escape(_safe(action.get('category'), 'Recommendation'))}</div>
-                      <h3>{html.escape(_safe(action.get('title'), 'Review component risk'))}</h3>
+                      <div class="cv-advisor-kicker">Cadivor Engineering Copilot Assessment</div>
+                      <h2>{html.escape(readiness)}</h2>
+                      <p>{html.escape(_safe(advisor.get('readiness_reason'), 'Focused review is recommended.'))}</p>
                     </div>
-                    <span class="cv-analysis-pill {urgency_class}">
-                      {html.escape(urgency)}
+                    <span class="cv-analysis-pill {html.escape(readiness_tone)}">
+                      {_num(advisor.get('confidence'), 0)}% confidence
                     </span>
                   </div>
-
-                  <div class="cv-copilot-two">
-                    <div class="cv-copilot-panel">
-                      <span>Recommended Action</span>
-                      <p>{html.escape(_safe(action.get('recommendation'), 'Review this component.'))}</p>
-                    </div>
-                    <div class="cv-copilot-panel">
-                      <span>Why Cadivor Recommended This</span>
-                      <p>{html.escape(_safe(action.get('why'), 'A risk signal was detected.'))}</p>
-                    </div>
-                    <div class="cv-copilot-panel">
-                      <span>If Ignored</span>
-                      <p>{html.escape(_safe(action.get('if_ignored'), 'The risk may increase closer to release.'))}</p>
-                    </div>
-                    <div class="cv-copilot-panel">
-                      <span>Recommended Team</span>
-                      <p><b>{html.escape(_safe(action.get('owner'), 'Engineering'))}</b><br>
-                      Support: {html.escape(_safe(action.get('support_owner'), 'Procurement'))}<br>
-                      Target: {html.escape(_safe(action.get('schedule'), 'Before release'))}</p>
-                    </div>
-                  </div>
-
-                  <div class="cv-impact-grid">
-                    <div class="cv-impact-box"><span>Engineering</span><div class="cv-impact-meter">{_meter(impacts.get('engineering'))}</div></div>
-                    <div class="cv-impact-box"><span>Procurement</span><div class="cv-impact-meter">{_meter(impacts.get('procurement'))}</div></div>
-                    <div class="cv-impact-box"><span>Production</span><div class="cv-impact-meter">{_meter(impacts.get('production'))}</div></div>
-                    <div class="cv-impact-box"><span>Schedule</span><div class="cv-impact-meter">{_meter(impacts.get('schedule'))}</div></div>
-                    <div class="cv-impact-box"><span>Cost</span><div class="cv-impact-meter">{_meter(impacts.get('cost'))}</div></div>
-                  </div>
-
-                  <div class="cv-advisor-tags">
-                    <span class="cv-advisor-tag">Effort: {html.escape(_safe(action.get('effort'), '1 hour'))}</span>
-                    <span class="cv-advisor-tag">Confidence: {_num(action.get('confidence'), 0)}%</span>
-                    <span class="cv-advisor-tag">Signals used: {_num(action.get('signal_count'), 0)}</span>
-                    <span class="cv-advisor-tag">Priority score: {_num(action.get('score'), 0)}/100</span>
-                  </div>
-
-                  <div class="cv-improvement">
-                    <div><span>BOM Health</span><strong>{_num(improvement.get('health_before'), health)} → {_num(improvement.get('health_after'), health)}</strong></div>
-                    <div><span>Health Gain</span><strong>+{_num(improvement.get('health_gain'), 0)}</strong></div>
-                    <div><span>Supply Risk Reduction</span><strong>-{_num(improvement.get('supply_risk_reduction'), 0)}</strong></div>
-                    <div><span>Issues Resolved</span><strong>{_num(improvement.get('lifecycle_issues_removed'), 0) + _num(improvement.get('sourcing_issues_removed'), 0)}</strong></div>
-                  </div>
                 </section>
+
+                <div class="cv-advisor-score-grid">
+                  <div class="cv-advisor-score">
+                    <span>Production Readiness</span>
+                    <strong>{html.escape(readiness)}</strong>
+                    <small>Current release posture</small>
+                  </div>
+                  <div class="cv-advisor-score">
+                    <span>Engineering Exposure</span>
+                    <strong>{_num(advisor.get('engineering_exposure_score'), 0)}/100</strong>
+                    <small>Lifecycle and design exposure</small>
+                  </div>
+                  <div class="cv-advisor-score">
+                    <span>Supply Chain Exposure</span>
+                    <strong>{_num(advisor.get('supply_exposure_score'), 0)}/100</strong>
+                    <small>Availability, sourcing, and lead-time exposure</small>
+                  </div>
+                  <div class="cv-advisor-score">
+                    <span>Estimated Resolution Effort</span>
+                    <strong>{_num(advisor.get('estimated_total_effort'), 0)} hrs</strong>
+                    <small>Across the recommended actions</small>
+                  </div>
+                </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-            with st.expander(
-                f"Evidence used for recommendation {index}",
-                expanded=False,
-            ):
-                signals = action.get("signals") or []
-                if not signals:
-                    st.caption("No detailed signal record is available.")
-                else:
-                    for signal in signals:
-                        status = "Available" if signal.get("available") else "Missing"
-                        st.markdown(
-                            f"**{_safe(signal.get('name'), 'Signal')} — {status}**  \n"
-                            f"{_safe(signal.get('detail'), 'No detail available.')}"
-                        )
+            st.markdown(
+                f"""
+                <div class="cv-copilot-exec">
+                  <span>Executive Recommendation</span>
+                  <p>{html.escape(_safe(advisor.get('executive_recommendation'), 'No executive recommendation available.'))}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-            button_cols = st.columns(3)
-            route = _safe(action.get("action_route"), "component")
-            mpn = _safe(action.get("part_number"), "")
-            with button_cols[0]:
-                internal_nav_button(
-                    "Review Component",
-                    "Analysis Details",
-                    key=f"copilot_review_{analysis_id}_{index}",
-                    use_container_width=True,
-                    analysis_id=analysis_id,
-                    focus_mpn=mpn,
-                )
-            with button_cols[1]:
-                internal_nav_button(
-                    "Find Alternative",
-                    "Alternative Finder",
-                    key=f"copilot_alternative_{analysis_id}_{index}",
-                    use_container_width=True,
-                    analysis_id=analysis_id,
-                    original_part=mpn,
-                    return_analysis_id=analysis_id,
-                )
-            with button_cols[2]:
-                internal_nav_button(
-                    "Open Monitoring",
-                    "Monitoring",
-                    key=f"copilot_monitor_{analysis_id}_{index}",
-                    use_container_width=True,
-                    analysis_id=analysis_id,
-                    mpn=mpn,
-                    return_analysis_id=analysis_id,
+            st.markdown("#### Engineering Copilot Recommendations")
+
+            for index, action in enumerate(advisor.get("priority_actions") or [], start=1):
+                urgency = _safe(action.get("business_priority"), "Moderate")
+                urgency_class = "bad" if urgency.lower() in {"critical", "high"} else "warn"
+                impacts = action.get("impacts") or {}
+                improvement = action.get("improvement") or {}
+
+                def _meter(value):
+                    level = max(1, min(5, _num(value, 1)))
+                    return "■" * level + "□" * (5 - level)
+
+                st.markdown(
+                    f"""
+                    <section class="cv-copilot-action">
+                      <div class="cv-copilot-action-head">
+                        <div class="cv-advisor-rank">{index}</div>
+                        <div>
+                          <div class="cv-copilot-action-sub">{html.escape(_safe(action.get('category'), 'Recommendation'))}</div>
+                          <h3>{html.escape(_safe(action.get('title'), 'Review component risk'))}</h3>
+                        </div>
+                        <span class="cv-analysis-pill {urgency_class}">
+                          {html.escape(urgency)}
+                        </span>
+                      </div>
+
+                      <div class="cv-copilot-two">
+                        <div class="cv-copilot-panel">
+                          <span>Recommended Action</span>
+                          <p>{html.escape(_safe(action.get('recommendation'), 'Review this component.'))}</p>
+                        </div>
+                        <div class="cv-copilot-panel">
+                          <span>Why Cadivor Recommended This</span>
+                          <p>{html.escape(_safe(action.get('why'), 'A risk signal was detected.'))}</p>
+                        </div>
+                        <div class="cv-copilot-panel">
+                          <span>If Ignored</span>
+                          <p>{html.escape(_safe(action.get('if_ignored'), 'The risk may increase closer to release.'))}</p>
+                        </div>
+                        <div class="cv-copilot-panel">
+                          <span>Recommended Team</span>
+                          <p><b>{html.escape(_safe(action.get('owner'), 'Engineering'))}</b><br>
+                          Support: {html.escape(_safe(action.get('support_owner'), 'Procurement'))}<br>
+                          Target: {html.escape(_safe(action.get('schedule'), 'Before release'))}</p>
+                        </div>
+                      </div>
+
+                      <div class="cv-impact-grid">
+                        <div class="cv-impact-box"><span>Engineering</span><div class="cv-impact-meter">{_meter(impacts.get('engineering'))}</div></div>
+                        <div class="cv-impact-box"><span>Procurement</span><div class="cv-impact-meter">{_meter(impacts.get('procurement'))}</div></div>
+                        <div class="cv-impact-box"><span>Production</span><div class="cv-impact-meter">{_meter(impacts.get('production'))}</div></div>
+                        <div class="cv-impact-box"><span>Schedule</span><div class="cv-impact-meter">{_meter(impacts.get('schedule'))}</div></div>
+                        <div class="cv-impact-box"><span>Cost</span><div class="cv-impact-meter">{_meter(impacts.get('cost'))}</div></div>
+                      </div>
+
+                      <div class="cv-advisor-tags">
+                        <span class="cv-advisor-tag">Effort: {html.escape(_safe(action.get('effort'), '1 hour'))}</span>
+                        <span class="cv-advisor-tag">Confidence: {_num(action.get('confidence'), 0)}%</span>
+                        <span class="cv-advisor-tag">Signals used: {_num(action.get('signal_count'), 0)}</span>
+                        <span class="cv-advisor-tag">Priority score: {_num(action.get('score'), 0)}/100</span>
+                      </div>
+
+                      <div class="cv-improvement">
+                        <div><span>BOM Health</span><strong>{_num(improvement.get('health_before'), health)} → {_num(improvement.get('health_after'), health)}</strong></div>
+                        <div><span>Health Gain</span><strong>+{_num(improvement.get('health_gain'), 0)}</strong></div>
+                        <div><span>Supply Risk Reduction</span><strong>-{_num(improvement.get('supply_risk_reduction'), 0)}</strong></div>
+                        <div><span>Issues Resolved</span><strong>{_num(improvement.get('lifecycle_issues_removed'), 0) + _num(improvement.get('sourcing_issues_removed'), 0)}</strong></div>
+                      </div>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
                 )
 
-        st.markdown("#### Cross-Functional Brief")
-        brief_cols = st.columns(3)
-        with brief_cols[0]:
-            st.info(_safe(advisor.get("engineering_summary"), "No engineering summary available."))
-        with brief_cols[1]:
-            st.info(_safe(advisor.get("procurement_summary"), "No procurement summary available."))
-        with brief_cols[2]:
-            st.info(_safe(advisor.get("supply_chain_summary"), "No supply-chain summary available."))
+                with st.expander(
+                    f"Evidence used for recommendation {index}",
+                    expanded=False,
+                ):
+                    signals = action.get("signals") or []
+                    if not signals:
+                        st.caption("No detailed signal record is available.")
+                    else:
+                        for signal in signals:
+                            status = "Available" if signal.get("available") else "Missing"
+                            st.markdown(
+                                f"**{_safe(signal.get('name'), 'Signal')} — {status}**  \n"
+                                f"{_safe(signal.get('detail'), 'No detail available.')}"
+                            )
 
-        metrics = advisor.get("metrics") or {}
-        st.markdown("#### Decision Signals")
-        signal_cols = st.columns(6)
-        signal_cols[0].metric("Lifecycle Concerns", _num(metrics.get("lifecycle_concerns"), 0))
-        signal_cols[1].metric("No-Stock Parts", _num(metrics.get("no_stock"), 0))
-        signal_cols[2].metric("Limited Sources", _num(metrics.get("limited_sources"), 0))
-        signal_cols[3].metric("Long-Lead Parts", _num(metrics.get("long_lead"), 0))
-        signal_cols[4].metric("Active Alerts", _num(metrics.get("active_alerts"), 0))
-        signal_cols[5].metric("Saved Alternatives", _num(metrics.get("saved_alternatives"), 0))
+                button_cols = st.columns(3)
+                route = _safe(action.get("action_route"), "component")
+                mpn = _safe(action.get("part_number"), "")
+                with button_cols[0]:
+                    internal_nav_button(
+                        "Review Component",
+                        "Analysis Details",
+                        key=f"copilot_review_{analysis_id}_{index}",
+                        use_container_width=True,
+                        analysis_id=analysis_id,
+                        focus_mpn=mpn,
+                    )
+                with button_cols[1]:
+                    internal_nav_button(
+                        "Find Alternative",
+                        "Alternative Finder",
+                        key=f"copilot_alternative_{analysis_id}_{index}",
+                        use_container_width=True,
+                        analysis_id=analysis_id,
+                        original_part=mpn,
+                        return_analysis_id=analysis_id,
+                    )
+                with button_cols[2]:
+                    internal_nav_button(
+                        "Open Monitoring",
+                        "Monitoring",
+                        key=f"copilot_monitor_{analysis_id}_{index}",
+                        use_container_width=True,
+                        analysis_id=analysis_id,
+                        mpn=mpn,
+                        return_analysis_id=analysis_id,
+                    )
+
+            st.markdown("#### Cross-Functional Brief")
+            brief_cols = st.columns(3)
+            with brief_cols[0]:
+                st.info(_safe(advisor.get("engineering_summary"), "No engineering summary available."))
+            with brief_cols[1]:
+                st.info(_safe(advisor.get("procurement_summary"), "No procurement summary available."))
+            with brief_cols[2]:
+                st.info(_safe(advisor.get("supply_chain_summary"), "No supply-chain summary available."))
+
+            metrics = advisor.get("metrics") or {}
+            st.markdown("#### Decision Signals")
+            signal_cols = st.columns(6)
+            signal_cols[0].metric("Lifecycle Concerns", _num(metrics.get("lifecycle_concerns"), 0))
+            signal_cols[1].metric("No-Stock Parts", _num(metrics.get("no_stock"), 0))
+            signal_cols[2].metric("Limited Sources", _num(metrics.get("limited_sources"), 0))
+            signal_cols[3].metric("Long-Lead Parts", _num(metrics.get("long_lead"), 0))
+            signal_cols[4].metric("Active Alerts", _num(metrics.get("active_alerts"), 0))
+            signal_cols[5].metric("Saved Alternatives", _num(metrics.get("saved_alternatives"), 0))
 
     with overview_tab:
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
