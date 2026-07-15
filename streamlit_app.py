@@ -15,6 +15,8 @@ from src.ai_report_intelligence import (
 from src.role_report_generator import build_role_report_pdf
 from src.alternative_reasoning import build_alternative_reasoning
 from src.monitoring_intelligence import build_monitoring_action_center
+from src.decision_engine import build_decision_center, STATUSES
+from src.decision_dashboard import decision_card_html, packet_header_html
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2051,6 +2053,7 @@ NAV_OPTIONS = [
     "BOM Analyzer",
     "Alternative Finder",
     "Monitoring",
+    "Engineering Decisions",
     "Reports",
     "Pricing",
     "Settings",
@@ -2287,7 +2290,7 @@ apply_milestone10a_design_system()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
+    "Engineering Decisions":"◆", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
     "Help":"?", "About":"?"
 }
 _nav_html = []
@@ -2775,6 +2778,21 @@ if app_mode == "Analysis Details":
 st.markdown(
     """
     <style>
+      .cv130-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:21px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
+      .cv130-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv130-title{font-size:27px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-bottom:7px}.cv130-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.6;max-width:920px}
+      .cv130-decision-card,.cv130-packet{border:1px solid #dbe3ef;background:#fff;border-radius:20px;padding:16px;margin-bottom:11px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.cv130-decision-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cv130-decision-title{font-size:16px;font-weight:950;color:#0f172a;letter-spacing:-.02em}.cv130-packet-title{font-size:23px;font-weight:950;color:#0f172a;letter-spacing:-.035em}.cv130-reason{font-size:10px;font-weight:720;color:#52647a;line-height:1.5;margin-top:5px}
+      .cv130-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.cv130-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv130-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv130-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+      .cv130-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}.cv130-meta span{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#1d4ed8}
+      .cv130-impact{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:12px 0}.cv130-impact div{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px}.cv130-impact span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:5px}.cv130-impact strong{font-size:13px;font-weight:950;color:#0f172a}
+      @media(max-width:900px){.cv130-decision-head{display:block}.cv130-impact{grid-template-columns:1fr 1fr}.cv130-badge{display:inline-block;margin-top:10px}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <style>
       .cv123-monitor-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
       .cv123-monitor-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv123-monitor-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv123-monitor-title{font-size:25px;font-weight:950;color:#0f172a;letter-spacing:-.035em;margin-bottom:6px}.cv123-monitor-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.55;max-width:900px}
       .cv123-monitor-badge{border:1px solid #bfdbfe;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;background:#eff6ff;color:#1d4ed8}.cv123-monitor-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv123-monitor-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv123-monitor-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
@@ -2936,7 +2954,7 @@ if app_mode == "Monitoring":
                     unsafe_allow_html=True,
                 )
 
-                action_cols = st.columns(3)
+                action_cols = st.columns(4)
                 with action_cols[0]:
                     if st.button(
                         "Find Alternative",
@@ -2959,6 +2977,16 @@ if app_mode == "Monitoring":
                         use_container_width=True,
                     )
                 with action_cols[2]:
+                    if st.button(
+                        "Review Decision",
+                        key=f"monitor_decision_{index}_{row['Part Number']}",
+                        use_container_width=True,
+                    ):
+                        navigate_to(
+                            "Engineering Decisions",
+                            focus_part=str(row["Part Number"]),
+                        )
+                with action_cols[3]:
                     st.caption(f"Detected: {row['Detected At']}")
 
     with alert_table_tab:
@@ -3022,6 +3050,471 @@ if app_mode == "Monitoring":
                 hide_index=True,
                 use_container_width=True,
             )
+
+
+# ---------- Engineering Decision Center ----------
+if app_mode == "Engineering Decisions":
+    try:
+        decision_alert_response = (
+            _workspace_query(
+                supabase.table("monitor_alerts").select("*")
+            )
+            .eq("user_id", current_user["id"])
+            .order("created_at", desc=True)
+            .limit(150)
+            .execute()
+        )
+        decision_alert_df = pd.DataFrame(decision_alert_response.data or [])
+    except Exception:
+        decision_alert_df = pd.DataFrame()
+
+    try:
+        decision_analyses = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        decision_analyses = []
+
+    if "engineering_decision_state" not in st.session_state:
+        st.session_state["engineering_decision_state"] = {}
+
+    decision_center = build_decision_center(
+        alert_df=decision_alert_df,
+        analyses=decision_analyses,
+        saved_state=st.session_state["engineering_decision_state"],
+    )
+    all_decisions = decision_center["decisions"]
+
+    focus_decision_id = _qp_value("decision_id")
+    focus_part = _qp_value("focus_part")
+    selected_decision = None
+
+    if focus_decision_id:
+        selected_decision = next(
+            (
+                decision
+                for decision in all_decisions
+                if decision["decision_id"] == focus_decision_id
+            ),
+            None,
+        )
+    elif focus_part:
+        selected_decision = next(
+            (
+                decision
+                for decision in all_decisions
+                if str(decision["part_number"]).upper() == str(focus_part).upper()
+            ),
+            None,
+        )
+
+    st.markdown(
+        """
+        <section class="cv130-hero">
+          <div class="cv130-eyebrow">Cadivor Engineering Decision Center</div>
+          <div class="cv130-title">Turn component intelligence into approved engineering action.</div>
+          <div class="cv130-copy">
+            Review prioritized decisions, assign ownership, simulate expected impact,
+            document engineering notes, and move work from open review to production readiness.
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if selected_decision:
+        if st.button(
+            "← Back to Decision Queue",
+            key="decision_packet_back",
+            type="secondary",
+        ):
+            navigate_to("Engineering Decisions")
+
+        st.markdown(
+            packet_header_html(selected_decision),
+            unsafe_allow_html=True,
+        )
+
+        summary_tab, evidence_tab, notes_tab, history_tab = st.tabs(
+            ["Decision Summary", "Evidence", "Engineering Notes", "Decision History"]
+        )
+
+        decision_id = selected_decision["decision_id"]
+        state_record = st.session_state["engineering_decision_state"].setdefault(
+            decision_id,
+            {
+                "status": selected_decision["status"],
+                "owner": selected_decision["assigned_owner"],
+                "notes": selected_decision.get("notes", []),
+                "history": [
+                    {
+                        "event": "Decision created",
+                        "time": selected_decision["detected_at"],
+                    }
+                ],
+            },
+        )
+
+        with summary_tab:
+            overview_cols = st.columns(4)
+            overview_cols[0].metric("Component / BOM", selected_decision["part_number"])
+            overview_cols[1].metric("Priority", f"{selected_decision['priority_score']}/100")
+            overview_cols[2].metric("Confidence", f"{selected_decision['confidence']}%")
+            overview_cols[3].metric("Estimated Effort", f"{selected_decision['estimated_effort_hours']} hrs")
+
+            st.markdown("### Cadivor Recommendation")
+            st.info(selected_decision["recommended_action"])
+            st.caption(selected_decision["expected_impact"])
+
+            impact = selected_decision
+            st.markdown(
+                f"""
+                <div class="cv130-impact">
+                  <div><span>Current Health</span><strong>{impact['current_health']}/100</strong></div>
+                  <div><span>Projected Health</span><strong>{impact['projected_health']}/100</strong></div>
+                  <div><span>Health Improvement</span><strong>+{impact['health_gain']}</strong></div>
+                  <div><span>Supply Risk Reduction</span><strong>-{impact['supply_risk_reduction']}</strong></div>
+                  <div><span>Lifecycle Issues Removed</span><strong>{impact['lifecycle_exposure_reduction']}</strong></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            workflow_cols = st.columns(3)
+            with workflow_cols[0]:
+                status_index = (
+                    STATUSES.index(state_record.get("status", "Open"))
+                    if state_record.get("status", "Open") in STATUSES
+                    else 0
+                )
+                new_status = st.selectbox(
+                    "Decision status",
+                    STATUSES,
+                    index=status_index,
+                    key=f"decision_status_{decision_id}",
+                )
+            with workflow_cols[1]:
+                new_owner = st.text_input(
+                    "Assigned owner",
+                    value=state_record.get("owner", selected_decision["owner"]),
+                    key=f"decision_owner_{decision_id}",
+                )
+            with workflow_cols[2]:
+                st.text_input(
+                    "Target date",
+                    value=selected_decision["due_date"],
+                    key=f"decision_due_{decision_id}",
+                    disabled=True,
+                )
+
+            if st.button(
+                "Save Decision Workflow",
+                key=f"save_decision_{decision_id}",
+                type="primary",
+            ):
+                previous_status = state_record.get("status", "Open")
+                state_record["status"] = new_status
+                state_record["owner"] = new_owner.strip() or selected_decision["owner"]
+                state_record["updated_at"] = pd.Timestamp.utcnow().isoformat()
+                state_record.setdefault("history", []).append(
+                    {
+                        "event": f"Status changed from {previous_status} to {new_status}",
+                        "time": state_record["updated_at"],
+                    }
+                )
+                st.success("Decision workflow updated.")
+                st.rerun()
+
+            navigation_cols = st.columns(4)
+            with navigation_cols[0]:
+                internal_nav_button(
+                    "Find Alternative",
+                    "Alternative Finder",
+                    key=f"decision_find_alt_{decision_id}",
+                    use_container_width=True,
+                    original_part=selected_decision["part_number"],
+                )
+            with navigation_cols[1]:
+                internal_nav_button(
+                    "Open Monitoring",
+                    "Monitoring",
+                    key=f"decision_monitor_{decision_id}",
+                    use_container_width=True,
+                )
+            with navigation_cols[2]:
+                internal_nav_button(
+                    "Generate Report",
+                    "Reports",
+                    key=f"decision_report_{decision_id}",
+                    use_container_width=True,
+                )
+            with navigation_cols[3]:
+                if selected_decision.get("analysis_id"):
+                    internal_nav_button(
+                        "Open Saved BOM",
+                        "Analysis Details",
+                        key=f"decision_analysis_{decision_id}",
+                        use_container_width=True,
+                        analysis_id=selected_decision["analysis_id"],
+                    )
+                else:
+                    st.caption("No saved BOM is linked to this decision.")
+
+        with evidence_tab:
+            st.markdown("### Evidence used by Cadivor")
+            for evidence in selected_decision.get("evidence", []):
+                st.markdown(f"- {evidence}")
+            st.markdown("### Decision context")
+            context_df = pd.DataFrame(
+                [
+                    {
+                        "Field": "Source",
+                        "Value": selected_decision["source"],
+                    },
+                    {
+                        "Field": "Decision Type",
+                        "Value": selected_decision["decision_type"],
+                    },
+                    {
+                        "Field": "Supporting Team",
+                        "Value": selected_decision["supporting_team"],
+                    },
+                    {
+                        "Field": "Estimated Cost Impact",
+                        "Value": selected_decision["estimated_cost_impact"],
+                    },
+                ]
+            )
+            st.dataframe(context_df, hide_index=True, use_container_width=True)
+
+        with notes_tab:
+            note = st.text_area(
+                "Add an engineering note",
+                placeholder="Record validation findings, supplier feedback, approval conditions, or next steps.",
+                key=f"decision_note_{decision_id}",
+            )
+            if st.button(
+                "Add Note",
+                key=f"decision_add_note_{decision_id}",
+                type="primary",
+            ):
+                if not note.strip():
+                    st.warning("Enter a note before saving.")
+                else:
+                    timestamp = pd.Timestamp.utcnow().isoformat()
+                    state_record.setdefault("notes", []).append(
+                        {
+                            "author": profile_for_shell.get("full_name") or shell_name,
+                            "text": note.strip(),
+                            "time": timestamp,
+                        }
+                    )
+                    state_record.setdefault("history", []).append(
+                        {
+                            "event": "Engineering note added",
+                            "time": timestamp,
+                        }
+                    )
+                    st.success("Engineering note added.")
+                    st.rerun()
+
+            notes = state_record.get("notes", [])
+            if not notes:
+                st.info("No engineering notes have been added yet.")
+            else:
+                for item in reversed(notes):
+                    with st.container(border=True):
+                        st.markdown(f"**{item.get('author', 'Engineer')}**")
+                        st.caption(item.get("time", ""))
+                        st.write(item.get("text", ""))
+
+        with history_tab:
+            history = state_record.get("history", [])
+            if not history:
+                st.info("No decision history is available.")
+            else:
+                history_df = pd.DataFrame(history).rename(
+                    columns={"event": "Event", "time": "Time"}
+                )
+                st.dataframe(
+                    history_df.iloc[::-1],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+    else:
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("Open Decisions", decision_center["open_count"])
+        k2.metric("Critical", decision_center["critical_count"])
+        k3.metric("Awaiting Approval", decision_center["awaiting_approval_count"])
+        k4.metric("Production Ready", decision_center["production_ready_count"])
+        k5.metric("Estimated Work", f"{decision_center['estimated_hours']} hrs")
+
+        queue_tab, workload_tab, closed_tab = st.tabs(
+            ["Decision Queue", "Engineering Workload", "Closed Decisions"]
+        )
+
+        with queue_tab:
+            filter_cols = st.columns(3)
+            with filter_cols[0]:
+                priority_filter = st.selectbox(
+                    "Priority",
+                    ["All", "Critical", "High", "Medium", "Routine"],
+                    key="decision_priority_filter",
+                )
+            with filter_cols[1]:
+                status_filter = st.selectbox(
+                    "Status",
+                    ["All"] + STATUSES,
+                    key="decision_status_filter",
+                )
+            with filter_cols[2]:
+                search_decisions = st.text_input(
+                    "Search decisions",
+                    placeholder="Component, project, owner, or action",
+                    key="decision_search",
+                )
+
+            visible = all_decisions
+            if priority_filter != "All":
+                visible = [
+                    decision
+                    for decision in visible
+                    if decision["priority"] == priority_filter
+                ]
+            if status_filter != "All":
+                visible = [
+                    decision
+                    for decision in visible
+                    if decision["status"] == status_filter
+                ]
+            if search_decisions.strip():
+                query = search_decisions.strip().lower()
+                visible = [
+                    decision
+                    for decision in visible
+                    if query
+                    in " ".join(
+                        [
+                            str(decision["part_number"]),
+                            str(decision["title"]),
+                            str(decision["assigned_owner"]),
+                            str(decision["reason"]),
+                        ]
+                    ).lower()
+                ]
+
+            st.caption(f"Showing {len(visible)} of {len(all_decisions)} engineering decision(s).")
+
+            if not visible:
+                st.info("No engineering decisions match the selected filters.")
+            else:
+                for decision in visible[:40]:
+                    st.markdown(
+                        decision_card_html(decision),
+                        unsafe_allow_html=True,
+                    )
+                    card_cols = st.columns(4)
+                    with card_cols[0]:
+                        if st.button(
+                            "Review Decision",
+                            key=f"review_decision_{decision['decision_id']}",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            navigate_to(
+                                "Engineering Decisions",
+                                decision_id=decision["decision_id"],
+                            )
+                    with card_cols[1]:
+                        internal_nav_button(
+                            "Find Alternative",
+                            "Alternative Finder",
+                            key=f"queue_alt_{decision['decision_id']}",
+                            use_container_width=True,
+                            original_part=decision["part_number"],
+                        )
+                    with card_cols[2]:
+                        internal_nav_button(
+                            "Open Monitoring",
+                            "Monitoring",
+                            key=f"queue_monitor_{decision['decision_id']}",
+                            use_container_width=True,
+                        )
+                    with card_cols[3]:
+                        if decision.get("analysis_id"):
+                            internal_nav_button(
+                                "Open Saved BOM",
+                                "Analysis Details",
+                                key=f"queue_analysis_{decision['decision_id']}",
+                                use_container_width=True,
+                                analysis_id=decision["analysis_id"],
+                            )
+                        else:
+                            st.caption("Monitoring decision")
+
+        with workload_tab:
+            active = [
+                decision
+                for decision in all_decisions
+                if decision["status"] not in ("Closed", "Rejected")
+            ]
+            if not active:
+                st.success("No open engineering workload remains.")
+            else:
+                workload_rows = []
+                owners = sorted(set(decision["assigned_owner"] for decision in active))
+                for owner in owners:
+                    owner_decisions = [
+                        decision for decision in active if decision["assigned_owner"] == owner
+                    ]
+                    workload_rows.append(
+                        {
+                            "Owner": owner,
+                            "Open Decisions": len(owner_decisions),
+                            "Critical": sum(
+                                1 for decision in owner_decisions
+                                if decision["priority_score"] >= 85
+                            ),
+                            "Estimated Hours": sum(
+                                decision["estimated_effort_hours"]
+                                for decision in owner_decisions
+                            ),
+                            "Average Confidence": round(
+                                sum(decision["confidence"] for decision in owner_decisions)
+                                / len(owner_decisions)
+                            ),
+                        }
+                    )
+                st.dataframe(
+                    pd.DataFrame(workload_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        with closed_tab:
+            closed = [
+                decision
+                for decision in all_decisions
+                if decision["status"] in ("Closed", "Rejected")
+            ]
+            if not closed:
+                st.info("No decisions have been closed or rejected yet.")
+            else:
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Decision": decision["title"],
+                                "Component / BOM": decision["part_number"],
+                                "Owner": decision["assigned_owner"],
+                                "Status": decision["status"],
+                                "Updated": decision["updated_at"],
+                            }
+                            for decision in closed
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
 
 def _mark_first_report_complete() -> None:
