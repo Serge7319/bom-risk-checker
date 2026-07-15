@@ -4210,6 +4210,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Risk Review PDF",
                         data=risk_report_pdf,
+                        key=f"tab_risk_pdf_{selected_analysis_id}",
                         file_name=f"{safe_project}_engineering_risk_review.pdf",
                         mime="application/pdf",
                         use_container_width=True,
@@ -4218,6 +4219,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Risk Review CSV",
                         data=risk_report_csv,
+                        key=f"tab_risk_csv_{selected_analysis_id}",
                         file_name=f"{safe_project}_engineering_risk_review.csv",
                         mime="text/csv",
                         use_container_width=True,
@@ -4242,6 +4244,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Sourcing Review PDF",
                         data=sourcing_report_pdf,
+                        key=f"tab_sourcing_pdf_{selected_analysis_id}",
                         file_name=f"{safe_project}_procurement_sourcing_review.pdf",
                         mime="application/pdf",
                         use_container_width=True,
@@ -4250,6 +4253,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Sourcing Review CSV",
                         data=sourcing_report_csv,
+                        key=f"tab_sourcing_csv_{selected_analysis_id}",
                         file_name=f"{safe_project}_procurement_sourcing_review.csv",
                         mime="text/csv",
                         use_container_width=True,
@@ -4274,6 +4278,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Lifecycle Review PDF",
                         data=lifecycle_report_pdf,
+                        key=f"tab_lifecycle_pdf_{selected_analysis_id}",
                         file_name=f"{safe_project}_lifecycle_readiness_review.pdf",
                         mime="application/pdf",
                         use_container_width=True,
@@ -4282,6 +4287,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Lifecycle Review CSV",
                         data=lifecycle_report_csv,
+                        key=f"tab_lifecycle_csv_{selected_analysis_id}",
                         file_name=f"{safe_project}_lifecycle_readiness_review.csv",
                         mime="text/csv",
                         use_container_width=True,
@@ -4306,6 +4312,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Alternatives Review PDF",
                         data=alternatives_report_pdf,
+                        key=f"tab_alternatives_pdf_{selected_analysis_id}",
                         file_name=f"{safe_project}_alternative_readiness_review.pdf",
                         mime="application/pdf",
                         use_container_width=True,
@@ -4314,6 +4321,7 @@ if app_mode == "Reports":
                     st.download_button(
                         "Download Alternatives Review CSV",
                         data=alternatives_report_csv,
+                        key=f"tab_alternatives_csv_{selected_analysis_id}",
                         file_name=f"{safe_project}_alternative_readiness_review.csv",
                         mime="text/csv",
                         use_container_width=True,
@@ -4349,6 +4357,7 @@ if app_mode == "Reports":
             ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
             if st.download_button(
                 "Download AI Executive PDF",
+                key=f"shared_ai_executive_pdf_{selected_analysis_id}",
                 data=ai_executive_pdf,
                 file_name=ai_exec_name,
                 mime="application/pdf",
@@ -4362,6 +4371,7 @@ if app_mode == "Reports":
             ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
             if st.download_button(
                 "Download AI Procurement PDF",
+                key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
                 data=ai_procurement_pdf,
                 file_name=ai_proc_name,
                 mime="application/pdf",
@@ -4376,6 +4386,7 @@ if app_mode == "Reports":
             executive_pdf_name = f"{safe_project}_executive_summary.pdf"
             if st.download_button(
                 "Download Executive PDF",
+                key=f"shared_executive_pdf_{selected_analysis_id}",
                 data=pdf_bytes,
                 file_name=executive_pdf_name,
                 mime="application/pdf",
@@ -4390,6 +4401,7 @@ if app_mode == "Reports":
             executive_csv_name = f"{safe_project}_executive_summary.csv"
             if st.download_button(
                 "Download Executive CSV",
+                key=f"shared_executive_csv_{selected_analysis_id}",
                 data=executive_csv,
                 file_name=executive_csv_name,
                 mime="text/csv",
@@ -4405,6 +4417,7 @@ if app_mode == "Reports":
             risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
             if st.download_button(
                 "Download Risk Review CSV",
+                key=f"shared_risk_csv_{selected_analysis_id}",
                 data=engineering_df.to_csv(index=False).encode("utf-8"),
                 file_name=risk_csv_name,
                 mime="text/csv",
@@ -4419,6 +4432,7 @@ if app_mode == "Reports":
             lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
             if st.download_button(
                 "Download Lifecycle CSV",
+                key=f"shared_lifecycle_csv_{selected_analysis_id}",
                 data=lifecycle_df.to_csv(index=False).encode("utf-8"),
                 file_name=lifecycle_csv_name,
                 mime="text/csv",
@@ -4434,6 +4448,7 @@ if app_mode == "Reports":
             sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
             if st.download_button(
                 "Download Sourcing CSV",
+                key=f"shared_sourcing_csv_{selected_analysis_id}",
                 data=sourcing_df.to_csv(index=False).encode("utf-8"),
                 file_name=sourcing_csv_name,
                 mime="text/csv",
@@ -4448,6 +4463,7 @@ if app_mode == "Reports":
             alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
             if st.download_button(
                 "Download Alternatives CSV",
+                key=f"shared_alternatives_csv_{selected_analysis_id}",
                 data=alternative_df.to_csv(index=False).encode("utf-8"),
                 file_name=alternatives_csv_name,
                 mime="text/csv",
