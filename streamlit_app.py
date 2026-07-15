@@ -3361,7 +3361,7 @@ if app_mode == "Reports":
 
     st.markdown(
         '<div class="cv-r9-section">Professional report library</div>'
-        '<div class="cv-r9-sub">Choose the deliverable that matches the audience and engineering decision.</div>',
+        '<div class="cv-r9-sub">Portfolio context above shows the scale and overall risk behind the available report packages.</div>',
         unsafe_allow_html=True,
     )
 
@@ -3627,6 +3627,83 @@ if app_mode == "Reports":
             unsafe_allow_html=True,
         )
 
+        def _customer_report_table(
+            frame: pd.DataFrame,
+            preferred_columns: list[str] | None = None,
+        ) -> pd.DataFrame:
+            """Return a customer-facing report preview without database fields."""
+            if frame is None or frame.empty:
+                return pd.DataFrame()
+
+            cleaned = frame.copy()
+
+            hidden_columns = {
+                "id",
+                "user_id",
+                "analysis_id",
+                "workspace_id",
+                "organization_id",
+                "created_at",
+                "updated_at",
+                "raw_data",
+                "metadata",
+            }
+            cleaned = cleaned[
+                [
+                    column
+                    for column in cleaned.columns
+                    if str(column).strip().lower() not in hidden_columns
+                ]
+            ]
+
+            if preferred_columns:
+                existing = [
+                    column
+                    for column in preferred_columns
+                    if column in cleaned.columns
+                ]
+                if existing:
+                    cleaned = cleaned[existing]
+
+            human_labels = {
+                "project": "Project",
+                "project_name": "Project",
+                "source_file": "Source File",
+                "filename": "Source File",
+                "mpn": "Manufacturer Part Number",
+                "MPN": "Manufacturer Part Number",
+                "part_number": "Part Number",
+                "manufacturer": "Manufacturer",
+                "risk_score": "Risk Score",
+                "risk_level": "Risk Level",
+                "risk_reasons": "Risk Explanation",
+                "lifecycle_status": "Lifecycle Status",
+                "stock_available": "Available Stock",
+                "stock": "Available Stock",
+                "supplier_count": "Supplier Sources",
+                "unit_price": "Unit Price",
+                "lead_time": "Lead Time",
+                "lead_time_weeks": "Lead Time (Weeks)",
+                "has_alternates": "Alternatives Available",
+                "alternate_count": "Alternative Count",
+                "alternate_part_numbers": "Alternative Part Numbers",
+                "health_score": "Health Score",
+                "high_risk_parts": "High-Risk Components",
+                "medium_risk_parts": "Medium-Risk Components",
+                "message": "Status",
+            }
+
+            cleaned = cleaned.rename(
+                columns={
+                    column: human_labels.get(
+                        column,
+                        str(column).replace("_", " ").strip().title(),
+                    )
+                    for column in cleaned.columns
+                }
+            )
+            return cleaned
+
         lifecycle_columns = [
             column
             for column in [
@@ -3713,17 +3790,88 @@ if app_mode == "Reports":
                 [{"project": project_name, "message": "No saved component rows."}]
             )
         else:
-            engineering_df = selected_parts_df.copy()
+            engineering_df = _customer_report_table(
+                selected_parts_df,
+                [
+                    "mpn",
+                    "MPN",
+                    "part_number",
+                    "manufacturer",
+                    "risk_level",
+                    "risk_score",
+                    "risk_reasons",
+                    "lifecycle_status",
+                    "stock_available",
+                    "supplier_count",
+                    "lead_time_weeks",
+                ],
+            )
+
             existing_cols = [
                 column
                 for column in sourcing_candidates
                 if column in selected_parts_df.columns
             ]
-            sourcing_df = (
+            sourcing_df = _customer_report_table(
                 selected_parts_df[existing_cols].copy()
                 if existing_cols
-                else selected_parts_df.copy()
+                else selected_parts_df.copy(),
+                [
+                    "mpn",
+                    "MPN",
+                    "part_number",
+                    "manufacturer",
+                    "lifecycle_status",
+                    "stock_available",
+                    "stock",
+                    "supplier_count",
+                    "unit_price",
+                    "lead_time_weeks",
+                    "risk_level",
+                    "risk_score",
+                ],
             )
+
+            lifecycle_df = _customer_report_table(
+                lifecycle_df,
+                [
+                    "mpn",
+                    "MPN",
+                    "part_number",
+                    "manufacturer",
+                    "lifecycle_status",
+                    "risk_level",
+                    "risk_score",
+                    "stock_available",
+                    "supplier_count",
+                ],
+            )
+
+            alternative_df = _customer_report_table(
+                alternative_df,
+                [
+                    "mpn",
+                    "MPN",
+                    "part_number",
+                    "manufacturer",
+                    "risk_level",
+                    "risk_score",
+                    "lifecycle_status",
+                    "has_alternates",
+                    "alternate_count",
+                    "alternate_part_numbers",
+                    "stock_available",
+                ],
+            )
+
+        if not engineering_df.empty:
+            engineering_df = _customer_report_table(engineering_df)
+        if not sourcing_df.empty:
+            sourcing_df = _customer_report_table(sourcing_df)
+        if not lifecycle_df.empty:
+            lifecycle_df = _customer_report_table(lifecycle_df)
+        if not alternative_df.empty:
+            alternative_df = _customer_report_table(alternative_df)
 
         pdf_bytes = _build_executive_pdf(
             selected_analysis,
