@@ -12,6 +12,7 @@ from src.ai_report_intelligence import (
     build_ai_executive_pdf,
     build_ai_procurement_pdf,
 )
+from src.role_report_generator import build_role_report_pdf
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -3704,6 +3705,53 @@ if app_mode == "Reports":
             )
             return cleaned
 
+        def _first_existing(frame: pd.DataFrame, names: list[str], default=None):
+            for name in names:
+                if name in frame.columns:
+                    return frame[name]
+            return pd.Series([default] * len(frame), index=frame.index)
+
+        def _risk_action(row: pd.Series) -> str:
+            lifecycle = str(row.get("lifecycle_status", "")).lower()
+            stock = float(pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0)
+            suppliers = float(pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0)
+            score = float(pd.to_numeric(row.get("risk_score", 0), errors="coerce") or 0)
+            if any(term in lifecycle for term in ("obsolete", "eol", "replacement", "nrnd", "not recommended")):
+                return "Qualify a replacement before production"
+            if stock <= 0:
+                return "Resolve supply gap or approve substitute"
+            if suppliers <= 1:
+                return "Approve a second source"
+            if score >= 60:
+                return "Complete engineering review before release"
+            if score >= 30:
+                return "Review during current design revision"
+            return "Continue controlled monitoring"
+
+        def _procurement_status(row: pd.Series) -> str:
+            stock = float(pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0)
+            suppliers = float(pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0)
+            lead = float(pd.to_numeric(row.get("lead_time_weeks", 0), errors="coerce") or 0)
+            if stock <= 0:
+                return "Immediate sourcing action"
+            if suppliers <= 1:
+                return "Single-source exposure"
+            if lead >= 16:
+                return "Long lead time"
+            if stock < 500:
+                return "Low stock coverage"
+            return "Purchasing ready"
+
+        def _lifecycle_priority(status: str) -> str:
+            value = str(status or "").lower()
+            if any(term in value for term in ("obsolete", "eol", "end of life")):
+                return "Immediate replacement"
+            if any(term in value for term in ("replacement", "nrnd", "not recommended")):
+                return "Qualification required"
+            if value in ("active", "new at mouser", "new"):
+                return "Routine monitoring"
+            return "Status verification required"
+
         lifecycle_columns = [
             column
             for column in [
@@ -3764,113 +3812,262 @@ if app_mode == "Reports":
             "alternate_count",
         ]
         if selected_parts_df.empty:
-            engineering_df = pd.DataFrame(
-                [
-                    {
-                        "project": project_name,
-                        "health_score": health_score,
-                        "high_risk_parts": high_risk,
-                        "medium_risk_parts": medium_risk,
-                    }
-                ]
-            )
-            sourcing_df = pd.DataFrame(
-                [
-                    {
-                        "project": project_name,
-                        "source_file": source_file,
-                        "health_score": health_score,
-                    }
-                ]
-            )
-            lifecycle_df = pd.DataFrame(
-                [{"project": project_name, "message": "No saved component rows."}]
-            )
-            alternative_df = pd.DataFrame(
-                [{"project": project_name, "message": "No saved component rows."}]
-            )
+            engineering_df = pd.DataFrame()
+            sourcing_df = pd.DataFrame()
+            lifecycle_df = pd.DataFrame()
+            alternative_df = pd.DataFrame()
         else:
-            engineering_df = _customer_report_table(
-                selected_parts_df,
+            role_source = selected_parts_df.copy()
+
+            role_source["mpn"] = _first_existing(
+                role_source,
+                ["mpn", "MPN", "part_number"],
+                "Unknown",
+            )
+            role_source["manufacturer"] = _first_existing(
+                role_source,
+                ["manufacturer", "Manufacturer"],
+                "Unknown",
+            )
+            role_source["risk_level"] = _first_existing(
+                role_source,
+                ["risk_level", "Risk Level"],
+                "Unknown",
+            )
+            role_source["risk_score"] = pd.to_numeric(
+                _first_existing(role_source, ["risk_score", "Risk Score"], 0),
+                errors="coerce",
+            ).fillna(0)
+            role_source["risk_reasons"] = _first_existing(
+                role_source,
+                ["risk_reasons", "Risk Explanation"],
+                "No specific exception recorded",
+            )
+            role_source["lifecycle_status"] = _first_existing(
+                role_source,
+                ["lifecycle_status", "Lifecycle Status"],
+                "Unknown",
+            )
+            role_source["stock_available"] = pd.to_numeric(
+                _first_existing(
+                    role_source,
+                    ["stock_available", "Stock Available", "stock"],
+                    0,
+                ),
+                errors="coerce",
+            ).fillna(0)
+            role_source["supplier_count"] = pd.to_numeric(
+                _first_existing(
+                    role_source,
+                    ["supplier_count", "Supplier Count"],
+                    0,
+                ),
+                errors="coerce",
+            ).fillna(0)
+            role_source["primary_supplier"] = _first_existing(
+                role_source,
+                ["supplier", "primary_supplier", "best_source", "Supplier"],
+                "Not recorded",
+            )
+            role_source["unit_price"] = pd.to_numeric(
+                _first_existing(
+                    role_source,
+                    ["unit_price", "Unit Price"],
+                    0,
+                ),
+                errors="coerce",
+            ).fillna(0)
+            role_source["lead_time_weeks"] = pd.to_numeric(
+                _first_existing(
+                    role_source,
+                    ["lead_time_weeks", "Lead Time Weeks", "lead_time"],
+                    0,
+                ),
+                errors="coerce",
+            ).fillna(0)
+
+            role_source["Engineering Priority"] = role_source["risk_score"].apply(
+                lambda value: (
+                    "Immediate"
+                    if value >= 75
+                    else "High"
+                    if value >= 50
+                    else "Moderate"
+                    if value >= 25
+                    else "Routine"
+                )
+            )
+            role_source["Recommended Action"] = role_source.apply(
+                _risk_action,
+                axis=1,
+            )
+
+            engineering_df = role_source[
                 [
                     "mpn",
-                    "MPN",
-                    "part_number",
                     "manufacturer",
                     "risk_level",
                     "risk_score",
                     "risk_reasons",
-                    "lifecycle_status",
-                    "stock_available",
-                    "supplier_count",
-                    "lead_time_weeks",
-                ],
+                    "Engineering Priority",
+                    "Recommended Action",
+                ]
+            ].sort_values(
+                by="risk_score",
+                ascending=False,
+                kind="stable",
             )
+            engineering_df = _customer_report_table(engineering_df)
 
-            existing_cols = [
-                column
-                for column in sourcing_candidates
-                if column in selected_parts_df.columns
-            ]
-            sourcing_df = _customer_report_table(
-                selected_parts_df[existing_cols].copy()
-                if existing_cols
-                else selected_parts_df.copy(),
+            role_source["Procurement Status"] = role_source.apply(
+                _procurement_status,
+                axis=1,
+            )
+            sourcing_df = role_source[
                 [
                     "mpn",
-                    "MPN",
-                    "part_number",
                     "manufacturer",
-                    "lifecycle_status",
+                    "primary_supplier",
                     "stock_available",
-                    "stock",
-                    "supplier_count",
                     "unit_price",
                     "lead_time_weeks",
-                    "risk_level",
-                    "risk_score",
-                ],
-            )
-
-            lifecycle_df = _customer_report_table(
-                lifecycle_df,
-                [
-                    "mpn",
-                    "MPN",
-                    "part_number",
-                    "manufacturer",
-                    "lifecycle_status",
-                    "risk_level",
-                    "risk_score",
-                    "stock_available",
                     "supplier_count",
-                ],
+                    "Procurement Status",
+                ]
+            ].sort_values(
+                by=["stock_available", "supplier_count"],
+                ascending=[True, True],
+                kind="stable",
             )
+            sourcing_df = _customer_report_table(sourcing_df)
 
-            alternative_df = _customer_report_table(
-                alternative_df,
+            role_source["Future Availability"] = role_source[
+                "lifecycle_status"
+            ].apply(
+                lambda status: (
+                    "At risk"
+                    if any(
+                        term in str(status).lower()
+                        for term in (
+                            "obsolete",
+                            "eol",
+                            "end of life",
+                            "replacement",
+                            "nrnd",
+                            "not recommended",
+                        )
+                    )
+                    else "Expected to continue"
+                    if str(status).lower() == "active"
+                    else "Needs verification"
+                )
+            )
+            role_source["Replacement Readiness"] = role_source[
+                "lifecycle_status"
+            ].apply(
+                lambda status: (
+                    "Replacement required"
+                    if any(
+                        term in str(status).lower()
+                        for term in ("obsolete", "eol", "end of life")
+                    )
+                    else "Successor qualification advised"
+                    if any(
+                        term in str(status).lower()
+                        for term in ("replacement", "nrnd", "not recommended")
+                    )
+                    else "No immediate replacement"
+                )
+            )
+            role_source["Review Priority"] = role_source[
+                "lifecycle_status"
+            ].apply(_lifecycle_priority)
+
+            lifecycle_rank = {
+                "Immediate replacement": 0,
+                "Qualification required": 1,
+                "Status verification required": 2,
+                "Routine monitoring": 3,
+            }
+            role_source["_lifecycle_rank"] = role_source[
+                "Review Priority"
+            ].map(lifecycle_rank).fillna(4)
+
+            lifecycle_df = role_source[
                 [
                     "mpn",
-                    "MPN",
-                    "part_number",
                     "manufacturer",
-                    "risk_level",
-                    "risk_score",
                     "lifecycle_status",
-                    "has_alternates",
-                    "alternate_count",
+                    "Future Availability",
+                    "Replacement Readiness",
+                    "Review Priority",
+                ]
+            ].assign(_rank=role_source["_lifecycle_rank"]).sort_values(
+                by="_rank",
+                ascending=True,
+                kind="stable",
+            ).drop(columns=["_rank"])
+            lifecycle_df = _customer_report_table(lifecycle_df)
+
+            has_alternates = _first_existing(
+                role_source,
+                ["has_alternates", "alternatives_available"],
+                False,
+            )
+            alternate_count = pd.to_numeric(
+                _first_existing(
+                    role_source,
+                    ["alternate_count", "alternatives_count"],
+                    0,
+                ),
+                errors="coerce",
+            ).fillna(0)
+            alternate_parts = _first_existing(
+                role_source,
+                [
                     "alternate_part_numbers",
-                    "stock_available",
+                    "recommended_alternative",
+                    "alternative_part",
                 ],
+                "Not yet qualified",
             )
 
-        if not engineering_df.empty:
-            engineering_df = _customer_report_table(engineering_df)
-        if not sourcing_df.empty:
-            sourcing_df = _customer_report_table(sourcing_df)
-        if not lifecycle_df.empty:
-            lifecycle_df = _customer_report_table(lifecycle_df)
-        if not alternative_df.empty:
+            role_source["Replacement Status"] = [
+                (
+                    "Candidates available"
+                    if bool(available) or count > 0
+                    else "Alternative search required"
+                )
+                for available, count in zip(has_alternates, alternate_count)
+            ]
+            role_source["Recommended Replacement"] = alternate_parts
+            role_source["Alternative Count"] = alternate_count.astype(int)
+            role_source["Next Engineering Step"] = role_source[
+                "Replacement Status"
+            ].apply(
+                lambda status: (
+                    "Review compatibility and approve candidate"
+                    if status == "Candidates available"
+                    else "Run Alternative Finder"
+                )
+            )
+
+            alternative_df = role_source[
+                [
+                    "mpn",
+                    "manufacturer",
+                    "lifecycle_status",
+                    "risk_level",
+                    "Replacement Status",
+                    "Recommended Replacement",
+                    "Alternative Count",
+                    "Next Engineering Step",
+                ]
+            ].sort_values(
+                by=["Alternative Count", "risk_score"],
+                ascending=[False, False],
+                kind="stable",
+            )
             alternative_df = _customer_report_table(alternative_df)
 
         pdf_bytes = _build_executive_pdf(
@@ -3883,6 +4080,48 @@ if app_mode == "Reports":
         )
         ai_executive_pdf = build_ai_executive_pdf(ai_report)
         ai_procurement_pdf = build_ai_procurement_pdf(ai_report)
+        risk_report_pdf = build_role_report_pdf(
+            title="Cadivor Engineering Risk Review",
+            subtitle="Components ranked by technical risk requiring engineering attention.",
+            project_name=project_name,
+            dataframe=engineering_df,
+            summary_lines=[
+                f"High-risk components: {high_risk}",
+                f"Medium-risk components: {medium_risk}",
+            ],
+        )
+        sourcing_report_pdf = build_role_report_pdf(
+            title="Cadivor Procurement & Sourcing Review",
+            subtitle="Components ranked by purchasing availability and sourcing difficulty.",
+            project_name=project_name,
+            dataframe=sourcing_df,
+            summary_lines=[
+                ai_report["procurement_summary"],
+            ],
+        )
+        lifecycle_report_pdf = build_role_report_pdf(
+            title="Cadivor Lifecycle Readiness Review",
+            subtitle="Manufacturer lifecycle status and future availability assessment.",
+            project_name=project_name,
+            dataframe=lifecycle_df,
+            summary_lines=[
+                f"Lifecycle concerns identified: {ai_report['lifecycle_concerns']}",
+            ],
+        )
+        alternatives_report_pdf = build_role_report_pdf(
+            title="Cadivor Alternative Readiness Review",
+            subtitle="Replacement readiness and next qualification actions.",
+            project_name=project_name,
+            dataframe=alternative_df,
+            summary_lines=[
+                "Use this report to identify components requiring an Alternative Finder review.",
+            ],
+        )
+
+        risk_report_csv = engineering_df.to_csv(index=False).encode("utf-8")
+        sourcing_report_csv = sourcing_df.to_csv(index=False).encode("utf-8")
+        lifecycle_report_csv = lifecycle_df.to_csv(index=False).encode("utf-8")
+        alternatives_report_csv = alternative_df.to_csv(index=False).encode("utf-8")
         executive_csv = pd.DataFrame(
             [
                 {
@@ -3901,10 +4140,10 @@ if app_mode == "Reports":
             [
                 "AI Executive Brief",
                 "AI Procurement Brief",
-                "Risk Preview",
-                "Sourcing Preview",
-                "Lifecycle Preview",
-                "Alternatives Preview",
+                "Engineering Risk Review",
+                "Procurement & Sourcing",
+                "Lifecycle Readiness",
+                "Alternative Readiness",
             ]
         )
 
@@ -3948,44 +4187,128 @@ if app_mode == "Reports":
             )
 
         with preview_tabs[2]:
+            st.caption(
+                "For design and component engineers: components ranked by technical risk, "
+                "with the reason and recommended engineering action."
+            )
             if engineering_df.empty:
                 st.info("No component-level risk data is available.")
             else:
                 st.dataframe(
-                    engineering_df.head(12),
+                    engineering_df,
                     hide_index=True,
                     use_container_width=True,
                 )
+                risk_pdf_col, risk_csv_col = st.columns(2)
+                with risk_pdf_col:
+                    st.download_button(
+                        "Download Risk Review PDF",
+                        data=risk_report_pdf,
+                        file_name=f"{safe_project}_engineering_risk_review.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                with risk_csv_col:
+                    st.download_button(
+                        "Download Risk Review CSV",
+                        data=risk_report_csv,
+                        file_name=f"{safe_project}_engineering_risk_review.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
 
         with preview_tabs[3]:
+            st.caption(
+                "For procurement and supply chain: purchasing availability, supplier coverage, "
+                "lead time, pricing, and the required sourcing response."
+            )
             if sourcing_df.empty:
                 st.info("No sourcing fields are available for this analysis.")
             else:
                 st.dataframe(
-                    sourcing_df.head(12),
+                    sourcing_df,
                     hide_index=True,
                     use_container_width=True,
                 )
+                sourcing_pdf_col, sourcing_csv_col = st.columns(2)
+                with sourcing_pdf_col:
+                    st.download_button(
+                        "Download Sourcing Review PDF",
+                        data=sourcing_report_pdf,
+                        file_name=f"{safe_project}_procurement_sourcing_review.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                with sourcing_csv_col:
+                    st.download_button(
+                        "Download Sourcing Review CSV",
+                        data=sourcing_report_csv,
+                        file_name=f"{safe_project}_procurement_sourcing_review.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
 
         with preview_tabs[4]:
+            st.caption(
+                "For component engineering: lifecycle continuity, future availability, "
+                "replacement readiness, and review priority."
+            )
             if lifecycle_df.empty:
                 st.info("No lifecycle fields are available for this analysis.")
             else:
                 st.dataframe(
-                    lifecycle_df.head(12),
+                    lifecycle_df,
                     hide_index=True,
                     use_container_width=True,
                 )
+                lifecycle_pdf_col, lifecycle_csv_col = st.columns(2)
+                with lifecycle_pdf_col:
+                    st.download_button(
+                        "Download Lifecycle Review PDF",
+                        data=lifecycle_report_pdf,
+                        file_name=f"{safe_project}_lifecycle_readiness_review.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                with lifecycle_csv_col:
+                    st.download_button(
+                        "Download Lifecycle Review CSV",
+                        data=lifecycle_report_csv,
+                        file_name=f"{safe_project}_lifecycle_readiness_review.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
 
         with preview_tabs[5]:
+            st.caption(
+                "For replacement qualification: which components already have candidates "
+                "and which require an Alternative Finder search."
+            )
             if alternative_df.empty:
                 st.info("No alternative-readiness fields are available for this analysis.")
             else:
                 st.dataframe(
-                    alternative_df.head(12),
+                    alternative_df,
                     hide_index=True,
                     use_container_width=True,
                 )
+                alt_pdf_col, alt_csv_col = st.columns(2)
+                with alt_pdf_col:
+                    st.download_button(
+                        "Download Alternatives Review PDF",
+                        data=alternatives_report_pdf,
+                        file_name=f"{safe_project}_alternative_readiness_review.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                with alt_csv_col:
+                    st.download_button(
+                        "Download Alternatives Review CSV",
+                        data=alternatives_report_csv,
+                        file_name=f"{safe_project}_alternative_readiness_review.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
 
         st.markdown(
             '<div class="cv-r9-section">Download report package</div>'
