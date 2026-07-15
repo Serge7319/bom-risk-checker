@@ -2765,6 +2765,15 @@ if app_mode == "Analysis Details":
     st.stop()
 
 if app_mode == "Monitoring":
+    return_analysis_id = _qp_value("return_analysis_id")
+    if return_analysis_id:
+        if st.button(
+            "← Back to Saved BOM",
+            key="monitoring_back_to_saved_bom",
+            type="secondary",
+        ):
+            navigate_to("Analysis Details", analysis_id=return_analysis_id)
+
     st.subheader("Monitoring Dashboard")
 
     st.info(
@@ -5817,6 +5826,15 @@ if app_mode == "Admin":
     st.stop()
 
 if app_mode == "Alternative Finder":
+    return_analysis_id = _qp_value("return_analysis_id")
+    if return_analysis_id:
+        if st.button(
+            "← Back to Saved BOM",
+            key="alternative_back_to_saved_bom",
+            type="secondary",
+        ):
+            navigate_to("Analysis Details", analysis_id=return_analysis_id)
+
     st.markdown(
         """
         <style id="cadivor-alternative-finder-62a1">
