@@ -482,10 +482,7 @@ def render_analysis_detail(
 
     with advisor_tab:
         if focused_component:
-            st.info(
-                "Focused component review is active. Use **Back to Engineering Copilot** "
-                "above to return to the full recommendation list."
-            )
+            pass
         else:
             _section_header(
                 "Engineering Copilot",
