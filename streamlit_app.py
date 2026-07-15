@@ -7,6 +7,11 @@ from src.alternative_engine import suggest_alternatives_v2
 from src.bom_parser import normalize_bom_columns, validate_bom, clean_bom_data
 from src.risk_engine import calculate_risk
 from src.report_generator import save_results_to_excel
+from src.ai_report_intelligence import (
+    build_ai_report_intelligence,
+    build_ai_executive_pdf,
+    build_ai_procurement_pdf,
+)
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -3724,6 +3729,12 @@ if app_mode == "Reports":
             selected_analysis,
             selected_parts_df,
         )
+        ai_report = build_ai_report_intelligence(
+            selected_analysis,
+            selected_parts_df,
+        )
+        ai_executive_pdf = build_ai_executive_pdf(ai_report)
+        ai_procurement_pdf = build_ai_procurement_pdf(ai_report)
         executive_csv = pd.DataFrame(
             [
                 {
@@ -3740,7 +3751,8 @@ if app_mode == "Reports":
 
         preview_tabs = st.tabs(
             [
-                "Executive Preview",
+                "AI Executive Brief",
+                "AI Procurement Brief",
                 "Risk Preview",
                 "Sourcing Preview",
                 "Lifecycle Preview",
@@ -3749,22 +3761,17 @@ if app_mode == "Reports":
         )
 
         with preview_tabs[0]:
-            recommendation = (
-                "Continue controlled monitoring and release review."
-                if health_score >= 85 and high_risk == 0
-                else "Resolve priority engineering risks before production release."
-                if high_risk > 0
-                else "Review medium-risk sourcing and lifecycle exposure."
-            )
             st.markdown(
                 f"""
                 <div class="cv-r9-preview-card">
-                  <div class="cv-r9-preview-title">Executive decision brief</div>
+                  <div class="cv-r9-preview-title">AI Executive Decision Brief</div>
                   <div class="cv-r9-preview-copy">
-                    <b>{html.escape(project_name)}</b> contains {part_count} saved components
-                    with a health score of {health_score}/100. The analysis includes
-                    {high_risk} high-risk and {medium_risk} medium-risk components.
-                    <br><br><b>Recommended action:</b> {html.escape(recommendation)}
+                    <b>Production readiness:</b> {html.escape(ai_report['readiness'])}
+                    <br><br>{html.escape(ai_report['executive_summary'])}
+                    <br><br><b>Management decision:</b>
+                    {html.escape(ai_report['executive_decision'])}
+                    <br><br><b>Projected health:</b>
+                    {ai_report['health']}/100 → {ai_report['projected_health']}/100
                   </div>
                 </div>
                 """,
@@ -3772,6 +3779,27 @@ if app_mode == "Reports":
             )
 
         with preview_tabs[1]:
+            procurement_items = "".join(
+                f"<li>{html.escape(item)}</li>"
+                for item in ai_report["procurement_actions"]
+            )
+            st.markdown(
+                f"""
+                <div class="cv-r9-preview-card">
+                  <div class="cv-r9-preview-title">AI Procurement Brief</div>
+                  <div class="cv-r9-preview-copy">
+                    {html.escape(ai_report['procurement_summary'])}
+                    <br><br><b>Priority actions</b>
+                    <ul>{procurement_items}</ul>
+                    <b>Estimated procurement effort:</b>
+                    {ai_report['procurement_hours']} hour(s)
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with preview_tabs[2]:
             if engineering_df.empty:
                 st.info("No component-level risk data is available.")
             else:
@@ -3781,7 +3809,7 @@ if app_mode == "Reports":
                     use_container_width=True,
                 )
 
-        with preview_tabs[2]:
+        with preview_tabs[3]:
             if sourcing_df.empty:
                 st.info("No sourcing fields are available for this analysis.")
             else:
@@ -3791,7 +3819,7 @@ if app_mode == "Reports":
                     use_container_width=True,
                 )
 
-        with preview_tabs[3]:
+        with preview_tabs[4]:
             if lifecycle_df.empty:
                 st.info("No lifecycle fields are available for this analysis.")
             else:
@@ -3801,7 +3829,7 @@ if app_mode == "Reports":
                     use_container_width=True,
                 )
 
-        with preview_tabs[4]:
+        with preview_tabs[5]:
             if alternative_df.empty:
                 st.info("No alternative-readiness fields are available for this analysis.")
             else:
@@ -3835,6 +3863,33 @@ if app_mode == "Reports":
             st.session_state["reports_session_history"] = (
                 st.session_state["reports_session_history"][:12]
             )
+
+        ai_exec_col, ai_proc_col = st.columns(2)
+        with ai_exec_col:
+            ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
+            if st.download_button(
+                "Download AI Executive PDF",
+                data=ai_executive_pdf,
+                file_name=ai_exec_name,
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary",
+                on_click=_mark_first_report_complete,
+            ):
+                _record_session_report("AI Executive Brief", ai_exec_name)
+
+        with ai_proc_col:
+            ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
+            if st.download_button(
+                "Download AI Procurement PDF",
+                data=ai_procurement_pdf,
+                file_name=ai_proc_name,
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary",
+                on_click=_mark_first_report_complete,
+            ):
+                _record_session_report("AI Procurement Brief", ai_proc_name)
 
         executive_col, risk_col, sourcing_col = st.columns(3)
         with executive_col:
