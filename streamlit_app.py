@@ -3902,44 +3902,45 @@ if app_mode == "Reports":
                 axis=1,
             )
 
-            engineering_df = role_source[
-                [
-                    "mpn",
-                    "manufacturer",
-                    "risk_level",
-                    "risk_score",
-                    "risk_reasons",
-                    "Engineering Priority",
-                    "Recommended Action",
-                ]
-            ].sort_values(
-                by="risk_score",
+            engineering_df = pd.DataFrame(
+                {
+                    "Manufacturer Part Number": role_source["mpn"],
+                    "Manufacturer": role_source["manufacturer"],
+                    "Risk Level": role_source["risk_level"],
+                    "Risk Score": role_source["risk_score"],
+                    "Risk Explanation": role_source["risk_reasons"],
+                    "Engineering Priority": role_source["Engineering Priority"],
+                    "Recommended Action": role_source["Recommended Action"],
+                    "_sort_risk_score": role_source["risk_score"],
+                }
+            ).sort_values(
+                by="_sort_risk_score",
                 ascending=False,
                 kind="stable",
-            )
-            engineering_df = _customer_report_table(engineering_df)
+            ).drop(columns=["_sort_risk_score"])
 
             role_source["Procurement Status"] = role_source.apply(
                 _procurement_status,
                 axis=1,
             )
-            sourcing_df = role_source[
-                [
-                    "mpn",
-                    "manufacturer",
-                    "primary_supplier",
-                    "stock_available",
-                    "unit_price",
-                    "lead_time_weeks",
-                    "supplier_count",
-                    "Procurement Status",
-                ]
-            ].sort_values(
-                by=["stock_available", "supplier_count"],
+            sourcing_df = pd.DataFrame(
+                {
+                    "Manufacturer Part Number": role_source["mpn"],
+                    "Manufacturer": role_source["manufacturer"],
+                    "Primary Supplier": role_source["primary_supplier"],
+                    "Available Stock": role_source["stock_available"],
+                    "Unit Price": role_source["unit_price"],
+                    "Lead Time (Weeks)": role_source["lead_time_weeks"],
+                    "Supplier Sources": role_source["supplier_count"],
+                    "Procurement Status": role_source["Procurement Status"],
+                    "_sort_stock": role_source["stock_available"],
+                    "_sort_sources": role_source["supplier_count"],
+                }
+            ).sort_values(
+                by=["_sort_stock", "_sort_sources"],
                 ascending=[True, True],
                 kind="stable",
-            )
-            sourcing_df = _customer_report_table(sourcing_df)
+            ).drop(columns=["_sort_stock", "_sort_sources"])
 
             role_source["Future Availability"] = role_source[
                 "lifecycle_status"
@@ -3993,21 +3994,21 @@ if app_mode == "Reports":
                 "Review Priority"
             ].map(lifecycle_rank).fillna(4)
 
-            lifecycle_df = role_source[
-                [
-                    "mpn",
-                    "manufacturer",
-                    "lifecycle_status",
-                    "Future Availability",
-                    "Replacement Readiness",
-                    "Review Priority",
-                ]
-            ].assign(_rank=role_source["_lifecycle_rank"]).sort_values(
-                by="_rank",
+            lifecycle_df = pd.DataFrame(
+                {
+                    "Manufacturer Part Number": role_source["mpn"],
+                    "Manufacturer": role_source["manufacturer"],
+                    "Lifecycle Status": role_source["lifecycle_status"],
+                    "Future Availability": role_source["Future Availability"],
+                    "Replacement Readiness": role_source["Replacement Readiness"],
+                    "Review Priority": role_source["Review Priority"],
+                    "_sort_lifecycle_rank": role_source["_lifecycle_rank"],
+                }
+            ).sort_values(
+                by="_sort_lifecycle_rank",
                 ascending=True,
                 kind="stable",
-            ).drop(columns=["_rank"])
-            lifecycle_df = _customer_report_table(lifecycle_df)
+            ).drop(columns=["_sort_lifecycle_rank"])
 
             has_alternates = _first_existing(
                 role_source,
@@ -4052,23 +4053,27 @@ if app_mode == "Reports":
                 )
             )
 
-            alternative_df = role_source[
-                [
-                    "mpn",
-                    "manufacturer",
-                    "lifecycle_status",
-                    "risk_level",
-                    "Replacement Status",
-                    "Recommended Replacement",
-                    "Alternative Count",
-                    "Next Engineering Step",
-                ]
-            ].sort_values(
-                by=["Alternative Count", "risk_score"],
+            alternative_df = pd.DataFrame(
+                {
+                    "Original Component": role_source["mpn"],
+                    "Manufacturer": role_source["manufacturer"],
+                    "Current Lifecycle": role_source["lifecycle_status"],
+                    "Replacement Status": role_source["Replacement Status"],
+                    "Recommended Replacement": role_source["Recommended Replacement"],
+                    "Alternative Count": role_source["Alternative Count"],
+                    "Next Engineering Step": role_source["Next Engineering Step"],
+                    "_sort_alternative_count": role_source["Alternative Count"],
+                    "_sort_risk_score": role_source["risk_score"],
+                }
+            ).sort_values(
+                by=["_sort_alternative_count", "_sort_risk_score"],
                 ascending=[False, False],
                 kind="stable",
             )
-            alternative_df = _customer_report_table(alternative_df)
+
+            alternative_df = alternative_df.drop(
+                columns=["_sort_alternative_count", "_sort_risk_score"]
+            )
 
         pdf_bytes = _build_executive_pdf(
             selected_analysis,
@@ -4141,9 +4146,9 @@ if app_mode == "Reports":
                 "AI Executive Brief",
                 "AI Procurement Brief",
                 "Engineering Risk Review",
-                "Procurement & Sourcing",
-                "Lifecycle Readiness",
-                "Alternative Readiness",
+                "Procurement & Sourcing Review",
+                "Lifecycle Readiness Review",
+                "Alternative Readiness Review",
             ]
         )
 
@@ -4187,6 +4192,7 @@ if app_mode == "Reports":
             )
 
         with preview_tabs[2]:
+            st.markdown("### Engineering Risk Review")
             st.caption(
                 "For design and component engineers: components ranked by technical risk, "
                 "with the reason and recommended engineering action."
@@ -4218,6 +4224,7 @@ if app_mode == "Reports":
                     )
 
         with preview_tabs[3]:
+            st.markdown("### Procurement & Sourcing Review")
             st.caption(
                 "For procurement and supply chain: purchasing availability, supplier coverage, "
                 "lead time, pricing, and the required sourcing response."
@@ -4249,6 +4256,7 @@ if app_mode == "Reports":
                     )
 
         with preview_tabs[4]:
+            st.markdown("### Lifecycle Readiness Review")
             st.caption(
                 "For component engineering: lifecycle continuity, future availability, "
                 "replacement readiness, and review priority."
@@ -4280,6 +4288,7 @@ if app_mode == "Reports":
                     )
 
         with preview_tabs[5]:
+            st.markdown("### Alternative Readiness Review")
             st.caption(
                 "For replacement qualification: which components already have candidates "
                 "and which require an Alternative Finder search."
