@@ -27,6 +27,7 @@ from src.engineering_overview import build_engineering_overview
 from src.readability_system import readability_css
 from src.living_workspace import render_living_workspace
 from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
+from src.design_impact_analyzer import build_design_impact, render_design_impact
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2066,6 +2067,7 @@ NAV_OPTIONS = [
     "Engineering Decisions",
     "Procurement Advisor",
     "Portfolio Intelligence",
+    "Design Impact Analyzer",
     "Reports",
     "Pricing",
     "Settings",
@@ -2303,7 +2305,7 @@ apply_milestone10a_design_system()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
+    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Design Impact Analyzer":"◇", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
     "Help":"?", "About":"?"
 }
 _nav_html = []
@@ -3129,6 +3131,43 @@ if app_mode == "Monitoring":
                 hide_index=True,
                 use_container_width=True,
             )
+
+
+# ---------- Design Impact Analyzer ----------
+if app_mode == "Design Impact Analyzer":
+    try:
+        impact_analyses = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        impact_analyses = []
+
+    try:
+        impact_parts_response = (
+            _workspace_query(supabase.table("analysis_parts").select("*"))
+            .eq("user_id", current_user["id"])
+            .limit(10000)
+            .execute()
+        )
+        impact_parts = impact_parts_response.data or []
+    except Exception:
+        impact_parts = []
+
+    requested_impact_mpn = (
+        st.session_state.get("design_impact_mpn")
+        or _qp_value("part")
+        or _qp_value("mpn")
+        or ""
+    )
+
+    impact_intelligence = build_design_impact(
+        impact_analyses,
+        impact_parts,
+        requested_impact_mpn,
+    )
+    render_design_impact(
+        intelligence=impact_intelligence,
+        internal_nav_button=internal_nav_button,
+    )
+    st.stop()
 
 
 # ---------- Portfolio Intelligence ----------
