@@ -120,6 +120,25 @@ def readability_css() -> str:
       .cv160-priority-box.later{
         border-color:#bfdbfe;background:#f8fbff
       }
+      [data-testid="stDataFrame"] th,
+      [data-testid="stDataFrame"] [role="columnheader"]{
+        font-size:13px!important;font-weight:850!important;color:#334155!important
+      }
+      [data-testid="stDataFrame"] td,
+      [data-testid="stDataFrame"] [role="gridcell"]{
+        font-size:13px!important
+      }
+      .cv170-change-card{
+        border:1px solid #bfdbfe;background:linear-gradient(135deg,#f8fbff,#fff);
+        border-radius:18px;padding:18px 20px;margin:14px 0 20px
+      }
+      .cv170-change-title{font-size:18px;font-weight:950;color:#0f172a;margin-bottom:7px}
+      .cv170-change-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
+      .cv170-change-item{background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:11px 12px}
+      .cv170-change-value{font-size:22px;font-weight:950;color:#0f172a}
+      .cv170-change-label{font-size:11px;font-weight:800;color:#64748b}
+      .cv170-status-ready span{color:#047857!important;background:#ecfdf5!important;border-color:#a7f3d0!important}
+      .cv170-status-review span{color:#a16207!important;background:#fffbeb!important;border-color:#fde68a!important}
       details summary{font-size:14px!important;font-weight:850!important}
       @media(max-width:900px){
         .cv160-priority-strip{grid-template-columns:1fr}
