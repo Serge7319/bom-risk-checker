@@ -26,6 +26,7 @@ from src.procurement_advisor import build_procurement_advisor
 from src.engineering_overview import build_engineering_overview
 from src.readability_system import readability_css
 from src.living_workspace import render_living_workspace
+from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2064,6 +2065,7 @@ NAV_OPTIONS = [
     "Monitoring",
     "Engineering Decisions",
     "Procurement Advisor",
+    "Portfolio Intelligence",
     "Reports",
     "Pricing",
     "Settings",
@@ -2301,7 +2303,7 @@ apply_milestone10a_design_system()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
+    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
     "Help":"?", "About":"?"
 }
 _nav_html = []
@@ -3127,6 +3129,48 @@ if app_mode == "Monitoring":
                 hide_index=True,
                 use_container_width=True,
             )
+
+
+# ---------- Portfolio Intelligence ----------
+if app_mode == "Portfolio Intelligence":
+    try:
+        portfolio_analyses = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        portfolio_analyses = []
+
+    try:
+        portfolio_parts_response = (
+            _workspace_query(supabase.table("analysis_parts").select("*"))
+            .eq("user_id", current_user["id"])
+            .limit(10000)
+            .execute()
+        )
+        portfolio_parts = portfolio_parts_response.data or []
+    except Exception:
+        portfolio_parts = []
+
+    try:
+        portfolio_alert_response = (
+            _workspace_query(supabase.table("monitor_alerts").select("*"))
+            .eq("user_id", current_user["id"])
+            .order("created_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        portfolio_alerts = portfolio_alert_response.data or []
+    except Exception:
+        portfolio_alerts = []
+
+    portfolio_intelligence = build_portfolio_intelligence(
+        portfolio_analyses,
+        portfolio_parts,
+        portfolio_alerts,
+    )
+    render_portfolio_intelligence(
+        intelligence=portfolio_intelligence,
+        internal_nav_button=internal_nav_button,
+    )
+    st.stop()
 
 
 # ---------- Procurement Advisor ----------
