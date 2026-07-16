@@ -1,4 +1,4 @@
-"""Cadivor Milestone 13.0 — Engineering Decision Center engine."""
+"""Cadivor Milestone 13.1 — Decision workflow and management intelligence."""
 from __future__ import annotations
 
 from hashlib import sha1
@@ -8,15 +8,28 @@ import pandas as pd
 
 
 STATUSES = [
-    "Open",
+    "New",
     "Engineering Review",
     "Procurement Review",
-    "Awaiting Approval",
-    "Approved",
-    "Rejected",
-    "Production Ready",
+    "Manager Approval",
+    "Production Approved",
     "Closed",
+    "Rejected",
 ]
+
+WORKFLOW_PROGRESS = {
+    "New": 10,
+    "Open": 10,
+    "Engineering Review": 30,
+    "Procurement Review": 50,
+    "Manager Approval": 70,
+    "Awaiting Approval": 70,
+    "Approved": 85,
+    "Production Approved": 90,
+    "Production Ready": 90,
+    "Closed": 100,
+    "Rejected": 100,
+}
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -51,6 +64,117 @@ def _severity_rank(value: Any) -> int:
     if "low" in text:
         return 1
     return 0
+
+
+def _timestamp(value: Any) -> pd.Timestamp:
+    try:
+        parsed = pd.to_datetime(value, utc=True, errors="coerce")
+        if pd.isna(parsed):
+            return pd.Timestamp.now(tz="UTC")
+        return parsed
+    except Exception:
+        return pd.Timestamp.now(tz="UTC")
+
+
+def _days_open(created_at: Any, status: str) -> int:
+    if status in ("Closed", "Rejected"):
+        return 0
+    created = _timestamp(created_at)
+    return max(0, int((pd.Timestamp.now(tz="UTC") - created).total_seconds() // 86400))
+
+
+def _aging_tone(days_open: int) -> str:
+    if days_open >= 14:
+        return "bad"
+    if days_open >= 7:
+        return "warn"
+    if days_open >= 3:
+        return "watch"
+    return "good"
+
+
+def _priority_breakdown(decision: Dict[str, Any]) -> Dict[str, int]:
+    text = " ".join(
+        [
+            _text(decision.get("decision_type")),
+            _text(decision.get("reason")),
+            _text(decision.get("recommended_action")),
+        ]
+    ).lower()
+    base = int(_number(decision.get("priority_score"), 0))
+
+    production = min(40, max(5, round(base * 0.40)))
+    lifecycle = 0
+    supply = 0
+    cost = 0
+    compliance = 0
+
+    if "lifecycle" in text or any(term in text for term in ("obsolete", "replacement", "eol", "nrnd")):
+        lifecycle = min(25, max(10, round(base * 0.25)))
+    if any(term in text for term in ("stock", "supplier", "supply", "purchasing", "inventory")):
+        supply = min(20, max(8, round(base * 0.20)))
+    if any(term in text for term in ("cost", "price", "commercial")):
+        cost = min(10, max(5, round(base * 0.10)))
+    if any(term in text for term in ("approval", "release", "production")):
+        compliance = min(5, max(2, round(base * 0.05)))
+
+    total = production + lifecycle + supply + cost + compliance
+    if total > 100:
+        production = max(0, production - (total - 100))
+
+    return {
+        "Production Risk": production,
+        "Lifecycle Risk": lifecycle,
+        "Supply Risk": supply,
+        "Cost Risk": cost,
+        "Approval Risk": compliance,
+    }
+
+
+def _confidence_reasons(decision: Dict[str, Any]) -> List[str]:
+    reasons: List[str] = []
+    evidence = decision.get("evidence") or []
+    evidence_text = " ".join(str(item).lower() for item in evidence)
+
+    if evidence:
+        reasons.append("Multiple decision signals are available.")
+    if "current value" in evidence_text or "stock" in evidence_text:
+        reasons.append("Current monitoring or availability data is recorded.")
+    if "severity" in evidence_text or "risk" in evidence_text:
+        reasons.append("Risk severity is explicitly classified.")
+    if decision.get("analysis_id"):
+        reasons.append("The decision is linked to a saved BOM record.")
+    if int(_number(decision.get("priority_score"), 0)) >= 65:
+        reasons.append("The recommendation is supported by a strong priority signal.")
+    if not reasons:
+        reasons.append("Confidence is based on the currently available engineering record.")
+    return reasons[:4]
+
+
+def enrich_decision(decision: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = dict(decision)
+    status = _text(enriched.get("status"), "New")
+    if status == "Open":
+        status = "New"
+    created_at = enriched.get("detected_at") or enriched.get("created_at")
+    days_open = _days_open(created_at, status)
+
+    enriched["status"] = status
+    enriched["workflow_progress"] = WORKFLOW_PROGRESS.get(status, 10)
+    enriched["next_required_action"] = {
+        "New": "Assign an owner and begin engineering review.",
+        "Engineering Review": "Complete technical validation and document findings.",
+        "Procurement Review": "Confirm supplier, stock, lead time, and commercial readiness.",
+        "Manager Approval": "Approve, reject, or return the decision for further review.",
+        "Production Approved": "Complete release documentation and close the decision.",
+        "Closed": "No additional action required.",
+        "Rejected": "Record the rejection rationale and alternative path.",
+    }.get(status, "Confirm the next workflow action.")
+    enriched["days_open"] = days_open
+    enriched["aging_tone"] = _aging_tone(days_open)
+    enriched["priority_breakdown"] = _priority_breakdown(enriched)
+    enriched["confidence_reasons"] = _confidence_reasons(enriched)
+    return enriched
 
 
 def _alert_decision(alert: Dict[str, Any]) -> Dict[str, Any]:
@@ -284,11 +408,11 @@ def build_decision_center(
     for decision in deduped.values():
         saved = state.get(decision["decision_id"], {})
         decision = dict(decision)
-        decision["status"] = _text(saved.get("status"), "Open")
+        decision["status"] = _text(saved.get("status"), "New")
         decision["assigned_owner"] = _text(saved.get("owner"), decision["owner"])
         decision["updated_at"] = _text(saved.get("updated_at"), decision["detected_at"])
         decision["notes"] = list(saved.get("notes") or [])
-        final.append(decision)
+        final.append(enrich_decision(decision))
 
     final.sort(
         key=lambda item: (
@@ -306,18 +430,30 @@ def build_decision_center(
     awaiting = [
         decision
         for decision in open_decisions
-        if decision["status"] == "Awaiting Approval"
+        if decision["status"] in ("Manager Approval", "Awaiting Approval")
     ]
     production_ready = [
         decision
         for decision in final
-        if decision["status"] == "Production Ready"
+        if decision["status"] in ("Production Approved", "Production Ready")
     ]
     closed = [
         decision
         for decision in final
         if decision["status"] in ("Closed", "Rejected")
     ]
+
+    average_age = round(
+        sum(int(decision.get("days_open", 0)) for decision in open_decisions)
+        / max(1, len(open_decisions)),
+        1,
+    )
+    projected_health_gain = sum(
+        int(decision.get("health_gain", 0)) for decision in open_decisions[:10]
+    )
+    projected_risk_reduction = sum(
+        int(decision.get("supply_risk_reduction", 0)) for decision in open_decisions[:10]
+    )
 
     return {
         "decisions": final,
@@ -330,4 +466,7 @@ def build_decision_center(
             int(decision["estimated_effort_hours"])
             for decision in open_decisions
         ),
+        "average_age_days": average_age,
+        "projected_health_gain": projected_health_gain,
+        "projected_risk_reduction": projected_risk_reduction,
     }
