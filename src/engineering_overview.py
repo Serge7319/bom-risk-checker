@@ -84,6 +84,12 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
 
     lifecycle = sum(1 for a in alerts if "lifecycle" in (_t(a.get("alert_type")) + _t(a.get("alert_message"))).lower())
     stock = sum(1 for a in alerts if "stock" in (_t(a.get("alert_type")) + _t(a.get("alert_message"))).lower())
+    price = sum(1 for a in alerts if "price" in (_t(a.get("alert_type")) + _t(a.get("alert_message"))).lower())
+    recently_changed_components = len({
+        _t(a.get("part_number") or a.get("mpn"))
+        for a in alerts[:20]
+        if _t(a.get("part_number") or a.get("mpn"))
+    })
 
     recommendations = []
     if actions:
@@ -104,6 +110,12 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
         "action_later": action_later,
         "recommendations": recommendations[:3],
         "recent_alerts": alerts[:5],
+        "recent_change_summary": {
+            "components": recently_changed_components,
+            "lifecycle": lifecycle,
+            "stock": stock,
+            "price": price,
+        },
         "active_projects": len(projects),
         "ready_projects": sum(1 for p in projects if p["status"] == "Ready for Production"),
         "critical_components": sum(p["high"] for p in projects),
