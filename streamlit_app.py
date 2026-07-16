@@ -2784,7 +2784,9 @@ st.markdown(
       .cv130-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.cv130-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv130-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv130-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
       .cv130-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}.cv130-meta span{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#1d4ed8}
       .cv130-impact{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:12px 0}.cv130-impact div{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px}.cv130-impact span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:5px}.cv130-impact strong{font-size:13px;font-weight:950;color:#0f172a}
-      @media(max-width:900px){.cv130-decision-head{display:block}.cv130-impact{grid-template-columns:1fr 1fr}.cv130-badge{display:inline-block;margin-top:10px}}
+      .cv131-compact{padding:13px 15px;margin-bottom:7px}.cv131-card-main{min-width:0}.cv131-card-badges{display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end}.cv131-age{border-radius:999px;padding:6px 9px;font-size:8px;font-weight:950;border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8;white-space:nowrap}.cv131-age.watch{border-color:#fde68a;background:#fffbeb;color:#a16207}.cv131-age.warn{border-color:#fdba74;background:#fff7ed;color:#c2410c}.cv131-age.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+      .cv131-summary-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr .7fr .8fr;gap:8px;margin-top:10px}.cv131-summary-grid div{border-left:2px solid #dbeafe;padding-left:8px}.cv131-summary-grid span{display:block;font-size:7px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:#64748b}.cv131-summary-grid strong{font-size:10px;font-weight:900;color:#0f172a;line-height:1.3}.cv131-progress{height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:10px}.cv131-progress div{height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv131-progress.packet{height:8px;margin-top:14px}.cv131-next{font-size:9px;font-weight:750;color:#52647a;margin-top:6px}.cv131-breakdown{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.cv131-breakdown div{border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff}.cv131-breakdown span{display:block;font-size:8px;font-weight:950;color:#64748b;text-transform:uppercase}.cv131-breakdown strong{font-size:16px;font-weight:950;color:#0f172a}
+      @media(max-width:900px){.cv130-decision-head{display:block}.cv130-impact,.cv131-breakdown{grid-template-columns:1fr 1fr}.cv131-summary-grid{grid-template-columns:1fr 1fr}.cv130-badge{display:inline-block;margin-top:10px}}
     </style>
     """,
     unsafe_allow_html=True,
@@ -3141,7 +3143,11 @@ if app_mode == "Engineering Decisions":
         state_record = st.session_state["engineering_decision_state"].setdefault(
             decision_id,
             {
-                "status": selected_decision["status"],
+                "status": (
+                    "New"
+                    if selected_decision["status"] == "Open"
+                    else selected_decision["status"]
+                ),
                 "owner": selected_decision["assigned_owner"],
                 "notes": selected_decision.get("notes", []),
                 "history": [
@@ -3164,6 +3170,30 @@ if app_mode == "Engineering Decisions":
             st.info(selected_decision["recommended_action"])
             st.caption(selected_decision["expected_impact"])
 
+            st.markdown("### Decision Priority Matrix")
+            priority_breakdown = selected_decision.get("priority_breakdown", {})
+            st.markdown(
+                """
+                <div class="cv131-breakdown">
+                """
+                + "".join(
+                    f"<div><span>{html.escape(str(label))}</span><strong>{int(value)}</strong></div>"
+                    for label, value in priority_breakdown.items()
+                )
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+
+            st.markdown("### AI Confidence")
+            confidence_cols = st.columns([1, 3])
+            confidence_cols[0].metric(
+                "Decision Confidence",
+                f"{selected_decision['confidence']}%",
+            )
+            with confidence_cols[1]:
+                for reason in selected_decision.get("confidence_reasons", []):
+                    st.markdown(f"✓ {reason}")
+
             impact = selected_decision
             st.markdown(
                 f"""
@@ -3180,9 +3210,16 @@ if app_mode == "Engineering Decisions":
 
             workflow_cols = st.columns(3)
             with workflow_cols[0]:
+                current_workflow_status = state_record.get("status", "New")
+                if current_workflow_status == "Open":
+                    current_workflow_status = "New"
+                elif current_workflow_status == "Awaiting Approval":
+                    current_workflow_status = "Manager Approval"
+                elif current_workflow_status in ("Approved", "Production Ready"):
+                    current_workflow_status = "Production Approved"
                 status_index = (
-                    STATUSES.index(state_record.get("status", "Open"))
-                    if state_record.get("status", "Open") in STATUSES
+                    STATUSES.index(current_workflow_status)
+                    if current_workflow_status in STATUSES
                     else 0
                 )
                 new_status = st.selectbox(
@@ -3210,7 +3247,7 @@ if app_mode == "Engineering Decisions":
                 key=f"save_decision_{decision_id}",
                 type="primary",
             ):
-                previous_status = state_record.get("status", "Open")
+                previous_status = state_record.get("status", "New")
                 state_record["status"] = new_status
                 state_record["owner"] = new_owner.strip() or selected_decision["owner"]
                 state_record["updated_at"] = pd.Timestamp.utcnow().isoformat()
@@ -3341,15 +3378,21 @@ if app_mode == "Engineering Decisions":
                 )
 
     else:
-        k1, k2, k3, k4, k5 = st.columns(5)
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
         k1.metric("Open Decisions", decision_center["open_count"])
         k2.metric("Critical", decision_center["critical_count"])
-        k3.metric("Awaiting Approval", decision_center["awaiting_approval_count"])
-        k4.metric("Production Ready", decision_center["production_ready_count"])
+        k3.metric("Manager Approval", decision_center["awaiting_approval_count"])
+        k4.metric("Production Approved", decision_center["production_ready_count"])
         k5.metric("Estimated Work", f"{decision_center['estimated_hours']} hrs")
+        k6.metric("Average Age", f"{decision_center['average_age_days']} days")
 
-        queue_tab, workload_tab, closed_tab = st.tabs(
-            ["Decision Queue", "Engineering Workload", "Closed Decisions"]
+        queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
+            [
+                "Decision Queue",
+                "Owner Dashboard",
+                "Decision Analytics",
+                "Decision Archive",
+            ]
         )
 
         with queue_tab:
@@ -3426,7 +3469,7 @@ if app_mode == "Engineering Decisions":
                             )
                     with card_cols[1]:
                         internal_nav_button(
-                            "Find Alternative",
+                            "Alternative",
                             "Alternative Finder",
                             key=f"queue_alt_{decision['decision_id']}",
                             use_container_width=True,
@@ -3434,7 +3477,7 @@ if app_mode == "Engineering Decisions":
                         )
                     with card_cols[2]:
                         internal_nav_button(
-                            "Open Monitoring",
+                            "Monitoring",
                             "Monitoring",
                             key=f"queue_monitor_{decision['decision_id']}",
                             use_container_width=True,
@@ -3442,7 +3485,7 @@ if app_mode == "Engineering Decisions":
                     with card_cols[3]:
                         if decision.get("analysis_id"):
                             internal_nav_button(
-                                "Open Saved BOM",
+                                "Saved BOM",
                                 "Analysis Details",
                                 key=f"queue_analysis_{decision['decision_id']}",
                                 use_container_width=True,
@@ -3452,6 +3495,7 @@ if app_mode == "Engineering Decisions":
                             st.caption("Monitoring decision")
 
         with workload_tab:
+            st.markdown("### Engineering Workload by Owner")
             active = [
                 decision
                 for decision in all_decisions
@@ -3490,30 +3534,120 @@ if app_mode == "Engineering Decisions":
                     use_container_width=True,
                 )
 
-        with closed_tab:
-            closed = [
-                decision
-                for decision in all_decisions
-                if decision["status"] in ("Closed", "Rejected")
-            ]
-            if not closed:
-                st.info("No decisions have been closed or rejected yet.")
-            else:
-                st.dataframe(
+        with analytics_tab:
+            st.markdown("### Decision Analytics")
+            analytics_cols = st.columns(4)
+            analytics_cols[0].metric(
+                "Projected Health Gain",
+                f"+{decision_center['projected_health_gain']}",
+            )
+            analytics_cols[1].metric(
+                "Projected Supply Risk Reduction",
+                f"-{decision_center['projected_risk_reduction']}",
+            )
+            analytics_cols[2].metric(
+                "Closed / Rejected",
+                decision_center["closed_count"],
+            )
+            analytics_cols[3].metric(
+                "Average Open Age",
+                f"{decision_center['average_age_days']} days",
+            )
+
+            if all_decisions:
+                status_counts = (
+                    pd.DataFrame(all_decisions)["status"]
+                    .value_counts()
+                    .rename_axis("Workflow Stage")
+                    .reset_index(name="Decisions")
+                )
+                owner_hours = (
                     pd.DataFrame(
                         [
                             {
-                                "Decision": decision["title"],
-                                "Component / BOM": decision["part_number"],
                                 "Owner": decision["assigned_owner"],
-                                "Status": decision["status"],
-                                "Updated": decision["updated_at"],
+                                "Estimated Hours": decision["estimated_effort_hours"],
+                                "Priority Score": decision["priority_score"],
                             }
-                            for decision in closed
+                            for decision in all_decisions
+                            if decision["status"] not in ("Closed", "Rejected")
                         ]
-                    ),
+                    )
+                    .groupby("Owner", as_index=False)
+                    .agg(
+                        {
+                            "Estimated Hours": "sum",
+                            "Priority Score": "mean",
+                        }
+                    )
+                    .rename(columns={"Priority Score": "Average Priority"})
+                )
+                analytics_left, analytics_right = st.columns(2)
+                with analytics_left:
+                    st.markdown("#### Decisions by Workflow Stage")
+                    st.dataframe(status_counts, hide_index=True, use_container_width=True)
+                with analytics_right:
+                    st.markdown("#### Open Workload Impact")
+                    st.dataframe(owner_hours, hide_index=True, use_container_width=True)
+
+        with archive_tab:
+            st.markdown("### Searchable Decision Archive")
+            archive_search = st.text_input(
+                "Search archived decisions",
+                placeholder="Project, component, owner, type, or outcome",
+                key="decision_archive_search",
+            )
+            archived = [
+                decision
+                for decision in all_decisions
+                if decision["status"] in ("Closed", "Rejected", "Production Approved")
+            ]
+            if archive_search.strip():
+                archive_query = archive_search.strip().lower()
+                archived = [
+                    decision
+                    for decision in archived
+                    if archive_query
+                    in " ".join(
+                        [
+                            str(decision["title"]),
+                            str(decision["part_number"]),
+                            str(decision["assigned_owner"]),
+                            str(decision["decision_type"]),
+                            str(decision["status"]),
+                        ]
+                    ).lower()
+                ]
+
+            if not archived:
+                st.info("No archived or production-approved decisions match the search.")
+            else:
+                archive_df = pd.DataFrame(
+                    [
+                        {
+                            "Updated": decision["updated_at"],
+                            "Project / Component": decision["part_number"],
+                            "Decision": decision["title"],
+                            "Owner": decision["assigned_owner"],
+                            "Decision Type": decision["decision_type"],
+                            "Outcome": decision["status"],
+                            "Confidence": f"{decision['confidence']}%",
+                        }
+                        for decision in archived
+                    ]
+                )
+                st.dataframe(
+                    archive_df,
                     hide_index=True,
                     use_container_width=True,
+                )
+                st.download_button(
+                    "Export Decision Archive CSV",
+                    data=archive_df.to_csv(index=False).encode("utf-8"),
+                    file_name="cadivor_decision_archive.csv",
+                    mime="text/csv",
+                    key="decision_archive_csv",
+                    type="primary",
                 )
 
 
