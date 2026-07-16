@@ -347,16 +347,14 @@ def render_living_workspace(
             timeline_html = ['<div class="cv18-timeline">']
             for event in timeline[:6]:
                 timeline_html.append(
-                    f"""
-                    <div class="cv18-event">
-                      <div class="cv18-event-time">{html.escape(event['time'])}</div>
-                      <div class="cv18-event-title">{html.escape(event['part'])} · {html.escape(event['category'])}</div>
-                      <div class="cv18-event-copy">{html.escape(event['change'])}</div>
-                    </div>
-                    """
+                    '<div class="cv18-event">'
+                    f'<div class="cv18-event-time">{html.escape(event["time"])}</div>'
+                    f'<div class="cv18-event-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
+                    f'<div class="cv18-event-copy">{html.escape(event["change"])}</div>'
+                    '</div>'
                 )
-            timeline_html.append("</div>")
-            st.markdown("".join(timeline_html), unsafe_allow_html=True)
+            timeline_html.append('</div>')
+            st.markdown(''.join(timeline_html), unsafe_allow_html=True)
         else:
             st.info("No recent engineering changes are available.")
 
@@ -400,17 +398,15 @@ def render_living_workspace(
             watch_html = []
             for item in supplier_watch:
                 watch_html.append(
-                    f"""
-                    <div class="cv18-watch">
-                      <div>
-                        <strong>{html.escape(item['part'])} · {html.escape(item['manufacturer'])}</strong>
-                        <p>{html.escape(item['signal'])}: {html.escape(item['detail'])}</p>
-                      </div>
-                      <span class="cv18-score">{item['priority']}/100</span>
-                    </div>
-                    """
+                    '<div class="cv18-watch">'
+                    '<div>'
+                    f'<strong>{html.escape(item["part"])} · {html.escape(item["manufacturer"])}</strong>'
+                    f'<p>{html.escape(item["signal"])}: {html.escape(item["detail"])}</p>'
+                    '</div>'
+                    f'<span class="cv18-score">{item["priority"]}/100</span>'
+                    '</div>'
                 )
-            st.markdown('<section class="cv18-card">' + "".join(watch_html) + "</section>", unsafe_allow_html=True)
+            st.markdown('<section class="cv18-card">' + ''.join(watch_html) + '</section>', unsafe_allow_html=True)
         else:
             st.success("No supplier exception currently requires attention.")
 
@@ -419,16 +415,14 @@ def render_living_workspace(
             workload_html = ['<div class="cv18-workload">']
             for item in workload:
                 workload_html.append(
-                    f"""
-                    <div class="cv18-workload-card">
-                      <strong>{html.escape(item['team'])}</strong>
-                      <span>{item['actions']} open action(s)</span>
-                      <span>Approximately {item['hours']} hour(s)</span>
-                    </div>
-                    """
+                    '<div class="cv18-workload-card">'
+                    f'<strong>{html.escape(item["team"])}</strong>'
+                    f'<span>{item["actions"]} open action(s)</span>'
+                    f'<span>Approximately {item["hours"]} hour(s)</span>'
+                    '</div>'
                 )
-            workload_html.append("</div>")
-            st.markdown("".join(workload_html), unsafe_allow_html=True)
+            workload_html.append('</div>')
+            st.markdown(''.join(workload_html), unsafe_allow_html=True)
         else:
             st.info("No assigned workload is currently recorded.")
 
