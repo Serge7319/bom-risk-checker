@@ -17,6 +17,11 @@ from src.alternative_reasoning import build_alternative_reasoning
 from src.monitoring_intelligence import build_monitoring_action_center
 from src.decision_engine import build_decision_center, STATUSES
 from src.decision_dashboard import decision_card_html, packet_header_html
+from src.decision_repository import (
+    load_decision_state,
+    save_decision_workflow,
+    add_decision_note,
+)
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -3075,13 +3080,28 @@ if app_mode == "Engineering Decisions":
     except Exception:
         decision_analyses = []
 
-    if "engineering_decision_state" not in st.session_state:
-        st.session_state["engineering_decision_state"] = {}
+    decision_scope_key = active_workspace_id or "personal"
+    decision_cache_key = (
+        f"engineering_decision_state_{current_user['id']}_{decision_scope_key}"
+    )
+
+    if decision_cache_key not in st.session_state:
+        persistent_decision_state, decision_load_error = load_decision_state(
+            supabase,
+            user_id=current_user["id"],
+            workspace_id=active_workspace_id or None,
+        )
+        st.session_state[decision_cache_key] = persistent_decision_state
+        st.session_state[
+            f"{decision_cache_key}_load_error"
+        ] = decision_load_error
+
+    decision_state = st.session_state[decision_cache_key]
 
     decision_center = build_decision_center(
         alert_df=decision_alert_df,
         analyses=decision_analyses,
-        saved_state=st.session_state["engineering_decision_state"],
+        saved_state=decision_state,
     )
     all_decisions = decision_center["decisions"]
 
@@ -3122,6 +3142,19 @@ if app_mode == "Engineering Decisions":
         unsafe_allow_html=True,
     )
 
+    decision_load_error = st.session_state.get(
+        f"{decision_cache_key}_load_error"
+    )
+    if decision_load_error:
+        st.warning(
+            "Persistent decision storage is not available yet. "
+            "Run the Milestone 13.2 SQL, then refresh this page."
+        )
+    else:
+        st.caption(
+            "Decision workflow, notes, and history are saved to your Cadivor account."
+        )
+
     if selected_decision:
         if st.button(
             "← Back to Decision Queue",
@@ -3140,7 +3173,7 @@ if app_mode == "Engineering Decisions":
         )
 
         decision_id = selected_decision["decision_id"]
-        state_record = st.session_state["engineering_decision_state"].setdefault(
+        state_record = decision_state.setdefault(
             decision_id,
             {
                 "status": (
@@ -3248,17 +3281,43 @@ if app_mode == "Engineering Decisions":
                 type="primary",
             ):
                 previous_status = state_record.get("status", "New")
-                state_record["status"] = new_status
-                state_record["owner"] = new_owner.strip() or selected_decision["owner"]
-                state_record["updated_at"] = pd.Timestamp.utcnow().isoformat()
-                state_record.setdefault("history", []).append(
-                    {
-                        "event": f"Status changed from {previous_status} to {new_status}",
-                        "time": state_record["updated_at"],
-                    }
+                saved_owner = (
+                    new_owner.strip()
+                    or selected_decision["owner"]
                 )
-                st.success("Decision workflow updated.")
-                st.rerun()
+                save_error = save_decision_workflow(
+                    supabase,
+                    user_id=current_user["id"],
+                    workspace_id=active_workspace_id or None,
+                    decision=selected_decision,
+                    status=new_status,
+                    assigned_owner=saved_owner,
+                    due_date=selected_decision.get("due_date"),
+                    actor_name=(
+                        profile_for_shell.get("full_name")
+                        or shell_name
+                    ),
+                    previous_status=previous_status,
+                )
+
+                if save_error:
+                    st.error(
+                        "The decision could not be saved. "
+                        "Confirm the Milestone 13.2 SQL was applied."
+                    )
+                else:
+                    refreshed_state, refresh_error = load_decision_state(
+                        supabase,
+                        user_id=current_user["id"],
+                        workspace_id=active_workspace_id or None,
+                    )
+                    if refresh_error:
+                        state_record["status"] = new_status
+                        state_record["owner"] = saved_owner
+                    else:
+                        st.session_state[decision_cache_key] = refreshed_state
+                    st.success("Decision workflow saved.")
+                    st.rerun()
 
             navigation_cols = st.columns(4)
             with navigation_cols[0]:
@@ -3336,22 +3395,43 @@ if app_mode == "Engineering Decisions":
                 if not note.strip():
                     st.warning("Enter a note before saving.")
                 else:
-                    timestamp = pd.Timestamp.utcnow().isoformat()
-                    state_record.setdefault("notes", []).append(
-                        {
-                            "author": profile_for_shell.get("full_name") or shell_name,
-                            "text": note.strip(),
-                            "time": timestamp,
-                        }
+                    note_author = (
+                        profile_for_shell.get("full_name")
+                        or shell_name
                     )
-                    state_record.setdefault("history", []).append(
-                        {
-                            "event": "Engineering note added",
-                            "time": timestamp,
-                        }
+                    note_error = add_decision_note(
+                        supabase,
+                        user_id=current_user["id"],
+                        workspace_id=active_workspace_id or None,
+                        decision={
+                            **selected_decision,
+                            "status": state_record.get("status", "New"),
+                            "assigned_owner": state_record.get(
+                                "owner",
+                                selected_decision["owner"],
+                            ),
+                        },
+                        author_name=note_author,
+                        note_text=note.strip(),
                     )
-                    st.success("Engineering note added.")
-                    st.rerun()
+
+                    if note_error:
+                        st.error(
+                            "The note could not be saved. "
+                            "Confirm the Milestone 13.2 SQL was applied."
+                        )
+                    else:
+                        refreshed_state, refresh_error = load_decision_state(
+                            supabase,
+                            user_id=current_user["id"],
+                            workspace_id=active_workspace_id or None,
+                        )
+                        if not refresh_error:
+                            st.session_state[
+                                decision_cache_key
+                            ] = refreshed_state
+                        st.success("Engineering note saved.")
+                        st.rerun()
 
             notes = state_record.get("notes", [])
             if not notes:
@@ -3385,6 +3465,26 @@ if app_mode == "Engineering Decisions":
         k4.metric("Production Approved", decision_center["production_ready_count"])
         k5.metric("Estimated Work", f"{decision_center['estimated_hours']} hrs")
         k6.metric("Average Age", f"{decision_center['average_age_days']} days")
+
+        refresh_decision_col, persistence_scope_col = st.columns(
+            [1, 3]
+        )
+        with refresh_decision_col:
+            if st.button(
+                "Refresh Decisions",
+                key="refresh_persistent_decisions",
+                use_container_width=True,
+            ):
+                st.session_state.pop(decision_cache_key, None)
+                st.session_state.pop(
+                    f"{decision_cache_key}_load_error",
+                    None,
+                )
+                st.rerun()
+        with persistence_scope_col:
+            st.caption(
+                f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
+            )
 
         queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
             [
