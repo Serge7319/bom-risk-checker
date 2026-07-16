@@ -458,7 +458,7 @@ def render_living_workspace(
         items = [
             ("Analyze BOM", "BOM Analyzer"),
             ("Find Alternatives", "Alternative Finder"),
-            ("Monitoring", "Monitoring"),
+            ("Portfolio Intelligence", "Portfolio Intelligence"),
             ("Engineering Decisions", "Engineering Decisions"),
             ("Reports", "Reports"),
         ]
