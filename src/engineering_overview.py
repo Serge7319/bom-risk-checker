@@ -62,6 +62,26 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
             })
     actions.sort(key=lambda x: -x["priority"])
 
+    action_today = [
+        action for action in actions
+        if "today" in action["due"].lower()
+        or "24 hour" in action["due"].lower()
+        or action["priority"] >= 85
+    ]
+    action_this_week = [
+        action for action in actions
+        if action not in action_today
+        and (
+            "week" in action["due"].lower()
+            or "production approval" in action["due"].lower()
+            or action["priority"] >= 60
+        )
+    ]
+    action_later = [
+        action for action in actions
+        if action not in action_today and action not in action_this_week
+    ]
+
     lifecycle = sum(1 for a in alerts if "lifecycle" in (_t(a.get("alert_type")) + _t(a.get("alert_message"))).lower())
     stock = sum(1 for a in alerts if "stock" in (_t(a.get("alert_type")) + _t(a.get("alert_message"))).lower())
 
@@ -79,6 +99,9 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
         "projects": projects,
         "top_actions": actions[:5],
         "all_actions": actions,
+        "action_today": action_today,
+        "action_this_week": action_this_week,
+        "action_later": action_later,
         "recommendations": recommendations[:3],
         "recent_alerts": alerts[:5],
         "active_projects": len(projects),
