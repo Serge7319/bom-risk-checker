@@ -23,6 +23,7 @@ from src.decision_repository import (
     add_decision_note,
 )
 from src.procurement_advisor import build_procurement_advisor
+from src.mission_control import build_mission_control
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2750,19 +2751,368 @@ if app_mode == "Dashboard":
         ):
             navigate_to("Onboarding")
 
-    render_dashboard(
-        current_user=current_user,
-        supabase=supabase,
-        load_analysis_history=load_analysis_history,
-        load_alternative_history=load_alternative_history,
-        render_global_search_panel=render_global_search_panel,
-        light_plotly_layout=light_plotly_layout,
-        empty_state=empty_state,
-        get_user_profile=get_user_profile,
-        _qp_value=_qp_value,
-        workspace_id=active_workspace_id,
-        workspace_name=active_workspace_name,
+    try:
+        mission_analyses = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        mission_analyses = []
+
+    try:
+        mission_parts_response = (
+            _workspace_query(
+                supabase.table("analysis_parts").select("*")
+            )
+            .eq("user_id", current_user["id"])
+            .limit(5000)
+            .execute()
+        )
+        mission_parts = mission_parts_response.data or []
+    except Exception:
+        mission_parts = []
+
+    try:
+        mission_alert_response = (
+            _workspace_query(
+                supabase.table("monitor_alerts").select("*")
+            )
+            .eq("user_id", current_user["id"])
+            .order("created_at", desc=True)
+            .limit(150)
+            .execute()
+        )
+        mission_alerts = mission_alert_response.data or []
+    except Exception:
+        mission_alerts = []
+
+    try:
+        mission_saved_state, _mission_state_error = load_decision_state(
+            supabase,
+            user_id=current_user["id"],
+            workspace_id=active_workspace_id or None,
+        )
+    except Exception:
+        mission_saved_state = {}
+
+    mission_decision_center = build_decision_center(
+        alert_df=pd.DataFrame(mission_alerts),
+        analyses=mission_analyses,
+        saved_state=mission_saved_state,
     )
+
+    mission_procurement = build_procurement_advisor(
+        analyses=mission_analyses,
+        parts=mission_parts,
+        alerts=mission_alerts,
+    )
+
+    mission_control = build_mission_control(
+        user_name=(
+            profile_for_shell.get("full_name")
+            or shell_name
+            or current_user.get("email")
+            or "there"
+        ),
+        analyses=mission_analyses,
+        parts=mission_parts,
+        alerts=mission_alerts,
+        decisions=mission_decision_center["decisions"],
+        procurement=mission_procurement,
+    )
+
+    st.markdown(
+        """
+        <style>
+          .cv150-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#ffffff,#eef5ff);border-radius:24px;padding:22px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
+          .cv150-top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.cv150-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv150-title{font-size:27px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-bottom:7px}.cv150-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.6;max-width:980px}.cv150-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.cv150-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv150-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv150-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+          .cv150-card{border:1px solid #dbe3ef;background:#fff;border-radius:18px;padding:15px;margin-bottom:10px;box-shadow:0 10px 28px rgba(15,23,42,.045)}.cv150-card-title{font-size:13px;font-weight:950;color:#0f172a}.cv150-card-copy{font-size:10px;font-weight:720;color:#52647a;line-height:1.5;margin-top:5px}.cv150-meta{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.cv150-meta span{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#1d4ed8}
+          .cv150-project{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:13px;margin-bottom:8px}.cv150-project-head{display:flex;justify-content:space-between;gap:12px}.cv150-project-name{font-size:12px;font-weight:950;color:#0f172a}.cv150-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin:9px 0 6px}.cv150-bar i{display:block;height:100%;border-radius:999px;background:#2563eb}.cv150-small{font-size:9px;font-weight:720;color:#64748b}
+          .cv150-recommendation{border-left:3px solid #2563eb;background:#f8fbff;border-radius:0 14px 14px 0;padding:12px 14px;margin-bottom:9px;font-size:10px;font-weight:760;color:#334155;line-height:1.5}
+          @media(max-width:900px){.cv150-top{display:block}.cv150-badge{display:inline-block;margin-top:10px}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    mission_tab, portfolio_tab = st.tabs(
+        ["AI Mission Control", "Portfolio Dashboard"]
+    )
+
+    with mission_tab:
+        st.markdown(
+            f"""
+            <section class="cv150-hero">
+              <div class="cv150-top">
+                <div>
+                  <div class="cv150-eyebrow">Cadivor AI Mission Control</div>
+                  <div class="cv150-title">
+                    Good day, {html.escape(mission_control['greeting_name'])}.
+                    {html.escape(mission_control['posture'])}
+                  </div>
+                  <div class="cv150-copy">
+                    {html.escape(mission_control['executive_summary'])}
+                  </div>
+                </div>
+                <span class="cv150-badge {html.escape(mission_control['tone'])}">
+                  Projected health {mission_control['average_health']} → {mission_control['projected_health']}
+                </span>
+              </div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        shortcut_cols = st.columns(3)
+        with shortcut_cols[0]:
+            internal_nav_button(
+                "Open Engineering Decisions",
+                "Engineering Decisions",
+                key="mission_open_decisions",
+                use_container_width=True,
+            )
+        with shortcut_cols[1]:
+            internal_nav_button(
+                "Open Procurement Advisor",
+                "Procurement Advisor",
+                key="mission_open_procurement",
+                use_container_width=True,
+            )
+        with shortcut_cols[2]:
+            internal_nav_button(
+                "Open Monitoring",
+                "Monitoring",
+                key="mission_open_monitoring",
+                use_container_width=True,
+            )
+
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        k1.metric("Active Projects", mission_control["active_projects"])
+        k2.metric("Production Ready", mission_control["production_ready"])
+        k3.metric("Critical Components", mission_control["critical_components"])
+        k4.metric("Procurement Actions", mission_control["procurement_actions"])
+        k5.metric("Engineering Decisions", mission_control["engineering_decisions"])
+        k6.metric("Estimated Work", f"{mission_control['estimated_hours']} hrs")
+
+        left_col, right_col = st.columns([1.35, 1])
+
+        with left_col:
+            st.markdown("### Today's Critical Actions")
+            if not mission_control["top_actions"]:
+                st.success("No urgent action is currently recorded.")
+            else:
+                for index, action in enumerate(
+                    mission_control["top_actions"]
+                ):
+                    tone = (
+                        "bad"
+                        if action["priority"] >= 85
+                        else "warn"
+                        if action["priority"] >= 60
+                        else "good"
+                    )
+                    st.markdown(
+                        f"""
+                        <section class="cv150-card">
+                          <div class="cv150-top">
+                            <div>
+                              <div class="cv150-card-title">
+                                {html.escape(action['part'])}
+                              </div>
+                              <div class="cv150-card-copy">
+                                {html.escape(action['action'])}
+                              </div>
+                            </div>
+                            <span class="cv150-badge {tone}">
+                              {action['priority']}/100
+                            </span>
+                          </div>
+                          <div class="cv150-meta">
+                            <span>Owner: {html.escape(action['owner'])}</span>
+                            <span>Due: {html.escape(action['due'])}</span>
+                            <span>{html.escape(action['source'])}</span>
+                          </div>
+                        </section>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    action_buttons = st.columns(2)
+                    with action_buttons[0]:
+                        if action["page"] == "Engineering Decisions":
+                            internal_nav_button(
+                                "Open Decision",
+                                "Engineering Decisions",
+                                key=f"mission_action_{index}",
+                                use_container_width=True,
+                                decision_id=action["decision_id"],
+                            )
+                        else:
+                            internal_nav_button(
+                                "Open Procurement",
+                                "Procurement Advisor",
+                                key=f"mission_action_{index}",
+                                use_container_width=True,
+                            )
+                    with action_buttons[1]:
+                        if action.get("analysis_id"):
+                            internal_nav_button(
+                                "Open Saved BOM",
+                                "Analysis Details",
+                                key=f"mission_bom_{index}",
+                                use_container_width=True,
+                                analysis_id=action["analysis_id"],
+                            )
+                        else:
+                            st.caption("Cross-functional action")
+
+        with right_col:
+            st.markdown("### Project Readiness")
+            if not mission_control["projects"]:
+                st.info("No saved BOM analyses are available yet.")
+            else:
+                for index, project in enumerate(
+                    mission_control["projects"][:8]
+                ):
+                    st.markdown(
+                        f"""
+                        <section class="cv150-project">
+                          <div class="cv150-project-head">
+                            <div class="cv150-project-name">
+                              {html.escape(project['project'])}
+                            </div>
+                            <span class="cv150-badge {html.escape(project['tone'])}">
+                              {html.escape(project['readiness'])}
+                            </span>
+                          </div>
+                          <div class="cv150-bar">
+                            <i style="width:{project['health']}%"></i>
+                          </div>
+                          <div class="cv150-small">
+                            Health {project['health']}/100 ·
+                            {project['high_risk']} high-risk ·
+                            {project['parts']} parts
+                          </div>
+                        </section>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if project["analysis_id"]:
+                        internal_nav_button(
+                            "Open Project",
+                            "Analysis Details",
+                            key=f"mission_project_{index}",
+                            use_container_width=True,
+                            analysis_id=project["analysis_id"],
+                        )
+
+        radar_col, workload_col = st.columns(2)
+        with radar_col:
+            st.markdown("### AI Risk Radar")
+            radar_df = pd.DataFrame(
+                [
+                    {"Signal": key, "Count": value}
+                    for key, value in mission_control["risk_radar"].items()
+                ]
+            )
+            st.dataframe(
+                radar_df,
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        with workload_col:
+            st.markdown("### Team Workload")
+            workload_df = pd.DataFrame(
+                [
+                    {
+                        "Team": team,
+                        "Open Actions": mission_control["workload"][team],
+                        "Estimated Hours": mission_control["workload_hours"][team],
+                    }
+                    for team in (
+                        "Engineering",
+                        "Procurement",
+                        "Quality",
+                        "Management",
+                    )
+                ]
+            )
+            st.dataframe(
+                workload_df,
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        recommendation_col, activity_col = st.columns(2)
+        with recommendation_col:
+            st.markdown("### Cadivor Recommendations")
+            for recommendation in mission_control["recommendations"]:
+                st.markdown(
+                    f"""
+                    <div class="cv150-recommendation">
+                      {html.escape(recommendation)}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        with activity_col:
+            st.markdown("### Recent Activity")
+            if not mission_control["recent_activity"]:
+                st.info("No recent activity is available.")
+            else:
+                activity_df = pd.DataFrame(
+                    mission_control["recent_activity"]
+                ).rename(
+                    columns={
+                        "type": "Type",
+                        "title": "Item",
+                        "detail": "Activity",
+                        "time": "Time",
+                    }
+                )
+                st.dataframe(
+                    activity_df,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        st.markdown("### Workspace Shortcuts")
+        shortcut_row_1 = st.columns(3)
+        with shortcut_row_1[0]:
+            internal_nav_button(
+                "Analyze a BOM",
+                "BOM Analyzer",
+                key="mission_shortcut_analyze",
+                use_container_width=True,
+            )
+        with shortcut_row_1[1]:
+            internal_nav_button(
+                "Find Alternatives",
+                "Alternative Finder",
+                key="mission_shortcut_alternatives",
+                use_container_width=True,
+            )
+        with shortcut_row_1[2]:
+            internal_nav_button(
+                "Generate Reports",
+                "Reports",
+                key="mission_shortcut_reports",
+                use_container_width=True,
+            )
+
+    with portfolio_tab:
+        render_dashboard(
+            current_user=current_user,
+            supabase=supabase,
+            load_analysis_history=load_analysis_history,
+            load_alternative_history=load_alternative_history,
+            render_global_search_panel=render_global_search_panel,
+            light_plotly_layout=light_plotly_layout,
+            empty_state=empty_state,
+            get_user_profile=get_user_profile,
+            _qp_value=_qp_value,
+            workspace_id=active_workspace_id,
+            workspace_name=active_workspace_name,
+        )
+
     st.stop()
 
 if app_mode == "Analysis Details":
