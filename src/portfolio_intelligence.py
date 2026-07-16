@@ -417,14 +417,16 @@ def render_portfolio_intelligence(
             st.success("No component has multiple recorded monitoring alerts.")
 
     st.markdown('<div class="cv19-section">Continue Your Review</div>', unsafe_allow_html=True)
-    shortcuts = st.columns(5)
+    shortcuts = st.columns(6)
     with shortcuts[0]:
         internal_nav_button("Engineering Overview", "Dashboard", key="portfolio_dashboard", use_container_width=True)
     with shortcuts[1]:
         internal_nav_button("Design Impact", "Design Impact Analyzer", key="portfolio_design_impact", use_container_width=True)
     with shortcuts[2]:
-        internal_nav_button("Engineering Decisions", "Engineering Decisions", key="portfolio_decisions", use_container_width=True)
+        internal_nav_button("Cost Optimization", "Cost Optimization", key="portfolio_cost", use_container_width=True)
     with shortcuts[3]:
-        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="portfolio_procurement", use_container_width=True)
+        internal_nav_button("Engineering Decisions", "Engineering Decisions", key="portfolio_decisions", use_container_width=True)
     with shortcuts[4]:
+        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="portfolio_procurement", use_container_width=True)
+    with shortcuts[5]:
         internal_nav_button("Reports", "Reports", key="portfolio_reports", use_container_width=True)
