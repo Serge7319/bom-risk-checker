@@ -306,13 +306,23 @@ def render_portfolio_intelligence(
                 """,
                 unsafe_allow_html=True,
             )
-            internal_nav_button(
-                "Find Replacement",
-                "Alternative Finder",
-                key=f"portfolio_alt_{index}",
-                use_container_width=True,
-                original_part=row["Part Number"],
-            )
+            action_cols = st.columns(2)
+            with action_cols[0]:
+                internal_nav_button(
+                    "Analyze Design Impact",
+                    "Design Impact Analyzer",
+                    key=f"portfolio_impact_{index}",
+                    use_container_width=True,
+                    part=row["Part Number"],
+                )
+            with action_cols[1]:
+                internal_nav_button(
+                    "Find Replacement",
+                    "Alternative Finder",
+                    key=f"portfolio_alt_{index}",
+                    use_container_width=True,
+                    original_part=row["Part Number"],
+                )
 
         with st.expander("View all shared components", expanded=False):
             if intelligence["shared_components"]:
@@ -407,12 +417,14 @@ def render_portfolio_intelligence(
             st.success("No component has multiple recorded monitoring alerts.")
 
     st.markdown('<div class="cv19-section">Continue Your Review</div>', unsafe_allow_html=True)
-    shortcuts = st.columns(4)
+    shortcuts = st.columns(5)
     with shortcuts[0]:
         internal_nav_button("Engineering Overview", "Dashboard", key="portfolio_dashboard", use_container_width=True)
     with shortcuts[1]:
-        internal_nav_button("Engineering Decisions", "Engineering Decisions", key="portfolio_decisions", use_container_width=True)
+        internal_nav_button("Design Impact", "Design Impact Analyzer", key="portfolio_design_impact", use_container_width=True)
     with shortcuts[2]:
-        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="portfolio_procurement", use_container_width=True)
+        internal_nav_button("Engineering Decisions", "Engineering Decisions", key="portfolio_decisions", use_container_width=True)
     with shortcuts[3]:
+        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="portfolio_procurement", use_container_width=True)
+    with shortcuts[4]:
         internal_nav_button("Reports", "Reports", key="portfolio_reports", use_container_width=True)
