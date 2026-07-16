@@ -2853,6 +2853,37 @@ if app_mode == "Dashboard":
         k4.metric("Immediate Purchases", overview["procurement_actions"])
         k5.metric("Engineering Hours", f"{overview['estimated_hours']} hrs")
 
+        changes = overview["recent_change_summary"]
+        st.markdown(
+            f"""
+            <section class="cv170-change-card">
+              <div class="cv170-change-title">What Changed Recently</div>
+              <div class="cv151-section-copy">
+                A quick summary of the component activity currently recorded in this workspace.
+              </div>
+              <div class="cv170-change-grid">
+                <div class="cv170-change-item">
+                  <div class="cv170-change-value">{changes['components']}</div>
+                  <div class="cv170-change-label">Components Changed</div>
+                </div>
+                <div class="cv170-change-item">
+                  <div class="cv170-change-value">{changes['lifecycle']}</div>
+                  <div class="cv170-change-label">Lifecycle Updates</div>
+                </div>
+                <div class="cv170-change-item">
+                  <div class="cv170-change-value">{changes['stock']}</div>
+                  <div class="cv170-change-label">Stock Changes</div>
+                </div>
+                <div class="cv170-change-item">
+                  <div class="cv170-change-value">{changes['price']}</div>
+                  <div class="cv170-change-label">Price Changes</div>
+                </div>
+              </div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.markdown(
             f"""
             <div class="cv160-priority-strip">
@@ -2895,17 +2926,29 @@ if app_mode == "Dashboard":
                     """,
                     unsafe_allow_html=True,
                 )
+                action_text = action["title"].lower()
                 if action["page"] == "Engineering Decisions":
+                    if "approve" in action_text:
+                        button_label = "Review Approval"
+                    elif "replacement" in action_text or "successor" in action_text:
+                        button_label = "Review Replacement"
+                    else:
+                        button_label = "Review Decision"
                     internal_nav_button(
-                        "Review",
+                        button_label,
                         "Engineering Decisions",
                         key=f"overview_action_{index}",
                         use_container_width=True,
                         decision_id=action["decision_id"],
                     )
                 else:
+                    button_label = (
+                        "Find Source"
+                        if "stock" in action_text or "source" in action_text
+                        else "Review Purchase"
+                    )
                     internal_nav_button(
-                        "Review",
+                        button_label,
                         "Procurement Advisor",
                         key=f"overview_action_{index}",
                         use_container_width=True,
@@ -2944,7 +2987,9 @@ if app_mode == "Dashboard":
                         Health {project['health']}/100 · {project['parts']} components ·
                         {project['high']} high-risk
                       </div>
-                      <div class="cv151-meta"><span>{html.escape(project['status'])}</span></div>
+                      <div class="cv151-meta {'cv170-status-ready' if project['status'] == 'Ready for Production' else 'cv170-status-review'}">
+                        <span>{html.escape(project['status'])}</span>
+                      </div>
                     </section>
                     """,
                     unsafe_allow_html=True,
@@ -3386,12 +3431,12 @@ if app_mode == "Procurement Advisor":
     p4.metric("Replacement Needed", advisor["replace_count"])
 
     priority_tab, details_tab = st.tabs(
-        ["Immediate Purchasing Actions", "All Components"]
+        ["Action Needed", "All Components"]
     )
     with priority_tab:
         urgent_rows = [
             row for row in advisor["recommendations"]
-            if row["Priority Score"] >= 45
+            if row["Recommendation"] != "No immediate action"
         ][:10]
         if not urgent_rows:
             st.success("No immediate purchasing action is required.")
@@ -5529,7 +5574,7 @@ if app_mode == "Reports":
                     )
 
         st.markdown(
-            '<div class="cv-r9-section">Download report package</div>'
+            '<div class="cv-r9-section">Report packages</div>'
             '<div class="cv-r9-sub">Downloads are generated from the selected saved BOM analysis.</div>',
             unsafe_allow_html=True,
         )
@@ -5553,128 +5598,115 @@ if app_mode == "Reports":
                 st.session_state["reports_session_history"][:12]
             )
 
-        ai_exec_col, ai_proc_col = st.columns(2)
-        with ai_exec_col:
-            ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
-            if st.download_button(
-                "Download AI Executive PDF",
-                key=f"shared_ai_executive_pdf_{selected_analysis_id}",
-                data=ai_executive_pdf,
-                file_name=ai_exec_name,
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary",
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report("AI Executive Brief", ai_exec_name)
+        with st.expander("Executive reports", expanded=True):
+            st.caption("Leadership-ready summaries for release, risk, and management review.")
+            ai_exec_col, executive_pdf_col, executive_csv_col = st.columns(3)
+            with ai_exec_col:
+                ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
+                if st.download_button(
+                    "AI Executive Brief · PDF",
+                    key=f"shared_ai_executive_pdf_{selected_analysis_id}",
+                    data=ai_executive_pdf,
+                    file_name=ai_exec_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("AI Executive Brief", ai_exec_name)
+            with executive_pdf_col:
+                executive_pdf_name = f"{safe_project}_executive_summary.pdf"
+                if st.download_button(
+                    "Executive Summary · PDF",
+                    key=f"shared_executive_pdf_{selected_analysis_id}",
+                    data=pdf_bytes,
+                    file_name=executive_pdf_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("Executive BOM Summary", executive_pdf_name)
+            with executive_csv_col:
+                executive_csv_name = f"{safe_project}_executive_summary.csv"
+                if st.download_button(
+                    "Executive Data · CSV",
+                    key=f"shared_executive_csv_{selected_analysis_id}",
+                    data=executive_csv,
+                    file_name=executive_csv_name,
+                    mime="text/csv",
+                    use_container_width=True,
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("Executive BOM Summary", executive_csv_name)
 
-        with ai_proc_col:
-            ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
-            if st.download_button(
-                "Download AI Procurement PDF",
-                key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
-                data=ai_procurement_pdf,
-                file_name=ai_proc_name,
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary",
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report("AI Procurement Brief", ai_proc_name)
+        with st.expander("Engineering reports", expanded=False):
+            st.caption("Technical reviews for component risk, lifecycle readiness, and alternatives.")
+            risk_col, lifecycle_col, alternatives_col = st.columns(3)
+            with risk_col:
+                risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
+                if st.download_button(
+                    "Risk Review · CSV",
+                    key=f"shared_risk_csv_{selected_analysis_id}",
+                    data=engineering_df.to_csv(index=False).encode("utf-8"),
+                    file_name=risk_csv_name,
+                    mime="text/csv",
+                    use_container_width=True,
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("Engineering Risk Review", risk_csv_name)
+            with lifecycle_col:
+                lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
+                if st.download_button(
+                    "Lifecycle Review · CSV",
+                    key=f"shared_lifecycle_csv_{selected_analysis_id}",
+                    data=lifecycle_df.to_csv(index=False).encode("utf-8"),
+                    file_name=lifecycle_csv_name,
+                    mime="text/csv",
+                    use_container_width=True,
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("Lifecycle Exposure Report", lifecycle_csv_name)
+            with alternatives_col:
+                alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
+                if st.download_button(
+                    "Alternatives Review · CSV",
+                    key=f"shared_alternatives_csv_{selected_analysis_id}",
+                    data=alternative_df.to_csv(index=False).encode("utf-8"),
+                    file_name=alternatives_csv_name,
+                    mime="text/csv",
+                    use_container_width=True,
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("Alternative Replacement Report", alternatives_csv_name)
 
-        executive_col, risk_col, sourcing_col = st.columns(3)
-        with executive_col:
-            executive_pdf_name = f"{safe_project}_executive_summary.pdf"
-            if st.download_button(
-                "Download Executive PDF",
-                key=f"shared_executive_pdf_{selected_analysis_id}",
-                data=pdf_bytes,
-                file_name=executive_pdf_name,
-                mime="application/pdf",
-                use_container_width=True,
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report(
-                    "Executive BOM Summary",
-                    executive_pdf_name,
-                )
-
-            executive_csv_name = f"{safe_project}_executive_summary.csv"
-            if st.download_button(
-                "Download Executive CSV",
-                key=f"shared_executive_csv_{selected_analysis_id}",
-                data=executive_csv,
-                file_name=executive_csv_name,
-                mime="text/csv",
-                use_container_width=True,
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report(
-                    "Executive BOM Summary",
-                    executive_csv_name,
-                )
-
-        with risk_col:
-            risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
-            if st.download_button(
-                "Download Risk Review CSV",
-                key=f"shared_risk_csv_{selected_analysis_id}",
-                data=engineering_df.to_csv(index=False).encode("utf-8"),
-                file_name=risk_csv_name,
-                mime="text/csv",
-                use_container_width=True,
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report(
-                    "Engineering Risk Review",
-                    risk_csv_name,
-                )
-
-            lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
-            if st.download_button(
-                "Download Lifecycle CSV",
-                key=f"shared_lifecycle_csv_{selected_analysis_id}",
-                data=lifecycle_df.to_csv(index=False).encode("utf-8"),
-                file_name=lifecycle_csv_name,
-                mime="text/csv",
-                use_container_width=True,
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report(
-                    "Lifecycle Exposure Report",
-                    lifecycle_csv_name,
-                )
-
-        with sourcing_col:
-            sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
-            if st.download_button(
-                "Download Sourcing CSV",
-                key=f"shared_sourcing_csv_{selected_analysis_id}",
-                data=sourcing_df.to_csv(index=False).encode("utf-8"),
-                file_name=sourcing_csv_name,
-                mime="text/csv",
-                use_container_width=True,
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report(
-                    "Procurement & Sourcing",
-                    sourcing_csv_name,
-                )
-
-            alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
-            if st.download_button(
-                "Download Alternatives CSV",
-                key=f"shared_alternatives_csv_{selected_analysis_id}",
-                data=alternative_df.to_csv(index=False).encode("utf-8"),
-                file_name=alternatives_csv_name,
-                mime="text/csv",
-                use_container_width=True,
-                on_click=_mark_first_report_complete,
-            ):
-                _record_session_report(
-                    "Alternative Replacement Report",
-                    alternatives_csv_name,
-                )
+        with st.expander("Procurement reports", expanded=False):
+            st.caption("Purchasing and sourcing packages for procurement and supplier review.")
+            ai_proc_col, sourcing_col = st.columns(2)
+            with ai_proc_col:
+                ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
+                if st.download_button(
+                    "AI Procurement Brief · PDF",
+                    key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
+                    data=ai_procurement_pdf,
+                    file_name=ai_proc_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("AI Procurement Brief", ai_proc_name)
+            with sourcing_col:
+                sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
+                if st.download_button(
+                    "Sourcing Review · CSV",
+                    key=f"shared_sourcing_csv_{selected_analysis_id}",
+                    data=sourcing_df.to_csv(index=False).encode("utf-8"),
+                    file_name=sourcing_csv_name,
+                    mime="text/csv",
+                    use_container_width=True,
+                    on_click=_mark_first_report_complete,
+                ):
+                    _record_session_report("Procurement & Sourcing", sourcing_csv_name)
 
         action_cols = st.columns(3)
         with action_cols[0]:
