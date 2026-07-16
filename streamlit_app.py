@@ -2816,7 +2816,7 @@ if app_mode == "Dashboard":
               <div class="cv151-title">Engineering Overview</div>
               <div class="cv151-subtitle">
                 {html.escape(overview['summary'])}
-                Start with the priority actions below, then open supporting details only when needed.
+                Start with what needs attention now. Open supporting details only when you need them.
               </div>
             </section>
             """,
@@ -2849,15 +2849,35 @@ if app_mode == "Dashboard":
         k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("Active Projects", overview["active_projects"])
         k2.metric("Ready for Production", overview["ready_projects"])
-        k3.metric("Critical Components", overview["critical_components"])
-        k4.metric("Purchasing Actions", overview["procurement_actions"])
-        k5.metric("Estimated Work", f"{overview['estimated_hours']} hrs")
+        k3.metric("High-Risk Components", overview["critical_components"])
+        k4.metric("Immediate Purchases", overview["procurement_actions"])
+        k5.metric("Engineering Hours", f"{overview['estimated_hours']} hrs")
+
+        st.markdown(
+            f"""
+            <div class="cv160-priority-strip">
+              <div class="cv160-priority-box today">
+                <div class="cv160-priority-label">Requires Action Today</div>
+                <div class="cv160-priority-value">{len(overview['action_today'])}</div>
+              </div>
+              <div class="cv160-priority-box week">
+                <div class="cv160-priority-label">Review This Week</div>
+                <div class="cv160-priority-value">{len(overview['action_this_week'])}</div>
+              </div>
+              <div class="cv160-priority-box later">
+                <div class="cv160-priority-label">Everything Else</div>
+                <div class="cv160-priority-value">{len(overview['action_later'])}</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         left, right = st.columns([1.25, 1])
 
         with left:
-            st.markdown('<div class="cv151-section-title">Today’s Priorities</div>', unsafe_allow_html=True)
-            st.markdown('<div class="cv151-section-copy">The five actions most likely to affect release or purchasing.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="cv151-section-title">Start Here</div>', unsafe_allow_html=True)
+            st.markdown('<div class="cv151-section-copy">The five actions most likely to affect your next release or purchase.</div>', unsafe_allow_html=True)
             if not overview["top_actions"]:
                 st.success("No urgent action is currently recorded.")
             for index, action in enumerate(overview["top_actions"]):
@@ -2892,7 +2912,7 @@ if app_mode == "Dashboard":
                     )
             if len(overview["all_actions"]) > 5:
                 with st.expander(
-                    f"View all {len(overview['all_actions'])} actions",
+                    f"View complete action list ({len(overview['all_actions'])})",
                     expanded=False,
                 ):
                     st.dataframe(
@@ -2912,8 +2932,8 @@ if app_mode == "Dashboard":
                     )
 
         with right:
-            st.markdown('<div class="cv151-section-title">Project Status</div>', unsafe_allow_html=True)
-            st.markdown('<div class="cv151-section-copy">The projects that need attention appear first.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="cv151-section-title">Projects Requiring Attention</div>', unsafe_allow_html=True)
+            st.markdown('<div class="cv151-section-copy">Projects are sorted by urgency so your team knows where to begin.</div>', unsafe_allow_html=True)
             for index, project in enumerate(overview["projects"][:5]):
                 st.markdown(
                     f"""
@@ -2939,7 +2959,7 @@ if app_mode == "Dashboard":
                     )
             if len(overview["projects"]) > 5:
                 with st.expander(
-                    f"View all {len(overview['projects'])} projects",
+                    f"View all projects ({len(overview['projects'])})",
                     expanded=False,
                 ):
                     st.dataframe(
@@ -2958,16 +2978,16 @@ if app_mode == "Dashboard":
                         use_container_width=True,
                     )
 
-        st.markdown('<div class="cv151-section-title">Recommended Next Steps</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv151-section-title">Suggested Next Actions</div>', unsafe_allow_html=True)
         for recommendation in overview["recommendations"]:
             st.markdown(
-                f'<div class="cv151-recommendation">{html.escape(recommendation)}</div>',
+                f'<div class="cv151-recommendation">✓ {html.escape(recommendation)}</div>',
                 unsafe_allow_html=True,
             )
 
         details_left, details_right = st.columns(2)
         with details_left:
-            with st.expander("View recent changes", expanded=False):
+            with st.expander("Recent changes", expanded=False):
                 if overview["recent_alerts"]:
                     activity = pd.DataFrame(overview["recent_alerts"])
                     visible = [
@@ -2994,7 +3014,7 @@ if app_mode == "Dashboard":
                     st.info("No recent changes are available.")
 
         with details_right:
-            with st.expander("View workspace shortcuts", expanded=False):
+            with st.expander("More tools", expanded=False):
                 shortcut_cols = st.columns(3)
                 with shortcut_cols[0]:
                     internal_nav_button(
@@ -3144,9 +3164,9 @@ if app_mode == "Monitoring":
 
     action_tab, alert_table_tab, component_tab = st.tabs(
         [
-            "Priority Action Queue",
-            "Alert History",
-            "Monitored Components",
+            "Requires Attention",
+            "Recent Changes",
+            "Watching",
         ]
     )
 
@@ -3360,13 +3380,13 @@ if app_mode == "Procurement Advisor":
     )
 
     p1, p2, p3, p4 = st.columns(4)
-    p1.metric("Immediate Actions", advisor["urgent_count"])
+    p1.metric("Action Needed", advisor["urgent_count"])
     p2.metric("Monitor", advisor["monitor_count"])
-    p3.metric("Second Source", advisor["second_source_count"])
-    p4.metric("Replacement Review", advisor["replace_count"])
+    p3.metric("Need Second Source", advisor["second_source_count"])
+    p4.metric("Replacement Needed", advisor["replace_count"])
 
     priority_tab, details_tab = st.tabs(
-        ["Priority Purchasing Actions", "All Component Details"]
+        ["Immediate Purchasing Actions", "All Components"]
     )
     with priority_tab:
         urgent_rows = [
@@ -3381,7 +3401,7 @@ if app_mode == "Procurement Advisor":
                 <section class="cv151-card">
                   <div class="cv151-card-title">{html.escape(row['Part Number'])}</div>
                   <div class="cv151-card-copy">
-                    <b>{html.escape(row['Recommendation'])}</b><br>
+                    <b>Recommended action: {html.escape(row['Recommendation'])}</b><br>
                     {html.escape(row['Next Step'])}
                   </div>
                   <div class="cv151-meta">
@@ -3527,7 +3547,7 @@ if app_mode == "Engineering Decisions":
 
     if selected_decision:
         if st.button(
-            "← Back to Decision Queue",
+            "← Back to Engineering Decisions",
             key="decision_packet_back",
             type="secondary",
         ):
@@ -3833,7 +3853,7 @@ if app_mode == "Engineering Decisions":
         k2.metric("Critical", decision_center["critical_count"])
         k3.metric("Manager Approval", decision_center["awaiting_approval_count"])
         k4.metric("Production Approved", decision_center["production_ready_count"])
-        k5.metric("Estimated Work", f"{decision_center['estimated_hours']} hrs")
+        k5.metric("Engineering Hours", f"{decision_center['estimated_hours']} hrs")
         k6.metric("Average Age", f"{decision_center['average_age_days']} days")
 
         refresh_decision_col, persistence_scope_col = st.columns(
@@ -3858,10 +3878,10 @@ if app_mode == "Engineering Decisions":
 
         queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
             [
-                "Decision Queue",
-                "Owner Dashboard",
+                "Needs Review",
+                "Team Workload",
                 "Decision Analytics",
-                "Decision Archive",
+                "Completed",
             ]
         )
 
@@ -3965,7 +3985,7 @@ if app_mode == "Engineering Decisions":
                             st.caption("Monitoring decision")
 
         with workload_tab:
-            st.markdown("### Engineering Workload by Owner")
+            st.markdown("### Team Workload")
             active = [
                 decision
                 for decision in all_decisions
