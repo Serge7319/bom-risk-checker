@@ -28,6 +28,7 @@ from src.readability_system import readability_css
 from src.living_workspace import render_living_workspace
 from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
 from src.design_impact_analyzer import build_design_impact, render_design_impact
+from src.cost_optimization import build_cost_optimization, render_cost_optimization
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2068,6 +2069,7 @@ NAV_OPTIONS = [
     "Procurement Advisor",
     "Portfolio Intelligence",
     "Design Impact Analyzer",
+    "Cost Optimization",
     "Reports",
     "Pricing",
     "Settings",
@@ -2305,7 +2307,7 @@ apply_milestone10a_design_system()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Design Impact Analyzer":"◇", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
+    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Design Impact Analyzer":"◇", "Cost Optimization":"$", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
     "Help":"?", "About":"?"
 }
 _nav_html = []
@@ -3131,6 +3133,47 @@ if app_mode == "Monitoring":
                 hide_index=True,
                 use_container_width=True,
             )
+
+
+# ---------- Cost Optimization ----------
+if app_mode == "Cost Optimization":
+    try:
+        cost_analyses = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        cost_analyses = []
+
+    try:
+        cost_parts_response = (
+            _workspace_query(supabase.table("analysis_parts").select("*"))
+            .eq("user_id", current_user["id"])
+            .limit(10000)
+            .execute()
+        )
+        cost_parts = cost_parts_response.data or []
+    except Exception:
+        cost_parts = []
+
+    st.markdown("### Production scenario")
+    build_quantity = st.number_input(
+        "Number of builds to model",
+        min_value=1,
+        max_value=1_000_000,
+        value=int(st.session_state.get("cost_build_quantity", 100)),
+        step=10,
+        key="cost_build_quantity",
+        help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
+    )
+
+    cost_intelligence = build_cost_optimization(
+        cost_analyses,
+        cost_parts,
+        int(build_quantity),
+    )
+    render_cost_optimization(
+        intelligence=cost_intelligence,
+        internal_nav_button=internal_nav_button,
+    )
+    st.stop()
 
 
 # ---------- Design Impact Analyzer ----------
