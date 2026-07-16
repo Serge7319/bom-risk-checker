@@ -22,6 +22,7 @@ from src.decision_repository import (
     save_decision_workflow,
     add_decision_note,
 )
+from src.procurement_advisor import build_procurement_advisor
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2059,6 +2060,7 @@ NAV_OPTIONS = [
     "Alternative Finder",
     "Monitoring",
     "Engineering Decisions",
+    "Procurement Advisor",
     "Reports",
     "Pricing",
     "Settings",
@@ -2295,7 +2297,7 @@ apply_milestone10a_design_system()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Engineering Decisions":"◆", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
+    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
     "Help":"?", "About":"?"
 }
 _nav_html = []
@@ -2783,6 +2785,19 @@ if app_mode == "Analysis Details":
 st.markdown(
     """
     <style>
+      .cv140-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:22px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
+      .cv140-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv140-title{font-size:27px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-bottom:7px}.cv140-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.6}
+      .cv140-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.cv140-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv140-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv140-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+      .cv140-action{border:1px solid #dbe3ef;background:#fff;border-radius:20px;padding:16px;margin-bottom:11px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.cv140-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cv140-part{font-size:16px;font-weight:950;color:#0f172a}.cv140-sub{font-size:9px;font-weight:900;color:#64748b;margin-top:3px}.cv140-rec{font-size:11px;font-weight:760;color:#334155;line-height:1.5;margin:9px 0}.cv140-meta{display:flex;gap:7px;flex-wrap:wrap}.cv140-meta span{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#1d4ed8}
+      @media(max-width:900px){.cv140-head{display:block}.cv140-badge{display:inline-block;margin-top:10px}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <style>
       .cv130-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:21px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
       .cv130-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv130-title{font-size:27px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-bottom:7px}.cv130-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.6;max-width:920px}
       .cv130-decision-card,.cv130-packet{border:1px solid #dbe3ef;background:#fff;border-radius:20px;padding:16px;margin-bottom:11px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.cv130-decision-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cv130-decision-title{font-size:16px;font-weight:950;color:#0f172a;letter-spacing:-.02em}.cv130-packet-title{font-size:23px;font-weight:950;color:#0f172a;letter-spacing:-.035em}.cv130-reason{font-size:10px;font-weight:720;color:#52647a;line-height:1.5;margin-top:5px}
@@ -3056,6 +3071,233 @@ if app_mode == "Monitoring":
                 visible_components,
                 hide_index=True,
                 use_container_width=True,
+            )
+
+
+# ---------- AI Procurement Advisor ----------
+if app_mode == "Procurement Advisor":
+    try:
+        procurement_analyses = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        procurement_analyses = []
+
+    try:
+        parts_response = (
+            _workspace_query(supabase.table("analysis_parts").select("*"))
+            .eq("user_id", current_user["id"])
+            .limit(5000)
+            .execute()
+        )
+        procurement_parts = parts_response.data or []
+    except Exception:
+        procurement_parts = []
+
+    try:
+        alert_response = (
+            _workspace_query(supabase.table("monitor_alerts").select("*"))
+            .eq("user_id", current_user["id"])
+            .order("created_at", desc=True)
+            .limit(250)
+            .execute()
+        )
+        procurement_alerts = alert_response.data or []
+    except Exception:
+        procurement_alerts = []
+
+    advisor = build_procurement_advisor(
+        analyses=procurement_analyses,
+        parts=procurement_parts,
+        alerts=procurement_alerts,
+    )
+
+    st.markdown(
+        f"""
+        <section class="cv140-hero">
+          <div class="cv140-eyebrow">Cadivor AI Procurement Advisor</div>
+          <div class="cv140-title">{html.escape(advisor['posture'])}</div>
+          <div class="cv140-copy">{html.escape(advisor['summary'])}</div>
+          <div style="margin-top:12px">
+            <span class="cv140-badge {html.escape(advisor['tone'])}">
+              {advisor['parts_reviewed']} component(s) reviewed
+            </span>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    p1, p2, p3, p4, p5, p6 = st.columns(6)
+    p1.metric("Buy Now", advisor["buy_now_count"])
+    p2.metric("Monitor", advisor["monitor_count"])
+    p3.metric("Replace", advisor["replace_count"])
+    p4.metric("Second Source", advisor["second_source_count"])
+    p5.metric("Recommended Orders", f"${advisor['projected_order_value']:,.2f}")
+    p6.metric("Shortage Exposure", f"${advisor['shortage_exposure']:,.2f}")
+
+    priority_tab, intelligence_tab, weekly_tab = st.tabs(
+        ["Priority Purchases", "Purchasing Intelligence", "Weekly Procurement Brief"]
+    )
+
+    with priority_tab:
+        st.caption(
+            "Recommendations are ranked using stock, required quantity, supplier coverage, "
+            "lead time, lifecycle, and component risk."
+        )
+        if not advisor["recommendations"]:
+            st.info("No component purchasing intelligence is available yet.")
+        else:
+            f1, f2, f3 = st.columns(3)
+            with f1:
+                rec_filter = st.selectbox(
+                    "Recommendation",
+                    ["All"] + sorted({item["Recommendation"] for item in advisor["recommendations"]}),
+                    key="procurement_rec_filter",
+                )
+            with f2:
+                priority_filter = st.selectbox(
+                    "Priority",
+                    ["All", "Critical", "High", "Medium", "Routine"],
+                    key="procurement_priority_filter",
+                )
+            with f3:
+                search = st.text_input(
+                    "Search",
+                    placeholder="Part number or manufacturer",
+                    key="procurement_search",
+                )
+
+            visible = advisor["recommendations"]
+            if rec_filter != "All":
+                visible = [item for item in visible if item["Recommendation"] == rec_filter]
+            if priority_filter != "All":
+                def label(score):
+                    return "Critical" if score >= 85 else "High" if score >= 65 else "Medium" if score >= 40 else "Routine"
+                visible = [item for item in visible if label(item["Priority Score"]) == priority_filter]
+            if search.strip():
+                q = search.strip().lower()
+                visible = [item for item in visible if q in f"{item['Part Number']} {item['Manufacturer']}".lower()]
+
+            st.caption(f"Showing {len(visible)} of {len(advisor['recommendations'])} recommendation(s).")
+
+            for index, item in enumerate(visible[:50]):
+                tone = "bad" if item["Priority Score"] >= 75 else "warn" if item["Priority Score"] >= 45 else "good"
+                st.markdown(
+                    f"""
+                    <section class="cv140-action">
+                      <div class="cv140-head">
+                        <div>
+                          <div class="cv140-part">{html.escape(item['Part Number'])}</div>
+                          <div class="cv140-sub">{html.escape(item['Manufacturer'])} · {html.escape(item['Category'])}</div>
+                        </div>
+                        <span class="cv140-badge {tone}">
+                          {html.escape(item['Recommendation'])} · {item['Priority Score']}/100
+                        </span>
+                      </div>
+                      <div class="cv140-rec">
+                        <b>Recommended action:</b> {html.escape(item['Recommended Action'])}<br>
+                        <b>Owner:</b> {html.escape(item['Owner'])}<br>
+                        <b>Timing:</b> {html.escape(item['Urgency'])}
+                      </div>
+                      <div class="cv140-meta">
+                        <span>Stock: {item['Available Stock']:,}</span>
+                        <span>Required: {item['Required Quantity']:,}</span>
+                        <span>Suppliers: {item['Supplier Sources']}</span>
+                        <span>Lead time: {item['Lead Time (Weeks)']:g} weeks</span>
+                        <span>Lifecycle: {html.escape(item['Lifecycle Status'])}</span>
+                        <span>Confidence: {item['Confidence']}%</span>
+                      </div>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    internal_nav_button(
+                        "Find Alternative",
+                        "Alternative Finder",
+                        key=f"proc_alt_{index}_{item['Part Number']}",
+                        use_container_width=True,
+                        original_part=item["Part Number"],
+                    )
+                with c2:
+                    internal_nav_button(
+                        "Open Monitoring",
+                        "Monitoring",
+                        key=f"proc_monitor_{index}_{item['Part Number']}",
+                        use_container_width=True,
+                        mpn=item["Part Number"],
+                    )
+                with c3:
+                    internal_nav_button(
+                        "Review Decision",
+                        "Engineering Decisions",
+                        key=f"proc_decision_{index}_{item['Part Number']}",
+                        use_container_width=True,
+                        focus_part=item["Part Number"],
+                    )
+                with c4:
+                    st.download_button(
+                        "Export Purchase Action",
+                        data=pd.DataFrame([item]).to_csv(index=False).encode("utf-8"),
+                        file_name=f"{item['Part Number'].replace('/', '_')}_procurement_action.csv",
+                        mime="text/csv",
+                        key=f"proc_export_{index}_{item['Part Number']}",
+                        use_container_width=True,
+                    )
+
+    with intelligence_tab:
+        df = advisor["recommendation_df"]
+        if df.empty:
+            st.info("No purchasing intelligence is available.")
+        else:
+            columns = [
+                "Part Number", "Manufacturer", "Recommendation", "Urgency",
+                "Available Stock", "Required Quantity", "Supplier Sources",
+                "Lead Time (Weeks)", "Lifecycle Status", "Unit Price",
+                "Estimated Order Value", "Estimated Shortage Exposure",
+                "Priority Score", "Confidence",
+            ]
+            st.dataframe(df[columns], hide_index=True, use_container_width=True)
+            st.download_button(
+                "Download Procurement Intelligence CSV",
+                data=df.to_csv(index=False).encode("utf-8"),
+                file_name="cadivor_procurement_intelligence.csv",
+                mime="text/csv",
+                key="procurement_intelligence_csv",
+                type="primary",
+            )
+
+    with weekly_tab:
+        st.markdown("### Weekly Procurement Brief")
+        st.write(advisor["summary"])
+        st.markdown(
+            f"""
+            - **Priority purchases:** {advisor['buy_now_count']}
+            - **Components requiring monitoring:** {advisor['monitor_count']}
+            - **Replacement or alternate-source actions:** {advisor['replace_count']}
+            - **Second-source qualifications:** {advisor['second_source_count']}
+            - **Recommended order value:** ${advisor['projected_order_value']:,.2f}
+            - **Estimated shortage exposure:** ${advisor['shortage_exposure']:,.2f}
+            """
+        )
+        weekly_df = pd.DataFrame(advisor["weekly_actions"])
+        if not weekly_df.empty:
+            st.dataframe(
+                weekly_df[
+                    ["Part Number", "Recommendation", "Urgency", "Owner", "Recommended Action", "Priority Score"]
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+            weekly_text = "CADIVOR WEEKLY PROCUREMENT BRIEF\n\n" + advisor["summary"] + "\n\n" + weekly_df.to_string(index=False)
+            st.download_button(
+                "Download Weekly Procurement Brief",
+                data=weekly_text.encode("utf-8"),
+                file_name="cadivor_weekly_procurement_brief.txt",
+                mime="text/plain",
+                key="weekly_procurement_brief",
+                type="primary",
             )
 
 
