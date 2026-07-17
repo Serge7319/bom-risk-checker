@@ -267,6 +267,21 @@ def _css() -> None:
             font-size:10px;font-weight:850;color:#1d4ed8;background:#eff6ff;
             border:1px solid #dbeafe;border-radius:999px;padding:5px 8px
           }
+          .cv21-kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:18px 0 24px}
+          .cv21-kpi{border:1px solid #dbe3ef;background:#fff;border-radius:18px;padding:16px 17px;box-shadow:0 8px 24px rgba(15,23,42,.04);min-height:104px}
+          .cv21-kpi-label{font-size:12px;font-weight:850;color:#64748b;line-height:1.25}
+          .cv21-kpi-value{font-size:30px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-top:10px;line-height:1}
+          .cv21-kpi-note{font-size:11px;font-weight:700;color:#64748b;margin-top:8px;line-height:1.35}
+          .cv21-kpi.good{border-color:#a7f3d0;background:#f0fdf4}.cv21-kpi.good .cv21-kpi-value{color:#047857}
+          .cv21-kpi.warn{border-color:#fde68a;background:#fffbeb}.cv21-kpi.warn .cv21-kpi-value{color:#a16207}
+          .cv21-primary-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;margin:0 0 24px}
+          .cv21-primary-card{border:1px solid #a7f3d0;background:linear-gradient(135deg,#fff,#ecfdf5);border-radius:20px;padding:20px;min-height:148px}
+          .cv21-primary-label{font-size:12px;font-weight:900;color:#047857;text-transform:uppercase;letter-spacing:.08em}
+          .cv21-primary-value{font-size:38px;font-weight:950;color:#047857;letter-spacing:-.05em;margin-top:12px;line-height:1}
+          .cv21-primary-note{font-size:12px;font-weight:760;color:#047857;margin-top:10px;line-height:1.45}
+          .cv21-action-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f8fbff);border-radius:20px;padding:20px;min-height:148px}
+          .cv21-action-title{font-size:18px;font-weight:950;color:#0f172a;letter-spacing:-.025em}
+          @media (max-width:1100px){.cv21-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv21-primary-grid{grid-template-columns:1fr}}
           .cv21-savings{
             border:1px solid #a7f3d0;background:#ecfdf5;border-radius:18px;padding:18px
           }
@@ -316,123 +331,41 @@ def render_cost_optimization(
             "Changing the build quantity will update modeled cost and savings."
         )
 
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Cost per Build", f"${intelligence['current_cost_per_build']:,.2f}")
-    k2.metric(
-        f"Cost for {intelligence['build_quantity']:,} Builds",
-        f"${intelligence['production_run_cost']:,.2f}",
-    )
-    k3.metric("Estimated Savings", f"${intelligence['estimated_savings']:,.2f}")
-    k4.metric("Pricing Coverage", f"{intelligence['pricing_coverage']}%")
-    k5.metric("Cost Opportunities", len(intelligence["opportunities"]))
+    coverage_class = "good" if intelligence["pricing_coverage"] >= 80 else "warn"
+    st.markdown(
+        f"""<section class="cv21-kpi-grid">
+          <div class="cv21-kpi"><div class="cv21-kpi-label">Cost per Build</div><div class="cv21-kpi-value">${intelligence['current_cost_per_build']:,.2f}</div><div class="cv21-kpi-note">Recorded component cost for one modeled build</div></div>
+          <div class="cv21-kpi"><div class="cv21-kpi-label">Production Cost</div><div class="cv21-kpi-value">${intelligence['production_run_cost']:,.2f}</div><div class="cv21-kpi-note">{intelligence['build_quantity']:,} build production run</div></div>
+          <div class="cv21-kpi good"><div class="cv21-kpi-label">Estimated Savings</div><div class="cv21-kpi-value">${intelligence['estimated_savings']:,.2f}</div><div class="cv21-kpi-note">Modeled opportunity across priced records</div></div>
+          <div class="cv21-kpi {coverage_class}"><div class="cv21-kpi-label">Pricing Coverage</div><div class="cv21-kpi-value">{intelligence['pricing_coverage']}%</div><div class="cv21-kpi-note">{len(intelligence['priced_rows'])} of {intelligence['component_count']} records priced</div></div>
+          <div class="cv21-kpi"><div class="cv21-kpi-label">Cost Opportunities</div><div class="cv21-kpi-value">{len(intelligence['opportunities'])}</div><div class="cv21-kpi-note">Components with modeled savings potential</div></div>
+        </section>""", unsafe_allow_html=True)
 
-    left, right = st.columns([1.4, 1])
-
-    with left:
-        st.markdown(
-            '<div class="cv21-section">Highest-Value Opportunities</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="cv21-subtitle">Opportunities are ranked by estimated savings for the selected production run.</div>',
-            unsafe_allow_html=True,
-        )
-
-        if not intelligence["opportunities"]:
-            st.info(
-                "No priced component currently meets the volume, supplier, or shared-demand "
-                "criteria for a modeled savings opportunity."
-            )
-
-        for index, row in enumerate(intelligence["opportunities"][:6]):
-            st.markdown(
-                f"""
-                <section class="cv21-card">
-                  <div class="cv21-card-title">{html.escape(row['Part Number'])}</div>
-                  <div class="cv21-card-copy">{html.escape(row['Reason'])}</div>
-                  <div class="cv21-meta">
-                    <span>{html.escape(row['Category'])}</span>
-                    <span>{row['Projects']} project(s)</span>
-                    <span>{row['Units per Build']} unit(s)/build</span>
-                    <span>Current ${row['Current Unit Price']:,.4f}</span>
-                    <span>Target ${row['Estimated Target Price']:,.4f}</span>
-                    <span>Est. savings ${row['Estimated Run Savings']:,.2f}</span>
-                  </div>
-                </section>
-                """,
-                unsafe_allow_html=True,
-            )
-            action_cols = st.columns(2)
-            with action_cols[0]:
-                internal_nav_button(
-                    "Review Sourcing",
-                    "Procurement Advisor",
-                    key=f"cost_procurement_{index}",
-                    use_container_width=True,
-                )
-            with action_cols[1]:
-                internal_nav_button(
-                    "Find Alternatives",
-                    "Alternative Finder",
-                    key=f"cost_alternative_{index}",
-                    use_container_width=True,
-                    original_part=row["Part Number"],
-                )
-
-    with right:
-        st.markdown(
-            '<div class="cv21-section">Modeled Result</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <section class="cv21-savings">
-              <strong>${intelligence['estimated_optimized_cost']:,.2f}</strong>
-              <span>Estimated optimized production-run cost</span>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="cv21-section">Recommended Actions</div>',
-            unsafe_allow_html=True,
-        )
-        for recommendation in intelligence["recommendations"]:
-            st.markdown(
-                f'<div class="cv21-recommendation">✓ {html.escape(recommendation)}</div>',
-                unsafe_allow_html=True,
-            )
-
-        st.markdown(
-            '<div class="cv21-section">Cost Data Quality</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <section class="cv21-card">
-              <div class="cv21-card-title">{intelligence['pricing_coverage']}% priced</div>
-              <div class="cv21-card-copy">
-                {len(intelligence['priced_rows'])} of {intelligence['component_count']}
-                component records contain a positive unit price.
-                {len(intelligence['missing_price_rows'])} record(s) still need pricing.
-              </div>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-            <section class="cv21-card">
-              <div class="cv21-card-title">${intelligence['sourcing_risk_cost']:,.2f}</div>
-              <div class="cv21-card-copy">
-                Modeled production-run spend attached to single-source or no-stock records.
-              </div>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
+    primary_recommendation = (intelligence["recommendations"][0] if intelligence["recommendations"] else "No major cost optimization action is required.")
+    st.markdown(
+        f"""<section class="cv21-primary-grid">
+          <div class="cv21-primary-card"><div class="cv21-primary-label">Modeled Result</div><div class="cv21-primary-value">${intelligence['estimated_optimized_cost']:,.2f}</div><div class="cv21-primary-note">Estimated optimized production-run cost after modeled savings</div></div>
+          <div class="cv21-action-card"><div class="cv21-action-title">Recommended Action</div><div class="cv21-card-copy">{html.escape(primary_recommendation)}</div></div>
+        </section>""", unsafe_allow_html=True)
+    if len(intelligence["recommendations"]) > 1:
+        with st.expander(f"View all recommended actions ({len(intelligence['recommendations'])})"):
+            for recommendation in intelligence["recommendations"]:
+                st.markdown(f'<div class="cv21-recommendation">✓ {html.escape(recommendation)}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cv21-section">Highest-Value Opportunities</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cv21-subtitle">Opportunities are ranked by estimated savings for the selected production run.</div>', unsafe_allow_html=True)
+    if not intelligence["opportunities"]:
+        st.info("No priced component currently meets the volume, supplier, or shared-demand criteria for a modeled savings opportunity.")
+    for index,row in enumerate(intelligence["opportunities"][:6]):
+        st.markdown(f"""<section class="cv21-card"><div class="cv21-card-title">{html.escape(row['Part Number'])}</div><div class="cv21-card-copy">{html.escape(row['Reason'])}</div><div class="cv21-meta"><span>{html.escape(row['Category'])}</span><span>{row['Projects']} project(s)</span><span>{row['Units per Build']} unit(s)/build</span><span>Current ${row['Current Unit Price']:,.4f}</span><span>Target ${row['Estimated Target Price']:,.4f}</span><span>Est. savings ${row['Estimated Run Savings']:,.2f}</span></div></section>""", unsafe_allow_html=True)
+        cols=st.columns(2)
+        with cols[0]: internal_nav_button("Review Sourcing","Procurement Advisor",key=f"cost_procurement_{index}",use_container_width=True)
+        with cols[1]: internal_nav_button("Find Alternatives","Alternative Finder",key=f"cost_alternative_{index}",use_container_width=True,original_part=row["Part Number"])
+    st.markdown('<div class="cv21-section">Cost Data Quality</div>', unsafe_allow_html=True)
+    q=st.columns(2)
+    with q[0]:
+        st.markdown(f"""<section class="cv21-card"><div class="cv21-card-title">{intelligence['pricing_coverage']}% priced</div><div class="cv21-card-copy">{len(intelligence['priced_rows'])} of {intelligence['component_count']} component records contain a positive unit price. {len(intelligence['missing_price_rows'])} record(s) still need pricing.</div></section>""", unsafe_allow_html=True)
+    with q[1]:
+        st.markdown(f"""<section class="cv21-card"><div class="cv21-card-title">${intelligence['sourcing_risk_cost']:,.2f}</div><div class="cv21-card-copy">Modeled production-run spend attached to single-source or no-stock records.</div></section>""", unsafe_allow_html=True)
 
     st.markdown(
         '<div class="cv21-section">Highest Recorded Component Costs</div>',
