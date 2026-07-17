@@ -1722,6 +1722,13 @@ def analyze_single_part(row):
         "Total Market Stock": part_data.get("total_market_stock", 0),
         "Sources Available": part_data.get("sources_available", ""),
         "Stock Available": part_data.get("stock_total", 0),
+        "Unit Price": (
+            part_data.get("unit_price")
+            or part_data.get("price")
+            or part_data.get("best_price")
+            or part_data.get("minimum_price")
+            or 0
+        ),
         "Lead Time Weeks": part_data.get("lead_time_weeks", None),
         "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
         "Product URL": part_data.get("product_detail_url", ""),
@@ -3152,6 +3159,20 @@ if app_mode == "Cost Optimization":
         cost_parts = cost_parts_response.data or []
     except Exception:
         cost_parts = []
+
+    st.markdown(
+        """
+        <section class="cv21-hero">
+          <div class="cv21-eyebrow">Engineering & Procurement Intelligence</div>
+          <div class="cv21-title">Cost Optimization</div>
+          <div class="cv21-copy">
+            Model production cost using supplier pricing saved during BOM analysis.
+            Change the build quantity to see total modeled spend and estimated savings update.
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### Production scenario")
     build_quantity = st.number_input(
@@ -11323,6 +11344,10 @@ Unlock more power:
                         "lifecycle_status": part_row.get("Lifecycle Status", ""),
                         "stock_available": part_row.get("Stock Available", 0),
                         "supplier_count": part_row.get("Supplier Count", 0),
+                        "quantity": part_row.get("Quantity", 1),
+                        "unit_price": part_row.get("Unit Price", 0),
+                        "primary_supplier": part_row.get("Best Source", ""),
+                        "lead_time_weeks": part_row.get("Lead Time Weeks", None),
                     }
                 )
 
