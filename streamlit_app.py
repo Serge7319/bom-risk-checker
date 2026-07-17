@@ -29,6 +29,7 @@ from src.living_workspace import render_living_workspace
 from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
 from src.design_impact_analyzer import build_design_impact, render_design_impact
 from src.cost_optimization import build_cost_optimization, render_cost_optimization
+from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan
@@ -2100,6 +2101,7 @@ NAV_OPTIONS = [
     "Portfolio Intelligence",
     "Design Impact Analyzer",
     "Cost Optimization",
+    "Supply Risk Scenario",
     "Reports",
     "Pricing",
     "Settings",
@@ -2337,7 +2339,7 @@ apply_milestone10a_design_system()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Design Impact Analyzer":"◇", "Cost Optimization":"$", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
+    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Design Impact Analyzer":"◇", "Cost Optimization":"$", "Supply Risk Scenario":"△", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
     "Help":"?", "About":"?"
 }
 _nav_html = []
@@ -3163,6 +3165,87 @@ if app_mode == "Monitoring":
                 hide_index=True,
                 use_container_width=True,
             )
+
+
+# ---------- Supply Risk Scenario ----------
+if app_mode == "Supply Risk Scenario":
+    try:
+        scenario_analyses = load_analysis_history(current_user["id"]) or []
+    except Exception:
+        scenario_analyses = []
+
+    try:
+        scenario_parts_response = (
+            _workspace_query(supabase.table("analysis_parts").select("*"))
+            .eq("user_id", current_user["id"])
+            .limit(10000)
+            .execute()
+        )
+        scenario_parts = scenario_parts_response.data or []
+    except Exception:
+        scenario_parts = []
+
+    st.markdown("### Scenario assumptions")
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        scenario_build_quantity = st.number_input(
+            "Planned builds",
+            min_value=1,
+            max_value=1_000_000,
+            value=int(st.session_state.get("scenario_build_quantity", 100)),
+            step=10,
+            key="scenario_build_quantity",
+        )
+    with s2:
+        stock_reduction_percent = st.slider(
+            "Stock reduction",
+            min_value=0,
+            max_value=100,
+            value=int(st.session_state.get("scenario_stock_reduction", 0)),
+            step=5,
+            key="scenario_stock_reduction",
+            help="Models a percentage loss of currently recorded market stock.",
+        )
+    with s3:
+        supplier_loss = st.number_input(
+            "Suppliers lost",
+            min_value=0,
+            max_value=10,
+            value=int(st.session_state.get("scenario_supplier_loss", 0)),
+            step=1,
+            key="scenario_supplier_loss",
+        )
+    with s4:
+        demand_growth_percent = st.slider(
+            "Demand growth",
+            min_value=0,
+            max_value=300,
+            value=int(st.session_state.get("scenario_demand_growth", 0)),
+            step=10,
+            key="scenario_demand_growth",
+        )
+
+    include_lifecycle_event = st.checkbox(
+        "Model a lifecycle disruption for components already showing moderate or higher risk",
+        value=bool(st.session_state.get("scenario_lifecycle_event", False)),
+        key="scenario_lifecycle_event",
+    )
+
+    scenario_intelligence = build_supply_scenario(
+        scenario_analyses,
+        scenario_parts,
+        build_quantity=int(scenario_build_quantity),
+        stock_reduction_percent=int(stock_reduction_percent),
+        supplier_loss=int(supplier_loss),
+        demand_growth_percent=int(demand_growth_percent),
+        include_lifecycle_event=bool(include_lifecycle_event),
+    )
+
+    render_supply_scenario(
+        intelligence=scenario_intelligence,
+        internal_nav_button=internal_nav_button,
+    )
+    st.stop()
 
 
 # ---------- Cost Optimization ----------
