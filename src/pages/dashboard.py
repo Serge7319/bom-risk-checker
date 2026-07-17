@@ -1344,24 +1344,366 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
+    # Milestone 23.0 — Executive Engineering Command Center foundation.
+    st.markdown(
+        """
+        <style id="cadivor-m23-executive-command-center">
+        .cv23-hero {
+            border:1px solid #BFDBFE;
+            background:
+                radial-gradient(circle at 90% 10%, rgba(37,99,235,.13), transparent 36%),
+                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 58%,#EFF6FF 100%);
+            border-radius:24px;
+            padding:26px;
+            box-shadow:0 22px 56px rgba(15,23,42,.075);
+            margin-bottom:16px;
+        }
+        .cv23-hero-grid {
+            display:grid;
+            grid-template-columns:minmax(0,1.45fr) minmax(320px,.72fr);
+            gap:22px;
+            align-items:stretch;
+        }
+        .cv23-eyebrow {
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding:7px 11px;
+            border-radius:999px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            font-size:10.5px;
+            font-weight:950;
+            letter-spacing:.09em;
+            text-transform:uppercase;
+        }
+        .cv23-title {
+            color:#071126!important;
+            font-size:38px;
+            line-height:1.06;
+            font-weight:950;
+            letter-spacing:-.05em;
+            margin:13px 0 9px;
+        }
+        .cv23-copy {
+            color:#52647A!important;
+            font-size:14px;
+            font-weight:680;
+            line-height:1.58;
+            max-width:860px;
+        }
+        .cv23-actions {
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+            margin-top:18px;
+        }
+        .cv23-action {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            gap:7px;
+            min-height:42px;
+            padding:10px 15px;
+            border-radius:11px;
+            text-decoration:none!important;
+            font-size:12.5px;
+            font-weight:900;
+            background:#2563EB;
+            color:#FFFFFF!important;
+            box-shadow:0 12px 24px rgba(37,99,235,.18);
+            transition:transform .16s ease, box-shadow .16s ease;
+        }
+        .cv23-action:hover {
+            transform:translateY(-2px);
+            box-shadow:0 18px 34px rgba(37,99,235,.24);
+        }
+        .cv23-action.secondary {
+            background:#FFFFFF;
+            color:#1D4ED8!important;
+            border:1px solid #BFDBFE;
+            box-shadow:none;
+        }
+        .cv23-health-card {
+            border:1px solid #D8E3F2;
+            background:rgba(255,255,255,.92);
+            border-radius:20px;
+            padding:20px;
+            display:flex;
+            flex-direction:column;
+            justify-content:space-between;
+            min-height:245px;
+            box-shadow:0 16px 38px rgba(15,23,42,.055);
+        }
+        .cv23-health-label {
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:900;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+        }
+        .cv23-health-score {
+            color:#071126!important;
+            font-size:62px;
+            line-height:.94;
+            font-weight:950;
+            letter-spacing:-.065em;
+            margin-top:10px;
+        }
+        .cv23-health-score span {
+            color:#94A3B8!important;
+            font-size:20px;
+            letter-spacing:-.02em;
+        }
+        .cv23-health-status {
+            margin-top:8px;
+            color:#047857!important;
+            font-size:13px;
+            font-weight:900;
+        }
+        .cv23-health-meter {
+            height:9px;
+            border-radius:999px;
+            overflow:hidden;
+            background:#E2E8F0;
+            margin:14px 0 10px;
+        }
+        .cv23-health-meter i {
+            display:block;
+            height:100%;
+            border-radius:999px;
+            background:linear-gradient(90deg,#2563EB,#16A34A);
+        }
+        .cv23-health-note {
+            color:#64748B!important;
+            font-size:11.5px;
+            font-weight:700;
+            line-height:1.45;
+        }
+        .cv23-kpi-grid {
+            display:grid;
+            grid-template-columns:repeat(6,minmax(0,1fr));
+            gap:12px;
+            margin:16px 0 20px;
+        }
+        .cv23-kpi {
+            background:#FFFFFF;
+            border:1px solid #E2E8F0;
+            border-radius:17px;
+            padding:16px;
+            min-height:112px;
+            box-shadow:0 12px 28px rgba(15,23,42,.045);
+            transition:transform .16s ease, box-shadow .16s ease;
+        }
+        .cv23-kpi:hover {
+            transform:translateY(-2px);
+            box-shadow:0 20px 40px rgba(15,23,42,.07);
+        }
+        .cv23-kpi-label {
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:900;
+            letter-spacing:.065em;
+            text-transform:uppercase;
+        }
+        .cv23-kpi-value {
+            color:#071126!important;
+            font-size:31px;
+            line-height:1;
+            font-weight:950;
+            letter-spacing:-.045em;
+            margin-top:12px;
+        }
+        .cv23-kpi-note {
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:720;
+            line-height:1.38;
+            margin-top:8px;
+        }
+        .cv23-kpi.warning { border-color:#FDE68A; background:#FFFCF3; }
+        .cv23-kpi.warning .cv23-kpi-value { color:#A16207!important; }
+        .cv23-kpi.danger { border-color:#FECACA; background:#FFF7F7; }
+        .cv23-kpi.danger .cv23-kpi-value { color:#B91C1C!important; }
+        .cv23-kpi.success { border-color:#A7F3D0; background:#F3FFF8; }
+        .cv23-kpi.success .cv23-kpi-value { color:#047857!important; }
+        .cv23-main-grid {
+            display:grid;
+            grid-template-columns:minmax(0,1.28fr) minmax(330px,.72fr);
+            gap:14px;
+            margin-bottom:18px;
+        }
+        .cv23-panel {
+            border:1px solid #E2E8F0;
+            background:#FFFFFF;
+            border-radius:20px;
+            padding:19px;
+            box-shadow:0 14px 34px rgba(15,23,42,.05);
+        }
+        .cv23-panel-title {
+            color:#0F172A!important;
+            font-size:19px;
+            font-weight:950;
+            letter-spacing:-.03em;
+        }
+        .cv23-panel-copy {
+            color:#64748B!important;
+            font-size:12px;
+            font-weight:680;
+            margin:4px 0 13px;
+        }
+        .cv23-priority {
+            display:flex;
+            align-items:flex-start;
+            gap:12px;
+            padding:13px 0;
+            border-bottom:1px solid #EEF2F7;
+        }
+        .cv23-priority:last-child { border-bottom:0; }
+        .cv23-priority-rank {
+            width:30px;
+            height:30px;
+            flex:0 0 auto;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            border-radius:10px;
+            background:#EFF6FF;
+            color:#2563EB!important;
+            font-size:12px;
+            font-weight:950;
+        }
+        .cv23-priority strong {
+            color:#0F172A!important;
+            font-size:13px;
+            font-weight:920;
+        }
+        .cv23-priority span {
+            display:block;
+            color:#64748B!important;
+            font-size:11px;
+            font-weight:680;
+            line-height:1.4;
+            margin-top:3px;
+        }
+        .cv23-priority a {
+            color:#2563EB!important;
+            font-size:11px;
+            font-weight:900;
+            text-decoration:none!important;
+            white-space:nowrap;
+            margin-left:auto;
+            padding-top:3px;
+        }
+        .cv23-health-bars {
+            display:grid;
+            gap:12px;
+            margin-top:14px;
+        }
+        .cv23-health-row-top {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            margin-bottom:5px;
+        }
+        .cv23-health-row-top span {
+            color:#475569!important;
+            font-size:11px;
+            font-weight:850;
+        }
+        .cv23-health-row-top strong {
+            color:#0F172A!important;
+            font-size:12px;
+            font-weight:950;
+        }
+        .cv23-mini-meter {
+            height:7px;
+            border-radius:999px;
+            background:#E2E8F0;
+            overflow:hidden;
+        }
+        .cv23-mini-meter i {
+            display:block;
+            height:100%;
+            border-radius:999px;
+            background:#2563EB;
+        }
+        .cv23-mini-meter.warning i { background:#F59E0B; }
+        .cv23-mini-meter.danger i { background:#EF4444; }
+        @media(max-width:1250px){
+            .cv23-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+        }
+        @media(max-width:950px){
+            .cv23-hero-grid,.cv23-main-grid{grid-template-columns:1fr;}
+            .cv23-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    supply_health = max(
+        0,
+        min(
+            100,
+            int(
+                100
+                - min(45, high_alert_count * 7)
+                - min(30, total_high_risk * 2)
+            ),
+        ),
+    )
+    lifecycle_health = max(
+        0,
+        min(100, int(100 - min(55, alert_count * 3))),
+    )
+    inventory_health = max(
+        0,
+        min(100, int(100 - min(60, high_alert_count * 9))),
+    )
+    monitoring_health = max(
+        0,
+        min(100, int(100 - min(50, alert_count * 4))),
+    )
+    cost_health = 100 if total_components > 0 else 0
+
     st.markdown(
         f"""
-        <section class="cv-v4-command cv-6a-command">
-          <div class="cv-v4-command-grid">
+        <section class="cv23-hero">
+          <div class="cv23-hero-grid">
             <div>
-              <div class="cv-v4-kicker">{_lucide_icon('sparkles',14)} Engineering Command Center</div>
-              <h1 class="cv-v4-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
-              <p class="cv-v4-copy">Your portfolio has <strong>{total_high_risk} high-risk components</strong> and <strong>{alert_count} active supplier alerts</strong>. Start with the most important engineering decision, then move into the detailed workspace only when needed.</p>
-              <div class="cv-v4-actions">
-                <a class="cv-v4-btn" href="?page=BOM%20Analyzer" target="_self">Analyze New BOM {_lucide_icon('arrow',14)}</a>
-                <a class="cv-v4-btn secondary" href="?page=Alternative%20Finder" target="_self">Replacement Finder</a>
+              <div class="cv23-eyebrow">{_lucide_icon('sparkles',14)} Executive Engineering Overview</div>
+              <h1 class="cv23-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
+              <div class="cv23-copy">
+                Cadivor is tracking <strong>{total_analyses} saved project analyses</strong>,
+                <strong>{total_high_risk} high-risk components</strong>, and
+                <strong>{alert_count} active monitoring alerts</strong>.
+                The first priority is to {html.escape(next_action_copy.lower())}
+              </div>
+              <div class="cv23-actions">
+                <a class="cv23-action" href="?page=BOM%20Analyzer" target="_self">Analyze BOM {_lucide_icon('arrow',14)}</a>
+                <a class="cv23-action secondary" href="?page=Engineering%20Decisions" target="_self">Engineering Decisions</a>
+                <a class="cv23-action secondary" href="?page=Portfolio%20Intelligence" target="_self">Portfolio Intelligence</a>
               </div>
             </div>
-            <div class="cv-v4-brief">
-              <div class="cv-v4-brief-card"><span>Portfolio Health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></div>
-              <div class="cv-v4-brief-card"><span>High Risk</span><strong>{total_high_risk}</strong><small>Components requiring review</small></div>
-              <div class="cv-v4-brief-card"><span>Supplier Alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></div>
-              <div class="cv-v4-brief-card"><span>Saved Analyses</span><strong>{total_analyses}</strong><small>Engineering records available</small></div>
+
+            <div class="cv23-health-card">
+              <div>
+                <div class="cv23-health-label">Overall Engineering Health</div>
+                <div class="cv23-health-score">{avg_health_score}<span>/100</span></div>
+                <div class="cv23-health-status">{html.escape(health_badge)}</div>
+              </div>
+              <div>
+                <div class="cv23-health-meter">
+                  <i style="width:{max(0, min(100, avg_health_score))}%"></i>
+                </div>
+                <div class="cv23-health-note">
+                  {html.escape(health_delta_label)} versus the previous saved analysis.
+                  Health combines the recorded BOM health scores and active portfolio risk.
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -1372,33 +1714,106 @@ def render_dashboard(
     if _qp_value("focus", "") == "search":
         render_global_search_panel(current_user["id"])
 
-    st.markdown(f'<div class="cv-v4-eyebrow">{_lucide_icon("sparkles",15)} Today\'s Engineering Brief</div>', unsafe_allow_html=True)
     st.markdown(
         f"""
-        <div class="cv-6a-briefing">
-          <div class="cv-6a-focus">
-            <div class="cv-6a-focus-icon">{_lucide_icon('alert',20)}</div>
-            <div>
-              <div class="cv-6a-label">Primary Engineering Priority</div>
-              <div class="cv-6a-headline">{html.escape(next_action_title)}</div>
-              <div class="cv-6a-text">{html.escape(next_action_copy)} Portfolio health has {trend_word} by {abs(health_delta)} points compared with the previous saved analysis.</div>
+        <section class="cv23-kpi-grid">
+          <a class="cv23-kpi success" href="?page=Reports" target="_self">
+            <div class="cv23-kpi-label">Portfolio Health</div>
+            <div class="cv23-kpi-value">{avg_health_score}</div>
+            <div class="cv23-kpi-note">{html.escape(health_delta_label)} vs previous analysis</div>
+          </a>
+          <a class="cv23-kpi" href="?page=BOM%20Analyzer" target="_self">
+            <div class="cv23-kpi-label">Saved Projects</div>
+            <div class="cv23-kpi-value">{total_analyses}</div>
+            <div class="cv23-kpi-note">{total_components} total component records</div>
+          </a>
+          <a class="cv23-kpi danger" href="?page=BOM%20Analyzer" target="_self">
+            <div class="cv23-kpi-label">High-Risk Components</div>
+            <div class="cv23-kpi-value">{total_high_risk}</div>
+            <div class="cv23-kpi-note">Require engineering review</div>
+          </a>
+          <a class="cv23-kpi warning" href="?page=Monitoring" target="_self">
+            <div class="cv23-kpi-label">Monitoring Alerts</div>
+            <div class="cv23-kpi-value">{alert_count}</div>
+            <div class="cv23-kpi-note">{high_alert_count} high-severity alerts</div>
+          </a>
+          <a class="cv23-kpi" href="?page=Alternative%20Finder" target="_self">
+            <div class="cv23-kpi-label">Replacement Candidates</div>
+            <div class="cv23-kpi-value">{alternatives_found}</div>
+            <div class="cv23-kpi-note">Saved alternative records</div>
+          </a>
+          <a class="cv23-kpi" href="?page=Reports" target="_self">
+            <div class="cv23-kpi-label">Medium-Risk Components</div>
+            <div class="cv23-kpi-value">{total_medium_risk}</div>
+            <div class="cv23-kpi-note">Need planned follow-up</div>
+          </a>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <section class="cv23-main-grid">
+          <div class="cv23-panel">
+            <div class="cv23-panel-title">Today’s Engineering Priorities</div>
+            <div class="cv23-panel-copy">The work most likely to affect production readiness and sourcing continuity.</div>
+
+            <div class="cv23-priority">
+              <div class="cv23-priority-rank">1</div>
+              <div>
+                <strong>{html.escape(next_action_title)}</strong>
+                <span>{html.escape(next_action_copy)}</span>
+              </div>
+              <a href="?page=Monitoring" target="_self">Review →</a>
+            </div>
+
+            <div class="cv23-priority">
+              <div class="cv23-priority-rank">2</div>
+              <div>
+                <strong>Review high-risk components</strong>
+                <span>{total_high_risk} component(s) currently require focused engineering review.</span>
+              </div>
+              <a href="?page=BOM%20Analyzer" target="_self">Open →</a>
+            </div>
+
+            <div class="cv23-priority">
+              <div class="cv23-priority-rank">3</div>
+              <div>
+                <strong>Validate replacement readiness</strong>
+                <span>{alternatives_found} saved replacement candidate record(s) are available.</span>
+              </div>
+              <a href="?page=Alternative%20Finder" target="_self">Review →</a>
             </div>
           </div>
-          <div class="cv-6a-actions-card">
-            <a class="cv-6a-action-row" href="?page=Monitoring" target="_self">
-              <div><strong>Review supplier alerts</strong><span>{alert_count} active • {high_alert_count} high severity</span></div>
-              <div class="cv-6a-action-arrow">→</div>
-            </a>
-            <a class="cv-6a-action-row" href="?page=Alternative%20Finder" target="_self">
-              <div><strong>Validate replacements</strong><span>{alternatives_found} saved candidate records</span></div>
-              <div class="cv-6a-action-arrow">→</div>
-            </a>
-            <a class="cv-6a-action-row" href="?page=Reports" target="_self">
-              <div><strong>Generate engineering report</strong><span>PDF and CSV reporting workspace</span></div>
-              <div class="cv-6a-action-arrow">→</div>
-            </a>
+
+          <div class="cv23-panel">
+            <div class="cv23-panel-title">Engineering Health Breakdown</div>
+            <div class="cv23-panel-copy">A directional view of the portfolio areas that need management attention.</div>
+            <div class="cv23-health-bars">
+              <div>
+                <div class="cv23-health-row-top"><span>Lifecycle</span><strong>{lifecycle_health}%</strong></div>
+                <div class="cv23-mini-meter {'danger' if lifecycle_health < 55 else 'warning' if lifecycle_health < 80 else ''}"><i style="width:{lifecycle_health}%"></i></div>
+              </div>
+              <div>
+                <div class="cv23-health-row-top"><span>Supply</span><strong>{supply_health}%</strong></div>
+                <div class="cv23-mini-meter {'danger' if supply_health < 55 else 'warning' if supply_health < 80 else ''}"><i style="width:{supply_health}%"></i></div>
+              </div>
+              <div>
+                <div class="cv23-health-row-top"><span>Inventory</span><strong>{inventory_health}%</strong></div>
+                <div class="cv23-mini-meter {'danger' if inventory_health < 55 else 'warning' if inventory_health < 80 else ''}"><i style="width:{inventory_health}%"></i></div>
+              </div>
+              <div>
+                <div class="cv23-health-row-top"><span>Monitoring</span><strong>{monitoring_health}%</strong></div>
+                <div class="cv23-mini-meter {'danger' if monitoring_health < 55 else 'warning' if monitoring_health < 80 else ''}"><i style="width:{monitoring_health}%"></i></div>
+              </div>
+              <div>
+                <div class="cv23-health-row-top"><span>Data Coverage</span><strong>{cost_health}%</strong></div>
+                <div class="cv23-mini-meter {'danger' if cost_health < 55 else 'warning' if cost_health < 80 else ''}"><i style="width:{cost_health}%"></i></div>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
         """,
         unsafe_allow_html=True,
     )
