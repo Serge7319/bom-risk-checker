@@ -52,6 +52,7 @@ import time
 import html
 import re
 import json
+import math
 from datetime import datetime, timezone
 
 start_time = time.time()
@@ -1706,6 +1707,28 @@ def send_monitor_alert_email(to_email: str, subject: str, message: str):
             "html": f"<p>{message}</p>",
         }
     )
+def _json_safe_number(value, default=0):
+    """Return a JSON-compliant finite number."""
+    try:
+        if value is None:
+            return default
+        number = float(value)
+        return number if math.isfinite(number) else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _json_safe_optional_number(value):
+    """Return a finite number or None for optional database fields."""
+    try:
+        if value is None:
+            return None
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (TypeError, ValueError):
+        return None
+
+
 def analyze_single_part(row):
     part_data = get_part_data(row)
     risk_result = calculate_risk(part_data)
@@ -11342,12 +11365,30 @@ Unlock more power:
                         "risk_level": part_row.get("Risk Level", ""),
                         "risk_reasons": part_row.get("Risk Reasons", ""),
                         "lifecycle_status": part_row.get("Lifecycle Status", ""),
-                        "stock_available": part_row.get("Stock Available", 0),
-                        "supplier_count": part_row.get("Supplier Count", 0),
-                        "quantity": part_row.get("Quantity", 1),
-                        "unit_price": part_row.get("Unit Price", 0),
-                        "primary_supplier": part_row.get("Best Source", ""),
-                        "lead_time_weeks": part_row.get("Lead Time Weeks", None),
+                        "stock_available": _json_safe_number(
+                            part_row.get("Stock Available", 0),
+                            default=0,
+                        ),
+                        "supplier_count": _json_safe_number(
+                            part_row.get("Supplier Count", 0),
+                            default=0,
+                        ),
+                        "quantity": _json_safe_number(
+                            part_row.get("Quantity", 1),
+                            default=1,
+                        ),
+                        "unit_price": _json_safe_number(
+                            part_row.get("Unit Price", 0),
+                            default=0,
+                        ),
+                        "primary_supplier": (
+                            ""
+                            if pd.isna(part_row.get("Best Source", ""))
+                            else str(part_row.get("Best Source", "") or "")
+                        ),
+                        "lead_time_weeks": _json_safe_optional_number(
+                            part_row.get("Lead Time Weeks", None)
+                        ),
                     }
                 )
 
