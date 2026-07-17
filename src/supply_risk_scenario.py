@@ -315,6 +315,16 @@ def _css() -> None:
           .cv22-kpi.info{border-color:#bfdbfe;background:#f8fbff}
           .cv22-scenario-strip{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:12px 14px;margin:0 0 16px;font-size:12px;font-weight:800;color:#1e40af}
           @media (max-width:1100px){.cv22-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+          .cv22-result-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;margin:0 0 24px}
+          .cv22-result-card{border:1px solid #fecaca;background:linear-gradient(135deg,#fff7f7,#fff1f2);border-radius:20px;padding:20px;min-height:148px;box-shadow:0 10px 28px rgba(185,28,28,.06)}
+          .cv22-result-label{font-size:12px;font-weight:900;color:#9f1239;text-transform:uppercase;letter-spacing:.08em}
+          .cv22-result-value{font-size:38px;font-weight:950;color:#b91c1c;letter-spacing:-.05em;margin-top:12px;line-height:1}
+          .cv22-result-note{font-size:12px;font-weight:760;color:#be123c;margin-top:10px;line-height:1.45}
+          .cv22-response-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f8fbff);border-radius:20px;padding:20px;min-height:148px;box-shadow:0 10px 28px rgba(37,99,235,.05)}
+          .cv22-response-title{font-size:18px;font-weight:950;color:#0f172a;letter-spacing:-.025em}
+          .cv22-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+          .cv22-badge{font-size:11px;font-weight:850;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:6px 9px}
+          @media (max-width:1100px){.cv22-result-grid{grid-template-columns:1fr}}
           .cv22-warning{
             border:1px solid #fecaca;background:#fff1f2;border-radius:18px;padding:18px
           }
@@ -348,8 +358,24 @@ def render_supply_scenario(
         unsafe_allow_html=True,
     )
 
+    lifecycle_badge = (
+        '<span class="cv22-badge">Lifecycle disruption modeled</span>'
+        if intelligence["include_lifecycle_event"]
+        else '<span class="cv22-badge">Recorded lifecycle only</span>'
+    )
     st.markdown(
-        f'<div class="cv22-scenario-strip">Current scenario: {html.escape(intelligence["scenario_summary"])}</div>',
+        f"""
+        <section class="cv22-scenario-strip">
+          <strong>Current Scenario</strong>
+          <div class="cv22-badges">
+            <span class="cv22-badge">{intelligence["build_quantity"]:,} planned builds</span>
+            <span class="cv22-badge">{intelligence["stock_reduction_percent"]}% stock reduction</span>
+            <span class="cv22-badge">{intelligence["supplier_loss"]} supplier(s) lost</span>
+            <span class="cv22-badge">{intelligence["demand_growth_percent"]}% demand growth</span>
+            {lifecycle_badge}
+          </div>
+        </section>
+        """,
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -365,91 +391,59 @@ def render_supply_scenario(
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns([1.4, 1])
+    primary_recommendation = (
+        intelligence["recommendations"][0]
+        if intelligence["recommendations"]
+        else "No major response is required for this scenario."
+    )
 
-    with left:
-        st.markdown(
-            '<div class="cv22-section">Highest-Impact Components</div>',
-            unsafe_allow_html=True,
+    st.markdown(
+        f"""
+        <section class="cv22-result-grid">
+          <div class="cv22-result-card">
+            <div class="cv22-result-label">Scenario Exposure</div>
+            <div class="cv22-result-value">${intelligence['shortage_value']:,.2f}</div>
+            <div class="cv22-result-note">Estimated value of uncovered demand using recorded unit prices</div>
+          </div>
+          <div class="cv22-response-card">
+            <div class="cv22-response-title">Recommended Response for This Scenario</div>
+            <div class="cv22-card-copy">{html.escape(primary_recommendation)}</div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if len(intelligence["recommendations"]) > 1:
+        with st.expander(f"View all recommended responses ({len(intelligence['recommendations'])})"):
+            for recommendation in intelligence["recommendations"]:
+                st.markdown(f'<div class="cv22-recommendation">✓ {html.escape(recommendation)}</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="cv22-section">Highest-Impact Components</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cv22-subtitle">Components are ranked by projected scenario risk and shortage exposure.</div>', unsafe_allow_html=True)
+    if not intelligence["impacted"]:
+        st.success("No material component impact is identified under this scenario.")
+    for index, row in enumerate(intelligence["impacted"][:6]):
+        action = (
+            "Resolve projected shortage" if row["Shortage Units"] > 0 else
+            "Add sourcing coverage" if row["Scenario Sources"] <= 1 else
+            "Prepare replacement plan" if row["Lifecycle Event"] else
+            "Review component risk"
         )
         st.markdown(
-            '<div class="cv22-subtitle">Components are ranked by projected scenario risk and shortage exposure.</div>',
-            unsafe_allow_html=True,
-        )
-
-        if not intelligence["impacted"]:
-            st.success("No material component impact is identified under this scenario.")
-
-        for index, row in enumerate(intelligence["impacted"][:6]):
-            action = (
-                "Resolve projected shortage"
-                if row["Shortage Units"] > 0
-                else "Add sourcing coverage"
-                if row["Scenario Sources"] <= 1
-                else "Prepare replacement plan"
-                if row["Lifecycle Event"]
-                else "Review component risk"
-            )
-            st.markdown(
-                f"""
-                <section class="cv22-card">
-                  <div class="cv22-card-title">{html.escape(row['Part Number'])}</div>
-                  <div class="cv22-card-copy">
-                    {html.escape(row['Project'])} · {html.escape(action)}
-                  </div>
-                  <div class="cv22-meta">
-                    <span>Scenario risk {row['Scenario Risk']}/100</span>
-                    <span>Required {row['Required Units']:,}</span>
-                    <span>Stock {row['Scenario Stock']:,}</span>
-                    <span>Shortage {row['Shortage Units']:,}</span>
-                    <span>{row['Scenario Sources']} source(s)</span>
-                    <span>{html.escape(row['Lifecycle'])}</span>
-                  </div>
-                </section>
-                """,
-                unsafe_allow_html=True,
-            )
-            actions = st.columns(2)
-            with actions[0]:
-                internal_nav_button(
-                    "Find Alternative",
-                    "Alternative Finder",
-                    key=f"scenario_alt_{index}",
-                    use_container_width=True,
-                    original_part=row["Part Number"],
-                )
-            with actions[1]:
-                internal_nav_button(
-                    "Open Monitoring",
-                    "Monitoring",
-                    key=f"scenario_monitor_{index}",
-                    use_container_width=True,
-                )
-
-    with right:
-        st.markdown(
-            '<div class="cv22-section">Scenario Exposure</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <section class="cv22-warning">
-              <strong>${intelligence['shortage_value']:,.2f}</strong>
-              <span>Estimated value of uncovered demand using recorded unit prices</span>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="cv22-section">Recommended Response for This Scenario</div>',
-            unsafe_allow_html=True,
-        )
-        for recommendation in intelligence["recommendations"]:
-            st.markdown(
-                f'<div class="cv22-recommendation">✓ {html.escape(recommendation)}</div>',
-                unsafe_allow_html=True,
-            )
+            f"""<section class="cv22-card">
+              <div class="cv22-card-title">{html.escape(row['Part Number'])}</div>
+              <div class="cv22-card-copy">{html.escape(row['Project'])} · {html.escape(action)}</div>
+              <div class="cv22-meta">
+                <span>Scenario risk {row['Scenario Risk']}/100</span><span>Required {row['Required Units']:,}</span>
+                <span>Stock {row['Scenario Stock']:,}</span><span>Shortage {row['Shortage Units']:,}</span>
+                <span>{row['Scenario Sources']} source(s)</span><span>{html.escape(row['Lifecycle'])}</span>
+              </div></section>""", unsafe_allow_html=True)
+        actions=st.columns(2)
+        with actions[0]:
+            internal_nav_button("Find Alternative","Alternative Finder",key=f"scenario_alt_{index}",use_container_width=True,original_part=row["Part Number"])
+        with actions[1]:
+            internal_nav_button("Open Monitoring","Monitoring",key=f"scenario_monitor_{index}",use_container_width=True)
 
     st.markdown(
         '<div class="cv22-section">Project Impact</div>',
