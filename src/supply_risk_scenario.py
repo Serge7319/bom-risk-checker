@@ -190,37 +190,69 @@ def build_supply_scenario(
     affected_projects = sum(1 for row in project_impact if row["Impacted Components"] > 0)
 
     recommendations = []
+    scenario_summary = (
+        f"{build_quantity:,} planned build(s), "
+        f"{stock_reduction_percent}% stock reduction, "
+        f"{supplier_loss} supplier(s) lost, "
+        f"{demand_growth_percent}% demand growth"
+    )
     if impacted:
         top = impacted[0]
         if top["Shortage Units"] > 0:
             recommendations.append(
-                f"Resolve the projected shortage for {top['Part Number']} first: "
-                f"{top['Shortage Units']:,} unit(s) are uncovered in this scenario."
+                f"First priority under this scenario: resolve the {top['Shortage Units']:,}-unit "
+                f"shortage for {top['Part Number']} in {top['Project']}."
             )
         elif top["Scenario Sources"] <= 1:
             recommendations.append(
-                f"Add another authorized source for {top['Part Number']} before the scenario occurs."
+                f"First priority under this scenario: restore sourcing coverage for "
+                f"{top['Part Number']} in {top['Project']}."
             )
         elif top["Lifecycle Event"]:
             recommendations.append(
-                f"Begin replacement qualification for {top['Part Number']} across every affected project."
+                f"First priority under this scenario: begin replacement qualification for "
+                f"{top['Part Number']} in {top['Project']}."
             )
     if shortage_components:
         recommendations.append(
-            f"Secure inventory or approved substitutes for {shortage_components} component record(s) with projected shortages."
+            f"{shortage_components} component record(s) fall short of modeled demand. "
+            f"Secure inventory, reduce demand, or approve substitutes."
         )
     if single_source_components:
-        recommendations.append(
-            f"Increase sourcing coverage for {single_source_components} component record(s) with one or fewer remaining sources."
-        )
+        if supplier_loss > 0:
+            recommendations.append(
+                f"Losing {supplier_loss} supplier(s) leaves {single_source_components} component "
+                f"record(s) with one or fewer sources. Prioritize alternate-source qualification."
+            )
+        else:
+            recommendations.append(
+                f"{single_source_components} component record(s) already have one or fewer sources. "
+                f"Add authorized sourcing coverage before production."
+            )
     if lifecycle_components:
+        lifecycle_reason = (
+            "including the modeled lifecycle disruption"
+            if include_lifecycle_event else "based on recorded lifecycle status"
+        )
         recommendations.append(
-            f"Prepare replacement plans for {lifecycle_components} lifecycle-exposed component record(s)."
+            f"{lifecycle_components} lifecycle-exposed component record(s) require replacement "
+            f"planning, {lifecycle_reason}."
+        )
+    if demand_growth_percent > 0:
+        recommendations.append(
+            f"Demand growth of {demand_growth_percent}% raises modeled requirements. "
+            f"Confirm purchase quantities and safety stock before release."
+        )
+    if stock_reduction_percent > 0:
+        recommendations.append(
+            f"A {stock_reduction_percent}% stock reduction is modeled. Review the components "
+            f"with the lowest remaining coverage first."
         )
     if not recommendations:
         recommendations.append(
             "The selected scenario does not create a major recorded supply or lifecycle exception."
         )
+    recommendations = recommendations[:5]
 
     return {
         "rows": normalized,
@@ -237,7 +269,8 @@ def build_supply_scenario(
         "lifecycle_components": lifecycle_components,
         "critical_components": critical_components,
         "shortage_value": shortage_value,
-        "recommendations": recommendations[:5],
+        "recommendations": recommendations,
+        "scenario_summary": scenario_summary,
         "component_count": len(normalized),
     }
 
@@ -272,6 +305,16 @@ def _css() -> None:
             padding:14px 16px;margin-bottom:10px;font-size:13px;font-weight:740;
             color:#334155;line-height:1.5
           }
+          .cv22-kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:18px 0 24px}
+          .cv22-kpi{border:1px solid #dbe3ef;background:#fff;border-radius:18px;padding:16px 17px;box-shadow:0 8px 24px rgba(15,23,42,.04);min-height:104px}
+          .cv22-kpi-label{font-size:12px;font-weight:850;color:#64748b;line-height:1.25}
+          .cv22-kpi-value{font-size:31px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-top:10px;line-height:1}
+          .cv22-kpi-note{font-size:11px;font-weight:700;color:#64748b;margin-top:8px;line-height:1.35}
+          .cv22-kpi.alert{border-color:#fecaca;background:#fff7f7}.cv22-kpi.alert .cv22-kpi-value{color:#b91c1c}
+          .cv22-kpi.warn{border-color:#fde68a;background:#fffbeb}.cv22-kpi.warn .cv22-kpi-value{color:#a16207}
+          .cv22-kpi.info{border-color:#bfdbfe;background:#f8fbff}
+          .cv22-scenario-strip{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:12px 14px;margin:0 0 16px;font-size:12px;font-weight:800;color:#1e40af}
+          @media (max-width:1100px){.cv22-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
           .cv22-warning{
             border:1px solid #fecaca;background:#fff1f2;border-radius:18px;padding:18px
           }
@@ -305,12 +348,22 @@ def render_supply_scenario(
         unsafe_allow_html=True,
     )
 
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Affected Projects", intelligence["affected_projects"])
-    k2.metric("Projected Shortages", intelligence["shortage_components"])
-    k3.metric("Single-Source Exposure", intelligence["single_source_components"])
-    k4.metric("Lifecycle Exposure", intelligence["lifecycle_components"])
-    k5.metric("Critical Components", intelligence["critical_components"])
+    st.markdown(
+        f'<div class="cv22-scenario-strip">Current scenario: {html.escape(intelligence["scenario_summary"])}</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <section class="cv22-kpi-grid">
+          <div class="cv22-kpi info"><div class="cv22-kpi-label">Affected Projects</div><div class="cv22-kpi-value">{intelligence["affected_projects"]}</div><div class="cv22-kpi-note">Projects with at least one modeled exception</div></div>
+          <div class="cv22-kpi alert"><div class="cv22-kpi-label">Projected Shortages</div><div class="cv22-kpi-value">{intelligence["shortage_components"]}</div><div class="cv22-kpi-note">Records where demand exceeds stock</div></div>
+          <div class="cv22-kpi warn"><div class="cv22-kpi-label">Single-Source Exposure</div><div class="cv22-kpi-value">{intelligence["single_source_components"]}</div><div class="cv22-kpi-note">Records left with one or fewer suppliers</div></div>
+          <div class="cv22-kpi warn"><div class="cv22-kpi-label">Lifecycle Exposure</div><div class="cv22-kpi-value">{intelligence["lifecycle_components"]}</div><div class="cv22-kpi-note">Records requiring replacement planning</div></div>
+          <div class="cv22-kpi alert"><div class="cv22-kpi-label">Critical Components</div><div class="cv22-kpi-value">{intelligence["critical_components"]}</div><div class="cv22-kpi-note">Scenario risk score of 80 or higher</div></div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
     left, right = st.columns([1.4, 1])
 
@@ -389,7 +442,7 @@ def render_supply_scenario(
         )
 
         st.markdown(
-            '<div class="cv22-section">Recommended Response</div>',
+            '<div class="cv22-section">Recommended Response for This Scenario</div>',
             unsafe_allow_html=True,
         )
         for recommendation in intelligence["recommendations"]:
