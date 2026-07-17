@@ -87,7 +87,10 @@ def build_cost_optimization(
                     "Unknown",
                 ),
                 "Manufacturer": _text(row.get("manufacturer"), "Unknown"),
-                "Supplier": _text(row.get("supplier"), "Not recorded"),
+                "Supplier": _text(
+                    _first(row, "primary_supplier", "supplier", "best_source"),
+                    "Not recorded",
+                ),
                 "Quantity per Build": qty,
                 "Unit Price": unit_price,
                 "Extended Cost per Build": qty * unit_price,
@@ -288,26 +291,30 @@ def render_cost_optimization(
     _css()
 
     st.markdown(
-        """
-        <section class="cv21-hero">
-          <div class="cv21-eyebrow">Engineering & Procurement Intelligence</div>
-          <div class="cv21-title">Cost Optimization</div>
-          <div class="cv21-copy">
-            Identify where shared demand, supplier competition, and distributor quantity breaks
-            may reduce component cost across saved BOMs. Cadivor separates recorded costs from
-            estimated savings so teams can validate opportunities before purchasing.
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
         '<div class="cv21-note">Estimated savings are planning guidance based on recorded prices, '
         'BOM quantities, supplier coverage, and conservative optimization assumptions. Confirm '
         'all pricing with authorized suppliers before making purchasing decisions.</div>',
         unsafe_allow_html=True,
     )
+
+    if intelligence["pricing_coverage"] == 0:
+        st.warning(
+            "The build quantity is changing correctly, but all modeled values remain $0 because "
+            "none of the saved component records currently contains a positive unit price. "
+            "Run the SQL migration included with Milestone 21.1, then re-analyze a BOM so Cadivor "
+            "can save quantity and supplier pricing. Existing saved BOMs do not automatically gain "
+            "historical prices."
+        )
+    elif intelligence["pricing_coverage"] < 100:
+        st.info(
+            f"Pricing is available for {intelligence['pricing_coverage']}% of component records. "
+            "The production model uses only priced records, so totals are currently partial."
+        )
+    else:
+        st.success(
+            "Pricing data is available for every saved component record. "
+            "Changing the build quantity will update modeled cost and savings."
+        )
 
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Cost per Build", f"${intelligence['current_cost_per_build']:,.2f}")
