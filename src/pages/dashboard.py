@@ -7,6 +7,7 @@ moving the dashboard into its own page module.
 
 from datetime import datetime
 import html
+import textwrap
 
 import pandas as pd
 import plotly.express as px
@@ -1670,7 +1671,8 @@ def render_dashboard(
     cost_health = 100 if total_components > 0 else 0
 
     st.markdown(
-        f"""
+        textwrap.dedent(
+            f"""
         <section class="cv23-hero">
           <div class="cv23-hero-grid">
             <div>
@@ -1707,7 +1709,8 @@ def render_dashboard(
             </div>
           </div>
         </section>
-        """,
+            """
+        ),
         unsafe_allow_html=True,
     )
 
@@ -1715,7 +1718,8 @@ def render_dashboard(
         render_global_search_panel(current_user["id"])
 
     st.markdown(
-        f"""
+        textwrap.dedent(
+            f"""
         <section class="cv23-kpi-grid">
           <a class="cv23-kpi success" href="?page=Reports" target="_self">
             <div class="cv23-kpi-label">Portfolio Health</div>
@@ -1748,12 +1752,14 @@ def render_dashboard(
             <div class="cv23-kpi-note">Need planned follow-up</div>
           </a>
         </section>
-        """,
+            """
+        ),
         unsafe_allow_html=True,
     )
 
     st.markdown(
-        f"""
+        textwrap.dedent(
+            f"""
         <section class="cv23-main-grid">
           <div class="cv23-panel">
             <div class="cv23-panel-title">Today’s Engineering Priorities</div>
@@ -1814,7 +1820,8 @@ def render_dashboard(
             </div>
           </div>
         </section>
-        """,
+            """
+        ),
         unsafe_allow_html=True,
     )
 
