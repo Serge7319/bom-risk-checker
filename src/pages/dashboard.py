@@ -1655,7 +1655,7 @@ def render_dashboard(
                 <div class="cv241-project-stat"><span>High Risk</span><strong>{latest_high_risk}</strong></div>
                 <div class="cv241-project-stat"><span>Medium Risk</span><strong>{latest_medium_risk}</strong></div>
                 <div class="cv241-project-stat"><span>Alerts</span><strong>{alert_count}</strong></div>
-                <div class="cv241-project-stat"><span>Replacements</span><strong>{alternative_count}</strong></div>
+                <div class="cv241-project-stat"><span>Replacements</span><strong>{alternatives_found}</strong></div>
               </div>
               <div class="cv241-status-line">
                 <span class="cv241-status-dot">Active engineering review</span>
