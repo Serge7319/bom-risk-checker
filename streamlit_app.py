@@ -76,6 +76,7 @@ from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
+from src.components.onboarding import render_analysis_success, render_upload_detected
 from src.onboarding_service import (
     ensure_onboarding_progress,
     update_onboarding_progress,
@@ -11247,6 +11248,12 @@ if app_mode == "BOM Analyzer":
         st.error("Quantity values must be greater than zero.")
         st.stop()
 
+    render_upload_detected(
+        filename=uploaded_file.name,
+        component_count=original_row_count,
+        deduplicated_count=deduped_row_count,
+    )
+
     st.subheader("Uploaded BOM Preview")
     st.data_editor(
         bom_df,
@@ -11574,8 +11581,21 @@ Unlock more power:
                 st.warning(f"Analysis completed, but upload count could not be updated: {e}")
 
             st.session_state["analysis_saved"] = True
+            st.session_state["show_analysis_success_29b"] = True
     if "results_df" in st.session_state:
         results_df = st.session_state["results_df"]
+
+        if st.session_state.get("show_analysis_success_29b") and st.session_state.get("analysis_id"):
+            _high = len(results_df[results_df["Risk Level"] == "High"])
+            _medium = len(results_df[results_df["Risk Level"] == "Medium"])
+            render_analysis_success(
+                project_name=project_name or (uploaded_file.name if uploaded_file else "BOM analysis"),
+                total_parts=len(results_df),
+                high_count=_high,
+                medium_count=_medium,
+                health_score=int(st.session_state.get("health_score", 0) or 0),
+                analysis_id=str(st.session_state.get("analysis_id")),
+            )
 
         show_dashboard_summary(results_df)
 
