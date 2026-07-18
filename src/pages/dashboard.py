@@ -1205,6 +1205,7 @@ def render_dashboard(
         .cv-v4-metric{min-height:124px!important;padding:17px!important;}
         .cv-v4-metric .value{font-size:36px!important;}
         @media(max-width:1180px){.cv-v4-command-grid,.cv-v4-insights,.cv-v4-metrics,.cv-6a-briefing{grid-template-columns:1fr!important}.cv-v4-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        div[data-testid="stHorizontalBlock"]:has(.cv231-activity-card) > div{min-width:0!important;}
         @media(max-width:760px){.cv-v4-action-grid,.cv-v4-brief{grid-template-columns:1fr!important}.cv-v4-analysis-row{grid-template-columns:1fr}.cv-v4-row-pills{justify-content:flex-start}.cv-v4-title{font-size:28px}.cv-6a-command .cv-v4-brief{grid-template-columns:1fr!important}}
         </style>
         """,
@@ -1498,54 +1499,74 @@ def render_dashboard(
             unsafe_allow_html=True,
         )
 
+    # Milestone 24.0 — Executive dashboard redesign.
+    # The lower dashboard is now organized as compact decision-support panels
+    # instead of several full-width reporting sections.
+
+    if latest_trend and previous_trend:
+        health_direction = (
+            "improved"
+            if trend_health_change > 0
+            else "declined"
+            if trend_health_change < 0
+            else "held steady"
+        )
+        risk_direction = (
+            "increased"
+            if trend_high_risk_change > 0
+            else "decreased"
+            if trend_high_risk_change < 0
+            else "did not change"
+        )
+        trend_summary = (
+            f"Portfolio health {health_direction} by {abs(trend_health_change)} point(s), "
+            f"while high-risk component exposure {risk_direction} by "
+            f"{abs(trend_high_risk_change)} compared with the previous saved analysis."
+        )
+    elif latest_trend:
+        trend_summary = (
+            "One saved analysis is available. Save another analysis to begin "
+            "measuring portfolio movement."
+        )
+    else:
+        trend_summary = (
+            "No saved analysis history is available yet. Analyze and save a BOM "
+            "to begin tracking trends."
+        )
+
+    recent_alerts_7d = 0
+    now_utc = pd.Timestamp.now(tz="UTC")
+    for alert in alert_data:
+        alert_time = pd.to_datetime(
+            alert.get("created_at") or alert.get("detected_at"),
+            errors="coerce",
+            utc=True,
+        )
+        if not pd.isna(alert_time) and (now_utc - alert_time).days <= 7:
+            recent_alerts_7d += 1
+
     st.markdown(
         """
         <div class="cv-v4-section-head" style="margin-top:14px;">
           <div>
-            <div class="cv-v4-section-title">Portfolio Trends</div>
-            <div class="cv-v4-section-meta">See whether engineering health and recorded component risk are improving over time.</div>
+            <div class="cv-v4-section-title">Executive Analytics</div>
+            <div class="cv-v4-section-meta">Compact portfolio movement, risk, and recent engineering activity.</div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    if latest_trend and previous_trend:
-        health_direction = "improved" if trend_health_change > 0 else "declined" if trend_health_change < 0 else "held steady"
-        risk_direction = "increased" if trend_high_risk_change > 0 else "decreased" if trend_high_risk_change < 0 else "did not change"
-        trend_summary = (
-            f"The latest saved analysis {health_direction} portfolio health by "
-            f"{abs(trend_health_change)} point(s), while high-risk components {risk_direction} "
-            f"by {abs(trend_high_risk_change)} compared with the previous saved analysis."
-        )
-    elif latest_trend:
-        trend_summary = "One saved analysis is available. Save another analysis to begin measuring portfolio movement."
-    else:
-        trend_summary = "No saved analysis history is available yet. Analyze and save a BOM to begin tracking trends."
-
-    st.markdown(
-        f'<div class="cv232-trend-summary">{html.escape(trend_summary)}</div>',
-        unsafe_allow_html=True,
-    )
-
-    health_card_kind = "good" if trend_health_change > 0 else "bad" if trend_health_change < 0 else ""
-    risk_card_kind = "good" if trend_high_risk_change < 0 else "bad" if trend_high_risk_change > 0 else ""
-    recent_alerts_7d = 0
-    now_utc = pd.Timestamp.now(tz="UTC")
-    for alert in alert_data:
-        alert_time = pd.to_datetime(alert.get("created_at") or alert.get("detected_at"), errors="coerce", utc=True)
-        if not pd.isna(alert_time) and (now_utc - alert_time).days <= 7:
-            recent_alerts_7d += 1
-
     st.markdown(
         f"""
+        <div class="cv232-trend-summary">{html.escape(trend_summary)}</div>
         <section class="cv232-trend-grid">
-          <div class="cv232-trend-card {health_card_kind}">
+          <div class="cv232-trend-card {'good' if trend_health_change > 0 else 'bad' if trend_health_change < 0 else ''}">
             <div class="cv232-trend-label">Health Change</div>
             <div class="cv232-trend-value">{trend_health_change:+d}</div>
-            <div class="cv232-trend-note">Latest analysis versus previous analysis</div>
+            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
           </div>
-          <div class="cv232-trend-card {risk_card_kind}">
+          <div class="cv232-trend-card {'good' if trend_high_risk_change < 0 else 'bad' if trend_high_risk_change > 0 else ''}">
             <div class="cv232-trend-label">High-Risk Change</div>
             <div class="cv232-trend-value">{trend_high_risk_change:+d}</div>
             <div class="cv232-trend-note">Fewer high-risk records is better</div>
@@ -1553,253 +1574,249 @@ def render_dashboard(
           <div class="cv232-trend-card {'warn' if recent_alerts_7d else ''}">
             <div class="cv232-trend-label">Recent Alerts</div>
             <div class="cv232-trend-value">{recent_alerts_7d}</div>
-            <div class="cv232-trend-note">Monitoring alerts recorded in the last 7 days</div>
+            <div class="cv232-trend-note">Recorded in the last seven days</div>
           </div>
           <div class="cv232-trend-card {'bad' if declining_projects else 'good'}">
             <div class="cv232-trend-label">Projects Declining</div>
             <div class="cv232-trend-value">{len(declining_projects)}</div>
-            <div class="cv232-trend-note">Projects with lower health or more high-risk records</div>
+            <div class="cv232-trend-note">Lower health or increased recorded risk</div>
           </div>
         </section>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("#### Risk History")
-    st.caption("Latest 7 recorded days across saved analyses.")
-    if len(trend_records) >= 2:
-        risk_df = pd.DataFrame(trend_records)
-        risk_df["created_at"] = pd.to_datetime(
-            risk_df["created_at"], errors="coerce", utc=True
-        )
-        risk_df["high_risk"] = pd.to_numeric(
-            risk_df["high_risk"], errors="coerce"
-        ).fillna(0)
-        risk_df["medium_risk"] = pd.to_numeric(
-            risk_df["medium_risk"], errors="coerce"
-        ).fillna(0)
-        risk_df = risk_df.dropna(subset=["created_at"]).sort_values("created_at")
-        risk_df["Date"] = risk_df["created_at"].dt.floor("D")
+    analytics_col, activity_col = st.columns([1.08, 0.92], gap="medium")
 
-        daily_risk = (
-            risk_df.groupby("Date", as_index=False)
-            .agg(
-                High_Risk=("high_risk", "mean"),
-                Medium_Risk=("medium_risk", "mean"),
-                Analyses=("high_risk", "size"),
-            )
-            .sort_values("Date")
-        )
-        daily_risk["High_Risk"] = daily_risk["High_Risk"].round(1)
-        daily_risk["Medium_Risk"] = daily_risk["Medium_Risk"].round(1)
-        full_daily_risk = daily_risk.copy()
-        daily_risk = daily_risk.tail(7).reset_index(drop=True)
-
-        risk_max = max(
-            1.0,
-            float(
-                max(
-                    daily_risk["High_Risk"].max(),
-                    daily_risk["Medium_Risk"].max(),
-                )
-            ),
-        )
-
-        risk_fig = go.Figure()
-        risk_fig.add_trace(
-            go.Scatter(
-                x=daily_risk["Date"],
-                y=daily_risk["Medium_Risk"],
-                customdata=daily_risk[["Analyses"]],
-                mode="lines+markers",
-                name="Medium Risk",
-                line={"color": "#F59E0B", "width": 2.2, "shape": "linear"},
-                marker={
-                    "size": 4,
-                    "color": "#FFFFFF",
-                    "line": {"color": "#F59E0B", "width": 1.8},
-                },
-                hovertemplate=(
-                    "<b>%{x|%b %d, %Y}</b>"
-                    "<br>Average medium-risk: %{y:.1f}"
-                    "<br>Saved analyses: %{customdata[0]}"
-                    "<extra></extra>"
-                ),
-            )
-        )
-        risk_fig.add_trace(
-            go.Scatter(
-                x=daily_risk["Date"],
-                y=daily_risk["High_Risk"],
-                customdata=daily_risk[["Analyses"]],
-                mode="lines+markers",
-                name="High Risk",
-                line={"color": "#DC2626", "width": 2.2, "shape": "linear"},
-                marker={
-                    "size": 4,
-                    "color": "#FFFFFF",
-                    "line": {"color": "#DC2626", "width": 1.8},
-                },
-                hovertemplate=(
-                    "<b>%{x|%b %d, %Y}</b>"
-                    "<br>Average high-risk: %{y:.1f}"
-                    "<br>Saved analyses: %{customdata[0]}"
-                    "<extra></extra>"
-                ),
-            )
-        )
-        risk_fig.update_yaxes(
-            range=[0, risk_max + max(1, risk_max * 0.25)],
-            title=None,
-            dtick=1 if risk_max <= 8 else None,
-            gridcolor="rgba(148,163,184,0.16)",
-            zeroline=False,
-        )
-        risk_fig.update_xaxes(
-            title=None,
-            gridcolor="rgba(148,163,184,0.10)",
-            showline=False,
-        )
-        risk_fig.update_layout(
-            hovermode="x unified",
-            legend={
-                "orientation": "h",
-                "yanchor": "bottom",
-                "y": 1.03,
-                "xanchor": "right",
-                "x": 1,
-                "font": {"size": 11},
-            },
-            margin={"l": 4, "r": 6, "t": 26, "b": 2},
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(
-            light_plotly_layout(risk_fig, height=175),
-            use_container_width=True,
-            config={
-                "displayModeBar": False,
-                "scrollZoom": False,
-                "responsive": True,
-            },
-        )
-    else:
-        st.info("Save at least two BOM analyses to display recorded risk history.")
-
-    st.markdown(
-        """
-        <div class="cv-v4-section-head" style="margin-top:12px;">
-          <div>
-            <div class="cv-v4-section-title">Recent Engineering Activity</div>
-            <div class="cv-v4-section-meta">A chronological view of analyses, monitoring changes, and replacement work.</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    analysis_activity_count = sum(
-        1 for event in recent_activity if event["category"] == "Analyses"
-    )
-    monitoring_activity_count = sum(
-        1 for event in recent_activity if event["category"] == "Monitoring"
-    )
-    replacement_activity_count = sum(
-        1 for event in recent_activity if event["category"] == "Replacements"
-    )
-
-    st.markdown(
-        f"""
-        <section class="cv231-summary-grid">
-          <div class="cv231-summary-card">
-            <div class="cv231-summary-label">Recent Events</div>
-            <div class="cv231-summary-value">{len(recent_activity)}</div>
-            <div class="cv231-summary-note">Recorded across the engineering workspace</div>
-          </div>
-          <div class="cv231-summary-card">
-            <div class="cv231-summary-label">Analyses</div>
-            <div class="cv231-summary-value">{analysis_activity_count}</div>
-            <div class="cv231-summary-note">Recently saved BOM engineering records</div>
-          </div>
-          <div class="cv231-summary-card">
-            <div class="cv231-summary-label">Monitoring</div>
-            <div class="cv231-summary-value">{monitoring_activity_count}</div>
-            <div class="cv231-summary-note">Recent lifecycle, stock, or supplier alerts</div>
-          </div>
-          <div class="cv231-summary-card">
-            <div class="cv231-summary-label">Replacements</div>
-            <div class="cv231-summary-value">{replacement_activity_count}</div>
-            <div class="cv231-summary-note">Candidate records awaiting or completing review</div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    activity_filter = st.radio(
-        "Filter recent engineering activity",
-        ["All Activity", "Analyses", "Monitoring", "Replacements"],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="dashboard_activity_filter_m23_1",
-    )
-
-    if activity_filter == "All Activity":
-        filtered_activity = recent_activity
-    else:
-        filtered_activity = [
-            event for event in recent_activity
-            if event["category"] == activity_filter
-        ]
-
-    visible_activity = filtered_activity[:6]
-
-    if visible_activity:
-        for event in visible_activity:
-            st.markdown(
-                f"""
-                <section class="cv231-activity-card">
-                  <div class="cv231-activity-top">
-                    <div class="cv231-activity-type">{html.escape(str(event['type']))}</div>
-                    <div class="cv231-activity-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
-                  </div>
-                  <div class="cv231-activity-title">{html.escape(str(event['title']))}</div>
-                  <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
-                  <a class="cv231-activity-link" href="{event['href']}" target="_self">
-                    {html.escape(str(event['action']))} →
-                  </a>
-                </section>
-                """,
-                unsafe_allow_html=True,
-            )
-    else:
+    with analytics_col:
         st.markdown(
-            '<div class="cv231-empty">No activity matches the selected filter.</div>',
+            """
+            <div class="cv-v4-section-head cv-6b-column-heading">
+              <div>
+                <div class="cv-v4-section-title">Risk Movement</div>
+                <div class="cv-v4-section-meta">Latest seven recorded days across saved analyses.</div>
+              </div>
+              <a class="cv-v4-chip" href="?page=Monitoring" target="_self" style="text-decoration:none!important;">Open monitoring →</a>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
-    if len(filtered_activity) > 6:
-        with st.expander(
-            f"View complete activity history ({len(filtered_activity)})",
-            expanded=False,
-        ):
-            activity_rows = pd.DataFrame(
-                [
-                    {
-                        "When": _activity_relative(event.get("created_at")),
-                        "Type": event["type"],
-                        "Item": event["title"],
-                        "Activity": event["copy"],
-                    }
-                    for event in filtered_activity
-                ]
+        if len(trend_records) >= 2:
+            risk_df = pd.DataFrame(trend_records)
+            risk_df["created_at"] = pd.to_datetime(
+                risk_df["created_at"], errors="coerce", utc=True
             )
-            st.dataframe(
-                activity_rows,
+            risk_df["high_risk"] = pd.to_numeric(
+                risk_df["high_risk"], errors="coerce"
+            ).fillna(0)
+            risk_df["medium_risk"] = pd.to_numeric(
+                risk_df["medium_risk"], errors="coerce"
+            ).fillna(0)
+            risk_df = risk_df.dropna(subset=["created_at"]).sort_values("created_at")
+            risk_df["Date"] = risk_df["created_at"].dt.floor("D")
+
+            daily_risk = (
+                risk_df.groupby("Date", as_index=False)
+                .agg(
+                    High_Risk=("high_risk", "mean"),
+                    Medium_Risk=("medium_risk", "mean"),
+                    Analyses=("high_risk", "size"),
+                )
+                .sort_values("Date")
+                .tail(7)
+                .reset_index(drop=True)
+            )
+            daily_risk["High_Risk"] = daily_risk["High_Risk"].round(1)
+            daily_risk["Medium_Risk"] = daily_risk["Medium_Risk"].round(1)
+
+            risk_max = max(
+                1.0,
+                float(
+                    max(
+                        daily_risk["High_Risk"].max(),
+                        daily_risk["Medium_Risk"].max(),
+                    )
+                ),
+            )
+
+            risk_fig = go.Figure()
+            risk_fig.add_trace(
+                go.Scatter(
+                    x=daily_risk["Date"],
+                    y=daily_risk["Medium_Risk"],
+                    customdata=daily_risk[["Analyses"]],
+                    mode="lines+markers",
+                    name="Medium Risk",
+                    line={"color": "#F59E0B", "width": 2.2, "shape": "linear"},
+                    marker={
+                        "size": 4,
+                        "color": "#FFFFFF",
+                        "line": {"color": "#F59E0B", "width": 1.7},
+                    },
+                    hovertemplate=(
+                        "<b>%{x|%b %d}</b>"
+                        "<br>Average medium-risk: %{y:.1f}"
+                        "<br>Saved analyses: %{customdata[0]}"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+            risk_fig.add_trace(
+                go.Scatter(
+                    x=daily_risk["Date"],
+                    y=daily_risk["High_Risk"],
+                    customdata=daily_risk[["Analyses"]],
+                    mode="lines+markers",
+                    name="High Risk",
+                    line={"color": "#DC2626", "width": 2.2, "shape": "linear"},
+                    marker={
+                        "size": 4,
+                        "color": "#FFFFFF",
+                        "line": {"color": "#DC2626", "width": 1.7},
+                    },
+                    hovertemplate=(
+                        "<b>%{x|%b %d}</b>"
+                        "<br>Average high-risk: %{y:.1f}"
+                        "<br>Saved analyses: %{customdata[0]}"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+            risk_fig.update_yaxes(
+                range=[0, risk_max + max(1, risk_max * 0.25)],
+                title=None,
+                dtick=1 if risk_max <= 8 else None,
+                gridcolor="rgba(148,163,184,0.16)",
+                zeroline=False,
+            )
+            risk_fig.update_xaxes(
+                title=None,
+                tickformat="%b %d",
+                gridcolor="rgba(148,163,184,0.10)",
+                showline=False,
+            )
+            risk_fig.update_layout(
+                hovermode="x unified",
+                legend={
+                    "orientation": "h",
+                    "yanchor": "bottom",
+                    "y": 1.03,
+                    "xanchor": "right",
+                    "x": 1,
+                    "font": {"size": 10},
+                },
+                margin={"l": 3, "r": 5, "t": 25, "b": 2},
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(
+                light_plotly_layout(risk_fig, height=205),
                 use_container_width=True,
-                hide_index=True,
-                height=min(520, 38 + len(activity_rows) * 35),
+                config={
+                    "displayModeBar": False,
+                    "scrollZoom": False,
+                    "responsive": True,
+                },
             )
+        else:
+            st.info("Save at least two BOM analyses to display risk movement.")
+
+        if declining_projects:
+            st.markdown(
+                """
+                <div class="cv-v4-section-head" style="margin-top:8px;">
+                  <div>
+                    <div class="cv-v4-section-title" style="font-size:17px;">Projects Requiring Attention</div>
+                    <div class="cv-v4-section-meta">Only projects moving in the wrong direction are shown.</div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            for project in declining_projects[:3]:
+                project_name = html.escape(str(project.get("project_name") or "Saved BOM"))
+                health_change = int(project.get("health_change", 0) or 0)
+                risk_change = int(project.get("high_risk_change", 0) or 0)
+                explanation_parts = []
+                if health_change < 0:
+                    explanation_parts.append(f"health {health_change:+d}")
+                if risk_change > 0:
+                    explanation_parts.append(f"high-risk {risk_change:+d}")
+                explanation = " • ".join(explanation_parts) or "Recorded risk increased"
+                st.markdown(
+                    f"""
+                    <div class="cv231-activity-card" style="padding:12px 14px;">
+                      <div class="cv231-activity-type">Needs Attention</div>
+                      <div class="cv231-activity-title">{project_name}</div>
+                      <div class="cv231-activity-copy">{html.escape(explanation)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.success("No saved projects are currently trending downward.")
+
+    with activity_col:
+        st.markdown(
+            """
+            <div class="cv-v4-section-head cv-6b-column-heading">
+              <div>
+                <div class="cv-v4-section-title">Recent Activity</div>
+                <div class="cv-v4-section-meta">The newest engineering events requiring context.</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        visible_activity = recent_activity[:4]
+        if visible_activity:
+            for event in visible_activity:
+                st.markdown(
+                    f"""
+                    <section class="cv231-activity-card" style="padding:12px 14px;margin-bottom:9px;">
+                      <div class="cv231-activity-top">
+                        <div class="cv231-activity-type">{html.escape(str(event['type']))}</div>
+                        <div class="cv231-activity-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
+                      </div>
+                      <div class="cv231-activity-title">{html.escape(str(event['title']))}</div>
+                      <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
+                      <a class="cv231-activity-link" href="{event['href']}" target="_self">
+                        {html.escape(str(event['action']))} →
+                      </a>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                '<div class="cv231-empty">No recent engineering activity is recorded.</div>',
+                unsafe_allow_html=True,
+            )
+
+        if len(recent_activity) > 4:
+            with st.expander(
+                f"View complete activity history ({len(recent_activity)})",
+                expanded=False,
+            ):
+                activity_rows = pd.DataFrame(
+                    [
+                        {
+                            "When": _activity_relative(event.get("created_at")),
+                            "Type": event["type"],
+                            "Item": event["title"],
+                            "Activity": event["copy"],
+                        }
+                        for event in recent_activity
+                    ]
+                )
+                st.dataframe(
+                    activity_rows,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(420, 38 + len(activity_rows) * 34),
+                )
 
     st.markdown(
         """
