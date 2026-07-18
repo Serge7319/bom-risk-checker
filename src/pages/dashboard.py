@@ -703,10 +703,11 @@ def render_dashboard(
 
     # Milestone 23.1 — Build a unified recent engineering activity feed.
     def _activity_datetime(value):
+        fallback = pd.Timestamp("1970-01-01", tz="UTC")
         if not value:
-            return pd.Timestamp.min
+            return fallback
         parsed = pd.to_datetime(value, errors="coerce", utc=True)
-        return pd.Timestamp.min if pd.isna(parsed) else parsed
+        return fallback if pd.isna(parsed) else parsed
 
     def _activity_relative(value):
         parsed = pd.to_datetime(value, errors="coerce", utc=True)
