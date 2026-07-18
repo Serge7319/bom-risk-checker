@@ -574,6 +574,244 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
+    # Milestone 24.3A — final executive visual redesign.
+    st.markdown(
+        """
+        <style id="cadivor-m243a-executive-visuals">
+          .cv243-summary{
+            display:grid;
+            grid-template-columns:minmax(190px,.42fr) minmax(0,1.58fr);
+            gap:14px;
+            align-items:stretch;
+            border:1px solid #DBEAFE;
+            background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%);
+            border-radius:18px;
+            padding:16px;
+            margin:4px 0 14px;
+            box-shadow:0 6px 18px rgba(15,23,42,.06);
+          }
+          .cv243-summary-score{
+            border:1px solid #E2E8F0;
+            background:#FFFFFF;
+            border-radius:15px;
+            padding:15px;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+          }
+          .cv243-summary-label{
+            color:#64748B!important;
+            font-size:10px;
+            font-weight:950;
+            letter-spacing:.09em;
+            text-transform:uppercase;
+          }
+          .cv243-summary-value{
+            display:flex;
+            align-items:center;
+            gap:8px;
+            margin-top:9px;
+            color:#0F172A!important;
+            font-size:32px;
+            line-height:1;
+            font-weight:950;
+            letter-spacing:-.045em;
+          }
+          .cv243-summary-value.bad{color:#B91C1C!important;}
+          .cv243-summary-value.good{color:#047857!important;}
+          .cv243-summary-copy{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:14px;
+            align-content:center;
+          }
+          .cv243-summary-copy strong{
+            display:block;
+            color:#0F172A!important;
+            font-size:11px;
+            font-weight:950;
+            letter-spacing:.06em;
+            text-transform:uppercase;
+            margin-bottom:7px;
+          }
+          .cv243-summary-copy p{
+            color:#475569!important;
+            font-size:12px;
+            font-weight:720;
+            line-height:1.48;
+            margin:0;
+          }
+          .cv243-driver-list{
+            display:grid;
+            gap:5px;
+          }
+          .cv243-driver{
+            display:flex;
+            gap:7px;
+            align-items:flex-start;
+            color:#475569!important;
+            font-size:11.5px;
+            font-weight:720;
+            line-height:1.4;
+          }
+          .cv243-driver::before{
+            content:"";
+            width:6px;
+            height:6px;
+            margin-top:5px;
+            flex:0 0 auto;
+            border-radius:999px;
+            background:#F59E0B;
+          }
+          .cv232-trend-grid{
+            gap:10px!important;
+            margin-bottom:18px!important;
+          }
+          .cv232-trend-card{
+            position:relative;
+            min-height:102px!important;
+            padding:13px 14px!important;
+            border-radius:18px!important;
+            box-shadow:0 6px 18px rgba(15,23,42,.06)!important;
+            overflow:hidden;
+          }
+          .cv232-trend-card::after{
+            content:"";
+            position:absolute;
+            inset:0 0 auto 0;
+            height:3px;
+            background:#94A3B8;
+          }
+          .cv232-trend-card.good::after{background:#16A34A;}
+          .cv232-trend-card.bad::after{background:#DC2626;}
+          .cv232-trend-card.warn::after{background:#F59E0B;}
+          .cv243-kpi-top{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .cv243-kpi-icon{
+            width:28px;
+            height:28px;
+            border-radius:9px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:#F8FAFC;
+            border:1px solid #E2E8F0;
+            color:#64748B!important;
+            font-size:15px;
+            font-weight:950;
+          }
+          .cv232-trend-value{
+            font-size:30px!important;
+            margin-top:9px!important;
+          }
+          .cv232-trend-note{
+            font-size:10.5px!important;
+          }
+          .cv243-health-status{
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            color:#047857!important;
+            font-size:10.5px;
+            font-weight:900;
+          }
+          .cv243-health-status::before{
+            content:"";
+            width:8px;
+            height:8px;
+            border-radius:999px;
+            background:#22C55E;
+            box-shadow:0 0 0 4px rgba(34,197,94,.12);
+          }
+          .cv243-health-status.warn{
+            color:#A16207!important;
+          }
+          .cv243-health-status.warn::before{
+            background:#F59E0B;
+            box-shadow:0 0 0 4px rgba(245,158,11,.14);
+          }
+          .cv243-health-status.bad{
+            color:#B91C1C!important;
+          }
+          .cv243-health-status.bad::before{
+            background:#EF4444;
+            box-shadow:0 0 0 4px rgba(239,68,68,.14);
+          }
+          .cv243-project-badge{
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            padding:6px 9px;
+            border-radius:999px;
+            background:#ECFDF5;
+            border:1px solid #A7F3D0;
+            color:#047857!important;
+            font-size:9.5px;
+            font-weight:950;
+            letter-spacing:.06em;
+            text-transform:uppercase;
+          }
+          .cv243-project-badge::before{
+            content:"";
+            width:7px;
+            height:7px;
+            border-radius:999px;
+            background:#22C55E;
+          }
+          .cv241-project-grid{
+            grid-template-columns:repeat(3,minmax(0,1fr))!important;
+            gap:8px!important;
+            margin:11px 0!important;
+          }
+          .cv241-project-stat{
+            border-radius:12px!important;
+            padding:9px 10px!important;
+          }
+          .cv241-project-stat.alert{
+            background:#FFFBEB!important;
+            border-color:#FDE68A!important;
+          }
+          .cv241-project-stat.alert strong{color:#A16207!important;}
+          .cv241-project-stat.risk{
+            background:#FEF2F2!important;
+            border-color:#FECACA!important;
+          }
+          .cv241-project-stat.risk strong{color:#B91C1C!important;}
+          .cv241-project-stat.saved{
+            background:#EFF6FF!important;
+            border-color:#BFDBFE!important;
+          }
+          .cv241-project-stat.saved strong{color:#1D4ED8!important;}
+          .cv-6b-project-link{
+            min-height:40px!important;
+            font-size:11.5px!important;
+          }
+          div[data-testid="stPlotlyChart"]{
+            border-radius:18px!important;
+            border:1px solid #E2E8F0!important;
+            box-shadow:0 6px 18px rgba(15,23,42,.06)!important;
+            padding:8px!important;
+          }
+          .cv-v4-section-title{
+            font-size:21px!important;
+            font-weight:950!important;
+          }
+          .cv-v4-section-meta{
+            font-size:11.5px!important;
+          }
+          @media(max-width:900px){
+            .cv243-summary{grid-template-columns:1fr;}
+            .cv243-summary-copy{grid-template-columns:1fr;}
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # Load dashboard data once for this page.
     analysis_response = (
         supabase.table("analyses")
@@ -1521,29 +1759,99 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
+    health_change_class = (
+        "good" if trend_health_change > 0
+        else "bad" if trend_health_change < 0
+        else ""
+    )
+    health_change_icon = (
+        "↑" if trend_health_change > 0
+        else "↓" if trend_health_change < 0
+        else "→"
+    )
+    risk_change_icon = (
+        "↓" if trend_high_risk_change < 0
+        else "↑" if trend_high_risk_change > 0
+        else "→"
+    )
+    primary_driver_1 = (
+        f"{recent_alerts_7d} monitoring alert(s) were recorded in the last seven days."
+        if recent_alerts_7d
+        else "No new monitoring alerts were recorded in the last seven days."
+    )
+    primary_driver_2 = (
+        f"{len(declining_projects)} saved project(s) are moving in the wrong direction."
+        if declining_projects
+        else "No saved project is currently trending downward."
+    )
+    primary_driver_3 = (
+        f"High-risk exposure changed by {trend_high_risk_change:+d} compared with the previous analysis."
+    )
+
     st.markdown(
         f"""
-        <div class="cv232-trend-summary">{html.escape(trend_summary)}</div>
+        <section class="cv243-summary">
+          <div class="cv243-summary-score">
+            <div class="cv243-summary-label">Portfolio Health Change</div>
+            <div class="cv243-summary-value {health_change_class}">
+              <span>{health_change_icon}</span>
+              <span>{trend_health_change:+d}</span>
+            </div>
+            <div class="cv232-trend-note" style="margin-top:8px;">
+              Latest saved analysis versus previous
+            </div>
+          </div>
+          <div class="cv243-summary-copy">
+            <div>
+              <strong>Primary Drivers</strong>
+              <div class="cv243-driver-list">
+                <div class="cv243-driver">{html.escape(primary_driver_1)}</div>
+                <div class="cv243-driver">{html.escape(primary_driver_2)}</div>
+                <div class="cv243-driver">{html.escape(primary_driver_3)}</div>
+              </div>
+            </div>
+            <div>
+              <strong>Recommended Action</strong>
+              <p>{html.escape(next_action_copy)}</p>
+              <p style="margin-top:7px;color:#2563EB!important;font-weight:900;">
+                {html.escape(next_action_title)}
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section class="cv232-trend-grid">
-          <div class="cv232-trend-card {'good' if trend_health_change > 0 else 'bad' if trend_health_change < 0 else ''}">
-            <div class="cv232-trend-label">Health Change</div>
+          <div class="cv232-trend-card {health_change_class}">
+            <div class="cv243-kpi-top">
+              <div class="cv232-trend-label">Health Change</div>
+              <div class="cv243-kpi-icon">{health_change_icon}</div>
+            </div>
             <div class="cv232-trend-value">{trend_health_change:+d}</div>
-            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
+            <div class="cv232-trend-note">Versus previous analysis</div>
           </div>
           <div class="cv232-trend-card {'good' if trend_high_risk_change < 0 else 'bad' if trend_high_risk_change > 0 else ''}">
-            <div class="cv232-trend-label">High-Risk Change</div>
+            <div class="cv243-kpi-top">
+              <div class="cv232-trend-label">High-Risk Change</div>
+              <div class="cv243-kpi-icon">{risk_change_icon}</div>
+            </div>
             <div class="cv232-trend-value">{trend_high_risk_change:+d}</div>
             <div class="cv232-trend-note">Fewer high-risk records is better</div>
           </div>
           <div class="cv232-trend-card {'warn' if recent_alerts_7d else ''}">
-            <div class="cv232-trend-label">Recent Alerts</div>
+            <div class="cv243-kpi-top">
+              <div class="cv232-trend-label">Recent Alerts</div>
+              <div class="cv243-kpi-icon">!</div>
+            </div>
             <div class="cv232-trend-value">{recent_alerts_7d}</div>
-            <div class="cv232-trend-note">Recorded in the last seven days</div>
+            <div class="cv232-trend-note">Last seven days</div>
           </div>
           <div class="cv232-trend-card {'bad' if declining_projects else 'good'}">
-            <div class="cv232-trend-label">Projects Declining</div>
+            <div class="cv243-kpi-top">
+              <div class="cv232-trend-label">Projects Declining</div>
+              <div class="cv243-kpi-icon">◆</div>
+            </div>
             <div class="cv232-trend-value">{len(declining_projects)}</div>
-            <div class="cv232-trend-note">Lower health or increased recorded risk</div>
+            <div class="cv232-trend-note">Need management attention</div>
           </div>
         </section>
         """,
@@ -1627,14 +1935,14 @@ def render_dashboard(
                     customdata=daily_health[["Analyses"]],
                     mode="lines+markers",
                     name="Portfolio Health",
-                    line={"color": "#2563EB", "width": 2.5, "shape": "linear"},
+                    line={"color": "#2563EB", "width": 3, "shape": "linear"},
                     marker={
                         "size": 5,
                         "color": "#FFFFFF",
                         "line": {"color": "#2563EB", "width": 2},
                     },
                     fill="tonexty",
-                    fillcolor="rgba(37, 99, 235, 0.09)",
+                    fillcolor="rgba(37, 99, 235, 0.075)",
                     hovertemplate=(
                         "<b>%{x|%b %d, %Y}</b>"
                         "<br>Daily average health: %{y:.1f}/100"
@@ -1647,7 +1955,7 @@ def render_dashboard(
                 range=[health_min, health_max],
                 title=None,
                 tickfont={"color": "#64748B"},
-                gridcolor="rgba(148,163,184,0.16)",
+                gridcolor="#EEF2F7",
                 zeroline=False,
             )
             fig.update_xaxes(
@@ -1656,7 +1964,7 @@ def render_dashboard(
                 tickvals=daily_health["Date"].tolist(),
                 ticktext=[value.strftime("%b %d") for value in daily_health["Date"]],
                 tickfont={"color": "#64748B"},
-                gridcolor="rgba(148,163,184,0.10)",
+                gridcolor="#F4F7FA",
                 showline=False,
             )
             fig.update_layout(
@@ -1671,7 +1979,7 @@ def render_dashboard(
                 unsafe_allow_html=True,
             )
             st.plotly_chart(
-                light_plotly_layout(fig, height=165),
+                light_plotly_layout(fig, height=205),
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
@@ -1707,25 +2015,29 @@ def render_dashboard(
             <div class="cv-6b-panel cv-6b-project-panel">
               <div class="cv-6b-project-head">
                 <div>
-                  <div class="cv-v4-label">Active Analysis</div>
-                  <div class="cv-6b-project-title">{html.escape(str(latest_project))}</div>
+                  <div class="cv243-project-badge">Active Review</div>
+                  <div class="cv-6b-project-title" style="margin-top:10px;">
+                    {html.escape(str(latest_project))}
+                  </div>
                 </div>
                 <div class="cv-v4-icon">{_lucide_icon('file',18)}</div>
               </div>
-              <div class="cv241-project-grid">
-                <div class="cv241-project-stat"><span>Health</span><strong>{latest_health}</strong></div>
-                <div class="cv241-project-stat"><span>Components</span><strong>{latest_parts}</strong></div>
-                <div class="cv241-project-stat"><span>High Risk</span><strong>{latest_high_risk}</strong></div>
-                <div class="cv241-project-stat"><span>Medium Risk</span><strong>{latest_medium_risk}</strong></div>
-                <div class="cv241-project-stat"><span>Workspace Alerts</span><strong>{alert_count}</strong></div>
-                <div class="cv241-project-stat"><span>Saved Candidates</span><strong>{alternatives_found}</strong></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:3px;">
+                <div class="cv243-health-status {'bad' if latest_health < 55 else 'warn' if latest_health < 80 else ''}">
+                  {'Critical' if latest_health < 55 else 'Needs Review' if latest_health < 80 else 'Healthy'} · {latest_health}/100
+                </div>
+                <div class="cv-v4-text">Updated {html.escape(str(latest_date))}</div>
               </div>
-              <div class="cv241-status-line">
-                <span class="cv241-status-dot">Active engineering review</span>
-                <span>Updated {html.escape(str(latest_date))}</span>
+              <div class="cv241-project-grid">
+                <div class="cv241-project-stat"><span>Components</span><strong>{latest_parts}</strong></div>
+                <div class="cv241-project-stat risk"><span>High Risk</span><strong>{latest_high_risk}</strong></div>
+                <div class="cv241-project-stat"><span>Medium Risk</span><strong>{latest_medium_risk}</strong></div>
+                <div class="cv241-project-stat alert"><span>Workspace Alerts</span><strong>{alert_count}</strong></div>
+                <div class="cv241-project-stat saved"><span>Saved Candidates</span><strong>{alternatives_found}</strong></div>
+                <div class="cv241-project-stat"><span>Portfolio Health</span><strong>{avg_health_score}</strong></div>
               </div>
               <a class="cv-6b-project-link" href="{project_href}" target="_self">
-                <span>Continue analysis</span><span>→</span>
+                <span>Continue Engineering Review</span><span>→</span>
               </a>
             </div>
             """,
@@ -1794,7 +2106,7 @@ def render_dashboard(
                     customdata=daily_risk[["Analyses"]],
                     mode="lines+markers",
                     name="Medium Risk",
-                    line={"color": "#F59E0B", "width": 2.2, "shape": "linear"},
+                    line={"color": "#F59E0B", "width": 2, "shape": "linear"},
                     marker={
                         "size": 4,
                         "color": "#FFFFFF",
@@ -1815,7 +2127,7 @@ def render_dashboard(
                     customdata=daily_risk[["Analyses"]],
                     mode="lines+markers",
                     name="High Risk",
-                    line={"color": "#DC2626", "width": 2.2, "shape": "linear"},
+                    line={"color": "#DC2626", "width": 2, "shape": "linear"},
                     marker={
                         "size": 4,
                         "color": "#FFFFFF",
@@ -1833,7 +2145,7 @@ def render_dashboard(
                 range=[0, risk_max + max(1, risk_max * 0.25)],
                 title=None,
                 dtick=1 if risk_max <= 8 else None,
-                gridcolor="rgba(148,163,184,0.16)",
+                gridcolor="#EEF2F7",
                 zeroline=False,
             )
             risk_fig.update_xaxes(
@@ -1859,7 +2171,7 @@ def render_dashboard(
                 paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(
-                light_plotly_layout(risk_fig, height=155),
+                light_plotly_layout(risk_fig, height=180),
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
