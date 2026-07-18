@@ -1,4 +1,4 @@
-"""Cadivor saved-analysis workspace with persistent tab navigation."""
+"""Cadivor analysis workspace — Milestone 28.1 reliability and review refactor."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
@@ -11,6 +11,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ai_advisor import build_engineering_supply_advisor
+from src.components.review import (
+    is_unresolved_review,
+    parse_due_date,
+    summarize_review_workflow,
+    validate_review_decision,
+)
 from src.engineering_review_service import (
     complete_review_session,
     create_review_session,
@@ -959,8 +965,9 @@ def render_analysis_detail(
             start_col, note_col = st.columns([0.28, 0.72])
             with start_col:
                 start_disabled = not can_edit_review or review_db_unavailable
+                start_label = "Resume Engineering Review" if session_status == "paused" else "Start Engineering Review"
                 if st.button(
-                    "Start Engineering Review",
+                    start_label,
                     type="primary",
                     use_container_width=True,
                     key=f"cv271_start_{analysis_id}",
@@ -984,7 +991,11 @@ def render_analysis_detail(
                 permission_note = (
                     "You have read-only access to this engineering review."
                     if not can_edit_review
-                    else "The session is saved to Supabase and can be resumed from another browser or device."
+                    else (
+                        f"Resume your saved review. {reviewed_count} of {total_review_items} components are already reviewed."
+                        if session_status == "paused"
+                        else "The session is saved to Supabase and can be resumed from another browser or device."
+                    )
                 )
                 st.markdown(
                     f'<div class="cv27-session"><div class="cv27-session-title">Persistent Engineering Review</div>'
@@ -1014,31 +1025,28 @@ def render_analysis_detail(
             if review_items_error:
                 st.warning(f"Saved review items could not be loaded: {review_items_error}")
 
-            # Milestone 27.2 — collaborative action center and filters.
+            # Milestone 28.1 — shared collaborative workflow rules.
             today = date.today()
-            def _parse_due(row):
-                raw = row.get("due_date")
-                if raw:
-                    try:
-                        return date.fromisoformat(str(raw)[:10])
-                    except Exception:
-                        pass
-                return {"Today": today, "Tomorrow": today + timedelta(days=1), "This Week": today + timedelta(days=7), "Next Week": today + timedelta(days=14), "Next Sprint": today + timedelta(days=21)}.get(_safe(row.get("due_label"), ""))
-
-            open_rows = [r for r in review_items if r.get("decision") not in {"Approve", "Reject", "Skip"}]
-            overdue_rows = [r for r in open_rows if _parse_due(r) and _parse_due(r) < today]
-            due_week_rows = [r for r in open_rows if _parse_due(r) and today <= _parse_due(r) <= today + timedelta(days=7)]
-            assigned_me_rows = [r for r in open_rows if reviewer_email and str(r.get("assignee_email") or "").lower() == reviewer_email.lower()]
-            waiting_rows = [r for r in open_rows if r.get("assignee_email") and str(r.get("assignee_email")).lower() != reviewer_email.lower()]
-            completed_today = [r for r in review_items if r.get("decision") in {"Approve", "Reject", "Skip"} and str(r.get("updated_at") or "")[:10] == today.isoformat()]
-            unassigned_count = sum(1 for r in open_rows if not r.get("assignee_name"))
-            workflow_health = max(0, min(100, round(100 - len(overdue_rows)*18 - unassigned_count*8 - len(open_rows)/max(1,total_review_items)*30)))
+            workflow = summarize_review_workflow(
+                review_items,
+                reviewer_email=reviewer_email,
+                total_items=total_review_items,
+                today=today,
+            )
+            open_rows = workflow["open_rows"]
+            overdue_rows = workflow["overdue_rows"]
+            due_week_rows = workflow["due_week_rows"]
+            assigned_me_rows = workflow["assigned_me_rows"]
+            waiting_rows = workflow["waiting_rows"]
+            completed_today = workflow["completed_today"]
+            unassigned_count = workflow["unassigned_count"]
+            workflow_health = workflow["workflow_health"]
             action_html = f'<div class="cv272-action-grid"><div class="cv272-action"><span>Assigned to Me</span><strong>{len(assigned_me_rows)}</strong></div><div class="cv272-action"><span>Due This Week</span><strong>{len(due_week_rows)}</strong></div><div class="cv272-action {"bad" if overdue_rows else ""}"><span>Overdue</span><strong>{len(overdue_rows)}</strong></div><div class="cv272-action"><span>Waiting on Others</span><strong>{len(waiting_rows)}</strong></div><div class="cv272-action"><span>Completed Today</span><strong>{len(completed_today)}</strong></div></div><section class="cv272-health"><div class="cv272-health-top"><div><h4>Review Health</h4><p>{len(overdue_rows)} overdue · {unassigned_count} unassigned · {reviewed_count} completed</p></div><strong style="font-size:26px">{workflow_health}%</strong></div><div class="cv27-review-progress"><i style="width:{workflow_health}%"></i></div></section>'
             st.markdown(action_html, unsafe_allow_html=True)
 
             if total_review_items == 0:
                 st.markdown(
-                    '''<section class="cv28-empty"><h4>No component review items are available</h4><p>This saved BOM loaded its analysis summary, but no component-level records were available to build the engineering review queue. Reopen the BOM in the Analyzer and save or rerun the analysis so its component records are attached to this workspace.</p></section>''',
+                    f'''<section class="cv28-empty"><h4>No engineering review queue has been generated</h4><p>Cadivor creates review items from component-level risk, lifecycle, supplier, inventory, lead-time, and alternative evidence. Reopen this BOM in the Analyzer and rerun or save the analysis to attach component records.</p><a class="cv28-link" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open BOM Analyzer</a></section>''',
                     unsafe_allow_html=True,
                 )
 
@@ -1058,12 +1066,18 @@ def render_analysis_detail(
             assignee_filter = f2.selectbox("Assignee", ["All", "Assigned to me", "Unassigned"] + member_labels[1:], key=f"cv272_assignee_{analysis_id}")
             priority_filter = f3.selectbox("Priority", ["All", "High", "Medium", "Low"], key=f"cv272_priority_{analysis_id}")
             decision_filter = f4.selectbox("Decision", ["All", "Approve", "Needs Investigation", "Reject", "Skip", "Not reviewed"], key=f"cv272_decision_filter_{analysis_id}")
+            unresolved_only = st.checkbox(
+                "Show unresolved only",
+                value=False,
+                key=f"cv281_unresolved_{analysis_id}",
+                help="Includes open, investigation, rejected, unassigned, and overdue items.",
+            )
             filtered_review_parts = []
             for candidate in review_parts:
                 c_mpn = _safe(candidate.get("mpn"), "Unknown MPN")
                 c_saved = decision_map.get(c_mpn, {})
                 c_decision = c_saved.get("decision") or "Not reviewed"
-                c_due = _parse_due(c_saved)
+                c_due = parse_due_date(c_saved, today=today)
                 c_score = _num(candidate.get("risk_score"),0)
                 c_priority = "High" if c_score >= 70 else "Medium" if c_score >= 35 else "Low"
                 is_completed = c_decision in {"Approve","Reject","Skip"}
@@ -1076,6 +1090,7 @@ def render_analysis_detail(
                 if assignee_filter not in {"All","Assigned to me","Unassigned"} and assignee_filter != saved_assignee_label: continue
                 if priority_filter != "All" and c_priority != priority_filter: continue
                 if decision_filter != "All" and c_decision != decision_filter: continue
+                if unresolved_only and not is_unresolved_review(c_saved, today=today): continue
                 filtered_review_parts.append(candidate)
             st.caption(f"Showing {len(filtered_review_parts)} of {len(review_parts)} review items")
             for review_index, part in enumerate(filtered_review_parts, 1):
@@ -1090,6 +1105,7 @@ def render_analysis_detail(
                     f"{review_index}. {mpn} · {status_label} · {saved_priority} · {saved_assignee} · {saved_due}",
                     expanded=(review_index == 1 and reviewed_count == 0),
                 ):
+                    st.caption(f"Component {review_index} of {len(filtered_review_parts)}")
                     risk_score = _num(part.get("risk_score"), 0)
                     suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
                     rec_reason = _safe(
@@ -1172,7 +1188,21 @@ def render_analysis_detail(
                         or priority_value != _safe(saved.get("priority"), default_priority)
                         or (due_date_value or "") != _safe(saved.get("due_date"), "")
                     )
-                    if changed and not disabled:
+                    selected_assignee_name = selected_member[0] if selected_member[0] != "Unassigned" else ""
+                    can_save_decision, validation_error, validation_warning = validate_review_decision(
+                        decision=decision_value,
+                        notes=note_value,
+                        assignee_name=selected_assignee_name,
+                        risk_score=risk_score,
+                        lifecycle=lifecycle_value,
+                    )
+                    if validation_error and changed and not disabled:
+                        st.warning(validation_error)
+                    elif validation_warning and changed and not disabled:
+                        st.warning(validation_warning)
+
+                    if changed and not disabled and can_save_decision:
+                        st.caption("Saving…")
                         saved_item, save_error = save_review_item(
                             supabase,
                             session_id=review_session.get("id"),
@@ -1185,7 +1215,7 @@ def render_analysis_detail(
                             owner=owner_value,
                             due_label=due_value,
                             due_date=due_date_value,
-                            assignee_name=selected_member[0] if selected_member[0] != "Unassigned" else "",
+                            assignee_name=selected_assignee_name,
                             assignee_email=selected_member[1],
                             assignee_user_id=selected_member[2],
                             priority=priority_value,
@@ -1205,7 +1235,7 @@ def render_analysis_detail(
                         if save_error:
                             st.error(f"Save failed for {mpn}: {save_error}")
                         elif saved_item:
-                            st.caption("Saved to Supabase")
+                            st.caption("Saved just now")
                             st.rerun()
                     elif saved:
                         st.caption(f"Saved by {_safe(saved.get('reviewer_name'), reviewer_name)} · {updated_label}")
@@ -1247,6 +1277,7 @@ def render_analysis_detail(
                                         else: st.rerun()
 
             finish_col, reset_col = st.columns(2)
+            confirm_key = f"cv281_confirm_complete_{analysis_id}"
             with finish_col:
                 if session_status != "completed":
                     if st.button(
@@ -1256,6 +1287,20 @@ def render_analysis_detail(
                         key=f"cv271_lock_{analysis_id}",
                         disabled=(not can_manage_review or session_locked or reviewed_count == 0 or total_review_items == 0),
                     ):
+                        st.session_state[confirm_key] = True
+                else:
+                    st.success("Engineering review completed and locked.")
+
+            if st.session_state.get(confirm_key):
+                unresolved_count = max(0, total_review_items - reviewed_count)
+                st.warning(
+                    f"Confirm review completion: {reviewed_count} reviewed, "
+                    f"{counts['Approve']} approved, {counts['Needs Investigation']} investigating, "
+                    f"{counts['Reject']} rejected, {counts['Skip']} skipped, and {unresolved_count} unresolved."
+                )
+                confirm_complete_col, cancel_complete_col = st.columns(2)
+                with confirm_complete_col:
+                    if st.button("Confirm and Lock", type="primary", use_container_width=True, key=f"cv281_confirm_lock_{analysis_id}"):
                         completed, complete_error = complete_review_session(
                             supabase,
                             session_id=review_session.get("id"),
@@ -1267,9 +1312,13 @@ def render_analysis_detail(
                         if complete_error:
                             st.error(f"Could not complete the review: {complete_error}")
                         else:
+                            st.session_state.pop(confirm_key, None)
                             st.rerun()
-                else:
-                    st.success("Engineering review completed and locked.")
+                with cancel_complete_col:
+                    if st.button("Cancel", use_container_width=True, key=f"cv281_cancel_lock_{analysis_id}"):
+                        st.session_state.pop(confirm_key, None)
+                        st.rerun()
+
             with reset_col:
                 if session_locked:
                     with st.form(f"cv272_reopen_{analysis_id}"):
