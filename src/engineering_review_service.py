@@ -1,4 +1,4 @@
-"""Persistent engineering review data access for Cadivor Milestone 27.1."""
+"""Persistent collaborative engineering review data access for Cadivor Milestone 27.2."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -134,6 +134,11 @@ def save_review_item(
     decision: str,
     owner: str,
     due_label: str,
+    due_date: str | None,
+    assignee_name: str,
+    assignee_email: str,
+    assignee_user_id: str,
+    priority: str,
     notes: str,
     reviewer_name: str,
     reviewer_email: str,
@@ -176,6 +181,11 @@ def save_review_item(
             "decision": decision,
             "owner": owner,
             "due_label": due_label,
+            "due_date": due_date,
+            "assignee_name": assignee_name or None,
+            "assignee_email": assignee_email or None,
+            "assignee_user_id": assignee_user_id or None,
+            "priority": priority,
             "notes": notes,
             "reviewer_name": reviewer_name,
             "reviewer_email": reviewer_email or None,
@@ -214,7 +224,8 @@ def save_review_item(
 
         prior_decision = previous.get("decision") if previous else None
         verb = "updated" if previous else "recorded"
-        body = f"{mpn} was {verb} as {decision}. Owner: {owner}. Due: {due_label}."
+        assignee_text = assignee_name or "Unassigned"
+        body = f"{mpn} was {verb} as {decision}. Owner: {owner}. Assigned to: {assignee_text}. Due: {due_label}."
         if prior_decision and prior_decision != decision:
             body += f" Previous decision: {prior_decision}."
         _insert_event(
@@ -229,7 +240,7 @@ def save_review_item(
             body=body,
             actor_name=reviewer_name,
             actor_email=reviewer_email,
-            metadata={"decision": decision, "previous_decision": prior_decision, "owner": owner},
+            metadata={"decision": decision, "previous_decision": prior_decision, "owner": owner, "assignee_name": assignee_name, "assignee_email": assignee_email, "due_date": due_date, "priority": priority},
         )
         return item, None
     except Exception as exc:
@@ -386,3 +397,113 @@ def _insert_event(
         "created_at": _now(),
     }
     supabase.table("engineering_review_events").insert(payload).execute()
+
+
+def list_review_comments(
+    supabase,
+    *,
+    review_item_id: str,
+    user_id: str,
+    workspace_id: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    try:
+        query = (
+            supabase.table("engineering_review_comments")
+            .select("*")
+            .eq("review_item_id", review_item_id)
+            .eq("user_id", user_id)
+        )
+        query = _apply_workspace(query, workspace_id)
+        rows = query.order("created_at", desc=False).execute().data or []
+        return rows, None
+    except Exception as exc:
+        return [], _error(exc)
+
+
+def add_review_comment(
+    supabase,
+    *,
+    review_item_id: str,
+    session_id: str,
+    analysis_id: str,
+    user_id: str,
+    workspace_id: str | None,
+    body: str,
+    author_name: str,
+    author_email: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        clean_body = str(body or "").strip()
+        if not clean_body:
+            return None, "Comment cannot be empty."
+        payload = {
+            "review_item_id": review_item_id,
+            "session_id": session_id,
+            "analysis_id": analysis_id,
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            "body": clean_body,
+            "author_name": author_name,
+            "author_email": author_email or None,
+            "created_at": _now(),
+        }
+        rows = supabase.table("engineering_review_comments").insert(payload).execute().data or []
+        comment = rows[0] if rows else None
+        _insert_event(
+            supabase,
+            session_id=session_id,
+            analysis_id=analysis_id,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            review_item_id=review_item_id,
+            event_type="review_comment",
+            title="Engineering review comment added",
+            body=clean_body,
+            actor_name=author_name,
+            actor_email=author_email,
+        )
+        return comment, None
+    except Exception as exc:
+        return None, _error(exc)
+
+
+def reopen_review_session(
+    supabase,
+    *,
+    session_id: str,
+    user_id: str,
+    workspace_id: str | None,
+    reason: str,
+    actor_name: str,
+    actor_email: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        reason = str(reason or "").strip()
+        if not reason:
+            return None, "A reopen reason is required."
+        rows = (
+            supabase.table("engineering_review_sessions")
+            .update({"is_locked": False, "status": "active", "completed_at": None, "updated_at": _now()})
+            .eq("id", session_id)
+            .eq("user_id", user_id)
+            .execute().data or []
+        )
+        session = rows[0] if rows else None
+        if not session:
+            return None, "Review session was not found."
+        _insert_event(
+            supabase,
+            session_id=session_id,
+            analysis_id=session.get("analysis_id"),
+            user_id=user_id,
+            workspace_id=workspace_id,
+            event_type="session_reopened",
+            title="Engineering review reopened",
+            body=f"Reason: {reason}",
+            actor_name=actor_name,
+            actor_email=actor_email,
+            metadata={"reason": reason},
+        )
+        return session, None
+    except Exception as exc:
+        return None, _error(exc)
