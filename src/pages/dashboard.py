@@ -5,9 +5,8 @@ Architecture Refactor. It preserves the existing Dashboard UI and behavior while
 moving the dashboard into its own page module.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import html
-import textwrap
 
 import pandas as pd
 import plotly.express as px
@@ -26,8 +25,6 @@ def render_dashboard(
     empty_state,
     get_user_profile,
     _qp_value,
-    workspace_id=None,
-    workspace_name=None,
 ):
     """Render the Cadivor Dashboard page."""
 
@@ -433,18 +430,114 @@ def render_dashboard(
             .cv-actions-grid{grid-template-columns:1fr!important;}
             .cv-metric-value{font-size:36px!important;}
         }
+
+        /* Milestone 23.1 — Engineering timeline and recent activity */
+        .cv231-summary-grid{
+            display:grid;
+            grid-template-columns:repeat(4,minmax(0,1fr));
+            gap:12px;
+            margin:12px 0 18px;
+        }
+        .cv231-summary-card{
+            border:1px solid #E2E8F0;
+            background:#FFFFFF;
+            border-radius:16px;
+            padding:15px 16px;
+            box-shadow:0 10px 24px rgba(15,23,42,.04);
+        }
+        .cv231-summary-label{
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:900;
+            letter-spacing:.07em;
+            text-transform:uppercase;
+        }
+        .cv231-summary-value{
+            color:#0F172A!important;
+            font-size:29px;
+            line-height:1;
+            font-weight:950;
+            letter-spacing:-.04em;
+            margin-top:10px;
+        }
+        .cv231-summary-note{
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:700;
+            line-height:1.35;
+            margin-top:7px;
+        }
+        .cv231-activity-card{
+            border:1px solid #E2E8F0;
+            background:#FFFFFF;
+            border-radius:17px;
+            padding:15px 16px;
+            margin:0 0 10px;
+            box-shadow:0 10px 26px rgba(15,23,42,.04);
+        }
+        .cv231-activity-top{
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:14px;
+        }
+        .cv231-activity-type{
+            color:#2563EB!important;
+            font-size:10px;
+            font-weight:950;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+        }
+        .cv231-activity-time{
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:750;
+            white-space:nowrap;
+        }
+        .cv231-activity-title{
+            color:#0F172A!important;
+            font-size:14px;
+            font-weight:950;
+            line-height:1.3;
+            margin-top:7px;
+        }
+        .cv231-activity-copy{
+            color:#64748B!important;
+            font-size:11.5px;
+            font-weight:680;
+            line-height:1.45;
+            margin-top:5px;
+        }
+        .cv231-activity-link{
+            display:inline-flex;
+            margin-top:10px;
+            color:#2563EB!important;
+            font-size:11px;
+            font-weight:900;
+            text-decoration:none!important;
+        }
+        .cv231-empty{
+            border:1px dashed #CBD5E1;
+            background:#F8FAFC;
+            border-radius:16px;
+            padding:22px;
+            color:#64748B!important;
+            font-size:12px;
+            font-weight:700;
+            text-align:center;
+        }
+        @media(max-width:950px){
+            .cv231-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
     # Load dashboard data once for this page.
-    analysis_query = supabase.table("analyses").select("*")
-    if workspace_id:
-        analysis_query = analysis_query.eq("workspace_id", workspace_id)
-
     analysis_response = (
-        analysis_query
+        supabase.table("analyses")
+        .select("*")
         .eq("user_id", current_user["id"])
         .order("created_at", desc=True)
         .execute()
@@ -479,12 +572,9 @@ def render_dashboard(
         alternatives_found = 0
 
     try:
-        alert_query = supabase.table("monitor_alerts").select("*")
-        if workspace_id:
-            alert_query = alert_query.eq("workspace_id", workspace_id)
-
         alert_history = (
-            alert_query
+            supabase.table("monitor_alerts")
+            .select("*")
             .eq("user_id", current_user["id"])
             .order("created_at", desc=True)
             .limit(25)
@@ -611,6 +701,113 @@ def render_dashboard(
     next_action_title = "Review high-risk components" if total_high_risk else "Run next BOM analysis"
     next_action_copy = f"{total_high_risk} components need engineering review before the next release." if total_high_risk else "Upload another BOM to keep the workspace intelligence current."
 
+    # Milestone 23.1 — Build a unified recent engineering activity feed.
+    def _activity_datetime(value):
+        if not value:
+            return pd.Timestamp.min
+        parsed = pd.to_datetime(value, errors="coerce", utc=True)
+        return pd.Timestamp.min if pd.isna(parsed) else parsed
+
+    def _activity_relative(value):
+        parsed = pd.to_datetime(value, errors="coerce", utc=True)
+        if pd.isna(parsed):
+            return "Recently"
+        now = pd.Timestamp.now(tz="UTC")
+        seconds = max(0, int((now - parsed).total_seconds()))
+        if seconds < 60:
+            return "Just now"
+        if seconds < 3600:
+            minutes = seconds // 60
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        if seconds < 86400:
+            hours = seconds // 3600
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        days = seconds // 86400
+        if days == 1:
+            return "Yesterday"
+        if days < 7:
+            return f"{days} days ago"
+        return parsed.strftime("%b %d, %Y")
+
+    recent_activity = []
+
+    for item in analysis_data[:12]:
+        project_name = (
+            item.get("project_name")
+            or item.get("filename")
+            or item.get("source_filename")
+            or "Saved BOM analysis"
+        )
+        analysis_id = str(item.get("id") or "")
+        health = int(item.get("health_score", 0) or 0)
+        parts = int(item.get("total_parts", 0) or 0)
+        recent_activity.append(
+            {
+                "category": "Analyses",
+                "type": "BOM Analysis",
+                "title": str(project_name),
+                "copy": f"Analysis completed with health {health}/100 across {parts} component record(s).",
+                "created_at": item.get("created_at"),
+                "href": (
+                    f"?page=Analysis%20Details&analysis_id={html.escape(analysis_id, quote=True)}"
+                    if analysis_id
+                    else "?page=BOM%20Analyzer"
+                ),
+                "action": "Open project",
+            }
+        )
+
+    for item in alert_data[:16]:
+        part_number = item.get("part_number") or item.get("mpn") or "Monitored component"
+        alert_type = item.get("alert_type") or item.get("change_type") or "Monitoring alert"
+        message = (
+            item.get("alert_message")
+            or item.get("message")
+            or item.get("description")
+            or "A monitored component changed."
+        )
+        recent_activity.append(
+            {
+                "category": "Monitoring",
+                "type": str(alert_type),
+                "title": str(part_number),
+                "copy": str(message),
+                "created_at": item.get("created_at") or item.get("detected_at"),
+                "href": "?page=Monitoring",
+                "action": "Review alert",
+            }
+        )
+
+    for item in alternative_history[:10]:
+        original = (
+            item.get("original_part")
+            or item.get("original_mpn")
+            or item.get("part_number")
+            or "Component"
+        )
+        candidate = (
+            item.get("alternative_part")
+            or item.get("candidate_mpn")
+            or item.get("recommended_part")
+            or "replacement candidate"
+        )
+        recent_activity.append(
+            {
+                "category": "Replacements",
+                "type": "Replacement Review",
+                "title": str(original),
+                "copy": f"Replacement candidate {candidate} was recorded for engineering review.",
+                "created_at": item.get("created_at") or item.get("updated_at"),
+                "href": "?page=Alternative%20Finder",
+                "action": "Open replacement",
+            }
+        )
+
+    recent_activity.sort(
+        key=lambda event: _activity_datetime(event.get("created_at")),
+        reverse=True,
+    )
+
     st.markdown(
         """
         <style id="cadivor-dashboard-v4-command-center">
@@ -649,7 +846,7 @@ def render_dashboard(
         .cv-v4-snapshot{background:#fff;border:1px solid #E2E8F0;border-radius:22px;padding:20px;box-shadow:0 18px 46px rgba(15,23,42,.055)}.cv-v4-snapshot-title{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:16px}.cv-v4-project{color:#0B1220!important;font-size:22px;font-weight:980;letter-spacing:-.045em;line-height:1.15}.cv-v4-snapshot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cv-v4-snapshot-cell{border:1px solid #E2E8F0;background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border-radius:16px;padding:13px}.cv-v4-snapshot-cell span{display:block;color:#64748B!important;font-size:10.5px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}.cv-v4-snapshot-cell strong{color:#0B1220!important;font-size:23px;font-weight:980;}
         .cv-v4-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cv-v4-action{background:linear-gradient(180deg,#FFFFFF,#F8FAFC);border:1px solid #E2E8F0;border-radius:20px;padding:18px;text-decoration:none!important;color:inherit!important;box-shadow:0 16px 42px rgba(15,23,42,.052);min-height:142px}.cv-v4-action .icon{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:#EFF6FF;border:1px solid #DBEAFE;color:#2563EB;margin-bottom:14px}.cv-v4-action .title{color:#0B1220!important;font-size:14px;font-weight:980;margin-bottom:6px}.cv-v4-action .copy{color:#52647A!important;font-size:12px;font-weight:760;line-height:1.45;margin-bottom:10px}.cv-v4-action .meta{color:#2563EB!important;font-size:11px;font-weight:950;}
         /* Milestone 6.0A — premium, calm dashboard intelligence */
-        /* Milestone 6.1 — premium UX polish */
+        /* Milestone 6.0B.4 — target visual implementation and chart repair */
         .cv-6b-kpi-strip{
             display:grid;
             grid-template-columns:repeat(4,minmax(0,1fr));
@@ -927,901 +1124,67 @@ def render_dashboard(
         .cv-v4-metric .value{font-size:36px!important;}
         @media(max-width:1180px){.cv-v4-command-grid,.cv-v4-insights,.cv-v4-metrics,.cv-6a-briefing{grid-template-columns:1fr!important}.cv-v4-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:760px){.cv-v4-action-grid,.cv-v4-brief{grid-template-columns:1fr!important}.cv-v4-analysis-row{grid-template-columns:1fr}.cv-v4-row-pills{justify-content:flex-start}.cv-v4-title{font-size:28px}.cv-6a-command .cv-v4-brief{grid-template-columns:1fr!important}}
-
-        /* Milestone 6.0C — final card composition */
-        .st-key-dashboard_trend_card,
-        .st-key-dashboard_project_card {
-            height: 430px;
-            min-height: 430px;
-            padding: 20px 20px 16px!important;
-            background: #FFFFFF!important;
-            border: 1px solid #E2E8F0!important;
-            border-radius: 22px!important;
-            box-shadow: 0 18px 46px rgba(15,23,42,.06)!important;
-            overflow: hidden!important;
-        }
-
-        .st-key-dashboard_trend_card [data-testid="stVerticalBlock"],
-        .st-key-dashboard_project_card [data-testid="stVerticalBlock"] {
-            gap: 0!important;
-        }
-
-        .cv-6c-card-header {
-            display:flex;
-            align-items:flex-start;
-            justify-content:space-between;
-            gap:16px;
-            margin:0 0 12px;
-        }
-
-        .cv-6c-card-title {
-            color:#0B1220!important;
-            font-size:19px;
-            font-weight:980;
-            line-height:1.08;
-            letter-spacing:-.04em;
-            margin:0;
-        }
-
-        .cv-6c-card-subtitle {
-            color:#64748B!important;
-            font-size:12px;
-            font-weight:780;
-            line-height:1.4;
-            margin-top:5px;
-        }
-
-        .cv-6c-card-action {
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            flex:0 0 auto;
-            border:1px solid #BFDBFE;
-            background:#EFF6FF;
-            color:#2563EB!important;
-            border-radius:999px;
-            padding:8px 11px;
-            text-decoration:none!important;
-            font-size:11px;
-            font-weight:950;
-            white-space:nowrap;
-        }
-
-        .st-key-dashboard_trend_card [data-testid="stPlotlyChart"] {
-            height:338px!important;
-            min-height:338px!important;
-            padding:0!important;
-            margin:0!important;
-            border:0!important;
-            border-radius:16px!important;
-            box-shadow:none!important;
-            background:#FFFFFF!important;
-            overflow:hidden!important;
-        }
-
-        .st-key-dashboard_trend_card [data-testid="stPlotlyChart"] > div,
-        .st-key-dashboard_trend_card .js-plotly-plot,
-        .st-key-dashboard_trend_card .plot-container,
-        .st-key-dashboard_trend_card .svg-container {
-            height:100%!important;
-            border-radius:16px!important;
-            overflow:hidden!important;
-        }
-
-        .cv-6c-project-body {
-            display:flex;
-            flex-direction:column;
-            min-height:338px;
-        }
-
-        .cv-6c-project-top {
-            display:flex;
-            align-items:flex-start;
-            justify-content:space-between;
-            gap:14px;
-            margin-bottom:18px;
-        }
-
-        .cv-6c-project-label {
-            color:#64748B!important;
-            font-size:10px;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:.1em;
-            margin-bottom:7px;
-        }
-
-        .cv-6c-project-name {
-            color:#0B1220!important;
-            font-size:22px;
-            font-weight:980;
-            line-height:1.15;
-            letter-spacing:-.04em;
-        }
-
-        .cv-6c-project-icon {
-            width:44px;
-            height:44px;
-            border-radius:14px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            background:#EFF6FF;
-            border:1px solid #BFDBFE;
-            color:#2563EB!important;
-            flex:0 0 auto;
-        }
-
-        .cv-6c-project-stats {
-            display:grid;
-            grid-template-columns:repeat(2,minmax(0,1fr));
-            gap:12px;
-            margin-bottom:16px;
-        }
-
-        .cv-6c-project-stat {
-            min-height:92px;
-            padding:14px;
-            background:linear-gradient(180deg,#FFFFFF,#F8FAFC);
-            border:1px solid #E2E8F0;
-            border-radius:16px;
-        }
-
-        .cv-6c-project-stat span {
-            display:block;
-            color:#64748B!important;
-            font-size:10px;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:.08em;
-            margin-bottom:8px;
-        }
-
-        .cv-6c-project-stat strong {
-            display:block;
-            color:#0B1220!important;
-            font-size:25px;
-            font-weight:980;
-            line-height:1;
-        }
-
-        .cv-6c-project-stat small {
-            display:block;
-            color:#64748B!important;
-            font-size:11px;
-            font-weight:780;
-            margin-top:7px;
-        }
-
-        .cv-6c-project-date {
-            color:#52647A!important;
-            font-size:12px;
-            font-weight:850;
-            margin-bottom:14px;
-        }
-
-        .cv-6c-project-link {
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:12px;
-            margin-top:auto;
-            padding:12px 14px;
-            border-radius:14px;
-            background:#EFF6FF;
-            border:1px solid #BFDBFE;
-            color:#2563EB!important;
-            text-decoration:none!important;
-            font-size:12px;
-            font-weight:950;
-        }
-
-        .cv-6b-shortcuts {
-            gap:14px!important;
-        }
-
-        .cv-6b-shortcut {
-            grid-template-columns:48px minmax(0,1fr) auto!important;
-            min-height:98px!important;
-            padding:16px!important;
-            border-radius:18px!important;
-        }
-
-        .cv-6b-shortcut-icon {
-            width:46px!important;
-            height:46px!important;
-            border-radius:14px!important;
-        }
-
-        .cv-6b-shortcut strong {
-            font-size:14px!important;
-            line-height:1.2!important;
-            margin-bottom:6px!important;
-            letter-spacing:-.015em!important;
-        }
-
-        .cv-6b-shortcut span {
-            font-size:12px!important;
-            line-height:1.42!important;
-            font-weight:760!important;
-            max-width:210px;
-        }
-
-        .cv-6b-arrow {
-            font-size:18px!important;
-        }
-
-        @media(max-width:1100px) {
-            .st-key-dashboard_trend_card,
-            .st-key-dashboard_project_card {
-                height:auto;
-                min-height:0;
-            }
-        }
-
-        @media(max-width:760px) {
-            .cv-6b-shortcut {
-                min-height:88px!important;
-            }
-        }
-
-        /* Milestone 6.1 — Premium UX Polish */
-        .cv-v4-command,
-        .cv-6a-briefing,
-        .cv-6b-kpi-strip,
-        .st-key-dashboard_trend_card,
-        .st-key-dashboard_project_card,
-        .cv-6b-shortcuts {
-            animation:cv61FadeUp .34s ease both;
-        }
-
-        .cv-6a-briefing { animation-delay:.04s; }
-        .cv-6b-kpi-strip { animation-delay:.08s; }
-        .st-key-dashboard_trend_card,
-        .st-key-dashboard_project_card { animation-delay:.12s; }
-        .cv-6b-shortcuts { animation-delay:.16s; }
-
-        @keyframes cv61FadeUp {
-            from { opacity:0; transform:translateY(8px); }
-            to { opacity:1; transform:translateY(0); }
-        }
-
-        .cv-v4-btn,
-        .cv-6a-action-row,
-        .cv-6b-kpi,
-        .cv-6c-card-action,
-        .cv-6c-project-link,
-        .cv-6b-shortcut {
-            outline:none!important;
-        }
-
-        .cv-v4-btn:focus-visible,
-        .cv-6a-action-row:focus-visible,
-        .cv-6b-kpi:focus-visible,
-        .cv-6c-card-action:focus-visible,
-        .cv-6c-project-link:focus-visible,
-        .cv-6b-shortcut:focus-visible {
-            box-shadow:0 0 0 4px rgba(37,99,235,.16), 0 16px 36px rgba(15,23,42,.08)!important;
-            border-color:#60A5FA!important;
-        }
-
-        .cv-6b-kpi {
-            position:relative;
-            overflow:hidden;
-        }
-
-        .cv-6b-kpi:after {
-            content:"";
-            position:absolute;
-            left:0;
-            right:0;
-            bottom:0;
-            height:3px;
-            background:#2563EB;
-            transform:scaleX(0);
-            transform-origin:left;
-            transition:transform .18s ease;
-        }
-
-        .cv-6b-kpi.warn:after { background:#F59E0B; }
-        .cv-6b-kpi.danger:after { background:#EF4444; }
-
-        .cv-6b-kpi:hover:after,
-        .cv-6b-kpi:focus-visible:after {
-            transform:scaleX(1);
-        }
-
-        .cv-6b-kpi-icon,
-        .cv-6b-shortcut-icon,
-        .cv-6c-project-icon {
-            transition:transform .18s ease, box-shadow .18s ease;
-        }
-
-        .cv-6b-kpi:hover .cv-6b-kpi-icon,
-        .cv-6b-shortcut:hover .cv-6b-shortcut-icon,
-        .cv-6c-project-link:hover ~ .cv-6c-project-icon {
-            transform:scale(1.04);
-        }
-
-        .cv-6b-shortcut:hover .cv-6b-arrow,
-        .cv-6c-project-link:hover span:last-child,
-        .cv-6c-card-action:hover {
-            transform:translateX(3px);
-            transition:transform .18s ease;
-        }
-
-        .cv-6c-health-meter {
-            height:7px;
-            border-radius:999px;
-            background:#E2E8F0;
-            overflow:hidden;
-            margin-top:10px;
-        }
-
-        .cv-6c-health-meter > span {
-            display:block;
-            height:100%;
-            border-radius:999px;
-            background:linear-gradient(90deg,#22C55E,#16A34A);
-        }
-
-        .cv-6c-health-meter.warning > span {
-            background:linear-gradient(90deg,#FBBF24,#F59E0B);
-        }
-
-        .cv-6c-health-meter.danger > span {
-            background:linear-gradient(90deg,#F87171,#EF4444);
-        }
-
-        .cv-6c-project-status {
-            display:inline-flex;
-            align-items:center;
-            gap:6px;
-            margin-top:8px;
-            padding:5px 8px;
-            border-radius:999px;
-            background:#ECFDF5;
-            border:1px solid #A7F3D0;
-            color:#047857!important;
-            font-size:10px;
-            font-weight:950;
-        }
-
-        .cv-6c-project-status:before {
-            content:"";
-            width:6px;
-            height:6px;
-            border-radius:50%;
-            background:#10B981;
-            box-shadow:0 0 0 3px rgba(16,185,129,.12);
-        }
-
-        .cv-6c-project-status.warning {
-            background:#FFFBEB;
-            border-color:#FDE68A;
-            color:#B45309!important;
-        }
-
-        .cv-6c-project-status.warning:before {
-            background:#F59E0B;
-            box-shadow:0 0 0 3px rgba(245,158,11,.12);
-        }
-
-        .cv-6c-project-status.danger {
-            background:#FEF2F2;
-            border-color:#FECACA;
-            color:#B91C1C!important;
-        }
-
-        .cv-6c-project-status.danger:before {
-            background:#EF4444;
-            box-shadow:0 0 0 3px rgba(239,68,68,.12);
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .cv-v4-command,
-            .cv-6a-briefing,
-            .cv-6b-kpi-strip,
-            .st-key-dashboard_trend_card,
-            .st-key-dashboard_project_card,
-            .cv-6b-shortcuts {
-                animation:none!important;
-            }
-
-            .cv-v4-btn,
-            .cv-6a-action-row,
-            .cv-6b-kpi,
-            .cv-6c-card-action,
-            .cv-6c-project-link,
-            .cv-6b-shortcut,
-            .cv-6b-kpi-icon,
-            .cv-6b-shortcut-icon,
-            .cv-6c-project-icon {
-                transition:none!important;
-            }
-        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    # Milestone 23.0 — Executive Engineering Command Center foundation.
     st.markdown(
-        """
-        <style id="cadivor-m23-executive-command-center">
-        .cv23-hero {
-            border:1px solid #BFDBFE;
-            background:
-                radial-gradient(circle at 90% 10%, rgba(37,99,235,.13), transparent 36%),
-                linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 58%,#EFF6FF 100%);
-            border-radius:24px;
-            padding:26px;
-            box-shadow:0 22px 56px rgba(15,23,42,.075);
-            margin-bottom:16px;
-        }
-        .cv23-hero-grid {
-            display:grid;
-            grid-template-columns:minmax(0,1.45fr) minmax(320px,.72fr);
-            gap:22px;
-            align-items:stretch;
-        }
-        .cv23-eyebrow {
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
-            padding:7px 11px;
-            border-radius:999px;
-            background:#EFF6FF;
-            border:1px solid #BFDBFE;
-            color:#2563EB!important;
-            font-size:10.5px;
-            font-weight:950;
-            letter-spacing:.09em;
-            text-transform:uppercase;
-        }
-        .cv23-title {
-            color:#071126!important;
-            font-size:38px;
-            line-height:1.06;
-            font-weight:950;
-            letter-spacing:-.05em;
-            margin:13px 0 9px;
-        }
-        .cv23-copy {
-            color:#52647A!important;
-            font-size:14px;
-            font-weight:680;
-            line-height:1.58;
-            max-width:860px;
-        }
-        .cv23-actions {
-            display:flex;
-            flex-wrap:wrap;
-            gap:10px;
-            margin-top:18px;
-        }
-        .cv23-action {
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            gap:7px;
-            min-height:42px;
-            padding:10px 15px;
-            border-radius:11px;
-            text-decoration:none!important;
-            font-size:12.5px;
-            font-weight:900;
-            background:#2563EB;
-            color:#FFFFFF!important;
-            box-shadow:0 12px 24px rgba(37,99,235,.18);
-            transition:transform .16s ease, box-shadow .16s ease;
-        }
-        .cv23-action:hover {
-            transform:translateY(-2px);
-            box-shadow:0 18px 34px rgba(37,99,235,.24);
-        }
-        .cv23-action.secondary {
-            background:#FFFFFF;
-            color:#1D4ED8!important;
-            border:1px solid #BFDBFE;
-            box-shadow:none;
-        }
-        .cv23-health-card {
-            border:1px solid #D8E3F2;
-            background:rgba(255,255,255,.92);
-            border-radius:20px;
-            padding:20px;
-            display:flex;
-            flex-direction:column;
-            justify-content:space-between;
-            min-height:245px;
-            box-shadow:0 16px 38px rgba(15,23,42,.055);
-        }
-        .cv23-health-label {
-            color:#64748B!important;
-            font-size:11px;
-            font-weight:900;
-            letter-spacing:.08em;
-            text-transform:uppercase;
-        }
-        .cv23-health-score {
-            color:#071126!important;
-            font-size:62px;
-            line-height:.94;
-            font-weight:950;
-            letter-spacing:-.065em;
-            margin-top:10px;
-        }
-        .cv23-health-score span {
-            color:#94A3B8!important;
-            font-size:20px;
-            letter-spacing:-.02em;
-        }
-        .cv23-health-status {
-            margin-top:8px;
-            color:#047857!important;
-            font-size:13px;
-            font-weight:900;
-        }
-        .cv23-health-meter {
-            height:9px;
-            border-radius:999px;
-            overflow:hidden;
-            background:#E2E8F0;
-            margin:14px 0 10px;
-        }
-        .cv23-health-meter i {
-            display:block;
-            height:100%;
-            border-radius:999px;
-            background:linear-gradient(90deg,#2563EB,#16A34A);
-        }
-        .cv23-health-note {
-            color:#64748B!important;
-            font-size:11.5px;
-            font-weight:700;
-            line-height:1.45;
-        }
-        .cv23-kpi-grid {
-            display:grid;
-            grid-template-columns:repeat(6,minmax(0,1fr));
-            gap:12px;
-            margin:16px 0 20px;
-        }
-        .cv23-kpi {
-            background:#FFFFFF;
-            border:1px solid #E2E8F0;
-            border-radius:17px;
-            padding:16px;
-            min-height:112px;
-            box-shadow:0 12px 28px rgba(15,23,42,.045);
-            transition:transform .16s ease, box-shadow .16s ease;
-        }
-        .cv23-kpi:hover {
-            transform:translateY(-2px);
-            box-shadow:0 20px 40px rgba(15,23,42,.07);
-        }
-        .cv23-kpi-label {
-            color:#64748B!important;
-            font-size:10.5px;
-            font-weight:900;
-            letter-spacing:.065em;
-            text-transform:uppercase;
-        }
-        .cv23-kpi-value {
-            color:#071126!important;
-            font-size:31px;
-            line-height:1;
-            font-weight:950;
-            letter-spacing:-.045em;
-            margin-top:12px;
-        }
-        .cv23-kpi-note {
-            color:#64748B!important;
-            font-size:10.5px;
-            font-weight:720;
-            line-height:1.38;
-            margin-top:8px;
-        }
-        .cv23-kpi.warning { border-color:#FDE68A; background:#FFFCF3; }
-        .cv23-kpi.warning .cv23-kpi-value { color:#A16207!important; }
-        .cv23-kpi.danger { border-color:#FECACA; background:#FFF7F7; }
-        .cv23-kpi.danger .cv23-kpi-value { color:#B91C1C!important; }
-        .cv23-kpi.success { border-color:#A7F3D0; background:#F3FFF8; }
-        .cv23-kpi.success .cv23-kpi-value { color:#047857!important; }
-        .cv23-main-grid {
-            display:grid;
-            grid-template-columns:minmax(0,1.28fr) minmax(330px,.72fr);
-            gap:14px;
-            margin-bottom:18px;
-        }
-        .cv23-panel {
-            border:1px solid #E2E8F0;
-            background:#FFFFFF;
-            border-radius:20px;
-            padding:19px;
-            box-shadow:0 14px 34px rgba(15,23,42,.05);
-        }
-        .cv23-panel-title {
-            color:#0F172A!important;
-            font-size:19px;
-            font-weight:950;
-            letter-spacing:-.03em;
-        }
-        .cv23-panel-copy {
-            color:#64748B!important;
-            font-size:12px;
-            font-weight:680;
-            margin:4px 0 13px;
-        }
-        .cv23-priority {
-            display:flex;
-            align-items:flex-start;
-            gap:12px;
-            padding:13px 0;
-            border-bottom:1px solid #EEF2F7;
-        }
-        .cv23-priority:last-child { border-bottom:0; }
-        .cv23-priority-rank {
-            width:30px;
-            height:30px;
-            flex:0 0 auto;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            border-radius:10px;
-            background:#EFF6FF;
-            color:#2563EB!important;
-            font-size:12px;
-            font-weight:950;
-        }
-        .cv23-priority strong {
-            color:#0F172A!important;
-            font-size:13px;
-            font-weight:920;
-        }
-        .cv23-priority span {
-            display:block;
-            color:#64748B!important;
-            font-size:11px;
-            font-weight:680;
-            line-height:1.4;
-            margin-top:3px;
-        }
-        .cv23-priority a {
-            color:#2563EB!important;
-            font-size:11px;
-            font-weight:900;
-            text-decoration:none!important;
-            white-space:nowrap;
-            margin-left:auto;
-            padding-top:3px;
-        }
-        .cv23-health-bars {
-            display:grid;
-            gap:12px;
-            margin-top:14px;
-        }
-        .cv23-health-row-top {
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:10px;
-            margin-bottom:5px;
-        }
-        .cv23-health-row-top span {
-            color:#475569!important;
-            font-size:11px;
-            font-weight:850;
-        }
-        .cv23-health-row-top strong {
-            color:#0F172A!important;
-            font-size:12px;
-            font-weight:950;
-        }
-        .cv23-mini-meter {
-            height:7px;
-            border-radius:999px;
-            background:#E2E8F0;
-            overflow:hidden;
-        }
-        .cv23-mini-meter i {
-            display:block;
-            height:100%;
-            border-radius:999px;
-            background:#2563EB;
-        }
-        .cv23-mini-meter.warning i { background:#F59E0B; }
-        .cv23-mini-meter.danger i { background:#EF4444; }
-        @media(max-width:1250px){
-            .cv23-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
-        }
-        @media(max-width:950px){
-            .cv23-hero-grid,.cv23-main-grid{grid-template-columns:1fr;}
-            .cv23-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    supply_health = max(
-        0,
-        min(
-            100,
-            int(
-                100
-                - min(45, high_alert_count * 7)
-                - min(30, total_high_risk * 2)
-            ),
-        ),
-    )
-    lifecycle_health = max(
-        0,
-        min(100, int(100 - min(55, alert_count * 3))),
-    )
-    inventory_health = max(
-        0,
-        min(100, int(100 - min(60, high_alert_count * 9))),
-    )
-    monitoring_health = max(
-        0,
-        min(100, int(100 - min(50, alert_count * 4))),
-    )
-    cost_health = 100 if total_components > 0 else 0
-
-    st.markdown(
-        textwrap.dedent(
-            f"""
-        <section class="cv23-hero">
-          <div class="cv23-hero-grid">
+        f"""
+        <section class="cv-v4-command cv-6a-command">
+          <div class="cv-v4-command-grid">
             <div>
-              <div class="cv23-eyebrow">{_lucide_icon('sparkles',14)} Executive Engineering Overview</div>
-              <h1 class="cv23-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
-              <div class="cv23-copy">
-                Cadivor is tracking <strong>{total_analyses} saved project analyses</strong>,
-                <strong>{total_high_risk} high-risk components</strong>, and
-                <strong>{alert_count} active monitoring alerts</strong>.
-                The first priority is to {html.escape(next_action_copy.lower())}
-              </div>
-              <div class="cv23-actions">
-                <a class="cv23-action" href="?page=BOM%20Analyzer" target="_self">Analyze BOM {_lucide_icon('arrow',14)}</a>
-                <a class="cv23-action secondary" href="?page=Engineering%20Decisions" target="_self">Engineering Decisions</a>
-                <a class="cv23-action secondary" href="?page=Portfolio%20Intelligence" target="_self">Portfolio Intelligence</a>
+              <div class="cv-v4-kicker">{_lucide_icon('sparkles',14)} Engineering Command Center</div>
+              <h1 class="cv-v4-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
+              <p class="cv-v4-copy">Your portfolio has <strong>{total_high_risk} high-risk components</strong> and <strong>{alert_count} active supplier alerts</strong>. Start with the most important engineering decision, then move into the detailed workspace only when needed.</p>
+              <div class="cv-v4-actions">
+                <a class="cv-v4-btn" href="?page=BOM%20Analyzer" target="_self">Analyze New BOM {_lucide_icon('arrow',14)}</a>
+                <a class="cv-v4-btn secondary" href="?page=Alternative%20Finder" target="_self">Replacement Finder</a>
               </div>
             </div>
-
-            <div class="cv23-health-card">
-              <div>
-                <div class="cv23-health-label">Overall Engineering Health</div>
-                <div class="cv23-health-score">{avg_health_score}<span>/100</span></div>
-                <div class="cv23-health-status">{html.escape(health_badge)}</div>
-              </div>
-              <div>
-                <div class="cv23-health-meter">
-                  <i style="width:{max(0, min(100, avg_health_score))}%"></i>
-                </div>
-                <div class="cv23-health-note">
-                  {html.escape(health_delta_label)} versus the previous saved analysis.
-                  Health combines the recorded BOM health scores and active portfolio risk.
-                </div>
-              </div>
+            <div class="cv-v4-brief">
+              <div class="cv-v4-brief-card"><span>Portfolio Health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></div>
+              <div class="cv-v4-brief-card"><span>High Risk</span><strong>{total_high_risk}</strong><small>Components requiring review</small></div>
+              <div class="cv-v4-brief-card"><span>Supplier Alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></div>
+              <div class="cv-v4-brief-card"><span>Saved Analyses</span><strong>{total_analyses}</strong><small>Engineering records available</small></div>
             </div>
           </div>
         </section>
-            """
-        ).replace("\n", ""),
+        """,
         unsafe_allow_html=True,
     )
 
     if _qp_value("focus", "") == "search":
         render_global_search_panel(current_user["id"])
 
+    st.markdown(f'<div class="cv-v4-eyebrow">{_lucide_icon("sparkles",15)} Today\'s Engineering Brief</div>', unsafe_allow_html=True)
     st.markdown(
-        textwrap.dedent(
-            f"""
-        <section class="cv23-kpi-grid">
-          <a class="cv23-kpi success" href="?page=Reports" target="_self">
-            <div class="cv23-kpi-label">Portfolio Health</div>
-            <div class="cv23-kpi-value">{avg_health_score}</div>
-            <div class="cv23-kpi-note">{html.escape(health_delta_label)} vs previous analysis</div>
-          </a>
-          <a class="cv23-kpi" href="?page=BOM%20Analyzer" target="_self">
-            <div class="cv23-kpi-label">Saved Projects</div>
-            <div class="cv23-kpi-value">{total_analyses}</div>
-            <div class="cv23-kpi-note">{total_components} total component records</div>
-          </a>
-          <a class="cv23-kpi danger" href="?page=BOM%20Analyzer" target="_self">
-            <div class="cv23-kpi-label">High-Risk Components</div>
-            <div class="cv23-kpi-value">{total_high_risk}</div>
-            <div class="cv23-kpi-note">Require engineering review</div>
-          </a>
-          <a class="cv23-kpi warning" href="?page=Monitoring" target="_self">
-            <div class="cv23-kpi-label">Monitoring Alerts</div>
-            <div class="cv23-kpi-value">{alert_count}</div>
-            <div class="cv23-kpi-note">{high_alert_count} high-severity alerts</div>
-          </a>
-          <a class="cv23-kpi" href="?page=Alternative%20Finder" target="_self">
-            <div class="cv23-kpi-label">Replacement Candidates</div>
-            <div class="cv23-kpi-value">{alternatives_found}</div>
-            <div class="cv23-kpi-note">Saved alternative records</div>
-          </a>
-          <a class="cv23-kpi" href="?page=Reports" target="_self">
-            <div class="cv23-kpi-label">Medium-Risk Components</div>
-            <div class="cv23-kpi-value">{total_medium_risk}</div>
-            <div class="cv23-kpi-note">Need planned follow-up</div>
-          </a>
-        </section>
-            """
-        ).replace("\n", ""),
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        textwrap.dedent(
-            f"""
-        <section class="cv23-main-grid">
-          <div class="cv23-panel">
-            <div class="cv23-panel-title">Today’s Engineering Priorities</div>
-            <div class="cv23-panel-copy">The work most likely to affect production readiness and sourcing continuity.</div>
-
-            <div class="cv23-priority">
-              <div class="cv23-priority-rank">1</div>
-              <div>
-                <strong>{html.escape(next_action_title)}</strong>
-                <span>{html.escape(next_action_copy)}</span>
-              </div>
-              <a href="?page=Monitoring" target="_self">Review →</a>
-            </div>
-
-            <div class="cv23-priority">
-              <div class="cv23-priority-rank">2</div>
-              <div>
-                <strong>Review high-risk components</strong>
-                <span>{total_high_risk} component(s) currently require focused engineering review.</span>
-              </div>
-              <a href="?page=BOM%20Analyzer" target="_self">Open →</a>
-            </div>
-
-            <div class="cv23-priority">
-              <div class="cv23-priority-rank">3</div>
-              <div>
-                <strong>Validate replacement readiness</strong>
-                <span>{alternatives_found} saved replacement candidate record(s) are available.</span>
-              </div>
-              <a href="?page=Alternative%20Finder" target="_self">Review →</a>
+        f"""
+        <div class="cv-6a-briefing">
+          <div class="cv-6a-focus">
+            <div class="cv-6a-focus-icon">{_lucide_icon('alert',20)}</div>
+            <div>
+              <div class="cv-6a-label">Primary Engineering Priority</div>
+              <div class="cv-6a-headline">{html.escape(next_action_title)}</div>
+              <div class="cv-6a-text">{html.escape(next_action_copy)} Portfolio health has {trend_word} by {abs(health_delta)} points compared with the previous saved analysis.</div>
             </div>
           </div>
-
-          <div class="cv23-panel">
-            <div class="cv23-panel-title">Engineering Health Breakdown</div>
-            <div class="cv23-panel-copy">A directional view of the portfolio areas that need management attention.</div>
-            <div class="cv23-health-bars">
-              <div>
-                <div class="cv23-health-row-top"><span>Lifecycle</span><strong>{lifecycle_health}%</strong></div>
-                <div class="cv23-mini-meter {'danger' if lifecycle_health < 55 else 'warning' if lifecycle_health < 80 else ''}"><i style="width:{lifecycle_health}%"></i></div>
-              </div>
-              <div>
-                <div class="cv23-health-row-top"><span>Supply</span><strong>{supply_health}%</strong></div>
-                <div class="cv23-mini-meter {'danger' if supply_health < 55 else 'warning' if supply_health < 80 else ''}"><i style="width:{supply_health}%"></i></div>
-              </div>
-              <div>
-                <div class="cv23-health-row-top"><span>Inventory</span><strong>{inventory_health}%</strong></div>
-                <div class="cv23-mini-meter {'danger' if inventory_health < 55 else 'warning' if inventory_health < 80 else ''}"><i style="width:{inventory_health}%"></i></div>
-              </div>
-              <div>
-                <div class="cv23-health-row-top"><span>Monitoring</span><strong>{monitoring_health}%</strong></div>
-                <div class="cv23-mini-meter {'danger' if monitoring_health < 55 else 'warning' if monitoring_health < 80 else ''}"><i style="width:{monitoring_health}%"></i></div>
-              </div>
-              <div>
-                <div class="cv23-health-row-top"><span>Data Coverage</span><strong>{cost_health}%</strong></div>
-                <div class="cv23-mini-meter {'danger' if cost_health < 55 else 'warning' if cost_health < 80 else ''}"><i style="width:{cost_health}%"></i></div>
-              </div>
-            </div>
+          <div class="cv-6a-actions-card">
+            <a class="cv-6a-action-row" href="?page=Monitoring" target="_self">
+              <div><strong>Review supplier alerts</strong><span>{alert_count} active • {high_alert_count} high severity</span></div>
+              <div class="cv-6a-action-arrow">→</div>
+            </a>
+            <a class="cv-6a-action-row" href="?page=Alternative%20Finder" target="_self">
+              <div><strong>Validate replacements</strong><span>{alternatives_found} saved candidate records</span></div>
+              <div class="cv-6a-action-arrow">→</div>
+            </a>
+            <a class="cv-6a-action-row" href="?page=Reports" target="_self">
+              <div><strong>Generate engineering report</strong><span>PDF and CSV reporting workspace</span></div>
+              <div class="cv-6a-action-arrow">→</div>
+            </a>
           </div>
-        </section>
-            """
-        ).replace("\n", ""),
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1884,115 +1247,196 @@ def render_dashboard(
     trend_col, project_col = st.columns([1.65, 0.78], gap="medium")
 
     with trend_col:
-        with st.container(border=True, key="dashboard_trend_card"):
-            st.markdown(
-                f"""
-                <div class="cv-6c-card-header">
-                  <div>
-                    <div class="cv-6c-card-title">Portfolio Health Trend</div>
-                    <div class="cv-6c-card-subtitle">Health across saved analyses • {health_delta_label} vs previous</div>
-                  </div>
-                  <a class="cv-6c-card-action" href="?page=Reports" target="_self">Open analyses →</a>
-                </div>
-                """,
-                unsafe_allow_html=True,
+        st.markdown(
+            f"""
+            <div class="cv-v4-section-head cv-6b-column-heading">
+              <div>
+                <div class="cv-v4-section-title">Portfolio Health Trend</div>
+                <div class="cv-v4-section-meta">Health across saved analyses • {health_delta_label} vs previous</div>
+              </div>
+              <a class="cv-v4-chip" href="?page=Reports" target="_self" style="text-decoration:none!important;">Open analyses →</a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if analysis_data and len(analysis_data) >= 2:
+            trend_df = pd.DataFrame(analysis_data)
+            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"], errors="coerce")
+            trend_df = trend_df.dropna(subset=["created_at"]).sort_values("created_at")
+            trend_df = trend_df.rename(
+                columns={"created_at": "Date", "health_score": "Health Score"}
             )
-
-            if analysis_data and len(analysis_data) >= 2:
-                trend_df = pd.DataFrame(analysis_data)
-                trend_df["created_at"] = pd.to_datetime(
-                    trend_df["created_at"], errors="coerce"
-                )
-                trend_df = trend_df.dropna(subset=["created_at"]).sort_values(
-                    "created_at"
-                )
-                trend_df = trend_df.rename(
-                    columns={"created_at": "Date", "health_score": "Health Score"}
-                )
-
-                fig = px.line(
-                    trend_df,
-                    x="Date",
-                    y="Health Score",
-                    markers=True,
-                )
-                fig.update_traces(
-                    line_color="#2563EB",
-                    marker_color="#2563EB",
-                    line_width=3,
-                    marker_size=7,
-                )
-                fig.update_yaxes(range=[0, 105])
-
-                st.plotly_chart(
-                    light_plotly_layout(fig, height=330),
-                    use_container_width=True,
-                    config={"displayModeBar": False},
-                )
-            else:
-                st.info(
-                    "Run at least two BOM analyses to generate a portfolio health trend."
-                )
+            fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
+            fig.update_traces(
+                line_color="#2563EB",
+                marker_color="#2563EB",
+                line_width=3,
+            )
+            st.markdown('<div class="cv-6b-trend-chart-anchor"></div>', unsafe_allow_html=True)
+            st.plotly_chart(
+                light_plotly_layout(fig, height=365),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+        else:
+            st.info("Run at least two BOM analyses to generate a portfolio health trend.")
 
     with project_col:
         latest_analysis_id = ""
         if analysis_data:
             latest_analysis_id = str(analysis_data[0].get("id") or "")
-
         project_href = (
-            f"?page=Analysis%20Details&analysis_id="
-            f"{html.escape(latest_analysis_id, quote=True)}"
+            f"?page=Analysis%20Details&analysis_id={html.escape(latest_analysis_id, quote=True)}"
             if latest_analysis_id
             else "?page=BOM%20Analyzer"
         )
+        st.markdown(
+            """
+            <div class="cv-6b-column-heading">
+              <div>
+                <div class="cv-v4-section-title">Current Working BOM</div>
+                <div class="cv-v4-section-meta">Continue the most recently saved engineering review.</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+            <div class="cv-6b-panel cv-6b-project-panel">
+              <div class="cv-6b-project-head">
+                <div>
+                  <div class="cv-v4-label">Active Analysis</div>
+                  <div class="cv-6b-project-title">{html.escape(str(latest_project))}</div>
+                </div>
+                <div class="cv-v4-icon">{_lucide_icon('file',18)}</div>
+              </div>
+              <div class="cv-6b-project-meta">
+                <div class="cv-6b-project-stat"><span>Health</span><strong>{latest_health}</strong></div>
+                <div class="cv-6b-project-stat"><span>Parts</span><strong>{latest_parts}</strong></div>
+              </div>
+              <div class="cv-v4-text" style="margin-bottom:13px;">Last updated {html.escape(str(latest_date))}</div>
+              <a class="cv-6b-project-link" href="{project_href}" target="_self">
+                <span>Continue analysis</span><span>→</span>
+              </a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        with st.container(border=True, key="dashboard_project_card"):
+    st.markdown(
+        """
+        <div class="cv-v4-section-head" style="margin-top:20px;">
+          <div>
+            <div class="cv-v4-section-title">Recent Engineering Activity</div>
+            <div class="cv-v4-section-meta">A chronological view of analyses, monitoring changes, and replacement work.</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    analysis_activity_count = sum(
+        1 for event in recent_activity if event["category"] == "Analyses"
+    )
+    monitoring_activity_count = sum(
+        1 for event in recent_activity if event["category"] == "Monitoring"
+    )
+    replacement_activity_count = sum(
+        1 for event in recent_activity if event["category"] == "Replacements"
+    )
+
+    st.markdown(
+        f"""
+        <section class="cv231-summary-grid">
+          <div class="cv231-summary-card">
+            <div class="cv231-summary-label">Recent Events</div>
+            <div class="cv231-summary-value">{len(recent_activity)}</div>
+            <div class="cv231-summary-note">Recorded across the engineering workspace</div>
+          </div>
+          <div class="cv231-summary-card">
+            <div class="cv231-summary-label">Analyses</div>
+            <div class="cv231-summary-value">{analysis_activity_count}</div>
+            <div class="cv231-summary-note">Recently saved BOM engineering records</div>
+          </div>
+          <div class="cv231-summary-card">
+            <div class="cv231-summary-label">Monitoring</div>
+            <div class="cv231-summary-value">{monitoring_activity_count}</div>
+            <div class="cv231-summary-note">Recent lifecycle, stock, or supplier alerts</div>
+          </div>
+          <div class="cv231-summary-card">
+            <div class="cv231-summary-label">Replacements</div>
+            <div class="cv231-summary-value">{replacement_activity_count}</div>
+            <div class="cv231-summary-note">Candidate records awaiting or completing review</div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    activity_filter = st.radio(
+        "Filter recent engineering activity",
+        ["All Activity", "Analyses", "Monitoring", "Replacements"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="dashboard_activity_filter_m23_1",
+    )
+
+    if activity_filter == "All Activity":
+        filtered_activity = recent_activity
+    else:
+        filtered_activity = [
+            event for event in recent_activity
+            if event["category"] == activity_filter
+        ]
+
+    visible_activity = filtered_activity[:6]
+
+    if visible_activity:
+        for event in visible_activity:
             st.markdown(
                 f"""
-                <div class="cv-6c-card-header">
-                  <div>
-                    <div class="cv-6c-card-title">Current Working BOM</div>
-                    <div class="cv-6c-card-subtitle">Continue the most recently saved engineering review.</div>
+                <section class="cv231-activity-card">
+                  <div class="cv231-activity-top">
+                    <div class="cv231-activity-type">{html.escape(str(event['type']))}</div>
+                    <div class="cv231-activity-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
                   </div>
-                </div>
-
-                <div class="cv-6c-project-body">
-                  <div class="cv-6c-project-top">
-                    <div>
-                      <div class="cv-6c-project-label">Active Analysis</div>
-                      <div class="cv-6c-project-name">{html.escape(str(latest_project))}</div>
-                      <div class="cv-6c-project-status {"warning" if 55 <= latest_health < 80 else "danger" if latest_health < 55 else ""}">
-                        {"Review recommended" if latest_health < 80 else "Ready to continue"}
-                      </div>
-                    </div>
-                    <div class="cv-6c-project-icon">{_lucide_icon('file',20)}</div>
-                  </div>
-
-                  <div class="cv-6c-project-stats">
-                    <div class="cv-6c-project-stat">
-                      <span>Health</span>
-                      <strong>{latest_health}</strong>
-                      <small>{"Excellent" if latest_health >= 80 else "Review recommended" if latest_health >= 55 else "Critical"}</small>
-                      <div class="cv-6c-health-meter {"warning" if 55 <= latest_health < 80 else "danger" if latest_health < 55 else ""}">
-                        <span style="width:{max(0, min(100, latest_health))}%"></span>
-                      </div>
-                    </div>
-                    <div class="cv-6c-project-stat">
-                      <span>Parts</span>
-                      <strong>{latest_parts}</strong>
-                      <small>Components</small>
-                    </div>
-                  </div>
-
-                  <div class="cv-6c-project-date">Last updated {html.escape(str(latest_date))}</div>
-
-                  <a class="cv-6c-project-link" href="{project_href}" target="_self">
-                    <span>Continue analysis</span>
-                    <span>→</span>
+                  <div class="cv231-activity-title">{html.escape(str(event['title']))}</div>
+                  <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
+                  <a class="cv231-activity-link" href="{event['href']}" target="_self">
+                    {html.escape(str(event['action']))} →
                   </a>
-                </div>
+                </section>
                 """,
                 unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            '<div class="cv231-empty">No activity matches the selected filter.</div>',
+            unsafe_allow_html=True,
+        )
+
+    if len(filtered_activity) > 6:
+        with st.expander(
+            f"View complete activity history ({len(filtered_activity)})",
+            expanded=False,
+        ):
+            activity_rows = pd.DataFrame(
+                [
+                    {
+                        "When": _activity_relative(event.get("created_at")),
+                        "Type": event["type"],
+                        "Item": event["title"],
+                        "Activity": event["copy"],
+                    }
+                    for event in filtered_activity
+                ]
+            )
+            st.dataframe(
+                activity_rows,
+                use_container_width=True,
+                hide_index=True,
+                height=min(520, 38 + len(activity_rows) * 35),
             )
 
     st.markdown(
