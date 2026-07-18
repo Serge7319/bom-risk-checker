@@ -2039,21 +2039,25 @@ def render_analysis_detail(
                 unsafe_allow_html=True,
             )
         else:
-            timeline_html = ['<div class="cv-timeline">']
+            # Keep the HTML flush-left. Markdown interprets indented HTML blocks as
+            # code, which caused later timeline cards to display their raw tags.
+            timeline_items = []
             for event in filtered_timeline[:250]:
                 timestamp = _safe(event.get("timestamp"), "")[:19].replace("T", " ")
-                kind = _safe(event.get("kind"), "analysis")
-                timeline_html.append(
-                    f"""
-                    <div class="cv-timeline-item {html.escape(kind)}">
-                      <div class="cv-timeline-title">{html.escape(_safe(event.get('title'), 'Engineering event'))}</div>
-                      <div class="cv-timeline-meta">{html.escape(_safe(event.get('meta'), ''))} · {html.escape(timestamp)} UTC</div>
-                      <div class="cv-timeline-body">{(_safe(event.get('body'), '') if str(_safe(event.get('body'), '')).lstrip().startswith("<div") else html.escape(_safe(event.get('body'), '')))}</div>
-                    </div>
-                    """
+                kind = html.escape(_safe(event.get("kind"), "analysis"), quote=True)
+                title = html.escape(_safe(event.get("title"), "Engineering event"))
+                meta = html.escape(_safe(event.get("meta"), ""))
+                body = html.escape(_safe(event.get("body"), ""))
+                timeline_items.append(
+                    f'<div class="cv-timeline-item {kind}">'
+                    f'<div class="cv-timeline-title">{title}</div>'
+                    f'<div class="cv-timeline-meta">{meta} · {html.escape(timestamp)} UTC</div>'
+                    f'<div class="cv-timeline-body">{body}</div>'
+                    f'</div>'
                 )
-            timeline_html.append("</div>")
-            st.markdown("".join(timeline_html), unsafe_allow_html=True)
+
+            timeline_markup = '<div class="cv-timeline">' + "".join(timeline_items) + '</div>'
+            st.markdown(timeline_markup, unsafe_allow_html=True)
 
     with reports_tab:
         _section_header(
