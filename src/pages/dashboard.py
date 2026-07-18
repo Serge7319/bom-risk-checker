@@ -13,6 +13,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.components.onboarding import render_activation_strip, render_first_run_dashboard
+
 
 def render_dashboard(
     *,
@@ -574,366 +576,6 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    # Milestone 24.3A — final executive visual redesign.
-    st.markdown(
-        """
-        <style id="cadivor-m243a-executive-visuals">
-          .cv243-summary{
-            display:grid;
-            grid-template-columns:minmax(190px,.42fr) minmax(0,1.58fr);
-            gap:14px;
-            align-items:stretch;
-            border:1px solid #DBEAFE;
-            background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%);
-            border-radius:18px;
-            padding:16px;
-            margin:4px 0 14px;
-            box-shadow:0 6px 18px rgba(15,23,42,.06);
-          }
-          .cv243-summary-score{
-            border:1px solid #E2E8F0;
-            background:#FFFFFF;
-            border-radius:15px;
-            padding:15px;
-            display:flex;
-            flex-direction:column;
-            justify-content:center;
-          }
-          .cv243-summary-label{
-            color:#64748B!important;
-            font-size:10px;
-            font-weight:950;
-            letter-spacing:.09em;
-            text-transform:uppercase;
-          }
-          .cv243-summary-value{
-            display:flex;
-            align-items:center;
-            gap:8px;
-            margin-top:9px;
-            color:#0F172A!important;
-            font-size:32px;
-            line-height:1;
-            font-weight:950;
-            letter-spacing:-.045em;
-          }
-          .cv243-summary-value.bad{color:#B91C1C!important;}
-          .cv243-summary-value.good{color:#047857!important;}
-          .cv243-summary-copy{
-            display:grid;
-            grid-template-columns:1fr 1fr;
-            gap:14px;
-            align-content:center;
-          }
-          .cv243-summary-copy strong{
-            display:block;
-            color:#0F172A!important;
-            font-size:11px;
-            font-weight:950;
-            letter-spacing:.06em;
-            text-transform:uppercase;
-            margin-bottom:7px;
-          }
-          .cv243-summary-copy p{
-            color:#475569!important;
-            font-size:12px;
-            font-weight:720;
-            line-height:1.48;
-            margin:0;
-          }
-          .cv243-driver-list{
-            display:grid;
-            gap:5px;
-          }
-          .cv243-driver{
-            display:flex;
-            gap:7px;
-            align-items:flex-start;
-            color:#475569!important;
-            font-size:11.5px;
-            font-weight:720;
-            line-height:1.4;
-          }
-          .cv243-driver::before{
-            content:"";
-            width:6px;
-            height:6px;
-            margin-top:5px;
-            flex:0 0 auto;
-            border-radius:999px;
-            background:#F59E0B;
-          }
-          .cv232-trend-grid{
-            gap:10px!important;
-            margin-bottom:18px!important;
-          }
-          .cv232-trend-card{
-            position:relative;
-            min-height:102px!important;
-            padding:13px 14px!important;
-            border-radius:18px!important;
-            box-shadow:0 6px 18px rgba(15,23,42,.06)!important;
-            overflow:hidden;
-          }
-          .cv232-trend-card::after{
-            content:"";
-            position:absolute;
-            inset:0 0 auto 0;
-            height:3px;
-            background:#94A3B8;
-          }
-          .cv232-trend-card.good::after{background:#16A34A;}
-          .cv232-trend-card.bad::after{background:#DC2626;}
-          .cv232-trend-card.warn::after{background:#F59E0B;}
-          .cv243-kpi-top{
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:10px;
-          }
-          .cv243-kpi-icon{
-            width:28px;
-            height:28px;
-            border-radius:9px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            background:#F8FAFC;
-            border:1px solid #E2E8F0;
-            color:#64748B!important;
-            font-size:15px;
-            font-weight:950;
-          }
-          .cv232-trend-value{
-            font-size:30px!important;
-            margin-top:9px!important;
-          }
-          .cv232-trend-note{
-            font-size:10.5px!important;
-          }
-          .cv243-health-status{
-            display:inline-flex;
-            align-items:center;
-            gap:6px;
-            color:#047857!important;
-            font-size:10.5px;
-            font-weight:900;
-          }
-          .cv243-health-status::before{
-            content:"";
-            width:8px;
-            height:8px;
-            border-radius:999px;
-            background:#22C55E;
-            box-shadow:0 0 0 4px rgba(34,197,94,.12);
-          }
-          .cv243-health-status.warn{
-            color:#A16207!important;
-          }
-          .cv243-health-status.warn::before{
-            background:#F59E0B;
-            box-shadow:0 0 0 4px rgba(245,158,11,.14);
-          }
-          .cv243-health-status.bad{
-            color:#B91C1C!important;
-          }
-          .cv243-health-status.bad::before{
-            background:#EF4444;
-            box-shadow:0 0 0 4px rgba(239,68,68,.14);
-          }
-          .cv243-project-badge{
-            display:inline-flex;
-            align-items:center;
-            gap:6px;
-            padding:6px 9px;
-            border-radius:999px;
-            background:#ECFDF5;
-            border:1px solid #A7F3D0;
-            color:#047857!important;
-            font-size:9.5px;
-            font-weight:950;
-            letter-spacing:.06em;
-            text-transform:uppercase;
-          }
-          .cv243-project-badge::before{
-            content:"";
-            width:7px;
-            height:7px;
-            border-radius:999px;
-            background:#22C55E;
-          }
-          .cv241-project-grid{
-            grid-template-columns:repeat(3,minmax(0,1fr))!important;
-            gap:8px!important;
-            margin:11px 0!important;
-          }
-          .cv241-project-stat{
-            border-radius:12px!important;
-            padding:9px 10px!important;
-          }
-          .cv241-project-stat.alert{
-            background:#FFFBEB!important;
-            border-color:#FDE68A!important;
-          }
-          .cv241-project-stat.alert strong{color:#A16207!important;}
-          .cv241-project-stat.risk{
-            background:#FEF2F2!important;
-            border-color:#FECACA!important;
-          }
-          .cv241-project-stat.risk strong{color:#B91C1C!important;}
-          .cv241-project-stat.saved{
-            background:#EFF6FF!important;
-            border-color:#BFDBFE!important;
-          }
-          .cv241-project-stat.saved strong{color:#1D4ED8!important;}
-          .cv-6b-project-link{
-            min-height:40px!important;
-            font-size:11.5px!important;
-          }
-          div[data-testid="stPlotlyChart"]{
-            border-radius:18px!important;
-            border:1px solid #E2E8F0!important;
-            box-shadow:0 6px 18px rgba(15,23,42,.06)!important;
-            padding:8px!important;
-          }
-          .cv-v4-section-title{
-            font-size:21px!important;
-            font-weight:950!important;
-          }
-          .cv-v4-section-meta{
-            font-size:11.5px!important;
-          }
-          @media(max-width:900px){
-            .cv243-summary{grid-template-columns:1fr;}
-            .cv243-summary-copy{grid-template-columns:1fr;}
-          }
-        
-          @keyframes cv243FadeUp{
-            from{opacity:0;transform:translateY(8px);}
-            to{opacity:1;transform:translateY(0);}
-          }
-          @keyframes cv243ChartReveal{
-            from{opacity:0;transform:scale(.992);}
-            to{opacity:1;transform:scale(1);}
-          }
-          .cv243-summary,.cv232-trend-card,.cv-6b-project-panel,.cv243-event{
-            animation:cv243FadeUp .48s ease both;
-          }
-          div[data-testid="stPlotlyChart"]{
-            animation:cv243ChartReveal .55s ease both;
-          }
-          .cv243-timeline{
-            position:relative;
-            display:grid;
-            gap:10px;
-            padding-left:22px;
-          }
-          .cv243-timeline::before{
-            content:"";
-            position:absolute;
-            left:7px;
-            top:8px;
-            bottom:8px;
-            width:2px;
-            border-radius:999px;
-            background:linear-gradient(180deg,#93C5FD 0%,#DBEAFE 100%);
-          }
-          .cv243-event{
-            position:relative;
-            border:1px solid #E2E8F0;
-            background:#FFFFFF;
-            border-radius:16px;
-            padding:12px 14px;
-            box-shadow:0 6px 18px rgba(15,23,42,.045);
-            transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
-          }
-          .cv243-event:hover{
-            transform:translateY(-2px);
-            border-color:#BFDBFE;
-            box-shadow:0 12px 28px rgba(37,99,235,.08);
-          }
-          .cv243-event::before{
-            content:"";
-            position:absolute;
-            left:-20px;
-            top:17px;
-            width:10px;
-            height:10px;
-            border-radius:999px;
-            background:#2563EB;
-            border:3px solid #EFF6FF;
-            box-shadow:0 0 0 1px #93C5FD;
-          }
-          .cv243-event.lifecycle::before{background:#F59E0B;box-shadow:0 0 0 1px #FCD34D;}
-          .cv243-event.monitoring::before{background:#DC2626;box-shadow:0 0 0 1px #FCA5A5;}
-          .cv243-event.replacement::before{background:#7C3AED;box-shadow:0 0 0 1px #C4B5FD;}
-          .cv243-event.analysis::before{background:#2563EB;box-shadow:0 0 0 1px #93C5FD;}
-          .cv243-event-top{
-            display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;
-          }
-          .cv243-event-type{
-            color:#2563EB!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;
-          }
-          .cv243-event-time{
-            color:#94A3B8!important;font-size:9.5px;font-weight:800;white-space:nowrap;
-          }
-          .cv243-event-title{
-            color:#0F172A!important;font-size:13px;font-weight:950;line-height:1.25;margin-bottom:4px;
-          }
-          .cv243-event-copy{
-            color:#64748B!important;font-size:10.5px;font-weight:700;line-height:1.45;
-          }
-          .cv243-event-footer{
-            display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;
-          }
-          .cv243-event-link{
-            color:#2563EB!important;font-size:10px;font-weight:950;text-decoration:none!important;
-          }
-          .cv243-repeat{
-            display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:22px;
-            padding:0 7px;border-radius:999px;background:#EFF6FF;border:1px solid #BFDBFE;
-            color:#1D4ED8!important;font-size:9px;font-weight:950;
-          }
-          .cv243-compact-status{
-            display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border-radius:12px;
-            background:#ECFDF5;border:1px solid #A7F3D0;color:#047857!important;
-            font-size:10px;font-weight:900;margin-top:9px;
-          }
-          .cv243-compact-status::before{
-            content:"✓";width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;
-            border-radius:999px;background:#D1FAE5;color:#047857!important;font-size:11px;font-weight:950;
-          }
-          .cv243-shortcut-grid{
-            display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;
-          }
-          .cv243-shortcut{
-            display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 12px;
-            border:1px solid #E2E8F0;background:#FFFFFF;border-radius:15px;text-decoration:none!important;
-            box-shadow:0 6px 18px rgba(15,23,42,.04);
-            transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
-          }
-          .cv243-shortcut:hover{
-            transform:translateY(-2px);border-color:#BFDBFE;box-shadow:0 12px 26px rgba(37,99,235,.08);
-          }
-          .cv243-shortcut strong{display:block;color:#0F172A!important;font-size:11px;font-weight:950;}
-          .cv243-shortcut span{display:block;color:#64748B!important;font-size:9.5px;font-weight:720;margin-top:2px;}
-          @media(max-width:1180px){
-            .cv243-shortcut-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
-          }
-          @media(max-width:900px){
-            .cv232-trend-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
-            .cv241-project-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
-            .cv243-shortcut-grid{grid-template-columns:1fr;}
-          }
-          @media(prefers-reduced-motion:reduce){
-            .cv243-summary,.cv232-trend-card,.cv-6b-project-panel,.cv243-event,
-            div[data-testid="stPlotlyChart"]{animation:none!important;transition:none!important;}
-          }
-</style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     # Load dashboard data once for this page.
     analysis_response = (
         supabase.table("analyses")
@@ -1010,6 +652,19 @@ def render_dashboard(
         greeting_prefix = "Good afternoon"
     else:
         greeting_prefix = "Good evening"
+
+    if not analysis_data:
+        render_first_run_dashboard(
+            current_user={**(current_user or {}), **(profile or {})},
+            workspace_name=workspace_name,
+        )
+        return
+
+    render_activation_strip(
+        analyses_count=total_analyses,
+        has_review=False,
+        has_report=False,
+    )
 
     def _metric(label, value, note, icon="•", kind=""):
         kind_class = f" cv-{kind}" if kind else ""
@@ -1881,99 +1536,29 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    health_change_class = (
-        "good" if trend_health_change > 0
-        else "bad" if trend_health_change < 0
-        else ""
-    )
-    health_change_icon = (
-        "↑" if trend_health_change > 0
-        else "↓" if trend_health_change < 0
-        else "→"
-    )
-    risk_change_icon = (
-        "↓" if trend_high_risk_change < 0
-        else "↑" if trend_high_risk_change > 0
-        else "→"
-    )
-    primary_driver_1 = (
-        f"{recent_alerts_7d} monitoring alert(s) were recorded in the last seven days."
-        if recent_alerts_7d
-        else "No new monitoring alerts were recorded in the last seven days."
-    )
-    primary_driver_2 = (
-        f"{len(declining_projects)} saved project(s) are moving in the wrong direction."
-        if declining_projects
-        else "No saved project is currently trending downward."
-    )
-    primary_driver_3 = (
-        f"High-risk exposure changed by {trend_high_risk_change:+d} compared with the previous analysis."
-    )
-
     st.markdown(
         f"""
-        <section class="cv243-summary">
-          <div class="cv243-summary-score">
-            <div class="cv243-summary-label">Portfolio Health Change</div>
-            <div class="cv243-summary-value {health_change_class}">
-              <span>{health_change_icon}</span>
-              <span>{trend_health_change:+d}</span>
-            </div>
-            <div class="cv232-trend-note" style="margin-top:8px;">
-              Latest saved analysis versus previous
-            </div>
-          </div>
-          <div class="cv243-summary-copy">
-            <div>
-              <strong>Primary Drivers</strong>
-              <div class="cv243-driver-list">
-                <div class="cv243-driver">{html.escape(primary_driver_1)}</div>
-                <div class="cv243-driver">{html.escape(primary_driver_2)}</div>
-                <div class="cv243-driver">{html.escape(primary_driver_3)}</div>
-              </div>
-            </div>
-            <div>
-              <strong>Recommended Action</strong>
-              <p>{html.escape(next_action_copy)}</p>
-              <p style="margin-top:7px;color:#2563EB!important;font-weight:900;">
-                {html.escape(next_action_title)}
-              </p>
-            </div>
-          </div>
-        </section>
-
+        <div class="cv232-trend-summary">{html.escape(trend_summary)}</div>
         <section class="cv232-trend-grid">
-          <div class="cv232-trend-card {health_change_class}">
-            <div class="cv243-kpi-top">
-              <div class="cv232-trend-label">Health Change</div>
-              <div class="cv243-kpi-icon">{health_change_icon}</div>
-            </div>
+          <div class="cv232-trend-card {'good' if trend_health_change > 0 else 'bad' if trend_health_change < 0 else ''}">
+            <div class="cv232-trend-label">Health Change</div>
             <div class="cv232-trend-value">{trend_health_change:+d}</div>
-            <div class="cv232-trend-note">Versus previous analysis</div>
+            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
           </div>
           <div class="cv232-trend-card {'good' if trend_high_risk_change < 0 else 'bad' if trend_high_risk_change > 0 else ''}">
-            <div class="cv243-kpi-top">
-              <div class="cv232-trend-label">High-Risk Change</div>
-              <div class="cv243-kpi-icon">{risk_change_icon}</div>
-            </div>
+            <div class="cv232-trend-label">High-Risk Change</div>
             <div class="cv232-trend-value">{trend_high_risk_change:+d}</div>
             <div class="cv232-trend-note">Fewer high-risk records is better</div>
           </div>
           <div class="cv232-trend-card {'warn' if recent_alerts_7d else ''}">
-            <div class="cv243-kpi-top">
-              <div class="cv232-trend-label">Recent Alerts</div>
-              <div class="cv243-kpi-icon">!</div>
-            </div>
+            <div class="cv232-trend-label">Recent Alerts</div>
             <div class="cv232-trend-value">{recent_alerts_7d}</div>
-            <div class="cv232-trend-note">Last seven days</div>
+            <div class="cv232-trend-note">Recorded in the last seven days</div>
           </div>
           <div class="cv232-trend-card {'bad' if declining_projects else 'good'}">
-            <div class="cv243-kpi-top">
-              <div class="cv232-trend-label">Projects Declining</div>
-              <div class="cv243-kpi-icon">◆</div>
-            </div>
+            <div class="cv232-trend-label">Projects Declining</div>
             <div class="cv232-trend-value">{len(declining_projects)}</div>
-            <div class="cv232-trend-note">Need management attention</div>
+            <div class="cv232-trend-note">Lower health or increased recorded risk</div>
           </div>
         </section>
         """,
@@ -2057,14 +1642,14 @@ def render_dashboard(
                     customdata=daily_health[["Analyses"]],
                     mode="lines+markers",
                     name="Portfolio Health",
-                    line={"color": "#2563EB", "width": 3, "shape": "linear"},
+                    line={"color": "#2563EB", "width": 2.5, "shape": "linear"},
                     marker={
                         "size": 5,
                         "color": "#FFFFFF",
                         "line": {"color": "#2563EB", "width": 2},
                     },
                     fill="tonexty",
-                    fillcolor="rgba(37, 99, 235, 0.075)",
+                    fillcolor="rgba(37, 99, 235, 0.09)",
                     hovertemplate=(
                         "<b>%{x|%b %d, %Y}</b>"
                         "<br>Daily average health: %{y:.1f}/100"
@@ -2077,7 +1662,7 @@ def render_dashboard(
                 range=[health_min, health_max],
                 title=None,
                 tickfont={"color": "#64748B"},
-                gridcolor="#EEF2F7",
+                gridcolor="rgba(148,163,184,0.16)",
                 zeroline=False,
             )
             fig.update_xaxes(
@@ -2086,7 +1671,7 @@ def render_dashboard(
                 tickvals=daily_health["Date"].tolist(),
                 ticktext=[value.strftime("%b %d") for value in daily_health["Date"]],
                 tickfont={"color": "#64748B"},
-                gridcolor="#F4F7FA",
+                gridcolor="rgba(148,163,184,0.10)",
                 showline=False,
             )
             fig.update_layout(
@@ -2101,7 +1686,7 @@ def render_dashboard(
                 unsafe_allow_html=True,
             )
             st.plotly_chart(
-                light_plotly_layout(fig, height=205),
+                light_plotly_layout(fig, height=165),
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
@@ -2137,29 +1722,25 @@ def render_dashboard(
             <div class="cv-6b-panel cv-6b-project-panel">
               <div class="cv-6b-project-head">
                 <div>
-                  <div class="cv243-project-badge">Active Review</div>
-                  <div class="cv-6b-project-title" style="margin-top:10px;">
-                    {html.escape(str(latest_project))}
-                  </div>
+                  <div class="cv-v4-label">Active Analysis</div>
+                  <div class="cv-6b-project-title">{html.escape(str(latest_project))}</div>
                 </div>
                 <div class="cv-v4-icon">{_lucide_icon('file',18)}</div>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:3px;">
-                <div class="cv243-health-status {'bad' if latest_health < 55 else 'warn' if latest_health < 80 else ''}">
-                  {'Critical' if latest_health < 55 else 'Needs Review' if latest_health < 80 else 'Healthy'} · {latest_health}/100
-                </div>
-                <div class="cv-v4-text">Updated {html.escape(str(latest_date))}</div>
-              </div>
               <div class="cv241-project-grid">
+                <div class="cv241-project-stat"><span>Health</span><strong>{latest_health}</strong></div>
                 <div class="cv241-project-stat"><span>Components</span><strong>{latest_parts}</strong></div>
-                <div class="cv241-project-stat risk"><span>High Risk</span><strong>{latest_high_risk}</strong></div>
+                <div class="cv241-project-stat"><span>High Risk</span><strong>{latest_high_risk}</strong></div>
                 <div class="cv241-project-stat"><span>Medium Risk</span><strong>{latest_medium_risk}</strong></div>
-                <div class="cv241-project-stat alert"><span>Workspace Alerts</span><strong>{alert_count}</strong></div>
-                <div class="cv241-project-stat saved"><span>Saved Candidates</span><strong>{alternatives_found}</strong></div>
-                <div class="cv241-project-stat"><span>Portfolio Health</span><strong>{avg_health_score}</strong></div>
+                <div class="cv241-project-stat"><span>Workspace Alerts</span><strong>{alert_count}</strong></div>
+                <div class="cv241-project-stat"><span>Saved Candidates</span><strong>{alternatives_found}</strong></div>
+              </div>
+              <div class="cv241-status-line">
+                <span class="cv241-status-dot">Active engineering review</span>
+                <span>Updated {html.escape(str(latest_date))}</span>
               </div>
               <a class="cv-6b-project-link" href="{project_href}" target="_self">
-                <span>Continue Engineering Review</span><span>→</span>
+                <span>Continue analysis</span><span>→</span>
               </a>
             </div>
             """,
@@ -2228,7 +1809,7 @@ def render_dashboard(
                     customdata=daily_risk[["Analyses"]],
                     mode="lines+markers",
                     name="Medium Risk",
-                    line={"color": "#F59E0B", "width": 2, "shape": "linear"},
+                    line={"color": "#F59E0B", "width": 2.2, "shape": "linear"},
                     marker={
                         "size": 4,
                         "color": "#FFFFFF",
@@ -2249,7 +1830,7 @@ def render_dashboard(
                     customdata=daily_risk[["Analyses"]],
                     mode="lines+markers",
                     name="High Risk",
-                    line={"color": "#DC2626", "width": 2, "shape": "linear"},
+                    line={"color": "#DC2626", "width": 2.2, "shape": "linear"},
                     marker={
                         "size": 4,
                         "color": "#FFFFFF",
@@ -2267,7 +1848,7 @@ def render_dashboard(
                 range=[0, risk_max + max(1, risk_max * 0.25)],
                 title=None,
                 dtick=1 if risk_max <= 8 else None,
-                gridcolor="#EEF2F7",
+                gridcolor="rgba(148,163,184,0.16)",
                 zeroline=False,
             )
             risk_fig.update_xaxes(
@@ -2293,7 +1874,7 @@ def render_dashboard(
                 paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(
-                light_plotly_layout(risk_fig, height=180),
+                light_plotly_layout(risk_fig, height=155),
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
@@ -2338,7 +1919,7 @@ def render_dashboard(
                 )
         else:
             st.markdown(
-                '<div class="cv243-compact-status">No saved projects are currently trending downward.</div>',
+                '<div class="cv242-status-note">No saved projects are currently trending downward.</div>',
                 unsafe_allow_html=True,
             )
 
@@ -2357,47 +1938,26 @@ def render_dashboard(
 
         visible_activity = recent_activity[:4]
         if visible_activity:
-            timeline_html = ['<div class="cv243-timeline">']
             for event in visible_activity:
-                repeat_count = int(event.get("repeat_count", 1) or 1)
-                event_type = str(event.get("type") or "Activity")
-                event_type_lower = event_type.lower()
-
-                if "lifecycle" in event_type_lower:
-                    event_class = "lifecycle"
-                elif "monitor" in event_type_lower or "supplier" in event_type_lower:
-                    event_class = "monitoring"
-                elif "replacement" in event_type_lower or "alternative" in event_type_lower:
-                    event_class = "replacement"
-                else:
-                    event_class = "analysis"
-
-                repeat_badge = (
-                    f'<span class="cv243-repeat">×{repeat_count}</span>'
-                    if repeat_count > 1
-                    else ""
+                st.markdown(
+                    f"""
+                    <section class="cv231-activity-card" style="padding:12px 14px;margin-bottom:9px;">
+                      <div class="cv231-activity-top">
+                        <div class="cv231-activity-type">{html.escape(str(event['type']))}</div>
+                        <div class="cv231-activity-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
+                      </div>
+                      <div class="cv231-activity-title">
+                        {html.escape(str(event['title']))}
+                        {f'<span class="cv242-repeat-badge">{event.get("repeat_count", 1)} repeated</span>' if event.get("repeat_count", 1) > 1 else ''}
+                      </div>
+                      <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
+                      <a class="cv231-activity-link" href="{event['href']}" target="_self">
+                        {html.escape(str(event['action']))} →
+                      </a>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
                 )
-
-                timeline_html.append(
-                    (
-                        f'<section class="cv243-event {event_class}">'
-                        f'<div class="cv243-event-top">'
-                        f'<div class="cv243-event-type">{html.escape(event_type)}</div>'
-                        f'<div class="cv243-event-time">{html.escape(_activity_relative(event.get("created_at")))}</div>'
-                        f'</div>'
-                        f'<div class="cv243-event-title">{html.escape(str(event["title"]))}</div>'
-                        f'<div class="cv243-event-copy">{html.escape(str(event["copy"]))}</div>'
-                        f'<div class="cv243-event-footer">'
-                        f'<a class="cv243-event-link" href="{event["href"]}" target="_self">'
-                        f'{html.escape(str(event["action"]))} →'
-                        f'</a>'
-                        f'{repeat_badge}'
-                        f'</div>'
-                        f'</section>'
-                    )
-                )
-            timeline_html.append("</div>")
-            st.markdown("".join(timeline_html), unsafe_allow_html=True)
         else:
             st.markdown(
                 '<div class="cv231-empty">No recent engineering activity is recorded.</div>',
@@ -2428,7 +1988,7 @@ def render_dashboard(
                     activity_rows,
                     use_container_width=True,
                     hide_index=True,
-                    height=min(330, 38 + len(activity_rows) * 31),
+                    height=min(420, 38 + len(activity_rows) * 34),
                 )
 
     st.markdown(
@@ -2445,22 +2005,26 @@ def render_dashboard(
 
     st.markdown(
         f"""
-        <div class="cv243-shortcut-grid">
-          <a class="cv243-shortcut" href="?page=Monitoring" target="_self">
+        <div class="cv-6b-shortcuts">
+          <a class="cv-6b-shortcut" href="?page=Monitoring" target="_self">
             <div class="cv-6b-shortcut-icon green">{_lucide_icon('chart',20)}</div>
             <div><strong>Monitoring</strong><span>{alert_count} active supplier and lifecycle alerts</span></div>
+            <div class="cv-6b-arrow">→</div>
           </a>
-          <a class="cv243-shortcut" href="?page=Reports" target="_self">
+          <a class="cv-6b-shortcut" href="?page=Reports" target="_self">
             <div class="cv-6b-shortcut-icon">{_lucide_icon('file',20)}</div>
             <div><strong>Reports</strong><span>Saved analyses, PDFs, and engineering exports</span></div>
+            <div class="cv-6b-arrow">→</div>
           </a>
-          <a class="cv243-shortcut" href="?page=Alternative%20Finder" target="_self">
+          <a class="cv-6b-shortcut" href="?page=Alternative%20Finder" target="_self">
             <div class="cv-6b-shortcut-icon purple">{_lucide_icon('replace',20)}</div>
             <div><strong>Alternative Finder</strong><span>{alternatives_found} saved replacement candidates</span></div>
+            <div class="cv-6b-arrow">→</div>
           </a>
-          <a class="cv243-shortcut" href="?page=Workspace" target="_self">
+          <a class="cv-6b-shortcut" href="?page=Workspace" target="_self">
             <div class="cv-6b-shortcut-icon amber">{_lucide_icon('folder',20)}</div>
             <div><strong>Workspace</strong><span>Usage, plan, and workspace management</span></div>
+            <div class="cv-6b-arrow">→</div>
           </a>
         </div>
         """,
