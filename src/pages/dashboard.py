@@ -577,15 +577,67 @@ def render_dashboard(
     )
 
     # Load dashboard data once for this page.
-    analysis_response = (
-        supabase.table("analyses")
-        .select("*")
-        .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
-        .execute()
-    )
+    # Sprint 29.0C: keep the dashboard aligned with the active workspace.
+    # Previously this query only filtered by user_id, which could return legacy or
+    # other-workspace rows while the sidebar correctly showed zero saved BOMs.
+    def _load_workspace_analyses():
+        base = (
+            supabase.table("analyses")
+            .select("*")
+            .eq("user_id", current_user["id"])
+        )
+        if workspace_id:
+            try:
+                scoped = (
+                    base.eq("workspace_id", workspace_id)
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+                scoped_rows = scoped.data or []
+                if scoped_rows:
+                    return scoped_rows
+            except Exception:
+                pass
 
-    analysis_data = analysis_response.data or []
+            # Preserve access to pre-workspace analyses without exposing records
+            # from another workspace. This fallback only accepts NULL workspace_id.
+            try:
+                legacy = (
+                    supabase.table("analyses")
+                    .select("*")
+                    .eq("user_id", current_user["id"])
+                    .is_("workspace_id", "null")
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+                return legacy.data or []
+            except Exception:
+                return []
+
+        try:
+            response = base.order("created_at", desc=True).execute()
+            return response.data or []
+        except Exception:
+            return []
+
+    raw_analysis_data = _load_workspace_analyses()
+
+    # Ignore incomplete placeholder rows. A real saved analysis must have an id
+    # and at least one meaningful analysis field. This prevents a newly created
+    # account from being dropped into an all-zero dashboard.
+    def _is_real_saved_analysis(row):
+        if not isinstance(row, dict) or not row.get("id"):
+            return False
+        meaningful = (
+            row.get("filename"),
+            row.get("project_name"),
+            row.get("created_at"),
+            row.get("total_parts"),
+            row.get("health_score"),
+        )
+        return any(value not in (None, "", 0, 0.0) for value in meaningful)
+
+    analysis_data = [row for row in raw_analysis_data if _is_real_saved_analysis(row)]
     total_analyses = len(analysis_data)
 
     if analysis_data:
