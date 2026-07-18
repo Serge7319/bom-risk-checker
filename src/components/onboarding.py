@@ -16,59 +16,86 @@ def _first_name(current_user: dict[str, Any] | None) -> str:
     return email.split("@")[0].replace(".", " ").title() if email else "there"
 
 
+def _go_to(page: str) -> None:
+    """Navigate through Cadivor's query-parameter router."""
+    try:
+        st.query_params["page"] = page
+    except Exception:
+        st.experimental_set_query_params(page=page)
+    st.rerun()
+
+
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
-    """Render a focused first-run dashboard for accounts with no saved analyses."""
-    name = html.escape(_first_name(current_user))
-    workspace = html.escape(str(workspace_name or "Your workspace"))
+    """Render a reliable native-Streamlit first-run experience.
+
+    Native Streamlit elements are used here intentionally so global application
+    CSS cannot hide the onboarding content.
+    """
+    name = _first_name(current_user)
+    workspace = str(workspace_name or "Your workspace")
+
     st.markdown(
-        f"""
-        <style id="cadivor-ftue-29a">
-        .cv29-welcome{{position:relative;overflow:hidden;border:1px solid #BFDBFE;border-radius:28px;background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 58%,#EAF3FF 100%);padding:34px;box-shadow:0 28px 74px rgba(15,23,42,.08);margin:0 0 18px}}
-        .cv29-welcome:after{{content:"";position:absolute;right:-100px;top:-150px;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,.16),rgba(37,99,235,0) 68%);pointer-events:none}}
-        .cv29-content{{position:relative;z-index:1;max-width:850px}}
-        .cv29-kicker{{display:inline-flex;align-items:center;gap:8px;border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8!important;border-radius:999px;padding:7px 11px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}}
-        .cv29-title{{color:#0F172A!important;font-size:42px;font-weight:950;letter-spacing:-.055em;line-height:1.02;margin:0 0 12px}}
-        .cv29-copy{{color:#475569!important;font-size:16px;font-weight:650;line-height:1.65;max-width:760px;margin:0 0 22px}}
-        .cv29-actions{{display:flex;gap:11px;flex-wrap:wrap}}
-        .cv29-btn{{display:inline-flex;align-items:center;justify-content:center;border-radius:13px;padding:12px 17px;text-decoration:none!important;font-size:13px;font-weight:900;border:1px solid #2563EB;background:#2563EB;color:#FFFFFF!important;box-shadow:0 15px 30px rgba(37,99,235,.22)}}
-        .cv29-btn.secondary{{background:#FFFFFF;color:#1D4ED8!important;border-color:#BFDBFE;box-shadow:none}}
-        .cv29-path{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}}
-        .cv29-step{{position:relative;border:1px solid #E2E8F0;border-radius:19px;background:#FFFFFF;padding:18px;box-shadow:0 12px 32px rgba(15,23,42,.045);min-height:142px}}
-        .cv29-step-num{{width:29px;height:29px;border-radius:10px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;margin-bottom:13px}}
-        .cv29-step strong{{display:block;color:#0F172A!important;font-size:15px;font-weight:900;margin-bottom:7px}}
-        .cv29-step span{{display:block;color:#64748B!important;font-size:12px;font-weight:650;line-height:1.5}}
-        .cv29-help{{display:grid;grid-template-columns:1.35fr .65fr;gap:14px}}
-        .cv29-card{{border:1px solid #E2E8F0;border-radius:20px;background:#FFFFFF;padding:20px;box-shadow:0 14px 36px rgba(15,23,42,.045)}}
-        .cv29-card h3{{color:#0F172A!important;font-size:18px;font-weight:900;margin:0 0 7px}}
-        .cv29-card p{{color:#64748B!important;font-size:13px;font-weight:650;line-height:1.55;margin:0 0 14px}}
-        .cv29-link{{color:#2563EB!important;text-decoration:none!important;font-size:13px;font-weight:900}}
-        @media(max-width:900px){{.cv29-path{{grid-template-columns:repeat(2,minmax(0,1fr))}}.cv29-help{{grid-template-columns:1fr}}}}
-        @media(max-width:620px){{.cv29-welcome{{padding:24px}}.cv29-title{{font-size:34px}}.cv29-path{{grid-template-columns:1fr}}}}
+        """
+        <style id="cadivor-ftue-native-29e">
+        .cv29e-eyebrow{display:inline-flex;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:7px 11px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
+        .cv29e-welcome [data-testid="stVerticalBlockBorderWrapper"]{border:1px solid #bfdbfe!important;border-radius:26px!important;background:linear-gradient(135deg,#fff 0%,#f8fbff 58%,#eaf3ff 100%)!important;box-shadow:0 24px 60px rgba(15,23,42,.08)!important;padding:14px!important}
+        .cv29e-step [data-testid="stVerticalBlockBorderWrapper"]{min-height:154px;border-radius:18px!important;border:1px solid #e2e8f0!important;background:#fff!important}
+        .cv29e-number{width:30px;height:30px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;margin-bottom:10px}
         </style>
-        <section class="cv29-welcome">
-          <div class="cv29-content">
-            <div class="cv29-kicker">Engineering Decision Intelligence</div>
-            <h1 class="cv29-title">Welcome, {name}.</h1>
-            <p class="cv29-copy">Upload a BOM and Cadivor will identify lifecycle, inventory, supplier, and engineering risks—then guide your team toward the next decision.</p>
-            <div class="cv29-actions">
-              <a class="cv29-btn" href="?page=BOM%20Analyzer" target="_self">Upload my first BOM →</a>
-              <a class="cv29-btn secondary" href="?page=Alternative%20Finder" target="_self">Explore the workflow</a>
-            </div>
-          </div>
-        </section>
-        <div class="cv29-path">
-          <div class="cv29-step"><div class="cv29-step-num">1</div><strong>Upload</strong><span>Import a CSV or XLSX BOM in a few seconds.</span></div>
-          <div class="cv29-step"><div class="cv29-step-num">2</div><strong>Understand risk</strong><span>See the parts and evidence that matter first.</span></div>
-          <div class="cv29-step"><div class="cv29-step-num">3</div><strong>Make decisions</strong><span>Review alternatives, assign actions, and record approvals.</span></div>
-          <div class="cv29-step"><div class="cv29-step-num">4</div><strong>Share the outcome</strong><span>Export an executive-ready engineering report.</span></div>
-        </div>
-        <div class="cv29-help">
-          <section class="cv29-card"><h3>Your first result should take less than five minutes</h3><p>Start with a production BOM or a smaller design sample. Cadivor will preserve the analysis so you can return to it later.</p><a class="cv29-link" href="?page=BOM%20Analyzer" target="_self">Start a new analysis →</a></section>
-          <section class="cv29-card"><h3>{workspace}</h3><p>Your analyses, reviews, monitoring, and reports will appear here as your workspace grows.</p><a class="cv29-link" href="?page=Onboarding" target="_self">Open setup checklist →</a></section>
-        </div>
         """,
         unsafe_allow_html=True,
     )
+
+    st.markdown('<div class="cv29e-welcome">', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown('<div class="cv29e-eyebrow">Engineering Decision Intelligence</div>', unsafe_allow_html=True)
+        st.title(f"Welcome, {name}.")
+        st.markdown(
+            "Upload a BOM and Cadivor will identify lifecycle, inventory, supplier, "
+            "and engineering risks—then guide your team toward the next decision."
+        )
+        primary, secondary, spacer = st.columns([1.05, 1, 2.2])
+        with primary:
+            if st.button("Upload my first BOM →", type="primary", use_container_width=True, key="ftue_upload_first_bom"):
+                _go_to("BOM Analyzer")
+        with secondary:
+            if st.button("Explore the workflow", use_container_width=True, key="ftue_explore_workflow"):
+                _go_to("Alternative Finder")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.subheader("Your first decision in four steps")
+    steps = [
+        ("1", "Upload", "Import a CSV or XLSX BOM in a few seconds."),
+        ("2", "Understand risk", "See the components and evidence that matter first."),
+        ("3", "Make decisions", "Review alternatives, assign actions, and record approvals."),
+        ("4", "Share the outcome", "Export an executive-ready engineering report."),
+    ]
+    columns = st.columns(4)
+    for column, (number, title, copy) in zip(columns, steps):
+        with column:
+            st.markdown('<div class="cv29e-step">', unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown(f'<div class="cv29e-number">{number}</div>', unsafe_allow_html=True)
+                st.markdown(f"**{title}**")
+                st.caption(copy)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    left, right = st.columns([1.35, 0.65])
+    with left:
+        with st.container(border=True):
+            st.subheader("Get your first result in under five minutes")
+            st.write(
+                "Start with a production BOM or a smaller design sample. Cadivor will "
+                "preserve the analysis so you can return to it later."
+            )
+            if st.button("Start a new analysis", type="primary", key="ftue_start_analysis"):
+                _go_to("BOM Analyzer")
+    with right:
+        with st.container(border=True):
+            st.subheader(workspace)
+            st.write("Your analyses, reviews, monitoring, and reports will appear here as your workspace grows.")
+            if st.button("Open setup checklist", key="ftue_setup_checklist"):
+                _go_to("Onboarding")
 
 
 def render_activation_strip(*, analyses_count: int, has_review: bool = False, has_report: bool = False) -> None:
