@@ -2048,7 +2048,7 @@ def render_analysis_detail(
                     <div class="cv-timeline-item {html.escape(kind)}">
                       <div class="cv-timeline-title">{html.escape(_safe(event.get('title'), 'Engineering event'))}</div>
                       <div class="cv-timeline-meta">{html.escape(_safe(event.get('meta'), ''))} · {html.escape(timestamp)} UTC</div>
-                      <div class="cv-timeline-body">{html.escape(_safe(event.get('body'), ''))}</div>
+                      <div class="cv-timeline-body">{(_safe(event.get('body'), '') if str(_safe(event.get('body'), '')).lstrip().startswith("<div") else html.escape(_safe(event.get('body'), '')))}</div>
                     </div>
                     """
                 )
