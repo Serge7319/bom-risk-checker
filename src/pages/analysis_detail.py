@@ -544,6 +544,17 @@ def render_analysis_detail(
         @media(max-width:700px){
           .cv25-matrix,.cv25-source-grid{grid-template-columns:1fr}
         }
+
+        /* Milestone 26.0 — Executive Decision Cockpit */
+        .cv26-summary{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f8fbff 55%,#edf5ff);border-radius:24px;padding:20px;box-shadow:0 18px 46px rgba(37,99,235,.07);margin-bottom:14px}.cv26-summary-top{display:flex;justify-content:space-between;gap:18px;margin-bottom:14px}.cv26-kicker{color:#2563eb!important;font-size:9px;font-weight:980;letter-spacing:.11em;text-transform:uppercase;margin-bottom:6px}.cv26-title{color:#0f172a!important;font-size:24px;font-weight:980;letter-spacing:-.035em}.cv26-copy{color:#64748b!important;font-size:11px;font-weight:740;line-height:1.5;margin-top:6px}.cv26-status{display:inline-flex;align-items:center;border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv26-status.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}.cv26-status.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv26-status.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}
+        .cv26-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.cv26-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:13px;min-height:92px}.cv26-kpi span{display:block;color:#64748b!important;font-size:8.5px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv26-kpi strong{display:block;color:#0f172a!important;font-size:20px;font-weight:980}.cv26-kpi small{display:block;color:#64748b!important;font-size:9.5px;font-weight:730;margin-top:6px}
+        .cv26-card{border:1px solid #e2e8f0;background:#fff;border-radius:20px;padding:17px;box-shadow:0 10px 28px rgba(15,23,42,.045)}.cv26-card-title{color:#0f172a!important;font-size:16px;font-weight:980;margin-bottom:4px}.cv26-card-meta{color:#64748b!important;font-size:10.5px;font-weight:730;margin-bottom:13px}.cv26-meter{height:12px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin:13px 0 9px}.cv26-meter i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}.cv26-meter.good i{background:linear-gradient(90deg,#059669,#34d399)}.cv26-meter.warn i{background:linear-gradient(90deg,#d97706,#fbbf24)}.cv26-meter.bad i{background:linear-gradient(90deg,#dc2626,#fb7185)}.cv26-readiness-line{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}.cv26-readiness-score{font-size:40px;font-weight:980;color:#0f172a!important}.cv26-readiness-label{font-size:11px;font-weight:950;color:#2563eb!important}
+        .cv26-checks,.cv26-bars,.cv26-actions{display:grid;gap:8px}.cv26-check{display:flex;justify-content:space-between;align-items:center;border:1px solid #eef2f7;background:#f8fafc;border-radius:13px;padding:10px}.cv26-check-left{display:flex;align-items:center;gap:9px;color:#334155!important;font-size:11px;font-weight:820}.cv26-check-icon{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:980}.cv26-check-icon.done{background:#dcfce7;color:#15803d!important}.cv26-check-icon.open{background:#fef3c7;color:#a16207!important}
+        .cv26-insight{border:1px solid #c4b5fd;background:linear-gradient(135deg,#fff,#faf7ff);border-radius:20px;padding:17px}.cv26-insight-kicker{color:#7c3aed!important;font-size:9px;font-weight:980;text-transform:uppercase;letter-spacing:.1em}.cv26-insight h3{color:#0f172a!important;font-size:17px;font-weight:980;margin:7px 0}.cv26-insight p,.cv26-insight li{color:#52647a!important;font-size:11px;font-weight:730;line-height:1.55}.cv26-confidence{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cv26-evidence{border:1px solid #e9d5ff;background:#fff;border-radius:12px;padding:10px;color:#5b21b6!important;font-size:9.5px;font-weight:850}
+        .cv26-bar-row{display:grid;grid-template-columns:110px minmax(0,1fr) 42px;gap:10px;align-items:center}.cv26-bar-label{color:#334155!important;font-size:10.5px;font-weight:850}.cv26-bar-track{height:8px;border-radius:999px;background:#eef2f7;overflow:hidden}.cv26-bar-track i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}.cv26-bar-value{color:#64748b!important;font-size:9px;font-weight:900;text-align:right}.cv26-riskdist{display:flex;height:13px;border-radius:999px;overflow:hidden;background:#e2e8f0;margin:11px 0}.cv26-riskdist i{display:block;height:100%}.cv26-riskdist .healthy{background:#22c55e}.cv26-riskdist .medium{background:#f59e0b}.cv26-riskdist .critical{background:#ef4444}.cv26-legend{display:flex;gap:14px;color:#64748b!important;font-size:9.5px;font-weight:820}
+        .cv26-timeline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.cv26-phase{border:1px solid #e2e8f0;border-radius:16px;padding:13px}.cv26-phase span{display:block;color:#2563eb!important;font-size:9px;font-weight:980;text-transform:uppercase}.cv26-phase strong{display:block;color:#0f172a!important;font-size:12px;font-weight:950;margin-top:7px}.cv26-phase small{display:block;color:#64748b!important;font-size:9.5px;font-weight:730;margin-top:5px}.cv26-action{display:grid;grid-template-columns:50px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:15px;padding:11px}.cv26-priority{border-radius:999px;padding:5px 7px;font-size:8px;font-weight:980;text-align:center}.cv26-priority.high{background:#fef2f2;color:#b91c1c!important}.cv26-priority.medium{background:#fffbeb;color:#a16207!important}.cv26-priority.low{background:#ecfdf5;color:#047857!important}.cv26-action strong{display:block;color:#0f172a!important;font-size:11px;font-weight:950}.cv26-action small{display:block;color:#64748b!important;font-size:9.5px;margin-top:3px}.cv26-owner{color:#2563eb!important;font-size:8.5px;font-weight:900}
+        @media(max-width:1180px){.cv26-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.cv26-timeline{grid-template-columns:1fr}}@media(max-width:700px){.cv26-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cv26-summary-top{display:block}.cv26-status{margin-top:10px}}
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -765,201 +776,83 @@ def render_analysis_detail(
     top_ranked_part = ranked_parts[0] if ranked_parts else None
 
     with advisor_tab:
-        _section_header(
-            "Engineering Intelligence Workspace",
-            "Understand what is risky, why it matters, and what your team should do next.",
-        )
-        assessment = html.escape(_safe(advisor.get("overall_assessment"), "Focused Review Recommended"))
-
-        priority_title = (
-            f"Start with {top_ranked_part['mpn']}"
-            if top_ranked_part
-            else "Continue controlled engineering review"
-        )
-        priority_copy = (
-            top_ranked_part["reason"]
-            if top_ranked_part
-            else "No component-level risk explanation is currently available."
-        )
-
-        st.markdown(
-            f"""
-            <section class="cv25-intel-hero">
-              <div class="cv25-brief">
-                <div class="cv25-brief-kicker">Cadivor Engineering Intelligence</div>
-                <div class="cv25-brief-title">{html.escape(release_posture)}</div>
-                <div class="cv25-brief-copy">
-                  Cadivor combined component risk, lifecycle status, inventory, supplier coverage,
-                  monitoring alerts, and saved replacement decisions to identify the next release action.
-                </div>
-                <div class="cv25-source-grid">
-                  <div class="cv25-source">
-                    <span>Primary Priority</span>
-                    <strong>{html.escape(priority_title)}</strong>
-                    <small>{html.escape(priority_copy)}</small>
-                  </div>
-                  <div class="cv25-source">
-                    <span>Decision Coverage</span>
-                    <strong>{_num(advisor.get('confidence'), 0)}%</strong>
-                    <small>Confidence based on currently recorded engineering and supply data.</small>
-                  </div>
-                  <div class="cv25-source">
-                    <span>Release Posture</span>
-                    <strong>{html.escape(assessment)}</strong>
-                    <small>{high} high-risk and {medium} medium-risk components recorded.</small>
-                  </div>
-                </div>
-              </div>
-              <div class="cv25-readiness">
-                <div class="cv25-readiness-label">Engineering Readiness</div>
-                <div class="cv25-readiness-score {readiness_class}">{engineering_readiness}/100</div>
-                <div class="cv25-readiness-bar"><i style="width:{engineering_readiness}%"></i></div>
-                <div class="cv25-readiness-note">
-                  A directional release-readiness score combining BOM health, component severity,
-                  and advisor confidence.
-                </div>
-              </div>
-            </section>
-
-            <div class="cv25-matrix">
-              <div class="cv25-matrix-card {'bad' if lifecycle_exposed_parts else 'good'}">
-                <div class="cv25-matrix-label">Lifecycle Exposure</div>
-                <div class="cv25-matrix-value">{len(lifecycle_exposed_parts)}</div>
-                <div class="cv25-matrix-copy">Parts requiring redesign, replacement, or lifecycle validation.</div>
-              </div>
-              <div class="cv25-matrix-card {'bad' if no_stock_parts else 'good'}">
-                <div class="cv25-matrix-label">Inventory Exposure</div>
-                <div class="cv25-matrix-value">{len(no_stock_parts)}</div>
-                <div class="cv25-matrix-copy">Recorded components with no currently available stock.</div>
-              </div>
-              <div class="cv25-matrix-card {'warn' if limited_source_parts else 'good'}">
-                <div class="cv25-matrix-label">Supplier Concentration</div>
-                <div class="cv25-matrix-value">{len(limited_source_parts)}</div>
-                <div class="cv25-matrix-copy">Components supported by one or fewer recorded suppliers.</div>
-              </div>
-              <div class="cv25-matrix-card {'warn' if long_lead_parts else 'good'}">
-                <div class="cv25-matrix-label">Lead-Time Exposure</div>
-                <div class="cv25-matrix-value">{len(long_lead_parts)}</div>
-                <div class="cv25-matrix-copy">Parts with recorded lead times of twelve weeks or longer.</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        priority_cards = []
-        for index, part in enumerate(ranked_parts[:5], 1):
-            score_value = _num(part.get("risk_score"), 0)
-            score_class = _risk_class(part.get("risk_level"), score_value)
-            priority_cards.append(
-                (
-                    f'<div class="cv25-priority">'
-                    f'<div class="cv25-rank">{index}</div>'
-                    f'<div><strong>{html.escape(_safe(part.get("mpn"), "Unknown MPN"))}</strong>'
-                    f'<p>{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))} · '
-                    f'{html.escape(_safe(part.get("lifecycle"), "Unknown lifecycle"))}<br>'
-                    f'{html.escape(_safe(part.get("reason"), "Engineering review required."))}</p></div>'
-                    f'<span class="cv25-score {score_class}">{score_value}/100</span>'
-                    f'</div>'
-                )
-            )
-
-        copilot_prompt = (
-            f"Why is {top_ranked_part['mpn']} the first priority, and what evidence should engineering validate?"
-            if top_ranked_part
-            else "What evidence should engineering validate before releasing this BOM?"
-        )
-        st.markdown(
-            f"""
-            <div class="cv25-layout">
-              <section class="cv25-panel">
-                <div class="cv25-panel-title">Top Engineering Priorities</div>
-                <div class="cv25-panel-meta">Components ranked by recorded risk and release impact.</div>
-                {''.join(priority_cards) if priority_cards else '<div class="cv-analysis-empty">No component priorities are currently available.</div>'}
-              </section>
-              <section class="cv25-copilot">
-                <div class="cv25-copilot-kicker">Engineering Copilot</div>
-                <div class="cv25-copilot-title">Understand the recommendation</div>
-                <p>
-                  Cadivor does not replace engineering approval. It organizes the evidence your
-                  team should verify before approving a design, purchase, or replacement.
-                </p>
-                <div class="cv25-question">{html.escape(copilot_prompt)}</div>
-                <div class="cv25-question">Which lifecycle and sourcing assumptions are incomplete?</div>
-                <div class="cv25-question">What is the fastest action that improves release readiness?</div>
-              </section>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-            <section class="cv-advisor-hero">
-              <div class="cv-advisor-kicker">Cadivor Decision Intelligence</div>
-              <h2 class="cv-advisor-title">{assessment}</h2>
-              <p class="cv-advisor-copy">Cadivor evaluated the lifecycle, availability, supplier, monitoring, and replacement records attached to this BOM.</p>
-            </section>
-            <div class="cv-advisor-score-grid">
-              <div class="cv-advisor-score"><span>Overall Assessment</span><strong>{assessment}</strong><small>Current release posture</small></div>
-              <div class="cv-advisor-score"><span>Engineering Risk</span><strong>{_num(advisor.get('engineering_risk_score'),0)}/100</strong><small>Lifecycle and component exposure</small></div>
-              <div class="cv-advisor-score"><span>Supply Risk</span><strong>{_num(advisor.get('supply_risk_score'),0)}/100</strong><small>Stock, sourcing, and lead-time exposure</small></div>
-              <div class="cv-advisor-score"><span>Advisor Confidence</span><strong>{_num(advisor.get('confidence'),0)}%</strong><small>Based on available BOM intelligence</small></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("#### Recommended Cross-Functional Actions")
-        action_html = []
-        for index, action in enumerate(advisor.get("priority_actions") or [], 1):
-            urgency = _safe(action.get("urgency"), "Medium")
-            action_html.append(
-                f"""
-                <div class="cv-advisor-action">
-                  <div class="cv-advisor-action-top">
-                    <div style="display:flex;gap:11px;align-items:flex-start">
-                      <div class="cv-advisor-rank">{index}</div>
-                      <div>
-                        <h4>{html.escape(_safe(action.get('title'), 'Review BOM risk'))}</h4>
-                        <p><strong>Reason:</strong> {html.escape(_safe(action.get('reason'), 'Risk signal detected.'))}</p>
-                        <p><strong>Expected impact:</strong> {html.escape(_safe(action.get('impact'), 'Improves readiness.'))}</p>
-                      </div>
-                    </div>
-                    <span class="cv-analysis-pill {'bad' if urgency.lower() in ('immediate','high') else 'warn'}">{html.escape(urgency)}</span>
-                  </div>
-                  <div class="cv-advisor-tags">
-                    <span class="cv-advisor-tag">Owner: {html.escape(_safe(action.get('owner'),'Engineering'))}</span>
-                    <span class="cv-advisor-tag">Effort: {html.escape(_safe(action.get('effort'),'Low'))}</span>
-                    <span class="cv-advisor-tag">Priority: {_num(action.get('score'),0)}/100</span>
-                  </div>
-                </div>
-                """
-            )
-        st.markdown("".join(action_html), unsafe_allow_html=True)
-
-        st.markdown("#### Team Decision Brief")
-        st.markdown(
-            f"""
-            <div class="cv-advisor-summary-grid">
-              <div class="cv-advisor-summary"><span>Engineering</span><p>{html.escape(_safe(advisor.get('engineering_summary'),'No summary available.'))}</p></div>
-              <div class="cv-advisor-summary"><span>Procurement</span><p>{html.escape(_safe(advisor.get('procurement_summary'),'No summary available.'))}</p></div>
-              <div class="cv-advisor-summary"><span>Supply Chain</span><p>{html.escape(_safe(advisor.get('supply_chain_summary'),'No summary available.'))}</p></div>
-              <div class="cv-advisor-summary"><span>Executive</span><p>{html.escape(_safe(advisor.get('executive_summary'),'No summary available.'))}</p></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+        _section_header("Executive Decision Cockpit", "Release readiness, risk drivers, evidence coverage, and next actions.")
+        assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
+        confidence = _num(advisor.get("confidence"), 0)
         metrics = advisor.get("metrics") or {}
-        st.markdown("#### Recorded Decision Signals")
-        signal_cols = st.columns(6)
-        signal_cols[0].metric("Lifecycle Concerns", _num(metrics.get("obsolete_or_replacement"), 0))
-        signal_cols[1].metric("No-Stock Parts", _num(metrics.get("no_stock"), 0))
-        signal_cols[2].metric("Limited Sources", _num(metrics.get("sole_source"), 0))
-        signal_cols[3].metric("Long-Lead Parts", _num(metrics.get("long_lead"), 0))
-        signal_cols[4].metric("Active Alerts", _num(metrics.get("monitoring_alerts"), 0))
-        signal_cols[5].metric("Saved Alternatives", _num(metrics.get("saved_alternatives"), 0))
+        saved_alternatives = _num(metrics.get("saved_alternatives"), len(alternatives))
+        lifecycle_count, stock_count = len(lifecycle_exposed_parts), len(no_stock_parts)
+        source_count, lead_count = len(limited_source_parts), len(long_lead_parts)
+
+        if high >= 3 or health < 55:
+            release_recommendation, cockpit_status, cockpit_class = "Hold Release", "Release hold recommended", "bad"
+        elif high > 0 or health < 80 or lifecycle_count > 0:
+            release_recommendation, cockpit_status, cockpit_class = "Focused Review", "Focused engineering review", "warn"
+        else:
+            release_recommendation, cockpit_status, cockpit_class = "Controlled Release", "Ready for controlled release", "good"
+
+        engineering_readiness = max(0, min(100, round((health * .60) + (max(0, 100 - min(100, high * 12 + medium * 4)) * .25) + (confidence * .15))))
+        readiness_class = _health_class(engineering_readiness)
+        readiness_label = "Excellent" if engineering_readiness >= 90 else "Strong" if engineering_readiness >= 75 else "Needs attention" if engineering_readiness >= 55 else "At risk"
+        lifecycle_health = max(0, round(100 - lifecycle_count / max(1, total_parts) * 100))
+        inventory_coverage = max(0, round(100 - stock_count / max(1, total_parts) * 100))
+        supplier_diversity = max(0, round(100 - source_count / max(1, total_parts) * 100))
+        engineering_review = max(0, min(100, round((engineering_readiness + confidence) / 2)))
+
+        checklist = [("Lifecycle validated", lifecycle_count == 0), ("Inventory reviewed", stock_count == 0), ("Alternatives reviewed", saved_alternatives > 0), ("Supplier diversity verified", source_count == 0), ("Procurement signoff", confidence >= 85 and stock_count == 0), ("Engineering approval", high == 0 and lifecycle_count == 0)]
+        checklist_complete = sum(1 for _, done in checklist if done)
+        checklist_percent = round(checklist_complete / len(checklist) * 100)
+        top_ranked_part = ranked_parts[0] if ranked_parts else None
+        primary_part = _safe(top_ranked_part.get("mpn") if top_ranked_part else None, "No critical component")
+        primary_reason = _safe(top_ranked_part.get("reason") if top_ranked_part else None, "No component-level risk explanation is currently available.")
+
+        st.markdown(f'''<section class="cv26-summary"><div class="cv26-summary-top"><div><div class="cv26-kicker">Cadivor Executive BOM Summary</div><div class="cv26-title">{html.escape(cockpit_status)}</div><div class="cv26-copy">Cadivor combined BOM health, lifecycle, inventory, supplier coverage, monitoring, and replacement evidence to produce this release recommendation.</div></div><span class="cv26-status {cockpit_class}">{html.escape(release_recommendation)}</span></div><div class="cv26-kpis"><div class="cv26-kpi"><span>Overall Health</span><strong>{health}/100</strong><small>{html.escape(risk_status)}</small></div><div class="cv26-kpi"><span>Readiness</span><strong>{engineering_readiness}%</strong><small>{readiness_label}</small></div><div class="cv26-kpi"><span>Critical Components</span><strong>{high}</strong><small>{medium} medium-risk parts</small></div><div class="cv26-kpi"><span>Qualified Alternatives</span><strong>{saved_alternatives}</strong><small>Saved replacement evidence</small></div><div class="cv26-kpi"><span>Monitoring Alerts</span><strong>{len(alerts)}</strong><small>Recorded alerts</small></div><div class="cv26-kpi"><span>Decision Confidence</span><strong>{confidence}%</strong><small>Evidence coverage</small></div></div></section>''', unsafe_allow_html=True)
+
+        left, right = st.columns([1.03, .97])
+        with left:
+            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Readiness</div><div class="cv26-card-meta">Directional readiness based on BOM health, severity, and evidence coverage.</div><div class="cv26-readiness-line"><div><div class="cv26-readiness-score">{engineering_readiness}%</div><div class="cv26-readiness-label">{readiness_label}</div></div><span class="cv26-status {cockpit_class}">{release_recommendation}</span></div><div class="cv26-meter {readiness_class}"><i style="width:{engineering_readiness}%"></i></div><div class="cv26-copy"><strong>Top recommendation:</strong> validate {html.escape(primary_part)}. {html.escape(primary_reason)}</div></section>''', unsafe_allow_html=True)
+            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+            checks_html = "".join(f'<div class="cv26-check"><div class="cv26-check-left"><span class="cv26-check-icon {"done" if done else "open"}">{"✓" if done else "!"}</span>{html.escape(label)}</div><span class="cv26-status {"good" if done else "warn"}">{"Complete" if done else "Open"}</span></div>' for label, done in checklist)
+            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Checklist</div><div class="cv26-card-meta">{checklist_complete} of {len(checklist)} release controls are satisfied.</div><div class="cv26-checks">{checks_html}</div><div class="cv26-meter {"good" if checklist_percent >= 80 else "warn"}"><i style="width:{checklist_percent}%"></i></div><div class="cv26-copy">Completion: <strong>{checklist_percent}%</strong></div></section>''', unsafe_allow_html=True)
+        with right:
+            issues=[]
+            if lead_count: issues.append(f"{lead_count} component(s) have elevated lead-time exposure.")
+            if source_count: issues.append(f"{source_count} component(s) have limited supplier coverage.")
+            if lifecycle_count: issues.append(f"{lifecycle_count} component(s) require lifecycle validation.")
+            if stock_count: issues.append(f"{stock_count} component(s) have no recorded stock.")
+            if not issues: issues.append("No major exposure is currently recorded.")
+            issue_html="".join(f"<li>{html.escape(x)}</li>" for x in issues)
+            evidence=[("Lifecycle data", lifecycle_count==0),("Inventory coverage",stock_count==0),("Supplier coverage",source_count==0),("Alternative evidence",saved_alternatives>0),("Monitoring evidence",len(alerts)>0),("Engineering confidence",confidence>=80)]
+            evidence_html="".join(f'<div class="cv26-evidence">{"✓" if ok else "⚠"} {html.escape(label)}</div>' for label,ok in evidence)
+            st.markdown(f'''<section class="cv26-insight"><div class="cv26-insight-kicker">Cadivor Executive Insight</div><h3>{html.escape(assessment)}</h3><p>This BOM is assessed as <strong>{html.escape(release_recommendation.lower())}</strong>.</p><ul>{issue_html}</ul><p><strong>Suggested action:</strong> close the remaining checklist items before final approval.</p><div class="cv26-confidence">{evidence_html}</div></section>''', unsafe_allow_html=True)
+            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+            risk_rows=[("Lead Time",min(100,lead_count*28)),("Lifecycle",min(100,lifecycle_count*32)),("Inventory",min(100,stock_count*30)),("Supplier",min(100,source_count*25))]
+            risk_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}</div></div>' for label,value in risk_rows)
+            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Top Risk Drivers</div><div class="cv26-card-meta">Relative exposure derived from recorded evidence.</div><div class="cv26-bars">{risk_html}</div></section>''', unsafe_allow_html=True)
+
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        progress=[("Engineering Review",engineering_review),("Supplier Diversity",supplier_diversity),("Lifecycle Health",lifecycle_health),("Inventory Coverage",inventory_coverage)]
+        progress_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}%</div></div>' for label,value in progress)
+        healthy_count=max(0,total_parts-high-medium); healthy_pct=round(healthy_count/max(1,total_parts)*100); medium_pct=round(medium/max(1,total_parts)*100); critical_pct=max(0,100-healthy_pct-medium_pct)
+        c1,c2=st.columns(2)
+        with c1: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Review Progress</div><div class="cv26-card-meta">Cross-functional completion inferred from evidence.</div><div class="cv26-bars">{progress_html}</div></section>''', unsafe_allow_html=True)
+        with c2: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Component Health Distribution</div><div class="cv26-card-meta">Healthy, medium-risk, and critical components.</div><div class="cv26-riskdist"><i class="healthy" style="width:{healthy_pct}%"></i><i class="medium" style="width:{medium_pct}%"></i><i class="critical" style="width:{critical_pct}%"></i></div><div class="cv26-legend"><span>Healthy {healthy_count}</span><span>Medium {medium}</span><span>Critical {high}</span></div></section>''', unsafe_allow_html=True)
+
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        phases=[]
+        for period,idx,copy in [("Immediate",0,"Resolve the highest-priority risk."),("This Week",1,"Validate supplier and lifecycle evidence."),("Next Sprint",2,"Complete replacement or second-source qualification.")]:
+            if len(ranked_parts)>idx: phases.append((period,_safe(ranked_parts[idx].get("mpn")),copy))
+            else: phases.append((period,"Portfolio monitoring","Continue monitoring recorded signals."))
+        phase_html="".join(f'<div class="cv26-phase"><span>{p}</span><strong>{html.escape(t)}</strong><small>{html.escape(c)}</small></div>' for p,t,c in phases)
+        st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Timeline</div><div class="cv26-card-meta">A practical sequence for closing release risk.</div><div class="cv26-timeline">{phase_html}</div></section>''', unsafe_allow_html=True)
+
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        action_html=[]
+        for index,action in enumerate((advisor.get("priority_actions") or [])[:6],1):
+            urgency=_safe(action.get("urgency"),"Medium"); pc="high" if urgency.lower() in ("immediate","high") or index<=2 else "medium" if index<=4 else "low"
+            action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{pc.upper()}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(_safe(action.get("reason"),"Risk signal detected."))}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
+        if not action_html: action_html.append('<div class="cv-analysis-empty">No priority actions are currently available.</div>')
+        st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Action Priority Matrix</div><div class="cv26-card-meta">Actions ordered by urgency and release impact.</div><div class="cv26-actions">{"".join(action_html)}</div></section>''', unsafe_allow_html=True)
 
     with overview_tab:
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
