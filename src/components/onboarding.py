@@ -1,4 +1,4 @@
-"""Launch-focused first-time experience components for Cadivor Sprint 29.0A."""
+"""Launch-focused first-time experience components for Cadivor Sprint 29.0B."""
 from __future__ import annotations
 
 import html
@@ -92,6 +92,63 @@ def render_activation_strip(*, analyses_count: int, has_review: bool = False, ha
         @media(max-width:800px){{.cv29-activation{{grid-template-columns:1fr}}}}
         </style>
         <section class="cv29-activation"><div class="cv29-activation-copy"><strong>Launch your first decision workflow</strong><small>{completed}/3 activation steps complete</small></div><div class="cv29-mini-steps">{items}</div></section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_upload_detected(*, filename: str, component_count: int, deduplicated_count: int | None = None) -> None:
+    """Confirm that the uploaded BOM was parsed before analysis starts."""
+    original = max(0, int(component_count or 0))
+    unique = max(0, int(deduplicated_count if deduplicated_count is not None else original))
+    duplicate_note = (
+        f"{original - unique} duplicate row(s) consolidated"
+        if original > unique
+        else "No duplicate part numbers detected"
+    )
+    st.markdown(
+        f"""
+        <style id="cadivor-upload-detected-29b">
+        .cv29b-detected{{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;border:1px solid #BBF7D0;background:linear-gradient(135deg,#FFFFFF,#F0FDF4);border-radius:17px;padding:14px 16px;margin:10px 0 16px}}
+        .cv29b-detected-icon{{width:38px;height:38px;border-radius:12px;background:#DCFCE7;color:#15803D!important;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:950}}
+        .cv29b-detected strong{{display:block;color:#0F172A!important;font-size:14px;font-weight:900}}
+        .cv29b-detected small{{display:block;color:#64748B!important;font-size:11px;font-weight:650;margin-top:3px}}
+        .cv29b-detected-count{{text-align:right}}.cv29b-detected-count b{{display:block;color:#15803D!important;font-size:23px;font-weight:950;line-height:1}}.cv29b-detected-count span{{color:#64748B!important;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em}}
+        </style>
+        <section class="cv29b-detected"><div class="cv29b-detected-icon">✓</div><div><strong>{html.escape(str(filename or 'Uploaded BOM'))} is ready</strong><small>{html.escape(duplicate_note)}. Review the preview, then run the analysis.</small></div><div class="cv29b-detected-count"><b>{unique}</b><span>components</span></div></section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_analysis_success(*, project_name: str, total_parts: int, high_count: int, medium_count: int, health_score: int, analysis_id: str) -> None:
+    """Render an outcome-focused transition after a BOM is analyzed and saved."""
+    review_count = max(0, int(high_count or 0)) + max(0, int(medium_count or 0))
+    estimated_minutes = max(2, min(15, review_count * 2 if review_count else 2))
+    recommendation = (
+        "Resolve critical components before release." if high_count else
+        "Complete a focused review before release." if medium_count else
+        "No elevated component risks were detected."
+    )
+    detail_url = f"?page=Analysis%20Detail&analysis_id={html.escape(str(analysis_id), quote=True)}"
+    st.markdown(
+        f"""
+        <style id="cadivor-analysis-success-29b">
+        .cv29b-success{{position:relative;overflow:hidden;border:1px solid #A7F3D0;background:linear-gradient(135deg,#FFFFFF 0%,#F0FDF4 58%,#ECFDF5 100%);border-radius:25px;padding:24px;box-shadow:0 20px 48px rgba(5,150,105,.09);margin:12px 0 18px}}
+        .cv29b-success-top{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}
+        .cv29b-success-kicker{{color:#047857!important;font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}}
+        .cv29b-success h2{{color:#0F172A!important;font-size:27px;font-weight:950;letter-spacing:-.035em;margin:0 0 7px}}
+        .cv29b-success p{{color:#475569!important;font-size:13px;font-weight:650;line-height:1.55;margin:0}}
+        .cv29b-success-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:17px 0}}
+        .cv29b-success-stat{{border:1px solid #D1FAE5;background:rgba(255,255,255,.92);border-radius:15px;padding:13px}}
+        .cv29b-success-stat span{{display:block;color:#64748B!important;font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}}
+        .cv29b-success-stat strong{{display:block;color:#0F172A!important;font-size:22px;font-weight:950}}
+        .cv29b-success-actions{{display:flex;gap:9px;flex-wrap:wrap}}
+        .cv29b-success-btn{{display:inline-flex;text-decoration:none!important;border-radius:12px;padding:11px 14px;border:1px solid #059669;background:#059669;color:#FFFFFF!important;font-size:12px;font-weight:900}}
+        .cv29b-success-btn.secondary{{background:#FFFFFF;color:#047857!important;border-color:#A7F3D0}}
+        @media(max-width:780px){{.cv29b-success-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.cv29b-success-top{{display:block}}}}
+        </style>
+        <section class="cv29b-success"><div class="cv29b-success-top"><div><div class="cv29b-success-kicker">Analysis complete</div><h2>{html.escape(str(project_name or 'BOM analysis'))}</h2><p>{html.escape(recommendation)}</p></div></div><div class="cv29b-success-grid"><div class="cv29b-success-stat"><span>Health</span><strong>{int(health_score or 0)}/100</strong></div><div class="cv29b-success-stat"><span>Components</span><strong>{int(total_parts or 0)}</strong></div><div class="cv29b-success-stat"><span>Needs review</span><strong>{review_count}</strong></div><div class="cv29b-success-stat"><span>Estimated review</span><strong>{estimated_minutes} min</strong></div></div><div class="cv29b-success-actions"><a class="cv29b-success-btn" href="{detail_url}" target="_self">Open engineering review →</a><a class="cv29b-success-btn secondary" href="?page=Reports&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Generate report</a></div></section>
         """,
         unsafe_allow_html=True,
     )
