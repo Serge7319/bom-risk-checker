@@ -653,7 +653,16 @@ def render_dashboard(
     else:
         greeting_prefix = "Good evening"
 
-    if not analysis_data:
+    preview_onboarding = False
+    try:
+        preview_value = _qp_value("preview_onboarding", "") if _qp_value else st.query_params.get("preview_onboarding", "")
+        preview_onboarding = str(preview_value).strip().lower() in {"1", "true", "yes", "on"}
+    except Exception:
+        preview_onboarding = False
+
+    if not analysis_data or preview_onboarding:
+        if preview_onboarding and analysis_data:
+            st.info("Onboarding preview is active. Remove `preview_onboarding=1` from the URL to return to your normal dashboard.")
         render_first_run_dashboard(
             current_user={**(current_user or {}), **(profile or {})},
             workspace_name=workspace_name,
