@@ -807,7 +807,129 @@ def render_dashboard(
             .cv243-summary{grid-template-columns:1fr;}
             .cv243-summary-copy{grid-template-columns:1fr;}
           }
-        </style>
+        
+          @keyframes cv243FadeUp{
+            from{opacity:0;transform:translateY(8px);}
+            to{opacity:1;transform:translateY(0);}
+          }
+          @keyframes cv243ChartReveal{
+            from{opacity:0;transform:scale(.992);}
+            to{opacity:1;transform:scale(1);}
+          }
+          .cv243-summary,.cv232-trend-card,.cv-6b-project-panel,.cv243-event{
+            animation:cv243FadeUp .48s ease both;
+          }
+          div[data-testid="stPlotlyChart"]{
+            animation:cv243ChartReveal .55s ease both;
+          }
+          .cv243-timeline{
+            position:relative;
+            display:grid;
+            gap:10px;
+            padding-left:22px;
+          }
+          .cv243-timeline::before{
+            content:"";
+            position:absolute;
+            left:7px;
+            top:8px;
+            bottom:8px;
+            width:2px;
+            border-radius:999px;
+            background:linear-gradient(180deg,#93C5FD 0%,#DBEAFE 100%);
+          }
+          .cv243-event{
+            position:relative;
+            border:1px solid #E2E8F0;
+            background:#FFFFFF;
+            border-radius:16px;
+            padding:12px 14px;
+            box-shadow:0 6px 18px rgba(15,23,42,.045);
+            transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
+          }
+          .cv243-event:hover{
+            transform:translateY(-2px);
+            border-color:#BFDBFE;
+            box-shadow:0 12px 28px rgba(37,99,235,.08);
+          }
+          .cv243-event::before{
+            content:"";
+            position:absolute;
+            left:-20px;
+            top:17px;
+            width:10px;
+            height:10px;
+            border-radius:999px;
+            background:#2563EB;
+            border:3px solid #EFF6FF;
+            box-shadow:0 0 0 1px #93C5FD;
+          }
+          .cv243-event.lifecycle::before{background:#F59E0B;box-shadow:0 0 0 1px #FCD34D;}
+          .cv243-event.monitoring::before{background:#DC2626;box-shadow:0 0 0 1px #FCA5A5;}
+          .cv243-event.replacement::before{background:#7C3AED;box-shadow:0 0 0 1px #C4B5FD;}
+          .cv243-event.analysis::before{background:#2563EB;box-shadow:0 0 0 1px #93C5FD;}
+          .cv243-event-top{
+            display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;
+          }
+          .cv243-event-type{
+            color:#2563EB!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;
+          }
+          .cv243-event-time{
+            color:#94A3B8!important;font-size:9.5px;font-weight:800;white-space:nowrap;
+          }
+          .cv243-event-title{
+            color:#0F172A!important;font-size:13px;font-weight:950;line-height:1.25;margin-bottom:4px;
+          }
+          .cv243-event-copy{
+            color:#64748B!important;font-size:10.5px;font-weight:700;line-height:1.45;
+          }
+          .cv243-event-footer{
+            display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;
+          }
+          .cv243-event-link{
+            color:#2563EB!important;font-size:10px;font-weight:950;text-decoration:none!important;
+          }
+          .cv243-repeat{
+            display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:22px;
+            padding:0 7px;border-radius:999px;background:#EFF6FF;border:1px solid #BFDBFE;
+            color:#1D4ED8!important;font-size:9px;font-weight:950;
+          }
+          .cv243-compact-status{
+            display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border-radius:12px;
+            background:#ECFDF5;border:1px solid #A7F3D0;color:#047857!important;
+            font-size:10px;font-weight:900;margin-top:9px;
+          }
+          .cv243-compact-status::before{
+            content:"✓";width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;
+            border-radius:999px;background:#D1FAE5;color:#047857!important;font-size:11px;font-weight:950;
+          }
+          .cv243-shortcut-grid{
+            display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;
+          }
+          .cv243-shortcut{
+            display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 12px;
+            border:1px solid #E2E8F0;background:#FFFFFF;border-radius:15px;text-decoration:none!important;
+            box-shadow:0 6px 18px rgba(15,23,42,.04);
+            transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
+          }
+          .cv243-shortcut:hover{
+            transform:translateY(-2px);border-color:#BFDBFE;box-shadow:0 12px 26px rgba(37,99,235,.08);
+          }
+          .cv243-shortcut strong{display:block;color:#0F172A!important;font-size:11px;font-weight:950;}
+          .cv243-shortcut span{display:block;color:#64748B!important;font-size:9.5px;font-weight:720;margin-top:2px;}
+          @media(max-width:1180px){
+            .cv243-shortcut-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+          }
+          @media(max-width:900px){
+            .cv232-trend-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+            .cv241-project-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+            .cv243-shortcut-grid{grid-template-columns:1fr;}
+          }
+          @media(prefers-reduced-motion:reduce){
+            .cv243-summary,.cv232-trend-card,.cv-6b-project-panel,.cv243-event,
+            div[data-testid="stPlotlyChart"]{animation:none!important;transition:none!important;}
+          }
+</style>
         """,
         unsafe_allow_html=True,
     )
@@ -2216,7 +2338,7 @@ def render_dashboard(
                 )
         else:
             st.markdown(
-                '<div class="cv242-status-note">No saved projects are currently trending downward.</div>',
+                '<div class="cv243-compact-status">No saved projects are currently trending downward.</div>',
                 unsafe_allow_html=True,
             )
 
@@ -2235,26 +2357,47 @@ def render_dashboard(
 
         visible_activity = recent_activity[:4]
         if visible_activity:
+            timeline_html = ['<div class="cv243-timeline">']
             for event in visible_activity:
-                st.markdown(
-                    f"""
-                    <section class="cv231-activity-card" style="padding:12px 14px;margin-bottom:9px;">
-                      <div class="cv231-activity-top">
-                        <div class="cv231-activity-type">{html.escape(str(event['type']))}</div>
-                        <div class="cv231-activity-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
-                      </div>
-                      <div class="cv231-activity-title">
-                        {html.escape(str(event['title']))}
-                        {f'<span class="cv242-repeat-badge">{event.get("repeat_count", 1)} repeated</span>' if event.get("repeat_count", 1) > 1 else ''}
-                      </div>
-                      <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
-                      <a class="cv231-activity-link" href="{event['href']}" target="_self">
-                        {html.escape(str(event['action']))} →
-                      </a>
-                    </section>
-                    """,
-                    unsafe_allow_html=True,
+                repeat_count = int(event.get("repeat_count", 1) or 1)
+                event_type = str(event.get("type") or "Activity")
+                event_type_lower = event_type.lower()
+
+                if "lifecycle" in event_type_lower:
+                    event_class = "lifecycle"
+                elif "monitor" in event_type_lower or "supplier" in event_type_lower:
+                    event_class = "monitoring"
+                elif "replacement" in event_type_lower or "alternative" in event_type_lower:
+                    event_class = "replacement"
+                else:
+                    event_class = "analysis"
+
+                repeat_badge = (
+                    f'<span class="cv243-repeat">×{repeat_count}</span>'
+                    if repeat_count > 1
+                    else ""
                 )
+
+                timeline_html.append(
+                    f"""
+                    <section class="cv243-event {event_class}">
+                      <div class="cv243-event-top">
+                        <div class="cv243-event-type">{html.escape(event_type)}</div>
+                        <div class="cv243-event-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
+                      </div>
+                      <div class="cv243-event-title">{html.escape(str(event['title']))}</div>
+                      <div class="cv243-event-copy">{html.escape(str(event['copy']))}</div>
+                      <div class="cv243-event-footer">
+                        <a class="cv243-event-link" href="{event['href']}" target="_self">
+                          {html.escape(str(event['action']))} →
+                        </a>
+                        {repeat_badge}
+                      </div>
+                    </section>
+                    """
+                )
+            timeline_html.append("</div>")
+            st.markdown("".join(timeline_html), unsafe_allow_html=True)
         else:
             st.markdown(
                 '<div class="cv231-empty">No recent engineering activity is recorded.</div>',
@@ -2285,7 +2428,7 @@ def render_dashboard(
                     activity_rows,
                     use_container_width=True,
                     hide_index=True,
-                    height=min(420, 38 + len(activity_rows) * 34),
+                    height=min(330, 38 + len(activity_rows) * 31),
                 )
 
     st.markdown(
@@ -2302,26 +2445,22 @@ def render_dashboard(
 
     st.markdown(
         f"""
-        <div class="cv-6b-shortcuts">
-          <a class="cv-6b-shortcut" href="?page=Monitoring" target="_self">
+        <div class="cv243-shortcut-grid">
+          <a class="cv243-shortcut" href="?page=Monitoring" target="_self">
             <div class="cv-6b-shortcut-icon green">{_lucide_icon('chart',20)}</div>
             <div><strong>Monitoring</strong><span>{alert_count} active supplier and lifecycle alerts</span></div>
-            <div class="cv-6b-arrow">→</div>
           </a>
-          <a class="cv-6b-shortcut" href="?page=Reports" target="_self">
+          <a class="cv243-shortcut" href="?page=Reports" target="_self">
             <div class="cv-6b-shortcut-icon">{_lucide_icon('file',20)}</div>
             <div><strong>Reports</strong><span>Saved analyses, PDFs, and engineering exports</span></div>
-            <div class="cv-6b-arrow">→</div>
           </a>
-          <a class="cv-6b-shortcut" href="?page=Alternative%20Finder" target="_self">
+          <a class="cv243-shortcut" href="?page=Alternative%20Finder" target="_self">
             <div class="cv-6b-shortcut-icon purple">{_lucide_icon('replace',20)}</div>
             <div><strong>Alternative Finder</strong><span>{alternatives_found} saved replacement candidates</span></div>
-            <div class="cv-6b-arrow">→</div>
           </a>
-          <a class="cv-6b-shortcut" href="?page=Workspace" target="_self">
+          <a class="cv243-shortcut" href="?page=Workspace" target="_self">
             <div class="cv-6b-shortcut-icon amber">{_lucide_icon('folder',20)}</div>
             <div><strong>Workspace</strong><span>Usage, plan, and workspace management</span></div>
-            <div class="cv-6b-arrow">→</div>
           </a>
         </div>
         """,
