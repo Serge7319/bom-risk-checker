@@ -1,7 +1,7 @@
 """Cadivor saved-analysis workspace with persistent tab navigation."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import html
 import re
 from typing import Any
@@ -16,6 +16,9 @@ from src.engineering_review_service import (
     get_latest_review_session,
     list_review_events,
     list_review_items,
+    list_review_comments,
+    add_review_comment,
+    reopen_review_session,
     save_review_item,
     set_review_lock,
     update_review_session_status,
@@ -590,6 +593,13 @@ def render_analysis_detail(
         .cv27-saved{display:inline-flex;align-items:center;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857!important;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:900}
         @media(max-width:900px){.cv27-session-grid,.cv27-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.cv27-evidence{grid-template-columns:1fr}}
 
+        /* Milestone 27.2 — Collaborative Review Operations */
+        .cv272-action-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:12px 0 14px}
+        .cv272-action{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:14px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+        .cv272-action span{display:block;color:#64748b!important;font-size:11px;font-weight:900;margin-bottom:6px}.cv272-action strong{color:#0f172a!important;font-size:25px;font-weight:980}.cv272-action.bad strong{color:#b91c1c!important}
+        .cv272-health{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:18px;padding:16px;margin-bottom:14px}.cv272-health-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.cv272-health h4{margin:0;color:#0f172a!important;font-size:17px;font-weight:980}.cv272-health p{margin:4px 0 0;color:#64748b!important;font-size:12px;font-weight:750}
+        @media(max-width:900px){.cv272-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -954,7 +964,65 @@ def render_analysis_detail(
             if review_items_error:
                 st.warning(f"Saved review items could not be loaded: {review_items_error}")
 
-            for review_index, part in enumerate(review_parts, 1):
+            # Milestone 27.2 — collaborative action center and filters.
+            today = date.today()
+            def _parse_due(row):
+                raw = row.get("due_date")
+                if raw:
+                    try:
+                        return date.fromisoformat(str(raw)[:10])
+                    except Exception:
+                        pass
+                return {"Today": today, "Tomorrow": today + timedelta(days=1), "This Week": today + timedelta(days=7), "Next Week": today + timedelta(days=14), "Next Sprint": today + timedelta(days=21)}.get(_safe(row.get("due_label"), ""))
+
+            open_rows = [r for r in review_items if r.get("decision") not in {"Approve", "Reject", "Skip"}]
+            overdue_rows = [r for r in open_rows if _parse_due(r) and _parse_due(r) < today]
+            due_week_rows = [r for r in open_rows if _parse_due(r) and today <= _parse_due(r) <= today + timedelta(days=7)]
+            assigned_me_rows = [r for r in open_rows if reviewer_email and str(r.get("assignee_email") or "").lower() == reviewer_email.lower()]
+            waiting_rows = [r for r in open_rows if r.get("assignee_email") and str(r.get("assignee_email")).lower() != reviewer_email.lower()]
+            completed_today = [r for r in review_items if r.get("decision") in {"Approve", "Reject", "Skip"} and str(r.get("updated_at") or "")[:10] == today.isoformat()]
+            unassigned_count = sum(1 for r in open_rows if not r.get("assignee_name"))
+            workflow_health = max(0, min(100, round(100 - len(overdue_rows)*18 - unassigned_count*8 - len(open_rows)/max(1,total_review_items)*30)))
+            action_html = f'<div class="cv272-action-grid"><div class="cv272-action"><span>Assigned to Me</span><strong>{len(assigned_me_rows)}</strong></div><div class="cv272-action"><span>Due This Week</span><strong>{len(due_week_rows)}</strong></div><div class="cv272-action {"bad" if overdue_rows else ""}"><span>Overdue</span><strong>{len(overdue_rows)}</strong></div><div class="cv272-action"><span>Waiting on Others</span><strong>{len(waiting_rows)}</strong></div><div class="cv272-action"><span>Completed Today</span><strong>{len(completed_today)}</strong></div></div><section class="cv272-health"><div class="cv272-health-top"><div><h4>Review Health</h4><p>{len(overdue_rows)} overdue · {unassigned_count} unassigned · {reviewed_count} completed</p></div><strong style="font-size:26px">{workflow_health}%</strong></div><div class="cv27-review-progress"><i style="width:{workflow_health}%"></i></div></section>'
+            st.markdown(action_html, unsafe_allow_html=True)
+
+            member_options = [("Unassigned", "", "")]
+            for member in workspace_members:
+                member_name = _safe(member.get("full_name") or member.get("name") or member.get("email"), "Workspace member")
+                member_email = _safe(member.get("email"), "")
+                member_id = _safe(member.get("user_id") or member.get("id"), "")
+                if member_email or member_id:
+                    member_options.append((member_name, member_email, member_id))
+            if reviewer_email and not any(x[1].lower() == reviewer_email.lower() for x in member_options if x[1]):
+                member_options.append((reviewer_name, reviewer_email, user_id))
+            member_labels = [x[0] + (f" · {x[1]}" if x[1] else "") for x in member_options]
+
+            f1,f2,f3,f4 = st.columns(4)
+            status_filter = f1.selectbox("Review status", ["All", "Open", "Completed", "Overdue"], key=f"cv272_status_{analysis_id}")
+            assignee_filter = f2.selectbox("Assignee", ["All", "Assigned to me", "Unassigned"] + member_labels[1:], key=f"cv272_assignee_{analysis_id}")
+            priority_filter = f3.selectbox("Priority", ["All", "High", "Medium", "Low"], key=f"cv272_priority_{analysis_id}")
+            decision_filter = f4.selectbox("Decision", ["All", "Approve", "Needs Investigation", "Reject", "Skip", "Not reviewed"], key=f"cv272_decision_filter_{analysis_id}")
+            filtered_review_parts = []
+            for candidate in review_parts:
+                c_mpn = _safe(candidate.get("mpn"), "Unknown MPN")
+                c_saved = decision_map.get(c_mpn, {})
+                c_decision = c_saved.get("decision") or "Not reviewed"
+                c_due = _parse_due(c_saved)
+                c_score = _num(candidate.get("risk_score"),0)
+                c_priority = "High" if c_score >= 70 else "Medium" if c_score >= 35 else "Low"
+                is_completed = c_decision in {"Approve","Reject","Skip"}
+                if status_filter == "Open" and is_completed: continue
+                if status_filter == "Completed" and not is_completed: continue
+                if status_filter == "Overdue" and not (c_due and c_due < today and not is_completed): continue
+                if assignee_filter == "Assigned to me" and str(c_saved.get("assignee_email") or "").lower() != reviewer_email.lower(): continue
+                if assignee_filter == "Unassigned" and c_saved.get("assignee_name"): continue
+                saved_assignee_label = _safe(c_saved.get("assignee_name"),"") + (f" · {c_saved.get('assignee_email')}" if c_saved.get("assignee_email") else "")
+                if assignee_filter not in {"All","Assigned to me","Unassigned"} and assignee_filter != saved_assignee_label: continue
+                if priority_filter != "All" and c_priority != priority_filter: continue
+                if decision_filter != "All" and c_decision != decision_filter: continue
+                filtered_review_parts.append(candidate)
+            st.caption(f"Showing {len(filtered_review_parts)} of {len(review_parts)} review items")
+            for review_index, part in enumerate(filtered_review_parts, 1):
                 mpn = _safe(part.get("mpn"), "Unknown MPN")
                 saved = decision_map.get(mpn, {})
                 status_label = saved.get("decision") or "Not reviewed"
@@ -978,7 +1046,7 @@ def render_analysis_detail(
                     current_decision = saved.get("decision") if saved.get("decision") in options else suggested
                     owner_options = ["Electrical", "Procurement", "Supply Chain", "Firmware", "Quality", "General Engineering"]
                     current_owner = saved.get("owner") if saved.get("owner") in owner_options else "General Engineering"
-                    due_options = ["Today", "Tomorrow", "This Week", "Next Week", "Next Sprint"]
+                    due_options = ["No due date", "Today", "Tomorrow", "This Week", "Next Week", "Next Sprint", "Custom"]
                     current_due = saved.get("due_label") if saved.get("due_label") in due_options else "This Week"
                     disabled = session_locked or not can_edit_review
                     with col_decision:
@@ -1005,6 +1073,22 @@ def render_analysis_detail(
                             key=f"cv271_due_{analysis_id}_{review_index}",
                             disabled=disabled,
                         )
+                    saved_assignee_label = _safe(saved.get("assignee_name"), "Unassigned") + (f" · {saved.get('assignee_email')}" if saved.get("assignee_email") else "")
+                    assignee_index = member_labels.index(saved_assignee_label) if saved_assignee_label in member_labels else 0
+                    assign_col, priority_col = st.columns([1.35, .65])
+                    assignee_label = assign_col.selectbox("Assigned workspace member", member_labels, index=assignee_index, key=f"cv272_assignee_item_{analysis_id}_{review_index}", disabled=disabled)
+                    selected_member = member_options[member_labels.index(assignee_label)]
+                    priority_options = ["High", "Medium", "Low"]
+                    default_priority = saved.get("priority") if saved.get("priority") in priority_options else ("High" if risk_score >= 70 else "Medium" if risk_score >=35 else "Low")
+                    priority_value = priority_col.selectbox("Priority", priority_options, index=priority_options.index(default_priority), key=f"cv272_priority_item_{analysis_id}_{review_index}", disabled=disabled)
+                    due_date_value = saved.get("due_date")
+                    if due_value == "Custom":
+                        default_custom = date.fromisoformat(str(due_date_value)[:10]) if due_date_value else today + timedelta(days=7)
+                        due_date_value = st.date_input("Custom due date", value=default_custom, key=f"cv272_custom_due_{analysis_id}_{review_index}", disabled=disabled).isoformat()
+                    elif due_value == "No due date":
+                        due_date_value = None
+                    else:
+                        due_date_value = {"Today":today,"Tomorrow":today+timedelta(days=1),"This Week":today+timedelta(days=7),"Next Week":today+timedelta(days=14),"Next Sprint":today+timedelta(days=21)}[due_value].isoformat()
                     note_value = st.text_area(
                         "Engineering Notes",
                         value=_safe(saved.get("notes"), "") if saved else "",
@@ -1019,6 +1103,9 @@ def render_analysis_detail(
                         or owner_value != saved.get("owner")
                         or due_value != saved.get("due_label")
                         or note_value.strip() != _safe(saved.get("notes"), "").strip()
+                        or selected_member[1] != _safe(saved.get("assignee_email"), "")
+                        or priority_value != _safe(saved.get("priority"), default_priority)
+                        or (due_date_value or "") != _safe(saved.get("due_date"), "")
                     )
                     if changed and not disabled:
                         saved_item, save_error = save_review_item(
@@ -1032,6 +1119,11 @@ def render_analysis_detail(
                             decision=decision_value,
                             owner=owner_value,
                             due_label=due_value,
+                            due_date=due_date_value,
+                            assignee_name=selected_member[0] if selected_member[0] != "Unassigned" else "",
+                            assignee_email=selected_member[1],
+                            assignee_user_id=selected_member[2],
+                            priority=priority_value,
                             notes=note_value.strip(),
                             reviewer_name=reviewer_name,
                             reviewer_email=reviewer_email,
@@ -1052,6 +1144,25 @@ def render_analysis_detail(
                             st.rerun()
                     elif saved:
                         st.caption(f"Saved by {_safe(saved.get('reviewer_name'), reviewer_name)} · {updated_label}")
+
+                    if saved.get("id"):
+                        with st.expander("Component discussion", expanded=False):
+                            review_comments, comment_error = list_review_comments(supabase, review_item_id=saved.get("id"), user_id=user_id, workspace_id=workspace_id)
+                            if comment_error:
+                                st.warning(f"Comments unavailable: {comment_error}")
+                            for comment in review_comments:
+                                st.markdown(f"**{html.escape(_safe(comment.get('author_name'),'Reviewer'))}** · {_relative_date(comment.get('created_at'))}")
+                                st.write(_safe(comment.get("body"), ""))
+                            with st.form(f"cv272_comment_form_{analysis_id}_{review_index}", clear_on_submit=True):
+                                comment_body = st.text_area("Add comment", placeholder="Ask a question, add evidence, or explain the decision.", disabled=disabled)
+                                submitted_comment = st.form_submit_button("Post comment", disabled=disabled)
+                                if submitted_comment:
+                                    if not comment_body.strip():
+                                        st.error("Enter a comment before posting.")
+                                    else:
+                                        _, comment_save_error = add_review_comment(supabase, review_item_id=saved.get("id"), session_id=review_session.get("id"), analysis_id=analysis_id, user_id=user_id, workspace_id=workspace_id, body=comment_body.strip(), author_name=reviewer_name, author_email=reviewer_email)
+                                        if comment_save_error: st.error(comment_save_error)
+                                        else: st.rerun()
 
             finish_col, reset_col = st.columns(2)
             with finish_col:
@@ -1079,23 +1190,16 @@ def render_analysis_detail(
                     st.success("Engineering review completed and locked.")
             with reset_col:
                 if session_locked:
-                    if st.button(
-                        "Unlock Review",
-                        use_container_width=True,
-                        key=f"cv271_unlock_{analysis_id}",
-                        disabled=not can_manage_review,
-                    ):
-                        _, unlock_error = set_review_lock(
-                            supabase,
-                            session_id=review_session.get("id"),
-                            user_id=user_id,
-                            workspace_id=workspace_id,
-                            locked=False,
-                        )
-                        if unlock_error:
-                            st.error(f"Could not unlock the review: {unlock_error}")
-                        else:
-                            st.rerun()
+                    with st.form(f"cv272_reopen_{analysis_id}"):
+                        reopen_reason = st.text_input("Reason for reopening", placeholder="Example: Supplier PCN received")
+                        reopen_submit = st.form_submit_button("Reopen Review", use_container_width=True, disabled=not can_manage_review)
+                        if reopen_submit:
+                            if not reopen_reason.strip():
+                                st.error("Enter a reason before reopening the review.")
+                            else:
+                                _, unlock_error = reopen_review_session(supabase, session_id=review_session.get("id"), user_id=user_id, workspace_id=workspace_id, reason=reopen_reason.strip(), actor_name=reviewer_name, actor_email=reviewer_email)
+                                if unlock_error: st.error(f"Could not reopen the review: {unlock_error}")
+                                else: st.rerun()
                 elif session_status == "active" and st.button(
                     "Pause Review Session",
                     use_container_width=True,
