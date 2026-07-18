@@ -443,8 +443,8 @@ def render_dashboard(
         .cv232-trend-card{background:#fff;border:1px solid #E2E8F0;border-radius:17px;padding:15px 16px;box-shadow:0 12px 30px rgba(15,23,42,.045);}
         .cv232-trend-card.good{background:#F0FDF4;border-color:#BBF7D0}.cv232-trend-card.bad{background:#FEF2F2;border-color:#FECACA}.cv232-trend-card.warn{background:#FFFBEB;border-color:#FDE68A}
         .cv232-trend-label{color:#64748B!important;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;}
-        .cv232-trend-value{color:#0F172A!important;font-size:29px;font-weight:980;line-height:1;margin-top:10px;letter-spacing:-.045em;}
-        .cv232-trend-note{color:#64748B!important;font-size:10.5px;font-weight:750;line-height:1.35;margin-top:7px;}
+        .cv232-trend-value{color:#0F172A!important;font-size:25px;font-weight:980;line-height:1;margin-top:7px;letter-spacing:-.04em;}
+        .cv232-trend-note{color:#64748B!important;font-size:10px;font-weight:750;line-height:1.3;margin-top:5px;}
         .cv232-project-list{display:grid;gap:9px;}
         .cv232-project-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:13px 14px;box-shadow:0 9px 24px rgba(15,23,42,.035);}
         .cv232-project-name{color:#0F172A!important;font-size:13px;font-weight:950;margin-bottom:4px;}
@@ -1326,15 +1326,15 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    trend_col, project_col = st.columns([1.65, 0.78], gap="medium")
+    trend_col, project_col = st.columns([1.45, 0.72], gap="small")
 
     with trend_col:
         st.markdown(
             f"""
             <div class="cv-v4-section-head cv-6b-column-heading">
               <div>
-                <div class="cv-v4-section-title">Portfolio Health Trend</div>
-                <div class="cv-v4-section-meta">Daily average across saved analyses • {health_delta_label} vs previous</div>
+                <div class="cv-v4-section-title">Portfolio Health</div>
+                <div class="cv-v4-section-meta">Latest 7 recorded days • {health_delta_label} vs previous</div>
               </div>
               <a class="cv-v4-chip" href="?page=Reports" target="_self" style="text-decoration:none!important;">Open analyses →</a>
             </div>
@@ -1365,6 +1365,8 @@ def render_dashboard(
                 .sort_values("Date")
             )
             daily_health["Health_Score"] = daily_health["Health_Score"].round(1)
+            full_daily_health = daily_health.copy()
+            daily_health = daily_health.tail(7).reset_index(drop=True)
 
             health_values = daily_health["Health_Score"].dropna()
             health_min = (
@@ -1401,9 +1403,9 @@ def render_dashboard(
                     customdata=daily_health[["Analyses"]],
                     mode="lines+markers",
                     name="Portfolio Health",
-                    line={"color": "#2563EB", "width": 3, "shape": "linear"},
+                    line={"color": "#2563EB", "width": 2.5, "shape": "linear"},
                     marker={
-                        "size": 6,
+                        "size": 5,
                         "color": "#FFFFFF",
                         "line": {"color": "#2563EB", "width": 2},
                     },
@@ -1432,7 +1434,7 @@ def render_dashboard(
             )
             fig.update_layout(
                 hovermode="x unified",
-                margin={"l": 8, "r": 10, "t": 8, "b": 6},
+                margin={"l": 4, "r": 6, "t": 4, "b": 2},
                 showlegend=False,
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -1442,7 +1444,7 @@ def render_dashboard(
                 unsafe_allow_html=True,
             )
             st.plotly_chart(
-                light_plotly_layout(fig, height=270),
+                light_plotly_layout(fig, height=190),
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
@@ -1498,7 +1500,7 @@ def render_dashboard(
 
     st.markdown(
         """
-        <div class="cv-v4-section-head" style="margin-top:22px;">
+        <div class="cv-v4-section-head" style="margin-top:14px;">
           <div>
             <div class="cv-v4-section-title">Portfolio Trends</div>
             <div class="cv-v4-section-meta">See whether engineering health and recorded component risk are improving over time.</div>
@@ -1563,8 +1565,8 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    st.markdown("#### Recorded Risk History")
-    st.caption("Daily average risk counts across saved analyses.")
+    st.markdown("#### Risk History")
+    st.caption("Latest 7 recorded days across saved analyses.")
     if len(trend_records) >= 2:
         risk_df = pd.DataFrame(trend_records)
         risk_df["created_at"] = pd.to_datetime(
@@ -1590,6 +1592,8 @@ def render_dashboard(
         )
         daily_risk["High_Risk"] = daily_risk["High_Risk"].round(1)
         daily_risk["Medium_Risk"] = daily_risk["Medium_Risk"].round(1)
+        full_daily_risk = daily_risk.copy()
+        daily_risk = daily_risk.tail(7).reset_index(drop=True)
 
         risk_max = max(
             1.0,
@@ -1609,9 +1613,9 @@ def render_dashboard(
                 customdata=daily_risk[["Analyses"]],
                 mode="lines+markers",
                 name="Medium Risk",
-                line={"color": "#F59E0B", "width": 2.5, "shape": "linear"},
+                line={"color": "#F59E0B", "width": 2.2, "shape": "linear"},
                 marker={
-                    "size": 5,
+                    "size": 4,
                     "color": "#FFFFFF",
                     "line": {"color": "#F59E0B", "width": 1.8},
                 },
@@ -1630,9 +1634,9 @@ def render_dashboard(
                 customdata=daily_risk[["Analyses"]],
                 mode="lines+markers",
                 name="High Risk",
-                line={"color": "#DC2626", "width": 2.5, "shape": "linear"},
+                line={"color": "#DC2626", "width": 2.2, "shape": "linear"},
                 marker={
-                    "size": 5,
+                    "size": 4,
                     "color": "#FFFFFF",
                     "line": {"color": "#DC2626", "width": 1.8},
                 },
@@ -1666,12 +1670,12 @@ def render_dashboard(
                 "x": 1,
                 "font": {"size": 11},
             },
-            margin={"l": 8, "r": 10, "t": 34, "b": 6},
+            margin={"l": 4, "r": 6, "t": 26, "b": 2},
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(
-            light_plotly_layout(risk_fig, height=250),
+            light_plotly_layout(risk_fig, height=175),
             use_container_width=True,
             config={
                 "displayModeBar": False,
@@ -1684,7 +1688,7 @@ def render_dashboard(
 
     st.markdown(
         """
-        <div class="cv-v4-section-head" style="margin-top:20px;">
+        <div class="cv-v4-section-head" style="margin-top:12px;">
           <div>
             <div class="cv-v4-section-title">Recent Engineering Activity</div>
             <div class="cv-v4-section-meta">A chronological view of analyses, monitoring changes, and replacement work.</div>
