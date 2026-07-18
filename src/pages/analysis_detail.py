@@ -569,6 +569,17 @@ def render_analysis_detail(
         @media(max-width:900px){.cv26-title{font-size:27px}.cv26-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cv26-bar-row{grid-template-columns:120px minmax(0,1fr) 44px}}
         @media(max-width:600px){.cv26-summary,.cv26-card,.cv26-insight{padding:17px}.cv26-title{font-size:24px}.cv26-copy{font-size:13px}.cv26-kpis{grid-template-columns:1fr}.cv26-kpi{min-height:auto}.cv26-bar-row{grid-template-columns:1fr}.cv26-bar-value{text-align:left}.cv26-action{grid-template-columns:1fr}.cv26-owner{justify-self:start}}
 
+        /* Milestone 27.0 — Interactive Engineering Review Workspace */
+        .cv27-session{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f5f9ff);border-radius:22px;padding:18px 20px;margin:0 0 16px;box-shadow:0 12px 30px rgba(37,99,235,.07)}
+        .cv27-session-top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.cv27-session-title{font-size:20px;font-weight:900;color:#0f172a!important}.cv27-session-sub{font-size:13px;color:#64748b!important;font-weight:650;margin-top:4px}
+        .cv27-session-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}.cv27-session-kpi{border:1px solid #dbeafe;background:#fff;border-radius:15px;padding:13px}.cv27-session-kpi span{display:block;font-size:11px;font-weight:850;color:#64748b!important;text-transform:uppercase;letter-spacing:.05em}.cv27-session-kpi strong{display:block;font-size:22px;font-weight:950;color:#0f172a!important;margin-top:6px}
+        .cv27-review-progress{height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:14px}.cv27-review-progress i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}
+        .cv27-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.cv27-summary-card{border:1px solid #e2e8f0;background:#fff;border-radius:15px;padding:13px;text-align:center}.cv27-summary-card span{display:block;font-size:11px;font-weight:800;color:#64748b!important}.cv27-summary-card strong{display:block;font-size:24px;font-weight:950;color:#0f172a!important;margin-top:5px}
+        .cv27-rec{border:1px solid #c4b5fd;background:#faf7ff;border-radius:14px;padding:12px 14px;margin:8px 0 12px}.cv27-rec span{font-size:10px;font-weight:900;color:#7c3aed!important;text-transform:uppercase;letter-spacing:.06em}.cv27-rec strong{display:block;font-size:15px;color:#0f172a!important;margin-top:5px}.cv27-rec p{font-size:13px;color:#52647a!important;line-height:1.5;margin:6px 0 0}
+        .cv27-evidence{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}.cv27-evidence div{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv27-evidence span{display:block;font-size:10px;font-weight:850;color:#64748b!important;text-transform:uppercase}.cv27-evidence strong{display:block;font-size:13px;font-weight:850;color:#0f172a!important;margin-top:4px;overflow-wrap:anywhere}
+        .cv27-saved{display:inline-flex;align-items:center;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857!important;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:900}
+        @media(max-width:900px){.cv27-session-grid,.cv27-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.cv27-evidence{grid-template-columns:1fr}}
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -819,6 +830,88 @@ def render_analysis_detail(
         top_ranked_part = ranked_parts[0] if ranked_parts else None
         primary_part = _safe(top_ranked_part.get("mpn") if top_ranked_part else None, "No critical component")
         primary_reason = _safe(top_ranked_part.get("reason") if top_ranked_part else None, "No component-level risk explanation is currently available.")
+
+        # Milestone 27.0 — interactive engineering review session.
+        review_key = f"cv27_review_{analysis_id}"
+        if review_key not in st.session_state:
+            st.session_state[review_key] = {"active": False, "started_at": None, "locked": False, "decisions": {}}
+        review_state = st.session_state[review_key]
+        reviewer_name = _safe(current_user.get("full_name") or current_user.get("name") or current_user.get("email"), "Current reviewer")
+        review_parts = ranked_parts[:5]
+        decision_map = review_state.get("decisions", {})
+        reviewed_count = sum(1 for part in review_parts if decision_map.get(_safe(part.get("mpn"), "Unknown MPN"), {}).get("decision") not in (None, "", "Skip"))
+        total_review_items = len(review_parts)
+        review_percent = round(reviewed_count / max(1, total_review_items) * 100)
+
+        if not review_state.get("active"):
+            start_col, note_col = st.columns([0.28, 0.72])
+            with start_col:
+                if st.button("Start Engineering Review", type="primary", use_container_width=True, key=f"cv27_start_{analysis_id}"):
+                    review_state["active"] = True
+                    review_state["started_at"] = datetime.now(timezone.utc).isoformat()
+                    st.session_state[review_key] = review_state
+                    st.rerun()
+            with note_col:
+                st.markdown('<div class="cv27-session"><div class="cv27-session-title">Interactive Engineering Review</div><div class="cv27-session-sub">Review the highest-priority components, capture decisions, assign ownership, and preserve review context in this workspace.</div></div>', unsafe_allow_html=True)
+        else:
+            started_display = _relative_date(review_state.get("started_at"))
+            remaining = max(0, total_review_items - reviewed_count)
+            lock_label = "Locked" if review_state.get("locked") else "Auto-save active"
+            st.markdown(f'''<section class="cv27-session"><div class="cv27-session-top"><div><div class="cv27-session-title">Engineering Review Session</div><div class="cv27-session-sub">Decisions auto-save in the active workspace session.</div></div><span class="cv27-saved">{lock_label}</span></div><div class="cv27-session-grid"><div class="cv27-session-kpi"><span>Progress</span><strong>{reviewed_count}/{total_review_items}</strong></div><div class="cv27-session-kpi"><span>Remaining</span><strong>{remaining}</strong></div><div class="cv27-session-kpi"><span>Reviewer</span><strong style="font-size:15px">{html.escape(reviewer_name)}</strong></div><div class="cv27-session-kpi"><span>Started</span><strong style="font-size:15px">{html.escape(started_display)}</strong></div></div><div class="cv27-review-progress"><i style="width:{review_percent}%"></i></div></section>''', unsafe_allow_html=True)
+
+            counts = {"Approve": 0, "Needs Investigation": 0, "Reject": 0, "Skip": 0}
+            for row in decision_map.values():
+                decision_value = row.get("decision")
+                if decision_value in counts:
+                    counts[decision_value] += 1
+            st.markdown(f'''<div class="cv27-summary"><div class="cv27-summary-card"><span>Approved</span><strong>{counts["Approve"]}</strong></div><div class="cv27-summary-card"><span>Investigate</span><strong>{counts["Needs Investigation"]}</strong></div><div class="cv27-summary-card"><span>Rejected</span><strong>{counts["Reject"]}</strong></div><div class="cv27-summary-card"><span>Skipped</span><strong>{counts["Skip"]}</strong></div></div>''', unsafe_allow_html=True)
+
+            for review_index, part in enumerate(review_parts, 1):
+                mpn = _safe(part.get("mpn"), "Unknown MPN")
+                saved = decision_map.get(mpn, {})
+                status_label = saved.get("decision") or "Not reviewed"
+                with st.expander(f"{review_index}. {mpn} — {status_label}", expanded=(review_index == 1 and reviewed_count == 0)):
+                    risk_score = _num(part.get("risk_score"), 0)
+                    suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
+                    rec_reason = _safe(part.get("reason"), "Review recorded engineering evidence before approval.")
+                    st.markdown(f'''<div class="cv27-rec"><span>Cadivor Recommendation</span><strong>{html.escape(suggested)}</strong><p>{html.escape(rec_reason)}</p></div><div class="cv27-evidence"><div><span>Manufacturer</span><strong>{html.escape(_safe(part.get("manufacturer"), "Unknown"))}</strong></div><div><span>Lifecycle</span><strong>{html.escape(_safe(part.get("lifecycle"), "Unknown"))}</strong></div><div><span>Risk Score</span><strong>{risk_score}/100</strong></div><div><span>Stock</span><strong>{_num(part.get("stock"), 0)}</strong></div><div><span>Supplier Sources</span><strong>{_num(part.get("sources"), 0)}</strong></div><div><span>Alternatives</span><strong>{saved_alternatives}</strong></div></div>''', unsafe_allow_html=True)
+                    col_decision, col_owner, col_due = st.columns([1.15, 1, 1])
+                    options = ["Approve", "Needs Investigation", "Reject", "Skip"]
+                    current_decision = saved.get("decision") if saved.get("decision") in options else suggested
+                    with col_decision:
+                        decision_value = st.selectbox("Decision", options, index=options.index(current_decision), key=f"cv27_decision_{analysis_id}_{review_index}", disabled=review_state.get("locked", False))
+                    with col_owner:
+                        owner_options = ["Electrical", "Procurement", "Supply Chain", "Firmware", "Quality", "General Engineering"]
+                        current_owner = saved.get("owner") if saved.get("owner") in owner_options else "General Engineering"
+                        owner_value = st.selectbox("Owner", owner_options, index=owner_options.index(current_owner), key=f"cv27_owner_{analysis_id}_{review_index}", disabled=review_state.get("locked", False))
+                    with col_due:
+                        due_options = ["Today", "Tomorrow", "This Week", "Next Week", "Next Sprint"]
+                        current_due = saved.get("due") if saved.get("due") in due_options else "This Week"
+                        due_value = st.selectbox("Due", due_options, index=due_options.index(current_due), key=f"cv27_due_{analysis_id}_{review_index}", disabled=review_state.get("locked", False))
+                    note_value = st.text_area("Engineering Notes", value=saved.get("notes", ""), placeholder="Record validation evidence, assumptions, and follow-up actions.", key=f"cv27_notes_{analysis_id}_{review_index}", disabled=review_state.get("locked", False))
+                    if st.button("Save Review Decision", key=f"cv27_save_{analysis_id}_{review_index}", disabled=review_state.get("locked", False)):
+                        review_state.setdefault("decisions", {})[mpn] = {"decision": decision_value, "owner": owner_value, "due": due_value, "notes": note_value.strip(), "reviewer": reviewer_name, "reviewed_at": datetime.now(timezone.utc).isoformat()}
+                        st.session_state[review_key] = review_state
+                        st.success(f"{mpn} review decision saved.")
+                        st.rerun()
+
+            finish_col, reset_col = st.columns(2)
+            with finish_col:
+                if st.button("Complete and Lock Review", type="primary", use_container_width=True, key=f"cv27_lock_{analysis_id}", disabled=review_state.get("locked", False) or reviewed_count == 0):
+                    review_state["locked"] = True
+                    review_state["completed_at"] = datetime.now(timezone.utc).isoformat()
+                    st.session_state[review_key] = review_state
+                    st.rerun()
+            with reset_col:
+                if review_state.get("locked"):
+                    if st.button("Unlock Review", use_container_width=True, key=f"cv27_unlock_{analysis_id}"):
+                        review_state["locked"] = False
+                        st.session_state[review_key] = review_state
+                        st.rerun()
+                elif st.button("End Review Session", use_container_width=True, key=f"cv27_end_{analysis_id}"):
+                    review_state["active"] = False
+                    st.session_state[review_key] = review_state
+                    st.rerun()
 
         st.markdown(f'''<section class="cv26-summary"><div class="cv26-summary-top"><div><div class="cv26-kicker">Cadivor Executive BOM Summary</div><div class="cv26-title">{html.escape(cockpit_status)}</div><div class="cv26-copy">Cadivor combined BOM health, lifecycle, inventory, supplier coverage, monitoring, and replacement evidence to produce this release recommendation.</div></div><span class="cv26-status {cockpit_class}">{html.escape(release_recommendation)}</span></div><div class="cv26-kpis"><div class="cv26-kpi"><span>Overall Health</span><strong>{health}/100</strong><small>{html.escape(risk_status)}</small></div><div class="cv26-kpi"><span>Readiness</span><strong>{engineering_readiness}%</strong><small>{readiness_label}</small></div><div class="cv26-kpi"><span>Critical Components</span><strong>{high}</strong><small>{medium} medium-risk parts</small></div><div class="cv26-kpi"><span>Qualified Alternatives</span><strong>{saved_alternatives}</strong><small>Saved replacement evidence</small></div><div class="cv26-kpi"><span>Monitoring Alerts</span><strong>{len(alerts)}</strong><small>Recorded alerts</small></div><div class="cv26-kpi"><span>Decision Confidence</span><strong>{confidence}%</strong><small>Evidence coverage</small></div></div></section>''', unsafe_allow_html=True)
 
