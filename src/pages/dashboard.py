@@ -440,7 +440,19 @@ def render_dashboard(
             color:#334155!important;font-size:12.5px;font-weight:760;line-height:1.55;
         }
         .cv232-trend-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px;}
-        .cv232-trend-card{background:#fff;border:1px solid #E2E8F0;border-radius:17px;padding:15px 16px;box-shadow:0 12px 30px rgba(15,23,42,.045);}
+        .cv232-trend-card{
+            background:#fff;
+            border:1px solid #E2E8F0;
+            border-radius:17px;
+            padding:15px 16px;
+            box-shadow:0 12px 30px rgba(15,23,42,.045);
+            transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }
+        .cv232-trend-card:hover{
+            transform:translateY(-2px);
+            border-color:#BFDBFE;
+            box-shadow:0 16px 34px rgba(37,99,235,.08);
+        }
         .cv232-trend-card.good{background:#F0FDF4;border-color:#BBF7D0}.cv232-trend-card.bad{background:#FEF2F2;border-color:#FECACA}.cv232-trend-card.warn{background:#FFFBEB;border-color:#FDE68A}
         .cv232-trend-label{color:#64748B!important;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;}
         .cv232-trend-value{color:#0F172A!important;font-size:25px;font-weight:980;line-height:1;margin-top:7px;letter-spacing:-.04em;}
@@ -496,6 +508,12 @@ def render_dashboard(
             padding:15px 16px;
             margin:0 0 10px;
             box-shadow:0 10px 26px rgba(15,23,42,.04);
+            transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }
+        .cv231-activity-card:hover{
+            transform:translateY(-2px);
+            border-color:#BFDBFE;
+            box-shadow:0 15px 34px rgba(37,99,235,.08);
         }
         .cv231-activity-top{
             display:flex;
@@ -715,6 +733,8 @@ def render_dashboard(
     latest_project = (latest_analysis or {}).get("project_name") or (latest_analysis or {}).get("filename") or "No saved BOM yet"
     latest_parts = int((latest_analysis or {}).get("total_parts", 0) or 0)
     latest_health = int((latest_analysis or {}).get("health_score", avg_health_score) or 0)
+    latest_high_risk = int((latest_analysis or {}).get("high_risk_count", 0) or 0)
+    latest_medium_risk = int((latest_analysis or {}).get("medium_risk_count", 0) or 0)
     latest_date = _fmt_date((latest_analysis or {}).get("created_at", ""))
 
     top_alert = alert_data[0] if alert_data else None
@@ -1019,14 +1039,72 @@ def render_dashboard(
             box-shadow:0 16px 42px rgba(15,23,42,.05);
         }
         .cv-6b-project-panel{
-            height:390px;
+            min-height:268px;
             display:flex;
             flex-direction:column;
+            transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }
+        .cv-6b-project-panel:hover{
+            transform:translateY(-2px);
+            border-color:#BFDBFE;
+            box-shadow:0 18px 44px rgba(37,99,235,.09);
+        }
+        .cv241-project-grid{
+            display:grid;
+            grid-template-columns:repeat(3,minmax(0,1fr));
+            gap:9px;
+            margin:12px 0;
+        }
+        .cv241-project-stat{
+            background:#F8FAFC;
+            border:1px solid #E2E8F0;
+            border-radius:13px;
+            padding:10px 11px;
+            min-width:0;
+        }
+        .cv241-project-stat span{
+            display:block;
+            color:#64748B!important;
+            font-size:9px;
+            font-weight:950;
+            letter-spacing:.07em;
+            text-transform:uppercase;
+            margin-bottom:5px;
+        }
+        .cv241-project-stat strong{
+            display:block;
+            color:#0F172A!important;
+            font-size:19px;
+            font-weight:980;
+            line-height:1;
+        }
+        .cv241-status-line{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            color:#64748B!important;
+            font-size:10.5px;
+            font-weight:760;
+            margin:2px 0 11px;
+        }
+        .cv241-status-dot{
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+        }
+        .cv241-status-dot::before{
+            content:"";
+            width:8px;
+            height:8px;
+            border-radius:999px;
+            background:#22C55E;
+            box-shadow:0 0 0 4px rgba(34,197,94,.12);
         }
         .cv-6b-trend-chart-anchor + div [data-testid="stPlotlyChart"],
         .cv-6b-trend-chart-anchor ~ div [data-testid="stPlotlyChart"]{
-            height:390px!important;
-            min-height:390px!important;
+            height:230px!important;
+            min-height:230px!important;
             background:#FFFFFF!important;
             border:1px solid #E2E8F0!important;
             border-radius:20px!important;
@@ -1327,7 +1405,91 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    trend_col, project_col = st.columns([1.45, 0.72], gap="small")
+    # Milestone 24.1 — Put executive signals before supporting charts.
+    if latest_trend and previous_trend:
+        health_direction = (
+            "improved"
+            if trend_health_change > 0
+            else "declined"
+            if trend_health_change < 0
+            else "held steady"
+        )
+        risk_direction = (
+            "increased"
+            if trend_high_risk_change > 0
+            else "decreased"
+            if trend_high_risk_change < 0
+            else "did not change"
+        )
+        trend_summary = (
+            f"Portfolio health {health_direction} by {abs(trend_health_change)} point(s), "
+            f"while high-risk component exposure {risk_direction} by "
+            f"{abs(trend_high_risk_change)} compared with the previous saved analysis."
+        )
+    elif latest_trend:
+        trend_summary = (
+            "One saved analysis is available. Save another analysis to begin "
+            "measuring portfolio movement."
+        )
+    else:
+        trend_summary = (
+            "No saved analysis history is available yet. Analyze and save a BOM "
+            "to begin tracking trends."
+        )
+
+    recent_alerts_7d = 0
+    now_utc = pd.Timestamp.now(tz="UTC")
+    for alert in alert_data:
+        alert_time = pd.to_datetime(
+            alert.get("created_at") or alert.get("detected_at"),
+            errors="coerce",
+            utc=True,
+        )
+        if not pd.isna(alert_time) and (now_utc - alert_time).days <= 7:
+            recent_alerts_7d += 1
+
+    st.markdown(
+        """
+        <div class="cv-v4-section-head" style="margin-top:14px;">
+          <div>
+            <div class="cv-v4-section-title">Executive Analytics</div>
+            <div class="cv-v4-section-meta">The latest portfolio movement and areas needing attention.</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="cv232-trend-summary">{html.escape(trend_summary)}</div>
+        <section class="cv232-trend-grid">
+          <div class="cv232-trend-card {'good' if trend_health_change > 0 else 'bad' if trend_health_change < 0 else ''}">
+            <div class="cv232-trend-label">Health Change</div>
+            <div class="cv232-trend-value">{trend_health_change:+d}</div>
+            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
+          </div>
+          <div class="cv232-trend-card {'good' if trend_high_risk_change < 0 else 'bad' if trend_high_risk_change > 0 else ''}">
+            <div class="cv232-trend-label">High-Risk Change</div>
+            <div class="cv232-trend-value">{trend_high_risk_change:+d}</div>
+            <div class="cv232-trend-note">Fewer high-risk records is better</div>
+          </div>
+          <div class="cv232-trend-card {'warn' if recent_alerts_7d else ''}">
+            <div class="cv232-trend-label">Recent Alerts</div>
+            <div class="cv232-trend-value">{recent_alerts_7d}</div>
+            <div class="cv232-trend-note">Recorded in the last seven days</div>
+          </div>
+          <div class="cv232-trend-card {'bad' if declining_projects else 'good'}">
+            <div class="cv232-trend-label">Projects Declining</div>
+            <div class="cv232-trend-value">{len(declining_projects)}</div>
+            <div class="cv232-trend-note">Lower health or increased recorded risk</div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    trend_col, project_col = st.columns([1.35, 0.78], gap="small")
 
     with trend_col:
         st.markdown(
@@ -1429,6 +1591,7 @@ def render_dashboard(
             )
             fig.update_xaxes(
                 title=None,
+                tickformat="%b %d",
                 tickfont={"color": "#64748B"},
                 gridcolor="rgba(148,163,184,0.10)",
                 showline=False,
@@ -1445,7 +1608,7 @@ def render_dashboard(
                 unsafe_allow_html=True,
             )
             st.plotly_chart(
-                light_plotly_layout(fig, height=190),
+                light_plotly_layout(fig, height=165),
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
@@ -1486,11 +1649,18 @@ def render_dashboard(
                 </div>
                 <div class="cv-v4-icon">{_lucide_icon('file',18)}</div>
               </div>
-              <div class="cv-6b-project-meta">
-                <div class="cv-6b-project-stat"><span>Health</span><strong>{latest_health}</strong></div>
-                <div class="cv-6b-project-stat"><span>Parts</span><strong>{latest_parts}</strong></div>
+              <div class="cv241-project-grid">
+                <div class="cv241-project-stat"><span>Health</span><strong>{latest_health}</strong></div>
+                <div class="cv241-project-stat"><span>Components</span><strong>{latest_parts}</strong></div>
+                <div class="cv241-project-stat"><span>High Risk</span><strong>{latest_high_risk}</strong></div>
+                <div class="cv241-project-stat"><span>Medium Risk</span><strong>{latest_medium_risk}</strong></div>
+                <div class="cv241-project-stat"><span>Alerts</span><strong>{alert_count}</strong></div>
+                <div class="cv241-project-stat"><span>Replacements</span><strong>{alternative_count}</strong></div>
               </div>
-              <div class="cv-v4-text" style="margin-bottom:13px;">Last updated {html.escape(str(latest_date))}</div>
+              <div class="cv241-status-line">
+                <span class="cv241-status-dot">Active engineering review</span>
+                <span>Updated {html.escape(str(latest_date))}</span>
+              </div>
               <a class="cv-6b-project-link" href="{project_href}" target="_self">
                 <span>Continue analysis</span><span>→</span>
               </a>
@@ -1498,93 +1668,6 @@ def render_dashboard(
             """,
             unsafe_allow_html=True,
         )
-
-    # Milestone 24.0 — Executive dashboard redesign.
-    # The lower dashboard is now organized as compact decision-support panels
-    # instead of several full-width reporting sections.
-
-    if latest_trend and previous_trend:
-        health_direction = (
-            "improved"
-            if trend_health_change > 0
-            else "declined"
-            if trend_health_change < 0
-            else "held steady"
-        )
-        risk_direction = (
-            "increased"
-            if trend_high_risk_change > 0
-            else "decreased"
-            if trend_high_risk_change < 0
-            else "did not change"
-        )
-        trend_summary = (
-            f"Portfolio health {health_direction} by {abs(trend_health_change)} point(s), "
-            f"while high-risk component exposure {risk_direction} by "
-            f"{abs(trend_high_risk_change)} compared with the previous saved analysis."
-        )
-    elif latest_trend:
-        trend_summary = (
-            "One saved analysis is available. Save another analysis to begin "
-            "measuring portfolio movement."
-        )
-    else:
-        trend_summary = (
-            "No saved analysis history is available yet. Analyze and save a BOM "
-            "to begin tracking trends."
-        )
-
-    recent_alerts_7d = 0
-    now_utc = pd.Timestamp.now(tz="UTC")
-    for alert in alert_data:
-        alert_time = pd.to_datetime(
-            alert.get("created_at") or alert.get("detected_at"),
-            errors="coerce",
-            utc=True,
-        )
-        if not pd.isna(alert_time) and (now_utc - alert_time).days <= 7:
-            recent_alerts_7d += 1
-
-    st.markdown(
-        """
-        <div class="cv-v4-section-head" style="margin-top:14px;">
-          <div>
-            <div class="cv-v4-section-title">Executive Analytics</div>
-            <div class="cv-v4-section-meta">Compact portfolio movement, risk, and recent engineering activity.</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f"""
-        <div class="cv232-trend-summary">{html.escape(trend_summary)}</div>
-        <section class="cv232-trend-grid">
-          <div class="cv232-trend-card {'good' if trend_health_change > 0 else 'bad' if trend_health_change < 0 else ''}">
-            <div class="cv232-trend-label">Health Change</div>
-            <div class="cv232-trend-value">{trend_health_change:+d}</div>
-            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
-          </div>
-          <div class="cv232-trend-card {'good' if trend_high_risk_change < 0 else 'bad' if trend_high_risk_change > 0 else ''}">
-            <div class="cv232-trend-label">High-Risk Change</div>
-            <div class="cv232-trend-value">{trend_high_risk_change:+d}</div>
-            <div class="cv232-trend-note">Fewer high-risk records is better</div>
-          </div>
-          <div class="cv232-trend-card {'warn' if recent_alerts_7d else ''}">
-            <div class="cv232-trend-label">Recent Alerts</div>
-            <div class="cv232-trend-value">{recent_alerts_7d}</div>
-            <div class="cv232-trend-note">Recorded in the last seven days</div>
-          </div>
-          <div class="cv232-trend-card {'bad' if declining_projects else 'good'}">
-            <div class="cv232-trend-label">Projects Declining</div>
-            <div class="cv232-trend-value">{len(declining_projects)}</div>
-            <div class="cv232-trend-note">Lower health or increased recorded risk</div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
 
     analytics_col, activity_col = st.columns([1.08, 0.92], gap="medium")
 
@@ -1594,7 +1677,7 @@ def render_dashboard(
             <div class="cv-v4-section-head cv-6b-column-heading">
               <div>
                 <div class="cv-v4-section-title">Risk Movement</div>
-                <div class="cv-v4-section-meta">Latest seven recorded days across saved analyses.</div>
+                <div class="cv-v4-section-meta">High- and medium-risk movement over the latest recorded days.</div>
               </div>
               <a class="cv-v4-chip" href="?page=Monitoring" target="_self" style="text-decoration:none!important;">Open monitoring →</a>
             </div>
@@ -1711,7 +1794,7 @@ def render_dashboard(
                 paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(
-                light_plotly_layout(risk_fig, height=205),
+                light_plotly_layout(risk_fig, height=155),
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
