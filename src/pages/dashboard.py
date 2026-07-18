@@ -2379,22 +2379,22 @@ def render_dashboard(
                 )
 
                 timeline_html.append(
-                    f"""
-                    <section class="cv243-event {event_class}">
-                      <div class="cv243-event-top">
-                        <div class="cv243-event-type">{html.escape(event_type)}</div>
-                        <div class="cv243-event-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
-                      </div>
-                      <div class="cv243-event-title">{html.escape(str(event['title']))}</div>
-                      <div class="cv243-event-copy">{html.escape(str(event['copy']))}</div>
-                      <div class="cv243-event-footer">
-                        <a class="cv243-event-link" href="{event['href']}" target="_self">
-                          {html.escape(str(event['action']))} →
-                        </a>
-                        {repeat_badge}
-                      </div>
-                    </section>
-                    """
+                    (
+                        f'<section class="cv243-event {event_class}">'
+                        f'<div class="cv243-event-top">'
+                        f'<div class="cv243-event-type">{html.escape(event_type)}</div>'
+                        f'<div class="cv243-event-time">{html.escape(_activity_relative(event.get("created_at")))}</div>'
+                        f'</div>'
+                        f'<div class="cv243-event-title">{html.escape(str(event["title"]))}</div>'
+                        f'<div class="cv243-event-copy">{html.escape(str(event["copy"]))}</div>'
+                        f'<div class="cv243-event-footer">'
+                        f'<a class="cv243-event-link" href="{event["href"]}" target="_self">'
+                        f'{html.escape(str(event["action"]))} →'
+                        f'</a>'
+                        f'{repeat_badge}'
+                        f'</div>'
+                        f'</section>'
+                    )
                 )
             timeline_html.append("</div>")
             st.markdown("".join(timeline_html), unsafe_allow_html=True)
