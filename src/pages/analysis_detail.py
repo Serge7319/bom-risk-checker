@@ -600,6 +600,11 @@ def render_analysis_detail(
         .cv272-health{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:18px;padding:16px;margin-bottom:14px}.cv272-health-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.cv272-health h4{margin:0;color:#0f172a!important;font-size:17px;font-weight:980}.cv272-health p{margin:4px 0 0;color:#64748b!important;font-size:12px;font-weight:750}
         @media(max-width:900px){.cv272-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+        /* Milestone 27.3 — Evidence-rich Review Action Center */
+        .cv273-card-head{border:1px solid #dbeafe;background:linear-gradient(135deg,#fff,#f8fbff);border-radius:16px;padding:14px 16px;margin:4px 0 12px}.cv273-card-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.cv273-mpn{font-size:17px;font-weight:980;color:#0f172a!important}.cv273-maker{font-size:12px;color:#64748b!important;font-weight:720;margin-top:3px}.cv273-badges{display:flex;gap:6px;flex-wrap:wrap}.cv273-badge{display:inline-flex;align-items:center;border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:5px 8px;font-size:9.5px;font-weight:900}.cv273-badge.warn{border-color:#fde68a;background:#fffbeb;color:#a16207!important}.cv273-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c!important}.cv273-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857!important}
+        .cv273-recgrid{display:grid;grid-template-columns:1.2fr .8fr;gap:10px;margin:10px 0}.cv273-panel{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:13px}.cv273-panel h5{margin:0 0 7px;color:#0f172a!important;font-size:13px;font-weight:950}.cv273-panel p{margin:0;color:#52647a!important;font-size:12px;line-height:1.55}.cv273-confidence{font-size:25px;font-weight:980;color:#7c3aed!important}.cv273-evidence-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 14px}.cv273-evidence{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv273-evidence span{display:block;font-size:9px;font-weight:900;color:#64748b!important;text-transform:uppercase;letter-spacing:.04em}.cv273-evidence strong{display:block;margin-top:4px;font-size:12px;color:#0f172a!important;font-weight:900;overflow-wrap:anywhere}.cv273-history{border-left:2px solid #dbeafe;padding-left:12px;margin:8px 0}.cv273-history-item{margin:0 0 10px}.cv273-history-item strong{display:block;color:#0f172a!important;font-size:11.5px}.cv273-history-item small{display:block;color:#64748b!important;font-size:10.5px;margin-top:2px}.cv273-save{display:flex;align-items:center;gap:7px;color:#047857!important;font-size:11px;font-weight:850;margin:6px 0 2px}.cv273-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px #dcfce7}
+        @media(max-width:900px){.cv273-recgrid{grid-template-columns:1fr}.cv273-evidence-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -1022,23 +1027,38 @@ def render_analysis_detail(
                 if decision_filter != "All" and c_decision != decision_filter: continue
                 filtered_review_parts.append(candidate)
             st.caption(f"Showing {len(filtered_review_parts)} of {len(review_parts)} review items")
+            review_events, review_events_error = list_review_events(
+                supabase, analysis_id=analysis_id, user_id=user_id, workspace_id=workspace_id, limit=250
+            )
+            if review_events_error:
+                review_events = []
             for review_index, part in enumerate(filtered_review_parts, 1):
                 mpn = _safe(part.get("mpn"), "Unknown MPN")
                 saved = decision_map.get(mpn, {})
                 status_label = saved.get("decision") or "Not reviewed"
                 updated_label = _relative_date(saved.get("updated_at")) if saved else "Not saved"
-                with st.expander(
-                    f"{review_index}. {mpn} — {status_label}",
-                    expanded=(review_index == 1 and reviewed_count == 0),
-                ):
+                saved_priority = _safe(saved.get("priority"), "High" if _num(part.get("risk_score"),0) >= 70 else "Medium" if _num(part.get("risk_score"),0) >= 35 else "Low")
+                saved_assignee = _safe(saved.get("assignee_name"), "Unassigned")
+                saved_due = _safe(saved.get("due_label"), "No due date")
+                collapsed_title = f"{review_index}. {mpn}  •  {status_label}  •  {saved_priority}  •  {saved_assignee}  •  {saved_due}"
+                with st.expander(collapsed_title, expanded=(review_index == 1 and reviewed_count == 0)):
                     risk_score = _num(part.get("risk_score"), 0)
                     suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
                     rec_reason = _safe(
                         part.get("reason"),
                         "Review recorded engineering evidence before approval.",
                     )
+                    confidence = max(0, min(100, 100 - abs(risk_score - 50)))
+                    lifecycle = _safe(part.get("lifecycle"), "Unknown")
+                    stock = _num(part.get("stock"), 0)
+                    sources = _num(part.get("sources"), 0)
+                    alternatives = _num(part.get("alternatives_count") or part.get("alternative_count") or part.get("alternatives"), 0)
+                    monitoring = _safe(part.get("monitoring_status") or part.get("watch_status"), "Not monitored")
+                    supplier = _safe(part.get("supplier") or part.get("best_supplier"), "No preferred supplier")
+                    lead_time = _safe(part.get("lead_time") or part.get("lead_time_days"), "Unknown")
+                    badge_class = "bad" if risk_score >= 70 else "warn" if risk_score >= 35 else "good"
                     st.markdown(
-                        f'''<div class="cv27-rec"><span>Cadivor Recommendation</span><strong>{html.escape(suggested)}</strong><p>{html.escape(rec_reason)}</p></div><div class="cv27-evidence"><div><span>Manufacturer</span><strong>{html.escape(_safe(part.get("manufacturer"), "Unknown"))}</strong></div><div><span>Lifecycle</span><strong>{html.escape(_safe(part.get("lifecycle"), "Unknown"))}</strong></div><div><span>Risk Score</span><strong>{risk_score}/100</strong></div><div><span>Stock</span><strong>{_num(part.get("stock"), 0)}</strong></div><div><span>Supplier Sources</span><strong>{_num(part.get("sources"), 0)}</strong></div><div><span>Last Saved</span><strong>{html.escape(updated_label)}</strong></div></div>''',
+                        f'''<section class="cv273-card-head"><div class="cv273-card-top"><div><div class="cv273-mpn">{html.escape(mpn)}</div><div class="cv273-maker">{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))}</div></div><div class="cv273-badges"><span class="cv273-badge {badge_class}">{html.escape(status_label)}</span><span class="cv273-badge">{html.escape(saved_priority)} priority</span><span class="cv273-badge">{html.escape(saved_assignee)}</span><span class="cv273-badge">{html.escape(saved_due)}</span></div></div></section><div class="cv273-recgrid"><div class="cv273-panel"><h5>Cadivor recommendation · {html.escape(suggested)}</h5><p>{html.escape(rec_reason)}</p></div><div class="cv273-panel"><h5>Recommendation confidence</h5><div class="cv273-confidence">{confidence}%</div><p>Confidence reflects the strength and consistency of the recorded component evidence.</p></div></div><div class="cv273-evidence-grid"><div class="cv273-evidence"><span>Risk / lifecycle</span><strong>{risk_score}/100 · {html.escape(lifecycle)}</strong></div><div class="cv273-evidence"><span>Inventory</span><strong>{stock:,} units</strong></div><div class="cv273-evidence"><span>Supplier coverage</span><strong>{sources} sources · {html.escape(supplier)}</strong></div><div class="cv273-evidence"><span>Lead time</span><strong>{html.escape(str(lead_time))}</strong></div><div class="cv273-evidence"><span>Alternatives</span><strong>{alternatives} identified</strong></div><div class="cv273-evidence"><span>Monitoring</span><strong>{html.escape(monitoring)}</strong></div><div class="cv273-evidence"><span>Assignee</span><strong>{html.escape(saved_assignee)}</strong></div><div class="cv273-evidence"><span>Last saved</span><strong>{html.escape(updated_label)}</strong></div></div>''',
                         unsafe_allow_html=True,
                     )
                     col_decision, col_owner, col_due = st.columns([1.15, 1, 1])
@@ -1140,10 +1160,19 @@ def render_analysis_detail(
                         if save_error:
                             st.error(f"Save failed for {mpn}: {save_error}")
                         elif saved_item:
-                            st.caption("Saved to Supabase")
+                            st.session_state[f"cv273_saved_{analysis_id}_{mpn}"] = datetime.now(timezone.utc).isoformat()
                             st.rerun()
                     elif saved:
-                        st.caption(f"Saved by {_safe(saved.get('reviewer_name'), reviewer_name)} · {updated_label}")
+                        st.markdown(f'<div class="cv273-save"><i class="cv273-dot"></i>Autosaved to Supabase · {_safe(saved.get("reviewer_name"), reviewer_name)} · {html.escape(updated_label)}</div>', unsafe_allow_html=True)
+
+
+                    component_events = [event for event in review_events if str(event.get("review_item_id") or "") == str(saved.get("id") or "")]
+                    if component_events:
+                        with st.expander("Decision history", expanded=False):
+                            history_html = []
+                            for event in component_events[:12]:
+                                history_html.append(f'<div class="cv273-history-item"><strong>{html.escape(_safe(event.get("title"), "Review activity"))}</strong><small>{html.escape(_safe(event.get("actor_name"), "Cadivor"))} · {html.escape(_relative_date(event.get("created_at")))}</small><small>{html.escape(_safe(event.get("body"), ""))}</small></div>')
+                            st.markdown(f'<div class="cv273-history">{"".join(history_html)}</div>', unsafe_allow_html=True)
 
                     if saved.get("id"):
                         with st.expander("Component discussion", expanded=False):
