@@ -433,6 +433,26 @@ def render_dashboard(
             .cv-metric-value{font-size:36px!important;}
         }
 
+        /* Milestone 23.2 — Portfolio trends and health history */
+        .cv232-trend-summary{
+            border:1px solid #BFDBFE;background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
+            border-radius:18px;padding:16px 18px;margin:4px 0 14px;
+            color:#334155!important;font-size:12.5px;font-weight:760;line-height:1.55;
+        }
+        .cv232-trend-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px;}
+        .cv232-trend-card{background:#fff;border:1px solid #E2E8F0;border-radius:17px;padding:15px 16px;box-shadow:0 12px 30px rgba(15,23,42,.045);}
+        .cv232-trend-card.good{background:#F0FDF4;border-color:#BBF7D0}.cv232-trend-card.bad{background:#FEF2F2;border-color:#FECACA}.cv232-trend-card.warn{background:#FFFBEB;border-color:#FDE68A}
+        .cv232-trend-label{color:#64748B!important;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;}
+        .cv232-trend-value{color:#0F172A!important;font-size:29px;font-weight:980;line-height:1;margin-top:10px;letter-spacing:-.045em;}
+        .cv232-trend-note{color:#64748B!important;font-size:10.5px;font-weight:750;line-height:1.35;margin-top:7px;}
+        .cv232-project-list{display:grid;gap:9px;}
+        .cv232-project-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:13px 14px;box-shadow:0 9px 24px rgba(15,23,42,.035);}
+        .cv232-project-name{color:#0F172A!important;font-size:13px;font-weight:950;margin-bottom:4px;}
+        .cv232-project-copy{color:#64748B!important;font-size:11.5px;font-weight:750;line-height:1.4;}
+        .cv232-project-delta{border-radius:999px;padding:6px 9px;font-size:11px;font-weight:950;white-space:nowrap;}
+        .cv232-project-delta.good{color:#047857!important;background:#ECFDF5;border:1px solid #A7F3D0}.cv232-project-delta.bad{color:#B91C1C!important;background:#FEF2F2;border:1px solid #FECACA}
+        @media(max-width:950px){.cv232-trend-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+
         /* Milestone 23.1 — Engineering timeline and recent activity */
         .cv231-summary-grid{
             display:grid;
@@ -702,6 +722,65 @@ def render_dashboard(
     top_alert_msg = top_alert.get("alert_message", "No supplier or lifecycle alerts require immediate action.") if top_alert else "No supplier or lifecycle alerts require immediate action."
     next_action_title = "Review high-risk components" if total_high_risk else "Run next BOM analysis"
     next_action_copy = f"{total_high_risk} components need engineering review before the next release." if total_high_risk else "Upload another BOM to keep the workspace intelligence current."
+
+    # Milestone 23.2 — Portfolio trend calculations from saved analysis history.
+    trend_records = []
+    for item in analysis_data[:30]:
+        created_at = pd.to_datetime(item.get("created_at"), errors="coerce", utc=True)
+        if pd.isna(created_at):
+            continue
+        trend_records.append(
+            {
+                "created_at": created_at,
+                "project": str(
+                    item.get("project_name")
+                    or item.get("filename")
+                    or item.get("source_filename")
+                    or "Saved BOM"
+                ),
+                "health": int(item.get("health_score", 0) or 0),
+                "high_risk": int(item.get("high_risk_count", 0) or 0),
+                "medium_risk": int(item.get("medium_risk_count", 0) or 0),
+            }
+        )
+
+    trend_records.sort(key=lambda row: row["created_at"])
+    latest_trend = trend_records[-1] if trend_records else None
+    previous_trend = trend_records[-2] if len(trend_records) >= 2 else None
+    trend_health_change = (
+        latest_trend["health"] - previous_trend["health"]
+        if latest_trend and previous_trend else 0
+    )
+    trend_high_risk_change = (
+        latest_trend["high_risk"] - previous_trend["high_risk"]
+        if latest_trend and previous_trend else 0
+    )
+
+    project_history = {}
+    for row in trend_records:
+        project_history.setdefault(row["project"], []).append(row)
+
+    declining_projects = []
+    improving_projects = []
+    for project_name, records in project_history.items():
+        if len(records) < 2:
+            continue
+        earlier, current = records[-2], records[-1]
+        health_change = current["health"] - earlier["health"]
+        risk_change = current["high_risk"] - earlier["high_risk"]
+        movement = {
+            "project": project_name,
+            "health_change": health_change,
+            "risk_change": risk_change,
+            "current_health": current["health"],
+        }
+        if health_change < 0 or risk_change > 0:
+            declining_projects.append(movement)
+        elif health_change > 0 or risk_change < 0:
+            improving_projects.append(movement)
+
+    declining_projects.sort(key=lambda row: (row["health_change"], -row["risk_change"]))
+    improving_projects.sort(key=lambda row: (-row["health_change"], row["risk_change"]))
 
     # Milestone 23.1 — Build a unified recent engineering activity feed.
     def _activity_datetime(value):
@@ -1326,6 +1405,162 @@ def render_dashboard(
             """,
             unsafe_allow_html=True,
         )
+
+    st.markdown(
+        """
+        <div class="cv-v4-section-head" style="margin-top:22px;">
+          <div>
+            <div class="cv-v4-section-title">Portfolio Trends</div>
+            <div class="cv-v4-section-meta">See whether engineering health and recorded component risk are improving over time.</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if latest_trend and previous_trend:
+        health_direction = "improved" if trend_health_change > 0 else "declined" if trend_health_change < 0 else "held steady"
+        risk_direction = "increased" if trend_high_risk_change > 0 else "decreased" if trend_high_risk_change < 0 else "did not change"
+        trend_summary = (
+            f"The latest saved analysis {health_direction} portfolio health by "
+            f"{abs(trend_health_change)} point(s), while high-risk components {risk_direction} "
+            f"by {abs(trend_high_risk_change)} compared with the previous saved analysis."
+        )
+    elif latest_trend:
+        trend_summary = "One saved analysis is available. Save another analysis to begin measuring portfolio movement."
+    else:
+        trend_summary = "No saved analysis history is available yet. Analyze and save a BOM to begin tracking trends."
+
+    st.markdown(
+        f'<div class="cv232-trend-summary">{html.escape(trend_summary)}</div>',
+        unsafe_allow_html=True,
+    )
+
+    health_card_kind = "good" if trend_health_change > 0 else "bad" if trend_health_change < 0 else ""
+    risk_card_kind = "good" if trend_high_risk_change < 0 else "bad" if trend_high_risk_change > 0 else ""
+    recent_alerts_7d = 0
+    now_utc = pd.Timestamp.now(tz="UTC")
+    for alert in alert_data:
+        alert_time = pd.to_datetime(alert.get("created_at") or alert.get("detected_at"), errors="coerce", utc=True)
+        if not pd.isna(alert_time) and (now_utc - alert_time).days <= 7:
+            recent_alerts_7d += 1
+
+    st.markdown(
+        f"""
+        <section class="cv232-trend-grid">
+          <div class="cv232-trend-card {health_card_kind}">
+            <div class="cv232-trend-label">Health Change</div>
+            <div class="cv232-trend-value">{trend_health_change:+d}</div>
+            <div class="cv232-trend-note">Latest analysis versus previous analysis</div>
+          </div>
+          <div class="cv232-trend-card {risk_card_kind}">
+            <div class="cv232-trend-label">High-Risk Change</div>
+            <div class="cv232-trend-value">{trend_high_risk_change:+d}</div>
+            <div class="cv232-trend-note">Fewer high-risk records is better</div>
+          </div>
+          <div class="cv232-trend-card {'warn' if recent_alerts_7d else ''}">
+            <div class="cv232-trend-label">Recent Alerts</div>
+            <div class="cv232-trend-value">{recent_alerts_7d}</div>
+            <div class="cv232-trend-note">Monitoring alerts recorded in the last 7 days</div>
+          </div>
+          <div class="cv232-trend-card {'bad' if declining_projects else 'good'}">
+            <div class="cv232-trend-label">Projects Declining</div>
+            <div class="cv232-trend-value">{len(declining_projects)}</div>
+            <div class="cv232-trend-note">Projects with lower health or more high-risk records</div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    chart_left, chart_right = st.columns(2, gap="large")
+    with chart_left:
+        st.markdown("#### Portfolio Health History")
+        if len(trend_records) >= 2:
+            health_df = pd.DataFrame(trend_records)
+            health_fig = go.Figure()
+            health_fig.add_trace(
+                go.Scatter(
+                    x=health_df["created_at"],
+                    y=health_df["health"],
+                    mode="lines+markers",
+                    name="Health",
+                    line={"color": "#2563EB", "width": 3},
+                    marker={"size": 8},
+                    hovertemplate="%{x|%b %d, %Y}<br>Health %{y}/100<extra></extra>",
+                )
+            )
+            health_fig.update_yaxes(range=[0, 100], title=None)
+            st.plotly_chart(
+                light_plotly_layout(health_fig, height=330),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+        else:
+            st.info("Save at least two BOM analyses to display a health trend.")
+
+    with chart_right:
+        st.markdown("#### Recorded Risk History")
+        if len(trend_records) >= 2:
+            risk_df = pd.DataFrame(trend_records)
+            risk_fig = go.Figure()
+            risk_fig.add_trace(
+                go.Scatter(
+                    x=risk_df["created_at"], y=risk_df["high_risk"],
+                    mode="lines+markers", name="High Risk",
+                    line={"color": "#DC2626", "width": 3}, marker={"size": 8},
+                )
+            )
+            risk_fig.add_trace(
+                go.Scatter(
+                    x=risk_df["created_at"], y=risk_df["medium_risk"],
+                    mode="lines+markers", name="Medium Risk",
+                    line={"color": "#F59E0B", "width": 3}, marker={"size": 8},
+                )
+            )
+            risk_fig.update_yaxes(rangemode="tozero", title=None)
+            st.plotly_chart(
+                light_plotly_layout(risk_fig, height=330),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+        else:
+            st.info("Save at least two BOM analyses to display a risk trend.")
+
+    movement_left, movement_right = st.columns(2, gap="large")
+    with movement_left:
+        st.markdown("#### Projects Needing Attention")
+        if declining_projects:
+            rows = []
+            for project in declining_projects[:5]:
+                details = []
+                if project["health_change"] < 0:
+                    details.append(f"health declined by {abs(project['health_change'])} point(s)")
+                if project["risk_change"] > 0:
+                    details.append(f"{project['risk_change']} new high-risk record(s)")
+                rows.append(
+                    f'<div class="cv232-project-row"><div><div class="cv232-project-name">{html.escape(project["project"])}</div><div class="cv232-project-copy">{html.escape("; ".join(details).capitalize())}.</div></div><div class="cv232-project-delta bad">{project["health_change"]:+d} health</div></div>'
+                )
+            st.markdown('<div class="cv232-project-list">'+''.join(rows)+'</div>', unsafe_allow_html=True)
+        else:
+            st.success("No project with repeated analyses is currently trending in the wrong direction.")
+
+    with movement_right:
+        st.markdown("#### Projects Improving")
+        if improving_projects:
+            rows = []
+            for project in improving_projects[:5]:
+                details = []
+                if project["health_change"] > 0:
+                    details.append(f"health improved by {project['health_change']} point(s)")
+                if project["risk_change"] < 0:
+                    details.append(f"{abs(project['risk_change'])} fewer high-risk record(s)")
+                rows.append(
+                    f'<div class="cv232-project-row"><div><div class="cv232-project-name">{html.escape(project["project"])}</div><div class="cv232-project-copy">{html.escape("; ".join(details).capitalize())}.</div></div><div class="cv232-project-delta good">+{max(project["health_change"],0)} health</div></div>'
+                )
+            st.markdown('<div class="cv232-project-list">'+''.join(rows)+'</div>', unsafe_allow_html=True)
+        else:
+            st.info("Projects with measurable improvement will appear after repeated saved analyses.")
 
     st.markdown(
         """
