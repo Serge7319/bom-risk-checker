@@ -1710,7 +1710,7 @@ def render_dashboard(
           </div>
         </section>
             """
-        ),
+        ).replace("\n", ""),
         unsafe_allow_html=True,
     )
 
@@ -1753,7 +1753,7 @@ def render_dashboard(
           </a>
         </section>
             """
-        ),
+        ).replace("\n", ""),
         unsafe_allow_html=True,
     )
 
@@ -1821,7 +1821,7 @@ def render_dashboard(
           </div>
         </section>
             """
-        ),
+        ).replace("\n", ""),
         unsafe_allow_html=True,
     )
 
