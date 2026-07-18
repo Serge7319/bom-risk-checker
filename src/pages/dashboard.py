@@ -1334,7 +1334,7 @@ def render_dashboard(
             <div class="cv-v4-section-head cv-6b-column-heading">
               <div>
                 <div class="cv-v4-section-title">Portfolio Health Trend</div>
-                <div class="cv-v4-section-meta">Health across saved analyses • {health_delta_label} vs previous</div>
+                <div class="cv-v4-section-meta">Daily average across saved analyses • {health_delta_label} vs previous</div>
               </div>
               <a class="cv-v4-chip" href="?page=Reports" target="_self" style="text-decoration:none!important;">Open analyses →</a>
             </div>
@@ -1343,49 +1343,112 @@ def render_dashboard(
         )
         if analysis_data and len(analysis_data) >= 2:
             trend_df = pd.DataFrame(analysis_data)
-            trend_df["created_at"] = pd.to_datetime(trend_df["created_at"], errors="coerce")
-            trend_df = trend_df.dropna(subset=["created_at"]).sort_values("created_at")
-            trend_df = trend_df.rename(
-                columns={"created_at": "Date", "health_score": "Health Score"}
+            trend_df["created_at"] = pd.to_datetime(
+                trend_df["created_at"], errors="coerce", utc=True
             )
-            health_values = pd.to_numeric(trend_df["Health Score"], errors="coerce").dropna()
-            health_min = max(0, float(health_values.min()) - 4) if not health_values.empty else 0
-            health_max = min(100, float(health_values.max()) + 4) if not health_values.empty else 100
-            if health_max - health_min < 12:
+            trend_df["health_score"] = pd.to_numeric(
+                trend_df["health_score"], errors="coerce"
+            )
+            trend_df = trend_df.dropna(
+                subset=["created_at", "health_score"]
+            ).sort_values("created_at")
+
+            # Use one point per day so several analyses saved close together do not
+            # create vertical jumps or misleading spline loops.
+            trend_df["Date"] = trend_df["created_at"].dt.floor("D")
+            daily_health = (
+                trend_df.groupby("Date", as_index=False)
+                .agg(
+                    Health_Score=("health_score", "mean"),
+                    Analyses=("health_score", "size"),
+                )
+                .sort_values("Date")
+            )
+            daily_health["Health_Score"] = daily_health["Health_Score"].round(1)
+
+            health_values = daily_health["Health_Score"].dropna()
+            health_min = (
+                max(0, float(health_values.min()) - 3)
+                if not health_values.empty else 0
+            )
+            health_max = (
+                min(100, float(health_values.max()) + 3)
+                if not health_values.empty else 100
+            )
+            if health_max - health_min < 10:
                 midpoint = (health_max + health_min) / 2
-                health_min = max(0, midpoint - 6)
-                health_max = min(100, midpoint + 6)
+                health_min = max(0, midpoint - 5)
+                health_max = min(100, midpoint + 5)
 
             fig = go.Figure()
+
+            # A hidden baseline makes the fill subtle and limits it to the visible
+            # health range instead of painting the entire chart down to zero.
             fig.add_trace(
                 go.Scatter(
-                    x=trend_df["Date"],
-                    y=trend_df["Health Score"],
-                    mode="lines+markers",
-                    name="Portfolio Health",
-                    line={"color": "#2563EB", "width": 4, "shape": "spline", "smoothing": 0.65},
-                    marker={
-                        "size": 7,
-                        "color": "#FFFFFF",
-                        "line": {"color": "#2563EB", "width": 2.5},
-                    },
-                    fill="tozeroy",
-                    fillcolor="rgba(37, 99, 235, 0.16)",
-                    hovertemplate="<b>%{x|%b %d, %Y}</b><br>Portfolio health: %{y:.0f}/100<extra></extra>",
+                    x=daily_health["Date"],
+                    y=[health_min] * len(daily_health),
+                    mode="lines",
+                    line={"width": 0},
+                    hoverinfo="skip",
+                    showlegend=False,
                 )
             )
-            fig.update_yaxes(range=[health_min, health_max], title=None, tickfont={"color": "#64748B"})
-            fig.update_xaxes(title=None, tickfont={"color": "#64748B"})
+            fig.add_trace(
+                go.Scatter(
+                    x=daily_health["Date"],
+                    y=daily_health["Health_Score"],
+                    customdata=daily_health[["Analyses"]],
+                    mode="lines+markers",
+                    name="Portfolio Health",
+                    line={"color": "#2563EB", "width": 3, "shape": "linear"},
+                    marker={
+                        "size": 6,
+                        "color": "#FFFFFF",
+                        "line": {"color": "#2563EB", "width": 2},
+                    },
+                    fill="tonexty",
+                    fillcolor="rgba(37, 99, 235, 0.09)",
+                    hovertemplate=(
+                        "<b>%{x|%b %d, %Y}</b>"
+                        "<br>Daily average health: %{y:.1f}/100"
+                        "<br>Saved analyses: %{customdata[0]}"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+            fig.update_yaxes(
+                range=[health_min, health_max],
+                title=None,
+                tickfont={"color": "#64748B"},
+                gridcolor="rgba(148,163,184,0.16)",
+                zeroline=False,
+            )
+            fig.update_xaxes(
+                title=None,
+                tickfont={"color": "#64748B"},
+                gridcolor="rgba(148,163,184,0.10)",
+                showline=False,
+            )
             fig.update_layout(
                 hovermode="x unified",
-                margin={"l": 10, "r": 12, "t": 12, "b": 8},
+                margin={"l": 8, "r": 10, "t": 8, "b": 6},
                 showlegend=False,
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
             )
-            st.markdown('<div class="cv-6b-trend-chart-anchor"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="cv-6b-trend-chart-anchor"></div>',
+                unsafe_allow_html=True,
+            )
             st.plotly_chart(
-                light_plotly_layout(fig, height=320),
+                light_plotly_layout(fig, height=270),
                 use_container_width=True,
-                config={"displayModeBar": False, "scrollZoom": False},
+                config={
+                    "displayModeBar": False,
+                    "scrollZoom": False,
+                    "responsive": True,
+                },
             )
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
@@ -1501,55 +1564,120 @@ def render_dashboard(
     )
 
     st.markdown("#### Recorded Risk History")
+    st.caption("Daily average risk counts across saved analyses.")
     if len(trend_records) >= 2:
         risk_df = pd.DataFrame(trend_records)
+        risk_df["created_at"] = pd.to_datetime(
+            risk_df["created_at"], errors="coerce", utc=True
+        )
+        risk_df["high_risk"] = pd.to_numeric(
+            risk_df["high_risk"], errors="coerce"
+        ).fillna(0)
+        risk_df["medium_risk"] = pd.to_numeric(
+            risk_df["medium_risk"], errors="coerce"
+        ).fillna(0)
+        risk_df = risk_df.dropna(subset=["created_at"]).sort_values("created_at")
+        risk_df["Date"] = risk_df["created_at"].dt.floor("D")
+
+        daily_risk = (
+            risk_df.groupby("Date", as_index=False)
+            .agg(
+                High_Risk=("high_risk", "mean"),
+                Medium_Risk=("medium_risk", "mean"),
+                Analyses=("high_risk", "size"),
+            )
+            .sort_values("Date")
+        )
+        daily_risk["High_Risk"] = daily_risk["High_Risk"].round(1)
+        daily_risk["Medium_Risk"] = daily_risk["Medium_Risk"].round(1)
+
         risk_max = max(
-            1,
-            int(
+            1.0,
+            float(
                 max(
-                    pd.to_numeric(risk_df["high_risk"], errors="coerce").fillna(0).max(),
-                    pd.to_numeric(risk_df["medium_risk"], errors="coerce").fillna(0).max(),
+                    daily_risk["High_Risk"].max(),
+                    daily_risk["Medium_Risk"].max(),
                 )
             ),
         )
+
         risk_fig = go.Figure()
         risk_fig.add_trace(
             go.Scatter(
-                x=risk_df["created_at"],
-                y=risk_df["medium_risk"],
+                x=daily_risk["Date"],
+                y=daily_risk["Medium_Risk"],
+                customdata=daily_risk[["Analyses"]],
                 mode="lines+markers",
                 name="Medium Risk",
-                line={"color": "#F59E0B", "width": 3.5, "shape": "spline", "smoothing": 0.6},
-                marker={"size": 6, "color": "#FFFFFF", "line": {"color": "#F59E0B", "width": 2}},
-                fill="tozeroy",
-                fillcolor="rgba(245, 158, 11, 0.13)",
-                hovertemplate="<b>%{x|%b %d, %Y}</b><br>Medium-risk components: %{y:.0f}<extra></extra>",
+                line={"color": "#F59E0B", "width": 2.5, "shape": "linear"},
+                marker={
+                    "size": 5,
+                    "color": "#FFFFFF",
+                    "line": {"color": "#F59E0B", "width": 1.8},
+                },
+                hovertemplate=(
+                    "<b>%{x|%b %d, %Y}</b>"
+                    "<br>Average medium-risk: %{y:.1f}"
+                    "<br>Saved analyses: %{customdata[0]}"
+                    "<extra></extra>"
+                ),
             )
         )
         risk_fig.add_trace(
             go.Scatter(
-                x=risk_df["created_at"],
-                y=risk_df["high_risk"],
+                x=daily_risk["Date"],
+                y=daily_risk["High_Risk"],
+                customdata=daily_risk[["Analyses"]],
                 mode="lines+markers",
                 name="High Risk",
-                line={"color": "#DC2626", "width": 3.5, "shape": "spline", "smoothing": 0.6},
-                marker={"size": 6, "color": "#FFFFFF", "line": {"color": "#DC2626", "width": 2}},
-                fill="tozeroy",
-                fillcolor="rgba(220, 38, 38, 0.12)",
-                hovertemplate="<b>%{x|%b %d, %Y}</b><br>High-risk components: %{y:.0f}<extra></extra>",
+                line={"color": "#DC2626", "width": 2.5, "shape": "linear"},
+                marker={
+                    "size": 5,
+                    "color": "#FFFFFF",
+                    "line": {"color": "#DC2626", "width": 1.8},
+                },
+                hovertemplate=(
+                    "<b>%{x|%b %d, %Y}</b>"
+                    "<br>Average high-risk: %{y:.1f}"
+                    "<br>Saved analyses: %{customdata[0]}"
+                    "<extra></extra>"
+                ),
             )
         )
-        risk_fig.update_yaxes(range=[0, risk_max + max(1, round(risk_max * 0.25))], title=None, dtick=1)
-        risk_fig.update_xaxes(title=None)
+        risk_fig.update_yaxes(
+            range=[0, risk_max + max(1, risk_max * 0.25)],
+            title=None,
+            dtick=1 if risk_max <= 8 else None,
+            gridcolor="rgba(148,163,184,0.16)",
+            zeroline=False,
+        )
+        risk_fig.update_xaxes(
+            title=None,
+            gridcolor="rgba(148,163,184,0.10)",
+            showline=False,
+        )
         risk_fig.update_layout(
             hovermode="x unified",
-            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
-            margin={"l": 10, "r": 12, "t": 48, "b": 8},
+            legend={
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.03,
+                "xanchor": "right",
+                "x": 1,
+                "font": {"size": 11},
+            },
+            margin={"l": 8, "r": 10, "t": 34, "b": 6},
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(
-            light_plotly_layout(risk_fig, height=300),
+            light_plotly_layout(risk_fig, height=250),
             use_container_width=True,
-            config={"displayModeBar": False, "scrollZoom": False},
+            config={
+                "displayModeBar": False,
+                "scrollZoom": False,
+                "responsive": True,
+            },
         )
     else:
         st.info("Save at least two BOM analyses to display recorded risk history.")
