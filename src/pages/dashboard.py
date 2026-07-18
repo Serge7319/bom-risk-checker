@@ -910,6 +910,25 @@ def render_dashboard(
         reverse=True,
     )
 
+    # Milestone 24.2 — Collapse consecutive duplicate events so repeated saves
+    # do not crowd the executive activity feed.
+    grouped_activity = []
+    for event in recent_activity:
+        signature = (
+            str(event.get("category") or ""),
+            str(event.get("type") or ""),
+            str(event.get("title") or ""),
+            str(event.get("copy") or ""),
+        )
+        if grouped_activity and grouped_activity[-1].get("_signature") == signature:
+            grouped_activity[-1]["repeat_count"] += 1
+            continue
+        grouped_event = dict(event)
+        grouped_event["repeat_count"] = 1
+        grouped_event["_signature"] = signature
+        grouped_activity.append(grouped_event)
+    recent_activity = grouped_activity
+
     st.markdown(
         """
         <style id="cadivor-dashboard-v4-command-center">
@@ -1100,6 +1119,48 @@ def render_dashboard(
             border-radius:999px;
             background:#22C55E;
             box-shadow:0 0 0 4px rgba(34,197,94,.12);
+        }
+        .cv242-status-note{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            width:auto;
+            max-width:100%;
+            padding:9px 12px;
+            margin-top:8px;
+            border:1px solid #BBF7D0;
+            border-radius:12px;
+            background:#F0FDF4;
+            color:#166534!important;
+            font-size:10.5px;
+            font-weight:850;
+            line-height:1.35;
+        }
+        .cv242-status-note::before{
+            content:"✓";
+            display:inline-grid;
+            place-items:center;
+            width:18px;
+            height:18px;
+            border-radius:999px;
+            background:#DCFCE7;
+            color:#15803D;
+            font-size:11px;
+            font-weight:950;
+            flex:0 0 auto;
+        }
+        .cv242-repeat-badge{
+            display:inline-flex;
+            align-items:center;
+            border-radius:999px;
+            padding:3px 7px;
+            margin-left:7px;
+            background:#EFF6FF;
+            border:1px solid #BFDBFE;
+            color:#2563EB!important;
+            font-size:9px;
+            font-weight:950;
+            vertical-align:middle;
         }
         .cv-6b-trend-chart-anchor + div [data-testid="stPlotlyChart"],
         .cv-6b-trend-chart-anchor ~ div [data-testid="stPlotlyChart"]{
@@ -1591,7 +1652,9 @@ def render_dashboard(
             )
             fig.update_xaxes(
                 title=None,
-                tickformat="%b %d",
+                tickmode="array",
+                tickvals=daily_health["Date"].tolist(),
+                ticktext=[value.strftime("%b %d") for value in daily_health["Date"]],
                 tickfont={"color": "#64748B"},
                 gridcolor="rgba(148,163,184,0.10)",
                 showline=False,
@@ -1654,8 +1717,8 @@ def render_dashboard(
                 <div class="cv241-project-stat"><span>Components</span><strong>{latest_parts}</strong></div>
                 <div class="cv241-project-stat"><span>High Risk</span><strong>{latest_high_risk}</strong></div>
                 <div class="cv241-project-stat"><span>Medium Risk</span><strong>{latest_medium_risk}</strong></div>
-                <div class="cv241-project-stat"><span>Alerts</span><strong>{alert_count}</strong></div>
-                <div class="cv241-project-stat"><span>Replacements</span><strong>{alternatives_found}</strong></div>
+                <div class="cv241-project-stat"><span>Workspace Alerts</span><strong>{alert_count}</strong></div>
+                <div class="cv241-project-stat"><span>Saved Candidates</span><strong>{alternatives_found}</strong></div>
               </div>
               <div class="cv241-status-line">
                 <span class="cv241-status-dot">Active engineering review</span>
@@ -1775,7 +1838,9 @@ def render_dashboard(
             )
             risk_fig.update_xaxes(
                 title=None,
-                tickformat="%b %d",
+                tickmode="array",
+                tickvals=daily_risk["Date"].tolist(),
+                ticktext=[value.strftime("%b %d") for value in daily_risk["Date"]],
                 gridcolor="rgba(148,163,184,0.10)",
                 showline=False,
             )
@@ -1838,7 +1903,10 @@ def render_dashboard(
                     unsafe_allow_html=True,
                 )
         else:
-            st.success("No saved projects are currently trending downward.")
+            st.markdown(
+                '<div class="cv242-status-note">No saved projects are currently trending downward.</div>',
+                unsafe_allow_html=True,
+            )
 
     with activity_col:
         st.markdown(
@@ -1846,7 +1914,7 @@ def render_dashboard(
             <div class="cv-v4-section-head cv-6b-column-heading">
               <div>
                 <div class="cv-v4-section-title">Recent Activity</div>
-                <div class="cv-v4-section-meta">The newest engineering events requiring context.</div>
+                <div class="cv-v4-section-meta">Repeated identical events are grouped for a cleaner review.</div>
               </div>
             </div>
             """,
@@ -1863,7 +1931,10 @@ def render_dashboard(
                         <div class="cv231-activity-type">{html.escape(str(event['type']))}</div>
                         <div class="cv231-activity-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
                       </div>
-                      <div class="cv231-activity-title">{html.escape(str(event['title']))}</div>
+                      <div class="cv231-activity-title">
+                        {html.escape(str(event['title']))}
+                        {f'<span class="cv242-repeat-badge">{event.get("repeat_count", 1)} repeated</span>' if event.get("repeat_count", 1) > 1 else ''}
+                      </div>
                       <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
                       <a class="cv231-activity-link" href="{event['href']}" target="_self">
                         {html.escape(str(event['action']))} →
@@ -1889,7 +1960,11 @@ def render_dashboard(
                             "When": _activity_relative(event.get("created_at")),
                             "Type": event["type"],
                             "Item": event["title"],
-                            "Activity": event["copy"],
+                            "Activity": (
+                                f'{event["copy"]} (Repeated {event.get("repeat_count", 1)} times)'
+                                if event.get("repeat_count", 1) > 1
+                                else event["copy"]
+                            ),
                         }
                         for event in recent_activity
                     ]
