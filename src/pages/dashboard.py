@@ -25,6 +25,8 @@ def render_dashboard(
     empty_state,
     get_user_profile,
     _qp_value,
+    workspace_id=None,
+    workspace_name=None,
 ):
     """Render the Cadivor Dashboard page."""
 
