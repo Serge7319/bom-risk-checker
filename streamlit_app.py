@@ -76,7 +76,11 @@ from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
-from src.components.onboarding import render_analysis_success, render_upload_detected
+from src.components.onboarding import (
+    render_analysis_success,
+    render_upload_detected,
+    render_first_run_dashboard,
+)
 from src.onboarding_service import (
     ensure_onboarding_progress,
     update_onboarding_progress,
@@ -2844,6 +2848,47 @@ if app_mode == "Dashboard":
         decisions=overview_decisions,
         procurement=overview_procurement,
     )
+
+    # Launch Sprint 29.0D — new-account activation must be decided before
+    # rendering the default Engineering Overview tab. Previously, onboarding
+    # existed only inside Portfolio Dashboard, so brand-new users always saw
+    # the empty overview because Streamlit opens the first tab by default.
+    preview_onboarding = False
+    try:
+        preview_value = _qp_value("preview_onboarding", "")
+        preview_onboarding = str(preview_value).strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+    except Exception:
+        preview_onboarding = False
+
+    real_overview_analyses = [
+        row for row in overview_analyses
+        if isinstance(row, dict)
+        and row.get("id")
+        and any(
+            row.get(field) not in (None, "", 0, 0.0)
+            for field in (
+                "filename",
+                "project_name",
+                "total_parts",
+                "health_score",
+                "created_at",
+            )
+        )
+    ]
+
+    if not real_overview_analyses or preview_onboarding:
+        if preview_onboarding and real_overview_analyses:
+            st.info(
+                "Onboarding preview is active. Remove "
+                "`preview_onboarding=1` from the URL to return to the dashboard."
+            )
+        render_first_run_dashboard(
+            current_user=current_user,
+            workspace_name=active_workspace_name,
+        )
+        st.stop()
 
     overview_tab, portfolio_tab = st.tabs(
         ["Engineering Overview", "Portfolio Dashboard"]
