@@ -1348,17 +1348,44 @@ def render_dashboard(
             trend_df = trend_df.rename(
                 columns={"created_at": "Date", "health_score": "Health Score"}
             )
-            fig = px.line(trend_df, x="Date", y="Health Score", markers=True)
-            fig.update_traces(
-                line_color="#2563EB",
-                marker_color="#2563EB",
-                line_width=3,
+            health_values = pd.to_numeric(trend_df["Health Score"], errors="coerce").dropna()
+            health_min = max(0, float(health_values.min()) - 4) if not health_values.empty else 0
+            health_max = min(100, float(health_values.max()) + 4) if not health_values.empty else 100
+            if health_max - health_min < 12:
+                midpoint = (health_max + health_min) / 2
+                health_min = max(0, midpoint - 6)
+                health_max = min(100, midpoint + 6)
+
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=trend_df["Date"],
+                    y=trend_df["Health Score"],
+                    mode="lines+markers",
+                    name="Portfolio Health",
+                    line={"color": "#2563EB", "width": 4, "shape": "spline", "smoothing": 0.65},
+                    marker={
+                        "size": 7,
+                        "color": "#FFFFFF",
+                        "line": {"color": "#2563EB", "width": 2.5},
+                    },
+                    fill="tozeroy",
+                    fillcolor="rgba(37, 99, 235, 0.16)",
+                    hovertemplate="<b>%{x|%b %d, %Y}</b><br>Portfolio health: %{y:.0f}/100<extra></extra>",
+                )
+            )
+            fig.update_yaxes(range=[health_min, health_max], title=None, tickfont={"color": "#64748B"})
+            fig.update_xaxes(title=None, tickfont={"color": "#64748B"})
+            fig.update_layout(
+                hovermode="x unified",
+                margin={"l": 10, "r": 12, "t": 12, "b": 8},
+                showlegend=False,
             )
             st.markdown('<div class="cv-6b-trend-chart-anchor"></div>', unsafe_allow_html=True)
             st.plotly_chart(
-                light_plotly_layout(fig, height=365),
+                light_plotly_layout(fig, height=320),
                 use_container_width=True,
-                config={"displayModeBar": False},
+                config={"displayModeBar": False, "scrollZoom": False},
             )
         else:
             st.info("Run at least two BOM analyses to generate a portfolio health trend.")
@@ -1473,94 +1500,59 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    chart_left, chart_right = st.columns(2, gap="large")
-    with chart_left:
-        st.markdown("#### Portfolio Health History")
-        if len(trend_records) >= 2:
-            health_df = pd.DataFrame(trend_records)
-            health_fig = go.Figure()
-            health_fig.add_trace(
-                go.Scatter(
-                    x=health_df["created_at"],
-                    y=health_df["health"],
-                    mode="lines+markers",
-                    name="Health",
-                    line={"color": "#2563EB", "width": 3},
-                    marker={"size": 8},
-                    hovertemplate="%{x|%b %d, %Y}<br>Health %{y}/100<extra></extra>",
+    st.markdown("#### Recorded Risk History")
+    if len(trend_records) >= 2:
+        risk_df = pd.DataFrame(trend_records)
+        risk_max = max(
+            1,
+            int(
+                max(
+                    pd.to_numeric(risk_df["high_risk"], errors="coerce").fillna(0).max(),
+                    pd.to_numeric(risk_df["medium_risk"], errors="coerce").fillna(0).max(),
                 )
+            ),
+        )
+        risk_fig = go.Figure()
+        risk_fig.add_trace(
+            go.Scatter(
+                x=risk_df["created_at"],
+                y=risk_df["medium_risk"],
+                mode="lines+markers",
+                name="Medium Risk",
+                line={"color": "#F59E0B", "width": 3.5, "shape": "spline", "smoothing": 0.6},
+                marker={"size": 6, "color": "#FFFFFF", "line": {"color": "#F59E0B", "width": 2}},
+                fill="tozeroy",
+                fillcolor="rgba(245, 158, 11, 0.13)",
+                hovertemplate="<b>%{x|%b %d, %Y}</b><br>Medium-risk components: %{y:.0f}<extra></extra>",
             )
-            health_fig.update_yaxes(range=[0, 100], title=None)
-            st.plotly_chart(
-                light_plotly_layout(health_fig, height=330),
-                use_container_width=True,
-                config={"displayModeBar": False},
+        )
+        risk_fig.add_trace(
+            go.Scatter(
+                x=risk_df["created_at"],
+                y=risk_df["high_risk"],
+                mode="lines+markers",
+                name="High Risk",
+                line={"color": "#DC2626", "width": 3.5, "shape": "spline", "smoothing": 0.6},
+                marker={"size": 6, "color": "#FFFFFF", "line": {"color": "#DC2626", "width": 2}},
+                fill="tozeroy",
+                fillcolor="rgba(220, 38, 38, 0.12)",
+                hovertemplate="<b>%{x|%b %d, %Y}</b><br>High-risk components: %{y:.0f}<extra></extra>",
             )
-        else:
-            st.info("Save at least two BOM analyses to display a health trend.")
-
-    with chart_right:
-        st.markdown("#### Recorded Risk History")
-        if len(trend_records) >= 2:
-            risk_df = pd.DataFrame(trend_records)
-            risk_fig = go.Figure()
-            risk_fig.add_trace(
-                go.Scatter(
-                    x=risk_df["created_at"], y=risk_df["high_risk"],
-                    mode="lines+markers", name="High Risk",
-                    line={"color": "#DC2626", "width": 3}, marker={"size": 8},
-                )
-            )
-            risk_fig.add_trace(
-                go.Scatter(
-                    x=risk_df["created_at"], y=risk_df["medium_risk"],
-                    mode="lines+markers", name="Medium Risk",
-                    line={"color": "#F59E0B", "width": 3}, marker={"size": 8},
-                )
-            )
-            risk_fig.update_yaxes(rangemode="tozero", title=None)
-            st.plotly_chart(
-                light_plotly_layout(risk_fig, height=330),
-                use_container_width=True,
-                config={"displayModeBar": False},
-            )
-        else:
-            st.info("Save at least two BOM analyses to display a risk trend.")
-
-    movement_left, movement_right = st.columns(2, gap="large")
-    with movement_left:
-        st.markdown("#### Projects Needing Attention")
-        if declining_projects:
-            rows = []
-            for project in declining_projects[:5]:
-                details = []
-                if project["health_change"] < 0:
-                    details.append(f"health declined by {abs(project['health_change'])} point(s)")
-                if project["risk_change"] > 0:
-                    details.append(f"{project['risk_change']} new high-risk record(s)")
-                rows.append(
-                    f'<div class="cv232-project-row"><div><div class="cv232-project-name">{html.escape(project["project"])}</div><div class="cv232-project-copy">{html.escape("; ".join(details).capitalize())}.</div></div><div class="cv232-project-delta bad">{project["health_change"]:+d} health</div></div>'
-                )
-            st.markdown('<div class="cv232-project-list">'+''.join(rows)+'</div>', unsafe_allow_html=True)
-        else:
-            st.success("No project with repeated analyses is currently trending in the wrong direction.")
-
-    with movement_right:
-        st.markdown("#### Projects Improving")
-        if improving_projects:
-            rows = []
-            for project in improving_projects[:5]:
-                details = []
-                if project["health_change"] > 0:
-                    details.append(f"health improved by {project['health_change']} point(s)")
-                if project["risk_change"] < 0:
-                    details.append(f"{abs(project['risk_change'])} fewer high-risk record(s)")
-                rows.append(
-                    f'<div class="cv232-project-row"><div><div class="cv232-project-name">{html.escape(project["project"])}</div><div class="cv232-project-copy">{html.escape("; ".join(details).capitalize())}.</div></div><div class="cv232-project-delta good">+{max(project["health_change"],0)} health</div></div>'
-                )
-            st.markdown('<div class="cv232-project-list">'+''.join(rows)+'</div>', unsafe_allow_html=True)
-        else:
-            st.info("Projects with measurable improvement will appear after repeated saved analyses.")
+        )
+        risk_fig.update_yaxes(range=[0, risk_max + max(1, round(risk_max * 0.25))], title=None, dtick=1)
+        risk_fig.update_xaxes(title=None)
+        risk_fig.update_layout(
+            hovermode="x unified",
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+            margin={"l": 10, "r": 12, "t": 48, "b": 8},
+        )
+        st.plotly_chart(
+            light_plotly_layout(risk_fig, height=300),
+            use_container_width=True,
+            config={"displayModeBar": False, "scrollZoom": False},
+        )
+    else:
+        st.info("Save at least two BOM analyses to display recorded risk history.")
 
     st.markdown(
         """
