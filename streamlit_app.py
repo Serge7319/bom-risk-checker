@@ -1633,6 +1633,11 @@ if "user" not in st.session_state:
     # If recovery did not restore a user, show auth only after the buffer. This
     # preserves public access for signed-out visitors while preventing navigation
     # flicker for signed-in users.
+    # Sprint 30.3: remember that this browser session actually displayed the
+    # sign-in screen. After a successful sign-in, this lets Cadivor return the
+    # customer to Dashboard without interfering with intentional deep links or
+    # ordinary query-string navigation inside an authenticated session.
+    st.session_state["cadivor_auth_ui_was_shown"] = True
     try:
         show_auth_ui(supabase, cookie_manager)
     except TypeError:
@@ -1642,6 +1647,26 @@ if "user" not in st.session_state:
 
 
 current_user = load_user_data()
+
+# Sprint 30.3 — fresh sign-ins open Dashboard, while explicit deep links remain
+# untouched. The marker exists only when the auth screen was rendered in this
+# same Streamlit session, so cookie recovery during normal page navigation does
+# not unexpectedly send users home.
+if st.session_state.pop("cadivor_auth_ui_was_shown", False):
+    direct_link_keys = {
+        "analysis_id", "return_analysis_id", "session_id", "checkout",
+        "invite", "token", "preview_onboarding",
+    }
+    has_direct_link = any(str(_qp_value(key, "")).strip() for key in direct_link_keys)
+    if not has_direct_link:
+        try:
+            st.query_params.clear()
+            st.query_params["page"] = "Dashboard"
+        except Exception:
+            st.experimental_set_query_params(page="Dashboard")
+        st.session_state["app_mode"] = "Dashboard"
+        st.session_state["pending_app_mode"] = "Dashboard"
+        st.rerun()
 
 is_admin = current_user.get("role") == "admin"
 
@@ -2883,15 +2908,44 @@ if app_mode == "Dashboard":
 
     if not real_overview_analyses or preview_onboarding:
         if preview_onboarding and real_overview_analyses:
-            st.info(
-                "Onboarding preview is active. Remove "
-                "`preview_onboarding=1` from the URL to return to the dashboard."
-            )
+            preview_notice, preview_exit = st.columns([4, 1])
+            with preview_notice:
+                st.info(
+                    "Onboarding preview is active. Your saved analyses are unchanged."
+                )
+            with preview_exit:
+                if st.button(
+                    "Exit preview",
+                    key="dashboard_exit_onboarding_preview",
+                    use_container_width=True,
+                ):
+                    try:
+                        st.query_params.clear()
+                        st.query_params["page"] = "Dashboard"
+                    except Exception:
+                        st.experimental_set_query_params(page="Dashboard")
+                    st.rerun()
         render_first_run_dashboard(
             current_user=current_user,
             workspace_name=active_workspace_name,
         )
         st.stop()
+
+    # Existing customers can revisit the first-time experience without creating
+    # a disposable account. This is a preview only and never changes saved data.
+    preview_controls = st.columns([1, 4])
+    with preview_controls[0]:
+        if st.button(
+            "Preview onboarding",
+            key="dashboard_preview_onboarding",
+            use_container_width=True,
+        ):
+            try:
+                st.query_params["page"] = "Dashboard"
+                st.query_params["preview_onboarding"] = "1"
+            except Exception:
+                st.experimental_set_query_params(page="Dashboard", preview_onboarding="1")
+            st.rerun()
 
     overview_tab, portfolio_tab = st.tabs(
         ["Engineering Overview", "Portfolio Dashboard"]
