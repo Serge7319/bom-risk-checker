@@ -3058,252 +3058,180 @@ st.markdown(
 )
 
 if app_mode == "Monitoring":
+    monitoring_allowed = is_admin or selected_plan_name in {"Trial", "Professional", "Business", "Enterprise"}
+    monitoring_limit = selected_plan.get("monitored_parts_limit")
+    if not monitoring_allowed:
+        st.markdown(
+            """
+            <section class="cv123-monitor-hero">
+              <div class="cv123-monitor-top"><div>
+                <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
+                <div class="cv123-monitor-title">Continuous component monitoring is not included in this plan</div>
+                <div class="cv123-monitor-copy">Upgrade to Professional to monitor up to 2,500 components, receive lifecycle and inventory alerts, and turn supplier changes into engineering actions.</div>
+              </div><span class="cv123-monitor-badge warn">Upgrade required</span></div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("View Professional plan", type="primary", key="monitoring_upgrade_plan"):
+            navigate_to("Pricing")
+        st.stop()
+
     return_analysis_id = _qp_value("return_analysis_id")
-    if return_analysis_id:
-        if st.button(
-            "← Back to Saved BOM",
-            key="monitoring_back_to_saved_bom",
-            type="secondary",
-        ):
-            navigate_to("Analysis Details", analysis_id=return_analysis_id)
+    if return_analysis_id and st.button("← Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
+        navigate_to("Analysis Details", analysis_id=return_analysis_id)
 
-    alert_history = (
-        _workspace_query(
-            supabase.table("monitor_alerts").select("*")
-        )
-        .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
-        .limit(100)
-        .execute()
-    )
-    alert_df = pd.DataFrame(alert_history.data)
+    def _monitor_query(table_name, columns="*"):
+        return _workspace_query(supabase.table(table_name).select(columns)).eq("user_id", current_user["id"])
 
-    monitor_history = (
-        _workspace_query(
-            supabase.table("part_monitor_history").select("*")
-        )
-        .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
-        .limit(250)
-        .execute()
-    )
-    monitor_df = pd.DataFrame(monitor_history.data)
+    try:
+        alert_history = _monitor_query("monitor_alerts").order("created_at", desc=True).limit(500).execute()
+        alert_df = pd.DataFrame(alert_history.data or [])
+    except Exception as exc:
+        st.error(f"Monitoring alerts could not be loaded: {exc}")
+        alert_df = pd.DataFrame()
 
-    monitoring_center = build_monitoring_action_center(
-        alert_df,
-        monitor_df,
-    )
+    try:
+        monitor_history = _monitor_query("part_monitor_history").order("created_at", desc=True).limit(5000).execute()
+        monitor_df = pd.DataFrame(monitor_history.data or [])
+    except Exception as exc:
+        st.error(f"Monitoring history could not be loaded: {exc}")
+        monitor_df = pd.DataFrame()
+
+    monitoring_center = build_monitoring_action_center(alert_df, monitor_df)
+    monitored_count = monitoring_center["monitored_components"]
+    monitor_limit_label = "Unlimited" if monitoring_limit is None or is_admin else f"{int(monitoring_limit):,}"
+    monitor_usage = 0 if monitoring_limit in (None, 0) or is_admin else min(100, round(monitored_count / int(monitoring_limit) * 100))
 
     st.markdown(
-        f"""
-        <section class="cv123-monitor-hero">
-          <div class="cv123-monitor-top">
-            <div>
-              <div class="cv123-monitor-eyebrow">AI Monitoring & Action Center</div>
-              <div class="cv123-monitor-title">{html.escape(monitoring_center['posture'])}</div>
-              <div class="cv123-monitor-copy">{html.escape(monitoring_center['summary'])}</div>
-            </div>
-            <span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">
-              {monitoring_center['active_alerts']} active alert(s)
-            </span>
-          </div>
-        </section>
+        """
+        <style>
+        .cv320-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:14px 0 22px}.cv320-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:15px 16px;box-shadow:0 10px 28px rgba(15,23,42,.045)}.cv320-kpi span{display:block;font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#64748b!important;margin-bottom:7px}.cv320-kpi strong{font-size:25px;font-weight:950;color:#0f172a!important}.cv320-kpi small{display:block;font-size:10px;font-weight:700;color:#64748b!important;margin-top:5px}
+        .cv320-card{border:1px solid #dbe3ef;background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05)}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:#2563eb!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-action{border-top:1px solid #e2e8f0;margin-top:12px;padding-top:12px;font-size:12px;font-weight:760;color:#0f172a!important;line-height:1.55}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
+        .cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}
+        @media(max-width:1200px){.cv320-kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){.cv320-kpis{grid-template-columns:repeat(2,1fr)}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}}
+        </style>
         """,
         unsafe_allow_html=True,
     )
 
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Active Alerts", monitoring_center["active_alerts"])
-    kpi2.metric("Immediate Actions", monitoring_center["immediate_actions"])
-    kpi3.metric("Engineering Actions", monitoring_center["engineering_actions"])
-    kpi4.metric("Procurement Actions", monitoring_center["procurement_actions"])
-
-    action_tab, alert_table_tab, component_tab = st.tabs(
-        [
-            "Requires Attention",
-            "Recent Changes",
-            "Watching",
-        ]
+    st.markdown(
+        f"""
+        <section class="cv123-monitor-hero"><div class="cv123-monitor-top"><div>
+          <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
+          <div class="cv123-monitor-title">{html.escape(monitoring_center['posture'])}</div>
+          <div class="cv123-monitor-copy">{html.escape(monitoring_center['summary'])}</div>
+        </div><span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">{monitoring_center['active_alerts']} active alert(s)</span></div></section>
+        <div class="cv320-limit"><div class="cv320-limitrow"><span>{html.escape(str(selected_plan_name))} monitoring usage</span><span>{monitored_count:,} / {monitor_limit_label}</span></div><div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div></div>
+        <div class="cv320-kpis">
+          <div class="cv320-kpi"><span>Monitored</span><strong>{monitored_count:,}</strong><small>components</small></div>
+          <div class="cv320-kpi"><span>Critical action</span><strong>{monitoring_center['immediate_actions']:,}</strong><small>priority ≥ 75</small></div>
+          <div class="cv320-kpi"><span>Lifecycle</span><strong>{monitoring_center['lifecycle_alerts']:,}</strong><small>active changes</small></div>
+          <div class="cv320-kpi"><span>Inventory</span><strong>{monitoring_center['inventory_alerts']:,}</strong><small>stock alerts</small></div>
+          <div class="cv320-kpi"><span>Supplier</span><strong>{monitoring_center['supplier_alerts']:,}</strong><small>coverage changes</small></div>
+          <div class="cv320-kpi"><span>Needs review</span><strong>{monitoring_center['needs_review']:,}</strong><small>open workflow</small></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    with action_tab:
-        st.caption(
-            "Cadivor converts raw monitoring changes into prioritized engineering and "
-            "procurement actions with owners, deadlines, and expected impact."
-        )
+    queue_tab, components_tab, timeline_tab, export_tab = st.tabs(["Action Queue", "Monitored Components", "Timeline", "Export"])
 
-        prioritized = monitoring_center["prioritized_alerts"]
-        if prioritized.empty:
-            st.success(
-                "No active exception requires action. Continue scheduled monitoring."
-            )
+    with queue_tab:
+        queue = monitoring_center["prioritized_alerts"]
+        if queue.empty:
+            st.success("No monitoring exception requires action. Continue scheduled supplier and lifecycle checks.")
         else:
-            severity_filter = st.selectbox(
-                "Filter by severity",
-                ["All", "Critical", "High", "Medium", "Low"],
-                key="monitor_action_severity_filter",
-            )
-            owner_filter = st.selectbox(
-                "Filter by owner",
-                [
-                    "All",
-                    "Engineering",
-                    "Component Engineering",
-                    "Procurement",
-                    "Supply Chain",
-                    "Engineering & Supply Chain",
-                ],
-                key="monitor_action_owner_filter",
-            )
+            f1, f2, f3, f4 = st.columns([1.1, 1.1, 1.1, 1.8])
+            severity_filter = f1.selectbox("Severity", ["All", "Critical", "High", "Medium", "Low"], key="m32_severity")
+            status_filter = f2.selectbox("Status", ["Active", "All", "Open", "In Review", "Resolved", "Dismissed", "Reopened"], key="m32_status")
+            type_filter = f3.selectbox("Change type", ["All", "Lifecycle", "Inventory", "Price", "Supplier"], key="m32_type")
+            search_filter = f4.text_input("Search", placeholder="Part number, owner, or alert text", key="m32_search")
+            filtered = queue.copy()
+            if severity_filter != "All": filtered = filtered[filtered["Severity"].str.lower() == severity_filter.lower()]
+            if status_filter == "Active": filtered = filtered[~filtered["Status"].isin(["Resolved", "Dismissed"])]
+            elif status_filter != "All": filtered = filtered[filtered["Status"] == status_filter]
+            if type_filter != "All":
+                pattern = "stock|inventory" if type_filter == "Inventory" else type_filter.lower()
+                filtered = filtered[filtered["Alert Type"].str.contains(pattern, case=False, regex=True)]
+            if search_filter.strip():
+                q = search_filter.strip().lower()
+                filtered = filtered[filtered.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
+            st.caption(f"Showing {len(filtered)} of {len(queue)} monitoring records.")
 
-            filtered = prioritized.copy()
-            if severity_filter != "All":
-                filtered = filtered[
-                    filtered["Severity"].astype(str).str.lower()
-                    == severity_filter.lower()
-                ]
-            if owner_filter != "All":
-                filtered = filtered[
-                    filtered["Owner"].astype(str).str.lower()
-                    == owner_filter.lower()
-                ]
+            for idx, row in filtered.head(50).iterrows():
+                score = int(row["Priority Score"])
+                tone = "bad" if score >= 75 else "warn" if score >= 45 else "good"
+                st.markdown(f"""<section class="cv320-card"><div class="cv320-cardhead"><div><div class="cv320-type">{html.escape(str(row['Alert Type']))}</div><div class="cv320-part">{html.escape(str(row['Part Number']))}</div></div><span class="cv320-score {tone}">Priority {score}/100</span></div><div class="cv320-change">{html.escape(str(row['Change']))}</div><div class="cv320-pills"><span class="cv320-pill">Status: {html.escape(str(row['Status']))}</span><span class="cv320-pill">Owner: {html.escape(str(row['Owner']))}</span><span class="cv320-pill">Due: {html.escape(str(row['Due Date']))}</span><span class="cv320-pill">Severity: {html.escape(str(row['Severity']))}</span></div><div class="cv320-action"><b>Cadivor recommendation:</b> {html.escape(str(row['Recommended Action']))}<br><b>Why it matters:</b> {html.escape(str(row['Expected Impact']))}</div></section>""", unsafe_allow_html=True)
 
-            st.caption(
-                f"Showing {len(filtered)} of {len(prioritized)} prioritized monitoring action(s)."
-            )
+                alert_id = str(row.get("Alert ID", ""))
+                with st.expander("Review workflow and evidence", expanded=False):
+                    w1, w2, w3 = st.columns(3)
+                    new_status = w1.selectbox("Status", ["Open", "In Review", "Resolved", "Dismissed", "Reopened"], index=["Open", "In Review", "Resolved", "Dismissed", "Reopened"].index(row["Status"]) if row["Status"] in ["Open", "In Review", "Resolved", "Dismissed", "Reopened"] else 0, key=f"m32_status_{alert_id}_{idx}")
+                    new_priority = w2.selectbox("Priority", ["Low", "Normal", "High", "Urgent"], index=["Low", "Normal", "High", "Urgent"].index(row["Priority"]) if row["Priority"] in ["Low", "Normal", "High", "Urgent"] else 1, key=f"m32_priority_{alert_id}_{idx}")
+                    new_owner = w3.text_input("Assigned to", value="" if row["Owner"] in {"Engineering", "Procurement", "Supply Chain", "Component Engineering", "Engineering & Supply Chain"} else str(row["Owner"]), placeholder="Name or team", key=f"m32_owner_{alert_id}_{idx}")
+                    d1, d2 = st.columns([1, 2])
+                    due_value = d1.date_input("Due date", value=None, key=f"m32_due_{alert_id}_{idx}")
+                    note_value = d2.text_area("Engineering note", value=str(row.get("Note", "") or ""), placeholder="Document rationale, validation evidence, or next step...", key=f"m32_note_{alert_id}_{idx}")
+                    a1, a2, a3, a4 = st.columns(4)
+                    if a1.button("Save workflow", type="primary", use_container_width=True, key=f"m32_save_{alert_id}_{idx}"):
+                        try:
+                            payload = {"workflow_status": new_status, "priority": new_priority, "assigned_to": new_owner or None, "due_date": due_value.isoformat() if due_value else None, "review_note": note_value or None, "reviewed_at": datetime.now(timezone.utc).isoformat(), "resolved_at": datetime.now(timezone.utc).isoformat() if new_status == "Resolved" else None}
+                            supabase.table("monitor_alerts").update(payload).eq("id", alert_id).eq("user_id", current_user["id"]).execute()
+                            try:
+                                supabase.table("monitoring_events").insert({"user_id": current_user["id"], "workspace_id": active_workspace_id or None, "alert_id": alert_id or None, "analysis_id": str(row.get("Analysis ID", "") or "") or None, "part_number": str(row["Part Number"]), "event_type": "Workflow Updated", "event_summary": f"Alert moved to {new_status}; priority {new_priority}.", "previous_value": str(row["Status"]), "current_value": new_status, "metadata": {"assigned_to": new_owner, "due_date": payload["due_date"]}}).execute()
+                            except Exception:
+                                pass
+                            st.success("Monitoring workflow saved.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Could not save workflow. Run the Sprint 32.0 migration first. Details: {exc}")
+                    if a2.button("Find alternative", use_container_width=True, key=f"m32_alt_{alert_id}_{idx}"):
+                        navigate_to("Alternative Finder", original_part=str(row["Part Number"]), return_analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""))
+                    if a3.button("Open decisions", use_container_width=True, key=f"m32_decision_{alert_id}_{idx}"):
+                        navigate_to("Engineering Decisions", focus_part=str(row["Part Number"]))
+                    a4.download_button("Export evidence", data=pd.DataFrame([row]).to_csv(index=False).encode("utf-8"), file_name=f"{str(row['Part Number']).replace('/', '_')}_monitoring_evidence.csv", mime="text/csv", use_container_width=True, key=f"m32_export_{alert_id}_{idx}")
 
-            for index, row in filtered.head(20).iterrows():
-                tone = (
-                    "bad"
-                    if int(row["Priority"]) >= 75
-                    else "warn"
-                    if int(row["Priority"]) >= 45
-                    else "good"
-                )
-                st.markdown(
-                    f"""
-                    <section class="cv123-alert-card">
-                      <div class="cv123-alert-head">
-                        <div>
-                          <div class="cv123-alert-type">{html.escape(str(row['Alert Type']))}</div>
-                          <div class="cv123-alert-part">{html.escape(str(row['Part Number']))}</div>
-                        </div>
-                        <span class="cv123-monitor-badge {tone}">
-                          Priority {int(row['Priority'])}/100
-                        </span>
-                      </div>
-                      <div class="cv123-alert-message">{html.escape(str(row['Change']))}</div>
-                      <div class="cv123-alert-meta">
-                        <span class="cv123-alert-pill">Owner: {html.escape(str(row['Owner']))}</span>
-                        <span class="cv123-alert-pill">Deadline: {html.escape(str(row['Deadline']))}</span>
-                        <span class="cv123-alert-pill">Severity: {html.escape(str(row['Severity']))}</span>
-                        <span class="cv123-alert-pill">Current: {html.escape(str(row['Current Value']))}</span>
-                      </div>
-                      <div class="cv123-alert-action">
-                        Recommended action: {html.escape(str(row['Recommended Action']))}<br>
-                        Expected impact: {html.escape(str(row['Expected Impact']))}
-                      </div>
-                    </section>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                action_cols = st.columns(4)
-                with action_cols[0]:
-                    if st.button(
-                        "Find Alternative",
-                        key=f"monitor_alt_{index}_{row['Part Number']}",
-                        use_container_width=True,
-                        type="primary",
-                    ):
-                        navigate_to(
-                            "Alternative Finder",
-                            original_part=str(row["Part Number"]),
-                            return_analysis_id=return_analysis_id,
-                        )
-                with action_cols[1]:
-                    st.download_button(
-                        "Export Action",
-                        data=pd.DataFrame([row]).to_csv(index=False).encode("utf-8"),
-                        file_name=f"{str(row['Part Number']).replace('/', '_')}_monitoring_action.csv",
-                        mime="text/csv",
-                        key=f"monitor_export_{index}_{row['Part Number']}",
-                        use_container_width=True,
-                    )
-                with action_cols[2]:
-                    if st.button(
-                        "Review Decision",
-                        key=f"monitor_decision_{index}_{row['Part Number']}",
-                        use_container_width=True,
-                    ):
-                        navigate_to(
-                            "Engineering Decisions",
-                            focus_part=str(row["Part Number"]),
-                        )
-                with action_cols[3]:
-                    st.caption(f"Detected: {row['Detected At']}")
-
-    with alert_table_tab:
-        prioritized = monitoring_center["prioritized_alerts"]
-        if prioritized.empty:
-            st.info("No monitoring alerts are available.")
+    with components_tab:
+        components = monitoring_center["latest_components"]
+        if components.empty:
+            st.info("No monitored component snapshots are available yet.")
         else:
-            alert_columns = [
-                "Part Number",
-                "Priority",
-                "Severity",
-                "Alert Type",
-                "Change",
-                "Previous Value",
-                "Current Value",
-                "Owner",
-                "Deadline",
-                "Detected At",
-            ]
-            st.dataframe(
-                prioritized[alert_columns],
-                hide_index=True,
-                use_container_width=True,
-            )
-            st.download_button(
-                "Download Monitoring Action Queue CSV",
-                data=prioritized.to_csv(index=False).encode("utf-8"),
-                file_name="cadivor_monitoring_action_queue.csv",
-                mime="text/csv",
-                key="monitor_action_queue_csv",
-                type="primary",
-            )
+            component_search = st.text_input("Search monitored components", placeholder="Part number, supplier, lifecycle, or risk", key="m32_component_search")
+            visible = components.copy()
+            if component_search.strip():
+                q = component_search.strip().lower()
+                visible = visible[visible.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
+            st.dataframe(visible, hide_index=True, use_container_width=True)
+            if monitoring_limit is not None and not is_admin and monitored_count >= int(monitoring_limit):
+                st.warning(f"Your {selected_plan_name} workspace has reached its {int(monitoring_limit):,}-part monitoring limit. Existing monitoring remains active; upgrade to Business for unlimited monitoring.")
 
-    with component_tab:
-        latest_components = monitoring_center["latest_components"]
-        if latest_components.empty:
-            st.info("No monitoring history is available yet.")
+    with timeline_tab:
+        try:
+            events = _monitor_query("monitoring_events").order("created_at", desc=True).limit(250).execute()
+            event_df = pd.DataFrame(events.data or [])
+        except Exception:
+            event_df = pd.DataFrame()
+        if event_df.empty:
+            fallback = alert_df.copy()
+            if fallback.empty:
+                st.info("No monitoring timeline events are available yet.")
+            else:
+                cols = [c for c in ["created_at", "part_number", "alert_type", "alert_message", "severity"] if c in fallback.columns]
+                st.dataframe(fallback[cols], hide_index=True, use_container_width=True)
+                st.caption("Run the Sprint 32.0 migration to enable persistent workflow timeline events.")
         else:
-            search_component = st.text_input(
-                "Search monitored components",
-                placeholder="Part number or supplier",
-                key="monitor_component_search",
-            )
-            visible_components = latest_components.copy()
-            if search_component.strip():
-                query = search_component.strip().lower()
-                mask = visible_components.astype(str).apply(
-                    lambda column: column.str.lower().str.contains(
-                        query,
-                        na=False,
-                        regex=False,
-                    )
-                ).any(axis=1)
-                visible_components = visible_components[mask]
+            display_cols = [c for c in ["created_at", "part_number", "event_type", "event_summary", "previous_value", "current_value"] if c in event_df.columns]
+            st.dataframe(event_df[display_cols], hide_index=True, use_container_width=True)
 
-            st.caption(
-                f"Showing {len(visible_components)} monitored component record(s)."
-            )
-            st.dataframe(
-                visible_components,
-                hide_index=True,
-                use_container_width=True,
-            )
+    with export_tab:
+        queue = monitoring_center["prioritized_alerts"]
+        components = monitoring_center["latest_components"]
+        e1, e2 = st.columns(2)
+        e1.download_button("Download monitoring action queue", data=queue.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitoring_action_queue.csv", mime="text/csv", type="primary", use_container_width=True, key="m32_queue_export")
+        e2.download_button("Download monitored component snapshot", data=components.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitored_components.csv", mime="text/csv", use_container_width=True, key="m32_components_export")
+
+    st.stop()
 
 
 # ---------- Supply Risk Scenario ----------
