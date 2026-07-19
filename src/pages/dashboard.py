@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.components.onboarding import render_activation_strip, render_first_run_dashboard
+from src.components.upgrade_prompt import render_upgrade_prompt
 
 
 def render_dashboard(
@@ -725,6 +726,12 @@ def render_dashboard(
         analyses_count=total_analyses,
         has_review=False,
         has_report=False,
+    )
+
+    render_upgrade_prompt(
+        plan_name=str(profile.get("plan") or current_user.get("plan") or "Starter"),
+        monthly_used=total_analyses,
+        monthly_limit=5,
     )
 
     def _metric(label, value, note, icon="•", kind=""):
