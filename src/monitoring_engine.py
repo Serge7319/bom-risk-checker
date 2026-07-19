@@ -120,3 +120,14 @@ def detect_monitor_alerts(
         )
 
     return alerts, messages
+
+def monitoring_entitlement_message(plan_name, monitored_count, monitored_limit, is_admin=False):
+    """Return a launch-safe monitoring limit message for UI and service checks."""
+    if is_admin or monitored_limit is None:
+        return True, "Unlimited monitoring is available."
+    if monitored_limit <= 0:
+        return False, f"Monitoring is not included with {plan_name}. Upgrade to Professional to monitor up to 2,500 components."
+    if monitored_count >= monitored_limit:
+        return False, f"Your {plan_name} workspace has reached its {monitored_limit:,}-part monitoring limit. Existing monitoring remains active; upgrade to Business for unlimited monitoring."
+    remaining = monitored_limit - monitored_count
+    return True, f"{remaining:,} monitoring slot(s) remain."
