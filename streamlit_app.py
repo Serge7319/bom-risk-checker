@@ -81,6 +81,7 @@ from src.components.onboarding import (
     render_upload_detected,
     render_first_run_dashboard,
 )
+from src.components.first_analysis_brief import render_first_analysis_brief
 from src.onboarding_service import (
     ensure_onboarding_progress,
     update_onboarding_progress,
@@ -11643,6 +11644,13 @@ Unlock more power:
                 health_score=int(st.session_state.get("health_score", 0) or 0),
                 analysis_id=str(st.session_state.get("analysis_id")),
             )
+
+        render_first_analysis_brief(
+            results_df,
+            health_score=int(st.session_state.get("health_score", 0) or 0),
+            analysis_id=str(st.session_state.get("analysis_id") or "") or None,
+            project_name=project_name or (uploaded_file.name if uploaded_file else "BOM analysis"),
+        )
 
         show_dashboard_summary(results_df)
 
