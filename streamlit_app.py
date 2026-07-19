@@ -5959,87 +5959,216 @@ if app_mode == "Reports":
 
 # ---------- Pricing ----------
 if app_mode == "Pricing":
-    st.subheader("Pricing")
-    st.caption("Choose the plan that fits your BOM review workflow.")
+    # Sprint 31.0 — customer conversion and plan activation.
+    current_plan_key = str(selected_plan_name or "Starter").strip().lower()
+    used_boms = int(monthly_upload_count or 0)
+    included_boms = int(selected_plan.get("monthly_bom_limit", 0) or 0)
+    usage_percent = min(100, round((used_boms / included_boms) * 100)) if included_boms else 0
+    checkout_state = str(_qp_value("checkout", "") or "").strip().lower()
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.markdown(
-            """
-            <div class="card">
-                <div class="card-title">Starter</div>
-                <h2>$29/mo</h2>
-                <div class="card-text">
-                    ✓ 5 BOMs/month<br>
-                    ✓ 10 parts per BOM<br>
-                    ✓ Basic risk report<br>
-                    ✓ CSV/XLSX export
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    if checkout_state == "success":
+        st.success(
+            "Payment completed. Your plan will update automatically after Stripe confirms the subscription."
         )
-
-    with col2:
-        st.markdown(
-            """
-            <div class="card" style="border: 2px solid #2563EB;">
-                <div class="card-title">Pro 🚀</div>
-                <h2>$99/mo</h2>
-                <div class="card-text">
-                    ✓ 10 BOMs/month<br>
-                    ✓ 20 parts per BOM<br>
-                    ✓ Multi-supplier intelligence<br>
-                    ✓ Alternative finder
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.caption(
+            "This normally happens within a few moments. Refresh Cadivor if the plan badge has not changed yet."
         )
-        if st.button("Upgrade to Pro"):
+    elif checkout_state == "cancel":
+        st.info("Checkout was canceled. Your current plan and saved work are unchanged.")
+
+    st.markdown(
+        """
+        <style id="cadivor-pricing-310">
+        .cv310-hero{border:1px solid #bfdbfe;background:
+        radial-gradient(circle at 90% 12%,rgba(37,99,235,.12),transparent 28%),
+        linear-gradient(135deg,#fff 0%,#f8fbff 64%,#eef5ff 100%);
+        border-radius:24px;padding:25px 27px;margin-bottom:18px;box-shadow:0 18px 48px rgba(37,99,235,.07)}
+        .cv310-eyebrow{font-size:9px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important;margin-bottom:8px}
+        .cv310-title{font-size:30px;font-weight:950;letter-spacing:-.04em;color:#0f172a!important;line-height:1.1;margin-bottom:8px}
+        .cv310-copy{font-size:12px;font-weight:680;color:#52647a!important;line-height:1.6;max-width:900px}
+        .cv310-current{border:1px solid #dbeafe;background:#fff;border-radius:18px;padding:17px 18px;margin-bottom:18px;box-shadow:0 10px 28px rgba(15,23,42,.045)}
+        .cv310-current-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:11px}
+        .cv310-current-title{font-size:16px;font-weight:950;color:#0f172a!important}
+        .cv310-current-copy{font-size:10px;font-weight:680;color:#64748b!important;margin-top:3px}
+        .cv310-plan-badge{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:6px 9px;font-size:9px;font-weight:950;white-space:nowrap}
+        .cv310-usage-meta{display:flex;justify-content:space-between;gap:10px;font-size:10px;font-weight:850;color:#475569!important;margin-bottom:6px}
+        .cv310-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv310-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv310-card){padding:0!important;border-radius:20px!important;overflow:hidden!important;box-shadow:0 12px 34px rgba(15,23,42,.05)!important}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv310-featured){border:2px solid #60a5fa!important;background:linear-gradient(180deg,#f8fbff,#fff)!important;box-shadow:0 18px 44px rgba(37,99,235,.10)!important}
+        .cv310-card-inner{padding:20px 20px 16px}
+        .cv310-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+        .cv310-name{font-size:18px;font-weight:950;color:#0f172a!important}
+        .cv310-tag{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:950;white-space:nowrap}
+        .cv310-price{font-size:31px;font-weight:950;letter-spacing:-.04em;color:#0f172a!important;margin:13px 0 2px}
+        .cv310-period{font-size:10px;font-weight:700;color:#64748b!important}
+        .cv310-for{font-size:11px;font-weight:720;color:#475569!important;line-height:1.5;min-height:34px;margin:12px 0}
+        .cv310-features{border-top:1px solid #e2e8f0;padding-top:12px}
+        .cv310-feature{display:flex;gap:8px;font-size:10px;font-weight:720;color:#334155!important;line-height:1.4;margin:8px 0}
+        .cv310-check{color:#059669!important;font-weight:950}
+        .cv310-current-note{border:1px solid #bbf7d0;background:#ecfdf5;color:#047857!important;border-radius:10px;padding:9px 10px;font-size:10px;font-weight:850;text-align:center;margin-top:9px}
+        .cv310-compare{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:18px;margin-top:18px}
+        .cv310-compare h3{font-size:17px!important;margin:0 0 5px!important}.cv310-compare p{font-size:10px;color:#64748b!important;margin:0 0 12px}
+        .cv310-table{display:grid;grid-template-columns:1.55fr repeat(3,1fr);border:1px solid #e2e8f0;border-radius:14px;overflow:hidden}
+        .cv310-cell{padding:10px 11px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font-size:9px;font-weight:760;color:#334155!important;background:#fff}
+        .cv310-cell.head{font-weight:950;color:#0f172a!important;background:#f8fafc}.cv310-cell.pro{background:#f8fbff}.cv310-cell:nth-child(4n){border-right:0}
+        @media(max-width:900px){.cv310-current-head{display:block}.cv310-plan-badge{display:inline-block;margin-top:8px}.cv310-table{grid-template-columns:1.3fr repeat(3,1fr)}}
+        </style>
+        <section class="cv310-hero">
+          <div class="cv310-eyebrow">Cadivor plans</div>
+          <div class="cv310-title">Turn engineering intelligence into a repeatable workflow.</div>
+          <div class="cv310-copy">Choose the capacity and collaboration level that matches your BOM review process. Upgrade without losing analyses, decisions, monitoring history, or reports.</div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <section class="cv310-current">
+          <div class="cv310-current-head">
+            <div>
+              <div class="cv310-current-title">Your current plan</div>
+              <div class="cv310-current-copy">{html.escape(str(selected_plan_name))} workspace · {used_boms} of {included_boms} BOM analyses used this month</div>
+            </div>
+            <div class="cv310-plan-badge">{html.escape(str(selected_plan_name))}</div>
+          </div>
+          <div class="cv310-usage-meta"><span>Monthly BOM usage</span><span>{usage_percent}%</span></div>
+          <div class="cv310-bar"><i style="width:{usage_percent}%"></i></div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    def _start_plan_checkout(plan_name: str, secret_key: str, button_key: str) -> None:
+        """Create checkout once, then expose a stable Stripe continuation link."""
+        state_key = f"pricing_checkout_url_{plan_name.lower()}"
+        if st.button(
+            f"Upgrade to {plan_name}",
+            key=button_key,
+            type="primary",
+            use_container_width=True,
+        ):
             try:
-                checkout_url = create_checkout_session(
-                    st.secrets["STRIPE_PRO_PRICE_ID"],
+                price_id = st.secrets[secret_key]
+                st.session_state[state_key] = create_checkout_session(
+                    price_id,
                     current_user["email"],
                     current_user["id"],
-                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
-                    cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?page=Pricing&checkout=success&session_id={CHECKOUT_SESSION_ID}",
+                    cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?page=Pricing&checkout=cancel",
                 )
-                st.link_button("Continue to Stripe Checkout", checkout_url)
-            except Exception as e:
-                st.error(f"Unable to create checkout session: {e}")
-                
+            except KeyError:
+                st.error(f"{plan_name} checkout is not configured in Streamlit secrets.")
+            except Exception as exc:
+                st.error(f"Unable to create {plan_name} checkout: {exc}")
 
-    with col3:
-        st.markdown(
-            """
-            <div class="card">
-                <div class="card-title">Business</div>
-                <h2>$299/mo</h2>
-                <div class="card-text">
-                    ✓ 25 BOMs/month<br>
-                    ✓ 100 parts per BOM<br>
-                    ✓ Advanced reports<br>
-                    ✓ Team-ready workflows
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        checkout_url = st.session_state.get(state_key)
+        if checkout_url:
+            st.link_button(
+                "Continue to secure checkout →",
+                checkout_url,
+                use_container_width=True,
+            )
+
+    plan_cards = [
+        {
+            "name": "Starter",
+            "price": "$29",
+            "tag": "Current" if current_plan_key == "starter" else "Essentials",
+            "audience": "For individual engineers validating smaller BOMs and learning the Cadivor workflow.",
+            "features": ["5 BOMs per month", "10 parts per BOM", "Core risk analysis", "CSV and XLSX export"],
+        },
+        {
+            "name": "Pro",
+            "price": "$99",
+            "tag": "Recommended",
+            "audience": "For component and design engineers who need deeper sourcing evidence and alternatives.",
+            "features": ["10 BOMs per month", "20 parts per BOM", "Multi-supplier intelligence", "Alternative Finder and engineering decisions"],
+        },
+        {
+            "name": "Business",
+            "price": "$299",
+            "tag": "Teams",
+            "audience": "For cross-functional engineering, procurement, and supply-chain review workflows.",
+            "features": ["25 BOMs per month", "100 parts per BOM", "Advanced reports and monitoring", "Team-ready decision workflows"],
+        },
+    ]
+
+    card_columns = st.columns(3, gap="medium")
+    for column, plan in zip(card_columns, plan_cards):
+        plan_key = plan["name"].lower()
+        featured = plan_key == "pro"
+        is_current = current_plan_key == plan_key
+        with column:
+            with st.container(border=True):
+                marker = " cv310-featured" if featured else ""
+                st.markdown(
+                    f'<span class="cv310-card{marker}"></span>'
+                    '<div class="cv310-card-inner">'
+                    '<div class="cv310-card-top">'
+                    f'<div class="cv310-name">{plan["name"]}</div>'
+                    f'<div class="cv310-tag">{plan["tag"]}</div>'
+                    '</div>'
+                    f'<div class="cv310-price">{plan["price"]}<span class="cv310-period"> / month</span></div>'
+                    f'<div class="cv310-for">{plan["audience"]}</div>'
+                    '<div class="cv310-features">'
+                    + "".join(
+                        f'<div class="cv310-feature"><span class="cv310-check">✓</span><span>{feature}</span></div>'
+                        for feature in plan["features"]
+                    )
+                    + '</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+                if is_current:
+                    st.markdown(
+                        '<div class="cv310-current-note">Your active plan</div>',
+                        unsafe_allow_html=True,
+                    )
+                elif plan_key == "pro" and current_plan_key not in {"pro", "business"}:
+                    _start_plan_checkout("Pro", "STRIPE_PRO_PRICE_ID", "pricing_310_upgrade_pro")
+                elif plan_key == "business" and current_plan_key != "business":
+                    _start_plan_checkout(
+                        "Business",
+                        "STRIPE_BUSINESS_PRICE_ID",
+                        "pricing_310_upgrade_business",
+                    )
+                elif current_plan_key == "business":
+                    st.markdown(
+                        '<div class="cv310-current-note">All listed capabilities unlocked</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    comparison_rows = [
+        ("BOM analyses / month", "5", "10", "25"),
+        ("Parts per BOM", "10", "20", "100"),
+        ("Supplier intelligence", "Core", "Multi-supplier", "Advanced"),
+        ("Alternative recommendations", "Preview", "Included", "Included"),
+        ("Engineering decisions", "Basic", "Included", "Team workflow"),
+        ("Monitoring and reports", "Core", "Expanded", "Advanced"),
+    ]
+    st.markdown(
+        '<section class="cv310-compare"><h3>Compare plan capacity</h3>'
+        '<p>Plan limits are enforced automatically. Existing records remain available when you upgrade.</p>'
+        '<div class="cv310-table">'
+        '<div class="cv310-cell head">Capability</div>'
+        '<div class="cv310-cell head">Starter</div>'
+        '<div class="cv310-cell head pro">Pro</div>'
+        '<div class="cv310-cell head">Business</div>'
+        + "".join(
+            f'<div class="cv310-cell">{label}</div>'
+            f'<div class="cv310-cell">{starter}</div>'
+            f'<div class="cv310-cell pro">{pro}</div>'
+            f'<div class="cv310-cell">{business}</div>'
+            for label, starter, pro, business in comparison_rows
         )
-        if st.button("Upgrade to Business"):
-            try:
-                checkout_url = create_checkout_session(
-                    st.secrets["STRIPE_BUSINESS_PRICE_ID"],
-                    current_user["email"],
-                    current_user["id"],
-                    success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
-                    cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
-                )
-                st.link_button("Continue to Stripe Checkout", checkout_url)
-            except Exception as e:
-                st.error(f"Unable to create checkout session: {e}")
+        + '</div></section>',
+        unsafe_allow_html=True,
+    )
 
+    st.caption(
+        "Stripe handles payment securely. Plan activation is applied through the existing Cadivor subscription webhook."
+    )
     st.stop()
 
 
