@@ -2791,7 +2791,9 @@ if app_mode == "Dashboard":
             """,
             unsafe_allow_html=True,
         )
-        if st.button(
+        # New accounts already receive the full setup experience on Dashboard.
+        # Keep this reminder only after the user has made progress beyond account creation.
+        if onboarding_done > 1 and st.button(
             "Setup Progress",
             key="dashboard_continue_onboarding",
         ):
