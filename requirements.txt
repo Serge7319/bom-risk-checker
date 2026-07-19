@@ -10,3 +10,4 @@ resend
 plotly
 stripe
 extra-streamlit-components
+pypdf>=5.0,<7
