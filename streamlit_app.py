@@ -2925,8 +2925,10 @@ if app_mode == "Dashboard":
                     except Exception:
                         st.experimental_set_query_params(page="Dashboard")
                     st.rerun()
+        # Sprint 30.4: use the normalized, persistent customer profile so
+        # onboarding and onboarding preview match the shell/dashboard identity.
         render_first_run_dashboard(
-            current_user=current_user,
+            current_user=profile_for_shell,
             workspace_name=active_workspace_name,
         )
         st.stop()
