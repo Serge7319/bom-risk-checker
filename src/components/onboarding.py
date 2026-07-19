@@ -4,6 +4,8 @@ from __future__ import annotations
 import html
 from typing import Any
 
+import pandas as pd
+
 import streamlit as st
 
 from src.services.customer_progress import build_activation_progress, next_activation_action
@@ -28,18 +30,27 @@ def _go_to(page: str) -> None:
 
 
 def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False, has_report: bool = False) -> None:
+    """Render live activation progress with direct actions for unfinished steps."""
     progress = build_activation_progress(analyses_count=analyses_count, has_review=has_review, has_report=has_report)
     rows = [
-        ("Create account", progress.account_created),
-        ("Upload first BOM", progress.first_bom),
-        ("Complete first analysis", progress.first_analysis),
-        ("Review a recommendation", progress.first_review),
-        ("Export first report", progress.first_report),
+        ("Create account", progress.account_created, None, None),
+        ("Upload first BOM", progress.first_bom, "Upload", "BOM Analyzer"),
+        ("Complete first analysis", progress.first_analysis, "Analyze", "BOM Analyzer"),
+        ("Review a recommendation", progress.first_review, "Review", "Engineering Decisions"),
+        ("Export first report", progress.first_report, "Export", "Reports"),
     ]
     st.markdown(f"**Setup progress · {progress.completed}/{progress.total} complete**")
     st.progress(progress.percent / 100)
-    for label, done in rows:
-        st.markdown(f"{'✅' if done else '○'} {label}")
+    for index, (label, done, action_label, page) in enumerate(rows):
+        if done or not action_label:
+            st.markdown(f"{'✅' if done else '○'} {label}")
+            continue
+        text_col, action_col = st.columns([3.2, 1])
+        with text_col:
+            st.markdown(f"○ {label}")
+        with action_col:
+            if st.button(action_label, key=f"setup_step_{index}_{action_label.lower()}", use_container_width=True):
+                _go_to(str(page))
 
 
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
@@ -54,6 +65,7 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
         .cv30-step [data-testid="stVerticalBlockBorderWrapper"]{min-height:146px;border-radius:17px!important;border:1px solid #e2e8f0!important;background:#fff!important;transition:transform .16s ease,box-shadow .16s ease}
         .cv30-step [data-testid="stVerticalBlockBorderWrapper"]:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(15,23,42,.07)}
         .cv30-number{width:30px;height:30px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;margin-bottom:10px}
+        [data-testid="stHeaderActionElements"], a.header-anchor, .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a{display:none!important}
         </style>
         """,
         unsafe_allow_html=True,
@@ -96,13 +108,32 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
                 st.caption(copy)
             st.markdown('</div>', unsafe_allow_html=True)
 
-    left, right = st.columns([1.35, 0.65])
+    left, right = st.columns([1.7, 1])
     with left:
         with st.container(border=True):
             st.subheader("Get your first result in under five minutes")
-            st.write("Start with a production BOM or a smaller design sample. Your analysis is saved so you can return to it later.")
-            if st.button("Start a new analysis", type="primary", key="ftue_start_analysis"):
-                _go_to("BOM Analyzer")
+            st.write("Use your production BOM or start with a small Cadivor sample. Your analysis is saved so you can return to it later.")
+            st.caption("Supported formats: CSV and XLSX · Typical first analysis: under 5 minutes")
+            primary_action, sample_action = st.columns([1.1, 1])
+            with primary_action:
+                if st.button("Upload my BOM", type="primary", key="ftue_start_analysis", use_container_width=True):
+                    _go_to("BOM Analyzer")
+            with sample_action:
+                sample_bom = pd.DataFrame([
+                    {"Part Number": "LM2596S-5.0", "Manufacturer": "Texas Instruments", "Quantity": 2},
+                    {"Part Number": "PC817", "Manufacturer": "Sharp", "Quantity": 4},
+                    {"Part Number": "MCP2551", "Manufacturer": "Microchip", "Quantity": 1},
+                    {"Part Number": "PIC18F46K22", "Manufacturer": "Microchip", "Quantity": 1},
+                    {"Part Number": "BZXS5C5V1", "Manufacturer": "Diodes Incorporated", "Quantity": 3},
+                ])
+                st.download_button(
+                    "Download sample BOM",
+                    data=sample_bom.to_csv(index=False).encode("utf-8"),
+                    file_name="cadivor_sample_bom.csv",
+                    mime="text/csv",
+                    key="ftue_download_sample_bom",
+                    use_container_width=True,
+                )
     with right:
         with st.container(border=True):
             st.subheader(workspace)
