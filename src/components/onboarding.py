@@ -6,6 +6,8 @@ from typing import Any
 
 import streamlit as st
 
+from src.services.customer_progress import build_activation_progress, next_activation_action
+
 
 def _first_name(current_user: dict[str, Any] | None) -> str:
     current_user = current_user or {}
@@ -25,57 +27,71 @@ def _go_to(page: str) -> None:
     st.rerun()
 
 
+def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False, has_report: bool = False) -> None:
+    progress = build_activation_progress(analyses_count=analyses_count, has_review=has_review, has_report=has_report)
+    rows = [
+        ("Create account", progress.account_created),
+        ("Upload first BOM", progress.first_bom),
+        ("Complete first analysis", progress.first_analysis),
+        ("Review a recommendation", progress.first_review),
+        ("Export first report", progress.first_report),
+    ]
+    st.markdown(f"**Setup progress · {progress.completed}/{progress.total} complete**")
+    st.progress(progress.percent / 100)
+    for label, done in rows:
+        st.markdown(f"{'✅' if done else '○'} {label}")
+
+
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
-    """Render a reliable native-Streamlit first-run experience.
-
-    Native Streamlit elements are used here intentionally so global application
-    CSS cannot hide the onboarding content.
-    """
+    """Render the launch onboarding and a live customer-activation checklist."""
     name = _first_name(current_user)
-    workspace = str(workspace_name or "Your workspace")
-
+    workspace = str(workspace_name or "Cadivor Workspace")
     st.markdown(
         """
-        <style id="cadivor-ftue-native-29e">
-        .cv29e-eyebrow{display:inline-flex;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:7px 11px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
-        .cv29e-welcome [data-testid="stVerticalBlockBorderWrapper"]{border:1px solid #bfdbfe!important;border-radius:26px!important;background:linear-gradient(135deg,#fff 0%,#f8fbff 58%,#eaf3ff 100%)!important;box-shadow:0 24px 60px rgba(15,23,42,.08)!important;padding:14px!important}
-        .cv29e-step [data-testid="stVerticalBlockBorderWrapper"]{min-height:154px;border-radius:18px!important;border:1px solid #e2e8f0!important;background:#fff!important}
-        .cv29e-number{width:30px;height:30px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;margin-bottom:10px}
+        <style id="cadivor-ftue-native-30a">
+        .cv30-eyebrow{display:inline-flex;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:7px 11px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+        .cv30-hero [data-testid="stVerticalBlockBorderWrapper"]{border:1px solid #bfdbfe!important;border-radius:24px!important;background:linear-gradient(135deg,#fff 0%,#f8fbff 58%,#eaf3ff 100%)!important;box-shadow:0 20px 50px rgba(15,23,42,.07)!important;padding:18px!important}
+        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]{min-height:146px;border-radius:17px!important;border:1px solid #e2e8f0!important;background:#fff!important;transition:transform .16s ease,box-shadow .16s ease}
+        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(15,23,42,.07)}
+        .cv30-number{width:30px;height:30px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;margin-bottom:10px}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="cv29e-welcome">', unsafe_allow_html=True)
+    st.markdown('<div class="cv30-hero">', unsafe_allow_html=True)
     with st.container(border=True):
-        st.markdown('<div class="cv29e-eyebrow">Engineering Decision Intelligence</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv30-eyebrow">Engineering Decision Intelligence</div>', unsafe_allow_html=True)
         st.title(f"Welcome, {name}.")
-        st.markdown(
-            "Upload a BOM and Cadivor will identify lifecycle, inventory, supplier, "
-            "and engineering risks—then guide your team toward the next decision."
-        )
-        primary, secondary, spacer = st.columns([1.05, 1, 2.2])
+        st.markdown("Upload a BOM and identify lifecycle, inventory, supplier, and engineering risks—then move directly into a guided decision workflow.")
+        primary, secondary, _ = st.columns([1.05, 1, 2.1])
         with primary:
             if st.button("Upload my first BOM →", type="primary", use_container_width=True, key="ftue_upload_first_bom"):
                 _go_to("BOM Analyzer")
         with secondary:
-            if st.button("Explore the workflow", use_container_width=True, key="ftue_explore_workflow"):
-                _go_to("Alternative Finder")
+            if st.button("See how it works", use_container_width=True, key="ftue_explore_workflow"):
+                st.session_state["show_ftue_workflow"] = not st.session_state.get("show_ftue_workflow", False)
     st.markdown('</div>', unsafe_allow_html=True)
+
+    if st.session_state.get("show_ftue_workflow"):
+        with st.expander("Cadivor workflow", expanded=True):
+            st.write("**1. Upload** a CSV or XLSX BOM.")
+            st.write("**2. Analyze** lifecycle, stock, supplier, and lead-time evidence.")
+            st.write("**3. Review** priority components and record engineering decisions.")
+            st.write("**4. Share** an executive-ready report and enable monitoring.")
 
     st.subheader("Your first decision in four steps")
     steps = [
-        ("1", "Upload", "Import a CSV or XLSX BOM in a few seconds."),
-        ("2", "Understand risk", "See the components and evidence that matter first."),
-        ("3", "Make decisions", "Review alternatives, assign actions, and record approvals."),
-        ("4", "Share the outcome", "Export an executive-ready engineering report."),
+        ("1", "Upload", "Import a CSV or XLSX BOM."),
+        ("2", "Understand risk", "See the evidence that matters first."),
+        ("3", "Make decisions", "Review alternatives and record approvals."),
+        ("4", "Share the outcome", "Export an executive-ready report."),
     ]
-    columns = st.columns(4)
-    for column, (number, title, copy) in zip(columns, steps):
+    for column, (number, title, copy) in zip(st.columns(4), steps):
         with column:
-            st.markdown('<div class="cv29e-step">', unsafe_allow_html=True)
+            st.markdown('<div class="cv30-step">', unsafe_allow_html=True)
             with st.container(border=True):
-                st.markdown(f'<div class="cv29e-number">{number}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="cv30-number">{number}</div>', unsafe_allow_html=True)
                 st.markdown(f"**{title}**")
                 st.caption(copy)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -84,45 +100,31 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
     with left:
         with st.container(border=True):
             st.subheader("Get your first result in under five minutes")
-            st.write(
-                "Start with a production BOM or a smaller design sample. Cadivor will "
-                "preserve the analysis so you can return to it later."
-            )
+            st.write("Start with a production BOM or a smaller design sample. Your analysis is saved so you can return to it later.")
             if st.button("Start a new analysis", type="primary", key="ftue_start_analysis"):
                 _go_to("BOM Analyzer")
     with right:
         with st.container(border=True):
             st.subheader(workspace)
-            st.write("Your analyses, reviews, monitoring, and reports will appear here as your workspace grows.")
-            if st.button("Open setup checklist", key="ftue_setup_checklist"):
-                _go_to("Onboarding")
+            _render_setup_checklist()
 
 
 def render_activation_strip(*, analyses_count: int, has_review: bool = False, has_report: bool = False) -> None:
-    """Show a compact outcome-based setup path for activated accounts."""
-    steps = [
-        ("Upload BOM", analyses_count > 0),
-        ("Review risks", has_review),
-        ("Export report", has_report),
-    ]
-    completed = sum(1 for _, done in steps if done)
-    items = "".join(
-        f'<div class="cv29-mini-step {"done" if done else "open"}"><span>{"✓" if done else index}</span><strong>{html.escape(label)}</strong></div>'
-        for index, (label, done) in enumerate(steps, 1)
-    )
-    st.markdown(
-        f"""
-        <style id="cadivor-activation-strip-29a">
-        .cv29-activation{{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;border:1px solid #DBEAFE;background:linear-gradient(135deg,#FFFFFF,#F8FBFF);border-radius:19px;padding:15px 17px;margin:0 0 16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}}
-        .cv29-activation-copy strong{{display:block;color:#0F172A!important;font-size:14px;font-weight:900}}.cv29-activation-copy small{{display:block;color:#64748B!important;font-size:11px;font-weight:650;margin-top:3px}}
-        .cv29-mini-steps{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}}.cv29-mini-step{{display:flex;align-items:center;gap:8px;border:1px solid #E2E8F0;background:#FFFFFF;border-radius:12px;padding:9px 10px}}.cv29-mini-step span{{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:#F1F5F9;color:#64748B!important;font-size:10px;font-weight:950}}.cv29-mini-step strong{{color:#334155!important;font-size:11px;font-weight:850}}.cv29-mini-step.done span{{background:#DCFCE7;color:#15803D!important}}.cv29-mini-step.done{{border-color:#BBF7D0}}
-        @media(max-width:800px){{.cv29-activation{{grid-template-columns:1fr}}}}
-        </style>
-        <section class="cv29-activation"><div class="cv29-activation-copy"><strong>Launch your first decision workflow</strong><small>{completed}/3 activation steps complete</small></div><div class="cv29-mini-steps">{items}</div></section>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    """Show a live activation card with the next recommended customer action."""
+    progress = build_activation_progress(analyses_count=analyses_count, has_review=has_review, has_report=has_report)
+    action = next_activation_action(progress)
+    with st.container(border=True):
+        left, right = st.columns([3, 1])
+        with left:
+            st.markdown(f"### {action['title']}")
+            st.caption(action["copy"])
+            st.progress(progress.percent / 100, text=f"Customer setup · {progress.completed}/{progress.total} complete")
+        with right:
+            st.write("")
+            if st.button(action["button"], type="primary", use_container_width=True, key="activation_next_action"):
+                _go_to(action["page"])
+        with st.expander("View setup checklist"):
+            _render_setup_checklist(analyses_count=analyses_count, has_review=has_review, has_report=has_report)
 
 def render_upload_detected(*, filename: str, component_count: int, deduplicated_count: int | None = None) -> None:
     """Confirm that the uploaded BOM was parsed before analysis starts."""
