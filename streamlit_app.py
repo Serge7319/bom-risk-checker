@@ -5959,8 +5959,20 @@ if app_mode == "Reports":
 
 # ---------- Pricing ----------
 if app_mode == "Pricing":
-    # Sprint 31.0 — customer conversion and plan activation.
+    # Sprint 31.1 — expanded commercial packaging.
     current_plan_key = str(selected_plan_name or "Starter").strip().lower()
+    plan_aliases = {
+        "pro": "professional",
+        "professional": "professional",
+        "business": "business",
+        "enterprise": "enterprise",
+        "student": "student",
+        "trial": "free trial",
+        "free trial": "free trial",
+        "starter": "starter",
+        "free": "starter",
+    }
+    normalized_current_plan = plan_aliases.get(current_plan_key, current_plan_key)
     used_boms = int(monthly_upload_count or 0)
     included_boms = int(selected_plan.get("monthly_bom_limit", 0) or 0)
     usage_percent = min(100, round((used_boms / included_boms) * 100)) if included_boms else 0
@@ -5978,45 +5990,50 @@ if app_mode == "Pricing":
 
     st.markdown(
         """
-        <style id="cadivor-pricing-310">
-        .cv310-hero{border:1px solid #bfdbfe;background:
-        radial-gradient(circle at 90% 12%,rgba(37,99,235,.12),transparent 28%),
+        <style id="cadivor-pricing-311">
+        .cv311-hero{border:1px solid #bfdbfe;background:
+        radial-gradient(circle at 91% 12%,rgba(37,99,235,.13),transparent 29%),
         linear-gradient(135deg,#fff 0%,#f8fbff 64%,#eef5ff 100%);
-        border-radius:24px;padding:25px 27px;margin-bottom:18px;box-shadow:0 18px 48px rgba(37,99,235,.07)}
-        .cv310-eyebrow{font-size:9px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important;margin-bottom:8px}
-        .cv310-title{font-size:30px;font-weight:950;letter-spacing:-.04em;color:#0f172a!important;line-height:1.1;margin-bottom:8px}
-        .cv310-copy{font-size:12px;font-weight:680;color:#52647a!important;line-height:1.6;max-width:900px}
-        .cv310-current{border:1px solid #dbeafe;background:#fff;border-radius:18px;padding:17px 18px;margin-bottom:18px;box-shadow:0 10px 28px rgba(15,23,42,.045)}
-        .cv310-current-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:11px}
-        .cv310-current-title{font-size:16px;font-weight:950;color:#0f172a!important}
-        .cv310-current-copy{font-size:10px;font-weight:680;color:#64748b!important;margin-top:3px}
-        .cv310-plan-badge{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:6px 9px;font-size:9px;font-weight:950;white-space:nowrap}
-        .cv310-usage-meta{display:flex;justify-content:space-between;gap:10px;font-size:10px;font-weight:850;color:#475569!important;margin-bottom:6px}
-        .cv310-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv310-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv310-card){padding:0!important;border-radius:20px!important;overflow:hidden!important;box-shadow:0 12px 34px rgba(15,23,42,.05)!important}
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv310-featured){border:2px solid #60a5fa!important;background:linear-gradient(180deg,#f8fbff,#fff)!important;box-shadow:0 18px 44px rgba(37,99,235,.10)!important}
-        .cv310-card-inner{padding:20px 20px 16px}
-        .cv310-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
-        .cv310-name{font-size:18px;font-weight:950;color:#0f172a!important}
-        .cv310-tag{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:950;white-space:nowrap}
-        .cv310-price{font-size:31px;font-weight:950;letter-spacing:-.04em;color:#0f172a!important;margin:13px 0 2px}
-        .cv310-period{font-size:10px;font-weight:700;color:#64748b!important}
-        .cv310-for{font-size:11px;font-weight:720;color:#475569!important;line-height:1.5;min-height:34px;margin:12px 0}
-        .cv310-features{border-top:1px solid #e2e8f0;padding-top:12px}
-        .cv310-feature{display:flex;gap:8px;font-size:10px;font-weight:720;color:#334155!important;line-height:1.4;margin:8px 0}
-        .cv310-check{color:#059669!important;font-weight:950}
-        .cv310-current-note{border:1px solid #bbf7d0;background:#ecfdf5;color:#047857!important;border-radius:10px;padding:9px 10px;font-size:10px;font-weight:850;text-align:center;margin-top:9px}
-        .cv310-compare{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:18px;margin-top:18px}
-        .cv310-compare h3{font-size:17px!important;margin:0 0 5px!important}.cv310-compare p{font-size:10px;color:#64748b!important;margin:0 0 12px}
-        .cv310-table{display:grid;grid-template-columns:1.55fr repeat(3,1fr);border:1px solid #e2e8f0;border-radius:14px;overflow:hidden}
-        .cv310-cell{padding:10px 11px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font-size:9px;font-weight:760;color:#334155!important;background:#fff}
-        .cv310-cell.head{font-weight:950;color:#0f172a!important;background:#f8fafc}.cv310-cell.pro{background:#f8fbff}.cv310-cell:nth-child(4n){border-right:0}
-        @media(max-width:900px){.cv310-current-head{display:block}.cv310-plan-badge{display:inline-block;margin-top:8px}.cv310-table{grid-template-columns:1.3fr repeat(3,1fr)}}
+        border-radius:24px;padding:26px 28px;margin-bottom:18px;box-shadow:0 18px 48px rgba(37,99,235,.07)}
+        .cv311-eyebrow{font-size:9px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb!important;margin-bottom:8px}
+        .cv311-title{font-size:31px;font-weight:950;letter-spacing:-.045em;color:#0f172a!important;line-height:1.08;margin-bottom:9px}
+        .cv311-copy{font-size:12px;font-weight:680;color:#52647a!important;line-height:1.6;max-width:930px}
+        .cv311-current{border:1px solid #dbeafe;background:#fff;border-radius:18px;padding:17px 18px;margin-bottom:18px;box-shadow:0 10px 28px rgba(15,23,42,.045)}
+        .cv311-current-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:11px}
+        .cv311-current-title{font-size:16px;font-weight:950;color:#0f172a!important}
+        .cv311-current-copy{font-size:10px;font-weight:680;color:#64748b!important;margin-top:3px}
+        .cv311-plan-badge{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:6px 9px;font-size:9px;font-weight:950;white-space:nowrap}
+        .cv311-usage-meta{display:flex;justify-content:space-between;gap:10px;font-size:10px;font-weight:850;color:#475569!important;margin-bottom:6px}
+        .cv311-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv311-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}
+        .cv311-section-title{font-size:20px;font-weight:950;color:#0f172a!important;margin:22px 0 5px}
+        .cv311-section-copy{font-size:11px;font-weight:650;color:#64748b!important;margin:0 0 13px}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card){padding:0!important;border-radius:20px!important;overflow:hidden!important;box-shadow:0 12px 34px rgba(15,23,42,.05)!important}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-featured){border:2px solid #60a5fa!important;background:linear-gradient(180deg,#f8fbff,#fff)!important;box-shadow:0 18px 44px rgba(37,99,235,.11)!important}
+        .cv311-card-inner{padding:19px 19px 15px}
+        .cv311-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+        .cv311-name{font-size:17px;font-weight:950;color:#0f172a!important}
+        .cv311-tag{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:950;white-space:nowrap}
+        .cv311-tag.green{border-color:#a7f3d0;background:#ecfdf5;color:#047857!important}
+        .cv311-price{font-size:29px;font-weight:950;letter-spacing:-.04em;color:#0f172a!important;margin:12px 0 2px}
+        .cv311-period{font-size:10px;font-weight:700;color:#64748b!important}
+        .cv311-outcome{font-size:12px;font-weight:850;color:#1e293b!important;line-height:1.4;margin:11px 0 4px}
+        .cv311-for{font-size:10px;font-weight:680;color:#64748b!important;line-height:1.45;min-height:43px;margin:0 0 11px}
+        .cv311-features{border-top:1px solid #e2e8f0;padding-top:10px}
+        .cv311-feature{display:flex;gap:8px;font-size:9.5px;font-weight:720;color:#334155!important;line-height:1.35;margin:7px 0}
+        .cv311-check{color:#059669!important;font-weight:950}.cv311-muted{color:#94a3b8!important}
+        .cv311-current-note{border:1px solid #bbf7d0;background:#ecfdf5;color:#047857!important;border-radius:10px;padding:9px 10px;font-size:10px;font-weight:850;text-align:center;margin-top:9px}
+        .cv311-info-note{border:1px solid #dbeafe;background:#f8fbff;color:#475569!important;border-radius:10px;padding:9px 10px;font-size:9.5px;font-weight:720;line-height:1.4;margin-top:9px}
+        .cv311-compare{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:18px;margin-top:20px}
+        .cv311-compare h3{font-size:18px!important;margin:0 0 5px!important}.cv311-compare p{font-size:10px;color:#64748b!important;margin:0 0 12px}
+        .cv311-table{display:grid;grid-template-columns:1.55fr repeat(5,1fr);border:1px solid #e2e8f0;border-radius:14px;overflow:auto}
+        .cv311-cell{padding:10px 10px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font-size:8.5px;font-weight:760;color:#334155!important;background:#fff;min-width:92px}
+        .cv311-cell.head{font-weight:950;color:#0f172a!important;background:#f8fafc}.cv311-cell.pro{background:#f8fbff}.cv311-cell:last-child{border-right:0}
+        @media(max-width:900px){.cv311-current-head{display:block}.cv311-plan-badge{display:inline-block;margin-top:8px}.cv311-table{grid-template-columns:1.4fr repeat(5,1fr)}}
         </style>
-        <section class="cv310-hero">
-          <div class="cv310-eyebrow">Cadivor plans</div>
-          <div class="cv310-title">Turn engineering intelligence into a repeatable workflow.</div>
-          <div class="cv310-copy">Choose the capacity and collaboration level that matches your BOM review process. Upgrade without losing analyses, decisions, monitoring history, or reports.</div>
+        <section class="cv311-hero">
+          <div class="cv311-eyebrow">Cadivor plans</div>
+          <div class="cv311-title">Choose the engineering workflow your team is ready for.</div>
+          <div class="cv311-copy">Start with education or prototype work, unlock the full platform during a 14-day trial, then scale from individual engineering decisions to organization-wide lifecycle intelligence.</div>
         </section>
         """,
         unsafe_allow_html=True,
@@ -6024,24 +6041,23 @@ if app_mode == "Pricing":
 
     st.markdown(
         f"""
-        <section class="cv310-current">
-          <div class="cv310-current-head">
+        <section class="cv311-current">
+          <div class="cv311-current-head">
             <div>
-              <div class="cv310-current-title">Your current plan</div>
-              <div class="cv310-current-copy">{html.escape(str(selected_plan_name))} workspace · {used_boms} of {included_boms} BOM analyses used this month</div>
+              <div class="cv311-current-title">Your current plan</div>
+              <div class="cv311-current-copy">{html.escape(str(selected_plan_name))} workspace · {used_boms} of {included_boms if included_boms else "unlimited"} BOM analyses used this month</div>
             </div>
-            <div class="cv310-plan-badge">{html.escape(str(selected_plan_name))}</div>
+            <div class="cv311-plan-badge">{html.escape(str(selected_plan_name))}</div>
           </div>
-          <div class="cv310-usage-meta"><span>Monthly BOM usage</span><span>{usage_percent}%</span></div>
-          <div class="cv310-bar"><i style="width:{usage_percent}%"></i></div>
+          <div class="cv311-usage-meta"><span>Monthly BOM usage</span><span>{usage_percent if included_boms else 0}%</span></div>
+          <div class="cv311-bar"><i style="width:{usage_percent if included_boms else 100}%"></i></div>
         </section>
         """,
         unsafe_allow_html=True,
     )
 
     def _start_plan_checkout(plan_name: str, secret_key: str, button_key: str) -> None:
-        """Create checkout once, then expose a stable Stripe continuation link."""
-        state_key = f"pricing_checkout_url_{plan_name.lower()}"
+        state_key = f"pricing_checkout_url_{plan_name.lower().replace(' ', '_')}"
         if st.button(
             f"Upgrade to {plan_name}",
             key=button_key,
@@ -6070,104 +6086,243 @@ if app_mode == "Pricing":
                 use_container_width=True,
             )
 
-    plan_cards = [
+    education_plans = [
+        {
+            "name": "Student",
+            "price": "Free",
+            "tag": "Education",
+            "outcome": "Build better engineering habits before entering industry.",
+            "audience": "University students, technical colleges, engineering clubs, and capstone teams.",
+            "features": [
+                "3 BOM analyses per month",
+                "Up to 25 components per BOM",
+                "Basic risk analysis and health score",
+                "Limited alternative search",
+                'PDF reports with "Student Edition" watermark',
+                "Community support only",
+            ],
+            "note": "No monitoring, API access, or team administration.",
+        },
+        {
+            "name": "Free Trial",
+            "price": "14 days",
+            "tag": "Full access",
+            "outcome": "Experience the complete Cadivor workflow before choosing a paid plan.",
+            "audience": "New professional and business customers evaluating Cadivor with real BOMs.",
+            "features": [
+                "No feature restrictions during the trial",
+                "Professional analysis and AI capabilities",
+                "Monitoring, reports, and engineering decisions",
+                "Team workflow evaluation",
+                "Saved work remains available after trial",
+            ],
+            "note": "At trial end, upgrade or continue on Starter.",
+        },
+    ]
+
+    st.markdown('<div class="cv311-section-title">Start with Cadivor</div><div class="cv311-section-copy">Education access and a full-platform evaluation path.</div>', unsafe_allow_html=True)
+    education_columns = st.columns(2, gap="medium")
+    for column, plan in zip(education_columns, education_plans):
+        plan_key = plan["name"].lower()
+        is_current = normalized_current_plan == plan_key
+        with column:
+            with st.container(border=True):
+                st.markdown(
+                    '<span class="cv311-card"></span>'
+                    '<div class="cv311-card-inner">'
+                    '<div class="cv311-card-top">'
+                    f'<div class="cv311-name">{plan["name"]}</div>'
+                    f'<div class="cv311-tag green">{plan["tag"]}</div>'
+                    '</div>'
+                    f'<div class="cv311-price">{plan["price"]}</div>'
+                    f'<div class="cv311-outcome">{plan["outcome"]}</div>'
+                    f'<div class="cv311-for">{plan["audience"]}</div>'
+                    '<div class="cv311-features">'
+                    + "".join(
+                        f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
+                        for feature in plan["features"]
+                    )
+                    + '</div>'
+                    f'<div class="cv311-info-note">{plan["note"]}</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                if is_current:
+                    st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
+                elif plan_key == "student":
+                    st.link_button(
+                        "Request Student Access",
+                        "mailto:info@cadivor.com?subject=Cadivor%20Student%20Plan%20Request",
+                        use_container_width=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div class="cv311-info-note">The 14-day full-access trial is intended for new customer evaluations.</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    paid_plans = [
         {
             "name": "Starter",
             "price": "$29",
-            "tag": "Current" if current_plan_key == "starter" else "Essentials",
-            "audience": "For individual engineers validating smaller BOMs and learning the Cadivor workflow.",
-            "features": ["5 BOMs per month", "10 parts per BOM", "Core risk analysis", "CSV and XLSX export"],
+            "tag": "Individual",
+            "outcome": "Analyze prototype BOMs before production.",
+            "audience": "Hobbyists, freelancers, makers, and small prototype companies.",
+            "features": [
+                "10 BOM analyses per month",
+                "100 components per BOM",
+                "Basic reports and alternative search",
+                "PDF export",
+                "Email support",
+            ],
+            "exclusions": "No monitoring, AI engineering assistant, team collaboration, or API.",
         },
         {
-            "name": "Pro",
+            "name": "Professional",
             "price": "$99",
-            "tag": "Recommended",
-            "audience": "For component and design engineers who need deeper sourcing evidence and alternatives.",
-            "features": ["10 BOMs per month", "20 parts per BOM", "Multi-supplier intelligence", "Alternative Finder and engineering decisions"],
+            "tag": "Most popular",
+            "outcome": "Make engineering decisions with confidence using AI-powered lifecycle intelligence.",
+            "audience": "Professional hardware engineers, startups, and small engineering companies.",
+            "features": [
+                "Unlimited BOM analyses and components",
+                "Advanced AI recommendations and assistant",
+                "Engineering Decision Records",
+                "Advanced reports and custom branding",
+                "Component comparison and supplier intelligence",
+                "Alternative recommendations and risk scoring",
+                "Monitoring for 2,500 components",
+                "Priority email support",
+            ],
+            "exclusions": "",
         },
         {
             "name": "Business",
             "price": "$299",
             "tag": "Teams",
-            "audience": "For cross-functional engineering, procurement, and supply-chain review workflows.",
-            "features": ["25 BOMs per month", "100 parts per BOM", "Advanced reports and monitoring", "Team-ready decision workflows"],
+            "outcome": "Standardize engineering decisions across your organization.",
+            "audience": "Growing companies, electronics manufacturers, and cross-functional teams.",
+            "features": [
+                "Everything in Professional",
+                "10 users included",
+                "Role-based permissions and approval workflows",
+                "Unlimited monitoring",
+                "Organization workspace and shared BOM library",
+                "Audit logs, comments, and activity history",
+                "Advanced analytics and usage dashboard",
+                "API access and webhooks",
+                "Priority support",
+            ],
+            "exclusions": "",
+        },
+        {
+            "name": "Enterprise",
+            "price": "Contact Sales",
+            "tag": "Custom",
+            "outcome": "Integrate Cadivor into your engineering infrastructure.",
+            "audience": "Larger deployments requiring security, integrations, support, and custom architecture.",
+            "features": [
+                "Unlimited users, monitoring, and API",
+                "SSO with SAML or OAuth",
+                "Priority SLA and dedicated customer success",
+                "ERP and PLM integrations",
+                "Custom AI models and integrations",
+                "Training and migration assistance",
+                "Quarterly business reviews",
+                "Dedicated infrastructure where required",
+            ],
+            "exclusions": "On-premises deployment is planned as a future option.",
         },
     ]
 
-    card_columns = st.columns(3, gap="medium")
-    for column, plan in zip(card_columns, plan_cards):
-        plan_key = plan["name"].lower()
-        featured = plan_key == "pro"
-        is_current = current_plan_key == plan_key
-        with column:
-            with st.container(border=True):
-                marker = " cv310-featured" if featured else ""
-                st.markdown(
-                    f'<span class="cv310-card{marker}"></span>'
-                    '<div class="cv310-card-inner">'
-                    '<div class="cv310-card-top">'
-                    f'<div class="cv310-name">{plan["name"]}</div>'
-                    f'<div class="cv310-tag">{plan["tag"]}</div>'
-                    '</div>'
-                    f'<div class="cv310-price">{plan["price"]}<span class="cv310-period"> / month</span></div>'
-                    f'<div class="cv310-for">{plan["audience"]}</div>'
-                    '<div class="cv310-features">'
-                    + "".join(
-                        f'<div class="cv310-feature"><span class="cv310-check">✓</span><span>{feature}</span></div>'
-                        for feature in plan["features"]
-                    )
-                    + '</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-                if is_current:
+    st.markdown('<div class="cv311-section-title">Plans for working engineering teams</div><div class="cv311-section-copy">Professional is the flagship plan; Business adds organization-wide collaboration and controls.</div>', unsafe_allow_html=True)
+    paid_rows = [paid_plans[:2], paid_plans[2:]]
+    for row_index, row_plans in enumerate(paid_rows):
+        paid_columns = st.columns(2, gap="medium")
+        for column, plan in zip(paid_columns, row_plans):
+            plan_key = plan["name"].lower()
+            is_current = normalized_current_plan == plan_key
+            featured = plan_key == "professional"
+            with column:
+                with st.container(border=True):
+                    marker = " cv311-featured" if featured else ""
                     st.markdown(
-                        '<div class="cv310-current-note">Your active plan</div>',
-                        unsafe_allow_html=True,
-                    )
-                elif plan_key == "pro" and current_plan_key not in {"pro", "business"}:
-                    _start_plan_checkout("Pro", "STRIPE_PRO_PRICE_ID", "pricing_310_upgrade_pro")
-                elif plan_key == "business" and current_plan_key != "business":
-                    _start_plan_checkout(
-                        "Business",
-                        "STRIPE_BUSINESS_PRICE_ID",
-                        "pricing_310_upgrade_business",
-                    )
-                elif current_plan_key == "business":
-                    st.markdown(
-                        '<div class="cv310-current-note">All listed capabilities unlocked</div>',
+                        f'<span class="cv311-card{marker}"></span>'
+                        '<div class="cv311-card-inner">'
+                        '<div class="cv311-card-top">'
+                        f'<div class="cv311-name">{plan["name"]}</div>'
+                        f'<div class="cv311-tag">{plan["tag"]}</div>'
+                        '</div>'
+                        f'<div class="cv311-price">{plan["price"]}'
+                        + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
+                        + '</div>'
+                        f'<div class="cv311-outcome">{plan["outcome"]}</div>'
+                        f'<div class="cv311-for">{plan["audience"]}</div>'
+                        '<div class="cv311-features">'
+                        + "".join(
+                            f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
+                            for feature in plan["features"]
+                        )
+                        + '</div>'
+                        + (f'<div class="cv311-info-note">{plan["exclusions"]}</div>' if plan["exclusions"] else "")
+                        + '</div>',
                         unsafe_allow_html=True,
                     )
 
-    comparison_rows = [
-        ("BOM analyses / month", "5", "10", "25"),
-        ("Parts per BOM", "10", "20", "100"),
-        ("Supplier intelligence", "Core", "Multi-supplier", "Advanced"),
-        ("Alternative recommendations", "Preview", "Included", "Included"),
-        ("Engineering decisions", "Basic", "Included", "Team workflow"),
-        ("Monitoring and reports", "Core", "Expanded", "Advanced"),
+                    if is_current:
+                        st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
+                    elif plan_key == "professional" and normalized_current_plan not in {"professional", "business", "enterprise"}:
+                        _start_plan_checkout("Professional", "STRIPE_PRO_PRICE_ID", "pricing_311_upgrade_professional")
+                    elif plan_key == "business" and normalized_current_plan not in {"business", "enterprise"}:
+                        _start_plan_checkout("Business", "STRIPE_BUSINESS_PRICE_ID", "pricing_311_upgrade_business")
+                    elif plan_key == "enterprise":
+                        st.link_button(
+                            "Contact Sales",
+                            "mailto:info@cadivor.com?subject=Cadivor%20Enterprise%20Inquiry",
+                            use_container_width=True,
+                        )
+                    elif plan_key == "starter" and normalized_current_plan != "starter":
+                        st.markdown(
+                            '<div class="cv311-info-note">Contact support to move an existing paid subscription to Starter.</div>',
+                            unsafe_allow_html=True,
+                        )
+
+    feature_rows = [
+        ("BOM Analysis", "✓", "✓", "Unlimited", "Unlimited", "Unlimited"),
+        ("Alternative Search", "Limited", "✓", "Advanced", "Advanced", "Advanced"),
+        ("AI Recommendations", "—", "—", "✓", "✓", "✓"),
+        ("BOM Monitoring", "—", "—", "2,500 parts", "Unlimited", "Unlimited"),
+        ("Engineering Decision Records", "—", "—", "✓", "✓", "✓"),
+        ("Team Collaboration", "—", "—", "—", "✓", "✓"),
+        ("API Access", "—", "—", "—", "✓", "Unlimited"),
+        ("SSO", "—", "—", "—", "—", "✓"),
+        ("Custom Integrations", "—", "—", "—", "Limited", "✓"),
+        ("Dedicated Support", "Community", "Email", "Priority", "Priority", "Dedicated"),
     ]
     st.markdown(
-        '<section class="cv310-compare"><h3>Compare plan capacity</h3>'
-        '<p>Plan limits are enforced automatically. Existing records remain available when you upgrade.</p>'
-        '<div class="cv310-table">'
-        '<div class="cv310-cell head">Capability</div>'
-        '<div class="cv310-cell head">Starter</div>'
-        '<div class="cv310-cell head pro">Pro</div>'
-        '<div class="cv310-cell head">Business</div>'
+        '<section class="cv311-compare"><h3>Feature comparison</h3>'
+        '<p>Free Trial includes the complete platform for 14 days and is therefore not repeated in the long-term plan matrix.</p>'
+        '<div class="cv311-table">'
+        '<div class="cv311-cell head">Feature</div>'
+        '<div class="cv311-cell head">Student</div>'
+        '<div class="cv311-cell head">Starter</div>'
+        '<div class="cv311-cell head pro">Professional</div>'
+        '<div class="cv311-cell head">Business</div>'
+        '<div class="cv311-cell head">Enterprise</div>'
         + "".join(
-            f'<div class="cv310-cell">{label}</div>'
-            f'<div class="cv310-cell">{starter}</div>'
-            f'<div class="cv310-cell pro">{pro}</div>'
-            f'<div class="cv310-cell">{business}</div>'
-            for label, starter, pro, business in comparison_rows
+            f'<div class="cv311-cell">{feature}</div>'
+            f'<div class="cv311-cell">{student}</div>'
+            f'<div class="cv311-cell">{starter}</div>'
+            f'<div class="cv311-cell pro">{professional}</div>'
+            f'<div class="cv311-cell">{business}</div>'
+            f'<div class="cv311-cell">{enterprise}</div>'
+            for feature, student, starter, professional, business, enterprise in feature_rows
         )
         + '</div></section>',
         unsafe_allow_html=True,
     )
 
     st.caption(
-        "Stripe handles payment securely. Plan activation is applied through the existing Cadivor subscription webhook."
+        "Stripe handles Professional and Business payments securely. Plan activation is applied through the existing Cadivor subscription webhook."
     )
     st.stop()
 
