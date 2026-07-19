@@ -115,6 +115,7 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card-locked){background:#fafafa!important;opacity:.86}
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card):hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.06)}
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card) [data-testid="stButton"] button{min-height:36px!important;height:36px!important;border-radius:10px!important;font-size:11px!important;font-weight:900!important;margin-top:8px!important}
+        .cv302-locked-note{margin-top:9px;border:1px dashed #cbd5e1;background:#f8fafc;border-radius:10px;padding:9px 10px;color:#64748b!important;font-size:10px;font-weight:750;line-height:1.35}
         </style>
         """,
         unsafe_allow_html=True,
@@ -166,12 +167,15 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
                     type="primary",
                 ):
                     _go_to(row["page"])
-            elif not row["done"] and row["action"] and row["page"]:
-                st.button(
-                    row["action"],
-                    key=f"ftue_30c_action_{index}",
-                    use_container_width=True,
-                    disabled=True,
+            elif not row["done"]:
+                prerequisite = {
+                    "Analyze the BOM": "Unlocks after your first BOM is uploaded.",
+                    "Review the results": "Unlocks after your first analysis is complete.",
+                    "Generate a report": "Unlocks after your first analysis is complete.",
+                }.get(row["label"], "Complete the previous step to unlock this action.")
+                st.markdown(
+                    f'<div class="cv302-locked-note">🔒 {html.escape(prerequisite)}</div>',
+                    unsafe_allow_html=True,
                 )
 
 
