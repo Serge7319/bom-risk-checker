@@ -2921,6 +2921,32 @@ if app_mode == "Dashboard":
     st.stop()
 
 if app_mode == "Analysis Details":
+    # Sprint 30.2: make persistence explicit on every saved-analysis page.
+    st.markdown(
+        """
+        <style id="cadivor-save-status-302">
+        .cv302-savebar{display:flex;align-items:center;justify-content:space-between;gap:14px;
+        border:1px solid #bbf7d0;background:linear-gradient(135deg,#ffffff,#f0fdf4);
+        border-radius:13px;padding:10px 13px;margin:0 0 12px;box-shadow:0 8px 22px rgba(5,150,105,.055)}
+        .cv302-saveleft{display:flex;align-items:center;gap:9px;min-width:0}
+        .cv302-saveicon{width:26px;height:26px;border-radius:9px;background:#dcfce7;border:1px solid #bbf7d0;
+        color:#15803d!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950}
+        .cv302-savetitle{font-size:11px;font-weight:900;color:#0f172a!important;line-height:1.25}
+        .cv302-savecopy{font-size:9px;font-weight:650;color:#64748b!important;margin-top:2px}
+        .cv302-savebadge{font-size:9px;font-weight:900;color:#047857!important;border:1px solid #a7f3d0;
+        background:#ecfdf5;border-radius:999px;padding:5px 8px;white-space:nowrap}
+        </style>
+        <div class="cv302-savebar">
+          <div class="cv302-saveleft">
+            <div class="cv302-saveicon">✓</div>
+            <div><div class="cv302-savetitle">Saved to your workspace</div>
+            <div class="cv302-savecopy">This analysis and its engineering activity are preserved automatically.</div></div>
+          </div>
+          <div class="cv302-savebadge">Autosave on</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     render_analysis_detail(
         current_user=current_user,
         supabase=supabase,
@@ -11630,8 +11656,14 @@ Unlock more power:
 
             st.session_state["analysis_saved"] = True
             st.session_state["show_analysis_success_29b"] = True
+            st.session_state["last_saved_analysis_id"] = analysis_id
+            st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
+            st.toast("Analysis saved to your workspace.", icon="✅")
     if "results_df" in st.session_state:
         results_df = st.session_state["results_df"]
+
+        if st.session_state.get("analysis_saved") and st.session_state.get("analysis_id"):
+            st.success("Saved automatically to your Cadivor workspace.")
 
         if st.session_state.get("show_analysis_success_29b") and st.session_state.get("analysis_id"):
             _high = len(results_df[results_df["Risk Level"] == "High"])
