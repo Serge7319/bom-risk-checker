@@ -2362,7 +2362,7 @@ st.markdown(
       <div class="cv-side-section first">Navigation</div>
       <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
       <div class="cv-side-section">Workspace</div>
-      <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span></div>
+      <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span>{'<a class="cv-side-upgrade" href="?page=Pricing" target="_self">Compare plans →</a>' if str(selected_plan_name).lower() in {'starter','free','trial','student'} else ''}</div>
       <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
     </div>
     """,
@@ -2372,6 +2372,7 @@ st.markdown(
 # Final deterministic shell rule. Do not add JavaScript layout patches above this line.
 st.markdown(
     """
+    <style id="cadivor-sprint30-sidebar-upgrade">.cv-side-upgrade{display:block!important;margin-top:10px;padding:8px 10px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;color:#1d4ed8!important;text-decoration:none!important;font-size:11px;font-weight:900;text-align:center}</style>
     <style id="cadivor-shell-gap-deterministic-fix">
     :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
 
@@ -2791,8 +2792,7 @@ if app_mode == "Dashboard":
             unsafe_allow_html=True,
         )
         if st.button(
-            "Continue Customer Setup",
-            type="primary",
+            "Setup Progress",
             key="dashboard_continue_onboarding",
         ):
             navigate_to("Onboarding")
