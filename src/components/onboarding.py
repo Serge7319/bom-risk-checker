@@ -12,12 +12,39 @@ from src.services.customer_progress import build_activation_progress, next_activ
 
 
 def _first_name(current_user: dict[str, Any] | None) -> str:
+    """Resolve the same user-facing identity used by the Cadivor shell.
+
+    `current_user` is normally the normalized profile returned by
+    `get_user_profile()`, but the fallbacks keep onboarding safe for older
+    accounts and authentication-only sessions.
+    """
     current_user = current_user or {}
-    name = str(current_user.get("full_name") or current_user.get("name") or "").strip()
-    if name:
-        return name.split()[0]
+
+    name_candidates = (
+        current_user.get("full_name"),
+        current_user.get("display_name"),
+        current_user.get("name"),
+        " ".join(
+            part
+            for part in (
+                str(current_user.get("first_name") or "").strip(),
+                str(current_user.get("last_name") or "").strip(),
+            )
+            if part
+        ),
+    )
+    for candidate in name_candidates:
+        name = str(candidate or "").strip()
+        if name:
+            return name.split()[0]
+
     email = str(current_user.get("email") or "").strip()
-    return email.split("@")[0].replace(".", " ").title() if email else "there"
+    if email:
+        local_part = email.split("@")[0].replace(".", " ").replace("_", " ").strip()
+        if local_part:
+            return local_part.title()
+
+    return "Engineer"
 
 
 def _go_to(page: str) -> None:
