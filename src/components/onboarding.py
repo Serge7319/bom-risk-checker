@@ -30,7 +30,9 @@ def _go_to(page: str) -> None:
 
 
 def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False, has_report: bool = False) -> None:
-    """Render live activation progress with direct actions for unfinished steps."""
+    """Render live activation progress with compact, reliably aligned action links."""
+    from urllib.parse import quote
+
     progress = build_activation_progress(analyses_count=analyses_count, has_review=has_review, has_report=has_report)
     rows = [
         ("Create account", progress.account_created, None, None),
@@ -39,18 +41,46 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
         ("Review a recommendation", progress.first_review, "Review", "Engineering Decisions"),
         ("Export first report", progress.first_report, "Export", "Reports"),
     ]
-    st.markdown(f"**Setup progress · {progress.completed}/{progress.total} complete**")
-    st.progress(progress.percent / 100)
-    for index, (label, done, action_label, page) in enumerate(rows):
-        if done or not action_label:
-            st.markdown(f"{'✅' if done else '○'} {label}")
-            continue
-        text_col, action_col = st.columns([3.2, 1])
-        with text_col:
-            st.markdown(f"○ {label}")
-        with action_col:
-            if st.button(action_label, key=f"setup_step_{index}_{action_label.lower()}", use_container_width=True):
-                _go_to(str(page))
+
+    row_html = []
+    for label, done, action_label, page in rows:
+        status_class = "done" if done else "open"
+        icon = "✓" if done else "○"
+        action = ""
+        if not done and action_label and page:
+            href = f"?page={quote(str(page))}"
+            action = f'<a class="cv30b-check-action" href="{href}" target="_self">{html.escape(action_label)}</a>'
+        row_html.append(
+            f'<div class="cv30b-check-row {status_class}">'
+            f'<div class="cv30b-check-label"><span class="cv30b-check-icon">{icon}</span><span>{html.escape(label)}</span></div>'
+            f'{action}</div>'
+        )
+
+    st.markdown(
+        f"""
+        <style id="cadivor-checklist-30b-fix">
+        .cv30b-check-head{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}}
+        .cv30b-check-head strong{{color:#0f172a!important;font-size:13px;font-weight:850}}
+        .cv30b-check-head span{{color:#64748b!important;font-size:11px;font-weight:750}}
+        .cv30b-check-track{{height:7px;background:#eef2f7;border-radius:999px;overflow:hidden;margin-bottom:12px}}
+        .cv30b-check-fill{{height:100%;width:{max(0,min(100,progress.percent))}%;background:#2563eb;border-radius:999px}}
+        .cv30b-check-list{{display:flex;flex-direction:column;gap:8px}}
+        .cv30b-check-row{{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:7px 8px 7px 3px;border-bottom:1px solid #eef2f7}}
+        .cv30b-check-row:last-child{{border-bottom:0}}
+        .cv30b-check-label{{display:flex;align-items:center;gap:8px;min-width:0;color:#0f172a!important;font-size:12px;font-weight:720;line-height:1.25}}
+        .cv30b-check-icon{{width:20px;height:20px;flex:0 0 20px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900}}
+        .cv30b-check-row.done .cv30b-check-icon{{background:#dcfce7;color:#15803d!important}}
+        .cv30b-check-row.open .cv30b-check-icon{{background:#f8fafc;border:1px solid #cbd5e1;color:#64748b!important}}
+        .cv30b-check-action{{display:inline-flex!important;align-items:center;justify-content:center;flex:0 0 auto;min-width:82px;height:34px;padding:0 13px;border:1px solid #93a8c5;border-radius:10px;background:#fff;color:#1d4ed8!important;text-decoration:none!important;font-size:12px;font-weight:800;box-sizing:border-box}}
+        .cv30b-check-action:hover{{border-color:#2563eb;background:#eff6ff;color:#1d4ed8!important}}
+        @media(max-width:700px){{.cv30b-check-row{{align-items:flex-start}}.cv30b-check-action{{min-width:72px}}}}
+        </style>
+        <div class="cv30b-check-head"><strong>Setup progress</strong><span>{progress.completed}/{progress.total} complete</span></div>
+        <div class="cv30b-check-track"><div class="cv30b-check-fill"></div></div>
+        <div class="cv30b-check-list">{''.join(row_html)}</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
