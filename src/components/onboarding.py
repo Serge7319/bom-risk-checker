@@ -30,44 +30,115 @@ def _go_to(page: str) -> None:
 
 
 def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False, has_report: bool = False) -> None:
-    """Render activation progress using native Streamlit controls that stay inside the card."""
+    """Render a compact, prerequisite-aware activation checklist."""
     progress = build_activation_progress(
         analyses_count=analyses_count,
         has_review=has_review,
         has_report=has_report,
     )
+
     rows = [
-        ("Create account", progress.account_created, None, None),
-        ("Upload first BOM", progress.first_bom, "Upload", "BOM Analyzer"),
-        ("Complete first analysis", progress.first_analysis, "Analyze", "BOM Analyzer"),
-        ("Review a recommendation", progress.first_review, "Review", "Engineering Decisions"),
-        ("Export first report", progress.first_report, "Export", "Reports"),
+        {
+            "label": "Create account",
+            "detail": "Your Cadivor workspace is ready.",
+            "done": progress.account_created,
+            "action": None,
+            "page": None,
+            "enabled": False,
+        },
+        {
+            "label": "Upload first BOM",
+            "detail": "Import a CSV or XLSX component list.",
+            "done": progress.first_bom,
+            "action": "Upload →",
+            "page": "BOM Analyzer",
+            "enabled": True,
+        },
+        {
+            "label": "Complete first analysis",
+            "detail": "Generate lifecycle, inventory, and supplier intelligence.",
+            "done": progress.first_analysis,
+            "action": "Analyze →",
+            "page": "BOM Analyzer",
+            "enabled": progress.first_bom,
+        },
+        {
+            "label": "Review a recommendation",
+            "detail": "Record a component decision and supporting evidence.",
+            "done": progress.first_review,
+            "action": "Review →",
+            "page": "Engineering Decisions",
+            "enabled": progress.first_analysis,
+        },
+        {
+            "label": "Export first report",
+            "detail": "Create an executive-ready engineering report.",
+            "done": progress.first_report,
+            "action": "Export →",
+            "page": "Reports",
+            "enabled": progress.first_analysis,
+        },
     ]
 
     st.markdown(
-        f"**Setup progress · {progress.completed}/{progress.total} complete**"
+        """
+        <style id="cadivor-activation-checklist-30b3">
+        .cv30b3-progress-copy{font-size:12px;font-weight:850;color:#334155!important;margin:0 0 8px}
+        .cv30b3-row-title{font-size:13px;font-weight:850;color:#0f172a!important;line-height:1.25;margin:0}
+        .cv30b3-row-detail{font-size:10px;font-weight:600;color:#64748b!important;line-height:1.35;margin:3px 0 0}
+        .cv30b3-complete{opacity:.72}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30b3-current){border-color:#93c5fd!important;background:#f8fbff!important;box-shadow:0 0 0 1px rgba(59,130,246,.05)}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30b3-row-marker){padding:10px 11px!important;border-radius:13px!important}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30b3-row-marker) [data-testid="stButton"] button{min-height:34px!important;height:34px!important;padding:0 12px!important;border-radius:10px!important;font-size:11px!important;font-weight:850!important;white-space:nowrap!important}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f'<div class="cv30b3-progress-copy">Getting started · {progress.completed}/{progress.total} complete</div>',
+        unsafe_allow_html=True,
     )
     st.progress(progress.percent / 100)
 
-    for index, (label, done, action_label, page) in enumerate(rows):
-        if done:
-            st.markdown(f"✅ {label}")
-            continue
+    first_incomplete_seen = False
+    for index, row in enumerate(rows):
+        is_current = not row["done"] and not first_incomplete_seen
+        if is_current:
+            first_incomplete_seen = True
 
-        st.markdown(f"○ {label}")
-        if action_label and page:
-            if st.button(
-                action_label,
-                key=f"ftue_checklist_action_{index}_{action_label.lower()}",
-                use_container_width=True,
-            ):
-                _go_to(page)
+        with st.container(border=True):
+            marker_class = "cv30b3-current" if is_current else "cv30b3-row-marker"
+            label_col, action_col = st.columns([3.6, 1.15], vertical_alignment="center")
+            with label_col:
+                status = "✓" if row["done"] else ("→" if is_current else "○")
+                complete_class = " cv30b3-complete" if row["done"] else ""
+                st.markdown(
+                    f'<div class="cv30b3-row-marker {marker_class}{complete_class}">'
+                    f'<div class="cv30b3-row-title">{status} {html.escape(row["label"])}</div>'
+                    f'<div class="cv30b3-row-detail">{html.escape(row["detail"])}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with action_col:
+                if row["done"]:
+                    st.caption("Complete")
+                elif row["action"] and row["page"]:
+                    clicked = st.button(
+                        row["action"],
+                        key=f"ftue_checklist_action_{index}_{row['action'].split()[0].lower()}",
+                        use_container_width=True,
+                        disabled=not row["enabled"],
+                        type="primary" if is_current and row["enabled"] else "secondary",
+                    )
+                    if clicked:
+                        _go_to(row["page"])
 
 
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
     """Render the launch onboarding and a live customer-activation checklist."""
     name = _first_name(current_user)
-    workspace = str(workspace_name or "Cadivor Workspace")
+    workspace = str(workspace_name or "Getting Started")
     st.markdown(
         """
         <style id="cadivor-ftue-native-30a">
