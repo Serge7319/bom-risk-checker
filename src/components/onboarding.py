@@ -30,7 +30,7 @@ def _go_to(page: str) -> None:
 
 
 def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False, has_report: bool = False) -> None:
-    """Render a compact, prerequisite-aware activation checklist."""
+    """Render the premium Sprint 30.0C activation checklist."""
     progress = build_activation_progress(
         analyses_count=analyses_count,
         has_review=has_review,
@@ -39,64 +39,93 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
 
     rows = [
         {
-            "label": "Create account",
-            "detail": "Your Cadivor workspace is ready.",
+            "label": "Workspace created",
+            "detail": "Your Cadivor account and workspace are ready.",
+            "time": "Ready",
             "done": progress.account_created,
             "action": None,
             "page": None,
             "enabled": False,
+            "icon": "✓",
         },
         {
-            "label": "Upload first BOM",
+            "label": "Upload your first BOM",
             "detail": "Import a CSV or XLSX component list.",
+            "time": "About 30 seconds",
             "done": progress.first_bom,
-            "action": "Upload →",
+            "action": "Upload BOM",
             "page": "BOM Analyzer",
             "enabled": True,
+            "icon": "↥",
         },
         {
-            "label": "Complete first analysis",
+            "label": "Analyze the BOM",
             "detail": "Generate lifecycle, inventory, and supplier intelligence.",
+            "time": "About 1 minute",
             "done": progress.first_analysis,
-            "action": "Analyze →",
+            "action": "Analyze BOM",
             "page": "BOM Analyzer",
             "enabled": progress.first_bom,
+            "icon": "◇",
         },
         {
-            "label": "Review a recommendation",
+            "label": "Review the results",
             "detail": "Record a component decision and supporting evidence.",
+            "time": "About 2 minutes",
             "done": progress.first_review,
-            "action": "Review →",
+            "action": "Review Results",
             "page": "Engineering Decisions",
             "enabled": progress.first_analysis,
+            "icon": "✓",
         },
         {
-            "label": "Export first report",
+            "label": "Generate a report",
             "detail": "Create an executive-ready engineering report.",
+            "time": "About 15 seconds",
             "done": progress.first_report,
-            "action": "Export →",
+            "action": "Generate Report",
             "page": "Reports",
             "enabled": progress.first_analysis,
+            "icon": "▤",
         },
     ]
 
     st.markdown(
         """
-        <style id="cadivor-activation-checklist-30b3">
-        .cv30b3-progress-copy{font-size:12px;font-weight:850;color:#334155!important;margin:0 0 8px}
-        .cv30b3-row-title{font-size:13px;font-weight:850;color:#0f172a!important;line-height:1.25;margin:0}
-        .cv30b3-row-detail{font-size:10px;font-weight:600;color:#64748b!important;line-height:1.35;margin:3px 0 0}
-        .cv30b3-complete{opacity:.72}
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30b3-current){border-color:#93c5fd!important;background:#f8fbff!important;box-shadow:0 0 0 1px rgba(59,130,246,.05)}
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30b3-row-marker){padding:10px 11px!important;border-radius:13px!important}
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30b3-row-marker) [data-testid="stButton"] button{min-height:34px!important;height:34px!important;padding:0 12px!important;border-radius:10px!important;font-size:11px!important;font-weight:850!important;white-space:nowrap!important}
+        <style id="cadivor-activation-checklist-30c">
+        .cv30c-header{margin:0 0 10px}
+        .cv30c-title{font-size:18px;font-weight:950;color:#0f172a!important;line-height:1.15;margin:0 0 4px}
+        .cv30c-subtitle{font-size:11px;font-weight:650;color:#64748b!important;line-height:1.45;margin:0 0 10px}
+        .cv30c-progress-copy{font-size:11px;font-weight:850;color:#334155!important;margin:0 0 7px}
+        .cv30c-kicker{font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#64748b!important;margin:0 0 5px}
+        .cv30c-row-title{font-size:13px;font-weight:900;color:#0f172a!important;line-height:1.25;margin:0}
+        .cv30c-row-detail{font-size:10px;font-weight:620;color:#64748b!important;line-height:1.4;margin:4px 0 0}
+        .cv30c-icon{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:950;flex:0 0 auto}
+        .cv30c-icon.done{background:#dcfce7;color:#15803d!important;border:1px solid #bbf7d0}
+        .cv30c-icon.active{background:#dbeafe;color:#1d4ed8!important;border:1px solid #93c5fd}
+        .cv30c-icon.locked{background:#f1f5f9;color:#94a3b8!important;border:1px solid #e2e8f0}
+        .cv30c-copy{min-width:0}
+        .cv30c-state{font-size:9px;font-weight:900;border-radius:999px;padding:4px 7px;white-space:nowrap}
+        .cv30c-state.done{background:#ecfdf5;color:#047857!important;border:1px solid #a7f3d0}
+        .cv30c-state.active{background:#eff6ff;color:#1d4ed8!important;border:1px solid #bfdbfe}
+        .cv30c-state.locked{background:#f8fafc;color:#94a3b8!important;border:1px solid #e2e8f0}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card){padding:12px!important;border-radius:15px!important;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card-active){border-color:#93c5fd!important;background:linear-gradient(135deg,#ffffff 0%,#eff6ff 100%)!important;box-shadow:0 10px 24px rgba(37,99,235,.08)!important}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card-done){border-color:#bbf7d0!important;background:#fbfffd!important}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card-locked){background:#fafafa!important;opacity:.86}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card):hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.06)}
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv30c-card) [data-testid="stButton"] button{min-height:36px!important;height:36px!important;border-radius:10px!important;font-size:11px!important;font-weight:900!important;margin-top:8px!important}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
     st.markdown(
-        f'<div class="cv30b3-progress-copy">Getting started · {progress.completed}/{progress.total} complete</div>',
+        '<div class="cv30c-header">'
+        '<div class="cv30c-title">Getting Started</div>'
+        '<div class="cv30c-subtitle">Complete these steps to unlock your engineering workspace.</div>'
+        f'<div class="cv30c-progress-copy">{progress.completed} of {progress.total} complete</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
     st.progress(progress.percent / 100)
@@ -107,38 +136,49 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
         if is_current:
             first_incomplete_seen = True
 
+        card_state = "done" if row["done"] else ("active" if is_current else "locked")
+        state_label = "Ready" if row["done"] else ("Next step" if is_current else "Locked")
+        icon_state = "done" if row["done"] else ("active" if is_current else "locked")
+        icon = "✓" if row["done"] else row["icon"]
+
         with st.container(border=True):
-            marker_class = "cv30b3-current" if is_current else "cv30b3-row-marker"
-            label_col, action_col = st.columns([3.6, 1.15], vertical_alignment="center")
-            with label_col:
-                status = "✓" if row["done"] else ("→" if is_current else "○")
-                complete_class = " cv30b3-complete" if row["done"] else ""
+            st.markdown(f'<span class="cv30c-card cv30c-card-{card_state}"></span>', unsafe_allow_html=True)
+            icon_col, copy_col, state_col = st.columns([0.38, 3.3, 0.85], vertical_alignment="center")
+            with icon_col:
+                st.markdown(f'<div class="cv30c-icon {icon_state}">{html.escape(icon)}</div>', unsafe_allow_html=True)
+            with copy_col:
                 st.markdown(
-                    f'<div class="cv30b3-row-marker {marker_class}{complete_class}">'
-                    f'<div class="cv30b3-row-title">{status} {html.escape(row["label"])}</div>'
-                    f'<div class="cv30b3-row-detail">{html.escape(row["detail"])}</div>'
-                    f'</div>',
+                    '<div class="cv30c-copy">'
+                    f'<div class="cv30c-row-title">{html.escape(row["label"])}</div>'
+                    f'<div class="cv30c-row-detail">{html.escape(row["detail"])}</div>'
+                    f'<div class="cv30c-kicker" style="margin-top:7px">{html.escape(row["time"])}</div>'
+                    '</div>',
                     unsafe_allow_html=True,
                 )
-            with action_col:
-                if row["done"]:
-                    st.caption("Complete")
-                elif row["action"] and row["page"]:
-                    clicked = st.button(
-                        row["action"],
-                        key=f"ftue_checklist_action_{index}_{row['action'].split()[0].lower()}",
-                        use_container_width=True,
-                        disabled=not row["enabled"],
-                        type="primary" if is_current and row["enabled"] else "secondary",
-                    )
-                    if clicked:
-                        _go_to(row["page"])
+            with state_col:
+                st.markdown(f'<div class="cv30c-state {card_state}">{state_label}</div>', unsafe_allow_html=True)
+
+            if is_current and row["action"] and row["page"]:
+                if st.button(
+                    row["action"],
+                    key=f"ftue_30c_action_{index}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    _go_to(row["page"])
+            elif not row["done"] and row["action"] and row["page"]:
+                st.button(
+                    row["action"],
+                    key=f"ftue_30c_action_{index}",
+                    use_container_width=True,
+                    disabled=True,
+                )
 
 
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
     """Render the launch onboarding and a live customer-activation checklist."""
     name = _first_name(current_user)
-    workspace = str(workspace_name or "Getting Started")
+    workspace = "Getting Started"
     st.markdown(
         """
         <style id="cadivor-ftue-native-30a">
@@ -218,7 +258,6 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
                 )
     with right:
         with st.container(border=True):
-            st.subheader(workspace)
             _render_setup_checklist()
 
 
