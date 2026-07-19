@@ -13,6 +13,7 @@ from src.ai_report_intelligence import (
     build_ai_procurement_pdf,
 )
 from src.role_report_generator import build_role_report_pdf
+from src.pdf_entitlements import add_student_edition_watermark
 from src.alternative_reasoning import build_alternative_reasoning
 from src.monitoring_intelligence import build_monitoring_action_center
 from src.decision_engine import build_decision_center, STATUSES
@@ -32,7 +33,7 @@ from src.cost_optimization import build_cost_optimization, render_cost_optimizat
 from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
 from integrations.supplier_aggregator import get_best_part_data
 from src.health_score import calculate_bom_health_score, generate_executive_summary
-from src.plans import PLANS, get_plan, validate_bom_against_plan
+from src.plans import PLANS, get_plan, validate_bom_against_plan, resolve_effective_plan, format_limit
 from src.alternative_engine import compare_parts, suggest_alternatives_v2, rank_alternatives
 from src.auth import show_auth_ui
 from supabase import create_client
@@ -1668,8 +1669,15 @@ if st.session_state.pop("cadivor_auth_ui_was_shown", False):
         st.session_state["pending_app_mode"] = "Dashboard"
         st.rerun()
 
-is_admin = current_user.get("role") == "admin"
-
+is_admin = str(current_user.get("role", "")).lower() == "admin"
+effective_plan_name, trial_expired = resolve_effective_plan(current_user)
+if trial_expired:
+    try:
+        supabase.table("users").update({"plan": "Starter"}).eq("id", current_user["id"]).execute()
+        current_user["plan"] = "Starter"
+    except Exception:
+        pass
+    st.info("Your 14-day Cadivor trial has ended. Your workspace is now on Starter; saved analyses remain available.")
 
 
 analysis_history = (
@@ -2163,7 +2171,7 @@ if _qp_value("action") == "clear":
         pass
 
 # Default user plan
-selected_plan_name = current_user["plan"]
+selected_plan_name = effective_plan_name
 selected_plan = get_plan(selected_plan_name)
 monthly_upload_count = current_user["monthly_upload_count"]
 
@@ -2388,7 +2396,7 @@ st.markdown(
       <div class="cv-side-section first">Navigation</div>
       <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
       <div class="cv-side-section">Workspace</div>
-      <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count} / {selected_plan['monthly_bom_limit']} BOMs this month</span><span>{saved_bom_count} / {selected_plan['max_saved_boms']} saved BOMs</span>{'<a class="cv-side-upgrade" href="?page=Pricing" target="_self">Compare plans →</a>' if str(selected_plan_name).lower() in {'starter','free','trial','student'} else ''}</div>
+      <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month</span><span>{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')} </span>{'<a class="cv-side-upgrade" href="?page=Pricing" target="_self">Compare plans →</a>' if str(selected_plan_name).lower() in {'starter','free','trial','student'} else ''}</div>
       <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
     </div>
     """,
@@ -5487,6 +5495,17 @@ if app_mode == "Reports":
             ],
         )
 
+        # Sprint 31.2: every PDF in the Reports workspace carries the
+        # Student Edition watermark when the active entitlement requires it.
+        student_pdf = bool(selected_plan.get("student_watermark"))
+        pdf_bytes = add_student_edition_watermark(pdf_bytes, student_pdf)
+        ai_executive_pdf = add_student_edition_watermark(ai_executive_pdf, student_pdf)
+        ai_procurement_pdf = add_student_edition_watermark(ai_procurement_pdf, student_pdf)
+        risk_report_pdf = add_student_edition_watermark(risk_report_pdf, student_pdf)
+        sourcing_report_pdf = add_student_edition_watermark(sourcing_report_pdf, student_pdf)
+        lifecycle_report_pdf = add_student_edition_watermark(lifecycle_report_pdf, student_pdf)
+        alternatives_report_pdf = add_student_edition_watermark(alternatives_report_pdf, student_pdf)
+
         risk_report_csv = engineering_df.to_csv(index=False).encode("utf-8")
         sourcing_report_csv = sourcing_df.to_csv(index=False).encode("utf-8")
         lifecycle_report_csv = lifecycle_df.to_csv(index=False).encode("utf-8")
@@ -5995,9 +6014,9 @@ if app_mode == "Pricing":
         radial-gradient(circle at 91% 12%,rgba(37,99,235,.13),transparent 29%),
         linear-gradient(135deg,#fff 0%,#f8fbff 64%,#eef5ff 100%);
         border-radius:24px;padding:26px 28px;margin-bottom:18px;box-shadow:0 18px 48px rgba(37,99,235,.07)}
-        .cv311-eyebrow{font-size:9px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb!important;margin-bottom:8px}
-        .cv311-title{font-size:31px;font-weight:950;letter-spacing:-.045em;color:#0f172a!important;line-height:1.08;margin-bottom:9px}
-        .cv311-copy{font-size:12px;font-weight:680;color:#52647a!important;line-height:1.6;max-width:930px}
+        .cv311-eyebrow{font-size:12px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb!important;margin-bottom:8px}
+        .cv311-title{font-size:38px;font-weight:950;letter-spacing:-.045em;color:#0f172a!important;line-height:1.08;margin-bottom:9px}
+        .cv311-copy{font-size:15px;font-weight:680;color:#52647a!important;line-height:1.6;max-width:930px}
         .cv311-current{border:1px solid #dbeafe;background:#fff;border-radius:18px;padding:17px 18px;margin-bottom:18px;box-shadow:0 10px 28px rgba(15,23,42,.045)}
         .cv311-current-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:11px}
         .cv311-current-title{font-size:16px;font-weight:950;color:#0f172a!important}
@@ -11693,6 +11712,7 @@ if app_mode == "BOM Analyzer":
                     bom_df,
                     selected_plan,
                     monthly_upload_count,
+                    is_admin=is_admin,
                 )
 
             if not allowed:
@@ -11718,10 +11738,10 @@ if app_mode == "BOM Analyzer":
             saved_analysis_total = saved_analysis_count.count or 0
             max_saved_boms = selected_plan.get("max_saved_boms", 0)
 
-            if not is_admin and saved_analysis_total >= max_saved_boms:
+            if not is_admin and max_saved_boms is not None and saved_analysis_total >= max_saved_boms:
                 st.error(
-                    f"You have reached your saved BOM limit ({max_saved_boms}) for the {selected_plan_name} plan. "
-                    "Please delete an existing BOM analysis or upgrade your plan."
+                    f"Your {selected_plan_name} workspace includes {max_saved_boms:,} saved BOMs and that storage allowance is full. "
+                    "Your existing work is safe. Delete an older analysis or upgrade to continue saving new results."
                 )
                 st.stop()
 
