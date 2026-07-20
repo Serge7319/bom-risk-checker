@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 from src.core.command_registry import command_payload
 
 
-def render_command_center(*, current_page: str = "Dashboard", user_name: str = "Engineer") -> None:
+def render_command_center(*, current_page: str = "Dashboard", user_name: str = "Engineer", workspace_commands=None) -> None:
     """Mount the global Ctrl/Command+K command palette into the parent Streamlit page."""
     commands_json = json.dumps(command_payload(), ensure_ascii=False).replace("</", "<\\/")
     context_json = json.dumps({"currentPage": current_page, "userName": user_name}, ensure_ascii=False).replace("</", "<\\/")
@@ -23,7 +23,7 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
           const CONTEXT = {context_json};
           const ROOT_ID = 'cadivor-command-center-v341';
           const STYLE_ID = 'cadivor-command-center-style-v341';
-          const RECENT_KEY = 'cadivor-command-center-recent-v1';
+          const RECENT_KEY = 'cadivor-command-center-recent-v2';
 
           const oldRoot = parentDoc.getElementById(ROOT_ID);
           if (oldRoot) oldRoot.remove();
@@ -75,10 +75,10 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
             <section class="cvcc-panel" role="dialog" aria-modal="true" aria-label="Engineering Intelligence Command Center">
               <header class="cvcc-header">
                 <div class="cvcc-brand-row"><div class="cvcc-brand"><span class="cvcc-mark">C</span>Engineering Intelligence</div><div class="cvcc-context">${{CONTEXT.currentPage}}</div></div>
-                <div class="cvcc-search-wrap"><span class="cvcc-search-icon">⌕</span><input aria-label="Search Cadivor" autocomplete="off" placeholder="Search pages, actions, reports, or engineering workflows…"><kbd>ESC</kbd></div>
+                <div class="cvcc-search-wrap"><span class="cvcc-search-icon">⌕</span><input aria-label="Search Cadivor" autocomplete="off" placeholder="Search components, BOMs, alerts, reports, decisions, or actions…"><kbd>ESC</kbd></div>
               </header>
               <main class="cvcc-body"></main>
-              <footer class="cvcc-footer"><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>↵</kbd> Open</span><span>Cadivor Command Center · 34.1</span></footer>
+              <footer class="cvcc-footer"><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>↵</kbd> Open</span><span>Cadivor Command Center · 34.2</span></footer>
             </section>`;
           parentDoc.body.appendChild(root);
 
@@ -92,15 +92,16 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
             const q = normalized(query);
             if (!q) return 1;
             const title = normalized(command.title);
+            const entityBoost = command.entityType && command.entityType !== 'record' ? 4 : 0;
             const haystack = normalized([command.title, command.subtitle, command.category, ...(command.keywords || [])].join(' '));
-            if (title === q) return 120;
-            if (title.startsWith(q)) return 95;
-            if (title.includes(q)) return 75;
+            if (title === q) return 120 + entityBoost;
+            if (title.startsWith(q)) return 95 + entityBoost;
+            if (title.includes(q)) return 75 + entityBoost;
             const terms = q.split(' ');
-            if (terms.every(term => haystack.includes(term))) return 55 + terms.length;
+            if (terms.every(term => haystack.includes(term))) return 55 + terms.length + entityBoost;
             let cursor = 0;
             for (const char of q.replace(/ /g,'')) {{ cursor = haystack.indexOf(char, cursor); if (cursor < 0) return 0; cursor += 1; }}
-            return 20;
+            return 20 + entityBoost;
           }};
           const recentIds = () => {{ try {{ return JSON.parse(parentWin.localStorage.getItem(RECENT_KEY) || '[]'); }} catch (_) {{ return []; }} }};
           const remember = id => {{ const next = [id, ...recentIds().filter(item => item !== id)].slice(0,6); parentWin.localStorage.setItem(RECENT_KEY, JSON.stringify(next)); }};
