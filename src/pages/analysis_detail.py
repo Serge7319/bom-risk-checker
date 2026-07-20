@@ -11,6 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ai_advisor import build_engineering_supply_advisor
+from src.services.engineering_context import build_engineering_context
 from src.components.review import (
     is_unresolved_review,
     parse_due_date,
@@ -659,6 +660,14 @@ def render_analysis_detail(
         .cv272-health{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:18px;padding:16px;margin-bottom:14px}.cv272-health-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.cv272-health h4{margin:0;color:#0f172a!important;font-size:17px;font-weight:980}.cv272-health p{margin:4px 0 0;color:#64748b!important;font-size:12px;font-weight:750}
         @media(max-width:900px){.cv272-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+        /* Sprint 34.3 — Unified Engineering Context */
+        .cv343-context{border:1px solid #bfdbfe;background:linear-gradient(135deg,#ffffff 0%,#f4f8ff 100%);border-radius:18px;padding:15px 16px;margin:0 0 14px;box-shadow:0 10px 26px rgba(37,99,235,.055)}
+        .cv343-context-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}.cv343-context-kicker{font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#2563eb!important}.cv343-context h3{font-size:17px;margin:4px 0 3px;color:#0f172a!important}.cv343-context p{font-size:12px;line-height:1.5;color:#64748b!important;margin:0}
+        .cv343-ready{display:inline-flex;align-items:center;gap:6px;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857!important;border-radius:999px;padding:6px 10px;font-size:10px;font-weight:950;white-space:nowrap}.cv343-ready.warn{border-color:#fde68a;background:#fffbeb;color:#a16207!important}
+        .cv343-context-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.cv343-context-stat{border:1px solid #dbeafe;background:rgba(255,255,255,.86);border-radius:12px;padding:10px}.cv343-context-stat span{display:block;font-size:9px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:#64748b!important}.cv343-context-stat strong{display:block;font-size:16px;font-weight:950;color:#0f172a!important;margin-top:4px}.cv343-context-stat small{display:block;font-size:10px;color:#64748b!important;margin-top:3px}
+        .cv343-context-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:11px;padding-top:10px;border-top:1px solid #dbeafe}.cv343-context-foot span{font-size:11px;font-weight:800;color:#52647a!important}.cv343-context-foot strong{color:#1d4ed8!important}
+        @media(max-width:1100px){.cv343-context-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.cv343-context-head{display:block}.cv343-ready{margin-top:9px}.cv343-context-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 
         /* Milestone 28.0 — Deep Engineering Review Workspace */
         .cv28-empty{border:1px dashed #93c5fd;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:18px;padding:22px;margin:12px 0 16px;text-align:center}
@@ -772,6 +781,19 @@ def render_analysis_detail(
         alerts=alerts,
         alternatives=alternatives,
     )
+    engineering_context = build_engineering_context(
+        supabase=supabase,
+        analysis=analysis,
+        user_id=user_id,
+        workspace_id=workspace_id or "",
+        parts=parts,
+        alerts=alerts,
+        alternatives=alternatives,
+        comments=comments,
+        followers=followers,
+    )
+    context_summary = engineering_context.summary
+    context_coverage = engineering_context.coverage
 
     st.markdown('<a class="cv-analysis-back" href="?page=BOM%20Analyzer" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
     st.markdown(
@@ -1431,6 +1453,29 @@ def render_analysis_detail(
 
     with overview_tab:
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
+        context_score = context_coverage.score
+        context_badge_class = "" if context_score >= 65 else " warn"
+        context_badge = "Context Ready" if context_score >= 65 else "Context Building"
+        top_context_risks = context_summary.get("top_risks") or []
+        top_context_part = _safe((top_context_risks[0] if top_context_risks else {}).get("part_number"), "No elevated part")
+        st.markdown(
+            f'''<section class="cv343-context">
+              <div class="cv343-context-head">
+                <div><div class="cv343-context-kicker">Unified Engineering Context · Sprint 34.3</div><h3>One shared source of engineering truth</h3><p>Cadivor has combined BOM health, component risk, lifecycle, inventory, supplier, monitoring, alternative, decision, and collaboration evidence into one reusable context.</p></div>
+                <span class="cv343-ready{context_badge_class}">{context_badge} · {context_score}%</span>
+              </div>
+              <div class="cv343-context-grid">
+                <div class="cv343-context-stat"><span>Components</span><strong>{len(engineering_context.components)}</strong><small>normalized records</small></div>
+                <div class="cv343-context-stat"><span>Monitoring</span><strong>{len(engineering_context.monitoring)}</strong><small>linked alerts</small></div>
+                <div class="cv343-context-stat"><span>Alternatives</span><strong>{len(engineering_context.alternatives)}</strong><small>saved candidates</small></div>
+                <div class="cv343-context-stat"><span>Decisions</span><strong>{len(engineering_context.decisions)}</strong><small>engineering records</small></div>
+                <div class="cv343-context-stat"><span>Timeline</span><strong>{len(engineering_context.timeline)}</strong><small>connected events</small></div>
+                <div class="cv343-context-stat"><span>Release Posture</span><strong>{html.escape(_safe(context_summary.get("release_posture"), "Review"))}</strong><small>shared assessment</small></div>
+              </div>
+              <div class="cv343-context-foot"><span>Highest current signal: <strong>{html.escape(top_context_part)}</strong></span><span>Reusable by reports, notifications, simulations, and the future Engineering Assistant.</span></div>
+            </section>''',
+            unsafe_allow_html=True,
+        )
         overall_status, engineering_recommendation, decision_confidence = _health_summary(
             health,
             high,
