@@ -257,19 +257,42 @@ def render_analysis_detail(
         or requested_focus == "component-risk"
     )
 
-    # Milestone 28.0 — reset the browser scroll position only when a different
-    # saved BOM is opened. Streamlit otherwise preserves the previous scroll
-    # offset across reruns, which can make a newly opened analysis appear to
-    # start halfway down the page.
+    # Sprint 34.2.5 — saved-BOM navigation explicitly requests a top landing.
+    # Streamlit can preserve the previous scroll offset when the same analysis is
+    # reopened, so checking only whether analysis_id changed is insufficient.
+    # The one-shot focus token is removed from the browser URL after scrolling,
+    # allowing the same saved BOM to request a fresh top landing next time.
     scroll_key = "cv28_last_open_analysis"
-    if analysis_id and st.session_state.get(scroll_key) != analysis_id:
+    saved_bom_top_requested = requested_focus == "analysis-top"
+    analysis_changed = analysis_id and st.session_state.get(scroll_key) != analysis_id
+    if analysis_id and (analysis_changed or saved_bom_top_requested):
         st.session_state[scroll_key] = analysis_id
         components.html(
             """
             <script>
-              const root = window.parent.document.querySelector('[data-testid="stAppViewContainer"]');
-              if (root) { root.scrollTo({top: 0, left: 0, behavior: 'instant'}); }
-              window.parent.scrollTo({top: 0, left: 0, behavior: 'instant'});
+            (function(){
+              const parentWindow = window.parent;
+              const doc = parentWindow.document;
+              const resetTop = () => {
+                const root = doc.querySelector('[data-testid="stAppViewContainer"]');
+                if (root) { root.scrollTo({top: 0, left: 0, behavior: 'instant'}); }
+                parentWindow.scrollTo({top: 0, left: 0, behavior: 'instant'});
+              };
+              resetTop();
+              window.setTimeout(resetTop, 80);
+              window.setTimeout(resetTop, 260);
+
+              // Remove only the one-shot analysis-top token. Component-focused
+              // links keep their own focus parameter and follow the component
+              // scroll workflow later in this page.
+              try {
+                const url = new URL(parentWindow.location.href);
+                if (url.searchParams.get('focus') === 'analysis-top') {
+                  url.searchParams.delete('focus');
+                  parentWindow.history.replaceState({}, '', url.toString());
+                }
+              } catch (error) {}
+            })();
             </script>
             """,
             height=0,
