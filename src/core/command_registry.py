@@ -49,6 +49,8 @@ DEFAULT_COMMANDS: tuple[Command, ...] = (
 )
 
 
-def command_payload(commands: Iterable[Command] = DEFAULT_COMMANDS) -> list[dict]:
-    """Return JSON-safe command dictionaries for the browser command palette."""
-    return [command.to_dict() for command in commands]
+def command_payload(commands: Iterable[Command] = DEFAULT_COMMANDS, dynamic_commands: Iterable[dict] = ()) -> list[dict]:
+    """Return static navigation plus workspace-aware searchable records."""
+    payload = [command.to_dict() for command in commands]
+    payload.extend(dict(command) for command in dynamic_commands)
+    return payload
