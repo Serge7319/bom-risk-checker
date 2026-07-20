@@ -248,6 +248,15 @@ def render_analysis_detail(
     if not analysis_id:
         analysis_id = _safe(st.query_params.get("analysis_id", ""), "")
 
+    requested_tab = _safe(st.query_params.get("tab", ""), "").strip().lower()
+    requested_component = _safe(st.query_params.get("component", ""), "").strip()
+    requested_focus = _safe(st.query_params.get("focus", ""), "").strip().lower()
+    component_focus_requested = bool(
+        requested_component
+        or requested_tab == "components"
+        or requested_focus == "component-risk"
+    )
+
     # Milestone 28.0 — reset the browser scroll position only when a different
     # saved BOM is opened. Streamlit otherwise preserves the previous scroll
     # offset across reruns, which can make a newly opened analysis appear to
@@ -321,7 +330,7 @@ def render_analysis_detail(
         .cv-component-detail{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:22px;padding:20px;box-shadow:0 18px 45px rgba(37,99,235,.08)}
         .cv-component-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.cv-component-detail-grid div{border:1px solid #dbe3ef;background:rgba(255,255,255,.9);border-radius:14px;padding:12px}.cv-component-detail-grid span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}.cv-component-detail-grid strong{display:block;color:#0f172a!important;font-size:13px;font-weight:950;overflow-wrap:anywhere}
         .cv-readiness-list{display:grid;gap:12px}.cv-readiness-row{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:13px}.cv-readiness-row strong{display:block;color:#0b1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-readiness-row span{display:block;color:#64748b!important;font-size:11px;font-weight:800}.cv-readiness-bar{height:9px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:10px}.cv-readiness-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#16a34a)}.cv-readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.cv-readiness-metrics div{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:12px}.cv-readiness-metrics span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-readiness-metrics strong{display:block;color:#0b1220!important;font-size:22px;font-weight:980}.cv-readiness-metrics small{display:block;color:#64748b!important;font-size:10px;font-weight:800;margin-top:6px}
-        .cv-analysis-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 18px 44px rgba(15,23,42,.055);overflow:hidden}.cv-analysis-table-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #e2e8f0}.cv-analysis-component{display:grid;grid-template-columns:1.2fr 1fr .75fr .75fr auto;gap:12px;align-items:center;padding:13px 20px;border-bottom:1px solid #eef2f7}.cv-analysis-component .head{color:#0b1220!important;font-size:13px;font-weight:980}.cv-analysis-component .sub{color:#64748b!important;font-size:11px;font-weight:800;margin-top:3px}
+        .cv-analysis-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 18px 44px rgba(15,23,42,.055);overflow:hidden}.cv-analysis-table-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #e2e8f0}.cv-analysis-component{display:grid;grid-template-columns:1.2fr 1fr .75fr .75fr auto;gap:12px;align-items:center;padding:13px 20px;border-bottom:1px solid #eef2f7;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.cv-analysis-component .head{color:#0b1220!important;font-size:13px;font-weight:980}.cv-analysis-component .sub{color:#64748b!important;font-size:11px;font-weight:800;margin-top:3px}.cv-analysis-component.is-selected{background:linear-gradient(90deg,#eff6ff,#f8fbff);border-left:4px solid #2563eb;padding-left:16px;box-shadow:inset 0 0 0 1px #bfdbfe}.cv-analysis-component.is-selected .head{color:#1d4ed8!important}
         [data-testid="stTabs"]{margin-top:8px}[data-testid="stTabs"] [data-baseweb="tab-list"]{position:sticky;top:64px;z-index:40;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:6px;box-shadow:0 12px 28px rgba(15,23,42,.06);gap:6px}[data-testid="stTabs"] [data-baseweb="tab"]{height:42px;border-radius:11px;padding:0 18px;font-weight:900;color:#475569}[data-testid="stTabs"] [aria-selected="true"]{background:#eff6ff!important;color:#2563eb!important}
         @media(max-width:1180px){.cv-analysis-hero{grid-template-columns:1fr}.cv-analysis-component{grid-template-columns:1fr}.cv-readiness-metrics{grid-template-columns:1fr}}@media(max-width:700px){.cv-analysis-summary{grid-template-columns:1fr}.cv-analysis-title{font-size:30px}.cv-analysis-hero{padding:20px}}
         
@@ -1512,10 +1521,53 @@ def render_analysis_detail(
                 st.markdown('<div class="cv-analysis-empty">No saved supplier or lifecycle alerts are attached to this analysis.</div>', unsafe_allow_html=True)
 
     with components_tab:
+        st.markdown('<div id="component-risk-report"></div>', unsafe_allow_html=True)
         _section_header(
             "Component Risk Report",
             "Search, filter, and inspect the saved component intelligence for this analysis.",
         )
+
+        # Sprint 34.2.4 — component results from Command Center should land on
+        # the Components tab instead of restoring an unrelated browser position.
+        focus_token = f"{analysis_id}:{requested_component.lower()}:{requested_focus}"
+        focus_state_key = "cv3424_component_focus_token"
+        should_apply_component_focus = (
+            component_focus_requested
+            and st.session_state.get(focus_state_key) != focus_token
+        )
+        if should_apply_component_focus:
+            st.session_state[focus_state_key] = focus_token
+            components.html(
+                """
+                <script>
+                (function(){
+                  const doc = window.parent.document;
+                  const activateAndScroll = () => {
+                    const tabs = Array.from(doc.querySelectorAll('button[data-baseweb="tab"]'));
+                    const componentTab = tabs.find((tab) =>
+                      (tab.innerText || tab.textContent || '').trim().toLowerCase() === 'components'
+                    );
+                    if (componentTab && componentTab.getAttribute('aria-selected') !== 'true') {
+                      componentTab.click();
+                    }
+                    window.setTimeout(() => {
+                      const target = doc.getElementById('component-risk-report');
+                      const root = doc.querySelector('[data-testid="stAppViewContainer"]');
+                      if (target) {
+                        target.scrollIntoView({behavior:'smooth', block:'start'});
+                      } else if (root) {
+                        root.scrollTo({top:0, left:0, behavior:'smooth'});
+                      }
+                    }, 180);
+                  };
+                  window.setTimeout(activateAndScroll, 120);
+                  window.setTimeout(activateAndScroll, 520);
+                })();
+                </script>
+                """,
+                height=0,
+                width=0,
+            )
         if parts:
             normalized_parts = sorted(
                 parts,
@@ -1621,12 +1673,43 @@ def render_analysis_detail(
                     label = f"{mpn_value} — {manufacturer_value}"
                     part_labels[label] = part
 
+                selector_key = f"analysis_component_selector_{analysis_id}"
+                requested_label = None
+                if requested_component:
+                    requested_component_key = requested_component.strip().lower()
+                    requested_label = next(
+                        (
+                            label
+                            for label, part in part_labels.items()
+                            if _safe(_part_value(part, "mpn", "MPN"), "").strip().lower()
+                            == requested_component_key
+                        ),
+                        None,
+                    )
+
+                selection_token_key = f"cv3424_selected_component_{analysis_id}"
+                selection_token = f"{analysis_id}:{requested_component.lower()}"
+                if (
+                    requested_label
+                    and st.session_state.get(selection_token_key) != selection_token
+                ):
+                    st.session_state[selector_key] = requested_label
+                    st.session_state[selection_token_key] = selection_token
+
+                available_labels = list(part_labels.keys())
+                if st.session_state.get(selector_key) not in available_labels:
+                    st.session_state[selector_key] = requested_label or available_labels[0]
+
                 selected_label = st.selectbox(
                     "Select a component to inspect",
-                    options=list(part_labels.keys()),
-                    key=f"analysis_component_selector_{analysis_id}",
+                    options=available_labels,
+                    key=selector_key,
                 )
                 selected_part = part_labels[selected_label]
+                selected_mpn_for_row = _safe(
+                    _part_value(selected_part, "mpn", "MPN"),
+                    "",
+                ).strip().lower()
 
                 table_col, detail_col = st.columns([1.25, 0.75], gap="medium")
                 with table_col:
@@ -1672,7 +1755,7 @@ def render_analysis_detail(
                         )
                         rows.append(
                             (
-                                '<div class="cv-analysis-component">'
+                                f'<div class="cv-analysis-component{" is-selected" if mpn_value.strip().lower() == selected_mpn_for_row else ""}" data-component="{html.escape(mpn_value, quote=True)}">'
                                 '<div>'
                                 f'<div class="head">{html.escape(mpn_value)}</div>'
                                 f'<div class="sub">{html.escape(mfg_value)}</div>'
