@@ -104,7 +104,22 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
           }};
           const recentIds = () => {{ try {{ return JSON.parse(parentWin.localStorage.getItem(RECENT_KEY) || '[]'); }} catch (_) {{ return []; }} }};
           const remember = id => {{ const next = [id, ...recentIds().filter(item => item !== id)].slice(0,6); parentWin.localStorage.setItem(RECENT_KEY, JSON.stringify(next)); }};
-          const navigate = command => {{ remember(command.id); close(); parentWin.location.href = command.href; }};
+          const navigate = command => {{
+            if (!command || !command.href) return;
+            remember(command.id);
+            close();
+
+            // Use a real link inside Streamlit's parent document. This follows the
+            // same navigation path as Cadivor's sidebar links and reliably causes
+            // Streamlit to restart with the selected ?page= route.
+            const link = parentDoc.createElement('a');
+            link.href = command.href;
+            link.target = '_self';
+            link.style.display = 'none';
+            parentDoc.body.appendChild(link);
+            link.click();
+            setTimeout(() => link.remove(), 250);
+          }};
           const itemHtml = (command, index) => `<button class="cvcc-item ${{index === activeIndex ? 'active' : ''}}" data-index="${{index}}"><span class="cvcc-icon">${{command.icon}}</span><span><div class="cvcc-title">${{command.title}}</div><div class="cvcc-subtitle">${{command.subtitle}}</div></span><span class="cvcc-shortcut">${{command.shortcut || command.category}}</span></button>`;
 
           const render = () => {{
