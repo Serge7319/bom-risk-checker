@@ -139,22 +139,47 @@ def _query_table(
     order: str | None = None,
     limit: int | None = None,
 ):
-    try:
-        query = (
-            supabase.table(table)
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("analysis_id", analysis_id)
-        )
-        if workspace_id:
+    """Load records linked to an already-authorized analysis.
+
+    New Cadivor rows carry user_id and workspace_id. Older rows may predate one
+    or both columns. The parent analysis is verified before this helper is used,
+    so progressively relaxing legacy metadata filters remains scoped to the
+    selected analysis_id while restoring historical component records.
+    """
+
+    def _execute(*, include_user: bool, include_workspace: bool):
+        query = supabase.table(table).select("*").eq("analysis_id", analysis_id)
+        if include_user and user_id:
+            query = query.eq("user_id", user_id)
+        if include_workspace and workspace_id:
             query = query.eq("workspace_id", workspace_id)
         if order:
             query = query.order(order, desc=True)
         if limit:
             query = query.limit(limit)
         return query.execute().data or []
-    except Exception:
-        return []
+
+    attempts = [
+        (True, bool(workspace_id)),   # Current schema.
+        (True, False),                # Legacy rows without workspace_id.
+        (False, False),               # Oldest rows linked only by analysis_id.
+    ]
+    seen = set()
+    for include_user, include_workspace in attempts:
+        key = (include_user, include_workspace)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            rows = _execute(
+                include_user=include_user,
+                include_workspace=include_workspace,
+            )
+            if rows:
+                return rows
+        except Exception:
+            continue
+    return []
 
 
 def _section_header(title: str, subtitle: str) -> None:
