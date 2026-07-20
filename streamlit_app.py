@@ -3106,10 +3106,11 @@ if app_mode == "Monitoring":
     st.markdown(
         """
         <style>
-        .cv320-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:14px 0 22px}.cv320-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:15px 16px;box-shadow:0 10px 28px rgba(15,23,42,.045)}.cv320-kpi span{display:block;font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#64748b!important;margin-bottom:7px}.cv320-kpi strong{font-size:25px;font-weight:950;color:#0f172a!important}.cv320-kpi small{display:block;font-size:10px;font-weight:700;color:#64748b!important;margin-top:5px}
-        .cv320-card{border:1px solid #dbe3ef;background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05)}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:#2563eb!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-action{border-top:1px solid #e2e8f0;margin-top:12px;padding-top:12px;font-size:12px;font-weight:760;color:#0f172a!important;line-height:1.55}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
-        .cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}
-        @media(max-width:1200px){.cv320-kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){.cv320-kpis{grid-template-columns:repeat(2,1fr)}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}}
+        .cv320-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:14px 0 22px}.cv320-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:15px 16px;box-shadow:0 10px 28px rgba(15,23,42,.045);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.cv320-kpi:hover{transform:translateY(-2px);border-color:#bfdbfe;box-shadow:0 16px 34px rgba(37,99,235,.09)}.cv320-kpi span{display:block;font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#64748b!important;margin-bottom:7px}.cv320-kpi strong{font-size:25px;font-weight:950;color:#0f172a!important}.cv320-kpi small{display:block;font-size:10px;font-weight:700;color:#64748b!important;margin-top:5px}
+        .cv320-card{--accent:#2563eb;border:1px solid #dbe3ef;border-left:5px solid var(--accent);background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05);transition:transform .18s ease,box-shadow .18s ease}.cv320-card:hover{transform:translateY(-1px);box-shadow:0 16px 36px rgba(15,23,42,.075)}.cv320-card.critical{--accent:#dc2626}.cv320-card.high{--accent:#f97316}.cv320-card.medium{--accent:#eab308}.cv320-card.low{--accent:#16a34a}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-recommendation{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff,#f8fbff);border-radius:14px;margin-top:13px;padding:13px 14px}.cv320-recicon{width:31px;height:31px;border-radius:10px;background:#dbeafe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-weight:950}.cv320-rectitle{font-size:10px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8!important}.cv320-reccopy{font-size:12px;font-weight:850;color:#0f172a!important;line-height:1.45;margin-top:3px}.cv320-impact{font-size:10px;font-weight:760;color:#52647a!important;line-height:1.4;margin-top:5px}.cv320-confidence{border-left:1px solid #bfdbfe;padding-left:12px;text-align:right;white-space:nowrap}.cv320-confidence span{display:block;font-size:8px;font-weight:900;text-transform:uppercase;color:#64748b!important}.cv320-confidence strong{font-size:15px;font-weight:950;color:#1d4ed8!important}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
+        .cv320-evidence{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:5px 0 13px}.cv320-evidence div{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv320-evidence span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#64748b!important}.cv320-evidence strong{display:block;font-size:11px;font-weight:900;color:#0f172a!important;margin-top:4px}.cv320-section-title{font-size:12px;font-weight:950;color:#0f172a!important;margin:4px 0 10px}.cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv321-timeline{position:relative;margin:8px 0 10px;padding-left:22px}.cv321-timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:2px;background:#dbeafe}.cv321-event{position:relative;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px 14px;margin:0 0 10px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.cv321-event:before{content:"";position:absolute;left:-20px;top:17px;width:10px;height:10px;border-radius:50%;background:#2563eb;border:3px solid #eff6ff}.cv321-eventtime{font-size:9px;font-weight:850;color:#64748b!important}.cv321-eventtitle{font-size:13px;font-weight:950;color:#0f172a!important;margin-top:3px}.cv321-eventcopy{font-size:11px;font-weight:700;color:#52647a!important;margin-top:4px;line-height:1.45}
+        [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
+        @media(max-width:1200px){.cv320-kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:800px){.cv320-kpis{grid-template-columns:repeat(2,1fr)}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -3134,6 +3135,29 @@ if app_mode == "Monitoring":
         """,
         unsafe_allow_html=True,
     )
+
+    def _monitor_display(value, fallback="—"):
+        if value is None:
+            return fallback
+        try:
+            if pd.isna(value):
+                return fallback
+        except Exception:
+            pass
+        cleaned = str(value).strip()
+        return fallback if not cleaned or cleaned.lower() in {"nan", "none", "null", "nat"} else cleaned
+
+    def _monitor_date(value):
+        cleaned = _monitor_display(value, "")
+        if not cleaned:
+            return None
+        try:
+            return pd.to_datetime(cleaned).date()
+        except Exception:
+            return None
+
+    def _monitor_confidence(score):
+        return max(65, min(98, int(round(float(score or 0) * 0.92 + 8))))
 
     queue_tab, components_tab, timeline_tab, export_tab = st.tabs(["Action Queue", "Monitored Components", "Timeline", "Export"])
 
@@ -3162,17 +3186,39 @@ if app_mode == "Monitoring":
             for idx, row in filtered.head(50).iterrows():
                 score = int(row["Priority Score"])
                 tone = "bad" if score >= 75 else "warn" if score >= 45 else "good"
-                st.markdown(f"""<section class="cv320-card"><div class="cv320-cardhead"><div><div class="cv320-type">{html.escape(str(row['Alert Type']))}</div><div class="cv320-part">{html.escape(str(row['Part Number']))}</div></div><span class="cv320-score {tone}">Priority {score}/100</span></div><div class="cv320-change">{html.escape(str(row['Change']))}</div><div class="cv320-pills"><span class="cv320-pill">Status: {html.escape(str(row['Status']))}</span><span class="cv320-pill">Owner: {html.escape(str(row['Owner']))}</span><span class="cv320-pill">Due: {html.escape(str(row['Due Date']))}</span><span class="cv320-pill">Severity: {html.escape(str(row['Severity']))}</span></div><div class="cv320-action"><b>Cadivor recommendation:</b> {html.escape(str(row['Recommended Action']))}<br><b>Why it matters:</b> {html.escape(str(row['Expected Impact']))}</div></section>""", unsafe_allow_html=True)
+                severity = _monitor_display(row.get("Severity"), "Medium")
+                severity_class = severity.lower() if severity.lower() in {"critical", "high", "medium", "low"} else "medium"
+                part_number = _monitor_display(row.get("Part Number"), "Unknown component")
+                alert_type = _monitor_display(row.get("Alert Type"), "Monitoring change")
+                status = _monitor_display(row.get("Status"), "Open")
+                owner = _monitor_display(row.get("Owner"), "Unassigned")
+                due_label = _monitor_display(row.get("Due Date"), "No due date")
+                change = _monitor_display(row.get("Change"), "Monitoring evidence changed.")
+                recommended_action = _monitor_display(row.get("Recommended Action"), "Review this change and document the engineering response.")
+                expected_impact = _monitor_display(row.get("Expected Impact"), "Confirm whether redesign, sourcing, or qualification action is required.")
+                confidence = _monitor_confidence(score)
+                current_value = _monitor_display(row.get("Current Value", row.get("Current", row.get("New Value", ""))), "Latest evidence available")
+                previous_value = _monitor_display(row.get("Previous Value", row.get("Previous", row.get("Old Value", ""))), "Earlier baseline")
+                supplier = _monitor_display(row.get("Supplier", row.get("Primary Supplier", "")), "Supplier data pending")
+                checked = _monitor_display(row.get("Last Checked", row.get("Created At", row.get("created_at", ""))), "Recently")
+                st.markdown(f"""<section class="cv320-card {severity_class}"><div class="cv320-cardhead"><div><div class="cv320-type">{html.escape(alert_type)}</div><div class="cv320-part">{html.escape(part_number)}</div></div><span class="cv320-score {tone}">Priority {score}/100</span></div><div class="cv320-change">{html.escape(change)}</div><div class="cv320-pills"><span class="cv320-pill">Status: {html.escape(status)}</span><span class="cv320-pill">Owner: {html.escape(owner)}</span><span class="cv320-pill">Due: {html.escape(due_label)}</span><span class="cv320-pill">Severity: {html.escape(severity)}</span></div><div class="cv320-recommendation"><div class="cv320-recicon">i</div><div><div class="cv320-rectitle">Cadivor recommendation</div><div class="cv320-reccopy">{html.escape(recommended_action)}</div><div class="cv320-impact"><b>Why it matters:</b> {html.escape(expected_impact)}</div></div><div class="cv320-confidence"><span>Confidence</span><strong>{confidence}%</strong></div></div></section>""", unsafe_allow_html=True)
 
                 alert_id = str(row.get("Alert ID", ""))
-                with st.expander("Review workflow and evidence", expanded=False):
+                with st.expander("Engineering evidence and workflow", expanded=False):
+                    st.markdown(f"""<div class="cv320-section-title">Engineering evidence</div><div class="cv320-evidence"><div><span>Previous state</span><strong>{html.escape(previous_value)}</strong></div><div><span>Current state</span><strong>{html.escape(current_value)}</strong></div><div><span>Supplier</span><strong>{html.escape(supplier)}</strong></div><div><span>Last checked</span><strong>{html.escape(checked)}</strong></div></div><div class="cv320-section-title">Engineering workflow</div>""", unsafe_allow_html=True)
                     w1, w2, w3 = st.columns(3)
-                    new_status = w1.selectbox("Status", ["Open", "In Review", "Resolved", "Dismissed", "Reopened"], index=["Open", "In Review", "Resolved", "Dismissed", "Reopened"].index(row["Status"]) if row["Status"] in ["Open", "In Review", "Resolved", "Dismissed", "Reopened"] else 0, key=f"m32_status_{alert_id}_{idx}")
-                    new_priority = w2.selectbox("Priority", ["Low", "Normal", "High", "Urgent"], index=["Low", "Normal", "High", "Urgent"].index(row["Priority"]) if row["Priority"] in ["Low", "Normal", "High", "Urgent"] else 1, key=f"m32_priority_{alert_id}_{idx}")
-                    new_owner = w3.text_input("Assigned to", value="" if row["Owner"] in {"Engineering", "Procurement", "Supply Chain", "Component Engineering", "Engineering & Supply Chain"} else str(row["Owner"]), placeholder="Name or team", key=f"m32_owner_{alert_id}_{idx}")
+                    status_options = ["Open", "In Review", "Resolved", "Dismissed", "Reopened"]
+                    priority_options = ["Low", "Normal", "High", "Urgent"]
+                    row_status = status if status in status_options else "Open"
+                    row_priority = _monitor_display(row.get("Priority"), "Normal")
+                    row_priority = row_priority if row_priority in priority_options else "Normal"
+                    new_status = w1.selectbox("Status", status_options, index=status_options.index(row_status), key=f"m32_status_{alert_id}_{idx}")
+                    new_priority = w2.selectbox("Priority", priority_options, index=priority_options.index(row_priority), key=f"m32_priority_{alert_id}_{idx}")
+                    existing_owner = "" if owner in {"Unassigned", "Engineering", "Procurement", "Supply Chain", "Component Engineering", "Engineering & Supply Chain"} else owner
+                    new_owner = w3.text_input("Assigned to", value=existing_owner, placeholder="Name or team", key=f"m32_owner_{alert_id}_{idx}")
                     d1, d2 = st.columns([1, 2])
-                    due_value = d1.date_input("Due date", value=None, key=f"m32_due_{alert_id}_{idx}")
-                    note_value = d2.text_area("Engineering note", value=str(row.get("Note", "") or ""), placeholder="Document rationale, validation evidence, or next step...", key=f"m32_note_{alert_id}_{idx}")
+                    due_value = d1.date_input("Due date", value=_monitor_date(row.get("Due Date")), key=f"m32_due_{alert_id}_{idx}")
+                    note_value = d2.text_area("Engineering note", value=_monitor_display(row.get("Note"), ""), placeholder="Document rationale, validation evidence, or next step...", key=f"m32_note_{alert_id}_{idx}")
                     a1, a2, a3, a4 = st.columns(4)
                     if a1.button("Save workflow", type="primary", use_container_width=True, key=f"m32_save_{alert_id}_{idx}"):
                         try:
@@ -3212,17 +3258,31 @@ if app_mode == "Monitoring":
             event_df = pd.DataFrame(events.data or [])
         except Exception:
             event_df = pd.DataFrame()
-        if event_df.empty:
-            fallback = alert_df.copy()
-            if fallback.empty:
-                st.info("No monitoring timeline events are available yet.")
-            else:
-                cols = [c for c in ["created_at", "part_number", "alert_type", "alert_message", "severity"] if c in fallback.columns]
-                st.dataframe(fallback[cols], hide_index=True, use_container_width=True)
-                st.caption("Run the Sprint 32.0 migration to enable persistent workflow timeline events.")
+        timeline_source = event_df.copy()
+        if timeline_source.empty:
+            timeline_source = alert_df.copy()
+            if not timeline_source.empty:
+                timeline_source = timeline_source.rename(columns={"alert_type": "event_type", "alert_message": "event_summary"})
+        if timeline_source.empty:
+            st.info("No monitoring timeline events are available yet.")
         else:
-            display_cols = [c for c in ["created_at", "part_number", "event_type", "event_summary", "previous_value", "current_value"] if c in event_df.columns]
-            st.dataframe(event_df[display_cols], hide_index=True, use_container_width=True)
+            st.markdown('<div class="cv321-timeline">', unsafe_allow_html=True)
+            for _, event in timeline_source.head(100).iterrows():
+                event_time = _monitor_display(event.get("created_at"), "Recent")
+                try:
+                    parsed = pd.to_datetime(event_time)
+                    event_time = parsed.strftime("%b %d, %Y · %I:%M %p")
+                except Exception:
+                    pass
+                event_part = _monitor_display(event.get("part_number"), "Workspace")
+                event_type = _monitor_display(event.get("event_type"), "Monitoring update")
+                event_summary = _monitor_display(event.get("event_summary"), "Monitoring evidence was updated.")
+                previous = _monitor_display(event.get("previous_value"), "")
+                current = _monitor_display(event.get("current_value"), "")
+                transition = f" · {previous} → {current}" if previous and current else ""
+                event_html = f'<div class="cv321-event"><div class="cv321-eventtime">{html.escape(event_time)}</div><div class="cv321-eventtitle">{html.escape(event_part)} · {html.escape(event_type)}</div><div class="cv321-eventcopy">{html.escape(event_summary + transition)}</div></div>'
+                st.markdown(event_html, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
     with export_tab:
         queue = monitoring_center["prioritized_alerts"]
