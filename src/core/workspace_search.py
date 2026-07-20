@@ -77,7 +77,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
                 f"bom-record-{analysis_id or index}",
                 title,
                 f"{parts} parts · Health {health} · {high} high-risk",
-                _href("Analysis Details", analysis_id=analysis_id),
+                _href("Analysis Details", analysis_id=analysis_id, focus="analysis-top"),
                 "Saved BOMs",
                 "▦",
                 [title, row.get("filename"), "project", "bom", "saved analysis"],
