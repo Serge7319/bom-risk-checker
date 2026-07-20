@@ -329,7 +329,7 @@ def render_analysis_detail(
         .cv-component-detail{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:22px;padding:20px;box-shadow:0 18px 45px rgba(37,99,235,.08)}
         .cv-component-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.cv-component-detail-grid div{border:1px solid #dbe3ef;background:rgba(255,255,255,.9);border-radius:14px;padding:12px}.cv-component-detail-grid span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}.cv-component-detail-grid strong{display:block;color:#0f172a!important;font-size:13px;font-weight:950;overflow-wrap:anywhere}
         .cv-readiness-list{display:grid;gap:12px}.cv-readiness-row{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:13px}.cv-readiness-row strong{display:block;color:#0b1220!important;font-size:13px;font-weight:980;margin-bottom:4px}.cv-readiness-row span{display:block;color:#64748b!important;font-size:11px;font-weight:800}.cv-readiness-bar{height:9px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:10px}.cv-readiness-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#16a34a)}.cv-readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.cv-readiness-metrics div{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:12px}.cv-readiness-metrics span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-readiness-metrics strong{display:block;color:#0b1220!important;font-size:22px;font-weight:980}.cv-readiness-metrics small{display:block;color:#64748b!important;font-size:10px;font-weight:800;margin-top:6px}
-        .cv-analysis-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 18px 44px rgba(15,23,42,.055);overflow:hidden}.cv-analysis-table-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #e2e8f0}.cv-analysis-component{display:grid;grid-template-columns:1.2fr 1fr .75fr .75fr auto;gap:12px;align-items:center;padding:13px 20px;border-bottom:1px solid #eef2f7;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.cv-analysis-component .head{color:#0b1220!important;font-size:13px;font-weight:980}.cv-analysis-component .sub{color:#64748b!important;font-size:11px;font-weight:800;margin-top:3px}.cv-analysis-component.is-selected{background:linear-gradient(90deg,#eff6ff,#f8fbff);border-left:4px solid #2563eb;padding-left:16px;box-shadow:inset 0 0 0 1px #bfdbfe}.cv-analysis-component.is-selected .head{color:#1d4ed8!important}
+        .cv-analysis-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 18px 44px rgba(15,23,42,.055);overflow:hidden}.cv-analysis-table-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid #e2e8f0}.cv-analysis-component{display:grid;grid-template-columns:1.2fr 1fr .75fr .75fr auto;gap:12px;align-items:center;padding:13px 20px;border-bottom:1px solid #eef2f7;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.cv-analysis-component .head{color:#0b1220!important;font-size:13px;font-weight:980}.cv-analysis-component .sub{color:#64748b!important;font-size:11px;font-weight:800;margin-top:3px}.cv-analysis-component.is-selected{background:linear-gradient(90deg,#dbeafe 0%,#eff6ff 45%,#f8fbff 100%);border-left:5px solid #2563eb;padding-left:15px;box-shadow:inset 0 0 0 1px #93c5fd,0 8px 22px rgba(37,99,235,.10)}.cv-analysis-component.is-selected .head{color:#1d4ed8!important}.cv-analysis-component.is-command-focus{animation:cv-command-focus-pulse .65s ease-out 1}.cv-component-detail.is-command-focus{animation:cv-command-panel-pulse .65s ease-out 1}.cv-command-origin{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #bfdbfe;background:linear-gradient(90deg,#eff6ff,#f8fbff);border-radius:14px;padding:10px 13px;margin:0 0 12px}.cv-command-origin-main{display:flex;align-items:center;gap:9px;min-width:0}.cv-command-origin-icon{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:#2563eb;color:#fff!important;font-size:12px;font-weight:950}.cv-command-origin-copy{min-width:0}.cv-command-origin-copy strong{display:block;color:#0f172a!important;font-size:11px;font-weight:950}.cv-command-origin-copy span{display:block;color:#64748b!important;font-size:10px;font-weight:800;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cv-command-origin-part{display:inline-flex;align-items:center;border:1px solid #93c5fd;background:#fff;color:#1d4ed8!important;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:950;white-space:nowrap}@keyframes cv-command-focus-pulse{0%{transform:translateX(0);box-shadow:inset 0 0 0 1px #60a5fa,0 0 0 0 rgba(37,99,235,.35)}45%{transform:translateX(2px);box-shadow:inset 0 0 0 1px #3b82f6,0 0 0 7px rgba(37,99,235,.10)}100%{transform:translateX(0);box-shadow:inset 0 0 0 1px #93c5fd,0 8px 22px rgba(37,99,235,.10)}}@keyframes cv-command-panel-pulse{0%{box-shadow:0 18px 45px rgba(37,99,235,.08)}45%{box-shadow:0 18px 45px rgba(37,99,235,.18),0 0 0 6px rgba(37,99,235,.08)}100%{box-shadow:0 18px 45px rgba(37,99,235,.08)}}
         [data-testid="stTabs"]{margin-top:8px}[data-testid="stTabs"] [data-baseweb="tab-list"]{position:sticky;top:64px;z-index:40;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:6px;box-shadow:0 12px 28px rgba(15,23,42,.06);gap:6px}[data-testid="stTabs"] [data-baseweb="tab"]{height:42px;border-radius:11px;padding:0 18px;font-weight:900;color:#475569}[data-testid="stTabs"] [aria-selected="true"]{background:#eff6ff!important;color:#2563eb!important}
         @media(max-width:1180px){.cv-analysis-hero{grid-template-columns:1fr}.cv-analysis-component{grid-template-columns:1fr}.cv-readiness-metrics{grid-template-columns:1fr}}@media(max-width:700px){.cv-analysis-summary{grid-template-columns:1fr}.cv-analysis-title{font-size:30px}.cv-analysis-hero{padding:20px}}
         
@@ -1525,6 +1525,19 @@ def render_analysis_detail(
             "Component Risk Report",
             "Search, filter, and inspect the saved component intelligence for this analysis.",
         )
+        if component_focus_requested and requested_component:
+            st.markdown(
+                '<div class="cv-command-origin">'
+                '<div class="cv-command-origin-main">'
+                '<span class="cv-command-origin-icon">K</span>'
+                '<div class="cv-command-origin-copy">'
+                '<strong>Opened from Command Center</strong>'
+                '<span>Cadivor focused this analysis on the component you selected.</span>'
+                '</div></div>'
+                f'<span class="cv-command-origin-part">{html.escape(requested_component)}</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
         # Sprint 34.2.4 — component results from Command Center should land on
         # the Components tab instead of restoring an unrelated browser position.
@@ -1554,6 +1567,12 @@ def render_analysis_detail(
                       const root = doc.querySelector('[data-testid="stAppViewContainer"]');
                       if (target) {
                         target.scrollIntoView({behavior:'smooth', block:'start'});
+                        window.setTimeout(() => {
+                          const selectedRow = doc.querySelector('.cv-analysis-component.is-selected');
+                          const intelligence = doc.querySelector('.cv-component-detail');
+                          if (selectedRow) selectedRow.scrollIntoView({behavior:'smooth', block:'center'});
+                          if (intelligence) intelligence.setAttribute('tabindex', '-1');
+                        }, 260);
                       } else if (root) {
                         root.scrollTo({top:0, left:0, behavior:'smooth'});
                       }
@@ -1754,7 +1773,7 @@ def render_analysis_detail(
                         )
                         rows.append(
                             (
-                                f'<div class="cv-analysis-component{" is-selected" if mpn_value.strip().lower() == selected_mpn_for_row else ""}" data-component="{html.escape(mpn_value, quote=True)}">'
+                                f'<div class="cv-analysis-component{" is-selected" if mpn_value.strip().lower() == selected_mpn_for_row else ""}{" is-command-focus" if component_focus_requested and requested_component and mpn_value.strip().lower() == requested_component.strip().lower() else ""}" data-component="{html.escape(mpn_value, quote=True)}">'
                                 '<div>'
                                 f'<div class="head">{html.escape(mpn_value)}</div>'
                                 f'<div class="sub">{html.escape(mfg_value)}</div>'
@@ -1877,9 +1896,9 @@ def render_analysis_detail(
 
                     st.markdown(
                         f"""
-                        <div class="cv-component-detail">
+                        <div class="cv-component-detail{' is-command-focus' if component_focus_requested and requested_component and selected_mpn.strip().lower() == requested_component.strip().lower() else ''}">
                           <div class="cv-analysis-card-title">
-                            <span>Component Intelligence</span>
+                            <span>{'Selected Component' if component_focus_requested and requested_component else 'Component Intelligence'}</span>
                             <span class="cv-analysis-pill {_risk_class(selected_level, selected_score)}">
                               {html.escape(selected_level)} · {selected_score}
                             </span>
