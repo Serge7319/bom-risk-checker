@@ -77,6 +77,7 @@ from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
+from src.ui.design_system_v1 import inject_design_system_v1
 from src.components.onboarding import (
     render_analysis_success,
     render_upload_detected,
@@ -2375,6 +2376,9 @@ inject_premium_css()
 inject_v32_ux_css()
 st.markdown(readability_css(), unsafe_allow_html=True)
 apply_milestone10a_design_system()
+# Sprint 33: final design-system authority. Loaded last so it safely normalizes
+# legacy milestone styles without changing page logic.
+inject_design_system_v1()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
