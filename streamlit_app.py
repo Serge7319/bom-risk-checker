@@ -78,6 +78,7 @@ from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.components.command_center import render_command_center
+from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
 from src.components.onboarding import (
     render_analysis_success,
@@ -2393,7 +2394,19 @@ for _nav in NAV_OPTIONS:
     _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
 
 render_topbar(profile_for_shell, app_mode)
-render_command_center(current_page=app_mode, user_name=shell_name.split()[0] if shell_name else "Engineer")
+try:
+    _workspace_command_records = build_workspace_commands(
+        supabase,
+        current_user["id"],
+        limit_per_source=60,
+    )
+except Exception:
+    _workspace_command_records = []
+render_command_center(
+    current_page=app_mode,
+    user_name=shell_name.split()[0] if shell_name else "Engineer",
+    workspace_commands=_workspace_command_records,
+)
 
 st.markdown(
     f"""
