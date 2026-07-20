@@ -99,48 +99,33 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
             )
         )
 
-    # Component records belong to analyses. Query by the analyses owned by the
-    # current user rather than assuming every historical analysis_parts row has
-    # its own user_id value. This keeps older saved BOMs searchable.
+    # Load parts through the analyses the user can access instead of relying only
+    # on analysis_parts.user_id. Older Cadivor records may have a missing user_id
+    # even though their parent analysis is valid, which previously made component
+    # search appear empty.
     analysis_ids = [analysis_id for analysis_id in analysis_names if analysis_id]
-    part_limit = max(limit_per_source * 5, 300)
     parts: list[dict] = []
-
     if analysis_ids:
-        # Preferred path: retrieve all component rows for the user's analyses in
-        # one request. Supabase/PostgREST exposes this as the ``in_`` filter.
-        parts = _rows(
-            supabase.table("analysis_parts")
-            .select("*")
-            .in_("analysis_id", analysis_ids)
-            .order("created_at", desc=True)
-            .limit(part_limit)
-        )
+        try:
+            parts = _rows(
+                supabase.table("analysis_parts")
+                .select("*")
+                .in_("analysis_id", analysis_ids)
+                .order("created_at", desc=True)
+                .limit(max(limit_per_source * 5, 300))
+            )
+        except Exception:
+            parts = []
 
-        # Compatibility path for older Supabase clients or schemas where the
-        # bulk filter is unavailable. Query each known analysis separately.
-        if not parts:
-            for analysis_id in analysis_ids:
-                rows = _rows(
-                    supabase.table("analysis_parts")
-                    .select("*")
-                    .eq("analysis_id", analysis_id)
-                    .limit(part_limit)
-                )
-                parts.extend(rows)
-                if len(parts) >= part_limit:
-                    parts = parts[:part_limit]
-                    break
-
-    # Newer installations may also store user_id directly on analysis_parts.
-    # Keep this fallback so both database layouts remain supported.
+    # Compatibility fallback for installations where PostgREST does not expose
+    # the `in_` filter or where newer rows are stored directly by user_id.
     if not parts:
         parts = _rows(
             supabase.table("analysis_parts")
             .select("*")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
-            .limit(part_limit)
+            .limit(max(limit_per_source * 5, 300))
         )
     seen_parts: set[tuple[str, str]] = set()
     for index, row in enumerate(parts):
@@ -161,7 +146,13 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
                 f"component-{analysis_id}-{mpn}-{index}",
                 mpn,
                 f"{manufacturer} · {risk} risk · {lifecycle} · {project}",
-                _href("Alternative Finder", original_part=mpn, return_analysis_id=analysis_id),
+                _href(
+                    "Analysis Details",
+                    analysis_id=analysis_id,
+                    tab="components",
+                    component=mpn,
+                    focus="component-risk",
+                ),
                 "Components",
                 "◉",
                 [mpn, manufacturer, risk, lifecycle, project, "part", "component", "alternative"],
