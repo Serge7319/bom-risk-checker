@@ -257,47 +257,23 @@ def render_analysis_detail(
         or requested_focus == "component-risk"
     )
 
-    # Sprint 34.2.5 — saved-BOM navigation explicitly requests a top landing.
-    # Streamlit can preserve the previous scroll offset when the same analysis is
-    # reopened, so checking only whether analysis_id changed is insufficient.
-    # The one-shot focus token is removed from the browser URL after scrolling,
-    # allowing the same saved BOM to request a fresh top landing next time.
+    # Sprint 34.2.6 — defer saved-BOM scroll restoration until the complete
+    # Analysis Details page has rendered. Streamlit/browser scroll restoration
+    # can run after an early script, which was returning users to the old lower
+    # position. The final script at the end of this renderer repeatedly resets
+    # the actual Streamlit main scroll container after layout stabilization.
     scroll_key = "cv28_last_open_analysis"
     saved_bom_top_requested = requested_focus == "analysis-top"
-    analysis_changed = analysis_id and st.session_state.get(scroll_key) != analysis_id
-    if analysis_id and (analysis_changed or saved_bom_top_requested):
+    analysis_changed = bool(
+        analysis_id and st.session_state.get(scroll_key) != analysis_id
+    )
+    if analysis_id:
         st.session_state[scroll_key] = analysis_id
-        components.html(
-            """
-            <script>
-            (function(){
-              const parentWindow = window.parent;
-              const doc = parentWindow.document;
-              const resetTop = () => {
-                const root = doc.querySelector('[data-testid="stAppViewContainer"]');
-                if (root) { root.scrollTo({top: 0, left: 0, behavior: 'instant'}); }
-                parentWindow.scrollTo({top: 0, left: 0, behavior: 'instant'});
-              };
-              resetTop();
-              window.setTimeout(resetTop, 80);
-              window.setTimeout(resetTop, 260);
 
-              // Remove only the one-shot analysis-top token. Component-focused
-              // links keep their own focus parameter and follow the component
-              // scroll workflow later in this page.
-              try {
-                const url = new URL(parentWindow.location.href);
-                if (url.searchParams.get('focus') === 'analysis-top') {
-                  url.searchParams.delete('focus');
-                  parentWindow.history.replaceState({}, '', url.toString());
-                }
-              } catch (error) {}
-            })();
-            </script>
-            """,
-            height=0,
-            width=0,
-        )
+    st.markdown(
+        '<div id="cv-analysis-page-top" style="height:1px;scroll-margin-top:76px"></div>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         """
@@ -2693,4 +2669,66 @@ def render_analysis_detail(
                 use_container_width=True,
                 analysis_id=analysis_id,
             )
+
+    # Sprint 34.2.6 — run after every tab and section has rendered. This timing is
+    # essential: browsers may restore the previous scroll position after the
+    # initial Streamlit DOM is mounted. Only saved-BOM navigation receives this
+    # top reset; component-focused navigation keeps its targeted section jump.
+    if saved_bom_top_requested or (analysis_changed and not component_focus_requested):
+        components.html(
+            """
+            <script>
+            (function () {
+              const parentWindow = window.parent;
+              const doc = parentWindow.document;
+
+              try { parentWindow.history.scrollRestoration = 'manual'; } catch (error) {}
+
+              const resetAnalysisTop = () => {
+                const target = doc.getElementById('cv-analysis-page-top');
+                const candidates = [
+                  doc.querySelector('[data-testid="stMain"]'),
+                  doc.querySelector('section.main'),
+                  doc.querySelector('[data-testid="stAppViewContainer"]'),
+                  doc.scrollingElement,
+                  doc.documentElement,
+                  doc.body
+                ].filter(Boolean);
+
+                for (const element of candidates) {
+                  try {
+                    element.scrollTop = 0;
+                    if (typeof element.scrollTo === 'function') {
+                      element.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                    }
+                  } catch (error) {}
+                }
+
+                try { parentWindow.scrollTo({ top: 0, left: 0, behavior: 'auto' }); } catch (error) {}
+                if (target) {
+                  try { target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (error) {}
+                }
+              };
+
+              [0, 60, 160, 320, 650, 1100, 1700, 2400].forEach((delay) => {
+                parentWindow.setTimeout(resetAnalysisTop, delay);
+              });
+
+              // Keep the focus token long enough for the delayed resets to win
+              // over browser restoration, then remove it without rerunning the app.
+              parentWindow.setTimeout(() => {
+                try {
+                  const url = new URL(parentWindow.location.href);
+                  if (url.searchParams.get('focus') === 'analysis-top') {
+                    url.searchParams.delete('focus');
+                    parentWindow.history.replaceState({}, '', url.toString());
+                  }
+                } catch (error) {}
+              }, 2600);
+            })();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
 
