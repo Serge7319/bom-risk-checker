@@ -1,8 +1,10 @@
-"""User-facing Engineering Assistant panel."""
+"""Premium user-facing Engineering Copilot panel."""
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
+from urllib.parse import urlencode, quote
 
 import streamlit as st
 
@@ -37,9 +39,15 @@ def _usage_banner(status) -> None:
         unsafe_allow_html=True,
     )
     if status.warning_level in {"notice", "high", "critical"}:
-        st.info(f"You have used {status.percent_used}% of this month's AI allowance. Compare plans before your allowance is exhausted.")
+        st.info(
+            f"You have used {status.percent_used}% of this month's AI allowance. "
+            "Compare plans before your allowance is exhausted."
+        )
     elif status.warning_level == "reached":
-        st.warning("Your monthly AI allowance has been reached. Your saved engineering data is safe. Upgrade your plan to continue using the Engineering Assistant now.")
+        st.warning(
+            "Your monthly AI allowance has been reached. Your saved engineering data is safe. "
+            "Upgrade your plan to continue using the Engineering Assistant now."
+        )
         st.link_button("Compare plans", "?page=Pricing", use_container_width=False)
 
 
@@ -62,6 +70,176 @@ def _render_error(exc: EngineeringAIError) -> None:
     )
 
 
+def _parse_report(answer: str) -> dict[str, str]:
+    sections: dict[str, list[str]] = {}
+    active = "Engineering Assessment"
+    sections[active] = []
+    for raw_line in str(answer or "").splitlines():
+        line = raw_line.strip()
+        match = re.match(r"^#{1,4}\s+(.+?)\s*$", line)
+        if match:
+            active = match.group(1).strip()
+            sections.setdefault(active, [])
+            continue
+        sections.setdefault(active, []).append(raw_line)
+    return {key: "\n".join(value).strip() for key, value in sections.items()}
+
+
+def _section(sections: dict[str, str], *names: str) -> str:
+    lowered = {key.lower(): value for key, value in sections.items()}
+    for name in names:
+        if name.lower() in lowered:
+            return lowered[name.lower()]
+    return ""
+
+
+def _plain_markdown(text: str) -> str:
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", str(text or ""))
+    text = re.sub(r"`(.+?)`", r"\1", text)
+    return text.strip()
+
+
+def _evidence_items(evidence: str) -> list[tuple[str, str]]:
+    items: list[tuple[str, str]] = []
+    for line in str(evidence or "").splitlines():
+        clean = line.strip()
+        if not clean.startswith(("-", "*")):
+            continue
+        clean = clean[1:].strip()
+        match = re.match(r"\*\*(.+?)\*\*\s*[—-]\s*(.+)", clean)
+        if match:
+            items.append((match.group(1).strip(), _plain_markdown(match.group(2))))
+        else:
+            items.append(("Engineering evidence", _plain_markdown(clean)))
+    return items
+
+
+def _priority_component(context: dict[str, Any], evidence: str = "") -> str:
+    evidence_items = _evidence_items(evidence)
+    if evidence_items and evidence_items[0][0] != "Engineering evidence":
+        return evidence_items[0][0]
+    components = list(context.get("components") or [])
+    components.sort(key=lambda row: int(row.get("risk_score") or 0), reverse=True)
+    if components:
+        return str(components[0].get("part_number") or components[0].get("mpn") or "")
+    return ""
+
+
+def _confidence_data(confidence: str, context: dict[str, Any]) -> tuple[str, int, str]:
+    plain = _plain_markdown(confidence)
+    label_match = re.match(r"(High|Medium|Limited|Low)", plain, re.IGNORECASE)
+    label = (label_match.group(1).title() if label_match else "Medium")
+    percent_match = re.search(r"(\d{1,3})%", plain)
+    if percent_match:
+        score = max(0, min(100, int(percent_match.group(1))))
+    else:
+        score = int((context.get("coverage") or {}).get("score") or 0)
+    detail = plain
+    if detail.lower().startswith(label.lower()):
+        detail = detail[len(label):].lstrip(". ")
+    return label, score, detail
+
+
+def _href(page: str, **params: Any) -> str:
+    payload = {"page": page}
+    payload.update({key: value for key, value in params.items() if value not in (None, "")})
+    return "?" + urlencode(payload, quote_via=quote)
+
+
+def _render_evidence_cards(evidence: str) -> None:
+    items = _evidence_items(evidence)
+    if not items:
+        st.markdown(evidence)
+        return
+    columns = st.columns(2)
+    for index, (title, detail) in enumerate(items[:6]):
+        columns[index % 2].markdown(
+            f"""
+            <div class="cv35-evidence-card">
+              <div class="cv35-evidence-part">{html.escape(title)}</div>
+              <div class="cv35-evidence-detail">{html.escape(detail)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def _render_quick_actions(context: dict[str, Any], priority_part: str) -> None:
+    analysis = context.get("analysis") or {}
+    analysis_id = str(analysis.get("analysis_id") or "")
+    if not analysis_id:
+        return
+    st.markdown('<div class="cv35-section-label">Continue the workflow</div>', unsafe_allow_html=True)
+    cols = st.columns(4)
+    component_url = _href(
+        "Analysis Details",
+        analysis_id=analysis_id,
+        tab="components",
+        component=priority_part,
+        focus="component-risk",
+    )
+    alternative_url = _href("Alternative Finder", original_part=priority_part, analysis_id=analysis_id)
+    monitoring_url = _href("Monitoring", mpn=priority_part, analysis_id=analysis_id)
+    decision_url = _href("Engineering Decisions", analysis_id=analysis_id, part_number=priority_part)
+    cols[0].link_button("Open component", component_url, use_container_width=True)
+    cols[1].link_button("Find alternative", alternative_url, use_container_width=True)
+    cols[2].link_button("Monitor part", monitoring_url, use_container_width=True)
+    cols[3].link_button("Record decision", decision_url, use_container_width=True)
+
+
+def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> None:
+    sections = _parse_report(answer)
+    assessment = _section(sections, "Engineering Assessment", "Assessment")
+    evidence = _section(sections, "Supporting Evidence", "Evidence")
+    actions = _section(sections, "Recommended Actions", "Recommended action")
+    confidence = _section(sections, "Confidence")
+    priority_part = _priority_component(context, evidence)
+    confidence_label, confidence_score, confidence_detail = _confidence_data(confidence, context)
+    confidence_class = "high" if confidence_score >= 75 else "medium" if confidence_score >= 45 else "low"
+
+    st.markdown(
+        f"""
+        <div class="cv35-review-shell">
+          <div class="cv35-question"><small>Engineering question</small>{html.escape(question)}</div>
+          <div class="cv35-review-heading">
+            <div><div class="cv35-answer-label">Cadivor Engineering Review</div><h2>Engineering Assessment</h2></div>
+            <div class="cv35-review-status">Review complete</div>
+          </div>
+          <div class="cv35-assessment-copy">{html.escape(_plain_markdown(assessment))}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="cv35-section-label">Supporting evidence</div>', unsafe_allow_html=True)
+    _render_evidence_cards(evidence)
+
+    left, right = st.columns([1.45, 1])
+    with left:
+        st.markdown(
+            f"""
+            <div class="cv35-action-card">
+              <div class="cv35-card-kicker">Recommended actions</div>
+              <div class="cv35-action-copy">{html.escape(_plain_markdown(actions))}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with right:
+        st.markdown(
+            f"""
+            <div class="cv35-confidence-card {confidence_class}">
+              <div class="cv35-confidence-top"><span>Decision confidence</span><strong>{confidence_score}%</strong></div>
+              <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
+              <div class="cv35-confidence-label">{html.escape(confidence_label)}</div>
+              <div class="cv35-confidence-detail">{html.escape(confidence_detail)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    _render_quick_actions(context, priority_part)
+
+
 def render_engineering_assistant(
     *,
     current_user: dict[str, Any],
@@ -73,17 +251,19 @@ def render_engineering_assistant(
 
     st.markdown(
         """
-        <style id="cadivor-engineering-assistant-3501">
+        <style id="cadivor-engineering-assistant-352">
         .cv35-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f6f9ff 62%,#eaf2ff);border-radius:24px;padding:22px;margin:2px 0 14px;box-shadow:0 18px 50px rgba(37,99,235,.08)}
-        .cv35-kicker{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important;margin-bottom:8px}.cv35-hero h2{font-size:27px;line-height:1.1;letter-spacing:-.035em;color:#0f172a!important;margin:0 0 8px}.cv35-hero p{font-size:13px;line-height:1.6;color:#52647a!important;font-weight:700;margin:0;max-width:900px}
+        .cv35-kicker,.cv35-answer-label,.cv35-section-label,.cv35-card-kicker{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important}.cv35-hero h2{font-size:27px;line-height:1.1;letter-spacing:-.035em;color:#0f172a!important;margin:0 0 8px}.cv35-hero p{font-size:13px;line-height:1.6;color:#52647a!important;font-weight:700;margin:0;max-width:900px}
         .cv35-usage{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin:0 0 12px}.cv35-usage strong{font-size:11px;color:#0f172a!important}.cv35-usage span{font-size:10px;color:#52647a!important;font-weight:800}.cv35-usage.high,.cv35-usage.critical{border-color:#fde68a;background:#fffbeb}.cv35-usage.reached{border-color:#fecaca;background:#fef2f2}
-        .cv35-conversation{border:1px solid #dbeafe;background:#fff;border-radius:22px;padding:20px 21px;margin-top:16px;box-shadow:0 14px 36px rgba(15,23,42,.055)}
-        .cv35-question{border-left:4px solid #93c5fd;background:#f8fbff;border-radius:12px;padding:12px 14px;margin-bottom:14px;color:#334155;font-size:13px;font-weight:750}.cv35-question small{display:block;color:#64748b;font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
-        .cv35-answer-label{font-size:10px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb!important;margin:0 0 10px}.cv35-report-title{font-size:19px;font-weight:900;letter-spacing:-.025em;color:#0f172a!important;margin:0 0 12px}
         .cv35-message{display:flex;align-items:flex-start;gap:12px;border-radius:16px;padding:14px 15px;margin-top:14px}.cv35-message-error{border:1px solid #fecaca;background:#fff7f7}.cv35-message-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-weight:950;flex:0 0 auto}.cv35-message strong{display:block;color:#7f1d1d!important;font-size:13px;margin-bottom:3px}.cv35-message p{margin:0;color:#7f1d1d!important;font-size:12px;line-height:1.5}
-        .cv35-mode-note{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin-top:11px;color:#52647a;font-size:11px;font-weight:700}
+        .cv35-review-shell{border:1px solid #bfdbfe;background:linear-gradient(145deg,#fff,#f8fbff);border-radius:22px;padding:20px 21px;margin:18px 0 16px;box-shadow:0 16px 42px rgba(15,23,42,.06)}
+        .cv35-question{border-left:4px solid #60a5fa;background:#f3f8ff;border-radius:12px;padding:12px 14px;margin-bottom:18px;color:#0f172a;font-size:13px;font-weight:800}.cv35-question small{display:block;color:#64748b;font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}.cv35-review-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.cv35-review-heading h2{font-size:24px;letter-spacing:-.035em;color:#0f172a!important;margin:7px 0 8px}.cv35-review-status{border:1px solid #bbf7d0;background:#ecfdf5;color:#047857;border-radius:999px;padding:7px 10px;font-size:10px;font-weight:900;white-space:nowrap}.cv35-assessment-copy{font-size:14px;line-height:1.7;color:#334155;font-weight:650;max-width:1100px}
+        .cv35-section-label{margin:18px 0 9px}.cv35-evidence-card{min-height:126px;border:1px solid #dbeafe;background:#fff;border-radius:17px;padding:15px 16px;margin-bottom:10px;box-shadow:0 9px 24px rgba(15,23,42,.04)}.cv35-evidence-card:hover{border-color:#93c5fd;transform:translateY(-1px)}.cv35-evidence-part{font-size:14px;font-weight:950;color:#0f172a;margin-bottom:7px}.cv35-evidence-detail{font-size:12px;line-height:1.58;color:#52647a;font-weight:650}
+        .cv35-action-card,.cv35-confidence-card{height:100%;min-height:165px;border:1px solid #dbeafe;background:#fff;border-radius:19px;padding:17px 18px;margin-top:10px}.cv35-action-copy{font-size:13px;line-height:1.65;color:#334155;font-weight:680;margin-top:10px}.cv35-confidence-top{display:flex;align-items:center;justify-content:space-between;color:#475569;font-size:11px;font-weight:900}.cv35-confidence-top strong{font-size:24px;color:#0f172a}.cv35-confidence-track{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:13px 0 10px}.cv35-confidence-track div{height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}.cv35-confidence-card.high .cv35-confidence-track div{background:linear-gradient(90deg,#059669,#34d399)}.cv35-confidence-card.low .cv35-confidence-track div{background:linear-gradient(90deg,#d97706,#fbbf24)}.cv35-confidence-label{font-size:15px;font-weight:950;color:#0f172a;margin-bottom:6px}.cv35-confidence-detail{font-size:11px;line-height:1.5;color:#64748b;font-weight:650}
+        .cv35-mode-note{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin-top:12px;color:#52647a;font-size:11px;font-weight:700}
+        @media(max-width:900px){.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto}}
         </style>
-        <div class="cv35-hero"><div class="cv35-kicker">Engineering Assistant</div><h2>Ask Cadivor about this BOM</h2><p>Receive recommendations grounded in the saved component, lifecycle, supplier, inventory, monitoring, replacement, and decision evidence for this analysis.</p></div>
+        <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Receive an evidence-backed assessment, prioritized engineering actions, and direct links into the workflows needed to close the risk.</p></div>
         """,
         unsafe_allow_html=True,
     )
@@ -107,21 +287,20 @@ def render_engineering_assistant(
     st.caption("Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
 
     can_submit = status.can_use and bool(str(question or "").strip())
-    if st.button("Ask Engineering Assistant", type="primary", disabled=not can_submit, use_container_width=False):
+    if st.button("Ask Engineering Copilot", type="primary", disabled=not can_submit, use_container_width=False):
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
             model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
             base_url=_secret("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         )
         st.session_state.pop("cv35_last_error", None)
-        with st.status("Cadivor is analyzing the saved engineering evidence...", expanded=False) as progress:
+        with st.status("Cadivor is reviewing the saved engineering evidence...", expanded=False) as progress:
             try:
                 response = api.ask(question=question, context=context)
                 consume_ai_credits(st.session_state, current_user, action="question")
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = question
                 st.session_state["cv35_provider_connected"] = api.configured
-                st.session_state["cv35_configuration_state"] = api.configuration_state
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:
                 st.session_state["cv35_last_error"] = exc
@@ -134,16 +313,9 @@ def render_engineering_assistant(
     answer = st.session_state.get("cv35_last_answer")
     if answer:
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
-        with st.container(border=True):
-            st.markdown(
-                f'<div class="cv35-question"><small>Engineering question</small>{html.escape(last_question)}</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown('<div class="cv35-answer-label">Cadivor engineering review</div>', unsafe_allow_html=True)
-            st.markdown('<div class="cv35-report-title">Engineering Assessment</div>', unsafe_allow_html=True)
-            st.markdown(answer)
+        _render_response(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
-                '<div class="cv35-mode-note">Cadivor produced this assessment from the engineering evidence saved with the BOM. Recommendations should be validated against current datasheets and approved sourcing requirements.</div>',
+                '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
                 unsafe_allow_html=True,
             )
