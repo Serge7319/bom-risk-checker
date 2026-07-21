@@ -10,6 +10,13 @@ import streamlit as st
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
 from src.services.engineering_ai import EngineeringAI, EngineeringAIError
+from src.services.copilot_conversation import (
+    append_turn,
+    clear_thread,
+    compact_history,
+    follow_up_suggestions,
+    get_thread,
+)
 
 SUGGESTIONS = [
     "What should I review first in this BOM?",
@@ -199,6 +206,42 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str) -> None:
     cols[3].link_button("Record decision", decision_url, use_container_width=True)
 
 
+
+
+def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest: bool = False) -> None:
+    turns = thread[:-1] if exclude_latest and thread else thread
+    if not turns:
+        return
+    with st.expander(f"Conversation history · {len(turns)} review{'s' if len(turns) != 1 else ''}", expanded=False):
+        for index, turn in enumerate(reversed(turns), start=1):
+            question = html.escape(str(turn.get("question") or "Engineering question"))
+            answer_sections = _parse_report(str(turn.get("answer") or ""))
+            assessment = html.escape(_plain_markdown(_section(answer_sections, "Engineering Assessment", "Assessment")))
+            st.markdown(
+                f"""
+                <div class="cv36-history-turn">
+                  <div class="cv36-history-number">{index}</div>
+                  <div><small>Engineering question</small><strong>{question}</strong><p>{assessment}</p></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any], prompt_key: str) -> None:
+    suggestions = follow_up_suggestions(question, answer, context)
+    if not suggestions:
+        return
+    st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
+    cols = st.columns(2)
+    for index, suggestion in enumerate(suggestions):
+        if cols[index % 2].button(suggestion, key=f"cv36_followup_{index}_{abs(hash(suggestion))}", use_container_width=True):
+            st.session_state[prompt_key] = suggestion
+            _clear_review_state()
+            st.session_state["cv36_followup_ready"] = True
+            st.rerun()
+
+
 def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> None:
     sections = _parse_report(answer)
     assessment = _section(sections, "Engineering Assessment", "Assessment")
@@ -273,6 +316,7 @@ def render_engineering_assistant(
         .cv35-section-label{margin:18px 0 9px}.cv35-evidence-card{min-height:126px;border:1px solid #dbeafe;background:#fff;border-radius:17px;padding:15px 16px;margin-bottom:10px;box-shadow:0 9px 24px rgba(15,23,42,.04)}.cv35-evidence-card:hover{border-color:#93c5fd;transform:translateY(-1px)}.cv35-evidence-part{font-size:14px;font-weight:950;color:#0f172a;margin-bottom:7px}.cv35-evidence-detail{font-size:12px;line-height:1.58;color:#52647a;font-weight:650}
         .cv35-action-card,.cv35-confidence-card{height:100%;min-height:165px;border:1px solid #dbeafe;background:#fff;border-radius:19px;padding:17px 18px;margin-top:10px}.cv35-action-copy{font-size:13px;line-height:1.65;color:#334155;font-weight:680;margin-top:10px}.cv35-confidence-top{display:flex;align-items:center;justify-content:space-between;color:#475569;font-size:11px;font-weight:900}.cv35-confidence-top strong{font-size:24px;color:#0f172a}.cv35-confidence-track{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:13px 0 10px}.cv35-confidence-track div{height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}.cv35-confidence-card.high .cv35-confidence-track div{background:linear-gradient(90deg,#059669,#34d399)}.cv35-confidence-card.low .cv35-confidence-track div{background:linear-gradient(90deg,#d97706,#fbbf24)}.cv35-confidence-label{font-size:15px;font-weight:950;color:#0f172a;margin-bottom:6px}.cv35-confidence-detail{font-size:11px;line-height:1.5;color:#64748b;font-weight:650}
         .cv35-mode-note{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin-top:12px;color:#52647a;font-size:11px;font-weight:700}
+        .cv36-history-turn{display:flex;gap:12px;border-bottom:1px solid #e2e8f0;padding:13px 2px}.cv36-history-turn:last-child{border-bottom:0}.cv36-history-number{display:grid;place-items:center;width:25px;height:25px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:950;flex:0 0 auto}.cv36-history-turn small{display:block;color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:.08em}.cv36-history-turn strong{display:block;color:#0f172a;font-size:12px;margin:3px 0 5px}.cv36-history-turn p{color:#52647a;font-size:11px;line-height:1.5;margin:0}.cv36-followup-note{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 13px;margin:10px 0;color:#1e40af;font-size:11px;font-weight:800}
         @media(max-width:900px){.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Receive an evidence-backed assessment, prioritized engineering actions, and direct links into the workflows needed to close the risk.</p></div>
@@ -280,6 +324,16 @@ def render_engineering_assistant(
         unsafe_allow_html=True,
     )
     _usage_banner(status)
+    thread = get_thread(st.session_state, context)
+    if thread:
+        utility_left, utility_right = st.columns([1, 4])
+        if utility_left.button("New conversation", key="cv36_new_conversation", use_container_width=True):
+            clear_thread(st.session_state, context)
+            _clear_review_state()
+            st.session_state["cv35_question"] = ""
+            st.session_state.pop("cv36_followup_ready", None)
+            st.rerun()
+        utility_right.caption(f"{len(thread)} review{'s' if len(thread) != 1 else ''} in this BOM conversation")
 
     prompt_key = "cv35_question"
     if prompt_key not in st.session_state:
@@ -299,6 +353,8 @@ def render_engineering_assistant(
     )
     component_note = f" Current component focus: {selected_component}." if selected_component else ""
     st.caption("Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
+    if st.session_state.pop("cv36_followup_ready", False):
+        st.markdown('<div class="cv36-followup-note">Follow-up ready. Submit it to continue the engineering conversation.</div>', unsafe_allow_html=True)
 
     can_submit = status.can_use and bool(str(question or "").strip())
     if st.button("Ask Engineering Copilot", type="primary", disabled=not can_submit, use_container_width=False):
@@ -310,15 +366,26 @@ def render_engineering_assistant(
         st.session_state.pop("cv35_last_error", None)
         with st.status("Cadivor is reviewing the saved engineering evidence...", expanded=False) as progress:
             try:
-                response = api.ask(question=question, context=context)
+                response = api.ask(question=question, context=context, history=compact_history(thread))
                 consume_ai_credits(st.session_state, current_user, action="question")
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = question
                 st.session_state["cv35_provider_connected"] = api.configured
+                thread = append_turn(
+                    st.session_state,
+                    context,
+                    question=question,
+                    answer=response.answer,
+                    provider_connected=api.configured,
+                )
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:
                 st.session_state["cv35_last_error"] = exc
                 progress.update(label="Cadivor could not complete the review", state="error")
+
+    thread = get_thread(st.session_state, context)
+    current_answer = st.session_state.get("cv35_last_answer")
+    _render_conversation_history(thread, exclude_latest=bool(current_answer))
 
     error_message = st.session_state.get("cv35_last_error")
     if isinstance(error_message, EngineeringAIError):
@@ -328,6 +395,7 @@ def render_engineering_assistant(
     if answer:
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
         _render_response(question=last_question, answer=answer, context=context)
+        _render_follow_ups(question=last_question, answer=answer, context=context, prompt_key=prompt_key)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
                 '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
