@@ -19,7 +19,33 @@ class EngineeringAIResponse:
 
 
 class EngineeringAIError(RuntimeError):
-    pass
+    """A customer-safe Engineering Assistant error."""
+
+    def __init__(self, message: str, *, code: str = "unavailable") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+_PLACEHOLDER_KEYS = {
+    "your-api-key",
+    "your_api_key",
+    "replace-me",
+    "replace_me",
+    "changeme",
+    "change-me",
+    "sk-your-key-here",
+    "openai-api-key",
+    "test",
+}
+
+
+def _looks_like_placeholder_key(value: str) -> bool:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized in _PLACEHOLDER_KEYS:
+        return True
+    return any(token in normalized for token in ("your-api", "your_api", "replace", "example-key", "placeholder"))
 
 
 def _safe_json(value: Any, max_chars: int = 18000) -> str:
@@ -58,8 +84,35 @@ def _fallback_answer(question: str, context: dict[str, Any]) -> str:
         "Cadivor evidence; detailed electrical and footprint compatibility still requires datasheet validation.\n\n"
         "### Recommended action\nReview the highest-risk component first, confirm lifecycle and authorized sourcing, "
         "then qualify an alternative where replacement evidence is missing.\n\n"
-        "### Confidence\n**Medium.** The engineering context is available, but a connected AI provider is required "
-        "for a question-specific synthesis."
+        "### Confidence\n**Medium.** The available engineering evidence supports a preliminary recommendation."
+    )
+
+
+def _friendly_http_error(status_code: int, detail: str) -> EngineeringAIError:
+    lowered = detail.lower()
+    if status_code in {401, 403} or "invalid_api_key" in lowered or "incorrect api key" in lowered:
+        return EngineeringAIError(
+            "The Engineering Assistant is temporarily unavailable. Cadivor could not connect to the AI service. Please try again later.",
+            code="configuration",
+        )
+    if status_code == 429 or "rate_limit" in lowered or "rate limit" in lowered:
+        return EngineeringAIError(
+            "The Engineering Assistant is currently busy. Please wait a moment and try again.",
+            code="busy",
+        )
+    if status_code in {408, 504} or "timeout" in lowered:
+        return EngineeringAIError(
+            "The request took longer than expected. Please try again.",
+            code="timeout",
+        )
+    if status_code >= 500:
+        return EngineeringAIError(
+            "The Engineering Assistant is temporarily unavailable. Please try again shortly.",
+            code="unavailable",
+        )
+    return EngineeringAIError(
+        "The Engineering Assistant could not complete that request. Please review the question and try again.",
+        code="request",
     )
 
 
@@ -67,18 +120,26 @@ class EngineeringAI:
     """One stable interface for current and future AI providers."""
 
     def __init__(self, *, api_key: str = "", model: str = "", base_url: str = ""):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
+        self.api_key = str(api_key or os.getenv("OPENAI_API_KEY", "")).strip()
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
         self.base_url = (base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
 
     @property
     def configured(self) -> bool:
-        return bool(self.api_key)
+        return bool(self.api_key) and not _looks_like_placeholder_key(self.api_key)
+
+    @property
+    def configuration_state(self) -> str:
+        if not self.api_key:
+            return "missing"
+        if _looks_like_placeholder_key(self.api_key):
+            return "placeholder"
+        return "connected"
 
     def ask(self, *, question: str, context: dict[str, Any]) -> EngineeringAIResponse:
         clean_question = str(question or "").strip()
         if not clean_question:
-            raise EngineeringAIError("Enter an engineering question first.")
+            raise EngineeringAIError("Enter an engineering question first.", code="validation")
         if not self.configured:
             return EngineeringAIResponse(
                 answer=_fallback_answer(clean_question, context),
@@ -119,10 +180,15 @@ class EngineeringAI:
             with request.urlopen(req, timeout=45) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")[:500]
-            raise EngineeringAIError(f"The Engineering Assistant could not complete the request ({exc.code}). {detail}") from exc
+            detail = exc.read().decode("utf-8", errors="ignore")[:1200]
+            raise _friendly_http_error(exc.code, detail) from exc
+        except TimeoutError as exc:
+            raise EngineeringAIError("The request took longer than expected. Please try again.", code="timeout") from exc
         except Exception as exc:
-            raise EngineeringAIError("The Engineering Assistant is temporarily unavailable. Please try again.") from exc
+            raise EngineeringAIError(
+                "The Engineering Assistant is temporarily unavailable. Please try again.",
+                code="unavailable",
+            ) from exc
 
         answer = str(data.get("output_text") or "").strip()
         if not answer:
@@ -134,7 +200,10 @@ class EngineeringAI:
                         chunks.append(str(text))
             answer = "\n".join(chunks).strip()
         if not answer:
-            raise EngineeringAIError("The Engineering Assistant returned an empty response.")
+            raise EngineeringAIError(
+                "The Engineering Assistant completed the review but did not return a usable response. Please try again.",
+                code="empty",
+            )
         usage = data.get("usage") or {}
         return EngineeringAIResponse(
             answer=answer,
