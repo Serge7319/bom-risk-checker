@@ -325,7 +325,7 @@ def render_engineering_assistant(
         .cv36-history-turn{display:flex;gap:12px;border-bottom:1px solid #e2e8f0;padding:13px 2px}.cv36-history-turn:last-child{border-bottom:0}.cv36-history-number{display:grid;place-items:center;width:25px;height:25px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:950;flex:0 0 auto}.cv36-history-turn small{display:block;color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:.08em}.cv36-history-turn strong{display:block;color:#0f172a;font-size:12px;margin:3px 0 5px}.cv36-history-turn p{color:#52647a;font-size:11px;line-height:1.5;margin:0}.cv36-followup-note{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 13px;margin:10px 0;color:#1e40af;font-size:11px;font-weight:800}
         @media(max-width:900px){.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto}}
         </style>
-        <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Receive an evidence-backed assessment, prioritized engineering actions, and direct links into the workflows needed to close the risk.</p></div>
+        <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
         """,
         unsafe_allow_html=True,
     )
@@ -361,10 +361,10 @@ def render_engineering_assistant(
         "Engineering question",
         key=prompt_key,
         height=110,
-        placeholder="Example: What should I review first before releasing this BOM?",
+        placeholder="Ask your own question, for example: What evidence is missing before release approval?",
     )
     component_note = f" Current component focus: {selected_component}." if selected_component else ""
-    st.caption("Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
+    st.caption("Ask in your own words. Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
     can_submit = status.can_use and bool(str(question or "").strip())
     manual_submit = st.button(
         "Ask Engineering Copilot",
