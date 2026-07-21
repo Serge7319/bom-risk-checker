@@ -228,17 +228,23 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
             )
 
 
-def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any], prompt_key: str) -> None:
+def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -> None:
     suggestions = follow_up_suggestions(question, answer, context)
     if not suggestions:
         return
     st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
     cols = st.columns(2)
     for index, suggestion in enumerate(suggestions):
-        if cols[index % 2].button(suggestion, key=f"cv36_followup_{index}_{abs(hash(suggestion))}", use_container_width=True):
-            st.session_state[prompt_key] = suggestion
+        if cols[index % 2].button(
+            suggestion,
+            key=f"cv36_followup_{index}_{abs(hash(suggestion))}",
+            use_container_width=True,
+        ):
+            # The question widget has already been instantiated in this run, so
+            # queue the follow-up and apply it before the widget is created on
+            # the next run. This avoids Streamlit's widget-state mutation error.
+            st.session_state["cv36_pending_followup"] = suggestion
             _clear_review_state()
-            st.session_state["cv36_followup_ready"] = True
             st.rerun()
 
 
@@ -331,12 +337,18 @@ def render_engineering_assistant(
             clear_thread(st.session_state, context)
             _clear_review_state()
             st.session_state["cv35_question"] = ""
-            st.session_state.pop("cv36_followup_ready", None)
+            st.session_state.pop("cv36_pending_followup", None)
             st.rerun()
         utility_right.caption(f"{len(thread)} review{'s' if len(thread) != 1 else ''} in this BOM conversation")
 
     prompt_key = "cv35_question"
-    if prompt_key not in st.session_state:
+    auto_execute_followup = False
+    pending_followup = st.session_state.pop("cv36_pending_followup", None)
+    if pending_followup:
+        # Apply queued follow-ups before the text-area widget is instantiated.
+        st.session_state[prompt_key] = str(pending_followup)
+        auto_execute_followup = True
+    elif prompt_key not in st.session_state:
         st.session_state[prompt_key] = ""
     suggestion_cols = st.columns(3)
     for idx, suggestion in enumerate(SUGGESTIONS):
@@ -353,11 +365,15 @@ def render_engineering_assistant(
     )
     component_note = f" Current component focus: {selected_component}." if selected_component else ""
     st.caption("Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
-    if st.session_state.pop("cv36_followup_ready", False):
-        st.markdown('<div class="cv36-followup-note">Follow-up ready. Submit it to continue the engineering conversation.</div>', unsafe_allow_html=True)
-
     can_submit = status.can_use and bool(str(question or "").strip())
-    if st.button("Ask Engineering Copilot", type="primary", disabled=not can_submit, use_container_width=False):
+    manual_submit = st.button(
+        "Ask Engineering Copilot",
+        type="primary",
+        disabled=not can_submit,
+        use_container_width=False,
+    )
+    submit_requested = bool(manual_submit or (auto_execute_followup and can_submit))
+    if submit_requested:
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
             model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
@@ -395,7 +411,7 @@ def render_engineering_assistant(
     if answer:
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
         _render_response(question=last_question, answer=answer, context=context)
-        _render_follow_ups(question=last_question, answer=answer, context=context, prompt_key=prompt_key)
+        _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
                 '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
