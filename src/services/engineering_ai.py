@@ -65,6 +65,21 @@ def _system_instruction() -> str:
     )
 
 
+def _conversation_question(question: str, history: list[dict[str, str]] | None = None) -> str:
+    """Expand short follow-ups with the most recent conversation context."""
+    clean = str(question or "").strip()
+    if not history:
+        return clean
+    lower = clean.lower()
+    follow_up_tokens = ("why", "what about", "that", "it", "first one", "next", "explain more", "how so")
+    is_short_follow_up = len(clean.split()) <= 10 and any(token in lower for token in follow_up_tokens)
+    if not is_short_follow_up:
+        return clean
+    previous = history[-1]
+    previous_question = str(previous.get("question") or "").strip()
+    return f"Previous question: {previous_question}. Follow-up: {clean}"
+
+
 def _classify_question(question: str) -> str:
     """Classify common engineering questions without relying on an external model."""
     text = str(question or "").strip().lower()
@@ -114,7 +129,7 @@ def _confidence(context: dict[str, Any], *, strong: bool = False) -> tuple[str, 
     return "Limited", "The recommendation is preliminary because monitoring, replacement, decision, or sourcing evidence is incomplete."
 
 
-def _fallback_answer(question: str, context: dict[str, Any]) -> str:
+def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[str, str]] | None = None) -> str:
     """Produce a question-specific, evidence-grounded assessment without an external AI provider."""
     summary = context.get("summary") or {}
     analysis = context.get("analysis") or {}
@@ -122,7 +137,8 @@ def _fallback_answer(question: str, context: dict[str, Any]) -> str:
     monitoring = list(context.get("monitoring") or [])
     alternatives = list(context.get("alternatives") or [])
     decisions = list(context.get("decisions") or [])
-    intent = _classify_question(question)
+    resolved_question = _conversation_question(question, history)
+    intent = _classify_question(resolved_question)
 
     health = int(summary.get("health_score") or 0)
     high = int(summary.get("high_risk_parts") or 0)
@@ -296,13 +312,13 @@ class EngineeringAI:
             return "placeholder"
         return "connected"
 
-    def ask(self, *, question: str, context: dict[str, Any]) -> EngineeringAIResponse:
+    def ask(self, *, question: str, context: dict[str, Any], history: list[dict[str, str]] | None = None) -> EngineeringAIResponse:
         clean_question = str(question or "").strip()
         if not clean_question:
             raise EngineeringAIError("Enter an engineering question first.", code="validation")
         if not self.configured:
             return EngineeringAIResponse(
-                answer=_fallback_answer(clean_question, context),
+                answer=_fallback_answer(clean_question, context, history),
                 provider="cadivor-grounded",
                 model="local-advisory",
                 grounded=True,
@@ -319,6 +335,7 @@ class EngineeringAI:
                             "type": "input_text",
                             "text": (
                                 f"ENGINEERING QUESTION:\n{clean_question}\n\n"
+                                f"RECENT COPILOT CONVERSATION:\n{_safe_json(history or [])}\n\n"
                                 f"CADIVOR ENGINEERING CONTEXT:\n{_safe_json(context)}"
                             ),
                         }
