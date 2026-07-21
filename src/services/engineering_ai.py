@@ -81,10 +81,37 @@ def _conversation_question(question: str, history: list[dict[str, str]] | None =
 
 
 def _classify_question(question: str) -> str:
-    """Map free-form engineering language to Cadivor's supported review intents."""
+    """Map free-form engineering language to specialized Cadivor review intents."""
     text = str(question or "").strip().lower()
 
-    # Specific intents must be checked before broader words such as "release" or "supplier".
+    # Narrow operational questions must precede broad words such as production,
+    # supplier, risk, or release.
+    if any(token in text for token in (
+        "delay production", "production delay", "delay manufacturing", "stop manufacturing",
+        "hold up production", "longest delay", "schedule impact", "schedule risk",
+        "would delay", "could delay", "manufacturing blocker",
+    )):
+        return "schedule_risk"
+    if any(token in text for token in (
+        "which supplier worries", "riskiest supplier", "supplier worries", "supplier risk",
+        "supplier dependency", "supplier concentration", "single supplier",
+    )):
+        return "supplier_risk"
+    if any(token in text for token in (
+        "weakest lifecycle", "lifecycle risk", "lifecycle exposure", "most obsolete",
+        "become obsolete", "eol first", "nrnd", "end of life",
+    )):
+        return "lifecycle_risk"
+    if any(token in text for token in (
+        "compatibility evidence", "compatibility must", "verify compatibility",
+        "footprint evidence", "electrical evidence", "package evidence",
+    )):
+        return "compatibility_evidence"
+    if any(token in text for token in (
+        "replacement should be qualified first", "which replacement", "qualify first and why",
+        "easiest to replace", "best replacement priority",
+    )):
+        return "replacement_priority"
     if any(token in text for token in (
         "missing before release", "evidence is missing", "missing evidence", "release checklist",
         "approval checklist", "before approval", "release approval", "what is incomplete",
@@ -99,15 +126,13 @@ def _classify_question(question: str) -> str:
         "second source", "second-source", "qualified source", "dual source", "single source",
     )):
         return "second_source"
-    if any(token in text for token in (
-        "compare", "versus", " vs ", "difference between",
-    )):
+    if any(token in text for token in ("compare", "versus", " vs ", "difference between")):
         return "component_comparison"
     if any(token in text for token in (
         "inventory", "stock", "available units", "shortage", "out of stock",
     )):
         return "inventory_exposure"
-    if any(token in text for token in ("production", "release", "ready", "readiness", "ship")):
+    if any(token in text for token in ("production", "release", "ready", "readiness", "ship", "approve this bom")):
         return "release_readiness"
     if any(token in text for token in ("alternative", "replacement", "qualif", "substitute")):
         return "alternatives"
@@ -242,6 +267,84 @@ def _confidence(context: dict[str, Any], *, strong: bool = False) -> tuple[str, 
     return "Limited", "The recommendation is preliminary because monitoring, replacement, decision, or sourcing evidence is incomplete."
 
 
+def _schedule_priority(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rank parts by likely schedule disruption using only saved evidence."""
+    def key(row: dict[str, Any]) -> tuple[float, int, int, int]:
+        lead = float(row.get("lead_time_weeks") or 0)
+        stock = int(row.get("stock_available") or 0)
+        suppliers = int(row.get("supplier_count") or 0)
+        risk = int(row.get("risk_score") or 0)
+        stock_penalty = 3 if stock <= 0 else 2 if stock < 1000 else 1 if stock < 10000 else 0
+        source_penalty = 3 if suppliers <= 1 else 2 if suppliers == 2 else 1 if suppliers == 3 else 0
+        return (lead, stock_penalty, source_penalty, risk)
+    return sorted(components, key=key, reverse=True)
+
+
+def _schedule_risk_answer(components: list[dict[str, Any]], project: str, context: dict[str, Any]) -> str:
+    ranked = _schedule_priority(components)
+    if not ranked:
+        assessment = f"**Cadivor does not have component evidence available to estimate schedule exposure for {project}.**"
+        evidence = "No saved component records were available for this review."
+        actions = "Load or re-run the BOM analysis, then ask the schedule-risk question again."
+    else:
+        first = ranked[0]
+        name = _part_name(first)
+        lead = float(first.get("lead_time_weeks") or 0)
+        stock = int(first.get("stock_available") or 0)
+        suppliers = int(first.get("supplier_count") or 0)
+        score = int(first.get("risk_score") or 0)
+        assessment = (
+            f"**{name} is the component most likely to delay production in {project}.** "
+            f"It has the strongest saved combination of replenishment lead time, sourcing flexibility, inventory coverage, and component risk."
+        )
+        evidence_rows = ranked[:5]
+        evidence = "\n".join(f"- {_part_evidence(row)}" for row in evidence_rows)
+        delay_phrase = f"the recorded {lead:g}-week replenishment lead time" if lead > 0 else "the current replenishment uncertainty"
+        actions = (
+            f"Validate demand coverage for {name}, confirm {delay_phrase} with authorized suppliers, "
+            f"and begin alternate or second-source qualification before the next production commitment."
+        )
+    confidence_label, confidence_reason = _confidence(context)
+    return (
+        f"### Schedule Risk Assessment\n{assessment}\n\n"
+        f"### Schedule Evidence\n{evidence}\n\n"
+        f"### Recommended Actions\n{actions}\n\n"
+        f"### Confidence\n**{confidence_label}.** {confidence_reason}"
+    )
+
+
+def _supplier_risk_answer(components: list[dict[str, Any]], project: str, context: dict[str, Any]) -> str:
+    exposed = sorted(
+        components,
+        key=lambda row: (int(row.get("supplier_count") or 0), -float(row.get("lead_time_weeks") or 0), -int(row.get("risk_score") or 0)),
+    )
+    focus = [row for row in exposed if int(row.get("supplier_count") or 0) <= 2][:6]
+    if focus:
+        first = focus[0]
+        assessment = f"**The largest supplier-dependency concern is {_part_name(first)}.** It has only {int(first.get('supplier_count') or 0)} recorded supplier(s) in the saved evidence."
+        evidence = "\n".join(f"- {_part_evidence(row)}" for row in focus)
+        actions = "Verify authorized supplier coverage, identify a qualified second source, and monitor lead-time or lifecycle changes for the listed parts."
+    else:
+        assessment = f"**No material supplier concentration is recorded for {project}.**"
+        evidence = "All assessed components have more than two recorded suppliers."
+        actions = "Continue authorized-source validation and monitor strategically important parts."
+    label, reason = _confidence(context)
+    return f"### Supplier Risk Assessment\n{assessment}\n\n### Supplier Evidence\n{evidence}\n\n### Recommended Actions\n{actions}\n\n### Confidence\n**{label}.** {reason}"
+
+
+def _compatibility_evidence_answer(components: list[dict[str, Any]], project: str, context: dict[str, Any]) -> str:
+    named = components[:1]
+    target = _part_name(named[0]) if named else "the proposed replacement"
+    assessment = f"**Release approval requires compatibility evidence that Cadivor cannot infer from sourcing data alone.**"
+    evidence = (
+        f"For **{target}**, verify: electrical limits and operating range; pinout and functional equivalence; package and PCB footprint; "
+        "temperature and qualification grade; timing or performance limits; regulatory and manufacturer change notices; and prototype or bench-validation results."
+    )
+    actions = "Attach the approved datasheet comparison, footprint review, validation results, and engineering rationale to the decision record before production approval."
+    label, reason = _confidence(context)
+    return f"### Compatibility Review\n{assessment}\n\n### Required Evidence\n{evidence}\n\n### Recommended Actions\n{actions}\n\n### Confidence\n**{label}.** {reason}"
+
+
 def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[str, str]] | None = None) -> str:
     """Produce a question-specific, evidence-grounded assessment without an external AI provider."""
     summary = context.get("summary") or {}
@@ -253,6 +356,18 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
     resolved_question = _conversation_question(question, history)
     intent = _classify_question(resolved_question)
 
+    project = str(analysis.get("project_name") or analysis.get("filename") or "This BOM")
+    if intent == "schedule_risk":
+        return _schedule_risk_answer(components, project, context)
+    if intent == "supplier_risk":
+        return _supplier_risk_answer(components, project, context)
+    if intent == "compatibility_evidence":
+        return _compatibility_evidence_answer(components, project, context)
+    if intent == "lifecycle_risk":
+        intent = "supplier_lifecycle"
+    if intent == "replacement_priority":
+        intent = "alternatives"
+
     health = int(summary.get("health_score") or 0)
     high = int(summary.get("high_risk_parts") or 0)
     medium = int(summary.get("medium_risk_parts") or 0)
@@ -260,7 +375,6 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
     no_stock = int(summary.get("no_stock_parts") or 0)
     limited_sources = int(summary.get("limited_source_parts") or 0)
     posture = str(summary.get("release_posture") or "Focused engineering review")
-    project = str(analysis.get("project_name") or analysis.get("filename") or "This BOM")
     priority = list(summary.get("top_risks") or [])
     if not priority:
         priority = sorted(components, key=lambda r: int(r.get("risk_score") or 0), reverse=True)[:3]
