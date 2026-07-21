@@ -98,6 +98,79 @@ def _classify_question(question: str) -> str:
     return "general"
 
 
+
+
+def _mentioned_component(question: str, components: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the component explicitly referenced in a user question, if any."""
+    text = str(question or "").strip().lower()
+    if not text:
+        return None
+    # Match longest identifiers first so a precise MPN wins over a short alias.
+    candidates: list[tuple[str, dict[str, Any]]] = []
+    for row in components:
+        for value in (row.get("part_number"), row.get("mpn")):
+            token = str(value or "").strip()
+            if token:
+                candidates.append((token, row))
+    candidates.sort(key=lambda item: len(item[0]), reverse=True)
+    for token, row in candidates:
+        if token.lower() in text:
+            return row
+    return None
+
+
+def _component_priority_answer(row: dict[str, Any], project: str, context: dict[str, Any]) -> str:
+    """Explain why one named component is prioritized using saved Cadivor evidence."""
+    name = _part_name(row)
+    risk = str(row.get("risk_level") or "Unknown")
+    score = int(row.get("risk_score") or 0)
+    lifecycle = str(row.get("lifecycle_status") or "Unknown")
+    suppliers = int(row.get("supplier_count") or 0)
+    stock = int(row.get("stock_available") or 0)
+    lead = float(row.get("lead_time_weeks") or 0)
+    reasons = str(row.get("risk_reasons") or "").strip()
+
+    drivers: list[str] = []
+    if score > 0:
+        drivers.append(f"a recorded {risk.lower()} risk score of {score}/100")
+    if lead >= 16:
+        drivers.append(f"an extended {lead:g}-week lead time")
+    if suppliers <= 2:
+        drivers.append(f"limited supplier diversity ({suppliers} recorded supplier{'s' if suppliers != 1 else ''})")
+    if any(token in lifecycle.lower() for token in ("replacement", "obsolete", "eol", "nrnd", "not recommended")):
+        drivers.append(f"lifecycle status marked {lifecycle}")
+    if stock <= 0:
+        drivers.append("no recorded available stock")
+    if reasons:
+        drivers.append(reasons.rstrip("."))
+    if not drivers:
+        drivers.append("the strongest combined risk signal among the components saved in this BOM")
+
+    assessment = (
+        f"**{name} is prioritized because it combines " + ", ".join(drivers[:4]) + ".** "
+        f"Within **{project}**, that combination creates more schedule or sourcing uncertainty than the other currently recorded parts."
+    )
+    evidence = (
+        f"- **{name}** — risk: {risk} ({score}/100); lifecycle: {lifecycle}; "
+        f"suppliers: {suppliers}; recorded stock: {stock:,}; "
+        + (f"lead time: {lead:g} weeks" if lead > 0 else "lead time: not recorded")
+        + (f"; risk evidence: {reasons}" if reasons else "")
+        + ("" if reasons.endswith(".") else ".")
+    )
+    actions = (
+        f"Validate the current datasheet and authorized-source evidence for {name}, confirm whether the {lead:g}-week lead time "
+        f"affects the production schedule, and then either qualify an alternative or record an explicit risk-acceptance decision."
+        if lead > 0 else
+        f"Validate the current datasheet and authorized-source evidence for {name}, then qualify an alternative or record an explicit risk-acceptance decision."
+    )
+    confidence_label, confidence_reason = _confidence(context)
+    return (
+        f"### Engineering Assessment\n{assessment}\n\n"
+        f"### Supporting Evidence\n{evidence}\n\n"
+        f"### Recommended Actions\n{actions}\n\n"
+        f"### Confidence\n**{confidence_label}.** {confidence_reason}"
+    )
+
 def _part_name(row: dict[str, Any]) -> str:
     return str(row.get("part_number") or row.get("mpn") or "Component")
 
@@ -151,6 +224,11 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
     priority = list(summary.get("top_risks") or [])
     if not priority:
         priority = sorted(components, key=lambda r: int(r.get("risk_score") or 0), reverse=True)[:3]
+
+    named_component = _mentioned_component(resolved_question, components)
+    followup_text = str(question or "").strip().lower()
+    if named_component and any(token in followup_text for token in ("why", "explain", "reason", "priority", "highest")):
+        return _component_priority_answer(named_component, project, context)
 
     confidence_label, confidence_reason = _confidence(
         context,
