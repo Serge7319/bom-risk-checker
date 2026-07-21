@@ -165,6 +165,44 @@ def _href(page: str, **params: Any) -> str:
     return "?" + urlencode(payload, quote_via=quote)
 
 
+
+def _split_evidence_detail(detail: str) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    for segment in [item.strip() for item in str(detail or "").split(";") if item.strip()]:
+        if ":" in segment:
+            label, value = segment.split(":", 1)
+            pairs.append((label.strip().title(), value.strip()))
+        else:
+            pairs.append(("Signal", segment))
+    return pairs[:6]
+
+
+def _action_steps(actions: str) -> list[str]:
+    plain = _plain_markdown(actions)
+    if not plain:
+        return []
+    parts = re.split(r"(?:\.|;|, then |, and then )\s+", plain)
+    steps = [part.strip(" .") for part in parts if part.strip(" .")]
+    return steps[:4] or [plain]
+
+
+def _assessment_kpis(context: dict[str, Any], confidence_score: int) -> list[tuple[str, str, str]]:
+    analysis = context.get("analysis") or {}
+    risk = context.get("risk_summary") or context.get("risk") or {}
+    components = list(context.get("components") or [])
+    health = analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
+    posture = analysis.get("release_posture") or context.get("release_posture") or "Focused review"
+    high = risk.get("high") if isinstance(risk, dict) else None
+    if high is None:
+        high = sum(1 for row in components if str(row.get("risk_level") or "").lower() == "high")
+    return [
+        ("BOM health", f"{health}/100" if str(health).isdigit() else str(health), "Current analysis score"),
+        ("Release status", str(posture).replace("_", " ").title(), "Current engineering posture"),
+        ("Priority risks", str(high or 0), "High-risk components"),
+        ("Confidence", f"{confidence_score}%", "Evidence-supported review"),
+    ]
+
+
 def _render_evidence_cards(evidence: str) -> None:
     items = _evidence_items(evidence)
     if not items:
@@ -172,11 +210,16 @@ def _render_evidence_cards(evidence: str) -> None:
         return
     columns = st.columns(2)
     for index, (title, detail) in enumerate(items[:6]):
+        metrics = _split_evidence_detail(detail)
+        metric_html = "".join(
+            f'<div class="cv38-evidence-metric"><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>'
+            for label, value in metrics
+        )
         columns[index % 2].markdown(
             f"""
             <div class="cv35-evidence-card">
-              <div class="cv35-evidence-part">{html.escape(title)}</div>
-              <div class="cv35-evidence-detail">{html.escape(detail)}</div>
+              <div class="cv35-evidence-head"><div class="cv35-evidence-part">{html.escape(title)}</div><span>Review</span></div>
+              <div class="cv38-evidence-grid">{metric_html}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -212,8 +255,8 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
     turns = thread[:-1] if exclude_latest and thread else thread
     if not turns:
         return
-    with st.expander(f"Conversation history · {len(turns)} review{'s' if len(turns) != 1 else ''}", expanded=False):
-        for index, turn in enumerate(reversed(turns), start=1):
+    with st.expander(f"Engineering session · {len(turns)} prior review{'s' if len(turns) != 1 else ''}", expanded=False):
+        for index, turn in enumerate(turns, start=1):
             question = html.escape(str(turn.get("question") or "Engineering question"))
             answer_sections = _parse_report(str(turn.get("answer") or ""))
             assessment = html.escape(_plain_markdown(_section(answer_sections, "Engineering Assessment", "Assessment")))
@@ -221,7 +264,7 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
                 f"""
                 <div class="cv36-history-turn">
                   <div class="cv36-history-number">{index}</div>
-                  <div><small>Engineering question</small><strong>{question}</strong><p>{assessment}</p></div>
+                  <div><small>Review {index}</small><strong>{question}</strong><p>{assessment}</p></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -257,38 +300,43 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     priority_part = _priority_component(context, evidence)
     confidence_label, confidence_score, confidence_detail = _confidence_data(confidence, context)
     confidence_class = "high" if confidence_score >= 75 else "medium" if confidence_score >= 45 else "low"
+    kpis = _assessment_kpis(context, confidence_score)
+    kpi_html = "".join(
+        f'<div class="cv38-kpi"><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>'
+        for label, value, note in kpis
+    )
 
     st.markdown(
         f"""
         <div class="cv35-review-shell">
           <div class="cv35-question"><small>Engineering question</small>{html.escape(question)}</div>
           <div class="cv35-review-heading">
-            <div><div class="cv35-answer-label">Cadivor Engineering Review</div><h2>Engineering Assessment</h2></div>
+            <div><div class="cv35-answer-label">Cadivor recommendation</div><h2>Engineering Assessment</h2></div>
             <div class="cv35-review-status">Review complete</div>
           </div>
           <div class="cv35-assessment-copy">{html.escape(_plain_markdown(assessment))}</div>
+          <div class="cv38-kpi-grid">{kpi_html}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="cv35-section-label">Supporting evidence</div>', unsafe_allow_html=True)
-    _render_evidence_cards(evidence)
-
-    left, right = st.columns([1.45, 1])
+    left, right = st.columns([1.35, 1])
     with left:
-        st.markdown(
-            f"""
-            <div class="cv35-action-card">
-              <div class="cv35-card-kicker">Recommended actions</div>
-              <div class="cv35-action-copy">{html.escape(_plain_markdown(actions))}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="cv35-section-label">Priority components</div>', unsafe_allow_html=True)
+        _render_evidence_cards(evidence)
     with right:
+        steps = _action_steps(actions)
+        steps_html = "".join(
+            f'<div class="cv38-action-step"><span>{idx}</span><p>{html.escape(step)}</p></div>'
+            for idx, step in enumerate(steps, start=1)
+        )
         st.markdown(
             f"""
+            <div class="cv35-action-card cv38-action-panel">
+              <div class="cv35-card-kicker">Recommended next actions</div>
+              <div class="cv38-action-list">{steps_html}</div>
+            </div>
             <div class="cv35-confidence-card {confidence_class}">
               <div class="cv35-confidence-top"><span>Decision confidence</span><strong>{confidence_score}%</strong></div>
               <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
@@ -312,18 +360,22 @@ def render_engineering_assistant(
 
     st.markdown(
         """
-        <style id="cadivor-engineering-assistant-352">
+        <style id="cadivor-engineering-assistant-38">
         .cv35-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f6f9ff 62%,#eaf2ff);border-radius:24px;padding:22px;margin:2px 0 14px;box-shadow:0 18px 50px rgba(37,99,235,.08)}
         .cv35-kicker,.cv35-answer-label,.cv35-section-label,.cv35-card-kicker{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important}.cv35-hero h2{font-size:27px;line-height:1.1;letter-spacing:-.035em;color:#0f172a!important;margin:0 0 8px}.cv35-hero p{font-size:13px;line-height:1.6;color:#52647a!important;font-weight:700;margin:0;max-width:900px}
         .cv35-usage{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin:0 0 12px}.cv35-usage strong{font-size:11px;color:#0f172a!important}.cv35-usage span{font-size:10px;color:#52647a!important;font-weight:800}.cv35-usage.high,.cv35-usage.critical{border-color:#fde68a;background:#fffbeb}.cv35-usage.reached{border-color:#fecaca;background:#fef2f2}
         .cv35-message{display:flex;align-items:flex-start;gap:12px;border-radius:16px;padding:14px 15px;margin-top:14px}.cv35-message-error{border:1px solid #fecaca;background:#fff7f7}.cv35-message-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-weight:950;flex:0 0 auto}.cv35-message strong{display:block;color:#7f1d1d!important;font-size:13px;margin-bottom:3px}.cv35-message p{margin:0;color:#7f1d1d!important;font-size:12px;line-height:1.5}
         .cv35-review-shell{border:1px solid #bfdbfe;background:linear-gradient(145deg,#fff,#f8fbff);border-radius:22px;padding:20px 21px;margin:18px 0 16px;box-shadow:0 16px 42px rgba(15,23,42,.06)}
         .cv35-question{border-left:4px solid #60a5fa;background:#f3f8ff;border-radius:12px;padding:12px 14px;margin-bottom:18px;color:#0f172a;font-size:13px;font-weight:800}.cv35-question small{display:block;color:#64748b;font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}.cv35-review-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.cv35-review-heading h2{font-size:24px;letter-spacing:-.035em;color:#0f172a!important;margin:7px 0 8px}.cv35-review-status{border:1px solid #bbf7d0;background:#ecfdf5;color:#047857;border-radius:999px;padding:7px 10px;font-size:10px;font-weight:900;white-space:nowrap}.cv35-assessment-copy{font-size:14px;line-height:1.7;color:#334155;font-weight:650;max-width:1100px}
-        .cv35-section-label{margin:18px 0 9px}.cv35-evidence-card{min-height:126px;border:1px solid #dbeafe;background:#fff;border-radius:17px;padding:15px 16px;margin-bottom:10px;box-shadow:0 9px 24px rgba(15,23,42,.04)}.cv35-evidence-card:hover{border-color:#93c5fd;transform:translateY(-1px)}.cv35-evidence-part{font-size:14px;font-weight:950;color:#0f172a;margin-bottom:7px}.cv35-evidence-detail{font-size:12px;line-height:1.58;color:#52647a;font-weight:650}
+        .cv35-section-label{margin:18px 0 9px}.cv35-evidence-card{min-height:150px;border:1px solid #dbeafe;background:#fff;border-radius:17px;padding:15px 16px;margin-bottom:10px;box-shadow:0 9px 24px rgba(15,23,42,.04)}.cv35-evidence-card:hover{border-color:#93c5fd;transform:translateY(-1px)}.cv35-evidence-part{font-size:14px;font-weight:950;color:#0f172a;margin-bottom:7px}.cv35-evidence-detail{font-size:12px;line-height:1.58;color:#52647a;font-weight:650}
         .cv35-action-card,.cv35-confidence-card{height:100%;min-height:165px;border:1px solid #dbeafe;background:#fff;border-radius:19px;padding:17px 18px;margin-top:10px}.cv35-action-copy{font-size:13px;line-height:1.65;color:#334155;font-weight:680;margin-top:10px}.cv35-confidence-top{display:flex;align-items:center;justify-content:space-between;color:#475569;font-size:11px;font-weight:900}.cv35-confidence-top strong{font-size:24px;color:#0f172a}.cv35-confidence-track{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:13px 0 10px}.cv35-confidence-track div{height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}.cv35-confidence-card.high .cv35-confidence-track div{background:linear-gradient(90deg,#059669,#34d399)}.cv35-confidence-card.low .cv35-confidence-track div{background:linear-gradient(90deg,#d97706,#fbbf24)}.cv35-confidence-label{font-size:15px;font-weight:950;color:#0f172a;margin-bottom:6px}.cv35-confidence-detail{font-size:11px;line-height:1.5;color:#64748b;font-weight:650}
         .cv35-mode-note{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin-top:12px;color:#52647a;font-size:11px;font-weight:700}
         .cv36-history-turn{display:flex;gap:12px;border-bottom:1px solid #e2e8f0;padding:13px 2px}.cv36-history-turn:last-child{border-bottom:0}.cv36-history-number{display:grid;place-items:center;width:25px;height:25px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:950;flex:0 0 auto}.cv36-history-turn small{display:block;color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:.08em}.cv36-history-turn strong{display:block;color:#0f172a;font-size:12px;margin:3px 0 5px}.cv36-history-turn p{color:#52647a;font-size:11px;line-height:1.5;margin:0}.cv36-followup-note{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 13px;margin:10px 0;color:#1e40af;font-size:11px;font-weight:800}
-        @media(max-width:900px){.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto}}
+
+        .cv38-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:18px}.cv38-kpi{border:1px solid #dbeafe;background:#fff;border-radius:14px;padding:12px 13px}.cv38-kpi span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:900}.cv38-kpi strong{display:block;font-size:17px;color:#0f172a;margin:5px 0 2px}.cv38-kpi small{font-size:10px;color:#64748b;font-weight:650}
+        .cv35-evidence-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px}.cv35-evidence-head span{font-size:9px;font-weight:900;color:#2563eb;background:#eff6ff;border-radius:999px;padding:5px 8px}.cv38-evidence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cv38-evidence-metric{border-top:1px solid #eef2f7;padding-top:7px}.cv38-evidence-metric span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:850}.cv38-evidence-metric strong{display:block;font-size:11px;color:#334155;margin-top:3px;line-height:1.35}
+        .cv38-action-panel{margin-top:18px!important}.cv38-action-list{margin-top:12px}.cv38-action-step{display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #eef2f7;padding:10px 0}.cv38-action-step:last-child{border-bottom:0}.cv38-action-step span{display:grid;place-items:center;width:23px;height:23px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:950;flex:0 0 auto}.cv38-action-step p{margin:1px 0 0;font-size:12px;line-height:1.5;color:#334155;font-weight:700}
+        @media(max-width:900px){.cv38-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv38-evidence-grid{grid-template-columns:1fr}.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
         """,
@@ -360,7 +412,7 @@ def render_engineering_assistant(
     question = st.text_area(
         "Engineering question",
         key=prompt_key,
-        height=110,
+        height=88,
         placeholder="Ask your own question, for example: What evidence is missing before release approval?",
     )
     component_note = f" Current component focus: {selected_component}." if selected_component else ""
