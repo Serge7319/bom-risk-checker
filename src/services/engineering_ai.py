@@ -81,11 +81,35 @@ def _conversation_question(question: str, history: list[dict[str, str]] | None =
 
 
 def _classify_question(question: str) -> str:
-    """Classify common engineering questions without relying on an external model."""
+    """Map free-form engineering language to Cadivor's supported review intents."""
     text = str(question or "").strip().lower()
+
+    # Specific intents must be checked before broader words such as "release" or "supplier".
+    if any(token in text for token in (
+        "missing before release", "evidence is missing", "missing evidence", "release checklist",
+        "approval checklist", "before approval", "release approval", "what is incomplete",
+    )):
+        return "release_evidence"
+    if any(token in text for token in (
+        "buy first", "purchase first", "procurement address first", "procurement priority",
+        "secure first", "order now", "purchasing window", "what should procurement",
+    )):
+        return "procurement_priority"
+    if any(token in text for token in (
+        "second source", "second-source", "qualified source", "dual source", "single source",
+    )):
+        return "second_source"
+    if any(token in text for token in (
+        "compare", "versus", " vs ", "difference between",
+    )):
+        return "component_comparison"
+    if any(token in text for token in (
+        "inventory", "stock", "available units", "shortage", "out of stock",
+    )):
+        return "inventory_exposure"
     if any(token in text for token in ("production", "release", "ready", "readiness", "ship")):
         return "release_readiness"
-    if any(token in text for token in ("alternative", "replacement", "qualif", "substitute", "second source")):
+    if any(token in text for token in ("alternative", "replacement", "qualif", "substitute")):
         return "alternatives"
     if any(token in text for token in ("supplier", "sourcing", "source", "lifecycle", "obsolete", "eol", "lead time")):
         return "supplier_lifecycle"
@@ -93,11 +117,27 @@ def _classify_question(question: str) -> str:
         return "monitoring"
     if any(token in text for token in ("highest", "risk", "concern", "review first", "priority", "attention")):
         return "risk_priority"
-    if any(token in text for token in ("summary", "summarize", "overview", "brief")):
+    if any(token in text for token in ("summary", "summarize", "overview", "brief", "explain this bom")):
         return "summary"
     return "general"
 
 
+
+def _mentioned_components(question: str, components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return all explicitly named components, ordered by first appearance."""
+    text = str(question or "").strip().lower()
+    found: list[tuple[int, int, dict[str, Any]]] = []
+    seen: set[str] = set()
+    for row in components:
+        token = _part_name(row).strip()
+        if not token or token.upper() in seen:
+            continue
+        position = text.find(token.lower())
+        if position >= 0:
+            found.append((position, -len(token), row))
+            seen.add(token.upper())
+    found.sort(key=lambda item: (item[0], item[1]))
+    return [row for _, _, row in found]
 
 
 def _mentioned_component(question: str, components: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -235,7 +275,96 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
         strong=(high == 0 and no_stock == 0 and lifecycle_exposed == 0),
     )
 
-    if intent == "release_readiness":
+    if intent == "release_evidence":
+        missing: list[str] = []
+        if high or medium:
+            missing.append(f"documented disposition for {high + medium} elevated-risk component(s)")
+        if lifecycle_exposed:
+            missing.append(f"replacement or acceptance evidence for {lifecycle_exposed} lifecycle-exposed component(s)")
+        if limited_sources:
+            missing.append(f"second-source justification for {limited_sources} limited-source component(s)")
+        if not monitoring:
+            missing.append("monitoring coverage for priority and long-lead parts")
+        if not alternatives and (high or medium or lifecycle_exposed):
+            missing.append("saved and reviewed alternative evidence for exposed parts")
+        if not decisions:
+            missing.append("a recorded engineering release or risk-acceptance decision")
+        if missing:
+            assessment = f"**{project} still has {len(missing)} evidence area(s) to close before release approval.**"
+            evidence = "\n".join(f"- {item}." for item in missing)
+            actions = "Close the items in order: elevated-risk disposition, lifecycle and sourcing evidence, qualified alternatives, then the formal release decision."
+        else:
+            assessment = f"**No major release-evidence gap is currently recorded for {project}.**"
+            evidence = f"Cadivor records a release posture of **{posture}**, with monitoring, replacement, and decision evidence available."
+            actions = "Perform the final approved-datasheet and authorized-source validation, then complete the normal release authorization."
+
+    elif intent == "procurement_priority":
+        ranked = sorted(
+            components,
+            key=lambda row: (
+                float(row.get("lead_time_weeks") or 0),
+                -int(row.get("stock_available") or 0),
+                int(row.get("risk_score") or 0),
+            ),
+            reverse=True,
+        )
+        exposed = [row for row in ranked if float(row.get("lead_time_weeks") or 0) >= 16 or int(row.get("stock_available") or 0) <= 0 or int(row.get("supplier_count") or 0) <= 2]
+        focus = exposed[:5]
+        if focus:
+            first = _part_name(focus[0])
+            assessment = f"**Procurement should address {first} first** because it has the strongest combined lead-time, inventory, and sourcing exposure in the saved BOM evidence."
+            evidence = "\n".join(f"- {_part_evidence(row)}" for row in focus)
+            actions = f"Confirm the authorized purchasing window for {first}, verify demand coverage, then secure or qualify a second source for the remaining listed parts."
+        else:
+            assessment = f"**No urgent procurement intervention is currently indicated for {project}.**"
+            evidence = f"No saved part combines a long lead time, no-stock condition, or materially limited supplier coverage."
+            actions = "Maintain routine inventory and lead-time monitoring before the next production commitment."
+
+    elif intent == "second_source":
+        needs_source = [
+            row for row in components
+            if int(row.get("supplier_count") or 0) <= 2
+            or any(token in str(row.get("lifecycle_status") or "").lower() for token in ("replacement", "obsolete", "eol", "nrnd"))
+            or float(row.get("lead_time_weeks") or 0) >= 20
+        ]
+        needs_source.sort(key=lambda row: (int(row.get("supplier_count") or 0), -int(row.get("risk_score") or 0)))
+        if needs_source:
+            assessment = f"**{len(needs_source)} component(s) should receive second-source qualification review.**"
+            evidence = "\n".join(f"- {_part_evidence(row)}" for row in needs_source[:8])
+            actions = "Start with the first listed part, verify functional and footprint compatibility, and save the approved alternate with sourcing and validation rationale."
+        else:
+            assessment = "**No immediate second-source gap is recorded in the current BOM evidence.**"
+            evidence = "All assessed components have more than two recorded suppliers and no material long-lead or lifecycle exception."
+            actions = "Continue monitoring strategically important parts and qualify additional sources where program policy requires them."
+
+    elif intent == "inventory_exposure":
+        stock_rows = sorted(components, key=lambda row: (int(row.get("stock_available") or 0), -int(row.get("risk_score") or 0)))
+        exposed = [row for row in stock_rows if int(row.get("stock_available") or 0) <= 0 or float(row.get("lead_time_weeks") or 0) >= 16][:8]
+        if exposed:
+            assessment = f"**{len(exposed)} component(s) have inventory or replenishment exposure that should be reviewed.**"
+            evidence = "\n".join(f"- {_part_evidence(row)}" for row in exposed)
+            actions = "Validate demand coverage and authorized inventory for the first listed part, then establish reorder, allocation, or alternative-source actions."
+        else:
+            assessment = f"**No immediate inventory shortage is recorded for {project}.**"
+            evidence = f"Cadivor records **{no_stock} no-stock component(s)** in the saved evidence."
+            actions = "Continue monitoring stock and lead-time trends because recorded distributor inventory can change quickly."
+
+    elif intent == "component_comparison":
+        named = _mentioned_components(resolved_question, components)
+        if len(named) >= 2:
+            left, right = named[0], named[1]
+            assessment = f"**{_part_name(left)} and {_part_name(right)} have different recorded risk profiles in {project}.**"
+            evidence = f"- {_part_evidence(left)}\n- {_part_evidence(right)}"
+            left_score = int(left.get("risk_score") or 0)
+            right_score = int(right.get("risk_score") or 0)
+            lower = _part_name(left if left_score <= right_score else right)
+            actions = f"Use {lower} as the lower recorded-risk baseline, but verify electrical, package, footprint, temperature, and qualification compatibility before substitution."
+        else:
+            assessment = "**Cadivor needs two component part numbers to perform a saved-evidence comparison.**"
+            evidence = "Only components explicitly present in this BOM can be compared in local grounded mode."
+            actions = "Ask, for example: Compare STM32F103C8T6 and PC817, or name two parts from the current BOM."
+
+    elif intent == "release_readiness":
         blockers: list[str] = []
         if high:
             blockers.append(f"{high} high-risk component(s)")
