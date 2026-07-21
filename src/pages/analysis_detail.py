@@ -13,6 +13,7 @@ from src.ui.navigation import navigate_to, internal_nav_button
 from src.ai_advisor import build_engineering_supply_advisor
 from src.services.engineering_context import build_engineering_context
 from src.services.knowledge_graph import build_knowledge_graph
+from src.components.engineering_assistant import render_engineering_assistant
 from src.components.review import (
     is_unresolved_review,
     parse_due_date,
@@ -820,6 +821,7 @@ def render_analysis_detail(
         discussions_tab,
         timeline_tab,
         reports_tab,
+        assistant_tab,
     ) = st.tabs([
         "Engineering Intelligence",
         "Overview",
@@ -829,6 +831,7 @@ def render_analysis_detail(
         "Discussions",
         "Timeline",
         "Reports",
+        "Ask Cadivor",
     ])
 
     lifecycle_exposed_parts = []
@@ -2781,6 +2784,14 @@ def render_analysis_detail(
     # essential: browsers may restore the previous scroll position after the
     # initial Streamlit DOM is mounted. Only saved-BOM navigation receives this
     # top reset; component-focused navigation keeps its targeted section jump.
+
+    with assistant_tab:
+        render_engineering_assistant(
+            current_user=current_user,
+            engineering_context=engineering_context,
+            selected_component=requested_component,
+        )
+
     if saved_bom_top_requested or (analysis_changed and not component_focus_requested):
         components.html(
             """
