@@ -79,7 +79,7 @@ def render_engineering_assistant(
         .cv35-usage{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin:0 0 12px}.cv35-usage strong{font-size:11px;color:#0f172a!important}.cv35-usage span{font-size:10px;color:#52647a!important;font-weight:800}.cv35-usage.high,.cv35-usage.critical{border-color:#fde68a;background:#fffbeb}.cv35-usage.reached{border-color:#fecaca;background:#fef2f2}
         .cv35-conversation{border:1px solid #dbeafe;background:#fff;border-radius:22px;padding:20px 21px;margin-top:16px;box-shadow:0 14px 36px rgba(15,23,42,.055)}
         .cv35-question{border-left:4px solid #93c5fd;background:#f8fbff;border-radius:12px;padding:12px 14px;margin-bottom:14px;color:#334155;font-size:13px;font-weight:750}.cv35-question small{display:block;color:#64748b;font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
-        .cv35-answer-label{font-size:10px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb!important;margin:0 0 10px}
+        .cv35-answer-label{font-size:10px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb!important;margin:0 0 10px}.cv35-report-title{font-size:19px;font-weight:900;letter-spacing:-.025em;color:#0f172a!important;margin:0 0 12px}
         .cv35-message{display:flex;align-items:flex-start;gap:12px;border-radius:16px;padding:14px 15px;margin-top:14px}.cv35-message-error{border:1px solid #fecaca;background:#fff7f7}.cv35-message-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-weight:950;flex:0 0 auto}.cv35-message strong{display:block;color:#7f1d1d!important;font-size:13px;margin-bottom:3px}.cv35-message p{margin:0;color:#7f1d1d!important;font-size:12px;line-height:1.5}
         .cv35-mode-note{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin-top:11px;color:#52647a;font-size:11px;font-weight:700}
         </style>
@@ -134,18 +134,16 @@ def render_engineering_assistant(
     answer = st.session_state.get("cv35_last_answer")
     if answer:
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
-        st.markdown('<div class="cv35-conversation">', unsafe_allow_html=True)
-        st.markdown(
-            f'<div class="cv35-question"><small>Your question</small>{html.escape(last_question)}</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown('<div class="cv35-answer-label">Cadivor recommendation</div>', unsafe_allow_html=True)
-        st.markdown(answer)
-        st.markdown('</div>', unsafe_allow_html=True)
-        if not st.session_state.get("cv35_provider_connected", False):
-            state = st.session_state.get("cv35_configuration_state", "missing")
-            admin_note = "A placeholder key was detected." if state == "placeholder" else "The connected AI service has not been configured yet."
+        with st.container(border=True):
             st.markdown(
-                f'<div class="cv35-mode-note">Cadivor provided a grounded advisory summary using the saved BOM evidence. {html.escape(admin_note)}</div>',
+                f'<div class="cv35-question"><small>Engineering question</small>{html.escape(last_question)}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown('<div class="cv35-answer-label">Cadivor engineering review</div>', unsafe_allow_html=True)
+            st.markdown('<div class="cv35-report-title">Engineering Assessment</div>', unsafe_allow_html=True)
+            st.markdown(answer)
+        if not st.session_state.get("cv35_provider_connected", False):
+            st.markdown(
+                '<div class="cv35-mode-note">Cadivor produced this assessment from the engineering evidence saved with the BOM. Recommendations should be validated against current datasheets and approved sourcing requirements.</div>',
                 unsafe_allow_html=True,
             )
