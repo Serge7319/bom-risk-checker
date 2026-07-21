@@ -188,10 +188,11 @@ def _action_steps(actions: str) -> list[str]:
 
 def _assessment_kpis(context: dict[str, Any], confidence_score: int) -> list[tuple[str, str, str]]:
     analysis = context.get("analysis") or {}
+    summary = context.get("summary") or {}
     risk = context.get("risk_summary") or context.get("risk") or {}
     components = list(context.get("components") or [])
-    health = analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
-    posture = analysis.get("release_posture") or context.get("release_posture") or "Focused review"
+    health = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
+    posture = summary.get("release_posture") or analysis.get("release_posture") or context.get("release_posture") or "Focused review"
     high = risk.get("high") if isinstance(risk, dict) else None
     if high is None:
         high = sum(1 for row in components if str(row.get("risk_level") or "").lower() == "high")
@@ -206,6 +207,7 @@ def _assessment_kpis(context: dict[str, Any], confidence_score: int) -> list[tup
 
 def _decision_summary(context: dict[str, Any], assessment: str, confidence_score: int, priority_part: str) -> dict[str, str]:
     analysis = context.get("analysis") or {}
+    summary = context.get("summary") or {}
     risk = context.get("risk_summary") or context.get("risk") or {}
     components = list(context.get("components") or [])
     high = int(risk.get("high") or 0) if isinstance(risk, dict) else 0
@@ -221,7 +223,7 @@ def _decision_summary(context: dict[str, Any], assessment: str, confidence_score
         status, tone = "Review before release", "review"
     else:
         status, tone = "Ready for controlled release", "ready"
-    health = analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
+    health = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
     return {
         "status": status,
         "tone": tone,
@@ -235,7 +237,8 @@ def _decision_summary(context: dict[str, Any], assessment: str, confidence_score
 
 def _projected_impact(context: dict[str, Any], priority_part: str) -> list[tuple[str, str, str]]:
     analysis = context.get("analysis") or {}
-    health_raw = analysis.get("health_score") or context.get("health_score") or context.get("score")
+    summary = context.get("summary") or {}
+    health_raw = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score")
     try:
         health = int(float(health_raw))
     except Exception:
