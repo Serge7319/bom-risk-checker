@@ -20,6 +20,18 @@ SUGGESTIONS = [
 ]
 
 
+
+def _clear_review_state() -> None:
+    """Clear the prior copilot result when the user starts a new question."""
+    for key in (
+        "cv35_last_answer",
+        "cv35_last_question",
+        "cv35_last_error",
+        "cv35_provider_connected",
+    ):
+        st.session_state.pop(key, None)
+
+
 def _secret(name: str, default: str = "") -> str:
     try:
         return str(st.secrets.get(name, default) or default)
@@ -276,6 +288,8 @@ def render_engineering_assistant(
     for idx, suggestion in enumerate(SUGGESTIONS):
         if suggestion_cols[idx % 3].button(suggestion, key=f"cv35_suggestion_{idx}", use_container_width=True):
             st.session_state[prompt_key] = suggestion
+            _clear_review_state()
+            st.rerun()
 
     question = st.text_area(
         "Engineering question",
