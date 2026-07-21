@@ -112,6 +112,39 @@ def _section(sections: dict[str, str], *names: str) -> str:
     return ""
 
 
+
+def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
+    """Normalize question-specific report sections into a renderer profile."""
+    ordered = [key for key, value in sections.items() if str(value or "").strip()]
+    first = ordered[0] if ordered else (next(iter(sections), "Engineering Assessment"))
+    first_l = first.lower()
+    if "schedule" in first_l:
+        intent, label, status = "schedule", "Schedule risk assessment", "Protect the production schedule"
+        evidence_names = ("Schedule Evidence", "Supporting Evidence", "Evidence")
+    elif "supplier" in first_l:
+        intent, label, status = "supplier", "Supplier risk assessment", "Reduce sourcing concentration"
+        evidence_names = ("Supplier Evidence", "Supporting Evidence", "Evidence")
+    elif "compatibility" in first_l:
+        intent, label, status = "compatibility", "Compatibility review", "Validate before substitution"
+        evidence_names = ("Required Evidence", "Supporting Evidence", "Evidence")
+    elif "lifecycle" in first_l:
+        intent, label, status = "lifecycle", "Lifecycle assessment", "Address lifecycle exposure"
+        evidence_names = ("Lifecycle Evidence", "Supporting Evidence", "Evidence")
+    elif "procurement" in first_l:
+        intent, label, status = "procurement", "Procurement assessment", "Secure the purchasing window"
+        evidence_names = ("Procurement Evidence", "Supporting Evidence", "Evidence")
+    elif "release" in first_l:
+        intent, label, status = "release", "Release readiness assessment", "Review before release"
+        evidence_names = ("Release Evidence", "Supporting Evidence", "Evidence")
+    else:
+        intent, label, status = "general", "Engineering assessment", "Review before release"
+        evidence_names = ("Supporting Evidence", "Evidence", "Engineering Evidence")
+    assessment = sections.get(first, "") or _section(sections, "Engineering Assessment", "Assessment")
+    evidence = _section(sections, *evidence_names)
+    actions = _section(sections, "Recommended Actions", "Recommended action")
+    confidence = _section(sections, "Confidence")
+    return {"intent": intent, "label": label, "status": status, "assessment": assessment, "evidence": evidence, "actions": actions, "confidence": confidence}
+
 def _plain_markdown(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", str(text or ""))
     text = re.sub(r"`(.+?)`", r"\1", text)
@@ -205,71 +238,59 @@ def _assessment_kpis(context: dict[str, Any], confidence_score: int) -> list[tup
 
 
 
-def _decision_summary(context: dict[str, Any], assessment: str, confidence_score: int, priority_part: str) -> dict[str, str]:
+def _decision_summary(context: dict[str, Any], assessment: str, confidence_score: int, priority_part: str, *, intent: str = "general", preferred_status: str = "") -> dict[str, str]:
     analysis = context.get("analysis") or {}
     summary = context.get("summary") or {}
     risk = context.get("risk_summary") or context.get("risk") or {}
     components = list(context.get("components") or [])
     high = int(risk.get("high") or 0) if isinstance(risk, dict) else 0
     medium = int(risk.get("medium") or 0) if isinstance(risk, dict) else 0
-    lifecycle_exposed = sum(
-        1 for row in components
-        if str(row.get("lifecycle") or row.get("lifecycle_status") or "").lower()
-        not in {"", "active", "production", "unknown"}
-    )
-    if high > 0:
-        status, tone = "Action required", "critical"
-    elif medium > 0 or lifecycle_exposed > 0:
-        status, tone = "Review before release", "review"
-    else:
-        status, tone = "Ready for controlled release", "ready"
+    lifecycle_exposed = sum(1 for row in components if str(row.get("lifecycle") or row.get("lifecycle_status") or "").lower() not in {"", "active", "production", "unknown"})
+    status = preferred_status or ("Action required" if high else "Review before release" if medium or lifecycle_exposed else "Ready for controlled release")
+    tone = "critical" if high else "review" if medium or lifecycle_exposed else "ready"
     health = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
-    return {
-        "status": status,
-        "tone": tone,
-        "risk": "High" if high else "Medium" if medium or lifecycle_exposed else "Low",
-        "priority": priority_part or "No priority component",
-        "confidence": f"{confidence_score}%",
-        "health": f"{health}/100" if str(health).isdigit() else str(health),
-        "assessment": _plain_markdown(assessment),
-    }
+    return {"status": status, "tone": tone, "risk": "High" if high else "Medium" if medium or lifecycle_exposed else "Low", "priority": priority_part or "No priority component", "confidence": f"{confidence_score}%", "health": f"{health}/100" if str(health).isdigit() else str(health), "assessment": _plain_markdown(assessment), "intent": intent}
 
-
-def _projected_impact(context: dict[str, Any], priority_part: str) -> list[tuple[str, str, str]]:
-    analysis = context.get("analysis") or {}
-    summary = context.get("summary") or {}
-    health_raw = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score")
-    try:
-        health = int(float(health_raw))
-    except Exception:
-        health = None
+def _projected_impact(context: dict[str, Any], priority_part: str, *, intent: str = "general") -> list[tuple[str, str, str]]:
+    analysis = context.get("analysis") or {}; summary = context.get("summary") or {}
     components = list(context.get("components") or [])
     priority = next((row for row in components if str(row.get("part_number") or row.get("mpn") or "").upper() == str(priority_part).upper()), {})
     score = int(priority.get("risk_score") or 0) if priority else 0
     suppliers = int(priority.get("supplier_count") or priority.get("suppliers") or 0) if priority else 0
-    impact = []
-    if health is not None:
-        projected = min(100, health + max(2, min(7, round(score / 10))))
-        impact.append(("BOM health", f"{health} → {projected}", "Projected after mitigation"))
+    lead = float(priority.get("lead_time_weeks") or 0) if priority else 0
+    stock = int(priority.get("stock_available") or 0) if priority else 0
+    if intent == "schedule":
+        return [("Replenishment exposure", f"{lead:g} weeks → Validate", "Confirm with authorized suppliers"), ("Schedule risk", "Elevated → Reduced", "After allocation or alternate qualification"), ("Inventory coverage", f"{stock:,} recorded", "Compare against production demand"), ("Source resilience", f"{suppliers} source(s) → Improve", "Qualify an alternate or second source")]
+    if intent == "supplier":
+        return [("Supplier coverage", f"{suppliers} → {max(suppliers+1,2)}", "If a second source is qualified"), ("Concentration risk", "Current → Reduced", "After authorized-source validation"), ("Priority risk", f"{score}/100 → Reduced", "After mitigation or acceptance")]
+    if intent == "compatibility":
+        return [("Electrical equivalence", "Unverified → Documented", "Approved datasheet comparison"), ("Footprint compatibility", "Unverified → Confirmed", "PCB and package review"), ("Validation status", "Pending → Complete", "Bench or prototype evidence")]
+    health_raw = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score")
+    try: health=int(float(health_raw))
+    except Exception: health=None
+    impact=[]
+    if health is not None: impact.append(("BOM health", f"{health} → {min(100,health+max(2,min(7,round(score/10))))}", "Projected after mitigation"))
     impact.append(("Release readiness", "Focused review → Ready", "Expected after evidence closure"))
-    if priority_part:
-        impact.append(("Priority risk", f"{score}/100 → Reduced", "After qualification or acceptance"))
-    if suppliers:
-        impact.append(("Supplier coverage", f"{suppliers} → {suppliers + 1}", "If a second source is qualified"))
+    if priority_part: impact.append(("Priority risk", f"{score}/100 → Reduced", "After qualification or acceptance"))
+    if suppliers: impact.append(("Supplier coverage", f"{suppliers} → {suppliers+1}", "If a second source is qualified"))
     return impact[:4]
 
-
-def _workflow_steps(actions: str, priority_part: str) -> list[tuple[str, str]]:
+def _workflow_steps(actions: str, priority_part: str, *, intent: str = "general") -> list[tuple[str, str]]:
     base = _action_steps(actions)
-    labels = ["Validate evidence", "Review sourcing", "Evaluate mitigation", "Record decision", "Approve release"]
-    steps: list[tuple[str, str]] = []
-    for i, label in enumerate(labels):
-        detail = base[i] if i < len(base) else (
-            f"Complete the required review for {priority_part}." if priority_part and i < 4 else "Confirm release criteria are satisfied."
-        )
-        steps.append((label, detail))
+    labels_by_intent = {
+        "schedule": ["Confirm demand", "Verify lead time", "Secure allocation", "Qualify alternate", "Protect commitment"],
+        "supplier": ["Verify sources", "Check authorization", "Qualify second source", "Set monitoring", "Record mitigation"],
+        "compatibility": ["Compare datasheets", "Review pinout", "Confirm footprint", "Validate prototype", "Approve substitution"],
+        "lifecycle": ["Confirm lifecycle", "Review notices", "Select successor", "Qualify replacement", "Record decision"],
+        "procurement": ["Confirm demand", "Review inventory", "Contact suppliers", "Secure purchasing", "Monitor exposure"],
+        "release": ["Validate evidence", "Close blockers", "Review sourcing", "Record decision", "Approve release"],
+    }
+    labels=labels_by_intent.get(intent,["Validate evidence","Review sourcing","Evaluate mitigation","Record decision","Approve release"])
+    steps=[]
+    for i,label in enumerate(labels):
+        detail=base[i] if i<len(base) else (f"Complete the required review for {priority_part}." if priority_part and i<4 else "Confirm the applicable engineering criteria are satisfied.")
+        steps.append((label,detail))
     return steps
-
 
 def _review_progress(context: dict[str, Any]) -> tuple[int, int, int]:
     coverage = int((context.get("coverage") or {}).get("score") or 0)
@@ -279,7 +300,10 @@ def _review_progress(context: dict[str, Any]) -> tuple[int, int, int]:
 def _render_evidence_cards(evidence: str) -> None:
     items = _evidence_items(evidence)
     if not items:
-        st.markdown(evidence)
+        if str(evidence or "").strip():
+            st.markdown(f'<div class="cv39-impact-card"><p>{html.escape(_plain_markdown(evidence))}</p></div>', unsafe_allow_html=True)
+        else:
+            st.info("No structured evidence was returned for this review. Re-run the analysis or verify that component records are saved.")
         return
     columns = st.columns(2)
     for index, (title, detail) in enumerate(items[:6]):
@@ -338,7 +362,7 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
         for index, turn in enumerate(turns, start=1):
             question = html.escape(str(turn.get("question") or "Engineering question"))
             answer_sections = _parse_report(str(turn.get("answer") or ""))
-            assessment = html.escape(_plain_markdown(_section(answer_sections, "Engineering Assessment", "Assessment")))
+            assessment = html.escape(_plain_markdown(_assessment_profile(answer_sections)["assessment"]))
             st.markdown(
                 f"""
                 <div class="cv36-history-turn">
@@ -372,22 +396,24 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
 
 def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> None:
     sections = _parse_report(answer)
-    assessment = _section(sections, "Engineering Assessment", "Assessment")
-    evidence = _section(sections, "Supporting Evidence", "Evidence")
-    actions = _section(sections, "Recommended Actions", "Recommended action")
-    confidence = _section(sections, "Confidence")
+    profile = _assessment_profile(sections)
+    assessment = profile["assessment"]
+    evidence = profile["evidence"]
+    actions = profile["actions"]
+    confidence = profile["confidence"]
+    intent = profile["intent"]
     priority_part = _priority_component(context, evidence)
     confidence_label, confidence_score, confidence_detail = _confidence_data(confidence, context)
     confidence_class = "high" if confidence_score >= 75 else "medium" if confidence_score >= 45 else "low"
-    decision = _decision_summary(context, assessment, confidence_score, priority_part)
-    impact = _projected_impact(context, priority_part)
+    decision = _decision_summary(context, assessment, confidence_score, priority_part, intent=intent, preferred_status=profile["status"])
+    impact = _projected_impact(context, priority_part, intent=intent)
     complete, total, progress = _review_progress(context)
 
     st.markdown(
         f"""
         <div class="cv39-decision-card {decision['tone']}">
           <div class="cv39-decision-top">
-            <div><div class="cv35-answer-label">Engineering recommendation</div><h2>{html.escape(decision['status'])}</h2></div>
+            <div><div class="cv35-answer-label">{html.escape(profile["label"])}</div><h2>{html.escape(decision['status'])}</h2></div>
             <span class="cv39-status-badge">{html.escape(decision['risk'])} risk</span>
           </div>
           <div class="cv39-decision-grid">
@@ -427,7 +453,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
         )
 
     st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
-    workflow = _workflow_steps(actions, priority_part)
+    workflow = _workflow_steps(actions, priority_part, intent=intent)
     workflow_cols = st.columns(len(workflow))
     for idx, ((label, detail), col) in enumerate(zip(workflow, workflow_cols), start=1):
         col.markdown(
@@ -484,8 +510,12 @@ def render_engineering_assistant(
 
     prompt_key = "cv35_question"
     auto_execute_followup = False
+    pending_manual = st.session_state.pop("cv41_pending_manual", None)
     pending_followup = st.session_state.pop("cv36_pending_followup", None)
-    if pending_followup:
+    if pending_manual:
+        st.session_state[prompt_key] = str(pending_manual)
+        auto_execute_followup = True
+    elif pending_followup:
         # Apply queued follow-ups before the text-area widget is instantiated.
         st.session_state[prompt_key] = str(pending_followup)
         auto_execute_followup = True
@@ -513,7 +543,11 @@ def render_engineering_assistant(
         disabled=not can_submit,
         use_container_width=False,
     )
-    submit_requested = bool(manual_submit or (auto_execute_followup and can_submit))
+    if manual_submit and can_submit:
+        st.session_state["cv41_pending_manual"] = str(question).strip()
+        _clear_review_state()
+        st.rerun()
+    submit_requested = bool(auto_execute_followup and can_submit)
     if submit_requested:
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
