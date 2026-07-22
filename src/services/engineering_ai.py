@@ -123,7 +123,17 @@ def _classify_question(question: str) -> str:
     )):
         return "procurement_priority"
     if any(token in text for token in (
+        "validation required before approving the second source",
+        "validate before approving the second source",
+        "validation before approving the second source",
+        "what validation is required",
+        "second source validation",
+        "approve the second source",
+    )):
+        return "second_source_validation"
+    if any(token in text for token in (
         "second source", "second-source", "qualified source", "dual source", "single source",
+        "alternate supplier should be qualified", "which alternate supplier",
     )):
         return "second_source"
     if any(token in text for token in ("compare", "versus", " vs ", "difference between")):
@@ -230,6 +240,7 @@ def _component_priority_answer(row: dict[str, Any], project: str, context: dict[
     )
     confidence_label, confidence_reason = _confidence(context)
     heading_by_intent = {
+        "second_source_validation": ("Second-Source Validation", "Qualification Checklist"),
         "second_source": ("Second-Source Qualification", "Sourcing Candidates"),
         "procurement_priority": ("Procurement Assessment", "Procurement Evidence"),
         "release_evidence": ("Release Evidence Assessment", "Release Evidence"),
@@ -446,6 +457,27 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
             evidence = f"No saved part combines a long lead time, no-stock condition, or materially limited supplier coverage."
             actions = "Maintain routine inventory and lead-time monitoring before the next production commitment."
 
+    elif intent == "second_source_validation":
+        named = _mentioned_components(resolved_question, components)
+        focus_row = named[0] if named else (priority[0] if priority else (components[0] if components else {}))
+        focus_name = _part_name(focus_row) if focus_row else "the proposed second source"
+        assessment = (
+            f"**Approval of a second source for {focus_name} requires documented electrical, mechanical, sourcing, "
+            "quality, and production-validation evidence.** Cadivor has converted the missing evidence into a qualification checklist."
+        )
+        evidence = "\n".join([
+            f"- **Electrical equivalence** — status: Required; verify: operating voltage and current limits, logic thresholds, timing, output drive, tolerances, and functional behavior against the approved datasheet.",
+            f"- **Pinout and footprint** — status: Required; verify: pin numbering, orientation, package dimensions, land pattern, keep-outs, and PCB assembly compatibility.",
+            f"- **Environmental and quality** — status: Required; verify: temperature range, qualification grade, MSL, RoHS/REACH status, reliability data, and manufacturer change-control process.",
+            f"- **Authorized sourcing** — status: Required; verify: manufacturer authorization, approved supplier, traceability, date/lot-code policy, commercial terms, and continuity commitment.",
+            f"- **Prototype and manufacturing validation** — status: Required; verify: bench test, prototype build, ICT/functional test impact, programming or calibration changes, and production yield acceptance.",
+            f"- **Engineering approval record** — status: Required; verify: signed comparison, exceptions, test results, qualification rationale, approver, and effective date."
+        ])
+        actions = (
+            f"Create a controlled qualification package for {focus_name}, compare the approved and proposed-source datasheets, "
+            "complete footprint and prototype validation, obtain procurement and quality approval, then record the released second-source decision."
+        )
+
     elif intent == "second_source":
         def source_priority(row: dict[str, Any]) -> tuple[int, int, float, int]:
             suppliers = int(row.get("supplier_count") or 0)
@@ -490,8 +522,11 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
                 if not reasons:
                     reasons.append("program resilience policy review")
                 priority_label = "High" if suppliers <= 1 or score >= 50 or lead >= 26 or (suppliers <= 2 and any(token in lifecycle.lower() for token in ("replacement", "obsolete", "eol", "nrnd", "not recommended"))) else "Medium" if suppliers <= 2 or lead >= 16 else "Low"
+                recommendation_score = min(98, max(35, 42 + max(0, 3 - suppliers) * 13 + min(24, int(lead)) + min(20, score // 3) + (25 if "replacement" in lifecycle.lower() else 0)))
+                recommendation = "Qualify immediately" if recommendation_score >= 80 else "Qualify next" if recommendation_score >= 65 else "Review for qualification"
                 evidence_rows.append(
-                    f"- **{name}** — priority: {priority_label}; supplier coverage: {suppliers} recorded source(s); "
+                    f"- **{name}** — recommendation: {recommendation}; recommendation score: {recommendation_score}/100; "
+                    f"qualification priority: {priority_label}; supplier coverage: {suppliers} recorded source(s); "
                     f"lifecycle: {lifecycle}; lead time: {lead:g} weeks; inventory: {stock:,} recorded; "
                     f"risk score: {score}/100; rationale: {', '.join(reasons)}."
                 )
@@ -633,6 +668,7 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
         actions = "Start with the highest-risk or least-supported component, close missing sourcing and lifecycle evidence, and record the resulting engineering decision."
 
     heading_by_intent = {
+        "second_source_validation": ("Second-Source Validation", "Qualification Checklist"),
         "second_source": ("Second-Source Qualification", "Sourcing Candidates"),
         "procurement_priority": ("Procurement Assessment", "Procurement Evidence"),
         "release_evidence": ("Release Evidence Assessment", "Release Evidence"),
