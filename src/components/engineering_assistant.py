@@ -121,6 +121,9 @@ def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
     if "schedule" in first_l:
         intent, label, status = "schedule", "Schedule risk assessment", "Protect the production schedule"
         evidence_names = ("Schedule Evidence", "Supporting Evidence", "Evidence")
+    elif "second-source validation" in first_l:
+        intent, label, status = "second_source_validation", "Second-source validation", "Complete qualification evidence"
+        evidence_names = ("Qualification Checklist", "Required Evidence", "Supporting Evidence", "Evidence")
     elif "second-source" in first_l or "second source" in first_l:
         intent, label, status = "second_source", "Second-source qualification", "Build sourcing resilience"
         evidence_names = ("Sourcing Candidates", "Second-Source Evidence", "Supplier Evidence", "Supporting Evidence", "Evidence")
@@ -216,8 +219,16 @@ def _split_evidence_detail(detail: str) -> list[tuple[str, str]]:
 def _metric_display(label: str) -> tuple[str, str]:
     """Return a compact semantic icon and user-facing evidence label."""
     normalized = str(label or "Signal").strip().lower()
+    if "recommendation score" in normalized:
+        return "★", "Recommendation score"
+    if normalized == "recommendation" or "ai recommendation" in normalized:
+        return "✓", "Cadivor recommendation"
     if "priority" in normalized:
         return "↑", "Qualification priority"
+    if normalized == "status":
+        return "✓", "Validation status"
+    if normalized == "verify":
+        return "□", "Verification required"
     if "risk" in normalized:
         return "!", "Risk score"
     if normalized == "signal":
@@ -297,6 +308,8 @@ def _projected_impact(context: dict[str, Any], priority_part: str, *, intent: st
     if intent == "second_source":
         target_sources = max(suppliers + 1, 2)
         return [("Approved-source coverage", f"{suppliers} → {target_sources}", "After alternate supplier qualification"), ("Supply continuity", "Exposed → Resilient", "After dual-source approval"), ("Lead-time exposure", f"{lead:g} weeks → Diversified", "Compare alternate replenishment windows"), ("Procurement confidence", "Conditional → Improved", "After authorization and commercial validation")]
+    if intent == "second_source_validation":
+        return [("Electrical equivalence", "Unverified → Documented", "Approved datasheet comparison"), ("Footprint compatibility", "Unverified → Confirmed", "Package and PCB review"), ("Authorized sourcing", "Pending → Approved", "Traceability and supplier authorization"), ("Production validation", "Pending → Complete", "Prototype and manufacturing evidence")]
     if intent == "compatibility":
         return [("Electrical equivalence", "Unverified → Documented", "Approved datasheet comparison"), ("Footprint compatibility", "Unverified → Confirmed", "PCB and package review"), ("Validation status", "Pending → Complete", "Bench or prototype evidence")]
     health_raw = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score")
@@ -315,6 +328,7 @@ def _workflow_steps(actions: str, priority_part: str, *, intent: str = "general"
         "schedule": ["Confirm demand", "Verify lead time", "Secure allocation", "Qualify alternate", "Protect commitment"],
         "supplier": ["Verify sources", "Check authorization", "Qualify second source", "Set monitoring", "Record mitigation"],
         "second_source": ["Confirm approved sources", "Identify authorized alternate", "Validate compatibility", "Approve supplier", "Release dual-source plan"],
+        "second_source_validation": ["Compare datasheets", "Verify pinout and footprint", "Validate prototype", "Approve quality and sourcing", "Release second source"],
         "compatibility": ["Compare datasheets", "Review pinout", "Confirm footprint", "Validate prototype", "Approve substitution"],
         "lifecycle": ["Confirm lifecycle", "Review notices", "Select successor", "Qualify replacement", "Record decision"],
         "procurement": ["Confirm demand", "Review inventory", "Contact suppliers", "Secure purchasing", "Monitor exposure"],
@@ -545,6 +559,16 @@ def render_engineering_assistant(
         div[data-testid="stFormSubmitButton"] button:disabled,div[data-testid="stFormSubmitButton"] button[disabled]{background:#60a5fa!important;border-color:#60a5fa!important;color:#fff!important;-webkit-text-fill-color:#fff!important;opacity:1!important}
         div[data-testid="stFormSubmitButton"] button:disabled *,div[data-testid="stFormSubmitButton"] button[disabled] *{color:#fff!important;-webkit-text-fill-color:#fff!important;opacity:1!important}
         div[data-testid="stForm"]{border-color:#dbeafe!important;background:#fbfdff!important}
+        /* Sprint 45 readability: responsive type scale for laptop and small-screen use. */
+        .cv35-kicker,.cv35-answer-label,.cv35-section-label,.cv35-card-kicker{font-size:clamp(10px,.72vw,12px)!important}
+        .cv39-decision-top h2{font-size:clamp(27px,2vw,34px)!important}.cv39-decision-card>p{font-size:clamp(14px,.95vw,16px)!important;line-height:1.65!important}
+        .cv39-decision-grid span,.cv38-evidence-metric span{font-size:clamp(10px,.68vw,11px)!important}.cv39-decision-grid strong{font-size:clamp(14px,.95vw,16px)!important}
+        .cv38-evidence-metric strong{font-size:clamp(12px,.82vw,14px)!important;line-height:1.45!important}.cv35-evidence-part{font-size:clamp(14px,.95vw,16px)!important}
+        .cv39-impact-row span{font-size:clamp(11px,.75vw,13px)!important}.cv39-impact-row strong{font-size:clamp(12px,.82vw,14px)!important}.cv39-impact-row small{font-size:clamp(10px,.68vw,11px)!important}
+        .cv39-timeline-step strong{font-size:clamp(11px,.75vw,13px)!important}.cv39-timeline-step p{font-size:clamp(10px,.68vw,12px)!important;line-height:1.45!important}
+        .cv35-confidence-top{font-size:clamp(11px,.75vw,13px)!important}.cv35-confidence-label{font-size:clamp(15px,1vw,17px)!important}.cv35-confidence-detail{font-size:clamp(11px,.75vw,13px)!important}
+        div[data-testid="stForm"] label,div[data-testid="stTextArea"] label{font-size:14px!important} div[data-testid="stTextArea"] textarea{font-size:15px!important;line-height:1.5!important}
+        @media(max-width:1100px){.cv35-evidence-card{padding:14px!important}.cv39-decision-card{padding:18px!important}.cv39-timeline-step{min-height:auto!important}}
         @media(max-width:900px){.cv38-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv38-evidence-grid{grid-template-columns:1fr}.cv39-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv39-decision-top{display:block}.cv39-status-badge{display:inline-block;margin-bottom:8px}.cv39-timeline-step{min-height:auto}.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto!important}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
