@@ -210,6 +210,26 @@ def _split_evidence_detail(detail: str) -> list[tuple[str, str]]:
     return pairs[:6]
 
 
+def _metric_display(label: str) -> tuple[str, str]:
+    """Return a compact semantic icon and user-facing evidence label."""
+    normalized = str(label or "Signal").strip().lower()
+    if "risk" in normalized or normalized == "signal":
+        return "!", "Risk signal"
+    if "lifecycle" in normalized:
+        return "◷", "Lifecycle"
+    if "supplier" in normalized or "source" in normalized:
+        return "S", "Sources"
+    if "stock" in normalized or "inventory" in normalized or "units" in normalized:
+        return "□", "Inventory"
+    if "lead" in normalized or "week" in normalized:
+        return "↗", "Lead time"
+    if "package" in normalized or "footprint" in normalized:
+        return "◇", "Package / footprint"
+    if "voltage" in normalized or "electrical" in normalized:
+        return "~", "Electrical"
+    return "•", str(label or "Evidence").strip().title()
+
+
 def _action_steps(actions: str) -> list[str]:
     plain = _plain_markdown(actions)
     if not plain:
@@ -308,10 +328,13 @@ def _render_evidence_cards(evidence: str) -> None:
     columns = st.columns(2)
     for index, (title, detail) in enumerate(items[:6]):
         metrics = _split_evidence_detail(detail)
-        metric_html = "".join(
-            f'<div class="cv38-evidence-metric"><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>'
-            for label, value in metrics[:5]
-        )
+        metric_blocks = []
+        for label, value in metrics[:5]:
+            icon, display_label = _metric_display(label)
+            metric_blocks.append(
+                f'<div class="cv38-evidence-metric"><span><i>{html.escape(icon)}</i>{html.escape(display_label)}</span><strong>{html.escape(value)}</strong></div>'
+            )
+        metric_html = "".join(metric_blocks)
         with columns[index % 2]:
             st.markdown(
                 f"""
@@ -381,8 +404,9 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
     cols = st.columns(2)
     for index, suggestion in enumerate(suggestions):
+        button_label = f"↳  {suggestion}"
         if cols[index % 2].button(
-            suggestion,
+            button_label,
             key=f"cv36_followup_{index}_{abs(hash(suggestion))}",
             use_container_width=True,
         ):
@@ -429,21 +453,20 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns([1.25, 1])
-    with left:
-        st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)
-        _render_evidence_cards(evidence)
-    with right:
+    impact_col, confidence_col = st.columns([1.25, 1])
+    with impact_col:
         st.markdown('<div class="cv35-section-label">Projected engineering impact</div>', unsafe_allow_html=True)
         impact_html = "".join(
             f'<div class="cv39-impact-row"><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>'
             for label, value, note in impact
         )
         st.markdown(f'<div class="cv39-impact-card">{impact_html}<p>Projections are directional estimates based on saved evidence, not measured outcomes.</p></div>', unsafe_allow_html=True)
+    with confidence_col:
+        st.markdown('<div class="cv35-section-label">Decision confidence</div>', unsafe_allow_html=True)
         st.markdown(
             f"""
             <div class="cv35-confidence-card {confidence_class}">
-              <div class="cv35-confidence-top"><span>Decision confidence</span><strong>{confidence_score}%</strong></div>
+              <div class="cv35-confidence-top"><span>Evidence confidence</span><strong>{confidence_score}%</strong></div>
               <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
               <div class="cv35-confidence-label">{html.escape(confidence_label)}</div>
               <div class="cv35-confidence-detail">{html.escape(confidence_detail)}</div>
@@ -451,6 +474,9 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
             """,
             unsafe_allow_html=True,
         )
+
+    st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)
+    _render_evidence_cards(evidence)
 
     st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
     workflow = _workflow_steps(actions, priority_part, intent=intent)
@@ -473,7 +499,7 @@ def render_engineering_assistant(
 
     st.markdown(
         """
-        <style id="cadivor-engineering-assistant-42">
+        <style id="cadivor-engineering-assistant-43">
         .cv35-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f6f9ff 62%,#eaf2ff);border-radius:24px;padding:22px;margin:2px 0 14px;box-shadow:0 18px 50px rgba(37,99,235,.08)}
         .cv35-kicker,.cv35-answer-label,.cv35-section-label,.cv35-card-kicker{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important}.cv35-hero h2{font-size:27px;line-height:1.1;letter-spacing:-.035em;color:#0f172a!important;margin:0 0 8px}.cv35-hero p{font-size:13px;line-height:1.6;color:#52647a!important;font-weight:700;margin:0;max-width:900px}
         .cv35-usage{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin:0 0 12px}.cv35-usage strong{font-size:11px;color:#0f172a!important}.cv35-usage span{font-size:10px;color:#52647a!important;font-weight:800}.cv35-usage.high,.cv35-usage.critical{border-color:#fde68a;background:#fffbeb}.cv35-usage.reached{border-color:#fecaca;background:#fef2f2}
@@ -492,6 +518,18 @@ def render_engineering_assistant(
         .cv39-decision-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f5f9ff);border-radius:22px;padding:20px 21px;margin:16px 0 10px;box-shadow:0 16px 42px rgba(15,23,42,.06)}.cv39-decision-card.ready{border-color:#86efac;background:linear-gradient(135deg,#fff,#ecfdf5)}.cv39-decision-card.critical{border-color:#fca5a5;background:linear-gradient(135deg,#fff,#fff1f2)}.cv39-decision-top{display:flex;align-items:flex-start;justify-content:space-between;gap:15px}.cv39-decision-top h2{font-size:26px;color:#0f172a!important;letter-spacing:-.035em;margin:6px 0 12px}.cv39-status-badge{border:1px solid #fbbf24;background:#fef3c7;color:#78350f;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:950;box-shadow:0 2px 8px rgba(146,64,14,.08)}.cv39-decision-card.ready .cv39-status-badge{border-color:#34d399;background:#d1fae5;color:#065f46}.cv39-decision-card.critical .cv39-status-badge{border-color:#f87171;background:#fee2e2;color:#991b1b}.cv39-decision-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 14px}.cv39-decision-grid div{border:1px solid #dbeafe;background:rgba(255,255,255,.9);border-radius:13px;padding:11px 12px}.cv39-decision-grid span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:#64748b;font-weight:900}.cv39-decision-grid strong{display:block;color:#0f172a;font-size:14px;margin-top:5px}.cv39-decision-card>p{margin:0;color:#334155;font-size:13px;line-height:1.6;font-weight:650}.cv39-progress-wrap{border:1px solid #dbeafe;background:#fff;border-radius:14px;padding:10px 14px;margin-bottom:8px}.cv39-progress-wrap>div:first-child{display:flex;justify-content:space-between;font-size:11px;color:#334155}.cv39-progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:7px}.cv39-progress i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv39-impact-card{border:1px solid #dbeafe;background:#fff;border-radius:18px;padding:13px 16px;margin-bottom:8px}.cv39-impact-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;border-bottom:1px solid #eef2f7;padding:9px 0}.cv39-impact-row:last-of-type{border-bottom:0}.cv39-impact-row span{font-size:11px;color:#64748b;font-weight:850}.cv39-impact-row strong{font-size:12px;color:#0f172a}.cv39-impact-row small{grid-column:1/-1;color:#64748b;font-size:9px}.cv39-impact-card>p{font-size:9px;color:#64748b;margin:9px 0 0}.cv39-timeline-step{min-height:118px;border:1px solid #dbeafe;background:#fff;border-radius:15px;padding:11px 11px;position:relative;box-shadow:0 5px 16px rgba(15,23,42,.025)}.cv39-timeline-step b{display:grid;place-items:center;width:22px;height:22px;border-radius:999px;background:#2563eb;color:#fff;font-size:9px;margin-bottom:8px}.cv39-timeline-step strong{display:block;color:#0f172a;font-size:11px}.cv39-timeline-step p{font-size:10px;line-height:1.38;color:#64748b;margin:6px 0 0}
         .cv35-evidence-head span{border:1px solid #93c5fd!important;background:#dbeafe!important;color:#1d4ed8!important;padding:5px 9px!important}.cv35-evidence-card{min-height:138px!important;margin-bottom:8px!important}.cv35-section-label{margin:14px 0 8px!important}
         div[data-testid="stForm"] button[kind="primary"],div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]{background:#2563eb!important;border:1px solid #2563eb!important;color:#fff!important;font-weight:800!important;box-shadow:0 8px 20px rgba(37,99,235,.22)!important;opacity:1!important}div[data-testid="stForm"] button[kind="primary"] p,div[data-testid="stForm"] button[kind="primary"] span,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"] p,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"] span{color:#fff!important;opacity:1!important}div[data-testid="stForm"] button[kind="primary"]:hover,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:hover{background:#1d4ed8!important;border-color:#1d4ed8!important;color:#fff!important}div[data-testid="stForm"] button[kind="primary"]:focus,div[data-testid="stForm"] button[kind="primary"]:active,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:focus,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:active{background:#1e40af!important;border-color:#1e40af!important;color:#fff!important;box-shadow:0 0 0 3px rgba(96,165,250,.35)!important}div[data-testid="stForm"] button:disabled{background:#93c5fd!important;border-color:#93c5fd!important;color:#fff!important;opacity:.9!important}div[data-testid="stForm"] button:disabled p,div[data-testid="stForm"] button:disabled span{color:#fff!important;opacity:1!important}
+        /* Sprint 43 final polish */
+        .cv39-progress-wrap{margin-bottom:4px!important}.cv35-section-label{margin:11px 0 7px!important}
+        .cv39-impact-card,.cv35-confidence-card{min-height:160px;height:100%;margin-top:0!important}
+        .cv35-evidence-card{min-height:126px!important;padding:13px 14px!important;transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}.cv35-evidence-card:hover{box-shadow:0 12px 28px rgba(37,99,235,.08)}
+        .cv38-evidence-metric span{display:flex!important;align-items:center;gap:5px}.cv38-evidence-metric span i{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:5px;background:#eff6ff;color:#2563eb;font-size:9px;font-style:normal;font-weight:950;flex:0 0 auto}.cv38-evidence-metric strong{font-size:11px!important}
+        .cv39-timeline-step{min-height:102px!important;padding:10px!important}.cv39-timeline-step b{width:20px!important;height:20px!important;margin-bottom:6px!important}.cv39-timeline-step p{font-size:9.5px!important;line-height:1.34!important;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+        div[data-testid="stFormSubmitButton"] button,div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button,.stFormSubmitButton button{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important;-webkit-text-fill-color:#fff!important;font-weight:850!important}
+        div[data-testid="stFormSubmitButton"] button *,div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button *,.stFormSubmitButton button *{color:#fff!important;-webkit-text-fill-color:#fff!important;fill:#fff!important;stroke:#fff!important;opacity:1!important}
+        div[data-testid="stFormSubmitButton"] button:hover,div[data-testid="stFormSubmitButton"] button:focus,div[data-testid="stFormSubmitButton"] button:active{background:#1d4ed8!important;border-color:#1d4ed8!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
+        div[data-testid="stFormSubmitButton"] button:disabled,div[data-testid="stFormSubmitButton"] button[disabled]{background:#60a5fa!important;border-color:#60a5fa!important;color:#fff!important;-webkit-text-fill-color:#fff!important;opacity:1!important}
+        div[data-testid="stFormSubmitButton"] button:disabled *,div[data-testid="stFormSubmitButton"] button[disabled] *{color:#fff!important;-webkit-text-fill-color:#fff!important;opacity:1!important}
+        div[data-testid="stForm"]{border-color:#dbeafe!important;background:#fbfdff!important}
         @media(max-width:900px){.cv38-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv38-evidence-grid{grid-template-columns:1fr}.cv39-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv39-decision-top{display:block}.cv39-status-badge{display:inline-block;margin-bottom:8px}.cv39-timeline-step{min-height:auto}.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto!important}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
