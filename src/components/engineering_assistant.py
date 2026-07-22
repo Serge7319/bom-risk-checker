@@ -528,26 +528,34 @@ def render_engineering_assistant(
             _clear_review_state()
             st.rerun()
 
-    question = st.text_area(
-        "Engineering question",
-        key=prompt_key,
-        height=88,
-        placeholder="Ask your own question, for example: What evidence is missing before release approval?",
-    )
-    component_note = f" Current component focus: {selected_component}." if selected_component else ""
-    st.caption("Ask in your own words. Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
-    can_submit = status.can_use and bool(str(question or "").strip())
-    manual_submit = st.button(
-        "Ask Engineering Copilot",
-        type="primary",
-        disabled=not can_submit,
-        use_container_width=False,
-    )
-    if manual_submit and can_submit:
-        st.session_state["cv41_pending_manual"] = str(question).strip()
+    # A form submits the browser's current text-area value and the button click
+    # in one transaction. This prevents pasted text from requiring a first click
+    # merely to synchronize the widget before the button becomes enabled.
+    with st.form("cv41_engineering_question_form", clear_on_submit=False):
+        question = st.text_area(
+            "Engineering question",
+            key=prompt_key,
+            height=88,
+            placeholder="Ask your own question, for example: What evidence is missing before release approval?",
+        )
+        component_note = f" Current component focus: {selected_component}." if selected_component else ""
+        st.caption("Ask in your own words. Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
+        manual_submit = st.form_submit_button(
+            "Ask Engineering Copilot",
+            type="primary",
+            disabled=not status.can_use,
+            use_container_width=False,
+        )
+
+    cleaned_question = str(question or "").strip()
+    manual_submit_requested = bool(manual_submit and status.can_use and cleaned_question)
+    if manual_submit and not cleaned_question:
+        st.warning("Enter an engineering question before submitting.")
+    if manual_submit_requested:
         _clear_review_state()
-        st.rerun()
-    submit_requested = bool(auto_execute_followup and can_submit)
+
+    can_submit = status.can_use and bool(cleaned_question)
+    submit_requested = bool(manual_submit_requested or (auto_execute_followup and can_submit))
     if submit_requested:
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
