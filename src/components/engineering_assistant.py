@@ -121,6 +121,9 @@ def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
     if "schedule" in first_l:
         intent, label, status = "schedule", "Schedule risk assessment", "Protect the production schedule"
         evidence_names = ("Schedule Evidence", "Supporting Evidence", "Evidence")
+    elif "second-source" in first_l or "second source" in first_l:
+        intent, label, status = "second_source", "Second-source qualification", "Build sourcing resilience"
+        evidence_names = ("Sourcing Candidates", "Second-Source Evidence", "Supplier Evidence", "Supporting Evidence", "Evidence")
     elif "supplier" in first_l:
         intent, label, status = "supplier", "Supplier risk assessment", "Reduce sourcing concentration"
         evidence_names = ("Supplier Evidence", "Supporting Evidence", "Evidence")
@@ -213,16 +216,24 @@ def _split_evidence_detail(detail: str) -> list[tuple[str, str]]:
 def _metric_display(label: str) -> tuple[str, str]:
     """Return a compact semantic icon and user-facing evidence label."""
     normalized = str(label or "Signal").strip().lower()
-    if "risk" in normalized or normalized == "signal":
-        return "!", "Risk signal"
+    if "priority" in normalized:
+        return "↑", "Qualification priority"
+    if "risk" in normalized:
+        return "!", "Risk score"
+    if normalized == "signal":
+        return "•", "Evidence"
     if "lifecycle" in normalized:
         return "◷", "Lifecycle"
+    if "supplier coverage" in normalized or "source coverage" in normalized:
+        return "S", "Supplier coverage"
     if "supplier" in normalized or "source" in normalized:
         return "S", "Sources"
     if "stock" in normalized or "inventory" in normalized or "units" in normalized:
         return "□", "Inventory"
     if "lead" in normalized or "week" in normalized:
         return "↗", "Lead time"
+    if "rationale" in normalized or "reason" in normalized:
+        return "i", "Why it qualifies"
     if "package" in normalized or "footprint" in normalized:
         return "◇", "Package / footprint"
     if "voltage" in normalized or "electrical" in normalized:
@@ -283,6 +294,9 @@ def _projected_impact(context: dict[str, Any], priority_part: str, *, intent: st
         return [("Replenishment exposure", f"{lead:g} weeks → Validate", "Confirm with authorized suppliers"), ("Schedule risk", "Elevated → Reduced", "After allocation or alternate qualification"), ("Inventory coverage", f"{stock:,} recorded", "Compare against production demand"), ("Source resilience", f"{suppliers} source(s) → Improve", "Qualify an alternate or second source")]
     if intent == "supplier":
         return [("Supplier coverage", f"{suppliers} → {max(suppliers+1,2)}", "If a second source is qualified"), ("Concentration risk", "Current → Reduced", "After authorized-source validation"), ("Priority risk", f"{score}/100 → Reduced", "After mitigation or acceptance")]
+    if intent == "second_source":
+        target_sources = max(suppliers + 1, 2)
+        return [("Approved-source coverage", f"{suppliers} → {target_sources}", "After alternate supplier qualification"), ("Supply continuity", "Exposed → Resilient", "After dual-source approval"), ("Lead-time exposure", f"{lead:g} weeks → Diversified", "Compare alternate replenishment windows"), ("Procurement confidence", "Conditional → Improved", "After authorization and commercial validation")]
     if intent == "compatibility":
         return [("Electrical equivalence", "Unverified → Documented", "Approved datasheet comparison"), ("Footprint compatibility", "Unverified → Confirmed", "PCB and package review"), ("Validation status", "Pending → Complete", "Bench or prototype evidence")]
     health_raw = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score")
@@ -300,6 +314,7 @@ def _workflow_steps(actions: str, priority_part: str, *, intent: str = "general"
     labels_by_intent = {
         "schedule": ["Confirm demand", "Verify lead time", "Secure allocation", "Qualify alternate", "Protect commitment"],
         "supplier": ["Verify sources", "Check authorization", "Qualify second source", "Set monitoring", "Record mitigation"],
+        "second_source": ["Confirm approved sources", "Identify authorized alternate", "Validate compatibility", "Approve supplier", "Release dual-source plan"],
         "compatibility": ["Compare datasheets", "Review pinout", "Confirm footprint", "Validate prototype", "Approve substitution"],
         "lifecycle": ["Confirm lifecycle", "Review notices", "Select successor", "Qualify replacement", "Record decision"],
         "procurement": ["Confirm demand", "Review inventory", "Contact suppliers", "Secure purchasing", "Monitor exposure"],
