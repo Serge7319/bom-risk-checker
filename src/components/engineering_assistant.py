@@ -252,6 +252,53 @@ def _metric_display(label: str) -> tuple[str, str]:
     return "•", str(label or "Evidence").strip().title()
 
 
+
+
+def _confidence_drivers(context: dict[str, Any], evidence: str) -> list[tuple[str, str, str]]:
+    """Explain the concrete data signals that raise or limit confidence."""
+    coverage = context.get("coverage") or {}
+    components = list(context.get("components") or [])
+    evidence_items = _evidence_items(evidence)
+    saved_decisions = context.get("decisions") or context.get("engineering_decisions") or []
+    monitoring = context.get("monitoring") or context.get("alerts") or []
+    alternatives = context.get("alternatives") or context.get("saved_alternatives") or []
+    populated = sum(1 for row in components if any(row.get(k) not in (None, "", 0) for k in ("risk_score", "lifecycle_status", "supplier_count", "stock_available", "lead_time_weeks")))
+    total = max(1, len(components))
+    component_pct = round(populated / total * 100) if components else 0
+    score = int(coverage.get("score") or 0)
+    return [
+        ("Evidence coverage", f"{score}%", "Combined completeness of saved engineering evidence"),
+        ("Component records", f"{populated}/{len(components)}", f"{component_pct}% contain decision-driving fields"),
+        ("Structured signals", str(len(evidence_items)), "Evidence cards directly supporting this recommendation"),
+        ("Decision history", str(len(saved_decisions)), "Saved approvals, rejections, or review records"),
+        ("Monitoring signals", str(len(monitoring)), "Recorded changes and active alerts"),
+        ("Alternative evidence", str(len(alternatives)), "Saved replacement or second-source candidates"),
+    ]
+
+
+def _recommendation_explanation(assessment: str, evidence: str, priority_part: str) -> tuple[str, list[str]]:
+    """Create a readable explanation without inventing evidence."""
+    summary = _plain_markdown(assessment)
+    items = _evidence_items(evidence)
+    selected_detail = ""
+    for title, detail in items:
+        if priority_part and title.strip().upper() == priority_part.strip().upper():
+            selected_detail = detail
+            break
+    if not selected_detail and items:
+        selected_detail = items[0][1]
+    drivers: list[str] = []
+    for label, value in _split_evidence_detail(selected_detail):
+        normalized = label.lower()
+        if any(token in normalized for token in ("rationale", "reason")):
+            drivers.extend([piece.strip().rstrip(".") for piece in value.split(",") if piece.strip()])
+        elif any(token in normalized for token in ("recommendation score", "priority", "risk", "lifecycle", "supplier coverage", "lead time", "inventory")):
+            drivers.append(f"{label}: {value.rstrip('.')}" )
+    if not drivers and selected_detail:
+        drivers = [selected_detail.rstrip(".")]
+    return summary, drivers[:5]
+
+
 def _action_steps(actions: str) -> list[str]:
     plain = _plain_markdown(actions)
     if not plain:
@@ -349,35 +396,24 @@ def _review_progress(context: dict[str, Any]) -> tuple[int, int, int]:
 def _render_evidence_cards(evidence: str) -> None:
     items = _evidence_items(evidence)
     if not items:
-        if str(evidence or "").strip():
-            st.markdown(f'<div class="cv39-impact-card"><p>{html.escape(_plain_markdown(evidence))}</p></div>', unsafe_allow_html=True)
-        else:
-            st.info("No structured evidence was returned for this review. Re-run the analysis or verify that component records are saved.")
+        message = _plain_markdown(evidence) or "No structured evidence was returned. Verify that component records are saved and re-run the review."
+        st.markdown(f'<div class="cv46-empty-evidence">{html.escape(message)}</div>', unsafe_allow_html=True)
         return
-    columns = st.columns(2)
-    for index, (title, detail) in enumerate(items[:6]):
+    cards: list[str] = []
+    for title, detail in items[:8]:
         metrics = _split_evidence_detail(detail)
         metric_blocks = []
-        for label, value in metrics[:5]:
+        for label, value in metrics[:4]:
             icon, display_label = _metric_display(label)
             metric_blocks.append(
-                f'<div class="cv38-evidence-metric"><span><i>{html.escape(icon)}</i>{html.escape(display_label)}</span><strong>{html.escape(value)}</strong></div>'
+                f'<div class="cv46-evidence-metric"><span><i>{html.escape(icon)}</i>{html.escape(display_label)}</span><strong>{html.escape(value)}</strong></div>'
             )
-        metric_html = "".join(metric_blocks)
-        with columns[index % 2]:
-            st.markdown(
-                f"""
-                <div class="cv35-evidence-card">
-                  <div class="cv35-evidence-head"><div class="cv35-evidence-part">{html.escape(title)}</div><span>Needs review</span></div>
-                  <div class="cv38-evidence-grid">{metric_html}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            with st.expander(f"More evidence · {title}", expanded=False):
-                for label, value in metrics:
-                    st.markdown(f"**{label}:** {value}")
-                st.caption("Review current approved datasheets, authorized-source records, monitoring history, and saved engineering decisions before final approval.")
+        status = "Priority" if any(token in detail.lower() for token in ("qualify immediately", "high", "obsolete", "replacement", "single-source")) else "Review"
+        cards.append(
+            f'<article class="cv46-evidence-card"><header><strong>{html.escape(title)}</strong><em>{status}</em></header>'
+            f'<div class="cv46-evidence-metrics">{"".join(metric_blocks)}</div></article>'
+        )
+    st.markdown(f'<div class="cv46-evidence-board">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
 def _render_quick_actions(context: dict[str, Any], priority_part: str) -> None:
@@ -461,6 +497,8 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     decision = _decision_summary(context, assessment, confidence_score, priority_part, intent=intent, preferred_status=profile["status"])
     impact = _projected_impact(context, priority_part, intent=intent)
     complete, total, progress = _review_progress(context)
+    explanation, recommendation_drivers = _recommendation_explanation(assessment, evidence, priority_part)
+    confidence_drivers = _confidence_drivers(context, evidence)
 
     st.markdown(
         f"""
@@ -482,7 +520,14 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
         unsafe_allow_html=True,
     )
 
-    impact_col, confidence_col = st.columns([1.25, 1])
+    driver_html = "".join(f'<li><span>{index}</span><p>{html.escape(driver)}</p></li>' for index, driver in enumerate(recommendation_drivers, start=1))
+    if driver_html:
+        st.markdown(
+            f'<section class="cv46-why"><div><span>Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><p>{html.escape(explanation)}</p></div><ol>{driver_html}</ol></section>',
+            unsafe_allow_html=True,
+        )
+
+    impact_col, confidence_col = st.columns([1.18, 1])
     with impact_col:
         st.markdown('<div class="cv35-section-label">Projected engineering impact</div>', unsafe_allow_html=True)
         impact_html = "".join(
@@ -499,6 +544,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
               <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
               <div class="cv35-confidence-label">{html.escape(confidence_label)}</div>
               <div class="cv35-confidence-detail">{html.escape(confidence_detail)}</div>
+              <div class="cv46-confidence-drivers">{''.join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>' for label, value, note in confidence_drivers[:4])}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -570,6 +616,14 @@ def render_engineering_assistant(
         div[data-testid="stForm"] label,div[data-testid="stTextArea"] label{font-size:14px!important} div[data-testid="stTextArea"] textarea{font-size:15px!important;line-height:1.5!important}
         @media(max-width:1100px){.cv35-evidence-card{padding:14px!important}.cv39-decision-card{padding:18px!important}.cv39-timeline-step{min-height:auto!important}}
         @media(max-width:900px){.cv38-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv38-evidence-grid{grid-template-columns:1fr}.cv39-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv39-decision-top{display:block}.cv39-status-badge{display:inline-block;margin-bottom:8px}.cv39-timeline-step{min-height:auto}.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto!important}}
+
+        /* Sprint 46 — explainability, compact evidence, responsive readability */
+        .cv46-why{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:18px;border:1px solid #c7d2fe;background:linear-gradient(135deg,#f8faff,#eef4ff);border-radius:20px;padding:18px 20px;margin:10px 0 14px}.cv46-why>div>span{font-size:clamp(10px,.7vw,12px);font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb}.cv46-why h3{font-size:clamp(18px,1.35vw,24px);line-height:1.2;letter-spacing:-.025em;color:#0f172a;margin:5px 0 7px}.cv46-why>div>p{font-size:clamp(13px,.88vw,15px);line-height:1.62;color:#475569;margin:0}.cv46-why ol{list-style:none;padding:0;margin:0;display:grid;gap:7px}.cv46-why li{display:flex;gap:9px;align-items:flex-start;border:1px solid #dbeafe;background:rgba(255,255,255,.86);border-radius:11px;padding:8px 10px}.cv46-why li span{display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:#2563eb;color:#fff;font-size:10px;font-weight:950;flex:0 0 auto}.cv46-why li p{margin:1px 0 0;font-size:clamp(11px,.76vw,13px);line-height:1.42;color:#334155;font-weight:720}
+        .cv46-confidence-drivers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}.cv46-confidence-drivers>div{border-top:1px solid #e2e8f0;padding-top:7px;min-width:0}.cv46-confidence-drivers span{display:block;font-size:clamp(9px,.62vw,10px);font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:#64748b}.cv46-confidence-drivers strong{display:block;font-size:clamp(12px,.84vw,14px);color:#0f172a;margin:2px 0}.cv46-confidence-drivers small{display:block;font-size:clamp(9px,.62vw,11px);line-height:1.35;color:#64748b}
+        .cv46-evidence-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:8px}.cv46-evidence-card{border:1px solid #dbeafe;background:#fff;border-radius:15px;padding:12px;min-width:0;box-shadow:0 6px 18px rgba(15,23,42,.035);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.cv46-evidence-card:hover{transform:translateY(-1px);border-color:#93c5fd;box-shadow:0 10px 24px rgba(37,99,235,.075)}.cv46-evidence-card header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding-bottom:8px;border-bottom:1px solid #eef2f7}.cv46-evidence-card header strong{font-size:clamp(12px,.85vw,15px);line-height:1.28;color:#0f172a;overflow-wrap:anywhere}.cv46-evidence-card header em{font-style:normal;font-size:9px;font-weight:900;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:4px 7px;white-space:nowrap}.cv46-evidence-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}.cv46-evidence-metric{min-width:0}.cv46-evidence-metric span{display:flex;align-items:center;gap:4px;font-size:clamp(9px,.62vw,10px);font-weight:850;color:#64748b;text-transform:uppercase;letter-spacing:.04em}.cv46-evidence-metric i{display:grid;place-items:center;width:15px;height:15px;border-radius:4px;background:#eff6ff;color:#2563eb;font-style:normal;font-size:8px;flex:0 0 auto}.cv46-evidence-metric strong{display:block;font-size:clamp(11px,.76vw,13px);line-height:1.35;color:#334155;margin-top:3px;overflow-wrap:anywhere}.cv46-empty-evidence{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:14px;padding:14px;color:#475569;font-size:13px;line-height:1.55}
+        .cv35-confidence-card{min-height:0!important}.cv39-impact-card{min-height:0!important}.cv39-decision-card>p{max-width:1100px}.cv39-timeline-step p{-webkit-line-clamp:unset!important;overflow:visible!important}
+        @media(max-width:1180px){.cv46-evidence-board{grid-template-columns:repeat(2,minmax(0,1fr))}.cv46-why{grid-template-columns:1fr}.cv46-why ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media(max-width:760px){.cv46-evidence-board,.cv46-why ol,.cv46-confidence-drivers{grid-template-columns:1fr}.cv46-evidence-metrics{grid-template-columns:1fr 1fr}.cv46-why{padding:15px}.cv39-decision-grid{grid-template-columns:1fr!important}.cv39-decision-card{border-radius:18px;padding:16px!important}.cv35-hero{padding:17px;border-radius:19px}.cv35-hero h2{font-size:clamp(23px,7vw,30px)!important}.cv39-decision-top h2{font-size:clamp(23px,7vw,30px)!important}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
         """,
