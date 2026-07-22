@@ -123,6 +123,12 @@ def _classify_question(question: str) -> str:
     )):
         return "procurement_priority"
     if any(token in text for token in (
+        "schedule resilience", "improve schedule resilience", "schedule protection",
+        "reduce schedule risk", "production continuity", "continuity benefit",
+        "how would a second source improve", "benefit of a second source",
+    )):
+        return "schedule_resilience"
+    if any(token in text for token in (
         "validation required before approving the second source",
         "validate before approving the second source",
         "validation before approving the second source",
@@ -240,6 +246,7 @@ def _component_priority_answer(row: dict[str, Any], project: str, context: dict[
     )
     confidence_label, confidence_reason = _confidence(context)
     heading_by_intent = {
+        "schedule_resilience": ("Schedule Resilience Assessment", "Schedule Resilience Evidence"),
         "second_source_validation": ("Second-Source Validation", "Qualification Checklist"),
         "second_source": ("Second-Source Qualification", "Sourcing Candidates"),
         "procurement_priority": ("Procurement Assessment", "Procurement Evidence"),
@@ -457,6 +464,63 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
             evidence = f"No saved part combines a long lead time, no-stock condition, or materially limited supplier coverage."
             actions = "Maintain routine inventory and lead-time monitoring before the next production commitment."
 
+    elif intent == "schedule_resilience":
+        limited = [
+            row for row in components
+            if int(row.get("supplier_count") or 0) <= 2
+            or float(row.get("lead_time_weeks") or 0) >= 16
+        ]
+        limited.sort(
+            key=lambda row: (
+                max(0, 3 - int(row.get("supplier_count") or 0)),
+                float(row.get("lead_time_weeks") or 0),
+                int(row.get("risk_score") or 0),
+            ),
+            reverse=True,
+        )
+        focus = limited[:6]
+        if focus:
+            top_name = _part_name(focus[0])
+            assessment = (
+                f"**A qualified second source would improve schedule resilience by reducing dependence on one replenishment path, "
+                f"starting with {top_name}.** It creates an alternate route when allocation, lead-time extension, quality containment, "
+                "or supplier disruption affects the primary source."
+            )
+            rows = []
+            for row in focus:
+                name = _part_name(row)
+                suppliers = int(row.get("supplier_count") or 0)
+                lead = float(row.get("lead_time_weeks") or 0)
+                stock = int(row.get("stock_available") or 0)
+                score = int(row.get("risk_score") or 0)
+                benefit = []
+                if suppliers <= 1:
+                    benefit.append("removes a single-source production dependency")
+                elif suppliers == 2:
+                    benefit.append("adds purchasing flexibility beyond limited coverage")
+                if lead >= 16:
+                    benefit.append(f"provides another replenishment path against the {lead:g}-week recorded lead time")
+                if stock <= 0:
+                    benefit.append("provides recovery capacity when recorded inventory is unavailable")
+                if not benefit:
+                    benefit.append("adds continuity capacity for future supplier disruption")
+                resilience = "High" if suppliers <= 1 or lead >= 26 else "Medium"
+                rows.append(
+                    f"- **{name}** — resilience benefit: {resilience}; supplier coverage: {suppliers} recorded source(s); "
+                    f"lead time: {lead:g} weeks; inventory: {stock:,} recorded; risk score: {score}/100; "
+                    f"schedule effect: {'; '.join(benefit)}."
+                )
+            evidence = "\n".join(rows)
+            actions = (
+                f"Qualify the second source for {top_name} first, confirm authorized capacity and commercial lead time, "
+                "complete compatibility and production validation, divide forecast coverage between approved sources, "
+                "and monitor whether either source becomes constrained."
+            )
+        else:
+            assessment = "**The saved BOM does not currently show a material limited-source or long-lead schedule exposure.**"
+            evidence = "Current component records do not show a part with two or fewer suppliers or a lead time of 16 weeks or more."
+            actions = "Maintain monitoring and define a second-source policy for strategically critical parts before exposure increases."
+
     elif intent == "second_source_validation":
         named = _mentioned_components(resolved_question, components)
         focus_row = named[0] if named else (priority[0] if priority else (components[0] if components else {}))
@@ -668,6 +732,7 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
         actions = "Start with the highest-risk or least-supported component, close missing sourcing and lifecycle evidence, and record the resulting engineering decision."
 
     heading_by_intent = {
+        "schedule_resilience": ("Schedule Resilience Assessment", "Schedule Resilience Evidence"),
         "second_source_validation": ("Second-Source Validation", "Qualification Checklist"),
         "second_source": ("Second-Source Qualification", "Sourcing Candidates"),
         "procurement_priority": ("Procurement Assessment", "Procurement Evidence"),
