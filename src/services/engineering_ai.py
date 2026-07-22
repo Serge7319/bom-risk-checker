@@ -229,9 +229,21 @@ def _component_priority_answer(row: dict[str, Any], project: str, context: dict[
         f"Validate the current datasheet and authorized-source evidence for {name}, then qualify an alternative or record an explicit risk-acceptance decision."
     )
     confidence_label, confidence_reason = _confidence(context)
+    heading_by_intent = {
+        "second_source": ("Second-Source Qualification", "Sourcing Candidates"),
+        "procurement_priority": ("Procurement Assessment", "Procurement Evidence"),
+        "release_evidence": ("Release Evidence Assessment", "Release Evidence"),
+        "inventory_exposure": ("Inventory Exposure Assessment", "Inventory Evidence"),
+        "alternatives": ("Alternative Qualification Assessment", "Alternative Evidence"),
+        "supplier_lifecycle": ("Supplier and Lifecycle Assessment", "Supplier and Lifecycle Evidence"),
+        "monitoring": ("Monitoring Assessment", "Monitoring Evidence"),
+        "risk_priority": ("Risk Priority Assessment", "Risk Evidence"),
+        "release_readiness": ("Release Readiness Assessment", "Release Evidence"),
+    }
+    report_heading, evidence_heading = heading_by_intent.get(intent, ("Engineering Assessment", "Supporting Evidence"))
     return (
-        f"### Engineering Assessment\n{assessment}\n\n"
-        f"### Supporting Evidence\n{evidence}\n\n"
+        f"### {report_heading}\n{assessment}\n\n"
+        f"### {evidence_heading}\n{evidence}\n\n"
         f"### Recommended Actions\n{actions}\n\n"
         f"### Confidence\n**{confidence_label}.** {confidence_reason}"
     )
@@ -435,17 +447,59 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
             actions = "Maintain routine inventory and lead-time monitoring before the next production commitment."
 
     elif intent == "second_source":
+        def source_priority(row: dict[str, Any]) -> tuple[int, int, float, int]:
+            suppliers = int(row.get("supplier_count") or 0)
+            score = int(row.get("risk_score") or 0)
+            lead = float(row.get("lead_time_weeks") or 0)
+            lifecycle = str(row.get("lifecycle_status") or "").lower()
+            lifecycle_flag = int(any(token in lifecycle for token in ("replacement", "obsolete", "eol", "nrnd", "not recommended")))
+            # Fewer sources, lifecycle exposure, higher risk, and longer lead time increase priority.
+            return (max(0, 3 - suppliers), lifecycle_flag, lead, score)
+
         needs_source = [
             row for row in components
             if int(row.get("supplier_count") or 0) <= 2
-            or any(token in str(row.get("lifecycle_status") or "").lower() for token in ("replacement", "obsolete", "eol", "nrnd"))
+            or any(token in str(row.get("lifecycle_status") or "").lower() for token in ("replacement", "obsolete", "eol", "nrnd", "not recommended"))
             or float(row.get("lead_time_weeks") or 0) >= 20
         ]
-        needs_source.sort(key=lambda row: (int(row.get("supplier_count") or 0), -int(row.get("risk_score") or 0)))
+        needs_source.sort(key=source_priority, reverse=True)
         if needs_source:
-            assessment = f"**{len(needs_source)} component(s) should receive second-source qualification review.**"
-            evidence = "\n".join(f"- {_part_evidence(row)}" for row in needs_source[:8])
-            actions = "Start with the first listed part, verify functional and footprint compatibility, and save the approved alternate with sourcing and validation rationale."
+            top = needs_source[0]
+            top_name = _part_name(top)
+            assessment = (
+                f"**{len(needs_source)} component(s) should receive second-source qualification review. "
+                f"{top_name} is the first sourcing priority.**"
+            )
+            evidence_rows: list[str] = []
+            for row in needs_source[:8]:
+                name = _part_name(row)
+                suppliers = int(row.get("supplier_count") or 0)
+                score = int(row.get("risk_score") or 0)
+                lead = float(row.get("lead_time_weeks") or 0)
+                lifecycle = str(row.get("lifecycle_status") or "Unknown")
+                stock = int(row.get("stock_available") or 0)
+                reasons: list[str] = []
+                if suppliers <= 1:
+                    reasons.append("single-source exposure")
+                elif suppliers == 2:
+                    reasons.append("limited supplier diversity")
+                if lead >= 20:
+                    reasons.append(f"{lead:g}-week replenishment lead time")
+                if any(token in lifecycle.lower() for token in ("replacement", "obsolete", "eol", "nrnd", "not recommended")):
+                    reasons.append(f"lifecycle status is {lifecycle}")
+                if not reasons:
+                    reasons.append("program resilience policy review")
+                priority_label = "High" if suppliers <= 1 or score >= 50 or lead >= 26 or (suppliers <= 2 and any(token in lifecycle.lower() for token in ("replacement", "obsolete", "eol", "nrnd", "not recommended"))) else "Medium" if suppliers <= 2 or lead >= 16 else "Low"
+                evidence_rows.append(
+                    f"- **{name}** — priority: {priority_label}; supplier coverage: {suppliers} recorded source(s); "
+                    f"lifecycle: {lifecycle}; lead time: {lead:g} weeks; inventory: {stock:,} recorded; "
+                    f"risk score: {score}/100; rationale: {', '.join(reasons)}."
+                )
+            evidence = "\n".join(evidence_rows)
+            actions = (
+                f"Begin with {top_name}: confirm the approved-source list, identify an authorized alternate, "
+                "complete electrical and footprint validation, secure procurement approval, and record the qualified second source."
+            )
         else:
             assessment = "**No immediate second-source gap is recorded in the current BOM evidence.**"
             evidence = "All assessed components have more than two recorded suppliers and no material long-lead or lifecycle exception."
@@ -578,9 +632,21 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
         )
         actions = "Start with the highest-risk or least-supported component, close missing sourcing and lifecycle evidence, and record the resulting engineering decision."
 
+    heading_by_intent = {
+        "second_source": ("Second-Source Qualification", "Sourcing Candidates"),
+        "procurement_priority": ("Procurement Assessment", "Procurement Evidence"),
+        "release_evidence": ("Release Evidence Assessment", "Release Evidence"),
+        "inventory_exposure": ("Inventory Exposure Assessment", "Inventory Evidence"),
+        "alternatives": ("Alternative Qualification Assessment", "Alternative Evidence"),
+        "supplier_lifecycle": ("Supplier and Lifecycle Assessment", "Supplier and Lifecycle Evidence"),
+        "monitoring": ("Monitoring Assessment", "Monitoring Evidence"),
+        "risk_priority": ("Risk Priority Assessment", "Risk Evidence"),
+        "release_readiness": ("Release Readiness Assessment", "Release Evidence"),
+    }
+    report_heading, evidence_heading = heading_by_intent.get(intent, ("Engineering Assessment", "Supporting Evidence"))
     return (
-        f"### Engineering Assessment\n{assessment}\n\n"
-        f"### Supporting Evidence\n{evidence}\n\n"
+        f"### {report_heading}\n{assessment}\n\n"
+        f"### {evidence_heading}\n{evidence}\n\n"
         f"### Recommended Actions\n{actions}\n\n"
         f"### Confidence\n**{confidence_label}.** {confidence_reason}"
     )
