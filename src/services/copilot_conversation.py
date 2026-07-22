@@ -80,17 +80,33 @@ def follow_up_suggestions(question: str, answer: str, context: dict[str, Any]) -
         top_part = str(components[0].get("part_number") or components[0].get("mpn") or "").strip()
 
     suggestions: list[str] = []
-    if any(token in text for token in ("release", "production", "ready")):
+    is_second_source = any(token in text for token in ("second source", "second-source", "dual source", "qualified source"))
+    is_compatibility = any(token in text for token in ("compatibility", "pinout", "footprint", "electrical equivalence"))
+    if is_second_source:
+        suggestions.extend([
+            "Which alternate supplier should be qualified first?",
+            "Which parts have the greatest single-source exposure?",
+            "What validation is required before approving the second source?",
+            "How would a second source improve schedule resilience?",
+        ])
+    elif is_compatibility:
+        suggestions.extend([
+            "Which electrical parameters require direct datasheet comparison?",
+            "What footprint and pinout evidence is still missing?",
+            "What prototype tests should be completed before substitution?",
+            "Create a compatibility approval checklist.",
+        ])
+    if any(token in text for token in ("release", "production", "ready")) and not is_compatibility:
         suggestions.extend([
             "What evidence is still missing before release approval?",
             "Create a prioritized release-readiness checklist.",
         ])
-    if any(token in text for token in ("supplier", "lifecycle", "lead time", "source")):
+    if any(token in text for token in ("supplier", "lifecycle", "lead time", "source")) and not is_second_source and not is_compatibility:
         suggestions.extend([
             "Which sourcing issue should procurement address first?",
             "Which parts need a qualified second source?",
         ])
-    if any(token in text for token in ("alternative", "replacement", "qualif")):
+    if any(token in text for token in ("alternative", "replacement", "qualif")) and not is_second_source and not is_compatibility:
         suggestions.extend([
             "Which replacement should be qualified first and why?",
             "What compatibility evidence must be verified?",
