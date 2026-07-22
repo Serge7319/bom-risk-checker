@@ -118,7 +118,10 @@ def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
     ordered = [key for key, value in sections.items() if str(value or "").strip()]
     first = ordered[0] if ordered else (next(iter(sections), "Engineering Assessment"))
     first_l = first.lower()
-    if "schedule" in first_l:
+    if "schedule resilience" in first_l:
+        intent, label, status = "schedule_resilience", "Schedule resilience assessment", "Strengthen production continuity"
+        evidence_names = ("Schedule Resilience Evidence", "Schedule Evidence", "Supporting Evidence", "Evidence")
+    elif "schedule" in first_l:
         intent, label, status = "schedule", "Schedule risk assessment", "Protect the production schedule"
         evidence_names = ("Schedule Evidence", "Supporting Evidence", "Evidence")
     elif "second-source validation" in first_l:
@@ -255,25 +258,36 @@ def _metric_display(label: str) -> tuple[str, str]:
 
 
 def _confidence_drivers(context: dict[str, Any], evidence: str) -> list[tuple[str, str, str]]:
-    """Explain the concrete data signals that raise or limit confidence."""
+    """Return concrete positive and limiting confidence signals."""
     coverage = context.get("coverage") or {}
     components = list(context.get("components") or [])
     evidence_items = _evidence_items(evidence)
-    saved_decisions = context.get("decisions") or context.get("engineering_decisions") or []
-    monitoring = context.get("monitoring") or context.get("alerts") or []
+    decisions = context.get("decisions") or context.get("engineering_decisions") or []
     alternatives = context.get("alternatives") or context.get("saved_alternatives") or []
-    populated = sum(1 for row in components if any(row.get(k) not in (None, "", 0) for k in ("risk_score", "lifecycle_status", "supplier_count", "stock_available", "lead_time_weeks")))
-    total = max(1, len(components))
-    component_pct = round(populated / total * 100) if components else 0
+    lifecycle_known = sum(bool(str(row.get("lifecycle_status") or "").strip()) for row in components)
+    supplier_known = sum(int(row.get("supplier_count") or 0) > 0 for row in components)
+    lead_known = sum(float(row.get("lead_time_weeks") or 0) > 0 for row in components)
+    inventory_known = sum(row.get("stock_available") not in (None, "") for row in components)
+    total = len(components)
+    drivers: list[tuple[str, str, str]] = []
+    if lifecycle_known:
+        drivers.append(("Verified", f"Lifecycle recorded for {lifecycle_known}/{total}", "Raises confidence in lifecycle-related recommendations"))
+    if supplier_known:
+        drivers.append(("Verified", f"Supplier coverage for {supplier_known}/{total}", "Supports sourcing-diversity conclusions"))
+    if inventory_known:
+        drivers.append(("Verified", f"Inventory recorded for {inventory_known}/{total}", "Supports near-term availability assessment"))
+    if evidence_items:
+        drivers.append(("Verified", f"{len(evidence_items)} structured evidence signal(s)", "Directly supports the current recommendation"))
+    if lead_known < total:
+        drivers.append(("Missing", f"Lead time missing for {max(0, total-lead_known)} component(s)", "Limits schedule-risk precision"))
+    if not decisions:
+        drivers.append(("Missing", "No saved decision history", "No prior approval or risk-acceptance evidence"))
+    if not alternatives:
+        drivers.append(("Missing", "No saved qualified alternatives", "Replacement and second-source confidence remains limited"))
     score = int(coverage.get("score") or 0)
-    return [
-        ("Evidence coverage", f"{score}%", "Combined completeness of saved engineering evidence"),
-        ("Component records", f"{populated}/{len(components)}", f"{component_pct}% contain decision-driving fields"),
-        ("Structured signals", str(len(evidence_items)), "Evidence cards directly supporting this recommendation"),
-        ("Decision history", str(len(saved_decisions)), "Saved approvals, rejections, or review records"),
-        ("Monitoring signals", str(len(monitoring)), "Recorded changes and active alerts"),
-        ("Alternative evidence", str(len(alternatives)), "Saved replacement or second-source candidates"),
-    ]
+    if score < 75:
+        drivers.append(("Coverage", f"Overall evidence coverage is {score}%", "Additional verified fields would raise confidence"))
+    return drivers[:6]
 
 
 def _recommendation_explanation(assessment: str, evidence: str, priority_part: str) -> tuple[str, list[str]]:
@@ -348,7 +362,9 @@ def _projected_impact(context: dict[str, Any], priority_part: str, *, intent: st
     suppliers = int(priority.get("supplier_count") or priority.get("suppliers") or 0) if priority else 0
     lead = float(priority.get("lead_time_weeks") or 0) if priority else 0
     stock = int(priority.get("stock_available") or 0) if priority else 0
-    if intent == "schedule":
+    if intent in {"schedule", "schedule_resilience"}:
+        if intent == "schedule_resilience":
+            return [("Source paths", f"{suppliers} → {max(suppliers + 1, 2)}", "After a qualified second source is approved"), ("Replenishment continuity", "Single path → Dual path", "Reduces dependency on one supplier route"), ("Lead-time exposure", f"{lead:g} weeks → Diversified", "Alternate commercial lead time provides recovery capacity"), ("Schedule posture", "Exposed → More resilient", "After capacity, compatibility, and quality validation")]
         return [("Replenishment exposure", f"{lead:g} weeks → Validate", "Confirm with authorized suppliers"), ("Schedule risk", "Elevated → Reduced", "After allocation or alternate qualification"), ("Inventory coverage", f"{stock:,} recorded", "Compare against production demand"), ("Source resilience", f"{suppliers} source(s) → Improve", "Qualify an alternate or second source")]
     if intent == "supplier":
         return [("Supplier coverage", f"{suppliers} → {max(suppliers+1,2)}", "If a second source is qualified"), ("Concentration risk", "Current → Reduced", "After authorized-source validation"), ("Priority risk", f"{score}/100 → Reduced", "After mitigation or acceptance")]
@@ -373,6 +389,7 @@ def _workflow_steps(actions: str, priority_part: str, *, intent: str = "general"
     base = _action_steps(actions)
     labels_by_intent = {
         "schedule": ["Confirm demand", "Verify lead time", "Secure allocation", "Qualify alternate", "Protect commitment"],
+        "schedule_resilience": ["Map source dependency", "Confirm alternate capacity", "Validate compatibility", "Approve dual sourcing", "Monitor continuity"],
         "supplier": ["Verify sources", "Check authorization", "Qualify second source", "Set monitoring", "Record mitigation"],
         "second_source": ["Confirm approved sources", "Identify authorized alternate", "Validate compatibility", "Approve supplier", "Release dual-source plan"],
         "second_source_validation": ["Compare datasheets", "Verify pinout and footprint", "Validate prototype", "Approve quality and sourcing", "Release second source"],
@@ -479,6 +496,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
             # queue the follow-up and apply it before the widget is created on
             # the next run. This avoids Streamlit's widget-state mutation error.
             st.session_state["cv36_pending_followup"] = suggestion
+            st.session_state["cv47_followup_question"] = suggestion
             _clear_review_state()
             st.rerun()
 
@@ -499,6 +517,11 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     complete, total, progress = _review_progress(context)
     explanation, recommendation_drivers = _recommendation_explanation(assessment, evidence, priority_part)
     confidence_drivers = _confidence_drivers(context, evidence)
+
+    st.markdown(
+        f'<div id="cv47-latest"></div><div class="cv47-question-banner"><span>Latest engineering question</span><strong>{html.escape(question)}</strong></div>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         f"""
@@ -544,7 +567,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
               <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
               <div class="cv35-confidence-label">{html.escape(confidence_label)}</div>
               <div class="cv35-confidence-detail">{html.escape(confidence_detail)}</div>
-              <div class="cv46-confidence-drivers">{''.join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>' for label, value, note in confidence_drivers[:4])}</div>
+              <div class="cv46-confidence-drivers">{''.join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>' for label, value, note in confidence_drivers[:6])}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -622,6 +645,7 @@ def render_engineering_assistant(
         .cv46-confidence-drivers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}.cv46-confidence-drivers>div{border-top:1px solid #e2e8f0;padding-top:7px;min-width:0}.cv46-confidence-drivers span{display:block;font-size:clamp(9px,.62vw,10px);font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:#64748b}.cv46-confidence-drivers strong{display:block;font-size:clamp(12px,.84vw,14px);color:#0f172a;margin:2px 0}.cv46-confidence-drivers small{display:block;font-size:clamp(9px,.62vw,11px);line-height:1.35;color:#64748b}
         .cv46-evidence-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:8px}.cv46-evidence-card{border:1px solid #dbeafe;background:#fff;border-radius:15px;padding:12px;min-width:0;box-shadow:0 6px 18px rgba(15,23,42,.035);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.cv46-evidence-card:hover{transform:translateY(-1px);border-color:#93c5fd;box-shadow:0 10px 24px rgba(37,99,235,.075)}.cv46-evidence-card header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding-bottom:8px;border-bottom:1px solid #eef2f7}.cv46-evidence-card header strong{font-size:clamp(12px,.85vw,15px);line-height:1.28;color:#0f172a;overflow-wrap:anywhere}.cv46-evidence-card header em{font-style:normal;font-size:9px;font-weight:900;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:4px 7px;white-space:nowrap}.cv46-evidence-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}.cv46-evidence-metric{min-width:0}.cv46-evidence-metric span{display:flex;align-items:center;gap:4px;font-size:clamp(9px,.62vw,10px);font-weight:850;color:#64748b;text-transform:uppercase;letter-spacing:.04em}.cv46-evidence-metric i{display:grid;place-items:center;width:15px;height:15px;border-radius:4px;background:#eff6ff;color:#2563eb;font-style:normal;font-size:8px;flex:0 0 auto}.cv46-evidence-metric strong{display:block;font-size:clamp(11px,.76vw,13px);line-height:1.35;color:#334155;margin-top:3px;overflow-wrap:anywhere}.cv46-empty-evidence{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:14px;padding:14px;color:#475569;font-size:13px;line-height:1.55}
         .cv35-confidence-card{min-height:0!important}.cv39-impact-card{min-height:0!important}.cv39-decision-card>p{max-width:1100px}.cv39-timeline-step p{-webkit-line-clamp:unset!important;overflow:visible!important}
+        .cv47-question-banner{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 14px;margin:12px 0 10px}.cv47-question-banner span{display:block;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}.cv47-question-banner strong{display:block;margin-top:3px;font-size:clamp(13px,.9vw,16px);line-height:1.4;color:#0f172a}.cv46-confidence-drivers>div strong:first-of-type{font-weight:900}.cv46-confidence-drivers>div:has(strong:first-of-type){border-radius:8px}
         @media(max-width:1180px){.cv46-evidence-board{grid-template-columns:repeat(2,minmax(0,1fr))}.cv46-why{grid-template-columns:1fr}.cv46-why ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:760px){.cv46-evidence-board,.cv46-why ol,.cv46-confidence-drivers{grid-template-columns:1fr}.cv46-evidence-metrics{grid-template-columns:1fr 1fr}.cv46-why{padding:15px}.cv39-decision-grid{grid-template-columns:1fr!important}.cv39-decision-card{border-radius:18px;padding:16px!important}.cv35-hero{padding:17px;border-radius:19px}.cv35-hero h2{font-size:clamp(23px,7vw,30px)!important}.cv39-decision-top h2{font-size:clamp(23px,7vw,30px)!important}}
         </style>
@@ -703,6 +727,8 @@ def render_engineering_assistant(
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = question
                 st.session_state["cv35_provider_connected"] = api.configured
+                if st.session_state.pop("cv47_followup_question", None):
+                    st.session_state["cv47_followup_answered"] = question
                 thread = append_turn(
                     st.session_state,
                     context,
@@ -714,6 +740,10 @@ def render_engineering_assistant(
             except EngineeringAIError as exc:
                 st.session_state["cv35_last_error"] = exc
                 progress.update(label="Cadivor could not complete the review", state="error")
+
+    answered_followup = st.session_state.pop("cv47_followup_answered", None)
+    if answered_followup:
+        st.success(f'Follow-up answered: "{answered_followup}". The latest assessment below has been regenerated for this question.')
 
     thread = get_thread(st.session_state, context)
     current_answer = st.session_state.get("cv35_last_answer")
