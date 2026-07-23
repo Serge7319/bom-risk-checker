@@ -380,8 +380,29 @@ def _compatibility_evidence_answer(components: list[dict[str, Any]], project: st
 
 
 
-def _s471_intent(question: str) -> str:
-    text = str(question or "").lower()
+def _s472_intent(question: str, history: list[dict[str, str]] | None = None) -> str:
+    """Route the current question first; prior turns provide context, not intent override."""
+    text = str(question or "").strip().lower()
+
+    # Conversational follow-ups are first-class assessments. These checks must
+    # run before inherited context so the prior general-review wording cannot
+    # force the new answer back into the old template.
+    if any(token in text for token in (
+        "what evidence would change", "which evidence would change", "evidence would change",
+        "what evidence is missing", "what would increase confidence", "change this recommendation",
+    )):
+        return "Evidence Sensitivity"
+    if any(token in text for token in (
+        "what should the engineering owner do next", "what should engineering owner do next",
+        "owner do next", "next action for the owner", "who should do what next",
+    )):
+        return "Engineering Owner Action Plan"
+    if any(token in text for token in (
+        "why is", "why was", "ranked first", "why this recommendation", "explain the ranking",
+        "explain why", "reason for this recommendation",
+    )):
+        return "Recommendation Rationale"
+
     rules = [
         ("Supplier Qualification", ("alternate supplier", "supplier qualify", "qualify supplier", "supplier ranking", "approval status", "second source")),
         ("Single Source Exposure", ("single-source", "single source", "source exposure", "supplier count", "greatest exposure")),
@@ -396,72 +417,163 @@ def _s471_intent(question: str) -> str:
             return intent
     return "General Engineering Review"
 
-def _s471_score(row: dict[str, Any], intent: str) -> float:
-    risk=float(row.get("risk_score") or 0); suppliers=int(row.get("supplier_count") or 0); stock=int(row.get("stock_available") or 0); lead=float(row.get("lead_time_weeks") or 0)
-    lifecycle=str(row.get("lifecycle_status") or "").lower()
-    if intent == "Procurement": return lead*3 + max(0,1000-stock)/50 + max(0,3-suppliers)*20 + risk
-    if intent == "Supplier Qualification": return max(0,3-suppliers)*30 + lead*2 + risk + (20 if stock<=0 else 0)
-    if intent == "Single Source Exposure": return max(0,4-suppliers)*35 + risk + lead
-    if intent == "Schedule Resilience": return lead*4 + max(0,3-suppliers)*25 + (30 if stock<=0 else 0) + risk
-    if intent == "Lifecycle": return risk + (60 if any(x in lifecycle for x in ("obsolete","eol","nrnd","replacement","not recommended")) else 0)
-    if intent == "Inventory": return max(0,10000-stock)/100 + lead*2 + risk
-    if intent == "Production Readiness": return risk + max(0,3-suppliers)*15 + (25 if stock<=0 else 0) + (20 if any(x in lifecycle for x in ("obsolete","eol","nrnd")) else 0)
+
+def _s472_score(row: dict[str, Any], intent: str) -> float:
+    risk = float(row.get("risk_score") or 0)
+    suppliers = int(row.get("supplier_count") or 0)
+    stock = int(row.get("stock_available") or 0)
+    lead = float(row.get("lead_time_weeks") or 0)
+    lifecycle = str(row.get("lifecycle_status") or "").lower()
+    if intent == "Procurement":
+        return lead * 3 + max(0, 1000 - stock) / 50 + max(0, 3 - suppliers) * 20 + risk
+    if intent == "Supplier Qualification":
+        return max(0, 3 - suppliers) * 30 + lead * 2 + risk + (20 if stock <= 0 else 0)
+    if intent == "Single Source Exposure":
+        return max(0, 4 - suppliers) * 35 + risk + lead
+    if intent == "Schedule Resilience":
+        return lead * 4 + max(0, 3 - suppliers) * 25 + (30 if stock <= 0 else 0) + risk
+    if intent == "Lifecycle":
+        return risk + (60 if any(x in lifecycle for x in ("obsolete", "eol", "nrnd", "replacement", "not recommended")) else 0)
+    if intent == "Inventory":
+        return max(0, 10000 - stock) / 100 + lead * 2 + risk
+    if intent == "Production Readiness":
+        return risk + max(0, 3 - suppliers) * 15 + (25 if stock <= 0 else 0) + (20 if any(x in lifecycle for x in ("obsolete", "eol", "nrnd")) else 0)
     return risk
 
-def _s471_report(question: str, context: dict[str, Any], history=None) -> str:
-    resolved=_conversation_question(question, history); intent=_s471_intent(resolved)
-    components=list(context.get("components") or []); analysis=context.get("analysis") or {}; summary=context.get("summary") or {}
-    project=str(analysis.get("project_name") or analysis.get("filename") or "This BOM")
-    ranked=sorted(components, key=lambda r:_s471_score(r,intent), reverse=True)[:5]
-    top=_part_name(ranked[0]) if ranked else "the BOM"
-    configs={
-      "Procurement": (f"Procurement should secure {top} first, then work down the ranked purchasing queue.", "The priority is based on purchasing window, stock position, supplier coverage, and lead-time exposure—not general component risk alone.", ["Review Stock","Verify Pricing","Contact Supplier","Place Order","Monitor Delivery"]),
-      "Supplier Qualification": (f"Qualify the strongest backup source for {top} first.", "Qualification priority balances source scarcity, commercial readiness, approval evidence, continuity value, and the engineering effort required to approve a supplier.", ["Rank Suppliers","Verify Authorization","Review Quality Evidence","Complete Qualification","Approve Source"]),
-      "Single Source Exposure": (f"{top} is the highest single-source mitigation priority.", "The ranking emphasizes supplier count and concentration, then uses lead time, inventory, lifecycle, and component risk to determine exposure severity.", ["Rank Exposure","Review Alternatives","Qualify Backup","Update BOM","Monitor Risk"]),
-      "Schedule Resilience": (f"Protect the production schedule by creating a recovery path for {top} first.", "The assessment focuses on critical-path delay potential, replenishment time, source diversity, available buffer, and recoverability.", ["Identify Critical Path","Qualify Second Source","Validate Compatibility","Secure Buffer Stock","Monitor Recovery"]),
-      "Lifecycle": (f"Begin lifecycle mitigation with {top}.", "The ranking prioritizes recorded EOL, NRND, obsolete, replacement-required, and other lifecycle warnings before general risk score.", ["Confirm Lifecycle Status","Estimate Last-Time Buy","Evaluate Replacements","Approve Migration","Monitor PCNs"]),
-      "Inventory": (f"Address the lowest-coverage inventory position, led by {top}.", "The assessment distinguishes current stock, shortage/allocation exposure, replenishment delay, and the production quantity that remains uncovered.", ["Validate Demand","Confirm Available Stock","Resolve Allocation","Expedite Replenishment","Track Coverage"]),
-      "Production Readiness": (f"{project} requires a controlled readiness review centered on {top}.", "Release readiness combines component risk, sourcing coverage, inventory, lifecycle status, monitoring, alternatives, and recorded engineering decisions.", ["Close Critical Risks","Verify Supply Coverage","Complete Validation","Record Approval","Release and Monitor"]),
-      "General Engineering Review": (f"The first engineering review priority is {top}.", "Cadivor ranked the available evidence across risk, sourcing, inventory, lead time, lifecycle, alternatives, monitoring, and decision coverage.", ["Review Priority","Validate Evidence","Assign Owner","Record Decision","Monitor Outcome"]),
-    }
-    headline, rationale, workflow=configs[intent]
-    rows=[]
-    for i,row in enumerate(ranked,1):
-        name=_part_name(row); suppliers=int(row.get("supplier_count") or 0); stock=int(row.get("stock_available") or 0); lead=float(row.get("lead_time_weeks") or 0); risk=int(row.get("risk_score") or 0); life=str(row.get("lifecycle_status") or "Unknown")
-        if intent=="Supplier Qualification": detail=f"supplier: {suppliers} recorded source(s); readiness: {'Constrained' if suppliers<=1 or lead>=16 else 'Reviewable'}; approval status: {'Qualification required' if suppliers<=2 else 'Coverage available'}; recommendation score: {min(100,int(_s471_score(row,intent)))}%"
-        elif intent=="Single Source Exposure": detail=f"supplier count: {suppliers}; exposure score: {min(100,int(_s471_score(row,intent)))}%; mitigation priority: {'Immediate' if suppliers<=1 else 'High' if suppliers<=2 else 'Planned'}; lifecycle: {life}"
-        elif intent=="Schedule Resilience": detail=f"lead time: {lead:g} weeks; supplier diversity: {suppliers} source(s); inventory: {stock:,}; schedule impact: {'Critical' if lead>=20 or stock<=0 else 'Material'}"
-        elif intent=="Inventory": detail=f"stock: {stock:,}; allocation: {'Potential' if stock<=0 else 'Not recorded'}; shortages: {'Open exposure' if stock<=0 else 'Monitor coverage'}; replenishment: {lead:g} weeks"
-        elif intent=="Lifecycle": detail=f"lifecycle: {life}; risk score: {risk}/100; supplier coverage: {suppliers}; migration priority: {'Immediate' if any(x in life.lower() for x in ('obsolete','eol','nrnd')) else 'Review'}"
-        elif intent=="Procurement": detail=f"stock: {stock:,}; lead time: {lead:g} weeks; sources: {suppliers}; purchasing priority: #{i}; risk: {risk}/100"
-        elif intent=="Production Readiness": detail=f"risk: {risk}/100; lifecycle: {life}; sources: {suppliers}; stock: {stock:,}; readiness: {'Blocker review' if risk>=70 or stock<=0 else 'Validation required'}"
-        else: detail=f"risk: {risk}/100; lifecycle: {life}; suppliers: {suppliers}; inventory: {stock:,}; lead time: {lead:g} weeks"
-        rows.append(f"- **{name}** — {detail}.")
-    evidence="\n".join(rows) if rows else "No component evidence is available for this assessment."
-    ranking="\n".join(f"- **#{i} {_part_name(r)}** — intent score {min(100,int(_s471_score(r,intent)))}/100." for i,r in enumerate(ranked,1)) or "- No ranked components are available."
-    actions={
-      "Procurement":f"Confirm demand and authorized stock for {top}, lock pricing and delivery, then create purchase and monitoring actions for the remaining ranked parts.",
-      "Supplier Qualification":f"Verify authorization, quality system, capacity, traceability, commercial lead time, and technical equivalence before approving the preferred backup source for {top}.",
-      "Single Source Exposure":f"Open a mitigation action for {top}, identify an independent source or compatible alternate, complete qualification, and update the approved BOM/source list.",
-      "Schedule Resilience":f"Model the delay contribution of {top}, qualify a recovery source, validate compatibility, and secure enough buffer stock to cover the replenishment gap.",
-      "Lifecycle":f"Confirm manufacturer status for {top}, determine last-time-buy need, compare replacements, and approve a migration path before availability deteriorates.",
-      "Inventory":f"Reconcile demand against usable stock for {top}, confirm allocation status, expedite replenishment, and set a coverage threshold alert.",
-      "Production Readiness":f"Do not release solely from the health score. Close the highest-ranked blocker, validate supply and compatibility evidence, and record the release decision.",
-      "General Engineering Review":f"Assign an owner to {top}, validate the missing evidence, select the appropriate mitigation, and record the engineering decision.",
-    }[intent]
-    follow={
-      "Procurement":[f"What quantity and delivery window should procurement secure for {top}?","Which supplier offers the safest authorized purchasing path?","Which pricing or allocation evidence is still missing?"],
-      "Supplier Qualification":[f"What qualification evidence is missing for {top}?","Which supplier should be approved as the backup source?","What prototype and quality tests are required?"],
-      "Single Source Exposure":["Which exposed component has the easiest mitigation path?","Which backup source should be qualified first?","How would the exposure change after dual sourcing?"],
-      "Schedule Resilience":["Which component is on the production critical path?","How much buffer stock is needed for the recovery window?","Which second source reduces the most schedule risk?"],
-      "Lifecycle":["Which component needs a last-time-buy decision first?","Which replacement path has the lowest validation burden?","What lifecycle evidence is still unverified?"],
-      "Inventory":["Which shortage threatens the next production build?","What replenishment action should be expedited first?","Which components need minimum-stock alerts?"],
-      "Production Readiness":["What must be closed before release approval?","Which issue is a true production blocker?","What engineering record should be created now?"],
-      "General Engineering Review":[f"Why is {top} ranked first?","What evidence would change this recommendation?","What should the engineering owner do next?"],
-    }[intent]
-    conf_label,conf_reason=_confidence(context,strong=False)
-    return f"### Intent\n{intent}\n\n### Executive Summary\n**{headline}** {rationale}\n\n### Rankings\n{ranking}\n\n### Evidence\n{evidence}\n\n### Recommended Actions\n{actions}\n\n### Workflow\n"+"\n".join(f"- {x}" for x in workflow)+f"\n\n### Confidence\n**{conf_label}.** {conf_reason}\n\n### Follow-up Questions\n"+"\n".join(f"- {x}" for x in follow)
 
+def _s472_missing_evidence(context: dict[str, Any], components: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    decisions = list(context.get("decisions") or context.get("engineering_decisions") or [])
+    alternatives = list(context.get("alternatives") or context.get("saved_alternatives") or [])
+    monitoring = list(context.get("monitoring") or [])
+    total = len(components)
+    lead_missing = sum(float(r.get("lead_time_weeks") or 0) <= 0 for r in components)
+    supplier_missing = sum(int(r.get("supplier_count") or 0) <= 0 for r in components)
+    lifecycle_missing = sum(not str(r.get("lifecycle_status") or "").strip() for r in components)
+    gaps: list[tuple[str, str]] = []
+    if lead_missing:
+        gaps.append(("Lead-time evidence", f"Missing for {lead_missing}/{total} components; verified replenishment data would materially improve schedule conclusions."))
+    if supplier_missing:
+        gaps.append(("Authorized-source evidence", f"Missing for {supplier_missing}/{total} components; approved-source confirmation could change sourcing priority."))
+    if lifecycle_missing:
+        gaps.append(("Lifecycle verification", f"Missing for {lifecycle_missing}/{total} components; manufacturer status or PCN evidence could change mitigation urgency."))
+    if not alternatives:
+        gaps.append(("Qualified-alternative evidence", "No saved qualified alternatives; compatibility and validation results could change the recommended mitigation path."))
+    if not decisions:
+        gaps.append(("Decision history", "No saved approval or risk-acceptance record; an approved disposition would change release confidence."))
+    if not monitoring:
+        gaps.append(("Monitoring coverage", "No active monitoring evidence; alerts for lead time, stock, lifecycle, or PCNs would improve ongoing confidence."))
+    return gaps or [("Evidence freshness", "Refresh authorized inventory, lead time, lifecycle, and supplier data before final approval.")]
+
+
+def _s472_report(question: str, context: dict[str, Any], history=None) -> str:
+    intent = _s472_intent(question, history)
+    components = list(context.get("components") or [])
+    analysis = context.get("analysis") or {}
+    project = str(analysis.get("project_name") or analysis.get("filename") or "This BOM")
+    ranked = sorted(components, key=lambda r: _s472_score(r, intent), reverse=True)[:5]
+    top_row = ranked[0] if ranked else {}
+    top = _part_name(top_row) if top_row else "the BOM"
+
+    # Conversational assessments answer the new follow-up directly rather than
+    # repainting the previous report with the same general-review template.
+    if intent == "Evidence Sensitivity":
+        gaps = _s472_missing_evidence(context, components)
+        ranking = "\n".join(f"- **#{i} {label}** — confidence impact: {'High' if i <= 2 else 'Medium'}." for i, (label, _) in enumerate(gaps[:5], 1))
+        evidence = "\n".join(f"- **{label}** — status: Missing or incomplete; decision effect: {detail}" for label, detail in gaps[:5])
+        workflow = ["Collect Missing Evidence", "Verify Source and Date", "Recalculate Risk", "Review Recommendation", "Record Updated Decision"]
+        follow = ["Which evidence gap should be closed first?", f"How would verified lead time change the ranking for {top}?", "What confidence level is required before release?"]
+        headline = "The recommendation would change only if new evidence materially alters the leading risk drivers or closes a key uncertainty."
+        rationale = f"For {project}, the highest-value evidence gaps are ranked by their ability to change priority, mitigation choice, or release confidence—not by ease of collection."
+        actions = f"Close the first two evidence gaps, refresh the assessment, and compare whether {top} remains the top priority before recording a final decision."
+    elif intent == "Engineering Owner Action Plan":
+        missing = _s472_missing_evidence(context, components)
+        ranking = "\n".join([
+            f"- **#1 Assign accountable owner for {top}** — due-date and decision responsibility.",
+            f"- **#2 Validate {missing[0][0]}** — close the highest-impact uncertainty.",
+            "- **#3 Select mitigation path** — accept, qualify, replace, purchase, or monitor.",
+            "- **#4 Record the decision** — evidence, approver, rationale, and due date.",
+            "- **#5 Verify closure** — confirm the mitigation changed the measured exposure.",
+        ])
+        evidence = "\n".join([
+            f"- **Priority work item** — component: {top}; current risk: {int(top_row.get('risk_score') or 0)}/100; owner status: assignment required; next gate: evidence validation.",
+            f"- **Primary evidence gap** — item: {missing[0][0]}; status: open; owner action: collect and verify; decision impact: {missing[0][1]}",
+            f"- **Decision control** — engineering record: {'Available' if context.get('decisions') else 'Not yet recorded'}; approval status: pending current assessment closure; escalation: required if due date threatens release.",
+        ])
+        workflow = ["Assign Owner and Due Date", "Validate Priority Evidence", "Choose Mitigation", "Record Approval or Exception", "Confirm Risk Reduction"]
+        follow = [f"What evidence should the owner collect for {top}?", "Which mitigation path is most practical?", "What should be entered in the engineering record?"]
+        headline = f"The engineering owner should open a controlled action for {top} now and drive it through evidence closure and a recorded disposition."
+        rationale = "The next step is not another broad review; it is an accountable work package with an owner, due date, validation gate, mitigation choice, and closure evidence."
+        actions = f"Assign one named owner, set a due date tied to the next release or purchase commitment, close {missing[0][0].lower()}, choose the mitigation, and record the decision."
+    elif intent == "Recommendation Rationale":
+        risk = int(top_row.get("risk_score") or 0)
+        suppliers = int(top_row.get("supplier_count") or 0)
+        stock = int(top_row.get("stock_available") or 0)
+        lead = float(top_row.get("lead_time_weeks") or 0)
+        lifecycle = str(top_row.get("lifecycle_status") or "Unknown")
+        factors = [
+            ("Recorded component risk", f"{risk}/100", risk),
+            ("Replenishment exposure", f"{lead:g} weeks", min(100, int(lead * 4))),
+            ("Supplier concentration", f"{suppliers} recorded source(s)", max(0, (4 - suppliers) * 25)),
+            ("Inventory position", f"{stock:,} recorded units", 70 if stock <= 0 else max(5, 40 - min(35, stock // 1000))),
+            ("Lifecycle status", lifecycle, 80 if any(x in lifecycle.lower() for x in ("obsolete", "eol", "nrnd", "replacement")) else 10),
+        ]
+        factors.sort(key=lambda x: x[2], reverse=True)
+        ranking = "\n".join(f"- **#{i} {label}** — observed value: {value}; contribution: {'High' if score >= 60 else 'Medium' if score >= 25 else 'Low'}." for i, (label, value, score) in enumerate(factors, 1))
+        evidence = "\n".join(f"- **{label}** — value: {value}; ranking contribution: {'Primary' if i == 1 else 'Supporting'}; interpretation: this factor {'materially' if score >= 60 else 'partially'} supports the recommendation." for i, (label, value, score) in enumerate(factors, 1))
+        workflow = ["Confirm Ranking Inputs", "Challenge Primary Driver", "Test Alternative Scenario", "Approve or Revise Priority", "Record Rationale"]
+        follow = ["What evidence would change this recommendation?", f"What should the engineering owner do next for {top}?", "Which lower-ranked component could overtake this priority?"]
+        headline = f"{top} is ranked first because its combined evidence creates the strongest actionable exposure in the current BOM."
+        rationale = "The ranking is driven by the factors below in descending contribution. It is not based on the part number or a generic risk template."
+        actions = f"Verify the highest-contributing factor for {top}; if it is confirmed, proceed with mitigation. If it is disproven or stale, rerun the ranking before action."
+    else:
+        configs = {
+          "Procurement": (f"Procurement should secure {top} first, then work down the ranked purchasing queue.", "The priority is based on purchasing window, stock position, supplier coverage, and lead-time exposure—not general component risk alone.", ["Review Stock", "Verify Pricing", "Contact Supplier", "Place Order", "Monitor Delivery"]),
+          "Supplier Qualification": (f"Qualify the strongest backup source for {top} first.", "Qualification priority balances source scarcity, commercial readiness, approval evidence, continuity value, and the engineering effort required to approve a supplier.", ["Rank Suppliers", "Verify Authorization", "Review Quality Evidence", "Complete Qualification", "Approve Source"]),
+          "Single Source Exposure": (f"{top} is the highest single-source mitigation priority.", "The ranking emphasizes supplier count and concentration, then uses lead time, inventory, lifecycle, and component risk to determine exposure severity.", ["Rank Exposure", "Review Alternatives", "Qualify Backup", "Update BOM", "Monitor Risk"]),
+          "Schedule Resilience": (f"Protect the production schedule by creating a recovery path for {top} first.", "The assessment focuses on critical-path delay potential, replenishment time, source diversity, available buffer, and recoverability.", ["Identify Critical Path", "Qualify Second Source", "Validate Compatibility", "Secure Buffer Stock", "Monitor Recovery"]),
+          "Lifecycle": (f"Begin lifecycle mitigation with {top}.", "The ranking prioritizes recorded EOL, NRND, obsolete, replacement-required, and other lifecycle warnings before general risk score.", ["Confirm Lifecycle Status", "Estimate Last-Time Buy", "Evaluate Replacements", "Approve Migration", "Monitor PCNs"]),
+          "Inventory": (f"Address the lowest-coverage inventory position, led by {top}.", "The assessment distinguishes current stock, shortage/allocation exposure, replenishment delay, and the production quantity that remains uncovered.", ["Validate Demand", "Confirm Available Stock", "Resolve Allocation", "Expedite Replenishment", "Track Coverage"]),
+          "Production Readiness": (f"{project} requires a controlled readiness review centered on {top}.", "Release readiness combines component risk, sourcing coverage, inventory, lifecycle status, monitoring, alternatives, and recorded engineering decisions.", ["Close Critical Risks", "Verify Supply Coverage", "Complete Validation", "Record Approval", "Release and Monitor"]),
+          "General Engineering Review": (f"The first engineering review priority is {top}.", "Cadivor ranked the available evidence across risk, sourcing, inventory, lead time, lifecycle, alternatives, monitoring, and decision coverage.", [f"Inspect {top}", "Verify Leading Risk Driver", "Select Mitigation Path", "Assign Owner and Due Date", "Confirm Closure"]),
+        }
+        headline, rationale, workflow = configs[intent]
+        rows = []
+        for i, row in enumerate(ranked, 1):
+            name = _part_name(row); suppliers = int(row.get("supplier_count") or 0); stock = int(row.get("stock_available") or 0); lead = float(row.get("lead_time_weeks") or 0); risk = int(row.get("risk_score") or 0); life = str(row.get("lifecycle_status") or "Unknown")
+            if intent == "Supplier Qualification": detail = f"supplier: {suppliers} recorded source(s); readiness: {'Constrained' if suppliers <= 1 or lead >= 16 else 'Reviewable'}; approval status: {'Qualification required' if suppliers <= 2 else 'Coverage available'}; recommendation score: {min(100, int(_s472_score(row, intent)))}%"
+            elif intent == "Single Source Exposure": detail = f"supplier count: {suppliers}; exposure score: {min(100, int(_s472_score(row, intent)))}%; mitigation priority: {'Immediate' if suppliers <= 1 else 'High' if suppliers <= 2 else 'Planned'}; lifecycle: {life}"
+            elif intent == "Schedule Resilience": detail = f"lead time: {lead:g} weeks; supplier diversity: {suppliers} source(s); inventory: {stock:,}; schedule impact: {'Critical' if lead >= 20 or stock <= 0 else 'Material'}"
+            elif intent == "Inventory": detail = f"stock: {stock:,}; allocation: {'Potential' if stock <= 0 else 'Not recorded'}; shortages: {'Open exposure' if stock <= 0 else 'Monitor coverage'}; replenishment: {lead:g} weeks"
+            elif intent == "Lifecycle": detail = f"lifecycle: {life}; risk score: {risk}/100; supplier coverage: {suppliers}; migration priority: {'Immediate' if any(x in life.lower() for x in ('obsolete','eol','nrnd')) else 'Review'}"
+            elif intent == "Procurement": detail = f"stock: {stock:,}; lead time: {lead:g} weeks; sources: {suppliers}; purchasing priority: #{i}; risk: {risk}/100"
+            elif intent == "Production Readiness": detail = f"risk: {risk}/100; lifecycle: {life}; sources: {suppliers}; stock: {stock:,}; readiness: {'Blocker review' if risk >= 70 or stock <= 0 else 'Validation required'}"
+            else: detail = f"risk: {risk}/100; lifecycle: {life}; suppliers: {suppliers}; inventory: {stock:,}; lead time: {lead:g} weeks"
+            rows.append(f"- **{name}** — {detail}.")
+        evidence = "\n".join(rows) if rows else "No component evidence is available for this assessment."
+        ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {intent.lower()} score {min(100, int(_s472_score(r, intent)))}/100." for i, r in enumerate(ranked, 1)) or "- No ranked components are available."
+        actions = {
+          "Procurement": f"Confirm demand and authorized stock for {top}, lock pricing and delivery, then create purchase and monitoring actions for the remaining ranked parts.",
+          "Supplier Qualification": f"Verify authorization, quality system, capacity, traceability, commercial lead time, and technical equivalence before approving the preferred backup source for {top}.",
+          "Single Source Exposure": f"Open a mitigation action for {top}, identify an independent source or compatible alternate, complete qualification, and update the approved BOM/source list.",
+          "Schedule Resilience": f"Model the delay contribution of {top}, qualify a recovery source, validate compatibility, and secure enough buffer stock to cover the replenishment gap.",
+          "Lifecycle": f"Confirm manufacturer status for {top}, determine last-time-buy need, compare replacements, and approve a migration path before availability deteriorates.",
+          "Inventory": f"Reconcile demand against usable stock for {top}, confirm allocation status, expedite replenishment, and set a coverage threshold alert.",
+          "Production Readiness": "Do not release solely from the health score. Close the highest-ranked blocker, validate supply and compatibility evidence, and record the release decision.",
+          "General Engineering Review": f"Assign an owner to {top}, verify its leading risk driver, select the appropriate mitigation, set a due date, and record the engineering decision.",
+        }[intent]
+        follow = {
+          "Procurement": [f"What quantity and delivery window should procurement secure for {top}?", "Which supplier offers the safest authorized purchasing path?", "Which pricing or allocation evidence is still missing?"],
+          "Supplier Qualification": [f"What qualification evidence is missing for {top}?", "Which supplier should be approved as the backup source?", "What prototype and quality tests are required?"],
+          "Single Source Exposure": ["Which exposed component has the easiest mitigation path?", "Which backup source should be qualified first?", "How would the exposure change after dual sourcing?"],
+          "Schedule Resilience": ["Which component is on the production critical path?", "How much buffer stock is needed for the recovery window?", "Which second source reduces the most schedule risk?"],
+          "Lifecycle": ["Which component needs a last-time-buy decision first?", "Which replacement path has the lowest validation burden?", "What lifecycle evidence is still unverified?"],
+          "Inventory": ["Which shortage threatens the next production build?", "What replenishment action should be expedited first?", "Which components need minimum-stock alerts?"],
+          "Production Readiness": ["What must be closed before release approval?", "Which issue is a true production blocker?", "What engineering record should be created now?"],
+          "General Engineering Review": [f"Why is {top} ranked first?", "What evidence would change this recommendation?", "What should the engineering owner do next?"],
+        }[intent]
+
+    conf_label, conf_reason = _confidence(context, strong=False)
+    return f"### Intent\n{intent}\n\n### Executive Summary\n**{headline}** {rationale}\n\n### Rankings\n{ranking}\n\n### Evidence\n{evidence}\n\n### Recommended Actions\n{actions}\n\n### Workflow\n" + "\n".join(f"- {x}" for x in workflow) + f"\n\n### Confidence\n**{conf_label}.** {conf_reason}\n\n### Follow-up Questions\n" + "\n".join(f"- {x}" for x in follow)
 
 def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[str, str]] | None = None) -> str:
     """Produce a question-specific, evidence-grounded assessment without an external AI provider."""
@@ -473,7 +585,7 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
     decisions = list(context.get("decisions") or [])
     resolved_question = _conversation_question(question, history)
     # Sprint 47.1: all local assessments use the explicit consultant-style intent router.
-    return _s471_report(resolved_question, context, history)
+    return _s472_report(question, context, history)
     intent = _classify_question(resolved_question)
 
     project = str(analysis.get("project_name") or analysis.get("filename") or "This BOM")
