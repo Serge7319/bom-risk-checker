@@ -72,52 +72,19 @@ def compact_history(thread: list[dict[str, Any]], max_turns: int = 4) -> list[di
 
 
 def follow_up_suggestions(question: str, answer: str, context: dict[str, Any]) -> list[str]:
-    text = f"{question} {answer}".lower()
-    components = list(context.get("components") or [])
-    components.sort(key=lambda row: int(row.get("risk_score") or 0), reverse=True)
-    top_part = ""
-    if components:
-        top_part = str(components[0].get("part_number") or components[0].get("mpn") or "").strip()
-
-    suggestions: list[str] = []
-    is_second_source = any(token in text for token in ("second source", "second-source", "dual source", "qualified source"))
-    is_compatibility = any(token in text for token in ("compatibility", "pinout", "footprint", "electrical equivalence"))
-    if is_second_source:
-        suggestions.extend([
-            "Which alternate supplier should be qualified first?",
-            "Which parts have the greatest single-source exposure?",
-            "What validation is required before approving the second source?",
-            "How would a second source improve schedule resilience?",
-        ])
-    elif is_compatibility:
-        suggestions.extend([
-            "Which electrical parameters require direct datasheet comparison?",
-            "What footprint and pinout evidence is still missing?",
-            "What prototype tests should be completed before substitution?",
-            "Create a compatibility approval checklist.",
-        ])
-    if any(token in text for token in ("release", "production", "ready")) and not is_compatibility:
-        suggestions.extend([
-            "What evidence is still missing before release approval?",
-            "Create a prioritized release-readiness checklist.",
-        ])
-    if any(token in text for token in ("supplier", "lifecycle", "lead time", "source")) and not is_second_source and not is_compatibility:
-        suggestions.extend([
-            "Which sourcing issue should procurement address first?",
-            "Which parts need a qualified second source?",
-        ])
-    if any(token in text for token in ("alternative", "replacement", "qualif")) and not is_second_source and not is_compatibility:
-        suggestions.extend([
-            "Which replacement should be qualified first and why?",
-            "What compatibility evidence must be verified?",
-        ])
-    if top_part:
-        suggestions.append(f"Why is {top_part} the highest-priority component?")
-        suggestions.append(f"What is the recommended next action for {top_part}?")
-    suggestions.append("Summarize the decision in three executive bullets.")
-
-    unique: list[str] = []
-    for item in suggestions:
-        if item not in unique:
-            unique.append(item)
-    return unique[:4]
+    """Use assessment-generated follow-ups, with evidence-aware fallback prompts."""
+    lines=str(answer or "").splitlines(); active=False; generated=[]
+    for raw in lines:
+        line=raw.strip()
+        if line.lower().startswith("### follow-up questions"):
+            active=True; continue
+        if active and line.startswith("### "):
+            break
+        if active and line.startswith(("-", "*")):
+            item=line[1:].strip()
+            if item: generated.append(item)
+    if generated:
+        return generated[:4]
+    components=sorted(list(context.get("components") or []), key=lambda row:int(row.get("risk_score") or 0), reverse=True)
+    top=str((components[0].get("part_number") or components[0].get("mpn")) if components else "the top-ranked component")
+    return [f"Why is {top} ranked first?", "What evidence would change this recommendation?", "What should the engineering owner do next?"]
