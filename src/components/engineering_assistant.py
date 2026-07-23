@@ -129,10 +129,13 @@ def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
         "Recommendation Rationale":("recommendation_rationale","Recommendation rationale","Explain the priority"),
         "Evidence Sensitivity":("evidence_sensitivity","Evidence sensitivity assessment","Identify decision-changing evidence"),
         "Engineering Owner Action Plan":("owner_action_plan","Engineering owner action plan","Execute the next controlled action"),
+        "Owner Action Plan":("owner_action_plan","Engineering owner action plan","Execute the next controlled action"),
+        "Component Risk":("component_risk","Component risk assessment","Highest component risks"),
+        "Evidence Gap Priority":("evidence_gap_priority","Evidence gap priority","Close the highest-impact evidence gap"),
     }
     if explicit_intent in intent_map:
         intent,label,status=intent_map[explicit_intent]
-        return {"intent":intent,"label":label,"status":status,"assessment":_section(sections,"Executive Summary"),"evidence":_section(sections,"Evidence","Supporting Evidence"),"actions":_section(sections,"Recommended Actions","Recommended action"),"confidence":_section(sections,"Confidence"),"rankings":_section(sections,"Rankings"),"workflow":_section(sections,"Workflow"),"followups":_section(sections,"Follow-up Questions")}
+        return {"intent":intent,"label":label,"status":status,"assessment":_section(sections,"Direct Answer","Executive Summary"),"evidence":_section(sections,"Evidence","Supporting Evidence"),"actions":_section(sections,"Recommended Actions","Recommended action"),"confidence":_section(sections,"Confidence"),"rankings":_section(sections,"Rankings"),"workflow":_section(sections,"Workflow"),"followups":_section(sections,"Follow-up Questions")}
     ordered=[key for key,value in sections.items() if str(value or "").strip()]
     first=ordered[0] if ordered else "Engineering Assessment"; first_l=first.lower()
     if "schedule resilience" in first_l: intent,label,status="schedule_resilience","Schedule resilience assessment","Strengthen production continuity"
@@ -591,7 +594,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
         )
 
     if rankings:
-        st.markdown('<div class="cv35-section-label">Intent-specific ranking</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv35-section-label">Engineering priority ranking</div>', unsafe_allow_html=True)
         ranking_items=_evidence_items(rankings)
         ranking_html="".join(f'<div class="cv47-ranking-row"><b>{idx}</b><div><strong>{html.escape(title)}</strong><span>{html.escape(detail)}</span></div></div>' for idx,(title,detail) in enumerate(ranking_items,1))
         st.markdown(f'<div class="cv47-ranking-board">{ranking_html}</div>', unsafe_allow_html=True)
@@ -602,7 +605,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
     if workflow_text:
         labels=[line.strip()[1:].strip() for line in workflow_text.splitlines() if line.strip().startswith(("-","*"))]
-        workflow=[(label, "Intent-specific engineering workflow") for label in labels[:5]]
+        workflow=[(label, "Required step for this assessment") for label in labels[:5]]
     else:
         workflow = _workflow_steps(actions, priority_part, intent=intent)
     workflow_cols = st.columns(len(workflow))
@@ -737,6 +740,7 @@ def render_engineering_assistant(
         st.warning("Enter an engineering question before submitting.")
     if manual_submit_requested:
         _clear_review_state()
+        st.session_state["cv47_scroll_pending"] = True
 
     can_submit = status.can_use and bool(cleaned_question)
     submit_requested = bool(manual_submit_requested or (auto_execute_followup and can_submit))
@@ -788,9 +792,12 @@ def render_engineering_assistant(
     answer = st.session_state.get("cv35_last_answer")
     if answer:
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
+        should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False)
+        if should_scroll:
+            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;let tries=0;function go(){const e=d.getElementById('cv47-latest');if(e){w.scrollTo(0,Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-76));e.setAttribute('tabindex','-1');try{e.focus({preventScroll:true});}catch(_){ }return;}if(tries++<30)setTimeout(go,100);}go();</script>""", height=0)
         _render_response(question=last_question, answer=answer, context=context)
-        if st.session_state.pop("cv47_scroll_to_assessment", False):
-            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;let n=0;function go(){const e=d.getElementById('cv47-latest');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-82),behavior:n>0?'smooth':'auto'});}if(n++<8)setTimeout(go,140);}go();</script>""", height=0)
+        if should_scroll:
+            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;let n=0;function go(){const e=d.getElementById('cv47-latest');if(e)w.scrollTo(0,Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-76));if(n++<12)setTimeout(go,120);}go();</script>""", height=0)
         _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
