@@ -168,6 +168,19 @@ class EngineeringContextService:
     ) -> EngineeringContext:
         analysis_id = _text(_first(analysis, "id", "analysis_id"))
         raw_parts = [dict(row) for row in (parts or [])]
+        # Older saved analyses can show a valid part count while the page-level
+        # parts query returns no rows because of legacy ownership/workspace columns.
+        # Recover the authoritative analysis_parts rows before declaring that
+        # component evidence is unavailable.
+        if not raw_parts and analysis_id:
+            raw_parts = _query_optional(
+                self.supabase,
+                "analysis_parts",
+                analysis_id=analysis_id,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                limit=5000,
+            )
         raw_alerts = [dict(row) for row in (alerts or [])]
         raw_alternatives = [dict(row) for row in (alternatives or [])]
         raw_comments = [dict(row) for row in (comments or [])]
