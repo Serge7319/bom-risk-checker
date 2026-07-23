@@ -480,6 +480,7 @@ def _s473_driver(row: dict[str, Any], domain: str) -> tuple[str, str]:
 
 def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
     operation, domain = _s473_route(question, history)
+    q = str(question or "").strip().lower()
     components = list(context.get("components") or [])
     analysis = context.get("analysis") or {}
     project = str(analysis.get("project_name") or analysis.get("filename") or "This BOM")
@@ -487,55 +488,114 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
     top_row = ranked[0] if ranked else {}
     top = _part_name(top_row) if top_row else "No component identified"
     gaps = _s473_gaps(context, components)
+    # Put evidence tied to the current leading recommendation ahead of generic coverage gaps.
+    if top_row:
+        top_driver, top_detail = _s473_driver(top_row, domain)
+        top_specific = None
+        if top_driver == "Lifecycle":
+            top_specific = ("Manufacturer lifecycle verification", f"Current status recorded as {str(top_row.get('lifecycle_status') or top_row.get('lifecycle') or 'Unknown')}", f"Could change whether {top} remains the first mitigation priority.")
+        elif top_driver == "Schedule":
+            top_specific = ("Current lead-time commitment", top_detail, f"Could change the schedule ranking and required recovery action for {top}.")
+        elif top_driver in {"Single source", "Supplier concentration"}:
+            top_specific = ("Authorized-source verification", top_detail, f"Could change the sourcing-concentration ranking for {top}.")
+        elif top_driver == "Inventory":
+            top_specific = ("Usable inventory confirmation", top_detail, f"Could change the shortage urgency and replenishment action for {top}.")
+        if top_specific:
+            gaps = [top_specific] + [gap for gap in gaps if gap[0] != top_specific[0]]
+
+    # Separate closely related user operations so the report answers the exact question.
+    asks_review_first = any(t in q for t in ("review first", "what should i review first", "first in this bom"))
+    asks_at_risk_list = any(t in q for t in ("what components are at risk", "which components are at risk", "components at risk in this bom", "list the at-risk"))
+    asks_highest_risks = any(t in q for t in ("highest component risks", "explain the highest", "highest risks"))
 
     if operation == "Evidence Sensitivity":
-        intent, title = "Evidence Sensitivity", "Decision-changing evidence"
+        intent, title = "Evidence Sensitivity", "Evidence that could change the recommendation"
         direct = f"The recommendation is most likely to change after **{gaps[0][0].lower()}** is verified."
-        ranking = "\n".join(f"- **#{i} {a}** — {'High' if i <= 2 else 'Medium'} confidence impact; {b}." for i, (a, b, _) in enumerate(gaps[:5], 1))
-        evidence = "\n".join(f"- **{a}** — status: {b}; decision effect: {c}" for a, b, c in gaps[:5])
+        ranking = "\n".join(f"- **#{i} {a}** — decision impact: {'High' if i <= 2 else 'Medium'}; current status: {b}." for i, (a, b, _) in enumerate(gaps[:5], 1))
+        evidence = "\n".join(f"- **{a}** — validation status: {b}; decision effect: {c}" for a, b, c in gaps[:5])
         actions = f"Close {gaps[0][0].lower()} first, rerun the assessment, and confirm whether {top} remains the leading priority."
-        workflow = ["Assign Evidence Owner", "Collect Authoritative Data", "Verify Date and Source", "Recalculate Recommendation", "Record Updated Decision"]
+        workflow = [
+            ("Assign Evidence Owner", f"Name the person accountable for closing {gaps[0][0].lower()}."),
+            ("Collect Authoritative Data", "Use current manufacturer, authorized-distributor, validation, or approved internal records."),
+            ("Verify Date and Source", "Confirm evidence freshness, source authority, and applicability to this BOM revision."),
+            ("Recalculate Recommendation", f"Rerun the assessment and test whether {top} remains the leading priority."),
+            ("Record Updated Decision", "Save the changed conclusion, supporting evidence, owner, and approval rationale."),
+        ]
         follow = ["Which evidence gap should be closed first?", f"How would verified evidence change the ranking for {top}?", "What confidence is required before release?"]
     elif operation == "Evidence Gap Priority":
-        intent, title = "Evidence Gap Priority", "Close the highest-impact evidence gap"
+        intent, title = "Evidence Gap Priority", "Highest-priority evidence gap"
         direct = f"Close **{gaps[0][0].lower()}** first because it has the strongest ability to change the current engineering conclusion."
-        ranking = "\n".join(f"- **#{i} {a}** — priority {'Immediate' if i == 1 else 'Next' if i == 2 else 'Planned'}; {b}." for i, (a, b, _) in enumerate(gaps[:5], 1))
-        evidence = "\n".join(f"- **{a}** — current status: {b}; why it matters: {c}" for a, b, c in gaps[:5])
-        actions = f"Assign an owner and due date for {gaps[0][0].lower()}, define an authoritative source, and rerun Cadivor after the evidence is saved."
-        workflow = ["Assign Gap Owner", "Define Closure Criterion", "Collect Evidence", "Validate Evidence", "Refresh Assessment"]
+        ranking = "\n".join(f"- **#{i} {a}** — closure priority: {'Immediate' if i == 1 else 'Next' if i == 2 else 'Planned'}; current status: {b}." for i, (a, b, _) in enumerate(gaps[:5], 1))
+        evidence = "\n".join(f"- **{a}** — validation status: {b}; decision effect: {c}" for a, b, c in gaps[:5])
+        actions = f"Assign an owner and due date for {gaps[0][0].lower()}, define an authoritative source and closure criterion, then rerun Cadivor after the evidence is saved."
+        workflow = [
+            ("Assign Gap Owner", f"Make one person accountable for {gaps[0][0].lower()}."),
+            ("Define Closure Criterion", "Specify exactly what evidence is sufficient, current, and authoritative."),
+            ("Collect Evidence", "Gather the manufacturer, supplier, validation, or internal approval record."),
+            ("Validate Evidence", "Check revision, date, source authority, and applicability to the production configuration."),
+            ("Refresh Assessment", "Save the evidence and rerun the recommendation to measure the change."),
+        ]
         follow = ["Who should own this evidence gap?", "What source is authoritative for this evidence?", "How will closure affect release confidence?"]
     elif operation == "Owner Action Plan":
-        intent, title = "Engineering Owner Action Plan", "Execute the next controlled action"
+        intent, title = "Engineering Owner Action Plan", "Next actions for the engineering owner"
         direct = f"The engineering owner should validate the leading risk driver for **{top}**, select a mitigation, and record an accountable closure plan."
         ranking = "\n".join([
-            f"- **#1 Validate {top}** — confirm the leading risk driver.",
-            f"- **#2 Close {gaps[0][0]}** — resolve the largest uncertainty.",
+            f"- **#1 Validate {top}** — confirm the leading risk driver and authoritative source.",
+            f"- **#2 Close {gaps[0][0]}** — resolve the largest uncertainty affecting the conclusion.",
             "- **#3 Select mitigation** — accept, source, qualify, replace, or monitor.",
-            "- **#4 Record decision** — owner, approver, due date, and evidence.",
-            "- **#5 Verify outcome** — confirm exposure is reduced.",
+            "- **#4 Record decision** — owner, approver, due date, evidence, and rationale.",
+            "- **#5 Verify outcome** — confirm the risk or uncertainty was measurably reduced.",
         ])
         evidence = "\n".join([
-            f"- **Priority work item** — component: {top}; current score: {int(_s473_score(top_row, domain)) if top_row else 0}/100; ownership: not recorded.",
-            f"- **Primary evidence gap** — item: {gaps[0][0]}; status: {gaps[0][1]}; decision effect: {gaps[0][2]}",
+            f"- **Priority work item** — component: {top}; relative assessment priority: {min(100, int(_s473_score(top_row, domain))) if top_row else 0}/100; ownership: not recorded.",
+            f"- **Primary evidence gap** — item: {gaps[0][0]}; validation status: {gaps[0][1]}; decision effect: {gaps[0][2]}",
         ])
         actions = f"Assign one named owner for {top}, set a due date, attach the required evidence, and define a measurable closure condition before release."
-        workflow = ["Assign Owner and Due Date", "Validate Leading Driver", "Choose Mitigation", "Record Approval", "Verify Closure"]
+        workflow = [
+            ("Assign Owner and Due Date", f"Assign accountability for {top} and set a time-bound completion date."),
+            ("Validate Leading Driver", "Confirm the risk driver against an authoritative and current source."),
+            ("Choose Mitigation", "Select risk acceptance, alternate qualification, sourcing action, redesign, or monitoring."),
+            ("Record Approval", "Capture the approver, evidence, rationale, and accepted residual risk."),
+            ("Verify Closure", "Confirm the planned action is complete and the updated assessment supports closure."),
+        ]
         follow = [f"What should the closure criterion be for {top}?", "Which mitigation path is lowest risk?", "What should be recorded in the engineering decision?"]
     elif operation == "Explanation":
-        intent, title = "Recommendation Rationale", "Explain the recommendation"
+        intent, title = "Recommendation Rationale", f"Why {top} is ranked first"
         driver, detail = _s473_driver(top_row, domain) if top_row else ("Evidence gap", "no component evidence is available")
-        direct = f"**{top}** is ranked first primarily because of **{driver.lower()}**: {detail}."
-        ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
-        evidence = "\n".join(f"- **{_part_name(r)}** — primary driver: {_s473_driver(r, domain)[0]}; evidence: {_s473_driver(r, domain)[1]}; composite score: {min(100, int(_s473_score(r, domain)))}/100." for r in ranked)
+        recorded = int(top_row.get("risk_score") or 0) if top_row else 0
+        relative = min(100, int(_s473_score(top_row, domain))) if top_row else 0
+        direct = f"**{top}** is ranked first primarily because of **{driver.lower()}**: {detail}. Its recorded component risk is **{recorded}/100**, while its relative assessment priority is **{relative}/100** compared with the other parts in this BOM."
+        ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
+        evidence = "\n".join(f"- **{_part_name(r)}** — primary driver: {_s473_driver(r, domain)[0]}; evidence: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {min(100, int(_s473_score(r, domain)))}/100." for r in ranked)
         actions = f"Verify the {driver.lower()} evidence for {top}. If it is stale or incorrect, refresh the data and rerun the ranking before mitigation."
-        workflow = ["Inspect Source Evidence", "Verify Leading Driver", "Test Ranking Sensitivity", "Confirm Priority", "Record Rationale"]
+        workflow = [
+            ("Inspect Source Evidence", f"Review the authoritative evidence supporting the {driver.lower()} finding for {top}."),
+            ("Verify Leading Driver", "Confirm that the identified driver is current and applies to this exact part and BOM revision."),
+            ("Test Ranking Sensitivity", "Change or refresh the leading evidence and observe whether the relative ranking changes."),
+            ("Confirm Priority", "Compare the result with the next-ranked components before committing resources."),
+            ("Record Rationale", "Save the reason, evidence, score distinction, owner, and approval decision."),
+        ]
         follow = ["What evidence would change this recommendation?", "Which evidence gap should be closed first?", "What should the engineering owner do next?"]
     else:
         intent = "Component Risk" if domain == "Component Risk" else domain
-        titles = {"Component Risk": "Highest component risks", "Procurement": "Procurement priorities", "Supplier Qualification": "Supplier qualification priority", "Single Source Exposure": "Single-source exposure", "Schedule Resilience": "Schedule resilience risks", "Lifecycle": "Lifecycle exposure", "Inventory": "Inventory exposure", "Production Readiness": "Production readiness", "General Engineering Review": "Engineering review priorities", "Evidence Confidence": "Evidence confidence review"}
-        title = titles.get(domain, "Engineering assessment")
+        if domain == "Component Risk" and asks_review_first:
+            title = "First engineering review priority"
+        elif domain == "Component Risk" and asks_at_risk_list:
+            title = "At-risk components in this BOM"
+        elif domain == "Component Risk" and asks_highest_risks:
+            title = "Highest component risks"
+        else:
+            titles = {"Component Risk": "Component risk assessment", "Procurement": "Procurement priorities", "Supplier Qualification": "Supplier qualification priority", "Single Source Exposure": "Single-source exposure", "Schedule Resilience": "Schedule resilience risks", "Lifecycle": "Lifecycle exposure", "Inventory": "Inventory exposure", "Production Readiness": "Production readiness", "General Engineering Review": "Engineering review priorities", "Evidence Confidence": "Evidence confidence review"}
+            title = titles.get(domain, "Engineering assessment")
         if not ranked:
             direct = "Cadivor cannot identify a priority component because structured component evidence is missing from this saved analysis."
+        elif domain == "Component Risk" and asks_review_first:
+            driver, detail = _s473_driver(top_row, domain)
+            direct = f"Review **{top}** first because its leading concern is **{driver.lower()}**: {detail}."
+        elif domain == "Component Risk" and asks_at_risk_list:
+            active = [r for r in ranked if _s473_score(r, domain) >= 35]
+            watch = [r for r in ranked if _s473_score(r, domain) < 35]
+            direct = f"Cadivor identified **{len(active)} component{'s' if len(active) != 1 else ''} requiring active review** and **{len(watch)} additional watchlist component{'s' if len(watch) != 1 else ''}**. The leading concern is **{top}**."
         elif domain == "Component Risk":
             driver, detail = _s473_driver(top_row, domain)
             direct = f"**{top}** is currently the highest-risk component, driven primarily by **{driver.lower()}** ({detail})."
@@ -547,24 +607,32 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
         elif domain == "Inventory": direct = f"**{top}** has the most urgent inventory-coverage concern."
         elif domain == "Production Readiness": direct = f"Production readiness should be decided only after the leading issue associated with **{top}** is closed or explicitly accepted."
         else: direct = f"The first engineering review priority is **{top}** based on the saved BOM evidence."
-        ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; assessment score {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
-        evidence = "\n".join(f"- **{_part_name(r)}** — risk category: {_s473_driver(r, domain)[0]}; severity: {'High' if _s473_score(r, domain) >= 70 else 'Medium' if _s473_score(r, domain) >= 35 else 'Low'}; primary driver: {_s473_driver(r, domain)[1]}; risk score: {int(r.get('risk_score') or 0)}/100; suppliers: {int(r.get('supplier_count') or 0)}; inventory: {int(r.get('stock_available') or 0):,}; lead time: {float(r.get('lead_time_weeks') or 0):g} weeks; lifecycle: {str(r.get('lifecycle_status') or r.get('lifecycle') or 'Unknown')}." for r in ranked) or "- **Evidence unavailable** — the saved analysis does not contain structured component records."
+
+        if domain == "Component Risk" and asks_at_risk_list:
+            def bucket(r):
+                score = _s473_score(r, domain)
+                return "Active review" if score >= 35 else "Watchlist"
+            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — status: {bucket(r)}; {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
+        else:
+            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
+        evidence = "\n".join(f"- **{_part_name(r)}** — risk category: {_s473_driver(r, domain)[0]}; severity: {'High' if _s473_score(r, domain) >= 70 else 'Medium' if _s473_score(r, domain) >= 35 else 'Low'}; primary driver: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {min(100, int(_s473_score(r, domain)))}/100; suppliers: {int(r.get('supplier_count') or 0)}; inventory: {int(r.get('stock_available') or 0):,}; lead time: {float(r.get('lead_time_weeks') or 0):g} weeks; lifecycle: {str(r.get('lifecycle_status') or r.get('lifecycle') or 'Unknown')}." for r in ranked) or "- **Evidence unavailable** — the saved analysis does not contain structured component records."
         actions = f"Validate the primary driver for {top}, assign an owner, select the appropriate mitigation, and save the supporting evidence and decision." if ranked else "Refresh or re-run the BOM analysis so structured component evidence is available before making a release decision."
         workflows = {
-            "Procurement": ["Review Demand and Stock", "Verify Authorized Pricing", "Contact Supplier", "Place or Expedite Order", "Monitor Delivery"],
-            "Supplier Qualification": ["Rank Candidate Sources", "Verify Authorization", "Review Quality and Capacity", "Complete Technical Validation", "Approve Supplier"],
-            "Single Source Exposure": ["Rank Exposure", "Identify Independent Backup", "Validate Compatibility", "Update Approved BOM", "Monitor Concentration"],
-            "Schedule Resilience": ["Identify Critical Path", "Verify Replenishment", "Qualify Recovery Source", "Secure Buffer Stock", "Monitor Recovery"],
-            "Lifecycle": ["Confirm Manufacturer Status", "Review PCNs and Last-Time Buy", "Evaluate Successors", "Approve Migration", "Monitor Lifecycle"],
-            "Inventory": ["Validate Build Demand", "Confirm Usable Stock", "Resolve Allocation", "Expedite Replenishment", "Track Coverage"],
-            "Production Readiness": ["Identify Release Blockers", "Close Evidence Gaps", "Validate Supply and Compatibility", "Record Approval", "Release and Monitor"],
-            "Component Risk": ["Rank Components", "Verify Primary Drivers", "Select Mitigation", "Assign Owner and Due Date", "Confirm Risk Reduction"],
-            "General Engineering Review": ["Rank Priorities", "Validate Evidence", "Select Mitigation", "Record Decision", "Confirm Closure"],
+            "Procurement": [("Review Demand and Stock", "Confirm build demand, usable stock, shortages, and required order date."), ("Verify Authorized Pricing", "Compare current authorized pricing, MOQ, allocation, and commercial terms."), ("Contact Supplier", "Confirm availability, lead time, allocation status, and delivery commitment."), ("Place or Expedite Order", "Issue the order or escalation needed to protect the production date."), ("Monitor Delivery", "Track acknowledgements, slips, receipts, and remaining exposure.")],
+            "Supplier Qualification": [("Rank Candidate Sources", "Prioritize authorized candidates by readiness, capability, and risk reduction."), ("Verify Authorization", "Confirm manufacturer authorization and approved distribution status."), ("Review Quality and Capacity", "Assess quality systems, capacity, geography, and continuity capability."), ("Complete Technical Validation", "Validate compatibility, documentation, samples, and required testing."), ("Approve Supplier", "Record approval scope, conditions, owner, and monitoring requirements.")],
+            "Single Source Exposure": [("Rank Exposure", "Identify components with the fewest independent approved sources."), ("Identify Independent Backup", "Find a genuinely independent source or technically viable alternate."), ("Validate Compatibility", "Confirm form, fit, function, qualification, and manufacturing impacts."), ("Update Approved BOM", "Add the approved backup source or alternate with revision control."), ("Monitor Concentration", "Track supplier changes, lead times, and renewed single-source exposure.")],
+            "Schedule Resilience": [("Identify Critical Path", "Link long-lead and constrained parts to the production need date."), ("Verify Replenishment", "Confirm current lead time, allocation, and committed delivery dates."), ("Qualify Recovery Source", "Validate a second source or alternate that can recover the schedule."), ("Secure Buffer Stock", "Set and acquire a buffer aligned with demand and recovery time."), ("Monitor Recovery", "Track delivery, qualification, and residual critical-path risk.")],
+            "Lifecycle": [("Confirm Manufacturer Status", "Validate lifecycle status with current manufacturer evidence."), ("Review PCNs and Last-Time Buy", "Check notices, dates, affected revisions, and procurement deadlines."), ("Evaluate Successors", "Compare approved successors and redesign implications."), ("Approve Migration", "Validate compatibility, testing, release documentation, and timing."), ("Monitor Lifecycle", "Track future PCNs, status changes, and migration progress.")],
+            "Inventory": [("Validate Build Demand", "Confirm quantities, timing, scrap, and service requirements."), ("Confirm Usable Stock", "Separate available, allocated, quarantined, and obsolete inventory."), ("Resolve Allocation", "Prioritize constrained stock against production and customer needs."), ("Expedite Replenishment", "Secure confirmed replenishment, transfer, or alternate supply."), ("Track Coverage", "Monitor days of supply, consumption, and shortage recovery.")],
+            "Production Readiness": [("Identify Release Blockers", "List unresolved technical, supply, lifecycle, and evidence blockers."), ("Close Evidence Gaps", "Collect and approve the evidence required for release."), ("Validate Supply and Compatibility", "Confirm material availability and technical equivalence."), ("Record Approval", "Capture owner, approver, conditions, residual risk, and rationale."), ("Release and Monitor", "Release only after criteria are met and continue post-release monitoring.")],
+            "Component Risk": [("Rank Components", "Compare lifecycle, schedule, inventory, supplier concentration, and saved risk evidence."), ("Verify Primary Drivers", "Confirm each leading driver against current authoritative evidence."), ("Select Mitigation", "Choose alternate qualification, sourcing action, buffer stock, redesign, monitoring, or acceptance."), ("Assign Owner and Due Date", "Make each mitigation accountable and time-bound."), ("Confirm Risk Reduction", "Rerun the assessment and verify that exposure was measurably reduced.")],
+            "General Engineering Review": [("Rank Priorities", "Order the material engineering concerns by severity and decision impact."), ("Validate Evidence", "Confirm the facts supporting each priority."), ("Select Mitigation", "Choose the lowest-risk practical action."), ("Record Decision", "Save ownership, approval, rationale, and due date."), ("Confirm Closure", "Verify the action is complete and residual risk is acceptable.")],
         }
         workflow = workflows.get(domain, workflows["General Engineering Review"])
         follow = [f"Why is {top} ranked first?", "What evidence would change this recommendation?", "What should the engineering owner do next?"] if ranked else ["Which evidence gap should be closed first?", "How do I refresh the BOM evidence?", "What information is required for a reliable assessment?"]
 
     conf_label, conf_reason = _confidence(context, strong=False)
+    workflow_lines = "\n".join(f"- {label} | {detail}" for label, detail in workflow)
     return (
         f"### Intent\n{intent}\n\n"
         f"### Direct Answer\n**{title}.** {direct}\n\n"
@@ -572,11 +640,10 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
         f"### Rankings\n{ranking}\n\n"
         f"### Evidence\n{evidence}\n\n"
         f"### Recommended Actions\n{actions}\n\n"
-        "### Workflow\n" + "\n".join(f"- {x}" for x in workflow) +
-        f"\n\n### Confidence\n**{conf_label}.** {conf_reason}\n\n"
+        f"### Workflow\n{workflow_lines}\n\n"
+        f"### Confidence\n**{conf_label}.** {conf_reason}\n\n"
         "### Follow-up Questions\n" + "\n".join(f"- {x}" for x in follow)
     )
-
 
 def _s472_intent(question: str, history: list[dict[str, str]] | None = None) -> str:
     return _s473_route(question, history)[1]
