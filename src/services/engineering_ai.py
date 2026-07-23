@@ -400,16 +400,49 @@ def _s473_route(question: str, history: list[dict[str, str]] | None = None) -> t
     else:
         operation = "Assessment"
 
+    # Exact domain phrases are evaluated before broad component-risk wording.
+    # This prevents words such as "first" or "risk" from collapsing supplier,
+    # schedule, procurement, and evidence questions into the component template.
     rules = [
-        ("Component Risk", ("component risk", "components are at risk", "components at risk", "highest component risks", "risky components", "risk in this bom", "review first")),
-        ("Supplier Qualification", ("alternate supplier", "supplier qualify", "qualify supplier", "supplier ranking", "approval status", "second source", "backup source")),
-        ("Single Source Exposure", ("single-source", "single source", "source exposure", "supplier count", "greatest exposure", "sourcing concentration")),
-        ("Schedule Resilience", ("schedule resilience", "production continuity", "critical path", "delay production", "schedule impact", "recovery", "lead time")),
-        ("Lifecycle", ("lifecycle", "obsolete", "obsolescence", "eol", "nrnd", "end of life", "replacement suggested")),
-        ("Inventory", ("inventory", "stock", "shortage", "allocation", "replenishment", "available units")),
-        ("Production Readiness", ("production ready", "ready for production", "release", "readiness", "approve this bom", "ship")),
-        ("Procurement", ("procurement", "purchase", "buy first", "order", "pricing", "purchasing", "sourcing issue")),
-        ("Evidence Confidence", ("evidence", "confidence", "missing data", "data gap")),
+        ("Supplier Qualification", (
+            "what supplier should i qualify", "which supplier should i qualify",
+            "supplier should be qualified", "supplier to qualify",
+            "alternate supplier", "supplier qualify", "qualify supplier",
+            "supplier ranking", "approval status", "second source", "backup source",
+        )),
+        ("Single Source Exposure", (
+            "single-source", "single source", "source exposure", "supplier count",
+            "greatest exposure", "sourcing concentration", "only supplier",
+        )),
+        ("Schedule Resilience", (
+            "schedule resilience", "production continuity", "critical path",
+            "delay production", "schedule impact", "schedule risk", "greatest schedule",
+            "recovery", "lead time", "delay the build", "delay manufacturing",
+        )),
+        ("Production Readiness", (
+            "production ready", "ready for production", "release readiness",
+            "approve this bom", "ready to release", "ship this bom",
+        )),
+        ("Procurement", (
+            "procurement", "purchase", "buy first", "order", "pricing",
+            "purchasing", "sourcing issue", "secure supply",
+        )),
+        ("Lifecycle", (
+            "lifecycle", "obsolete", "obsolescence", "eol", "nrnd",
+            "end of life", "replacement suggested",
+        )),
+        ("Inventory", (
+            "inventory", "stock", "shortage", "allocation", "replenishment",
+            "available units",
+        )),
+        ("Evidence Confidence", (
+            "evidence", "confidence", "missing data", "data gap",
+        )),
+        ("Component Risk", (
+            "component risk", "components are at risk", "components at risk",
+            "highest component risks", "risky components", "risk in this bom",
+            "review first",
+        )),
     ]
     domain = "General Engineering Review"
     for candidate, tokens in rules:
@@ -442,6 +475,12 @@ def _s473_gaps(context: dict[str, Any], components: list[dict[str, Any]]) -> lis
     monitoring = list(context.get("monitoring") or [])
     total = len(components)
     gaps: list[tuple[str, str, str]] = []
+    if total == 0:
+        gaps.append((
+            "Structured component records",
+            "No component-level evidence is available for this saved analysis",
+            "Without part-level risk, lifecycle, inventory, lead-time, and source data, Cadivor cannot form or test a component recommendation.",
+        ))
     counts = [
         ("Lead-time evidence", sum(float(r.get("lead_time_weeks") or 0) <= 0 for r in components), "schedule and delivery priority"),
         ("Authorized-source evidence", sum(int(r.get("supplier_count") or 0) <= 0 for r in components), "supplier concentration and sourcing priority"),
@@ -478,6 +517,23 @@ def _s473_driver(row: dict[str, Any], domain: str) -> tuple[str, str]:
     return label, detail
 
 
+def _s474_supplier_candidates(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return grounded supplier-level candidates from saved alternatives only."""
+    candidates: list[dict[str, Any]] = []
+    for row in list(context.get("alternatives") or context.get("saved_alternatives") or []):
+        supplier = str(row.get("supplier") or "").strip()
+        if not supplier:
+            continue
+        candidates.append({
+            "supplier": supplier,
+            "part": str(row.get("alternative_part") or row.get("original_part") or "Component").strip(),
+            "status": str(row.get("status") or "Candidate").strip(),
+            "score": float(row.get("score") or row.get("recommendation_score") or 0),
+        })
+    candidates.sort(key=lambda row: (row["score"], row["status"].lower() in {"approved", "qualified"}), reverse=True)
+    return candidates
+
+
 def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
     operation, domain = _s473_route(question, history)
     q = str(question or "").strip().lower()
@@ -508,20 +564,61 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
     asks_at_risk_list = any(t in q for t in ("what components are at risk", "which components are at risk", "components at risk in this bom", "list the at-risk"))
     asks_highest_risks = any(t in q for t in ("highest component risks", "explain the highest", "highest risks"))
 
-    if operation == "Evidence Sensitivity":
+    if domain == "Supplier Qualification" and operation not in {"Evidence Sensitivity", "Evidence Gap Priority", "Owner Action Plan", "Explanation"}:
+        intent, title = "Supplier Qualification", "Supplier qualification recommendation"
+        supplier_candidates = _s474_supplier_candidates(context)
+        if supplier_candidates:
+            preferred = supplier_candidates[0]
+            direct = (f"Qualify **{preferred['supplier']}** first for **{preferred['part']}** because it is the highest-ranked "
+                      f"saved supplier candidate with a recommendation score of **{preferred['score']:.0f}/100** and status **{preferred['status']}**.")
+            ranking = "\n".join(
+                f"- **#{i} {row['supplier']}** — component: {row['part']}; readiness status: {row['status']}; recommendation score: {row['score']:.0f}/100."
+                for i, row in enumerate(supplier_candidates[:5], 1)
+            )
+            evidence = "\n".join(
+                f"- **{row['supplier']}** — supplier: {row['supplier']}; component: {row['part']}; approval status: {row['status']}; recommendation score: {row['score']:.0f}/100."
+                for row in supplier_candidates[:5]
+            )
+            actions = f"Verify manufacturer authorization, quality capability, capacity, commercial terms, and technical validation before approving {preferred['supplier']}."
+            follow = [f"What validation is required before approving {preferred['supplier']}?", "Which supplier evidence is still missing?", "How would this supplier reduce schedule risk?"]
+        else:
+            direct = "Cadivor cannot recommend a supplier yet because no named supplier candidates with qualification evidence are saved for this BOM."
+            ranking = "- **Supplier candidates unavailable** — no named supplier, readiness, approval-status, or recommendation-score records are available."
+            evidence = "\n".join([
+                "- **Supplier identity** — validation status: Missing; decision effect: a supplier cannot be ranked without a named authorized source.",
+                "- **Qualification readiness** — validation status: Missing; decision effect: quality, capacity, and technical readiness cannot be compared.",
+                "- **Approval status** — validation status: Missing; decision effect: Cadivor cannot distinguish candidate, conditional, or approved sources.",
+                "- **Recommendation score** — validation status: Missing; decision effect: no grounded supplier-level priority can be calculated.",
+            ])
+            actions = "Add or save named supplier candidates in Alternative Finder, including authorization, readiness, approval status, and validation evidence; then rerun this question."
+            follow = ["What supplier evidence is required for a reliable ranking?", "Which component needs a second source first?", "How do I save a supplier candidate?"]
+        workflow = [
+            ("Identify Named Candidates", "Save the authorized supplier names and the component each source would support."),
+            ("Verify Authorization", "Confirm manufacturer authorization, traceability, and approved-distributor status."),
+            ("Assess Readiness", "Review quality systems, capacity, geography, commercial terms, and continuity capability."),
+            ("Complete Technical Validation", "Validate component compatibility, samples, documentation, and production requirements."),
+            ("Approve and Monitor", "Record approval scope, conditions, owner, and ongoing supplier monitoring."),
+        ]
+    elif operation == "Evidence Sensitivity":
         intent, title = "Evidence Sensitivity", "Evidence that could change the recommendation"
-        direct = f"The recommendation is most likely to change after **{gaps[0][0].lower()}** is verified."
+        gap_subject = gaps[0][0].lower()
+        verb = "are" if gap_subject.endswith("records") else "is"
+        direct = f"The recommendation is most likely to change after **{gap_subject}** {verb} verified."
         ranking = "\n".join(f"- **#{i} {a}** — decision impact: {'High' if i <= 2 else 'Medium'}; current status: {b}." for i, (a, b, _) in enumerate(gaps[:5], 1))
         evidence = "\n".join(f"- **{a}** — validation status: {b}; decision effect: {c}" for a, b, c in gaps[:5])
-        actions = f"Close {gaps[0][0].lower()} first, rerun the assessment, and confirm whether {top} remains the leading priority."
+        actions = (
+            f"Close {gaps[0][0].lower()} first and rerun the assessment to determine whether the recommendation changes."
+            if not top_row else
+            f"Close {gaps[0][0].lower()} first, rerun the assessment, and confirm whether {top} remains the leading priority."
+        )
         workflow = [
             ("Assign Evidence Owner", f"Name the person accountable for closing {gaps[0][0].lower()}."),
             ("Collect Authoritative Data", "Use current manufacturer, authorized-distributor, validation, or approved internal records."),
             ("Verify Date and Source", "Confirm evidence freshness, source authority, and applicability to this BOM revision."),
-            ("Recalculate Recommendation", f"Rerun the assessment and test whether {top} remains the leading priority."),
+            ("Recalculate Recommendation", "Rerun the assessment and compare the conclusion with the prior result." if not top_row else f"Rerun the assessment and test whether {top} remains the leading priority."),
             ("Record Updated Decision", "Save the changed conclusion, supporting evidence, owner, and approval rationale."),
         ]
-        follow = ["Which evidence gap should be closed first?", f"How would verified evidence change the ranking for {top}?", "What confidence is required before release?"]
+        follow = ["Which evidence gap should be closed first?", "How would verified evidence change the recommendation?" if not top_row else f"How would verified evidence change the ranking for {top}?", "What confidence is required before release?"]
     elif operation == "Evidence Gap Priority":
         intent, title = "Evidence Gap Priority", "Highest-priority evidence gap"
         direct = f"Close **{gaps[0][0].lower()}** first because it has the strongest ability to change the current engineering conclusion."
@@ -588,7 +685,17 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             titles = {"Component Risk": "Component risk assessment", "Procurement": "Procurement priorities", "Supplier Qualification": "Supplier qualification priority", "Single Source Exposure": "Single-source exposure", "Schedule Resilience": "Schedule resilience risks", "Lifecycle": "Lifecycle exposure", "Inventory": "Inventory exposure", "Production Readiness": "Production readiness", "General Engineering Review": "Engineering review priorities", "Evidence Confidence": "Evidence confidence review"}
             title = titles.get(domain, "Engineering assessment")
         if not ranked:
-            direct = "Cadivor cannot identify a priority component because structured component evidence is missing from this saved analysis."
+            missing_direct = {
+                "Component Risk": "Cadivor cannot identify an at-risk or priority component because structured component records are not available for this saved analysis.",
+                "Procurement": "Cadivor cannot identify a purchasing priority because component-level stock, lead-time, and supplier evidence are not available for this saved analysis.",
+                "Single Source Exposure": "Cadivor cannot rank single-source exposure because component-level supplier-count evidence is not available for this saved analysis.",
+                "Schedule Resilience": "Cadivor cannot identify the greatest schedule risk because component lead-time, inventory, and source-diversity evidence are not available for this saved analysis.",
+                "Lifecycle": "Cadivor cannot rank lifecycle exposure because component lifecycle records are not available for this saved analysis.",
+                "Inventory": "Cadivor cannot identify the most urgent shortage because component inventory records are not available for this saved analysis.",
+                "Production Readiness": "Cadivor cannot issue a reliable production-readiness recommendation because the saved analysis does not include the component evidence required to identify release blockers.",
+                "Evidence Confidence": "Cadivor cannot form a component-level recommendation until structured BOM evidence is refreshed and saved.",
+            }
+            direct = missing_direct.get(domain, "Cadivor cannot identify a priority because structured component evidence is missing from this saved analysis.")
         elif domain == "Component Risk" and asks_review_first:
             driver, detail = _s473_driver(top_row, domain)
             direct = f"Review **{top}** first because its leading concern is **{driver.lower()}**: {detail}."
@@ -612,10 +719,30 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             def bucket(r):
                 score = _s473_score(r, domain)
                 return "Active review" if score >= 35 else "Watchlist"
-            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — status: {bucket(r)}; {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
+            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — status: {bucket(r)}; {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1))
         else:
-            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
-        evidence = "\n".join(f"- **{_part_name(r)}** — risk category: {_s473_driver(r, domain)[0]}; severity: {'High' if _s473_score(r, domain) >= 70 else 'Medium' if _s473_score(r, domain) >= 35 else 'Low'}; primary driver: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {min(100, int(_s473_score(r, domain)))}/100; suppliers: {int(r.get('supplier_count') or 0)}; inventory: {int(r.get('stock_available') or 0):,}; lead time: {float(r.get('lead_time_weeks') or 0):g} weeks; lifecycle: {str(r.get('lifecycle_status') or r.get('lifecycle') or 'Unknown')}." for r in ranked) or "- **Evidence unavailable** — the saved analysis does not contain structured component records."
+            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1))
+        if not ranking:
+            missing_rankings = {
+                "Procurement": "- **Purchasing priority unavailable** — stock, lead-time, demand, pricing, and authorized-source evidence must be refreshed.",
+                "Single Source Exposure": "- **Source-exposure ranking unavailable** — supplier-count and approved-source evidence must be refreshed.",
+                "Schedule Resilience": "- **Schedule ranking unavailable** — lead-time, committed-delivery, inventory, and source-diversity evidence must be refreshed.",
+                "Lifecycle": "- **Lifecycle ranking unavailable** — manufacturer lifecycle and PCN evidence must be refreshed.",
+                "Inventory": "- **Inventory ranking unavailable** — usable stock, allocation, demand, and replenishment evidence must be refreshed.",
+                "Production Readiness": "- **Release-blocker ranking unavailable** — component risk and release evidence must be refreshed.",
+            }
+            ranking = missing_rankings.get(domain, "- **Component ranking unavailable** — structured component evidence must be refreshed.")
+        evidence = "\n".join(f"- **{_part_name(r)}** — risk category: {_s473_driver(r, domain)[0]}; severity: {'High' if _s473_score(r, domain) >= 70 else 'Medium' if _s473_score(r, domain) >= 35 else 'Low'}; primary driver: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {min(100, int(_s473_score(r, domain)))}/100; suppliers: {int(r.get('supplier_count') or 0)}; inventory: {int(r.get('stock_available') or 0):,}; lead time: {float(r.get('lead_time_weeks') or 0):g} weeks; lifecycle: {str(r.get('lifecycle_status') or r.get('lifecycle') or 'Unknown')}." for r in ranked)
+        if not evidence:
+            missing_evidence = {
+                "Procurement": "- **Procurement evidence unavailable** — component stock, lead time, demand, pricing, and authorized-source records are missing.",
+                "Single Source Exposure": "- **Source-diversity evidence unavailable** — component supplier counts and approved-source records are missing.",
+                "Schedule Resilience": "- **Schedule evidence unavailable** — component lead times, committed dates, inventory, and recovery-source records are missing.",
+                "Lifecycle": "- **Lifecycle evidence unavailable** — manufacturer status, PCNs, and successor records are missing.",
+                "Inventory": "- **Inventory evidence unavailable** — usable stock, allocation, demand, and replenishment records are missing.",
+                "Production Readiness": "- **Release evidence unavailable** — component risk, sourcing, lifecycle, compatibility, and approval records are incomplete.",
+            }
+            evidence = missing_evidence.get(domain, "- **Evidence unavailable** — the saved analysis does not contain structured component records.")
         actions = f"Validate the primary driver for {top}, assign an owner, select the appropriate mitigation, and save the supporting evidence and decision." if ranked else "Refresh or re-run the BOM analysis so structured component evidence is available before making a release decision."
         workflows = {
             "Procurement": [("Review Demand and Stock", "Confirm build demand, usable stock, shortages, and required order date."), ("Verify Authorized Pricing", "Compare current authorized pricing, MOQ, allocation, and commercial terms."), ("Contact Supplier", "Confirm availability, lead time, allocation status, and delivery commitment."), ("Place or Expedite Order", "Issue the order or escalation needed to protect the production date."), ("Monitor Delivery", "Track acknowledgements, slips, receipts, and remaining exposure.")],
