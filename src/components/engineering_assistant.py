@@ -549,7 +549,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     confidence_drivers = _confidence_drivers(context, evidence)
 
     st.markdown(
-        f'<div id="cv47-latest" data-cadivor-assessment-anchor="true" style="scroll-margin-top:88px"></div><div class="cv47-question-banner"><span>Latest engineering question</span><strong>{html.escape(question)}</strong></div>',
+        f'<div id="cv47-latest" tabindex="-1" data-cadivor-assessment-anchor="true" style="scroll-margin-top:92px;height:1px"></div><div class="cv47-question-banner"><span>Latest engineering question</span><strong>{html.escape(question)}</strong></div>',
         unsafe_allow_html=True,
     )
 
@@ -815,34 +815,89 @@ def render_engineering_assistant(
         should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False)
         _render_response(question=last_question, answer=answer, context=context)
         if should_scroll:
+            # Sprint 47.4: keep a live controller mounted until Streamlit's DOM
+            # has settled. It observes the parent document, waits for the final
+            # assessment anchor to have layout, then verifies the resulting
+            # viewport position instead of assuming a timed scroll succeeded.
             components.html("""
             <script>
             (function(){
               const w = window.parent;
               const d = w.document;
+              const TARGET_ID = 'cv47-latest';
+              const OFFSET = 76;
               let attempts = 0;
+              let stableHits = 0;
+              let lastTop = null;
+              let observer = null;
+
               function target(){
-                return d.querySelector('[data-cadivor-assessment-anchor="true"]') || d.getElementById('cv47-latest');
+                return d.getElementById(TARGET_ID) || d.querySelector('[data-cadivor-assessment-anchor="true"]');
               }
-              function move(){
-                const e = target();
-                if (!e) { if (attempts++ < 50) w.setTimeout(move, 100); return; }
-                try { if (d.activeElement && d.activeElement.blur) d.activeElement.blur(); } catch (_) {}
-                const y = Math.max(0, e.getBoundingClientRect().top + w.scrollY - 82);
+
+              function blurInputs(){
+                try {
+                  const active = d.activeElement;
+                  if (active && typeof active.blur === 'function') active.blur();
+                  d.querySelectorAll('textarea:focus,input:focus,button:focus').forEach(el => el.blur());
+                } catch (_) {}
+              }
+
+              function desiredY(el){
+                return Math.max(0, el.getBoundingClientRect().top + w.pageYOffset - OFFSET);
+              }
+
+              function forceScroll(el){
+                blurInputs();
+                const y = desiredY(el);
+                try {
+                  if (w.history && w.history.replaceState) {
+                    w.history.replaceState(null, '', w.location.pathname + w.location.search + '#' + TARGET_ID);
+                  } else {
+                    w.location.hash = TARGET_ID;
+                  }
+                } catch (_) {}
+                try { el.scrollIntoView({block:'start', inline:'nearest', behavior:'auto'}); } catch (_) {}
                 d.documentElement.scrollTop = y;
                 d.body.scrollTop = y;
-                w.scrollTo({top:y, left:0, behavior:'auto'});
-                attempts++;
-                if (attempts < 18) w.setTimeout(move, attempts < 6 ? 120 : 240);
+                w.scrollTo(0, y);
+                return y;
               }
-              w.requestAnimationFrame(function(){ w.requestAnimationFrame(move); });
-              w.setTimeout(move, 350);
-              w.setTimeout(move, 850);
-              w.setTimeout(move, 1500);
-              w.setTimeout(move, 2400);
+
+              function verify(){
+                attempts += 1;
+                const el = target();
+                if (!el || el.getClientRects().length === 0 || el.getBoundingClientRect().height < 0) {
+                  if (attempts < 90) w.setTimeout(verify, 100);
+                  return;
+                }
+                const expected = forceScroll(el);
+                const actual = w.pageYOffset || d.documentElement.scrollTop || d.body.scrollTop || 0;
+                const top = Math.round(el.getBoundingClientRect().top);
+                if (Math.abs(actual - expected) <= 8 && Math.abs(top - OFFSET) <= 18) stableHits += 1;
+                else stableHits = 0;
+                if (lastTop !== null && Math.abs(top - lastTop) > 2) stableHits = 0;
+                lastTop = top;
+                if (stableHits >= 3 || attempts >= 90) {
+                  if (observer) observer.disconnect();
+                  return;
+                }
+                w.setTimeout(verify, attempts < 20 ? 120 : 220);
+              }
+
+              try {
+                observer = new MutationObserver(function(){
+                  stableHits = 0;
+                  w.requestAnimationFrame(verify);
+                });
+                observer.observe(d.body, {childList:true, subtree:true, attributes:true});
+              } catch (_) {}
+
+              w.requestAnimationFrame(function(){ w.requestAnimationFrame(verify); });
+              [250,500,900,1400,2200,3200,4500,6000].forEach(ms => w.setTimeout(verify, ms));
             })();
             </script>
-            """, height=0)
+            """, height=1)
         _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
