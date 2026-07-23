@@ -146,6 +146,14 @@ def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
     else: intent,label,status="general","Engineering assessment","Review before release"
     return {"intent":intent,"label":label,"status":status,"assessment":sections.get(first,"") or _section(sections,"Engineering Assessment","Assessment"),"evidence":_section(sections,"Supporting Evidence","Evidence","Procurement Evidence","Schedule Resilience Evidence","Supplier Evidence","Lifecycle Evidence","Release Evidence"),"actions":_section(sections,"Recommended Actions","Recommended action"),"confidence":_section(sections,"Confidence"),"rankings":"","workflow":"","followups":""}
 
+
+def _direct_answer_title(assessment: str, fallback: str) -> str:
+    plain = str(assessment or "").strip()
+    match = re.match(r"\*\*(.+?)\*\*\.\s*", plain)
+    if match:
+        return _plain_markdown(match.group(1)).strip() or fallback
+    return fallback
+
 def _plain_markdown(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", str(text or ""))
     text = re.sub(r"`(.+?)`", r"\1", text)
@@ -523,6 +531,8 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     sections = _parse_report(answer)
     profile = _assessment_profile(sections)
     assessment = profile["assessment"]
+    display_title = _direct_answer_title(assessment, profile["status"])
+    assessment_body = re.sub(r"^\*\*.+?\*\*\.\s*", "", str(assessment or ""), count=1).strip() or _plain_markdown(assessment)
     evidence = profile["evidence"]
     actions = profile["actions"]
     confidence = profile["confidence"]
@@ -532,14 +542,14 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     priority_part = _priority_component(context, evidence)
     confidence_label, confidence_score, confidence_detail = _confidence_data(confidence, context)
     confidence_class = "high" if confidence_score >= 75 else "medium" if confidence_score >= 45 else "low"
-    decision = _decision_summary(context, assessment, confidence_score, priority_part, intent=intent, preferred_status=profile["status"])
+    decision = _decision_summary(context, assessment_body, confidence_score, priority_part, intent=intent, preferred_status=display_title)
     impact = _projected_impact(context, priority_part, intent=intent)
     complete, total, progress = _review_progress(context)
-    explanation, recommendation_drivers = _recommendation_explanation(assessment, evidence, priority_part)
+    explanation, recommendation_drivers = _recommendation_explanation(assessment_body, evidence, priority_part)
     confidence_drivers = _confidence_drivers(context, evidence)
 
     st.markdown(
-        f'<div id="cv47-latest"></div><div class="cv47-question-banner"><span>Latest engineering question</span><strong>{html.escape(question)}</strong></div>',
+        f'<div id="cv47-latest" data-cadivor-assessment-anchor="true" style="scroll-margin-top:88px"></div><div class="cv47-question-banner"><span>Latest engineering question</span><strong>{html.escape(question)}</strong></div>',
         unsafe_allow_html=True,
     )
 
@@ -604,8 +614,18 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
 
     st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
     if workflow_text:
-        labels=[line.strip()[1:].strip() for line in workflow_text.splitlines() if line.strip().startswith(("-","*"))]
-        workflow=[(label, "Required step for this assessment") for label in labels[:5]]
+        workflow = []
+        for line in workflow_text.splitlines():
+            clean = line.strip()
+            if not clean.startswith(("-", "*")):
+                continue
+            clean = clean[1:].strip()
+            if " | " in clean:
+                label, detail = clean.split(" | ", 1)
+            else:
+                label, detail = clean, "Complete this step using the current BOM evidence and recorded engineering controls."
+            workflow.append((_plain_markdown(label), _plain_markdown(detail)))
+        workflow = workflow[:5]
     else:
         workflow = _workflow_steps(actions, priority_part, intent=intent)
     workflow_cols = st.columns(len(workflow))
@@ -793,11 +813,36 @@ def render_engineering_assistant(
     if answer:
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
         should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False)
-        if should_scroll:
-            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;let tries=0;function go(){const e=d.getElementById('cv47-latest');if(e){w.scrollTo(0,Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-76));e.setAttribute('tabindex','-1');try{e.focus({preventScroll:true});}catch(_){ }return;}if(tries++<30)setTimeout(go,100);}go();</script>""", height=0)
         _render_response(question=last_question, answer=answer, context=context)
         if should_scroll:
-            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;let n=0;function go(){const e=d.getElementById('cv47-latest');if(e)w.scrollTo(0,Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-76));if(n++<12)setTimeout(go,120);}go();</script>""", height=0)
+            components.html("""
+            <script>
+            (function(){
+              const w = window.parent;
+              const d = w.document;
+              let attempts = 0;
+              function target(){
+                return d.querySelector('[data-cadivor-assessment-anchor="true"]') || d.getElementById('cv47-latest');
+              }
+              function move(){
+                const e = target();
+                if (!e) { if (attempts++ < 50) w.setTimeout(move, 100); return; }
+                try { if (d.activeElement && d.activeElement.blur) d.activeElement.blur(); } catch (_) {}
+                const y = Math.max(0, e.getBoundingClientRect().top + w.scrollY - 82);
+                d.documentElement.scrollTop = y;
+                d.body.scrollTop = y;
+                w.scrollTo({top:y, left:0, behavior:'auto'});
+                attempts++;
+                if (attempts < 18) w.setTimeout(move, attempts < 6 ? 120 : 240);
+              }
+              w.requestAnimationFrame(function(){ w.requestAnimationFrame(move); });
+              w.setTimeout(move, 350);
+              w.setTimeout(move, 850);
+              w.setTimeout(move, 1500);
+              w.setTimeout(move, 2400);
+            })();
+            </script>
+            """, height=0)
         _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
