@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlencode, quote
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
 from src.services.engineering_ai import EngineeringAI, EngineeringAIError
@@ -114,45 +115,30 @@ def _section(sections: dict[str, str], *names: str) -> str:
 
 
 def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
-    """Normalize question-specific report sections into a renderer profile."""
-    ordered = [key for key, value in sections.items() if str(value or "").strip()]
-    first = ordered[0] if ordered else (next(iter(sections), "Engineering Assessment"))
-    first_l = first.lower()
-    if "schedule resilience" in first_l:
-        intent, label, status = "schedule_resilience", "Schedule resilience assessment", "Strengthen production continuity"
-        evidence_names = ("Schedule Resilience Evidence", "Schedule Evidence", "Supporting Evidence", "Evidence")
-    elif "schedule" in first_l:
-        intent, label, status = "schedule", "Schedule risk assessment", "Protect the production schedule"
-        evidence_names = ("Schedule Evidence", "Supporting Evidence", "Evidence")
-    elif "second-source validation" in first_l:
-        intent, label, status = "second_source_validation", "Second-source validation", "Complete qualification evidence"
-        evidence_names = ("Qualification Checklist", "Required Evidence", "Supporting Evidence", "Evidence")
-    elif "second-source" in first_l or "second source" in first_l:
-        intent, label, status = "second_source", "Second-source qualification", "Build sourcing resilience"
-        evidence_names = ("Sourcing Candidates", "Second-Source Evidence", "Supplier Evidence", "Supporting Evidence", "Evidence")
-    elif "supplier" in first_l:
-        intent, label, status = "supplier", "Supplier risk assessment", "Reduce sourcing concentration"
-        evidence_names = ("Supplier Evidence", "Supporting Evidence", "Evidence")
-    elif "compatibility" in first_l:
-        intent, label, status = "compatibility", "Compatibility review", "Validate before substitution"
-        evidence_names = ("Required Evidence", "Supporting Evidence", "Evidence")
-    elif "lifecycle" in first_l:
-        intent, label, status = "lifecycle", "Lifecycle assessment", "Address lifecycle exposure"
-        evidence_names = ("Lifecycle Evidence", "Supporting Evidence", "Evidence")
-    elif "procurement" in first_l:
-        intent, label, status = "procurement", "Procurement assessment", "Secure the purchasing window"
-        evidence_names = ("Procurement Evidence", "Supporting Evidence", "Evidence")
-    elif "release" in first_l:
-        intent, label, status = "release", "Release readiness assessment", "Review before release"
-        evidence_names = ("Release Evidence", "Supporting Evidence", "Evidence")
-    else:
-        intent, label, status = "general", "Engineering assessment", "Review before release"
-        evidence_names = ("Supporting Evidence", "Evidence", "Engineering Evidence")
-    assessment = sections.get(first, "") or _section(sections, "Engineering Assessment", "Assessment")
-    evidence = _section(sections, *evidence_names)
-    actions = _section(sections, "Recommended Actions", "Recommended action")
-    confidence = _section(sections, "Confidence")
-    return {"intent": intent, "label": label, "status": status, "assessment": assessment, "evidence": evidence, "actions": actions, "confidence": confidence}
+    """Normalize Sprint 47 and Sprint 47.1 reports into one renderer profile."""
+    explicit_intent=_section(sections, "Intent").strip()
+    intent_map={
+        "Procurement":("procurement","Procurement assessment","Secure the purchasing window"),
+        "Supplier Qualification":("supplier_qualification","Supplier qualification assessment","Qualify the preferred supplier"),
+        "Single Source Exposure":("single_source","Single-source exposure assessment","Reduce sourcing concentration"),
+        "Schedule Resilience":("schedule_resilience","Schedule resilience assessment","Strengthen production continuity"),
+        "Lifecycle":("lifecycle","Lifecycle assessment","Mitigate lifecycle exposure"),
+        "Inventory":("inventory","Inventory assessment","Protect material availability"),
+        "Production Readiness":("production_readiness","Production readiness assessment","Close release blockers"),
+        "General Engineering Review":("general","Engineering assessment","Review before release"),
+    }
+    if explicit_intent in intent_map:
+        intent,label,status=intent_map[explicit_intent]
+        return {"intent":intent,"label":label,"status":status,"assessment":_section(sections,"Executive Summary"),"evidence":_section(sections,"Evidence","Supporting Evidence"),"actions":_section(sections,"Recommended Actions","Recommended action"),"confidence":_section(sections,"Confidence"),"rankings":_section(sections,"Rankings"),"workflow":_section(sections,"Workflow"),"followups":_section(sections,"Follow-up Questions")}
+    ordered=[key for key,value in sections.items() if str(value or "").strip()]
+    first=ordered[0] if ordered else "Engineering Assessment"; first_l=first.lower()
+    if "schedule resilience" in first_l: intent,label,status="schedule_resilience","Schedule resilience assessment","Strengthen production continuity"
+    elif "procurement" in first_l: intent,label,status="procurement","Procurement assessment","Secure the purchasing window"
+    elif "lifecycle" in first_l: intent,label,status="lifecycle","Lifecycle assessment","Address lifecycle exposure"
+    elif "release" in first_l: intent,label,status="production_readiness","Release readiness assessment","Review before release"
+    elif "supplier" in first_l or "second-source" in first_l: intent,label,status="supplier_qualification","Supplier qualification assessment","Build sourcing resilience"
+    else: intent,label,status="general","Engineering assessment","Review before release"
+    return {"intent":intent,"label":label,"status":status,"assessment":sections.get(first,"") or _section(sections,"Engineering Assessment","Assessment"),"evidence":_section(sections,"Supporting Evidence","Evidence","Procurement Evidence","Schedule Resilience Evidence","Supplier Evidence","Lifecycle Evidence","Release Evidence"),"actions":_section(sections,"Recommended Actions","Recommended action"),"confidence":_section(sections,"Confidence"),"rankings":"","workflow":"","followups":""}
 
 def _plain_markdown(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", str(text or ""))
@@ -508,6 +494,8 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     evidence = profile["evidence"]
     actions = profile["actions"]
     confidence = profile["confidence"]
+    rankings = profile.get("rankings", "")
+    workflow_text = profile.get("workflow", "")
     intent = profile["intent"]
     priority_part = _priority_component(context, evidence)
     confidence_label, confidence_score, confidence_detail = _confidence_data(confidence, context)
@@ -573,11 +561,21 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
             unsafe_allow_html=True,
         )
 
+    if rankings:
+        st.markdown('<div class="cv35-section-label">Intent-specific ranking</div>', unsafe_allow_html=True)
+        ranking_items=_evidence_items(rankings)
+        ranking_html="".join(f'<div class="cv47-ranking-row"><b>{idx}</b><div><strong>{html.escape(title)}</strong><span>{html.escape(detail)}</span></div></div>' for idx,(title,detail) in enumerate(ranking_items,1))
+        st.markdown(f'<div class="cv47-ranking-board">{ranking_html}</div>', unsafe_allow_html=True)
+
     st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)
     _render_evidence_cards(evidence)
 
     st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
-    workflow = _workflow_steps(actions, priority_part, intent=intent)
+    if workflow_text:
+        labels=[line.strip()[1:].strip() for line in workflow_text.splitlines() if line.strip().startswith(("-","*"))]
+        workflow=[(label, "Intent-specific engineering workflow") for label in labels[:5]]
+    else:
+        workflow = _workflow_steps(actions, priority_part, intent=intent)
     workflow_cols = st.columns(len(workflow))
     for idx, ((label, detail), col) in enumerate(zip(workflow, workflow_cols), start=1):
         col.markdown(
@@ -645,7 +643,7 @@ def render_engineering_assistant(
         .cv46-confidence-drivers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}.cv46-confidence-drivers>div{border-top:1px solid #e2e8f0;padding-top:7px;min-width:0}.cv46-confidence-drivers span{display:block;font-size:clamp(9px,.62vw,10px);font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:#64748b}.cv46-confidence-drivers strong{display:block;font-size:clamp(12px,.84vw,14px);color:#0f172a;margin:2px 0}.cv46-confidence-drivers small{display:block;font-size:clamp(9px,.62vw,11px);line-height:1.35;color:#64748b}
         .cv46-evidence-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:8px}.cv46-evidence-card{border:1px solid #dbeafe;background:#fff;border-radius:15px;padding:12px;min-width:0;box-shadow:0 6px 18px rgba(15,23,42,.035);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.cv46-evidence-card:hover{transform:translateY(-1px);border-color:#93c5fd;box-shadow:0 10px 24px rgba(37,99,235,.075)}.cv46-evidence-card header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding-bottom:8px;border-bottom:1px solid #eef2f7}.cv46-evidence-card header strong{font-size:clamp(12px,.85vw,15px);line-height:1.28;color:#0f172a;overflow-wrap:anywhere}.cv46-evidence-card header em{font-style:normal;font-size:9px;font-weight:900;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:4px 7px;white-space:nowrap}.cv46-evidence-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}.cv46-evidence-metric{min-width:0}.cv46-evidence-metric span{display:flex;align-items:center;gap:4px;font-size:clamp(9px,.62vw,10px);font-weight:850;color:#64748b;text-transform:uppercase;letter-spacing:.04em}.cv46-evidence-metric i{display:grid;place-items:center;width:15px;height:15px;border-radius:4px;background:#eff6ff;color:#2563eb;font-style:normal;font-size:8px;flex:0 0 auto}.cv46-evidence-metric strong{display:block;font-size:clamp(11px,.76vw,13px);line-height:1.35;color:#334155;margin-top:3px;overflow-wrap:anywhere}.cv46-empty-evidence{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:14px;padding:14px;color:#475569;font-size:13px;line-height:1.55}
         .cv35-confidence-card{min-height:0!important}.cv39-impact-card{min-height:0!important}.cv39-decision-card>p{max-width:1100px}.cv39-timeline-step p{-webkit-line-clamp:unset!important;overflow:visible!important}
-        .cv47-question-banner{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 14px;margin:12px 0 10px}.cv47-question-banner span{display:block;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}.cv47-question-banner strong{display:block;margin-top:3px;font-size:clamp(13px,.9vw,16px);line-height:1.4;color:#0f172a}.cv46-confidence-drivers>div strong:first-of-type{font-weight:900}.cv46-confidence-drivers>div:has(strong:first-of-type){border-radius:8px}
+        .cv47-ranking-board{display:grid;gap:8px;margin-bottom:10px}.cv47-ranking-row{display:flex;gap:10px;align-items:flex-start;border:1px solid #dbeafe;background:#fff;border-radius:13px;padding:10px 12px}.cv47-ranking-row>b{display:grid;place-items:center;width:23px;height:23px;border-radius:7px;background:#2563eb;color:#fff;font-size:10px;flex:0 0 auto}.cv47-ranking-row strong{display:block;font-size:13px;color:#0f172a}.cv47-ranking-row span{display:block;font-size:11px;color:#64748b;margin-top:2px}.cv47-question-banner{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 14px;margin:12px 0 10px}.cv47-question-banner span{display:block;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}.cv47-question-banner strong{display:block;margin-top:3px;font-size:clamp(13px,.9vw,16px);line-height:1.4;color:#0f172a}.cv46-confidence-drivers>div strong:first-of-type{font-weight:900}.cv46-confidence-drivers>div:has(strong:first-of-type){border-radius:8px}
         @media(max-width:1180px){.cv46-evidence-board{grid-template-columns:repeat(2,minmax(0,1fr))}.cv46-why{grid-template-columns:1fr}.cv46-why ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:760px){.cv46-evidence-board,.cv46-why ol,.cv46-confidence-drivers{grid-template-columns:1fr}.cv46-evidence-metrics{grid-template-columns:1fr 1fr}.cv46-why{padding:15px}.cv39-decision-grid{grid-template-columns:1fr!important}.cv39-decision-card{border-radius:18px;padding:16px!important}.cv35-hero{padding:17px;border-radius:19px}.cv35-hero h2{font-size:clamp(23px,7vw,30px)!important}.cv39-decision-top h2{font-size:clamp(23px,7vw,30px)!important}}
         </style>
@@ -744,6 +742,7 @@ def render_engineering_assistant(
     answered_followup = st.session_state.pop("cv47_followup_answered", None)
     if answered_followup:
         st.success(f'Follow-up answered: "{answered_followup}". The latest assessment below has been regenerated for this question.')
+        st.session_state['cv47_scroll_to_assessment'] = True
 
     thread = get_thread(st.session_state, context)
     current_answer = st.session_state.get("cv35_last_answer")
@@ -757,6 +756,8 @@ def render_engineering_assistant(
     if answer:
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
         _render_response(question=last_question, answer=answer, context=context)
+        if st.session_state.pop("cv47_scroll_to_assessment", False):
+            components.html("""<script>setTimeout(function(){const root=window.parent.document;const el=root.getElementById('cv47-latest');if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}},120);</script>""", height=0)
         _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
