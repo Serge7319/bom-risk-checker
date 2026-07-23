@@ -126,6 +126,9 @@ def _assessment_profile(sections: dict[str, str]) -> dict[str, str]:
         "Inventory":("inventory","Inventory assessment","Protect material availability"),
         "Production Readiness":("production_readiness","Production readiness assessment","Close release blockers"),
         "General Engineering Review":("general","Engineering assessment","Review before release"),
+        "Recommendation Rationale":("recommendation_rationale","Recommendation rationale","Explain the priority"),
+        "Evidence Sensitivity":("evidence_sensitivity","Evidence sensitivity assessment","Identify decision-changing evidence"),
+        "Engineering Owner Action Plan":("owner_action_plan","Engineering owner action plan","Execute the next controlled action"),
     }
     if explicit_intent in intent_map:
         intent,label,status=intent_map[explicit_intent]
@@ -162,10 +165,16 @@ def _evidence_items(evidence: str) -> list[tuple[str, str]]:
 
 
 def _priority_component(context: dict[str, Any], evidence: str = "") -> str:
-    evidence_items = _evidence_items(evidence)
-    if evidence_items and evidence_items[0][0] != "Engineering evidence":
-        return evidence_items[0][0]
     components = list(context.get("components") or [])
+    known = {
+        str(row.get("part_number") or row.get("mpn") or "").strip().upper():
+        str(row.get("part_number") or row.get("mpn") or "").strip()
+        for row in components
+        if str(row.get("part_number") or row.get("mpn") or "").strip()
+    }
+    for title, _ in _evidence_items(evidence):
+        if title.strip().upper() in known:
+            return known[title.strip().upper()]
     components.sort(key=lambda row: int(row.get("risk_score") or 0), reverse=True)
     if components:
         return str(components[0].get("part_number") or components[0].get("mpn") or "")
@@ -465,27 +474,47 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
             )
 
 
+def _queue_follow_up(question: str) -> None:
+    clean = str(question or "").strip()
+    if not clean:
+        return
+    st.session_state["cv36_pending_followup"] = clean
+    st.session_state["cv47_followup_question"] = clean
+    st.session_state["cv47_scroll_pending"] = True
+    _clear_review_state()
+    st.rerun()
+
+
 def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -> None:
     suggestions = follow_up_suggestions(question, answer, context)
-    if not suggestions:
-        return
-    st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
-    cols = st.columns(2)
-    for index, suggestion in enumerate(suggestions):
-        button_label = f"↳  {suggestion}"
-        if cols[index % 2].button(
-            button_label,
-            key=f"cv36_followup_{index}_{abs(hash(suggestion))}",
-            use_container_width=True,
-        ):
-            # The question widget has already been instantiated in this run, so
-            # queue the follow-up and apply it before the widget is created on
-            # the next run. This avoids Streamlit's widget-state mutation error.
-            st.session_state["cv36_pending_followup"] = suggestion
-            st.session_state["cv47_followup_question"] = suggestion
-            _clear_review_state()
-            st.rerun()
+    if suggestions:
+        st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
+        cols = st.columns(2)
+        for index, suggestion in enumerate(suggestions):
+            button_label = f"↳  {suggestion}"
+            if cols[index % 2].button(
+                button_label,
+                key=f"cv36_followup_{index}_{abs(hash(suggestion))}",
+                use_container_width=True,
+            ):
+                _queue_follow_up(suggestion)
 
+    st.markdown('<div class="cv35-section-label">Ask a different follow-up</div>', unsafe_allow_html=True)
+    st.caption("Ask any new engineering question about this assessment or the BOM. You are not limited to the suggested questions.")
+    with st.form("cv47_custom_followup_form", clear_on_submit=True):
+        custom = st.text_area(
+            "Your follow-up question",
+            key="cv47_custom_followup_text",
+            height=76,
+            placeholder="For example: How would a 10-week delivery commitment change this recommendation?",
+            label_visibility="collapsed",
+        )
+        submit_custom = st.form_submit_button("Ask follow-up", type="primary")
+    if submit_custom:
+        if str(custom or "").strip():
+            _queue_follow_up(custom)
+        else:
+            st.warning("Enter a follow-up question before submitting.")
 
 def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> None:
     sections = _parse_report(answer)
@@ -718,13 +747,17 @@ def render_engineering_assistant(
             base_url=_secret("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         )
         st.session_state.pop("cv35_last_error", None)
-        with st.status("Cadivor is reviewing the saved engineering evidence...", expanded=False) as progress:
+        st.markdown('<div id="cv47-processing-anchor"></div>', unsafe_allow_html=True)
+        if st.session_state.pop("cv47_scroll_pending", False):
+            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
+        with st.status("Cadivor is reviewing the saved engineering evidence...", expanded=True) as progress:
             try:
                 response = api.ask(question=question, context=context, history=compact_history(thread))
                 consume_ai_credits(st.session_state, current_user, action="question")
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = question
                 st.session_state["cv35_provider_connected"] = api.configured
+                st.session_state["cv47_scroll_to_assessment"] = True
                 if st.session_state.pop("cv47_followup_question", None):
                     st.session_state["cv47_followup_answered"] = question
                 thread = append_turn(
@@ -757,7 +790,7 @@ def render_engineering_assistant(
         last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
         _render_response(question=last_question, answer=answer, context=context)
         if st.session_state.pop("cv47_scroll_to_assessment", False):
-            components.html("""<script>setTimeout(function(){const root=window.parent.document;const el=root.getElementById('cv47-latest');if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}},120);</script>""", height=0)
+            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;let n=0;function go(){const e=d.getElementById('cv47-latest');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-82),behavior:n>0?'smooth':'auto'});}if(n++<8)setTimeout(go,140);}go();</script>""", height=0)
         _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
