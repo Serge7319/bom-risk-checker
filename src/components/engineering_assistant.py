@@ -599,6 +599,90 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
         else:
             st.warning("Enter a follow-up question before submitting.")
 
+
+def _first_sentence(text: str) -> str:
+    plain = _plain_markdown(text).strip()
+    if not plain:
+        return "Cadivor completed the engineering review."
+    match = re.search(r"^(.+?[.!?])(?:\s|$)", plain)
+    return (match.group(1) if match else plain).strip()
+
+
+def _conversational_headline(intent: str, assessment: str, priority_part: str) -> str:
+    plain = _plain_markdown(assessment).strip()
+    lower = plain.lower()
+    if intent == "production_readiness":
+        if any(token in lower for token in ("not ready", "only after", "close", "blocker", "before release")):
+            return "Not ready yet."
+        if "ready with" in lower or "conditional" in lower:
+            return "Ready with conditions."
+        return "Production readiness requires review."
+    if intent == "supplier_qualification":
+        if any(token in lower for token in ("cannot recommend", "no supplier", "no named", "missing")):
+            return "No supplier can be recommended yet."
+        return f"Qualify {priority_part} first." if priority_part else "A supplier qualification priority is available."
+    if intent == "evidence_sensitivity":
+        return "This evidence is most likely to change the recommendation."
+    if intent == "evidence_gap_priority":
+        return "Close the highest-impact evidence gap first."
+    if intent == "procurement":
+        return f"Procurement should address {priority_part} first." if priority_part else "Procurement action is required."
+    if intent == "schedule_resilience":
+        return f"{priority_part} creates the greatest schedule exposure." if priority_part else "Schedule exposure requires review."
+    if intent == "lifecycle":
+        return f"{priority_part} has the leading lifecycle concern." if priority_part else "Lifecycle exposure requires review."
+    if intent == "inventory":
+        return f"{priority_part} has the most urgent inventory concern." if priority_part else "Inventory exposure requires review."
+    if intent == "recommendation_rationale":
+        return f"{priority_part} is ranked first for a specific evidence-based reason." if priority_part else "The priority is driven by the available evidence."
+    if priority_part:
+        return f"Review {priority_part} first."
+    return "Cadivor cannot make a reliable component recommendation yet."
+
+
+def _next_action(actions: str, workflow_text: str) -> str:
+    for source in (actions, workflow_text):
+        for line in str(source or "").splitlines():
+            clean = _plain_markdown(line.lstrip("-* 0123456789.").strip())
+            if clean:
+                return _first_sentence(clean)
+    return "Review the supporting evidence and assign an accountable engineering owner."
+
+
+def _render_conversational_answer(*, intent: str, assessment: str, priority_part: str,
+                                  confidence_score: int, drivers: list[str],
+                                  actions: str, workflow_text: str) -> None:
+    headline = _conversational_headline(intent, assessment, priority_part)
+    answer_text = _plain_markdown(assessment).strip() or "The saved evidence is not sufficient for a reliable conclusion."
+    reason_items = [str(item).strip() for item in drivers if str(item).strip()][:4]
+    if not reason_items:
+        reason_items = [answer_text]
+    reasons_html = "".join(
+        f'<li><span>✓</span><p>{html.escape(reason)}</p></li>' for reason in reason_items
+    )
+    next_action = _next_action(actions, workflow_text)
+    st.markdown(
+        f"""
+        <section class="cv49-answer-card">
+          <div class="cv49-answer-kicker">Cadivor Answer</div>
+          <div class="cv49-answer-grid">
+            <div class="cv49-answer-main">
+              <h2>{html.escape(headline)}</h2>
+              <p>{html.escape(answer_text)}</p>
+              <ul>{reasons_html}</ul>
+            </div>
+            <aside class="cv49-answer-side">
+              <span>Confidence</span><strong>{confidence_score}%</strong>
+              <div class="cv49-answer-track"><i style="width:{max(0,min(100,confidence_score))}%"></i></div>
+              <span>Recommended next action</span><p>{html.escape(next_action)}</p>
+            </aside>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> None:
     sections = _parse_report(answer)
     profile = _assessment_profile(sections)
@@ -623,6 +707,16 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     st.markdown(
         f'<div id="cv47-latest" tabindex="-1" data-cadivor-assessment-anchor="true" style="scroll-margin-top:92px;height:1px"></div><div class="cv47-question-banner"><span>Latest engineering question</span><strong>{html.escape(question)}</strong></div>',
         unsafe_allow_html=True,
+    )
+
+    _render_conversational_answer(
+        intent=intent,
+        assessment=assessment_body,
+        priority_part=priority_part,
+        confidence_score=confidence_score,
+        drivers=recommendation_drivers,
+        actions=actions,
+        workflow_text=workflow_text,
     )
 
     kpis = _intent_kpis(context, intent=intent, priority_part=priority_part, confidence_score=confidence_score, complete=complete, total=total)
@@ -773,6 +867,16 @@ def render_engineering_assistant(
         @media(max-width:1100px){.cv35-evidence-card{padding:14px!important}.cv39-decision-card{padding:18px!important}.cv39-timeline-step{min-height:auto!important}}
         @media(max-width:900px){.cv38-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv38-evidence-grid{grid-template-columns:1fr}.cv39-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv39-decision-top{display:block}.cv39-status-badge{display:inline-block;margin-bottom:8px}.cv39-timeline-step{min-height:auto}.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto!important}}
 
+        /* Sprint 49 — conversational answer-first experience */
+        .cv49-answer-card{margin:12px 0 16px;border:1px solid #93c5fd;border-radius:22px;background:linear-gradient(135deg,#eff6ff 0%,#ffffff 58%,#f8fafc 100%);padding:22px 24px;box-shadow:0 12px 34px rgba(37,99,235,.08)}
+        .cv49-answer-kicker{font-size:clamp(10px,.72vw,12px);font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb;margin-bottom:10px}
+        .cv49-answer-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.45fr);gap:26px;align-items:start}
+        .cv49-answer-main h2{margin:0 0 8px;font-size:clamp(25px,1.8vw,34px);line-height:1.12;letter-spacing:-.035em;color:#0f172a}
+        .cv49-answer-main>p{margin:0 0 13px;font-size:clamp(14px,.96vw,16px);line-height:1.62;color:#334155;font-weight:610}
+        .cv49-answer-main ul{list-style:none;margin:0;padding:0;display:grid;gap:7px}.cv49-answer-main li{display:flex;gap:9px;align-items:flex-start}.cv49-answer-main li span{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:950;flex:0 0 auto}.cv49-answer-main li p{margin:0;font-size:clamp(12px,.82vw,14px);line-height:1.48;color:#475569;font-weight:650}
+        .cv49-answer-side{border-left:1px solid #bfdbfe;padding-left:22px;display:grid;gap:6px}.cv49-answer-side span{font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#64748b}.cv49-answer-side strong{font-size:clamp(28px,2vw,38px);line-height:1;color:#0f172a}.cv49-answer-side>p{margin:1px 0 0;font-size:clamp(12px,.82vw,14px);line-height:1.48;color:#334155;font-weight:700}.cv49-answer-track{height:7px;border-radius:999px;background:#dbeafe;overflow:hidden;margin:2px 0 12px}.cv49-answer-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2563eb,#60a5fa)}
+        @media(max-width:900px){.cv49-answer-grid{grid-template-columns:1fr}.cv49-answer-side{border-left:0;border-top:1px solid #bfdbfe;padding-left:0;padding-top:15px}}
+
         /* Sprint 46 — explainability, compact evidence, responsive readability */
         .cv46-why{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:18px;border:1px solid #c7d2fe;background:linear-gradient(135deg,#f8faff,#eef4ff);border-radius:20px;padding:18px 20px;margin:10px 0 14px}.cv46-why>div>span{font-size:clamp(10px,.7vw,12px);font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb}.cv46-why h3{font-size:clamp(18px,1.35vw,24px);line-height:1.2;letter-spacing:-.025em;color:#0f172a;margin:5px 0 7px}.cv46-why>div>p{font-size:clamp(13px,.88vw,15px);line-height:1.62;color:#475569;margin:0}.cv46-why ol{list-style:none;padding:0;margin:0;display:grid;gap:7px}.cv46-why li{display:flex;gap:9px;align-items:flex-start;border:1px solid #dbeafe;background:rgba(255,255,255,.86);border-radius:11px;padding:8px 10px}.cv46-why li span{display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:#2563eb;color:#fff;font-size:10px;font-weight:950;flex:0 0 auto}.cv46-why li p{margin:1px 0 0;font-size:clamp(11px,.76vw,13px);line-height:1.42;color:#334155;font-weight:720}
         .cv46-confidence-drivers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}.cv46-confidence-drivers>div{border-top:1px solid #e2e8f0;padding-top:7px;min-width:0}.cv46-confidence-drivers span{display:block;font-size:clamp(9px,.62vw,10px);font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:#64748b}.cv46-confidence-drivers strong{display:block;font-size:clamp(12px,.84vw,14px);color:#0f172a;margin:2px 0}.cv46-confidence-drivers small{display:block;font-size:clamp(9px,.62vw,11px);line-height:1.35;color:#64748b}
@@ -891,14 +995,27 @@ def render_engineering_assistant(
                 st.session_state["cv35_last_error"] = exc
                 progress.update(label="Cadivor could not complete the review", state="error")
             except Exception as exc:
-                st.session_state["cv35_last_error"] = EngineeringAIError(
-                    "Cadivor could not normalize all saved component evidence for this question. "
-                    "The previous assessment remains unchanged; refresh the BOM evidence and try again."
-                )
+                # A response may already have been generated and saved before a
+                # secondary operation (history persistence, cleanup, etc.) fails.
+                # Do not show a false red failure banner when the visible answer
+                # belongs to the submitted question. Preserve the successful
+                # answer, log a quiet diagnostic, and complete the review.
+                saved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
+                saved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
+                if saved_answer and saved_question == submitted_question:
+                    st.session_state.pop("cv35_last_error", None)
+                    st.session_state["cv49_nonfatal_warning"] = repr(exc)
+                    st.session_state["cv47_scroll_to_assessment"] = True
+                    progress.update(label="Engineering review complete", state="complete")
+                else:
+                    st.session_state["cv35_last_error"] = EngineeringAIError(
+                        "Cadivor could not complete this assessment from the saved evidence. "
+                        "The previous assessment remains available; refresh the BOM evidence and try again."
+                    )
+                    progress.update(label="Cadivor safely stopped the review", state="error")
                 st.session_state.pop("cv4801_followup_inflight", None)
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
-                progress.update(label="Cadivor safely stopped the review", state="error")
 
     answered_followup = st.session_state.pop("cv47_followup_answered", None)
     if answered_followup:
