@@ -668,6 +668,72 @@ def _response_type_meta(intent: str) -> tuple[str, str]:
     return mapping.get(intent, ("Engineering response", "engineering"))
 
 
+def _render_response_scroll_anchor(*, response_token: str) -> None:
+    """Mount a self-locating scroll controller at the exact response start.
+
+    Searching the parent document by a reused HTML id became unreliable after
+    Streamlit began retaining and replacing conversation fragments.  This
+    controller instead scrolls to the Streamlit element that owns its own iframe,
+    so it cannot accidentally select an older response.
+    """
+    safe_token = html.escape(str(response_token or "response"))
+    components.html(
+        f"""
+        <script data-cadivor-response-token="{safe_token}">
+        (function(){{
+          const parentWindow = window.parent;
+          const parentDocument = parentWindow.document;
+          const frame = window.frameElement;
+          if (!frame) return;
+          const host = frame.closest('[data-testid="stElementContainer"]') || frame.parentElement || frame;
+          const OFFSET = 72;
+          let attempts = 0;
+          let stable = 0;
+          let observer = null;
+
+          function blurActiveInput(){{
+            try {{
+              const active = parentDocument.activeElement;
+              if (active && typeof active.blur === 'function') active.blur();
+            }} catch (_) {{}}
+          }}
+
+          function place(){{
+            attempts += 1;
+            if (!host || host.getClientRects().length === 0) {{
+              if (attempts < 60) parentWindow.setTimeout(place, 100);
+              return;
+            }}
+            blurActiveInput();
+            const desired = Math.max(0, host.getBoundingClientRect().top + parentWindow.scrollY - OFFSET);
+            parentWindow.scrollTo({{top: desired, behavior: attempts <= 2 ? 'smooth' : 'auto'}});
+            const actualTop = Math.round(host.getBoundingClientRect().top);
+            stable = Math.abs(actualTop - OFFSET) <= 18 ? stable + 1 : 0;
+            if (stable >= 3 || attempts >= 60) {{
+              if (observer) observer.disconnect();
+              return;
+            }}
+            parentWindow.setTimeout(place, attempts < 12 ? 100 : 180);
+          }}
+
+          try {{
+            observer = new MutationObserver(function(){{
+              parentWindow.requestAnimationFrame(place);
+            }});
+            observer.observe(parentDocument.body, {{childList:true, subtree:true, attributes:true}});
+          }} catch (_) {{}}
+
+          parentWindow.requestAnimationFrame(function(){{
+            parentWindow.requestAnimationFrame(place);
+          }});
+          [180, 350, 650, 1000, 1600, 2400, 3400].forEach(ms => parentWindow.setTimeout(place, ms));
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _render_conversation_exchange(*, question: str, intent: str) -> None:
     response_label, response_class = _response_type_meta(intent)
     st.markdown(
@@ -720,7 +786,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
     )
 
 
-def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> None:
+def _render_response(*, question: str, answer: str, context: dict[str, Any], auto_scroll: bool = False) -> None:
     sections = _parse_report(answer)
     profile = _assessment_profile(sections)
     assessment = profile["assessment"]
@@ -740,6 +806,10 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     complete, total, progress = _review_progress(context)
     explanation, recommendation_drivers = _recommendation_explanation(assessment_body, evidence, priority_part)
     confidence_drivers = _confidence_drivers(context, evidence)
+
+    if auto_scroll:
+        response_token = f"{abs(hash((question, answer))) :x}"
+        _render_response_scroll_anchor(response_token=response_token)
 
     _render_conversation_exchange(question=question, intent=intent)
 
@@ -1078,58 +1148,11 @@ def render_engineering_assistant(
         last_question = _normalize_submitted_question(st.session_state.get("cv35_last_question") or "Engineering review")
         question_changed = st.session_state.get("cv50_last_scrolled_question") != last_question
         should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False) or question_changed
-        _render_response(question=last_question, answer=answer, context=context)
+        _render_response(question=last_question, answer=answer, context=context, auto_scroll=should_scroll)
         if should_scroll:
             st.session_state["cv50_last_scrolled_question"] = last_question
-            # Sprint 47.4: keep a live controller mounted until Streamlit's DOM
-            # has settled. It observes the parent document, waits for the final
-            # assessment anchor to have layout, then verifies the resulting
-            # viewport position instead of assuming a timed scroll succeeded.
-            components.html("""
-            <script>
-            (function(){
-              const w = window.parent;
-              const d = w.document;
-              const OFFSET = 70;
-              let attempts = 0;
-              let stable = 0;
-
-              function getTarget(){
-                return d.getElementById('cv50-conversation-start') || d.querySelector('[data-cadivor-conversation-start="true"]');
-              }
-              function clearFocus(){
-                try {
-                  const active = d.activeElement;
-                  if (active && typeof active.blur === 'function') active.blur();
-                  d.querySelectorAll('textarea:focus,input:focus,button:focus').forEach(el => el.blur());
-                } catch (_) {}
-              }
-              function place(){
-                attempts += 1;
-                const target = getTarget();
-                const answer = d.querySelector('.cv49-answer-card');
-                if (!target || !answer || target.getClientRects().length === 0) {
-                  if (attempts < 40) w.setTimeout(place, 100);
-                  return;
-                }
-                clearFocus();
-                const desired = Math.max(0, target.getBoundingClientRect().top + w.pageYOffset - OFFSET);
-                w.scrollTo({top: desired, behavior: 'auto'});
-                d.documentElement.scrollTop = desired;
-                d.body.scrollTop = desired;
-                const top = Math.round(target.getBoundingClientRect().top);
-                if (Math.abs(top - OFFSET) <= 16) stable += 1; else stable = 0;
-                if (stable >= 2 || attempts >= 40) {
-                  try { target.focus({preventScroll:true}); } catch (_) {}
-                  return;
-                }
-                w.setTimeout(place, attempts < 12 ? 110 : 180);
-              }
-              w.requestAnimationFrame(function(){ w.requestAnimationFrame(place); });
-              [250,500,850,1300,2000].forEach(ms => w.setTimeout(place, ms));
-            })();
-            </script>
-            """, height=1)
+            # Sprint 50.1 scrolls from the exact response-start iframe mounted
+            # inside _render_response; no document-wide id lookup is required.
         _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(
