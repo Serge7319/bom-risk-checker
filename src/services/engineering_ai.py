@@ -453,10 +453,10 @@ def _s473_route(question: str, history: list[dict[str, str]] | None = None) -> t
 
 
 def _s473_score(row: dict[str, Any], domain: str) -> float:
-    risk = float(row.get("risk_score") or 0)
-    suppliers = int(row.get("supplier_count") or 0)
-    stock = int(row.get("stock_available") or 0)
-    lead = float(row.get("lead_time_weeks") or 0)
+    risk = _safe_float(row.get("risk_score"), 0.0)
+    suppliers = _safe_int(row.get("supplier_count"), 0)
+    stock = _safe_int(row.get("stock_available"), 0)
+    lead = _safe_float(row.get("lead_time_weeks"), 0.0)
     lifecycle = str(row.get("lifecycle_status") or row.get("lifecycle") or "").lower()
     life_penalty = 65 if any(x in lifecycle for x in ("obsolete", "eol", "nrnd", "replacement", "not recommended")) else 0
     if domain == "Procurement": return lead * 3 + max(0, 1000 - stock) / 50 + max(0, 3 - suppliers) * 20 + risk
@@ -482,8 +482,8 @@ def _s473_gaps(context: dict[str, Any], components: list[dict[str, Any]]) -> lis
             "Without part-level risk, lifecycle, inventory, lead-time, and source data, Cadivor cannot form or test a component recommendation.",
         ))
     counts = [
-        ("Lead-time evidence", sum(float(r.get("lead_time_weeks") or 0) <= 0 for r in components), "schedule and delivery priority"),
-        ("Authorized-source evidence", sum(int(r.get("supplier_count") or 0) <= 0 for r in components), "supplier concentration and sourcing priority"),
+        ("Lead-time evidence", sum(_safe_float(r.get("lead_time_weeks"), 0.0) <= 0 for r in components), "schedule and delivery priority"),
+        ("Authorized-source evidence", sum(_safe_int(r.get("supplier_count"), 0) <= 0 for r in components), "supplier concentration and sourcing priority"),
         ("Lifecycle verification", sum(not str(r.get("lifecycle_status") or r.get("lifecycle") or "").strip() for r in components), "obsolescence and migration urgency"),
         ("Inventory evidence", sum(r.get("stock_available") in (None, "") for r in components), "shortage and material coverage"),
     ]
@@ -497,10 +497,10 @@ def _s473_gaps(context: dict[str, Any], components: list[dict[str, Any]]) -> lis
 
 
 def _s473_driver(row: dict[str, Any], domain: str) -> tuple[str, str]:
-    risk = int(row.get("risk_score") or 0)
-    suppliers = int(row.get("supplier_count") or 0)
-    stock = int(row.get("stock_available") or 0)
-    lead = float(row.get("lead_time_weeks") or 0)
+    risk = _safe_int(row.get("risk_score"), 0)
+    suppliers = _safe_int(row.get("supplier_count"), 0)
+    stock = _safe_int(row.get("stock_available"), 0)
+    lead = _safe_float(row.get("lead_time_weeks"), 0.0)
     life = str(row.get("lifecycle_status") or row.get("lifecycle") or "Unknown")
     candidates: list[tuple[float, str, str]] = []
     if domain in {"Schedule Resilience", "Procurement", "Component Risk", "General Engineering Review"} and lead > 0:
@@ -519,9 +519,28 @@ def _s473_driver(row: dict[str, Any], domain: str) -> tuple[str, str]:
 
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None or value == "":
+            return default
+        result = float(value)
+        if result != result or result in (float("inf"), float("-inf")):
+            return default
+        return result
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(round(_safe_float(value, float(default))))
+    except Exception:
+        return default
+
+
 def _s48_relative_priorities(rows: list[dict[str, Any]], domain: str) -> dict[int, int]:
     """Normalize domain scores so the ranking communicates relative priority without arbitrary 100-point ties."""
-    raw = [max(0.0, float(_s473_score(row, domain))) for row in rows]
+    raw = [max(0.0, _safe_float(_s473_score(row, domain), 0.0)) for row in rows]
     if not raw:
         return {}
     high = max(raw) or 1.0
@@ -680,11 +699,23 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
     elif operation == "Explanation":
         intent, title = "Recommendation Rationale", f"Why {top} is ranked first"
         driver, detail = _s473_driver(top_row, domain) if top_row else ("Evidence gap", "no component evidence is available")
-        recorded = int(top_row.get("risk_score") or 0) if top_row else 0
-        relative = relative(top_row) if top_row else 0
-        direct = f"**{top}** is ranked first primarily because of **{driver.lower()}**: {detail}. Its recorded component risk is **{recorded}/100**, while its relative assessment priority is **{relative}/100** compared with the other parts in this BOM."
-        ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {relative(r)}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
-        evidence = "\n".join(f"- **{_part_name(r)}** — primary driver: {_s473_driver(r, domain)[0]}; evidence: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {relative(r)}/100." for r in ranked)
+        recorded = _safe_int(top_row.get("risk_score"), 0) if top_row else 0
+        top_relative_priority = relative(top_row) if top_row else 0
+        direct = f"**{top}** is ranked first primarily because of **{driver.lower()}**: {detail}. Its recorded component risk is **{recorded}/100**, while its relative assessment priority is **{top_relative_priority}/100** compared with the other parts in this BOM."
+        ranking_rows = []
+        evidence_rows = []
+        for i, row in enumerate(ranked, 1):
+            try:
+                row_driver, row_detail = _s473_driver(row, domain)
+                row_part = _part_name(row)
+                row_priority = relative(row)
+                row_risk = _safe_int(row.get("risk_score"), 0)
+                ranking_rows.append(f"- **#{i} {row_part}** — {row_driver}: {row_detail}; relative assessment priority {row_priority}/100.")
+                evidence_rows.append(f"- **{row_part}** — primary driver: {row_driver}; evidence: {row_detail}; recorded component risk: {row_risk}/100; relative assessment priority: {row_priority}/100.")
+            except Exception:
+                continue
+        ranking = "\n".join(ranking_rows) or "- No valid component ranking is available from the saved evidence."
+        evidence = "\n".join(evidence_rows) or "- The saved component evidence could not be normalized into a reliable ranking."
         actions = f"Verify the {driver.lower()} evidence for {top}. If it is stale or incorrect, refresh the data and rerun the ranking before mitigation."
         workflow = [
             ("Inspect Source Evidence", f"Review the authoritative evidence supporting the {driver.lower()} finding for {top}."),
@@ -757,7 +788,22 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                 "Production Readiness": "- **Release-blocker ranking unavailable** — component risk and release evidence must be refreshed.",
             }
             ranking = missing_rankings.get(domain, "- **Component ranking unavailable** — structured component evidence must be refreshed.")
-        evidence = "\n".join(f"- **{_part_name(r)}** — risk category: {_s473_driver(r, domain)[0]}; severity: {'High' if _s473_score(r, domain) >= 70 else 'Medium' if _s473_score(r, domain) >= 35 else 'Low'}; primary driver: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {relative(r)}/100; suppliers: {int(r.get('supplier_count') or 0)}; inventory: {int(r.get('stock_available') or 0):,}; lead time: {float(r.get('lead_time_weeks') or 0):g} weeks; lifecycle: {str(r.get('lifecycle_status') or r.get('lifecycle') or 'Unknown')}." for r in ranked)
+        evidence_rows = []
+        for row in ranked:
+            try:
+                row_score = _s473_score(row, domain)
+                row_driver, row_detail = _s473_driver(row, domain)
+                severity = "High" if row_score >= 70 else "Medium" if row_score >= 35 else "Low"
+                evidence_rows.append(
+                    f"- **{_part_name(row)}** — risk category: {row_driver}; severity: {severity}; "
+                    f"primary driver: {row_detail}; recorded component risk: {_safe_int(row.get('risk_score'), 0)}/100; "
+                    f"relative assessment priority: {relative(row)}/100; suppliers: {_safe_int(row.get('supplier_count'), 0)}; "
+                    f"inventory: {_safe_int(row.get('stock_available'), 0):,}; lead time: {_safe_float(row.get('lead_time_weeks'), 0.0):g} weeks; "
+                    f"lifecycle: {str(row.get('lifecycle_status') or row.get('lifecycle') or 'Unknown')}."
+                )
+            except Exception:
+                continue
+        evidence = "\n".join(evidence_rows) or "- No valid component evidence could be normalized for this assessment."
         if not evidence:
             missing_evidence = {
                 "Procurement": "- **Procurement evidence unavailable** — component stock, lead time, demand, pricing, and authorized-source records are missing.",
@@ -839,7 +885,7 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
     posture = str(summary.get("release_posture") or "Focused engineering review")
     priority = list(summary.get("top_risks") or [])
     if not priority:
-        priority = sorted(components, key=lambda r: int(r.get("risk_score") or 0), reverse=True)[:3]
+        priority = sorted(components, key=lambda r: _safe_int(r.get("risk_score"), 0), reverse=True)[:3]
 
     named_component = _mentioned_component(resolved_question, components)
     followup_text = str(question or "").strip().lower()
