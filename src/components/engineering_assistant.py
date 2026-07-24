@@ -347,6 +347,34 @@ def _assessment_kpis(context: dict[str, Any], confidence_score: int) -> list[tup
 
 
 
+def _intent_kpis(context: dict[str, Any], *, intent: str, priority_part: str, confidence_score: int, complete: int, total: int) -> list[tuple[str, str]]:
+    components = list(context.get("components") or [])
+    alternatives = list(context.get("alternatives") or context.get("saved_alternatives") or [])
+    decisions = list(context.get("decisions") or context.get("engineering_decisions") or [])
+    monitoring = list(context.get("monitoring") or [])
+    priority = next((r for r in components if str(r.get("part_number") or r.get("mpn") or "").upper() == str(priority_part).upper()), {})
+    suppliers = int(priority.get("supplier_count") or 0) if priority else 0
+    stock = int(priority.get("stock_available") or 0) if priority else 0
+    lead = float(priority.get("lead_time_weeks") or 0) if priority else 0
+    lifecycle = str(priority.get("lifecycle_status") or priority.get("lifecycle") or "Unknown") if priority else "Unknown"
+    low_source = sum(1 for r in components if int(r.get("supplier_count") or 0) <= 1)
+    lifecycle_exposed = sum(1 for r in components if any(x in str(r.get("lifecycle_status") or r.get("lifecycle") or "").lower() for x in ("obsolete","eol","nrnd","replacement","not recommended")))
+    long_lead = sum(1 for r in components if float(r.get("lead_time_weeks") or 0) >= 12)
+    no_stock = sum(1 for r in components if int(r.get("stock_available") or 0) <= 0)
+    maps = {
+        "procurement": [("Purchasing priority", priority_part or "Evidence required"), ("Recorded stock", f"{stock:,}"), ("Lead time", f"{lead:g} weeks"), ("Source coverage", f"{suppliers} source(s)")],
+        "supplier_qualification": [("Qualification target", priority_part or "No candidate"), ("Candidate sources", str(suppliers)), ("Qualified alternatives", str(len(alternatives))), ("Supplier confidence", f"{confidence_score}%")],
+        "single_source": [("Highest exposure", priority_part or "Evidence required"), ("Single-source parts", str(low_source)), ("Source coverage", f"{suppliers} source(s)"), ("Mitigation confidence", f"{confidence_score}%")],
+        "schedule_resilience": [("Critical-path part", priority_part or "Evidence required"), ("Lead time", f"{lead:g} weeks"), ("Long-lead parts", str(long_lead)), ("Schedule confidence", f"{confidence_score}%")],
+        "lifecycle": [("Migration priority", priority_part or "Evidence required"), ("Lifecycle status", lifecycle), ("Exposed parts", str(lifecycle_exposed)), ("Lifecycle confidence", f"{confidence_score}%")],
+        "inventory": [("Lowest-coverage part", priority_part or "Evidence required"), ("Recorded stock", f"{stock:,}"), ("No-stock parts", str(no_stock)), ("Inventory confidence", f"{confidence_score}%")],
+        "production_readiness": [("Leading blocker", priority_part or "Evidence required"), ("Open decisions", str(max(0, len(components)-len(decisions)))), ("Evidence coverage", f"{confidence_score}%"), ("Release checks", f"{complete} of {total}")],
+        "evidence_sensitivity": [("Decision affected", priority_part or "BOM release"), ("Evidence coverage", f"{confidence_score}%"), ("Saved decisions", str(len(decisions))), ("Active monitoring", str(len(monitoring)))],
+        "evidence_gap_priority": [("Evidence target", priority_part or "BOM evidence"), ("Evidence coverage", f"{confidence_score}%"), ("Qualified alternatives", str(len(alternatives))), ("Saved decisions", str(len(decisions)))],
+    }
+    return maps.get(intent, [("Priority component", priority_part or "No priority component"), ("BOM components", str(len(components))), ("Decision confidence", f"{confidence_score}%"), ("Review progress", f"{complete} of {total}")])
+
+
 def _decision_summary(context: dict[str, Any], assessment: str, confidence_score: int, priority_part: str, *, intent: str = "general", preferred_status: str = "") -> dict[str, str]:
     analysis = context.get("analysis") or {}
     summary = context.get("summary") or {}
@@ -439,28 +467,34 @@ def _render_evidence_cards(evidence: str) -> None:
     st.markdown(f'<div class="cv46-evidence-board">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
-def _render_quick_actions(context: dict[str, Any], priority_part: str) -> None:
+def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent: str = "general") -> None:
     analysis = context.get("analysis") or {}
     analysis_id = str(analysis.get("analysis_id") or "")
     if not analysis_id:
         return
     st.markdown('<div class="cv35-section-label">Continue the workflow</div>', unsafe_allow_html=True)
-    cols = st.columns(4)
-    component_url = _href(
-        "Analysis Details",
-        analysis_id=analysis_id,
-        tab="components",
-        component=priority_part,
-        focus="component-risk",
-    )
+    part_label = priority_part or "component"
+    component_url = _href("Analysis Details", analysis_id=analysis_id, tab="components", component=priority_part, focus="component-risk")
     alternative_url = _href("Alternative Finder", original_part=priority_part, analysis_id=analysis_id)
     monitoring_url = _href("Monitoring", mpn=priority_part, analysis_id=analysis_id)
     decision_url = _href("Engineering Decisions", analysis_id=analysis_id, part_number=priority_part)
-    part_label = priority_part or "component"
-    cols[0].link_button(f"Open {part_label}", component_url, use_container_width=True)
-    cols[1].link_button(f"Find {part_label} alternative", alternative_url, use_container_width=True)
-    cols[2].link_button(f"Monitor {part_label}", monitoring_url, use_container_width=True)
-    cols[3].link_button("Create engineering record", decision_url, use_container_width=True)
+    procurement_url = _href("Procurement Advisor", analysis_id=analysis_id, part_number=priority_part)
+
+    action_sets = {
+        "procurement": [("Open procurement review", procurement_url), (f"Review {part_label}", component_url), (f"Find {part_label} alternative", alternative_url), ("Record sourcing decision", decision_url)],
+        "supplier_qualification": [("Open supplier review", procurement_url), (f"Review {part_label}", component_url), (f"Find qualified alternative", alternative_url), ("Record supplier approval", decision_url)],
+        "single_source": [(f"Review {part_label}", component_url), ("Find independent backup", alternative_url), (f"Monitor {part_label}", monitoring_url), ("Record source mitigation", decision_url)],
+        "schedule_resilience": [(f"Review {part_label}", component_url), ("Find recovery source", alternative_url), (f"Monitor delivery risk", monitoring_url), ("Record recovery plan", decision_url)],
+        "lifecycle": [(f"Review {part_label}", component_url), ("Find lifecycle successor", alternative_url), (f"Monitor lifecycle", monitoring_url), ("Record migration decision", decision_url)],
+        "inventory": [("Open procurement review", procurement_url), (f"Review {part_label}", component_url), ("Find replenishment option", alternative_url), (f"Monitor stock", monitoring_url)],
+        "production_readiness": [(f"Review blocker", component_url), ("Resolve alternative path", alternative_url), ("Monitor release blocker", monitoring_url), ("Record release decision", decision_url)],
+        "evidence_sensitivity": [(f"Open evidence source", component_url), ("Validate alternate evidence", alternative_url), ("Monitor evidence changes", monitoring_url), ("Update engineering record", decision_url)],
+        "evidence_gap_priority": [(f"Open evidence source", component_url), ("Collect alternate evidence", alternative_url), ("Monitor evidence closure", monitoring_url), ("Record evidence decision", decision_url)],
+    }
+    actions = action_sets.get(intent, [(f"Open {part_label}", component_url), (f"Find {part_label} alternative", alternative_url), (f"Monitor {part_label}", monitoring_url), ("Create engineering record", decision_url)])
+    cols = st.columns(4)
+    for col, (label, url) in zip(cols, actions):
+        col.link_button(label, url, use_container_width=True)
 
 
 
@@ -492,6 +526,13 @@ def _queue_follow_up(question: str) -> None:
     st.session_state["cv36_pending_followup"] = clean
     st.session_state["cv47_followup_question"] = clean
     st.session_state["cv47_scroll_pending"] = True
+    # Preserve the authenticated workspace across the rerun. Streamlit normally
+    # keeps these values, but an explicit snapshot prevents a transient follow-up
+    # rerun from falling through to the public landing route.
+    st.session_state["cv48_auth_snapshot"] = {
+        key: st.session_state.get(key) for key in ("user", "access_token", "refresh_token")
+        if st.session_state.get(key) is not None
+    }
     _clear_review_state()
     st.rerun()
 
@@ -553,6 +594,17 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
         unsafe_allow_html=True,
     )
 
+    kpis = _intent_kpis(context, intent=intent, priority_part=priority_part, confidence_score=confidence_score, complete=complete, total=total)
+    kpi_html = "".join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>' for label, value in kpis)
+    progress_label = {
+        "production_readiness": "Release-readiness review",
+        "procurement": "Procurement review",
+        "supplier_qualification": "Supplier qualification review",
+        "schedule_resilience": "Schedule-resilience review",
+        "lifecycle": "Lifecycle review",
+        "inventory": "Inventory review",
+        "evidence_sensitivity": "Evidence-confidence review",
+    }.get(intent, "Engineering review progress")
     st.markdown(
         f"""
         <div class="cv39-decision-card {decision['tone']}">
@@ -560,15 +612,10 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
             <div><div class="cv35-answer-label">{html.escape(profile["label"])}</div><h2>{html.escape(decision['status'])}</h2></div>
             <span class="cv39-status-badge">{html.escape(decision['risk'])} risk</span>
           </div>
-          <div class="cv39-decision-grid">
-            <div><span>Priority component</span><strong>{html.escape(decision['priority'])}</strong></div>
-            <div><span>BOM health</span><strong>{html.escape(decision['health'])}</strong></div>
-            <div><span>Decision confidence</span><strong>{html.escape(decision['confidence'])}</strong></div>
-            <div><span>Review progress</span><strong>{complete} of {total}</strong></div>
-          </div>
+          <div class="cv39-decision-grid">{kpi_html}</div>
           <p>{html.escape(decision['assessment'])}</p>
         </div>
-        <div class="cv39-progress-wrap"><div><strong>Engineering review progress</strong><span>{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>
+        <div class="cv39-progress-wrap"><div><strong>{html.escape(progress_label)}</strong><span>{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>
         """,
         unsafe_allow_html=True,
     )
@@ -634,7 +681,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
             f'<div class="cv39-timeline-step"><b>{idx}</b><strong>{html.escape(label)}</strong><p>{html.escape(detail)}</p></div>',
             unsafe_allow_html=True,
         )
-    _render_quick_actions(context, priority_part)
+    _render_quick_actions(context, priority_part, intent=intent)
 
 def render_engineering_assistant(
     *,
@@ -642,6 +689,11 @@ def render_engineering_assistant(
     engineering_context: Any,
     selected_component: str = "",
 ) -> None:
+    snapshot = st.session_state.pop("cv48_auth_snapshot", None)
+    if isinstance(snapshot, dict):
+        for key, value in snapshot.items():
+            if value is not None and st.session_state.get(key) is None:
+                st.session_state[key] = value
     context = engineering_context.compact(max_components=15) if hasattr(engineering_context, "compact") else dict(engineering_context or {})
     status = get_ai_usage_status(st.session_state, current_user)
 
@@ -850,13 +902,6 @@ def render_engineering_assistant(
               function forceScroll(el){
                 blurInputs();
                 const y = desiredY(el);
-                try {
-                  if (w.history && w.history.replaceState) {
-                    w.history.replaceState(null, '', w.location.pathname + w.location.search + '#' + TARGET_ID);
-                  } else {
-                    w.location.hash = TARGET_ID;
-                  }
-                } catch (_) {}
                 try { el.scrollIntoView({block:'start', inline:'nearest', behavior:'auto'}); } catch (_) {}
                 d.documentElement.scrollTop = y;
                 d.body.scrollTop = y;
