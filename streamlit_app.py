@@ -1559,6 +1559,31 @@ def _qp_value(name, default=""):
     except Exception:
         return default
 
+# Sprint 48.0.1 — restore authenticated follow-up state BEFORE the auth gate.
+# The Engineering Copilot component renders much later, so restoring its snapshot
+# inside the component is too late if a rerun momentarily loses auth or route
+# state. This block guarantees that an in-flight follow-up stays on the same
+# authenticated Analysis Details workspace.
+_followup_snapshot = st.session_state.get("cv48_auth_snapshot")
+if st.session_state.get("cv4801_followup_inflight") and isinstance(_followup_snapshot, dict):
+    for _key, _value in _followup_snapshot.items():
+        if _value is not None and st.session_state.get(_key) is None:
+            st.session_state[_key] = _value
+
+    _route_snapshot = st.session_state.get("cv4801_route_snapshot")
+    if isinstance(_route_snapshot, dict) and _route_snapshot:
+        try:
+            _current_route = str(st.query_params.get("page", "") or "")
+        except Exception:
+            _current_route = ""
+        if not _current_route:
+            try:
+                st.query_params.clear()
+                for _key, _value in _route_snapshot.items():
+                    st.query_params[_key] = _value
+            except Exception:
+                pass
+
 # 1) Restore tokens from cookie only if this Streamlit session does not have them.
 if "access_token" not in st.session_state or "refresh_token" not in st.session_state:
     raw_auth_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
@@ -1585,11 +1610,28 @@ if st.session_state.get("access_token") and st.session_state.get("refresh_token"
             st.session_state["cadivor_auth_restore_attempts"] = 0
             _persist_auth_cookie()
     except Exception:
-        # Tokens are invalid/expired. Remove them from session, but do not delete
-        # the cookie here; the login/logout handlers own cookie deletion.
-        st.session_state.pop("user", None)
-        st.session_state.pop("access_token", None)
-        st.session_state.pop("refresh_token", None)
+        # A Copilot follow-up can trigger a brief Supabase/session hydration race
+        # on Streamlit Cloud. During that protected rerun, never discard otherwise
+        # valid credentials or fall through to the public landing page. Restore
+        # the snapshot and retry the authenticated route a few times. Outside an
+        # in-flight follow-up, preserve the original expired-token behavior.
+        _snapshot = st.session_state.get("cv48_auth_snapshot")
+        if st.session_state.get("cv4801_followup_inflight") and isinstance(_snapshot, dict):
+            for _key in ("user", "access_token", "refresh_token"):
+                _value = _snapshot.get(_key)
+                if _value is not None:
+                    st.session_state[_key] = _value
+            _retry = int(st.session_state.get("cv4801_auth_retry_count", 0)) + 1
+            st.session_state["cv4801_auth_retry_count"] = _retry
+            if _retry <= 4:
+                time.sleep(0.18)
+                st.rerun()
+        else:
+            # Tokens are invalid/expired. Remove them from session, but do not
+            # delete the cookie here; login/logout handlers own cookie deletion.
+            st.session_state.pop("user", None)
+            st.session_state.pop("access_token", None)
+            st.session_state.pop("refresh_token", None)
 
 # 3) If auth.py just logged in and set session_state tokens, persist them before
 # any navigation link can create a fresh frontend session.
@@ -1597,6 +1639,17 @@ if st.session_state.get("user") and st.session_state.get("access_token") and st.
     _persist_auth_cookie()
 
 if "user" not in st.session_state:
+
+    # Sprint 48.0.1 defensive guard: an authenticated Copilot follow-up must never
+    # render the public landing/auth page. Keep the workspace recovery screen and
+    # retry while the preserved auth snapshot is available.
+    _snapshot = st.session_state.get("cv48_auth_snapshot")
+    if st.session_state.get("cv4801_followup_inflight") and isinstance(_snapshot, dict) and _snapshot.get("user") is not None:
+        for _key in ("user", "access_token", "refresh_token"):
+            if _snapshot.get(_key) is not None:
+                st.session_state[_key] = _snapshot[_key]
+        time.sleep(0.15)
+        st.rerun()
 
     # CookieManager can hydrate several reruns late on Streamlit Cloud, especially
     # after query-string navigation or browser Back. During that window we must
