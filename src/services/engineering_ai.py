@@ -517,6 +517,25 @@ def _s473_driver(row: dict[str, Any], domain: str) -> tuple[str, str]:
     return label, detail
 
 
+
+
+def _s48_relative_priorities(rows: list[dict[str, Any]], domain: str) -> dict[int, int]:
+    """Normalize domain scores so the ranking communicates relative priority without arbitrary 100-point ties."""
+    raw = [max(0.0, float(_s473_score(row, domain))) for row in rows]
+    if not raw:
+        return {}
+    high = max(raw) or 1.0
+    low = min(raw)
+    spread = high - low
+    values: dict[int, int] = {}
+    for row, score in zip(rows, raw):
+        if spread <= 0.0001:
+            relative = 100
+        else:
+            relative = int(round(35 + 65 * ((score - low) / spread)))
+        values[id(row)] = max(0, min(100, relative))
+    return values
+
 def _s474_supplier_candidates(context: dict[str, Any]) -> list[dict[str, Any]]:
     """Return grounded supplier-level candidates from saved alternatives only."""
     candidates: list[dict[str, Any]] = []
@@ -541,6 +560,8 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
     analysis = context.get("analysis") or {}
     project = str(analysis.get("project_name") or analysis.get("filename") or "This BOM")
     ranked = sorted(components, key=lambda r: _s473_score(r, domain), reverse=True)[:5]
+    relative_priorities = _s48_relative_priorities(ranked, domain)
+    relative = lambda row: relative_priorities.get(id(row), 0)
     top_row = ranked[0] if ranked else {}
     top = _part_name(top_row) if top_row else "No component identified"
     gaps = _s473_gaps(context, components)
@@ -644,7 +665,7 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             "- **#5 Verify outcome** — confirm the risk or uncertainty was measurably reduced.",
         ])
         evidence = "\n".join([
-            f"- **Priority work item** — component: {top}; relative assessment priority: {min(100, int(_s473_score(top_row, domain))) if top_row else 0}/100; ownership: not recorded.",
+            f"- **Priority work item** — component: {top}; relative assessment priority: {relative(top_row) if top_row else 0}/100; ownership: not recorded.",
             f"- **Primary evidence gap** — item: {gaps[0][0]}; validation status: {gaps[0][1]}; decision effect: {gaps[0][2]}",
         ])
         actions = f"Assign one named owner for {top}, set a due date, attach the required evidence, and define a measurable closure condition before release."
@@ -660,10 +681,10 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
         intent, title = "Recommendation Rationale", f"Why {top} is ranked first"
         driver, detail = _s473_driver(top_row, domain) if top_row else ("Evidence gap", "no component evidence is available")
         recorded = int(top_row.get("risk_score") or 0) if top_row else 0
-        relative = min(100, int(_s473_score(top_row, domain))) if top_row else 0
+        relative = relative(top_row) if top_row else 0
         direct = f"**{top}** is ranked first primarily because of **{driver.lower()}**: {detail}. Its recorded component risk is **{recorded}/100**, while its relative assessment priority is **{relative}/100** compared with the other parts in this BOM."
-        ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
-        evidence = "\n".join(f"- **{_part_name(r)}** — primary driver: {_s473_driver(r, domain)[0]}; evidence: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {min(100, int(_s473_score(r, domain)))}/100." for r in ranked)
+        ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {relative(r)}/100." for i, r in enumerate(ranked, 1)) or "- No component ranking is available."
+        evidence = "\n".join(f"- **{_part_name(r)}** — primary driver: {_s473_driver(r, domain)[0]}; evidence: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {relative(r)}/100." for r in ranked)
         actions = f"Verify the {driver.lower()} evidence for {top}. If it is stale or incorrect, refresh the data and rerun the ranking before mitigation."
         workflow = [
             ("Inspect Source Evidence", f"Review the authoritative evidence supporting the {driver.lower()} finding for {top}."),
@@ -710,7 +731,11 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
         elif domain == "Supplier Qualification": direct = f"The first qualification effort should protect **{top}**, which has the strongest need for an approved backup source."
         elif domain == "Single Source Exposure": direct = f"**{top}** has the greatest sourcing-concentration exposure in the current BOM."
         elif domain == "Schedule Resilience": direct = f"**{top}** presents the greatest schedule-resilience concern based on lead time, source diversity, and available stock."
-        elif domain == "Lifecycle": direct = f"**{top}** has the highest lifecycle-mitigation priority."
+        elif domain == "Lifecycle":
+            if "supplier" in q and "lifecycle" in q:
+                direct = f"**{top}** has the highest combined supplier-and-lifecycle exposure; review lifecycle status together with source concentration before release."
+            else:
+                direct = f"**{top}** has the highest lifecycle-mitigation priority."
         elif domain == "Inventory": direct = f"**{top}** has the most urgent inventory-coverage concern."
         elif domain == "Production Readiness": direct = f"Production readiness should be decided only after the leading issue associated with **{top}** is closed or explicitly accepted."
         else: direct = f"The first engineering review priority is **{top}** based on the saved BOM evidence."
@@ -719,9 +744,9 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             def bucket(r):
                 score = _s473_score(r, domain)
                 return "Active review" if score >= 35 else "Watchlist"
-            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — status: {bucket(r)}; {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1))
+            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — status: {bucket(r)}; {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {relative(r)}/100." for i, r in enumerate(ranked, 1))
         else:
-            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {min(100, int(_s473_score(r, domain)))}/100." for i, r in enumerate(ranked, 1))
+            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {relative(r)}/100." for i, r in enumerate(ranked, 1))
         if not ranking:
             missing_rankings = {
                 "Procurement": "- **Purchasing priority unavailable** — stock, lead-time, demand, pricing, and authorized-source evidence must be refreshed.",
@@ -732,7 +757,7 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                 "Production Readiness": "- **Release-blocker ranking unavailable** — component risk and release evidence must be refreshed.",
             }
             ranking = missing_rankings.get(domain, "- **Component ranking unavailable** — structured component evidence must be refreshed.")
-        evidence = "\n".join(f"- **{_part_name(r)}** — risk category: {_s473_driver(r, domain)[0]}; severity: {'High' if _s473_score(r, domain) >= 70 else 'Medium' if _s473_score(r, domain) >= 35 else 'Low'}; primary driver: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {min(100, int(_s473_score(r, domain)))}/100; suppliers: {int(r.get('supplier_count') or 0)}; inventory: {int(r.get('stock_available') or 0):,}; lead time: {float(r.get('lead_time_weeks') or 0):g} weeks; lifecycle: {str(r.get('lifecycle_status') or r.get('lifecycle') or 'Unknown')}." for r in ranked)
+        evidence = "\n".join(f"- **{_part_name(r)}** — risk category: {_s473_driver(r, domain)[0]}; severity: {'High' if _s473_score(r, domain) >= 70 else 'Medium' if _s473_score(r, domain) >= 35 else 'Low'}; primary driver: {_s473_driver(r, domain)[1]}; recorded component risk: {int(r.get('risk_score') or 0)}/100; relative assessment priority: {relative(r)}/100; suppliers: {int(r.get('supplier_count') or 0)}; inventory: {int(r.get('stock_available') or 0):,}; lead time: {float(r.get('lead_time_weeks') or 0):g} weeks; lifecycle: {str(r.get('lifecycle_status') or r.get('lifecycle') or 'Unknown')}." for r in ranked)
         if not evidence:
             missing_evidence = {
                 "Procurement": "- **Procurement evidence unavailable** — component stock, lead time, demand, pricing, and authorized-source records are missing.",
