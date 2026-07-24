@@ -40,6 +40,23 @@ def _clear_review_state() -> None:
         st.session_state.pop(key, None)
 
 
+
+
+def _normalize_submitted_question(value: Any) -> str:
+    """Return one active question and discard accidental duplicated history text."""
+    text = str(value or "").replace("\r\n", "\n").strip()
+    if not text:
+        return ""
+    # Follow-up questions are submitted as one prompt. If stale widget state has
+    # concatenated prior prompts, use the final non-empty paragraph only.
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", text) if part.strip()]
+    candidate = paragraphs[-1] if paragraphs else text
+    lines = [line.strip() for line in candidate.splitlines() if line.strip()]
+    if len(lines) > 1 and all(line.endswith(("?", ".")) for line in lines):
+        candidate = lines[-1]
+    return candidate[:1200]
+
+
 def _secret(name: str, default: str = "") -> str:
     try:
         return str(st.secrets.get(name, default) or default)
@@ -820,7 +837,7 @@ def render_engineering_assistant(
             use_container_width=False,
         )
 
-    cleaned_question = str(question or "").strip()
+    cleaned_question = _normalize_submitted_question(question)
     manual_submit_requested = bool(manual_submit and status.can_use and cleaned_question)
     if manual_submit and not cleaned_question:
         st.warning("Enter an engineering question before submitting.")
@@ -830,6 +847,7 @@ def render_engineering_assistant(
 
     can_submit = status.can_use and bool(cleaned_question)
     submit_requested = bool(manual_submit_requested or (auto_execute_followup and can_submit))
+    submitted_question = cleaned_question
     if submit_requested:
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
@@ -842,18 +860,18 @@ def render_engineering_assistant(
             components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
         with st.status("Cadivor is reviewing the saved engineering evidence...", expanded=True) as progress:
             try:
-                response = api.ask(question=question, context=context, history=compact_history(thread))
+                response = api.ask(question=submitted_question, context=context, history=compact_history(thread))
                 consume_ai_credits(st.session_state, current_user, action="question")
                 st.session_state["cv35_last_answer"] = response.answer
-                st.session_state["cv35_last_question"] = question
+                st.session_state["cv35_last_question"] = submitted_question
                 st.session_state["cv35_provider_connected"] = api.configured
                 st.session_state["cv47_scroll_to_assessment"] = True
                 if st.session_state.pop("cv47_followup_question", None):
-                    st.session_state["cv47_followup_answered"] = question
+                    st.session_state["cv47_followup_answered"] = submitted_question
                 thread = append_turn(
                     st.session_state,
                     context,
-                    question=question,
+                    question=submitted_question,
                     answer=response.answer,
                     provider_connected=api.configured,
                 )
@@ -864,10 +882,23 @@ def render_engineering_assistant(
                 st.session_state.pop("cv4801_auth_retry_count", None)
                 st.session_state.pop("cv48_auth_snapshot", None)
                 st.session_state.pop("cv4801_route_snapshot", None)
+                st.session_state.pop("cv36_pending_followup", None)
+                st.session_state.pop("cv47_followup_question", None)
+                st.session_state.pop("cv41_pending_manual", None)
+                st.session_state[prompt_key] = ""
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:
                 st.session_state["cv35_last_error"] = exc
                 progress.update(label="Cadivor could not complete the review", state="error")
+            except Exception as exc:
+                st.session_state["cv35_last_error"] = EngineeringAIError(
+                    "Cadivor could not normalize all saved component evidence for this question. "
+                    "The previous assessment remains unchanged; refresh the BOM evidence and try again."
+                )
+                st.session_state.pop("cv4801_followup_inflight", None)
+                st.session_state.pop("cv36_pending_followup", None)
+                st.session_state.pop("cv47_followup_question", None)
+                progress.update(label="Cadivor safely stopped the review", state="error")
 
     answered_followup = st.session_state.pop("cv47_followup_answered", None)
     if answered_followup:
@@ -884,7 +915,7 @@ def render_engineering_assistant(
 
     answer = st.session_state.get("cv35_last_answer")
     if answer:
-        last_question = str(st.session_state.get("cv35_last_question") or "Engineering review")
+        last_question = _normalize_submitted_question(st.session_state.get("cv35_last_question") or "Engineering review")
         should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False)
         _render_response(question=last_question, answer=answer, context=context)
         if should_scroll:
