@@ -529,10 +529,24 @@ def _queue_follow_up(question: str) -> None:
     # Preserve the authenticated workspace across the rerun. Streamlit normally
     # keeps these values, but an explicit snapshot prevents a transient follow-up
     # rerun from falling through to the public landing route.
+    # Capture everything required to survive the top-level Streamlit rerun.
+    # The app's authentication gate executes before this component renders, so
+    # the snapshot must be complete enough for streamlit_app.py to restore the
+    # authenticated Analysis Details route before it considers the public page.
+    try:
+        route_snapshot = {key: value for key, value in st.query_params.items()}
+    except Exception:
+        route_snapshot = {}
     st.session_state["cv48_auth_snapshot"] = {
-        key: st.session_state.get(key) for key in ("user", "access_token", "refresh_token")
-        if st.session_state.get(key) is not None
+        key: st.session_state.get(key) for key in (
+            "user", "access_token", "refresh_token", "app_mode",
+            "pending_app_mode", "analysis_id", "selected_analysis",
+            "current_analysis", "active_analysis_id",
+        ) if st.session_state.get(key) is not None
     }
+    st.session_state["cv4801_route_snapshot"] = route_snapshot
+    st.session_state["cv4801_followup_inflight"] = True
+    st.session_state["cv4801_auth_retry_count"] = 0
     _clear_review_state()
     st.rerun()
 
@@ -689,7 +703,7 @@ def render_engineering_assistant(
     engineering_context: Any,
     selected_component: str = "",
 ) -> None:
-    snapshot = st.session_state.pop("cv48_auth_snapshot", None)
+    snapshot = st.session_state.get("cv48_auth_snapshot")
     if isinstance(snapshot, dict):
         for key, value in snapshot.items():
             if value is not None and st.session_state.get(key) is None:
@@ -843,6 +857,13 @@ def render_engineering_assistant(
                     answer=response.answer,
                     provider_connected=api.configured,
                 )
+                # Follow-up completed inside the authenticated workspace. The
+                # recovery snapshot is no longer needed after the answer and
+                # active route are safely stored.
+                st.session_state.pop("cv4801_followup_inflight", None)
+                st.session_state.pop("cv4801_auth_retry_count", None)
+                st.session_state.pop("cv48_auth_snapshot", None)
+                st.session_state.pop("cv4801_route_snapshot", None)
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:
                 st.session_state["cv35_last_error"] = exc
