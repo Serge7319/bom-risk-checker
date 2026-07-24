@@ -649,6 +649,43 @@ def _next_action(actions: str, workflow_text: str) -> str:
     return "Review the supporting evidence and assign an accountable engineering owner."
 
 
+def _response_type_meta(intent: str) -> tuple[str, str]:
+    mapping = {
+        "component_risk": ("Recommendation", "recommendation"),
+        "general": ("Recommendation", "recommendation"),
+        "recommendation_rationale": ("Explanation", "explanation"),
+        "evidence_sensitivity": ("Evidence review", "evidence"),
+        "evidence_gap_priority": ("Evidence priority", "evidence"),
+        "production_readiness": ("Release assessment", "release"),
+        "supplier_qualification": ("Supplier assessment", "supplier"),
+        "procurement": ("Procurement recommendation", "procurement"),
+        "schedule_resilience": ("Schedule assessment", "schedule"),
+        "lifecycle": ("Lifecycle assessment", "lifecycle"),
+        "inventory": ("Inventory assessment", "inventory"),
+        "single_source": ("Sourcing exposure", "supplier"),
+        "owner_action_plan": ("Action plan", "action"),
+    }
+    return mapping.get(intent, ("Engineering response", "engineering"))
+
+
+def _render_conversation_exchange(*, question: str, intent: str) -> None:
+    response_label, response_class = _response_type_meta(intent)
+    st.markdown(
+        f'''
+        <section id="cv50-conversation-start" tabindex="-1" data-cadivor-conversation-start="true" class="cv50-exchange">
+          <div class="cv50-exchange-top">
+            <div class="cv50-you-asked"><span>You asked</span><strong>{html.escape(question)}</strong></div>
+            <div class="cv50-exchange-badges">
+              <span class="cv50-type cv50-type-{html.escape(response_class)}">{html.escape(response_label)}</span>
+              <span class="cv50-saved">✓ Review auto-saved</span>
+            </div>
+          </div>
+        </section>
+        ''',
+        unsafe_allow_html=True,
+    )
+
+
 def _render_conversational_answer(*, intent: str, assessment: str, priority_part: str,
                                   confidence_score: int, drivers: list[str],
                                   actions: str, workflow_text: str) -> None:
@@ -704,10 +741,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
     explanation, recommendation_drivers = _recommendation_explanation(assessment_body, evidence, priority_part)
     confidence_drivers = _confidence_drivers(context, evidence)
 
-    st.markdown(
-        f'<div id="cv47-latest" tabindex="-1" data-cadivor-assessment-anchor="true" style="scroll-margin-top:92px;height:1px"></div><div class="cv47-question-banner"><span>Latest engineering question</span><strong>{html.escape(question)}</strong></div>',
-        unsafe_allow_html=True,
-    )
+    _render_conversation_exchange(question=question, intent=intent)
 
     _render_conversational_answer(
         intent=intent,
@@ -717,6 +751,11 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any]) -> 
         drivers=recommendation_drivers,
         actions=actions,
         workflow_text=workflow_text,
+    )
+
+    st.markdown(
+        '<div class="cv50-supporting-divider"><span>Supporting engineering assessment</span><i></i></div>',
+        unsafe_allow_html=True,
     )
 
     kpis = _intent_kpis(context, intent=intent, priority_part=priority_part, confidence_score=confidence_score, complete=complete, total=total)
@@ -868,6 +907,10 @@ def render_engineering_assistant(
         @media(max-width:900px){.cv38-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv38-evidence-grid{grid-template-columns:1fr}.cv39-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv39-decision-top{display:block}.cv39-status-badge{display:inline-block;margin-bottom:8px}.cv39-timeline-step{min-height:auto}.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto!important}}
 
         /* Sprint 49 — conversational answer-first experience */
+        .cv50-exchange{scroll-margin-top:76px;margin:12px 0 10px;border:1px solid #bfdbfe;border-radius:17px;background:linear-gradient(135deg,#eff6ff 0%,#f8fbff 100%);padding:14px 17px;box-shadow:0 8px 24px rgba(37,99,235,.055)}
+        .cv50-exchange-top{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.cv50-you-asked{min-width:0}.cv50-you-asked span{display:block;font-size:9px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb;margin-bottom:4px}.cv50-you-asked strong{display:block;font-size:clamp(14px,1vw,17px);line-height:1.42;color:#0f172a;overflow-wrap:anywhere}.cv50-exchange-badges{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.cv50-type,.cv50-saved{display:inline-flex;align-items:center;min-height:26px;border-radius:999px;padding:5px 10px;font-size:10px;font-weight:850;white-space:nowrap}.cv50-type{border:1px solid #bfdbfe;background:#fff;color:#1d4ed8}.cv50-saved{border:1px solid #d1fae5;background:#ecfdf5;color:#047857}.cv50-type-release{border-color:#ddd6fe;color:#6d28d9;background:#f5f3ff}.cv50-type-evidence{border-color:#bae6fd;color:#0369a1;background:#f0f9ff}.cv50-type-supplier{border-color:#fed7aa;color:#c2410c;background:#fff7ed}.cv50-type-procurement{border-color:#fde68a;color:#a16207;background:#fffbeb}.cv50-type-schedule{border-color:#c7d2fe;color:#4338ca;background:#eef2ff}.cv50-type-lifecycle{border-color:#fecdd3;color:#be123c;background:#fff1f2}.cv50-type-inventory{border-color:#bbf7d0;color:#15803d;background:#f0fdf4}.cv50-type-explanation{border-color:#e2e8f0;color:#475569;background:#f8fafc}
+        .cv50-supporting-divider{display:flex;align-items:center;gap:12px;margin:18px 2px 12px}.cv50-supporting-divider span{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#64748b;white-space:nowrap}.cv50-supporting-divider i{display:block;height:1px;background:#dbeafe;flex:1}
+        @media(max-width:760px){.cv50-exchange-top{flex-direction:column}.cv50-exchange-badges{justify-content:flex-start}.cv50-saved{display:none}}
         .cv49-answer-card{margin:12px 0 16px;border:1px solid #93c5fd;border-radius:22px;background:linear-gradient(135deg,#eff6ff 0%,#ffffff 58%,#f8fafc 100%);padding:22px 24px;box-shadow:0 12px 34px rgba(37,99,235,.08)}
         .cv49-answer-kicker{font-size:clamp(10px,.72vw,12px);font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb;margin-bottom:10px}
         .cv49-answer-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.45fr);gap:26px;align-items:start}
@@ -1033,9 +1076,11 @@ def render_engineering_assistant(
     answer = st.session_state.get("cv35_last_answer")
     if answer:
         last_question = _normalize_submitted_question(st.session_state.get("cv35_last_question") or "Engineering review")
-        should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False)
+        question_changed = st.session_state.get("cv50_last_scrolled_question") != last_question
+        should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False) or question_changed
         _render_response(question=last_question, answer=answer, context=context)
         if should_scroll:
+            st.session_state["cv50_last_scrolled_question"] = last_question
             # Sprint 47.4: keep a live controller mounted until Streamlit's DOM
             # has settled. It observes the parent document, waits for the final
             # assessment anchor to have layout, then verifies the resulting
@@ -1045,70 +1090,43 @@ def render_engineering_assistant(
             (function(){
               const w = window.parent;
               const d = w.document;
-              const TARGET_ID = 'cv47-latest';
-              const OFFSET = 76;
+              const OFFSET = 70;
               let attempts = 0;
-              let stableHits = 0;
-              let lastTop = null;
-              let observer = null;
+              let stable = 0;
 
-              function target(){
-                return d.getElementById(TARGET_ID) || d.querySelector('[data-cadivor-assessment-anchor="true"]');
+              function getTarget(){
+                return d.getElementById('cv50-conversation-start') || d.querySelector('[data-cadivor-conversation-start="true"]');
               }
-
-              function blurInputs(){
+              function clearFocus(){
                 try {
                   const active = d.activeElement;
                   if (active && typeof active.blur === 'function') active.blur();
                   d.querySelectorAll('textarea:focus,input:focus,button:focus').forEach(el => el.blur());
                 } catch (_) {}
               }
-
-              function desiredY(el){
-                return Math.max(0, el.getBoundingClientRect().top + w.pageYOffset - OFFSET);
-              }
-
-              function forceScroll(el){
-                blurInputs();
-                const y = desiredY(el);
-                try { el.scrollIntoView({block:'start', inline:'nearest', behavior:'auto'}); } catch (_) {}
-                d.documentElement.scrollTop = y;
-                d.body.scrollTop = y;
-                w.scrollTo(0, y);
-                return y;
-              }
-
-              function verify(){
+              function place(){
                 attempts += 1;
-                const el = target();
-                if (!el || el.getClientRects().length === 0 || el.getBoundingClientRect().height < 0) {
-                  if (attempts < 90) w.setTimeout(verify, 100);
+                const target = getTarget();
+                const answer = d.querySelector('.cv49-answer-card');
+                if (!target || !answer || target.getClientRects().length === 0) {
+                  if (attempts < 40) w.setTimeout(place, 100);
                   return;
                 }
-                const expected = forceScroll(el);
-                const actual = w.pageYOffset || d.documentElement.scrollTop || d.body.scrollTop || 0;
-                const top = Math.round(el.getBoundingClientRect().top);
-                if (Math.abs(actual - expected) <= 8 && Math.abs(top - OFFSET) <= 18) stableHits += 1;
-                else stableHits = 0;
-                if (lastTop !== null && Math.abs(top - lastTop) > 2) stableHits = 0;
-                lastTop = top;
-                if (stableHits >= 3 || attempts >= 90) {
-                  if (observer) observer.disconnect();
+                clearFocus();
+                const desired = Math.max(0, target.getBoundingClientRect().top + w.pageYOffset - OFFSET);
+                w.scrollTo({top: desired, behavior: 'auto'});
+                d.documentElement.scrollTop = desired;
+                d.body.scrollTop = desired;
+                const top = Math.round(target.getBoundingClientRect().top);
+                if (Math.abs(top - OFFSET) <= 16) stable += 1; else stable = 0;
+                if (stable >= 2 || attempts >= 40) {
+                  try { target.focus({preventScroll:true}); } catch (_) {}
                   return;
                 }
-                w.setTimeout(verify, attempts < 20 ? 120 : 220);
+                w.setTimeout(place, attempts < 12 ? 110 : 180);
               }
-
-              try {
-                observer = new MutationObserver(function(){
-                  stableHits = 0;
-                  w.requestAnimationFrame(verify);
-                });
-                observer.observe(d.body, {childList:true, subtree:true, attributes:true});
-              } catch (_) {}
-
-              w.requestAnimationFrame(function(){ w.requestAnimationFrame(verify); });
-              [250,500,900,1400,2200,3200,4500,6000].forEach(ms => w.setTimeout(verify, ms));
+              w.requestAnimationFrame(function(){ w.requestAnimationFrame(place); });
+              [250,500,850,1300,2000].forEach(ms => w.setTimeout(place, ms));
             })();
             </script>
             """, height=1)
