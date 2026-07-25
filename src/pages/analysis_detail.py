@@ -251,6 +251,10 @@ def render_analysis_detail(
     if not analysis_id:
         analysis_id = _safe(st.query_params.get("analysis_id", ""), "")
 
+    if analysis_id:
+        st.session_state["cadivor_active_analysis_id"] = str(analysis_id)
+        st.session_state["analysis_id"] = str(analysis_id)
+
     requested_tab = _safe(st.query_params.get("tab", ""), "").strip().lower()
     requested_component = _safe(st.query_params.get("component", ""), "").strip()
     requested_focus = _safe(st.query_params.get("focus", ""), "").strip().lower()
@@ -806,7 +810,7 @@ def render_analysis_detail(
     graph_summary = knowledge_graph.summary
     graph_counts = graph_summary.get("counts") or {}
 
-    st.markdown('<a class="cv-analysis-back" href="?page=BOM%20Analyzer" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
+    st.markdown('<a class="cv-analysis-back" href="?page=BOM%20Analyzer&new_analysis=1" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
     st.markdown(
         f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p><div class="cv-analysis-actions"><a class="cv-analysis-btn primary" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open in BOM Analyzer →</a><a class="cv-analysis-btn" href="?page=Alternative%20Finder&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Find Alternatives</a><a class="cv-analysis-btn" href="?page=Monitoring&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Monitor Components</a><a class="cv-analysis-btn" href="?page=Reports&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Reports Center</a></div></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
         unsafe_allow_html=True,
@@ -833,6 +837,64 @@ def render_analysis_detail(
         "Reports",
         "Ask Cadivor",
     ])
+
+    # Sprint 50.1.2 — preserve the selected analysis tab while navigating away.
+    # The tab name is copied into session_state on the next Streamlit rerun; the
+    # client hook only carries that value through internal navigation and does
+    # not alter any scrolling behavior.
+    saved_analysis_tab = _safe(
+        st.session_state.get("cadivor_active_analysis_tab"),
+        "Engineering Intelligence",
+    )
+    components.html(
+        f"""
+        <script>
+        (function() {{
+          const parentWindow = window.parent;
+          const doc = parentWindow.document;
+          const savedTab = {saved_analysis_tab!r};
+          const analysisId = {str(analysis_id)!r};
+
+          const tabs = () => Array.from(doc.querySelectorAll('button[data-baseweb="tab"]'));
+          const tabName = (tab) => (tab.innerText || tab.textContent || '').trim();
+          const decorateLinks = (name) => {{
+            doc.querySelectorAll('a[target="_self"]').forEach((link) => {{
+              try {{
+                const url = new URL(link.href, parentWindow.location.href);
+                url.searchParams.set('analysis_id', analysisId);
+                url.searchParams.set('analysis_tab', name);
+                link.href = url.toString();
+              }} catch (error) {{}}
+            }});
+          }};
+          const restoreTab = () => {{
+            const available = tabs();
+            const target = available.find((tab) => tabName(tab) === savedTab);
+            if (target && target.getAttribute('aria-selected') !== 'true') target.click();
+            decorateLinks(target ? tabName(target) : savedTab);
+            available.forEach((tab) => {{
+              if (tab.dataset.cv5012Bound === '1') return;
+              tab.dataset.cv5012Bound = '1';
+              tab.addEventListener('click', () => {{
+                const name = tabName(tab);
+                try {{
+                  const url = new URL(parentWindow.location.href);
+                  url.searchParams.set('analysis_id', analysisId);
+                  url.searchParams.set('analysis_tab', name);
+                  parentWindow.history.replaceState({{}}, '', url.toString());
+                }} catch (error) {{}}
+                decorateLinks(name);
+              }});
+            }});
+          }};
+          parentWindow.setTimeout(restoreTab, 80);
+          parentWindow.setTimeout(restoreTab, 320);
+        }})();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
     lifecycle_exposed_parts = []
     no_stock_parts = []
@@ -1056,20 +1118,10 @@ def render_analysis_detail(
                         st.session_state[review_key] = created_session
                         st.rerun()
             with note_col:
-                permission_note = (
-                    "You have read-only access to this engineering review."
-                    if not can_edit_review
-                    else (
-                        f"Resume your saved review. {reviewed_count} of {total_review_items} components are already reviewed."
-                        if session_status == "paused"
-                        else "The session is saved to Supabase and can be resumed from another browser or device."
-                    )
-                )
-                st.markdown(
-                    f'<div class="cv27-session"><div class="cv27-session-title">Persistent Engineering Review</div>'
-                    f'<div class="cv27-session-sub">{html.escape(permission_note)}</div></div>',
-                    unsafe_allow_html=True,
-                )
+                # Sprint 50.1.2 — the large persistent-review banner was removed.
+                # Review persistence remains unchanged and the compact autosave
+                # badge inside Ask Cadivor continues to communicate save status.
+                pass
         else:
             started_display = _relative_date(review_session.get("started_at"))
             updated_display = _relative_date(review_session.get("updated_at"))
