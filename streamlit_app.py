@@ -2344,6 +2344,31 @@ if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboard
     app_mode = "Dashboard"
 st.session_state["app_mode"] = app_mode
 
+# Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
+# Query values are treated only as navigation inputs; the durable browser-session
+# context lives in st.session_state and is never written to the database.
+_incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
+_incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "")
+if _incoming_analysis_id:
+    st.session_state["cadivor_active_analysis_id"] = _incoming_analysis_id
+    st.session_state["analysis_id"] = _incoming_analysis_id
+if _incoming_analysis_tab:
+    st.session_state["cadivor_active_analysis_tab"] = _incoming_analysis_tab
+
+_new_analysis_requested = _safe_text(_qp_value("new_analysis", ""), "").lower() in {
+    "1", "true", "yes"
+}
+if _new_analysis_requested:
+    for _state_key in (
+        "cadivor_active_analysis_id",
+        "cadivor_active_analysis_tab",
+        "analysis_id",
+        "results_df",
+        "analysis_saved",
+        "uploaded_filename",
+    ):
+        st.session_state.pop(_state_key, None)
+
 profile_for_shell = get_user_profile(current_user) if "get_user_profile" in globals() else current_user
 
 auth_user_for_onboarding = st.session_state.get("user")
@@ -2443,7 +2468,18 @@ _nav_icons = {
 _nav_html = []
 for _nav in NAV_OPTIONS:
     _active = " active" if _nav == app_mode else ""
-    _href = "?page=" + _urlparse.quote(_nav)
+    _active_analysis_id = _safe_text(
+        st.session_state.get("cadivor_active_analysis_id")
+        or st.session_state.get("analysis_id"),
+        "",
+    )
+    if _nav == "BOM Analyzer" and _active_analysis_id:
+        _href = (
+            "?page=Analysis%20Details&analysis_id="
+            + _urlparse.quote(_active_analysis_id)
+        )
+    else:
+        _href = "?page=" + _urlparse.quote(_nav)
     _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
 
 render_topbar(profile_for_shell, app_mode)
@@ -10684,6 +10720,16 @@ if app_mode == "Alternative Finder":
 
     st.stop()
 if app_mode == "BOM Analyzer":
+    # Sprint 50.1.2 — returning through navigation resumes the active engineering
+    # analysis instead of reopening the Saved BOM selector. A deliberate New
+    # Analysis request clears this context above and continues to the selector.
+    _resume_analysis_id = _safe_text(
+        st.session_state.get("cadivor_active_analysis_id")
+        or st.session_state.get("analysis_id"),
+        "",
+    )
+    if _resume_analysis_id and not _new_analysis_requested:
+        navigate_to("Analysis Details", analysis_id=_resume_analysis_id)
 
     st.markdown(
         """
@@ -11957,6 +12003,8 @@ Unlock more power:
 
                 analysis_id = analysis_response.data[0]["id"]
                 st.session_state["analysis_id"] = analysis_id
+                st.session_state["cadivor_active_analysis_id"] = str(analysis_id)
+                st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
 
             except Exception as e:
                 st.error(f"Could not save analysis summary: {e}")
