@@ -669,12 +669,13 @@ def _response_type_meta(intent: str) -> tuple[str, str]:
 
 
 def _render_response_scroll_anchor(*, response_token: str) -> None:
-    """Mount a self-locating scroll controller at the exact response start.
+    """Scroll the real Streamlit viewport to the newest response start.
 
-    Searching the parent document by a reused HTML id became unreliable after
-    Streamlit began retaining and replacing conversation fragments.  This
-    controller instead scrolls to the Streamlit element that owns its own iframe,
-    so it cannot accidentally select an older response.
+    Streamlit scrolls inside ``[data-testid="stMain"]`` on current builds rather
+    than on ``window``.  Sprint 50.1 only moved ``window``, which left the visible
+    app viewport unchanged.  This controller resolves the actual scroll owner,
+    positions the response immediately below the sticky header, and repeats the
+    placement while the answer layout stabilizes.
     """
     safe_token = html.escape(str(response_token or "response"))
     components.html(
@@ -682,51 +683,86 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
         <script data-cadivor-response-token="{safe_token}">
         (function(){{
           const parentWindow = window.parent;
-          const parentDocument = parentWindow.document;
+          const doc = parentWindow.document;
           const frame = window.frameElement;
           if (!frame) return;
+
           const host = frame.closest('[data-testid="stElementContainer"]') || frame.parentElement || frame;
-          const OFFSET = 72;
+          const OFFSET = 70;
           let attempts = 0;
           let stable = 0;
           let observer = null;
 
-          function blurActiveInput(){{
+          function scrollOwner(){{
+            const explicit = doc.querySelector('[data-testid="stMain"]');
+            if (explicit) return explicit;
+            let node = host.parentElement;
+            while (node && node !== doc.body) {{
+              try {{
+                const style = parentWindow.getComputedStyle(node);
+                const overflowY = style.overflowY;
+                if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight + 2) return node;
+              }} catch (_) {{}}
+              node = node.parentElement;
+            }}
+            return doc.scrollingElement || doc.documentElement;
+          }}
+
+          function blurInput(){{
             try {{
-              const active = parentDocument.activeElement;
+              const active = doc.activeElement;
               if (active && typeof active.blur === 'function') active.blur();
             }} catch (_) {{}}
+          }}
+
+          function currentTop(owner){{
+            const hostRect = host.getBoundingClientRect();
+            if (owner === doc.scrollingElement || owner === doc.documentElement || owner === doc.body) return hostRect.top;
+            const ownerRect = owner.getBoundingClientRect();
+            return hostRect.top - ownerRect.top;
           }}
 
           function place(){{
             attempts += 1;
             if (!host || host.getClientRects().length === 0) {{
-              if (attempts < 60) parentWindow.setTimeout(place, 100);
+              if (attempts < 70) parentWindow.setTimeout(place, 90);
               return;
             }}
-            blurActiveInput();
-            const desired = Math.max(0, host.getBoundingClientRect().top + parentWindow.scrollY - OFFSET);
-            parentWindow.scrollTo({{top: desired, behavior: attempts <= 2 ? 'smooth' : 'auto'}});
-            const actualTop = Math.round(host.getBoundingClientRect().top);
-            stable = Math.abs(actualTop - OFFSET) <= 18 ? stable + 1 : 0;
-            if (stable >= 3 || attempts >= 60) {{
+
+            blurInput();
+            const owner = scrollOwner();
+            const hostRect = host.getBoundingClientRect();
+
+            try {{
+              if (owner === doc.scrollingElement || owner === doc.documentElement || owner === doc.body) {{
+                const desired = Math.max(0, hostRect.top + (parentWindow.pageYOffset || owner.scrollTop || 0) - OFFSET);
+                parentWindow.scrollTo({{ top: desired, left: 0, behavior: attempts <= 2 ? 'smooth' : 'auto' }});
+                owner.scrollTop = desired;
+              }} else {{
+                const ownerRect = owner.getBoundingClientRect();
+                const desired = Math.max(0, owner.scrollTop + hostRect.top - ownerRect.top - OFFSET);
+                owner.scrollTo({{ top: desired, left: 0, behavior: attempts <= 2 ? 'smooth' : 'auto' }});
+              }}
+            }} catch (_) {{
+              try {{ host.scrollIntoView({{ block: 'start', inline: 'nearest', behavior: 'auto' }}); }} catch (_) {{}}
+            }}
+
+            const top = Math.round(currentTop(owner));
+            stable = Math.abs(top - OFFSET) <= 16 ? stable + 1 : 0;
+            if (stable >= 4 || attempts >= 70) {{
               if (observer) observer.disconnect();
               return;
             }}
-            parentWindow.setTimeout(place, attempts < 12 ? 100 : 180);
+            parentWindow.setTimeout(place, attempts < 16 ? 90 : 170);
           }}
 
           try {{
-            observer = new MutationObserver(function(){{
-              parentWindow.requestAnimationFrame(place);
-            }});
-            observer.observe(parentDocument.body, {{childList:true, subtree:true, attributes:true}});
+            observer = new MutationObserver(function(){{ parentWindow.requestAnimationFrame(place); }});
+            observer.observe(doc.body, {{ childList: true, subtree: true, attributes: true }});
           }} catch (_) {{}}
 
-          parentWindow.requestAnimationFrame(function(){{
-            parentWindow.requestAnimationFrame(place);
-          }});
-          [180, 350, 650, 1000, 1600, 2400, 3400].forEach(ms => parentWindow.setTimeout(place, ms));
+          parentWindow.requestAnimationFrame(function(){{ parentWindow.requestAnimationFrame(place); }});
+          [120, 260, 480, 800, 1250, 1900, 2800, 4000].forEach(ms => parentWindow.setTimeout(place, ms));
         }})();
         </script>
         """,
