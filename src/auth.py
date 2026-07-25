@@ -497,4 +497,7 @@ def show_auth_ui(supabase, cookie_manager=None):
         )
         return
 
-    _render_landing_page()
+    # Sprint 51 — signed-out launch marketing website. Authenticated workspace
+    # routing and all analysis/scrolling behavior remain outside this module.
+    from src.marketing_site import render_marketing_site
+    render_marketing_site()
