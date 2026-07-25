@@ -21,17 +21,47 @@ def _set_auth_cookie(cookie_manager, session, key: str):
 CADIVOR_TERMS = """
 ### Cadivor Terms of Service
 
-By creating an account or using Cadivor, you agree that Cadivor provides software-based component lifecycle, sourcing, supplier, risk, and alternative-part intelligence for informational and decision-support purposes only.
+**Pre-launch version — Last updated July 25, 2026**
 
-Cadivor does not replace professional engineering judgment, datasheet review, supplier confirmation, regulatory review, qualification testing, procurement review, manufacturing review, or production release approval. You remain responsible for validating every component, alternate part, compatibility claim, lifecycle status, supplier listing, stock level, price estimate, lead time, risk score, export classification, regulatory requirement, and manufacturing decision before relying on Cadivor output in any design, procurement, or production workflow.
+By creating an account, checking the acceptance box during registration, or using Cadivor, you agree to these Terms and the Privacy Policy.
 
-You agree not to upload unlawful, confidential third-party, export-controlled, restricted, regulated, or sensitive data unless you have the legal right and authority to do so. You retain ownership of your uploaded BOM data, but grant Cadivor permission to process it for analysis, reporting, account usage tracking, support, security, service reliability, and product improvement.
+#### 1. Decision-support service
+Cadivor provides software-based component lifecycle, sourcing, supplier, inventory, risk, alternative-part, reporting, monitoring, and AI-assisted engineering intelligence for informational and decision-support purposes.
 
-Cadivor may use supplier records, distributor APIs, public sources, third-party data, software rules, and AI-assisted analysis. Availability, lifecycle status, pricing, lead times, and alternative recommendations may be incomplete, delayed, inaccurate, or unsuitable for your specific design. Cadivor is provided “as is” and “as available” without warranties of uninterrupted availability, accuracy, merchantability, non-infringement, or fitness for a particular purpose.
+Cadivor does not replace professional engineering judgment, datasheet review, supplier confirmation, qualification testing, procurement review, regulatory review, manufacturing review, or production-release approval. You remain responsible for validating outputs before relying on them in a design, sourcing, procurement, compliance, manufacturing, or production workflow.
 
-To the maximum extent permitted by law, Cadivor and its owners, officers, employees, contractors, suppliers, service providers, and affiliates are not liable for indirect, incidental, consequential, special, punitive, procurement, production, recall, lost-profit, lost-data, business interruption, design failure, regulatory, or manufacturing damages arising from use of the service.
+#### 2. Accounts and authorized use
+You are responsible for maintaining accurate account information, protecting account credentials, and ensuring that people using your workspace are authorized to do so. You may not misuse the service, interfere with its operation, attempt unauthorized access, or use Cadivor for unlawful activity.
 
-Cadivor may suspend or terminate accounts for abuse, misuse, nonpayment, security risk, violation of these terms, or activity that may harm the service or other users. Final legal terms should be reviewed by a qualified attorney before commercial launch and updated with the final company legal entity, billing terms, governing law, support contact, and dispute process.
+#### 3. Customer data and BOM ownership
+You retain ownership of BOMs and other content you upload. You grant Cadivor permission to process that content only as reasonably necessary to provide analysis, reporting, monitoring, account administration, support, security, service reliability, and product operation.
+
+You must not upload unlawful data or confidential third-party, export-controlled, restricted, regulated, or highly sensitive information unless you have the legal right and appropriate authorization to process it through the service.
+
+#### 4. Supplier data and recommendations
+Cadivor may use distributor APIs, supplier records, public sources, third-party data, software rules, and AI-assisted analysis. Availability, lifecycle status, pricing, stock, lead times, risk scores, compatibility assessments, and alternative recommendations may be incomplete, delayed, inaccurate, or unsuitable for a particular design.
+
+You are responsible for confirming component specifications, fit, form, function, regulatory status, sourcing terms, and supplier information before purchasing, qualifying, or releasing a component.
+
+#### 5. Plans, trials, billing, and changes
+Plan features and usage limits are described on the Pricing page and may vary by subscription. Trial access may automatically continue on the Starter plan unless the customer upgrades or cancels as described during registration. Paid subscriptions, renewal, taxes, refunds, and cancellation terms will be presented during checkout and in the final commercial agreement.
+
+#### 6. Availability and service changes
+Cadivor may modify features, integrations, limits, or availability to improve the service, address security or legal requirements, or respond to third-party service changes. We will use reasonable efforts to communicate material changes that affect paid customers.
+
+#### 7. Suspension and termination
+Cadivor may suspend or terminate access for abuse, misuse, nonpayment, security risk, violation of these Terms, or activity that may harm the service or other users. Customers may stop using the service and cancel eligible subscriptions through the available account or billing process.
+
+#### 8. Disclaimers
+To the extent permitted by law, Cadivor is provided “as is” and “as available.” Cadivor does not warrant uninterrupted availability, complete accuracy, merchantability, non-infringement, or fitness for a particular purpose.
+
+#### 9. Limitation of liability
+To the maximum extent permitted by law, Cadivor and its owners, officers, employees, contractors, suppliers, service providers, and affiliates will not be liable for indirect, incidental, consequential, special, punitive, procurement, production, recall, lost-profit, lost-data, business-interruption, design-failure, regulatory, or manufacturing damages arising from use of the service.
+
+#### 10. Contact
+Questions about these Terms may be sent to **info@cadivor.com** with “Terms” in the subject line.
+
+*This pre-launch version requires review by qualified counsel and completion with Cadivor’s legal entity name, business address, governing law, payment and refund terms, dispute process, and enterprise-specific provisions before commercial launch.*
 """
 
 
