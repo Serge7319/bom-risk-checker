@@ -140,7 +140,7 @@ st.set_page_config(
     page_title="Cadivor",
     page_icon="C",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 st.markdown(
     """
@@ -1592,8 +1592,15 @@ if st.session_state.get("cv4801_followup_inflight") and isinstance(_followup_sna
             except Exception:
                 pass
 
+# Sprint 54.3 — an explicit logout must win over a late CookieManager read.
+# Keep this session signed out until the user successfully authenticates again.
+_force_signed_out = bool(st.session_state.get("cadivor_force_signed_out"))
+if _force_signed_out:
+    for _auth_key in ("user", "access_token", "refresh_token"):
+        st.session_state.pop(_auth_key, None)
+
 # 1) Restore tokens from cookie only if this Streamlit session does not have them.
-if "access_token" not in st.session_state or "refresh_token" not in st.session_state:
+if (not _force_signed_out) and ("access_token" not in st.session_state or "refresh_token" not in st.session_state):
     raw_auth_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
     auth_cookie = _coerce_auth_cookie(raw_auth_cookie)
     if auth_cookie and auth_cookie.get("access_token") and auth_cookie.get("refresh_token"):
@@ -1601,7 +1608,7 @@ if "access_token" not in st.session_state or "refresh_token" not in st.session_s
         st.session_state["refresh_token"] = auth_cookie.get("refresh_token")
 
 # 2) Validate tokens with Supabase before deciding whether to show landing/auth.
-if st.session_state.get("access_token") and st.session_state.get("refresh_token"):
+if (not _force_signed_out) and st.session_state.get("access_token") and st.session_state.get("refresh_token"):
     try:
         supabase.auth.set_session(
             st.session_state["access_token"],
@@ -1712,19 +1719,11 @@ current_user = load_user_data()
 # same Streamlit session, so cookie recovery during normal page navigation does
 # not unexpectedly send users home.
 if st.session_state.pop("cadivor_auth_ui_was_shown", False):
-    direct_link_keys = {
-        "analysis_id", "return_analysis_id", "session_id", "checkout",
-        "invite", "token", "preview_onboarding",
-    }
-    has_direct_link = any(str(_qp_value(key, "")).strip() for key in direct_link_keys)
-    if not has_direct_link:
-        try:
-            st.query_params.clear()
-            st.query_params["page"] = "Dashboard"
-        except Exception:
-            st.experimental_set_query_params(page="Dashboard")
-        st.session_state["app_mode"] = "Dashboard"
-        st.session_state["pending_app_mode"] = "Dashboard"
+    # Authentication already selected Dashboard in session state. Avoid mutating
+    # query parameters here because each mutation creates another Streamlit rerun
+    # and was responsible for the visible post-login flashes.
+    st.session_state.setdefault("app_mode", "Dashboard")
+    st.session_state.setdefault("pending_app_mode", "Dashboard")
 
 is_admin = str(current_user.get("role", "")).lower() == "admin"
 effective_plan_name, trial_expired = resolve_effective_plan(current_user)
@@ -2209,13 +2208,17 @@ NAV_OPTIONS = [
 
 if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action") == "logout":
     if cookie_manager:
-        cookie_manager.delete(cookie="bom_auth", key="delete_bom_auth_from_shell")
-    supabase.auth.sign_out()
-    st.session_state.clear()
+        try:
+            cookie_manager.delete(cookie="bom_auth", key="delete_bom_auth_from_shell")
+        except Exception:
+            pass
     try:
-        st.query_params.clear()
+        supabase.auth.sign_out()
     except Exception:
         pass
+    st.session_state.clear()
+    # Prevent a delayed/stale cookie value from immediately signing the user back in.
+    st.session_state["cadivor_force_signed_out"] = True
     st.rerun()
 
 if _qp_value("action") == "clear":
@@ -2552,7 +2555,12 @@ st.markdown(
     [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"] {
         display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
     }
-    [data-testid="stSidebar"] { display:block!important; visibility:visible!important; width:284px!important; min-width:284px!important; background:#07152F!important; }
+    section[data-testid="stSidebar"], [data-testid="stSidebar"] {
+        display:block!important; visibility:visible!important; opacity:1!important;
+        width:284px!important; min-width:284px!important; max-width:284px!important;
+        height:100vh!important; background:#07152F!important;
+    }
+    div[data-testid="stSidebarNav"] { display:none!important; }
     [data-testid="stSidebar"] > div:first-child { width:284px!important; padding:14px 14px 22px!important; }
 
     [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
