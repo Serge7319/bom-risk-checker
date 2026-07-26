@@ -258,6 +258,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 response = supabase.auth.sign_up({"email": email, "password": password})
                 if getattr(response, "session", None):
                     st.session_state["user"] = response.user
+                    st.session_state.pop("cadivor_force_signed_out", None)
                     st.session_state["access_token"] = response.session.access_token
                     st.session_state["refresh_token"] = response.session.refresh_token
                     st.session_state["app_mode"] = "Dashboard"
@@ -278,6 +279,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                     return
                 _set_auth_cookie(cookie_manager, response.session, "login_set_bom_auth")
                 st.session_state["user"] = response.user
+                st.session_state.pop("cadivor_force_signed_out", None)
                 st.session_state["access_token"] = response.session.access_token
                 st.session_state["refresh_token"] = response.session.refresh_token
                 st.session_state["app_mode"] = "Dashboard"
