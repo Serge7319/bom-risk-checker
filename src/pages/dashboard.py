@@ -1441,7 +1441,7 @@ def render_dashboard(
             <div>
               <div class="cv-v4-kicker">{_lucide_icon('sparkles',14)} Engineering Command Center</div>
               <h1 class="cv-v4-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
-              <p class="cv-v4-copy">Your portfolio has <strong>{total_high_risk} high-risk components</strong> and <strong>{alert_count} active supplier alerts</strong>. Start with the most important engineering decision, then move into the detailed workspace only when needed.</p>
+              <p class="cv-v4-copy">Your portfolio has <strong>{total_high_risk} high-risk components</strong> and <strong>{alert_count} active lifecycle and supplier alerts</strong>. Cadivor connects engineering, procurement, supply chain, quality, and leadership around the next accountable action.</p>
               <div class="cv-v4-actions">
                 <a class="cv-v4-btn" href="?page=BOM%20Analyzer" target="_self">Analyze New BOM {_lucide_icon('arrow',14)}</a>
                 <a class="cv-v4-btn secondary" href="?page=Alternative%20Finder" target="_self">Replacement Finder</a>
@@ -1450,7 +1450,7 @@ def render_dashboard(
             <div class="cv-v4-brief">
               <div class="cv-v4-brief-card"><span>Portfolio Health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></div>
               <div class="cv-v4-brief-card"><span>High Risk</span><strong>{total_high_risk}</strong><small>Components requiring review</small></div>
-              <div class="cv-v4-brief-card"><span>Supplier Alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></div>
+              <div class="cv-v4-brief-card"><span>Supply-Chain Alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></div>
               <div class="cv-v4-brief-card"><span>Saved Analyses</span><strong>{total_analyses}</strong><small>Engineering records available</small></div>
             </div>
           </div>
@@ -2028,7 +2028,7 @@ def render_dashboard(
                 )
         else:
             st.markdown(
-                '<div class="cv231-empty">No recent engineering activity is recorded.</div>',
+                '<div class="cv231-empty"><strong>No engineering activity yet.</strong><br>Analyze a BOM to create a timeline of risks, alternatives, decisions, reports, and monitoring changes.</div>',
                 unsafe_allow_html=True,
             )
 
