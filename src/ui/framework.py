@@ -240,40 +240,14 @@ def action_card(title, body, href, icon="+", kind="primary"):
 
 
 def render_navigation_loading_overlay() -> None:
-    """Install a branded transition overlay for authenticated navigation."""
-    pending = st.session_state.pop("cadivor_navigation_loading", None)
-    start_visible = " show" if pending else ""
-    page = str((pending or {}).get("page") or "workspace")
-    st.markdown(
-        f"""
-        <div id="cv-launch-loader" class="cv-launch-loader{start_visible}" role="status" aria-live="polite">
-          <div class="cv-launch-loader-card">
-            <div class="cv-launch-loader-brand"><span>C</span><strong>Cadivor</strong></div>
-            <div class="cv-launch-loader-title">Loading your engineering workspace</div>
-            <div id="cv-launch-loader-copy" class="cv-launch-loader-copy">Restoring {page}, active BOM context, and engineering evidence…</div>
-            <div class="cv-launch-loader-track"><i></i></div>
-            <div class="cv-launch-skeleton"><b></b><b></b><b></b></div>
-          </div>
-        </div>
-        <script>
-        (function(){{
-          const loader=document.getElementById('cv-launch-loader');
-          if(!loader)return;
-          function showLoader(label){{
-            const copy=document.getElementById('cv-launch-loader-copy');
-            if(copy&&label)copy.textContent='Opening '+label+' and restoring your engineering context…';
-            loader.classList.add('show');
-          }}
-          document.querySelectorAll('a[target="_self"]').forEach(function(a){{
-            if(a.dataset.cvLoaderBound)return; a.dataset.cvLoaderBound='1';
-            a.addEventListener('click',function(){{showLoader((a.textContent||'workspace').trim());}});
-          }});
-          if(loader.classList.contains('show')){{setTimeout(function(){{loader.classList.remove('show');}},900);}}
-        }})();
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Compatibility no-op.
+
+    Sprint 54.1 removes the full-screen HTML navigation overlay because it can
+    remain visible across Streamlit reruns. Native page rendering now provides
+    the transition without blocking the workspace.
+    """
+    st.session_state.pop("cadivor_navigation_loading", None)
+    return
 
 
 def launch_error(title: str, body: str, recovery: str = "Try again or return to the Dashboard.") -> None:
