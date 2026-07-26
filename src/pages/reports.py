@@ -106,7 +106,7 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         .cv-report-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:18px;}
         .cv-report-card{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:22px;padding:22px;box-shadow:0 20px 46px rgba(15,23,42,.065);min-height:160px;transition:all .16s ease;}
         .cv-report-card:hover{transform:translateY(-2px);border-color:#BFDBFE;box-shadow:0 28px 60px rgba(15,23,42,.09);}
-        .cv-report-icon{width:42px;height:42px;border-radius:14px;background:#EFF6FF;border:1px solid #BFDBFE;color:#2563EB;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:950;margin-bottom:16px;}
+        .cv-report-preview{height:128px;border-radius:14px;background:linear-gradient(155deg,#F8FBFF,#EAF2FF);border:1px solid #D8E4F5;padding:14px;margin-bottom:15px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.8)}.cv-report-preview .bar{height:7px;border-radius:5px;background:#D9E6FA;margin:8px 0}.cv-report-preview .bar.primary{background:#2563EB;width:62%}.cv-report-preview .bar.short{width:48%}.cv-report-preview .chart{height:42px;margin-top:10px;border-radius:8px;background:linear-gradient(135deg,rgba(37,99,235,.12),rgba(22,163,74,.10));border-bottom:2px solid #2563EB}.cv-report-icon{width:42px;height:42px;border-radius:14px;background:#EFF6FF;border:1px solid #BFDBFE;color:#2563EB;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:950;margin-bottom:16px;}
         .cv-report-card-title{font-size:16px;font-weight:950;color:#0F172A;margin-bottom:8px;}
         .cv-report-card-copy{font-size:13px;line-height:1.55;font-weight:750;color:#52647A;margin-bottom:16px;}
         .cv-report-link{font-size:13px;font-weight:950;color:#2563EB;text-decoration:none!important;}
@@ -158,9 +158,9 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         """
         <div class="cv-report-section-head"><div><h2 class="cv-report-section-title">Report templates</h2><div class="cv-report-section-sub">Choose the report style that matches the review workflow.</div></div></div>
         <div class="cv-report-card-grid">
-          <div class="cv-report-card"><div class="cv-report-icon">📄</div><div class="cv-report-card-title">Executive BOM Report</div><div class="cv-report-card-copy">Portfolio health, high-risk components, lifecycle signals, and recommended next actions for leadership review.</div><a class="cv-report-link" href="?page=BOM%20Analyzer" target="_self">Create executive report →</a></div>
-          <div class="cv-report-card"><div class="cv-report-icon">🧪</div><div class="cv-report-card-title">Engineering Risk Review</div><div class="cv-report-card-copy">Component-level risk, lifecycle status, supplier coverage, and BOM readiness details for engineers.</div><a class="cv-report-link" href="?page=Dashboard" target="_self">Review saved analyses →</a></div>
-          <div class="cv-report-card"><div class="cv-report-icon">📦</div><div class="cv-report-card-title">Sourcing Summary</div><div class="cv-report-card-copy">Procurement-oriented stock, supplier, replacement readiness, and sourcing risk package.</div><a class="cv-report-link" href="?page=Alternative%20Finder" target="_self">Validate alternatives →</a></div>
+          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar"></div><div class="chart"></div><div class="bar short"></div></div><div class="cv-report-icon">📄</div><div class="cv-report-card-title">Executive BOM Report</div><div class="cv-report-card-copy">Portfolio health, high-risk components, lifecycle signals, cost exposure, and recommended next actions for leadership review.</div><a class="cv-report-link" href="?page=BOM%20Analyzer" target="_self">Create executive report →</a></div>
+          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar short"></div><div class="bar"></div><div class="chart"></div></div><div class="cv-report-icon">🧪</div><div class="cv-report-card-title">Engineering Risk Review</div><div class="cv-report-card-copy">Component-level risk, lifecycle status, supplier coverage, confidence, and BOM readiness details for engineers.</div><a class="cv-report-link" href="?page=Dashboard" target="_self">Review saved analyses →</a></div>
+          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="chart"></div><div class="bar"></div><div class="bar short"></div></div><div class="cv-report-icon">📦</div><div class="cv-report-card-title">Sourcing Summary</div><div class="cv-report-card-copy">Procurement-oriented stock, supplier concentration, replacement readiness, lead-time, and sourcing risk package.</div><a class="cv-report-link" href="?page=Alternative%20Finder" target="_self">Validate alternatives →</a></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -191,7 +191,7 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         st.markdown(
             """
             <div class="cv-report-board">
-              <div style="padding:30px;text-align:center;color:#64748B;font-weight:800;">No saved analyses are available yet. Upload and analyze a BOM to create your first report source.</div>
+              <div style="padding:30px;text-align:center;color:#64748B;font-weight:800;"><strong style="display:block;font-size:18px;color:#0F172A;margin-bottom:8px">Create your first decision-ready report</strong>Upload and analyze a BOM to generate an executive summary, engineering risk review, and sourcing package for stakeholders.</div>
             </div>
             """,
             unsafe_allow_html=True,
