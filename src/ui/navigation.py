@@ -7,20 +7,19 @@ import streamlit as st
 
 
 def navigate_to(page: str, **params: Any) -> None:
-    """Navigate to an internal Cadivor page in the current browser tab."""
+    """Navigate without a browser reload or a new Streamlit session.
+
+    Internal navigation is intentionally session-state driven. Query strings are
+    still accepted for external/deep links, but ordinary clicks must not force
+    CookieManager and Supabase authentication to hydrate again.
+    """
     st.session_state["pending_app_mode"] = page
-    try:
-        st.query_params["page"] = page
-        for key, value in params.items():
-            if value is None or str(value).strip() == "":
-                try:
-                    del st.query_params[key]
-                except Exception:
-                    pass
-            else:
-                st.query_params[key] = str(value)
-    except Exception:
-        pass
+    st.session_state["app_mode"] = page
+    nav_params = {"page": page}
+    for key, value in params.items():
+        if value is not None and str(value).strip() != "":
+            nav_params[key] = str(value)
+    st.session_state["cadivor_nav_params"] = nav_params
     st.rerun()
 
 
