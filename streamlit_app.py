@@ -65,6 +65,7 @@ from src.ui.framework import (
     inject_premium_css,
     inject_v32_ux_css,
     render_topbar,
+    render_navigation_loading_overlay,
     page_header,
     metric_card,
     light_plotly_layout,
@@ -2465,24 +2466,37 @@ _nav_icons = {
     "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Design Impact Analyzer":"◇", "Cost Optimization":"$", "Supply Risk Scenario":"△", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
     "Help":"?", "About":"?"
 }
+_nav_groups = [
+    ("Analyze", ["Dashboard", "BOM Analyzer", "Alternative Finder", "Design Impact Analyzer"]),
+    ("Decide", ["Engineering Decisions", "Procurement Advisor", "Cost Optimization", "Supply Risk Scenario"]),
+    ("Monitor", ["Monitoring", "Portfolio Intelligence", "Reports"]),
+    ("Workspace", ["Pricing", "Settings", "Workspace", "Notifications", "Help", "About"]),
+]
 _nav_html = []
-for _nav in NAV_OPTIONS:
-    _active = " active" if _nav == app_mode else ""
-    _active_analysis_id = _safe_text(
-        st.session_state.get("cadivor_active_analysis_id")
-        or st.session_state.get("analysis_id"),
-        "",
-    )
-    if _nav == "BOM Analyzer" and _active_analysis_id:
-        _href = (
-            "?page=Analysis%20Details&analysis_id="
-            + _urlparse.quote(_active_analysis_id)
+for _group_label, _group_pages in _nav_groups:
+    _nav_html.append(f'<div class="cv-side-section">{_group_label}</div><div class="cv-side-nav-group">')
+    for _nav in _group_pages:
+        _active = " active" if _nav == app_mode else ""
+        _active_analysis_id = _safe_text(
+            st.session_state.get("cadivor_active_analysis_id")
+            or st.session_state.get("analysis_id"),
+            "",
         )
-    else:
-        _href = "?page=" + _urlparse.quote(_nav)
-    _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
+        if _nav == "BOM Analyzer" and _active_analysis_id:
+            _href = "?page=Analysis%20Details&loading=1&analysis_id=" + _urlparse.quote(_active_analysis_id)
+        else:
+            _href = "?page=" + _urlparse.quote(_nav) + "&loading=1"
+        _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
+    _nav_html.append('</div>')
 
+if _safe_text(_qp_value("loading", ""), "").lower() in {"1", "true", "yes"}:
+    st.session_state["cadivor_navigation_loading"] = {"page": app_mode, "message": "Loading your engineering workspace"}
+    try:
+        del st.query_params["loading"]
+    except Exception:
+        pass
 render_topbar(profile_for_shell, app_mode)
+render_navigation_loading_overlay()
 try:
     _workspace_command_records = build_workspace_commands(
         supabase,
@@ -2501,7 +2515,6 @@ st.markdown(
     f"""
     <div id="cadivor-sidebar-root" class="cv-app-sidebar">
       <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
-      <div class="cv-side-section first">Navigation</div>
       <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
       <div class="cv-side-section">Workspace</div>
       <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month</span><span>{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')} </span>{'<a class="cv-side-upgrade" href="?page=Pricing" target="_self">Compare plans →</a>' if str(selected_plan_name).lower() in {'starter','free','trial','student'} else ''}</div>
@@ -11245,6 +11258,16 @@ if app_mode == "BOM Analyzer":
         )
         sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
 
+        st.markdown(
+            """
+            <div class="bom8-column-example" aria-label="Recommended BOM columns">
+              <span>Manufacturer Part Number</span><span>Quantity</span><span>Description (optional)</span>
+            </div>
+            <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.download_button(
             label="Download Sample BOM Template",
             data=sample_csv,
@@ -11830,7 +11853,7 @@ if app_mode == "BOM Analyzer":
 
 
     if st.button("Analyze BOM", type="primary"):
-        with st.spinner("Analyzing BOM and checking supplier risk..."):
+        with st.spinner("Analyzing lifecycle, supplier, inventory, sourcing, and engineering risk…"):
             # A new analysis should be saved as a new database record.
             # These flags prevent old session state from blocking the new save.
             st.session_state.pop("analysis_saved", None)
