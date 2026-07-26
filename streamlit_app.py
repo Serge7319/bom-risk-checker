@@ -1664,28 +1664,22 @@ if "user" not in st.session_state:
         st.session_state["cadivor_auth_restore_attempts"] = 0
 
     attempts = int(st.session_state.get("cadivor_auth_restore_attempts", 0))
-    should_buffer = bool(cookie_manager) and attempts < 8
+    try:
+        public_route = str(st.query_params.get("public") or "").strip()
+        auth_route = str(st.query_params.get("auth") or "").strip()
+    except Exception:
+        public_route = ""
+        auth_route = ""
+
+    # Public marketing and explicit sign-in/create-account routes must render
+    # immediately. Cookie hydration buffering is reserved only for deep links
+    # into an authenticated workspace. This removes the pre-login white loader.
+    is_public_intent = (not str(current_route).strip()) or bool(public_route) or auth_route in {"login", "signup"}
+    should_buffer = bool(cookie_manager) and (not is_public_intent) and attempts < 2
 
     if should_buffer:
         st.session_state["cadivor_auth_restore_attempts"] = attempts + 1
-        st.markdown(
-            """
-            <style>
-            #MainMenu, footer, header, [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-            [data-testid="stStatusWidget"], .stDeployButton, [data-testid="stSidebar"], [data-testid="collapsedControl"],
-            section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
-                display:none!important; visibility:hidden!important; width:0!important; min-width:0!important; height:0!important; min-height:0!important;
-            }
-            .stApp, [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
-            .main .block-container, [data-testid="stMainBlockContainer"] { padding:0!important; margin:0!important; max-width:100%!important; }
-            .cadivor-restore { min-height:100vh; display:flex; align-items:center; justify-content:center; color:#64748B; font-weight:800; }
-            .cadivor-restore-card { background:#fff; border:1px solid #E5E7EB; border-radius:20px; padding:24px 28px; box-shadow:0 24px 70px rgba(15,23,42,.08); }
-            </style>
-            <div class="cadivor-restore"><div class="cadivor-restore-card">Loading Cadivor workspace…</div></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        time.sleep(0.22)
+        time.sleep(0.08)
         st.rerun()
 
     # If recovery did not restore a user, show auth only after the buffer. This
@@ -1724,7 +1718,6 @@ if st.session_state.pop("cadivor_auth_ui_was_shown", False):
             st.experimental_set_query_params(page="Dashboard")
         st.session_state["app_mode"] = "Dashboard"
         st.session_state["pending_app_mode"] = "Dashboard"
-        st.rerun()
 
 is_admin = str(current_user.get("role", "")).lower() == "admin"
 effective_plan_name, trial_expired = resolve_effective_plan(current_user)
@@ -2483,20 +2476,13 @@ for _group_label, _group_pages in _nav_groups:
             "",
         )
         if _nav == "BOM Analyzer" and _active_analysis_id:
-            _href = "?page=Analysis%20Details&loading=1&analysis_id=" + _urlparse.quote(_active_analysis_id)
+            _href = "?page=Analysis%20Details&analysis_id=" + _urlparse.quote(_active_analysis_id)
         else:
-            _href = "?page=" + _urlparse.quote(_nav) + "&loading=1"
+            _href = "?page=" + _urlparse.quote(_nav) 
         _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
     _nav_html.append('</div>')
 
-if _safe_text(_qp_value("loading", ""), "").lower() in {"1", "true", "yes"}:
-    st.session_state["cadivor_navigation_loading"] = {"page": app_mode, "message": "Loading your engineering workspace"}
-    try:
-        del st.query_params["loading"]
-    except Exception:
-        pass
 render_topbar(profile_for_shell, app_mode)
-render_navigation_loading_overlay()
 try:
     _workspace_command_records = build_workspace_commands(
         supabase,
