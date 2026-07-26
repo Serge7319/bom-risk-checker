@@ -1551,7 +1551,14 @@ def _persist_auth_cookie():
 
 
 def _qp_value(name, default=""):
-    """Safe query-param reader available before auth routing renders anything."""
+    """Read internal session navigation first, then external query parameters."""
+    try:
+        nav_params = st.session_state.get("cadivor_nav_params") or {}
+        if name in nav_params:
+            value = nav_params.get(name, default)
+            return value or default
+    except Exception:
+        pass
     try:
         value = st.query_params.get(name, default)
         if isinstance(value, list):
@@ -2200,7 +2207,7 @@ NAV_OPTIONS = [
     "About",
 ]
 
-if _qp_value("action") == "logout":
+if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action") == "logout":
     if cookie_manager:
         cookie_manager.delete(cookie="bom_auth", key="delete_bom_auth_from_shell")
     supabase.auth.sign_out()
@@ -2327,10 +2334,6 @@ saved_bom_count = saved_bom_count_response.count or 0
 
 if "pending_app_mode" in st.session_state:
     app_mode = st.session_state.pop("pending_app_mode")
-    try:
-        st.query_params["page"] = app_mode
-    except Exception:
-        pass
 else:
     app_mode = _qp_value("page", st.session_state.get("app_mode", "Dashboard"))
 
@@ -2456,8 +2459,10 @@ inject_design_system_v1()
 
 _nav_icons = {
     "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈", "Design Impact Analyzer":"◇", "Cost Optimization":"$", "Supply Risk Scenario":"△", "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•", "Notifications":"•",
-    "Help":"?", "About":"?"
+    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈",
+    "Design Impact Analyzer":"◇", "Cost Optimization":"$", "Supply Risk Scenario":"△",
+    "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•",
+    "Notifications":"•", "Help":"?", "About":"?"
 }
 _nav_groups = [
     ("Analyze", ["Dashboard", "BOM Analyzer", "Alternative Finder", "Design Impact Analyzer"]),
@@ -2465,29 +2470,11 @@ _nav_groups = [
     ("Monitor", ["Monitoring", "Portfolio Intelligence", "Reports"]),
     ("Workspace", ["Pricing", "Settings", "Workspace", "Notifications", "Help", "About"]),
 ]
-_nav_html = []
-for _group_label, _group_pages in _nav_groups:
-    _nav_html.append(f'<div class="cv-side-section">{_group_label}</div><div class="cv-side-nav-group">')
-    for _nav in _group_pages:
-        _active = " active" if _nav == app_mode else ""
-        _active_analysis_id = _safe_text(
-            st.session_state.get("cadivor_active_analysis_id")
-            or st.session_state.get("analysis_id"),
-            "",
-        )
-        if _nav == "BOM Analyzer" and _active_analysis_id:
-            _href = "?page=Analysis%20Details&analysis_id=" + _urlparse.quote(_active_analysis_id)
-        else:
-            _href = "?page=" + _urlparse.quote(_nav) 
-        _nav_html.append(f'<a class="cv-side-link{_active}" href="{_href}" target="_self"><span>{_nav_icons.get(_nav,"•")}</span>{_nav}</a>')
-    _nav_html.append('</div>')
 
 render_topbar(profile_for_shell, app_mode)
 try:
     _workspace_command_records = build_workspace_commands(
-        supabase,
-        current_user["id"],
-        limit_per_source=60,
+        supabase, current_user["id"], limit_per_source=60,
     )
 except Exception:
     _workspace_command_records = []
@@ -2497,18 +2484,50 @@ render_command_center(
     workspace_commands=_workspace_command_records,
 )
 
-st.markdown(
-    f"""
-    <div id="cadivor-sidebar-root" class="cv-app-sidebar">
-      <div class="cv-side-brand"><div class="cv-side-logo">C</div><div><div class="cv-side-name">Cadivor</div><div class="cv-side-sub">Engineering Intelligence</div></div></div>
-      <nav class="cv-side-nav">{''.join(_nav_html)}</nav>
-      <div class="cv-side-section">Workspace</div>
-      <div class="cv-side-plan"><strong>{selected_plan_name}</strong><span>{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month</span><span>{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')} </span>{'<a class="cv-side-upgrade" href="?page=Pricing" target="_self">Compare plans →</a>' if str(selected_plan_name).lower() in {'starter','free','trial','student'} else ''}</div>
-      <div class="cv-side-footer"><a href="?action=clear&page={_urlparse.quote(app_mode)}" target="_self">Clear Analysis</a><a href="?action=logout" target="_self">Log out</a></div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# Sprint 54.2 — native Streamlit sidebar navigation. HTML anchors caused a full
+# browser reload, a new Streamlit session, cookie rehydration, marketing flashes,
+# and lost destination state. Buttons rerun the existing session in place.
+with st.sidebar:
+    st.markdown(
+        '<div class="cv-native-side-brand"><div class="cv-side-logo">C</div>'
+        '<div><div class="cv-side-name">Cadivor</div>'
+        '<div class="cv-side-sub">Engineering Intelligence</div></div></div>',
+        unsafe_allow_html=True,
+    )
+    for _group_label, _group_pages in _nav_groups:
+        st.markdown(f'<div class="cv-native-side-section">{_group_label}</div>', unsafe_allow_html=True)
+        for _nav in _group_pages:
+            _label = f"{_nav_icons.get(_nav, '•')}  {_nav}"
+            _button_type = "primary" if _nav == app_mode else "secondary"
+            if st.button(_label, key=f"cv_nav_{_nav}", use_container_width=True, type=_button_type):
+                if _nav == "BOM Analyzer":
+                    _active_analysis_id = _safe_text(
+                        st.session_state.get("cadivor_active_analysis_id")
+                        or st.session_state.get("analysis_id"), "",
+                    )
+                    if _active_analysis_id:
+                        navigate_to("Analysis Details", analysis_id=_active_analysis_id)
+                    else:
+                        navigate_to("BOM Analyzer")
+                else:
+                    navigate_to(_nav)
+    st.markdown('<div class="cv-native-side-section">Plan</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="cv-native-plan"><strong>{selected_plan_name}</strong>'
+        f'<span>{monthly_upload_count:,} / {format_limit(selected_plan["monthly_bom_limit"], "BOM analysis", "BOM analyses")} this month</span>'
+        f'<span>{saved_bom_count:,} / {format_limit(selected_plan["max_saved_boms"], "saved BOM")}</span></div>',
+        unsafe_allow_html=True,
+    )
+    if str(selected_plan_name).lower() in {"starter", "free", "trial", "student"}:
+        if st.button("Compare plans", key="cv_nav_compare_plans", use_container_width=True):
+            navigate_to("Pricing")
+    if st.button("Clear Analysis", key="cv_nav_clear_analysis", use_container_width=True):
+        for _key in ("cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id", "results_df", "analysis_saved", "uploaded_filename"):
+            st.session_state.pop(_key, None)
+        navigate_to("BOM Analyzer")
+    if st.button("Log out", key="cv_nav_logout", use_container_width=True):
+        st.session_state["cadivor_logout_requested"] = True
+        st.rerun()
 
 # Final deterministic shell rule. Do not add JavaScript layout patches above this line.
 st.markdown(
@@ -2530,10 +2549,11 @@ st.markdown(
     }
 
     header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"],
-    [data-testid="stSidebar"], section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"] {
         display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
     }
+    [data-testid="stSidebar"] { display:block!important; visibility:visible!important; width:284px!important; min-width:284px!important; background:#07152F!important; }
+    [data-testid="stSidebar"] > div:first-child { width:284px!important; padding:14px 14px 22px!important; }
 
     [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
         margin:0!important; padding:0!important; width:100vw!important; max-width:100vw!important; background:#F6F8FB!important;
@@ -2552,12 +2572,17 @@ st.markdown(
 
     .cv-command-hero:first-child { margin-top:0!important; }
 
+
+    .cv-native-side-brand{display:flex;align-items:center;gap:10px;padding:8px 6px 18px;color:#fff}.cv-native-side-section{margin:16px 5px 7px;color:#91A4C3;font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.cv-native-plan{display:grid;gap:4px;margin:4px 2px 10px;padding:12px;border:1px solid rgba(148,163,184,.18);border-radius:14px;background:rgba(255,255,255,.045);color:#fff}.cv-native-plan strong{font-size:13px}.cv-native-plan span{font-size:11px;color:#AFC0D8}.st-key-cv_nav_logout button{color:#FCA5A5!important}
+    [data-testid="stSidebar"] .stButton>button{min-height:38px!important;border-radius:10px!important;text-align:left!important;justify-content:flex-start!important;font-size:12px!important;font-weight:780!important;border:1px solid transparent!important;background:transparent!important;color:#C8D5E8!important;box-shadow:none!important}
+    [data-testid="stSidebar"] .stButton>button:hover{background:rgba(59,130,246,.12)!important;color:#fff!important;border-color:rgba(96,165,250,.18)!important}
+    [data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#2563EB!important;color:#fff!important;box-shadow:0 10px 22px rgba(37,99,235,.22)!important}
     @media(max-width:1100px){
-        .cadivor-topbar, #cadivor-topbar-root, .cv-app-sidebar, #cadivor-sidebar-root{
-            position:relative!important; top:auto!important; left:auto!important; right:auto!important; width:auto!important; height:auto!important;
-        }
+        .cadivor-topbar, #cadivor-topbar-root{ position:relative!important; top:auto!important; left:auto!important; right:auto!important; width:auto!important; height:auto!important; }
+        [data-testid="stSidebar"] { width:250px!important; min-width:250px!important; }
+        [data-testid="stSidebar"] > div:first-child { width:250px!important; }
         .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
-        .element-container:has(#cadivor-topbar-root), .element-container:has(#cadivor-sidebar-root){display:block!important;}
+        .element-container:has(#cadivor-topbar-root){display:block!important;}
     }
     </style>
     """,
