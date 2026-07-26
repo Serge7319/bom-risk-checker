@@ -145,10 +145,8 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-    [data-testid="stSidebar"], [data-testid="collapsedControl"],
-    section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
-        display: none !important; visibility: hidden !important; width: 0 !important; min-width: 0 !important;
+    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"] {
+        display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important;
     }
     .stApp { background: #F6F8FB !important; }
     .main .block-container, [data-testid="stAppViewContainer"] .main .block-container {
@@ -2133,8 +2131,6 @@ st.markdown(
     }
     html, body, [data-testid="stAppViewContainer"] { background:var(--brc-bg)!important; color:var(--brc-navy)!important; }
     [data-testid="stHeader"] { background:rgba(255,255,255,.88)!important; border-bottom:1px solid var(--brc-border)!important; }
-    [data-testid="stSidebar"] { display:none!important; }
-    [data-testid="collapsedControl"] { display:none!important; }
     .block-container { max-width:100%!important; padding-top:1.25rem!important; padding-left:1.15rem!important; padding-right:1.15rem!important; }
     h1,h2,h3,h4,h5,h6 { color:var(--brc-navy)!important; letter-spacing:-.03em; }
     p,label,span,div,.stMarkdown,.stCaptionContainer { color:var(--brc-muted); }
@@ -2539,58 +2535,82 @@ st.markdown(
     <style id="cadivor-shell-gap-deterministic-fix">
     :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
 
-    /* Shell HTML is fixed-position chrome. Its Streamlit wrapper rows must not take page space. */
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        overflow-x:hidden!important;
+        background:#F6F8FB!important;
+    }
+
+    /* The topbar is fixed chrome. Its Streamlit wrapper must never create page height. */
     .element-container:has(#cadivor-topbar-root),
-    .element-container:has(#cadivor-sidebar-root),
-    div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root),
-    div[data-testid="stMarkdownContainer"]:has(#cadivor-sidebar-root) {
+    div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root) {
         display:contents!important;
-        height:0!important;
-        min-height:0!important;
-        margin:0!important;
-        padding:0!important;
+        height:0!important; min-height:0!important;
+        margin:0!important; padding:0!important;
     }
 
     header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
     [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"] {
         display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
     }
+
+    /* Native Streamlit sidebar: always visible, fixed below Cadivor topbar, and independently scrollable. */
     section[data-testid="stSidebar"], [data-testid="stSidebar"] {
         display:block!important; visibility:visible!important; opacity:1!important;
-        width:284px!important; min-width:284px!important; max-width:284px!important;
-        height:100vh!important; background:#07152F!important;
+        position:fixed!important; transform:none!important;
+        left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; min-width:var(--cv-sidebar-width)!important; max-width:var(--cv-sidebar-width)!important;
+        height:calc(100vh - var(--cv-topbar-height))!important;
+        margin:0!important; padding:0!important;
+        background:#07152F!important; border-right:1px solid rgba(148,163,184,.16)!important;
+        overflow-y:auto!important; overflow-x:hidden!important; z-index:999997!important;
     }
     div[data-testid="stSidebarNav"] { display:none!important; }
-    [data-testid="stSidebar"] > div:first-child { width:284px!important; padding:14px 14px 22px!important; }
-
-    [data-testid="stAppViewContainer"], [data-testid="stMain"], section.main, .main {
-        margin:0!important; padding:0!important; width:100vw!important; max-width:100vw!important; background:#F6F8FB!important;
+    [data-testid="stSidebar"] > div:first-child {
+        width:100%!important; min-width:0!important; max-width:none!important;
+        padding:14px 14px 24px!important; box-sizing:border-box!important;
     }
 
-    .main .block-container, [data-testid="stMainBlockContainer"] {
-        max-width:none!important;
-        width:100%!important;
+    /* Main canvas occupies exactly the space to the right of the fixed sidebar. */
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stAppViewContainer"] > section.main,
+    [data-testid="stMain"] {
+        margin:0 0 0 var(--cv-sidebar-width)!important;
+        padding:0!important;
+        width:calc(100% - var(--cv-sidebar-width))!important;
+        max-width:calc(100% - var(--cv-sidebar-width))!important;
+        min-width:0!important;
         box-sizing:border-box!important;
-        margin:0!important;
-        padding-top:84px!important;
-        padding-left:306px!important;
-        padding-right:24px!important;
-        padding-bottom:48px!important;
+        background:#F6F8FB!important;
+        overflow-x:hidden!important;
     }
+    .main .block-container, [data-testid="stMainBlockContainer"] {
+        max-width:100%!important; width:100%!important; min-width:0!important;
+        box-sizing:border-box!important; margin:0!important;
+        padding:84px 22px 48px!important;
+        overflow-x:hidden!important;
+    }
+    [data-testid="stHorizontalBlock"], [data-testid="column"], .stColumn { min-width:0!important; }
+    [data-testid="stDataFrame"], .stDataFrame { max-width:100%!important; overflow-x:auto!important; }
 
     .cv-command-hero:first-child { margin-top:0!important; }
-
-
-    .cv-native-side-brand{display:flex;align-items:center;gap:10px;padding:8px 6px 18px;color:#fff}.cv-native-side-section{margin:16px 5px 7px;color:#91A4C3;font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.cv-native-plan{display:grid;gap:4px;margin:4px 2px 10px;padding:12px;border:1px solid rgba(148,163,184,.18);border-radius:14px;background:rgba(255,255,255,.045);color:#fff}.cv-native-plan strong{font-size:13px}.cv-native-plan span{font-size:11px;color:#AFC0D8}.st-key-cv_nav_logout button{color:#FCA5A5!important}
-    [data-testid="stSidebar"] .stButton>button{min-height:38px!important;border-radius:10px!important;text-align:left!important;justify-content:flex-start!important;font-size:12px!important;font-weight:780!important;border:1px solid transparent!important;background:transparent!important;color:#C8D5E8!important;box-shadow:none!important}
+    .cv-native-side-brand{display:flex;align-items:center;gap:10px;padding:8px 6px 18px;color:#fff}
+    .cv-native-side-section{margin:16px 5px 7px;color:#91A4C3;font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+    .cv-native-plan{display:grid;gap:4px;margin:4px 2px 10px;padding:12px;border:1px solid rgba(148,163,184,.18);border-radius:14px;background:rgba(255,255,255,.045);color:#fff}
+    .cv-native-plan strong{font-size:13px}.cv-native-plan span{font-size:11px;color:#AFC0D8}.st-key-cv_nav_logout button{color:#FCA5A5!important}
+    [data-testid="stSidebar"] .stButton>button{width:100%!important;min-width:0!important;min-height:38px!important;border-radius:10px!important;text-align:left!important;justify-content:flex-start!important;font-size:12px!important;font-weight:780!important;border:1px solid transparent!important;background:transparent!important;color:#C8D5E8!important;box-shadow:none!important}
     [data-testid="stSidebar"] .stButton>button:hover{background:rgba(59,130,246,.12)!important;color:#fff!important;border-color:rgba(96,165,250,.18)!important}
     [data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#2563EB!important;color:#fff!important;box-shadow:0 10px 22px rgba(37,99,235,.22)!important}
+
     @media(max-width:1100px){
-        .cadivor-topbar, #cadivor-topbar-root{ position:relative!important; top:auto!important; left:auto!important; right:auto!important; width:auto!important; height:auto!important; }
-        [data-testid="stSidebar"] { width:250px!important; min-width:250px!important; }
-        [data-testid="stSidebar"] > div:first-child { width:250px!important; }
-        .main .block-container, [data-testid="stMainBlockContainer"]{padding:16px!important;}
-        .element-container:has(#cadivor-topbar-root){display:block!important;}
+        :root{--cv-sidebar-width:244px!important}
+        .cadivor-search-pill{display:none!important}
+        .main .block-container,[data-testid="stMainBlockContainer"]{padding:80px 16px 40px!important}
+    }
+    @media(max-width:760px){
+        :root{--cv-sidebar-width:220px!important}
+        .cadivor-topbar-center{display:none!important}
+        .cadivor-user{min-width:0!important}
+        .cadivor-user-meta{display:none!important}
     }
     </style>
     """,
