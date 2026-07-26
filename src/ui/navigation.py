@@ -9,7 +9,6 @@ import streamlit as st
 def navigate_to(page: str, **params: Any) -> None:
     """Navigate to an internal Cadivor page in the current browser tab."""
     st.session_state["pending_app_mode"] = page
-    st.session_state["cadivor_navigation_loading"] = {"page": page, "message": "Loading your engineering workspace"}
     try:
         st.query_params["page"] = page
         for key, value in params.items():
