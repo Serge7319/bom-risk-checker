@@ -264,11 +264,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                     st.session_state["pending_app_mode"] = "Dashboard"
                     st.session_state.pop("cadivor_auth_ui_was_shown", None)
                     _set_auth_cookie(cookie_manager, response.session, "signup_set_bom_auth")
-                    try:
-                        st.query_params.clear()
-                        st.query_params["page"] = "Dashboard"
-                    except Exception:
-                        pass
+                    st.session_state["cadivor_nav_params"] = {"page": "Dashboard"}
                     st.rerun()
                 else:
                     st.success("Account created. Please check your email to confirm your account, then return here to log in.")
@@ -287,11 +283,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 st.session_state["app_mode"] = "Dashboard"
                 st.session_state["pending_app_mode"] = "Dashboard"
                 st.session_state.pop("cadivor_auth_ui_was_shown", None)
-                try:
-                    st.query_params.clear()
-                    st.query_params["page"] = "Dashboard"
-                except Exception:
-                    pass
+                st.session_state["cadivor_nav_params"] = {"page": "Dashboard"}
                 st.rerun()
             except Exception as error:
                 st.error(f"Login failed: {error}")
