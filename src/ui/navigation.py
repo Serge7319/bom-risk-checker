@@ -13,7 +13,6 @@ def navigate_to(page: str, **params: Any) -> None:
     still accepted for external/deep links, but ordinary clicks must not force
     CookieManager and Supabase authentication to hydrate again.
     """
-    st.session_state["pending_app_mode"] = page
     st.session_state["app_mode"] = page
     nav_params = {"page": page}
     for key, value in params.items():
