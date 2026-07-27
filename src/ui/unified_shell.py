@@ -32,12 +32,8 @@ NAV_GROUPS = (
         ("Reports", "reports", "Reports"),
     )),
     ("Workspace", (
-        ("Pricing", "pricing", "Pricing"),
         ("Settings", "settings", "Settings"),
-        ("Workspace", "workspace", "Workspace"),
-        ("Notifications", "notifications", "Notifications"),
         ("Help", "help", "Help"),
-        ("About", "about", "About"),
     )),
 )
 
@@ -72,7 +68,7 @@ def render_unified_shell(
     clear_analysis: Callable[[], None],
     request_logout: Callable[[], None],
 ) -> None:
-    """Render one deterministic top bar and one deterministic navigation rail."""
+    """Render the premium authenticated top bar and navigation rail."""
     inject_unified_shell_css()
 
     full_name = profile.get("full_name") or profile.get("email") or "Cadivor user"
@@ -80,8 +76,8 @@ def render_unified_shell(
     initials = profile.get("initials") or "C"
     secondary = profile.get("company") or profile.get("role_title") or plan_name
 
-    # Fixed top bar. Search remains a non-navigation trigger mounted by the
-    # Command Center component; it does not change the browser URL.
+    # Static shell chrome. The interactive account menu is mounted separately
+    # with a native Streamlit popover so it remains keyboard and touch friendly.
     st.markdown(
         f"""
         <div class="cv55-topbar" aria-label="Cadivor application header">
@@ -93,22 +89,41 @@ def render_unified_shell(
             <strong>{_escape(current_page)}</strong>
             <button class="cadivor-search-pill cv55-search-trigger" type="button">Search Cadivor <kbd>⌘K</kbd></button>
           </div>
-          <div class="cv55-profile">
-            <span><small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em></span>
-            <b>{_escape(initials)}</b>
+          <div class="cv552-profile-copy">
+            <small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    with st.container(key="cv552_profile_menu"):
+        with st.popover(initials, use_container_width=False):
+            st.markdown(
+                f"""<div class="cv552-account-head"><b>{_escape(full_name)}</b><span>{_escape(email)}</span><small>{_escape(workspace_name)}</small></div>""",
+                unsafe_allow_html=True,
+            )
+            if st.button("Profile & preferences", key="cv552_profile", use_container_width=True):
+                navigate("Settings")
+            if st.button("Workspace", key="cv552_workspace", use_container_width=True):
+                navigate("Workspace")
+            if st.button("Plan & billing", key="cv552_billing", use_container_width=True):
+                navigate("Pricing")
+            if st.button("Notifications", key="cv552_notifications", use_container_width=True):
+                navigate("Notifications")
+            if st.button("Help center", key="cv552_help", use_container_width=True):
+                navigate("Help")
+            st.divider()
+            if st.button("Sign out", key="cv552_signout", type="secondary", use_container_width=True):
+                request_logout()
+
     with st.container(key="cv55_navigation"):
         st.markdown(
             f"""
             <div class="cv55-workspace">
-              <span>Active workspace</span>
+              <span>Workspace</span>
               <strong>{_escape(workspace_name or 'Cadivor Workspace')}</strong>
-              <small>{_escape(email)}</small>
+              <small>{_escape(plan_name)} plan</small>
             </div>
             """,
             unsafe_allow_html=True,
@@ -118,34 +133,16 @@ def render_unified_shell(
             st.markdown(f'<div class="cv55-nav-group">{group_name}</div>', unsafe_allow_html=True)
             for label, slug, destination in rows:
                 kind = "primary" if destination == current_page else "secondary"
-                if st.button(
-                    label,
-                    key=f"cv55_nav_{slug}",
-                    type=kind,
-                    use_container_width=True,
-                ):
+                if st.button(label, key=f"cv55_nav_{slug}", type=kind, use_container_width=True):
                     navigate(destination)
 
-        st.markdown('<div class="cv55-nav-group cv55-plan-label">Plan</div>', unsafe_allow_html=True)
         st.markdown(
-            f"""
-            <div class="cv55-plan-card">
-              <strong>{_escape(plan_name)}</strong>
-              <span>{_escape(usage_summary)}</span>
-              <span>{_escape(saved_summary)}</span>
-            </div>
-            """,
+            f"""<div class="cv55-plan-card"><strong>{_escape(plan_name)}</strong><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
             unsafe_allow_html=True,
         )
-
         if str(plan_name).lower() in {"starter", "free", "trial", "student"}:
             if st.button("Compare plans", key="cv55_compare_plans", use_container_width=True):
                 navigate("Pricing")
+        if st.button("＋ New BOM analysis", key="cv55_new_analysis", type="primary", use_container_width=True):
+            clear_analysis()
 
-        c1, c2 = st.columns(2, gap="small")
-        with c1:
-            if st.button("New BOM", key="cv55_new_analysis", use_container_width=True):
-                clear_analysis()
-        with c2:
-            if st.button("Log out", key="cv55_logout", use_container_width=True):
-                request_logout()
