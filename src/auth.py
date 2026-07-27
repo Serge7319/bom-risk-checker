@@ -227,23 +227,24 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     )
 
     options = ["Login", "Create Account"]
-    auth_mode = st.radio("Choose an option", options, index=options.index(initial_mode), horizontal=True)
-    email = st.text_input("Email", placeholder="you@company.com")
-    password = st.text_input("Password", type="password", placeholder="Enter your password")
+    with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
+        auth_mode = st.radio("Choose an option", options, index=options.index(initial_mode), horizontal=True)
+        email = st.text_input("Email", placeholder="you@company.com")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
 
-    accepted_terms = True
-    if auth_mode == "Create Account":
-        st.markdown(
-            """
-            <div class="terms-box"><strong>Terms summary:</strong> Cadivor provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.</div>
-            """,
-            unsafe_allow_html=True,
-        )
-        accepted_terms = st.checkbox("I agree to the Terms of Service and Privacy Policy.")
-        with st.expander("View Terms of Service"):
-            st.markdown(CADIVOR_TERMS)
+        accepted_terms = True
+        if auth_mode == "Create Account":
+            st.markdown(
+                """
+                <div class="terms-box"><strong>Terms summary:</strong> Cadivor provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.</div>
+                """,
+                unsafe_allow_html=True,
+            )
+            accepted_terms = st.checkbox("I agree to the Terms of Service and Privacy Policy.")
+            with st.expander("View Terms of Service"):
+                st.markdown(CADIVOR_TERMS)
 
-    submit = st.button("Create Account" if auth_mode == "Create Account" else "Login")
+        submit = st.form_submit_button("Create Account" if auth_mode == "Create Account" else "Login", use_container_width=True)
     st.markdown('<a class="auth-back" href="?" target="_self">← Back to Home</a>', unsafe_allow_html=True)
 
     if submit:
@@ -255,7 +256,8 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             return
         if auth_mode == "Create Account":
             try:
-                response = supabase.auth.sign_up({"email": email, "password": password})
+                with st.spinner("Creating your secure Cadivor workspace…"):
+                    response = supabase.auth.sign_up({"email": email, "password": password})
                 if getattr(response, "session", None):
                     st.session_state["user"] = response.user
                     st.session_state.pop("cadivor_force_signed_out", None)
@@ -265,7 +267,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                     st.session_state["pending_app_mode"] = "Dashboard"
                     st.session_state.pop("cadivor_auth_ui_was_shown", None)
                     _set_auth_cookie(cookie_manager, response.session, "signup_set_bom_auth")
-                    st.session_state["cadivor_nav_params"] = {"page": "Dashboard"}
+                    st.session_state["cadivor_auth_transition"] = "dashboard"
                     st.rerun()
                 else:
                     st.success("Account created. Please check your email to confirm your account, then return here to log in.")
@@ -273,7 +275,8 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 st.error(f"Signup failed: {error}")
         else:
             try:
-                response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                with st.spinner("Signing in securely…"):
+                    response = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if not getattr(response, "session", None):
                     st.error("Login failed: no session was returned. Please confirm your email and try again.")
                     return
@@ -285,7 +288,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 st.session_state["app_mode"] = "Dashboard"
                 st.session_state["pending_app_mode"] = "Dashboard"
                 st.session_state.pop("cadivor_auth_ui_was_shown", None)
-                st.session_state["cadivor_nav_params"] = {"page": "Dashboard"}
+                st.session_state["cadivor_auth_transition"] = "dashboard"
                 st.rerun()
             except Exception as error:
                 st.error(f"Login failed: {error}")
