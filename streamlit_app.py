@@ -89,6 +89,7 @@ from src.ui.unified_shell import render_unified_shell
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
+from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.components.onboarding import (
     render_analysis_success,
@@ -2321,6 +2322,10 @@ render_unified_shell(
 
 # Design System v1 is deliberately injected after the application shell.
 inject_design_system_v1()
+# Sprint 56 is the final authenticated presentation layer. It is presentation-only
+# and leaves navigation, analysis continuity, and engineering calculations intact.
+inject_executive_workspace_css()
+render_page_context(app_mode)
 
 try:
     _workspace_command_records = build_workspace_commands(
