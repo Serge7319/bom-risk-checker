@@ -29,3 +29,143 @@ input,textarea,[data-baseweb="select"]>div,[data-testid="stDateInput"]>div>div{m
 @media(max-width:800px){:root{--cv56-gutter:14px}[data-testid="stMainBlockContainer"],.main .block-container{padding-top:76px!important}.cv56-page-context{align-items:flex-start}.cv56-page-context>div{display:grid;gap:2px}.cv56-page-header{display:block}.cv56-header-badges{justify-content:flex-start;margin-top:12px}.cv56-kpi-grid,.cv56-skeleton-kpis{grid-template-columns:1fr}.cv56-card,.cv56-card-major{padding:16px}.cv320-kpis{grid-template-columns:1fr 1fr!important}}
 @media(max-width:560px){.cv320-kpis{grid-template-columns:1fr!important}[data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}[data-testid="column"]{width:100%!important;flex:1 1 100%!important}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* Sprint 56.1 — Executive Workspace Recovery
+   Scoped after Sprint 56 to restore shell usability and prevent global
+   Streamlit button normalization from leaking into navigation/popovers. */
+
+/* Keep authenticated chrome visible and reduce the perceived empty canvas. */
+[data-testid="stMainBlockContainer"],.main .block-container{
+  padding-top:76px!important;
+  padding-bottom:48px!important;
+}
+.cv56-page-context{
+  align-items:center!important;
+  min-height:38px!important;
+  margin-bottom:14px!important;
+  padding:0 2px 10px!important;
+}
+.cv56-page-context p{font-size:11.5px!important;line-height:1.35!important}
+
+/* Navigation rail: explicit recovery from the global secondary button rule. */
+.st-key-cv55_navigation .stButton>button,
+.st-key-cv55_navigation .stButton>button[kind="secondary"]{
+  width:100%!important;
+  min-height:36px!important;
+  justify-content:flex-start!important;
+  padding:0 10px 0 36px!important;
+  border:1px solid transparent!important;
+  border-radius:8px!important;
+  background:transparent!important;
+  color:#c7d3e4!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.st-key-cv55_navigation .stButton>button p,
+.st-key-cv55_navigation .stButton>button span,
+.st-key-cv55_navigation .stButton>button div{
+  color:inherit!important;
+  opacity:1!important;
+  visibility:visible!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.st-key-cv55_navigation .stButton>button:hover,
+.st-key-cv55_navigation .stButton>button[kind="secondary"]:hover{
+  background:rgba(148,163,184,.085)!important;
+  border-color:transparent!important;
+  color:#fff!important;
+  transform:none!important;
+}
+.st-key-cv55_navigation .stButton>button[kind="primary"]{
+  background:rgba(37,99,235,.14)!important;
+  border-color:rgba(96,165,250,.14)!important;
+  color:#fff!important;
+  box-shadow:inset 3px 0 0 #60a5fa!important;
+}
+.st-key-cv55_navigation .stButton>button[kind="primary"]::before{
+  border-color:#93c5fd!important;
+  background:rgba(59,130,246,.15)!important;
+}
+.st-key-cv55_navigation .stButton>button::before{opacity:.9!important}
+.st-key-cv55_navigation .cv55-nav-group{color:#8ea2bf!important}
+.st-key-cv55_navigation .cv55-workspace{margin-bottom:11px!important}
+
+/* Profile popover: guarantee readable labels and compact menu geometry. */
+[data-testid="stPopoverBody"]{
+  width:280px!important;
+  min-width:280px!important;
+  max-width:calc(100vw - 24px)!important;
+  padding:7px!important;
+  border-radius:14px!important;
+  background:#fff!important;
+}
+[data-testid="stPopoverBody"] .stButton{margin:1px 0!important}
+[data-testid="stPopoverBody"] .stButton>button,
+[data-testid="stPopoverBody"] .stButton>button[kind="secondary"],
+[data-testid="stPopoverBody"] .stButton>button[kind="primary"]{
+  min-height:37px!important;
+  justify-content:flex-start!important;
+  padding:0 10px!important;
+  border:0!important;
+  border-radius:8px!important;
+  background:transparent!important;
+  color:#334155!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+[data-testid="stPopoverBody"] .stButton>button p,
+[data-testid="stPopoverBody"] .stButton>button span,
+[data-testid="stPopoverBody"] .stButton>button div{
+  color:inherit!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+[data-testid="stPopoverBody"] .stButton>button:hover{
+  background:#f1f5f9!important;
+  color:#0f172a!important;
+  transform:none!important;
+}
+.st-key-cv552_signout button{color:#b42318!important}
+.st-key-cv552_signout button:hover{background:#fff1f0!important;color:#9f1c14!important}
+.cv552-account-head{padding:8px 9px 9px!important}
+
+/* Do not let broad card normalization alter every bordered Streamlit wrapper. */
+[data-testid="stVerticalBlockBorderWrapper"]{
+  box-shadow:none!important;
+}
+
+/* Tighter, consistent section rhythm. */
+[data-testid="stMainBlockContainer"] h2{margin-top:20px!important;margin-bottom:9px!important}
+[data-testid="stMainBlockContainer"] h3{margin-top:14px!important;margin-bottom:7px!important}
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"]{gap:.72rem!important}
+[data-testid="stMainBlockContainer"] hr{margin:16px 0!important}
+
+/* Charts remain supporting evidence, not viewport-sized hero content. */
+[data-testid="stPlotlyChart"],
+[data-testid="stVegaLiteChart"],
+[data-testid="stArrowVegaLiteChart"]{
+  max-height:310px!important;
+  overflow:hidden!important;
+  border:1px solid var(--cv56-border)!important;
+  border-radius:14px!important;
+  background:#fff!important;
+}
+
+/* Preserve internal table scrolling without browser-level horizontal scroll. */
+[data-testid="stDataFrame"]{max-width:100%!important;overflow-x:auto!important}
+
+/* Loading/status elements must remain within the light content canvas. */
+[data-testid="stStatusWidget"],
+[data-testid="stSpinner"]{
+  color:#334155!important;
+}
+.cv56-skeleton-page{background:transparent!important;min-height:0!important}
+
+@media(max-width:800px){
+  [data-testid="stMainBlockContainer"],.main .block-container{padding-top:72px!important}
+  .cv56-page-context{display:block!important}
+  .cv56-page-context p{display:none!important}
+}
