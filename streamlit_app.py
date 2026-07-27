@@ -36,6 +36,12 @@ from src.health_score import calculate_bom_health_score, generate_executive_summ
 from src.plans import PLANS, get_plan, validate_bom_against_plan, resolve_effective_plan, format_limit
 from src.alternative_engine import compare_parts, suggest_alternatives_v2, rank_alternatives
 from src.auth import show_auth_ui
+from src.auth_state import (
+    AUTH_AUTHENTICATED,
+    AUTH_SIGNED_OUT,
+    mark_signed_out,
+    resolve_auth_state,
+)
 from supabase import create_client
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
@@ -1496,57 +1502,12 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else _FallbackCookieManager()
 
 # -----------------------------------------------------------------------------
-# Cadivor auth/session recovery
+# Sprint 55.1 — explicit authentication state machine
 # -----------------------------------------------------------------------------
-# Navigation uses query-string page changes. On Streamlit Cloud, those can create
-# a fresh frontend session. Therefore the Supabase tokens MUST be persisted into
-# the Cadivor auth cookie immediately after login, and restored before routing.
-# This block is intentionally placed before app routing and before any page UI.
-
-
-def _coerce_auth_cookie(raw_cookie):
-    """Return a cookie dict whether CookieManager gives us dict, JSON, or None."""
-    if not raw_cookie:
-        return None
-    if isinstance(raw_cookie, dict):
-        return raw_cookie
-    if isinstance(raw_cookie, str):
-        try:
-            import json
-            parsed = json.loads(raw_cookie)
-            return parsed if isinstance(parsed, dict) else None
-        except Exception:
-            return None
-    return None
-
-
-def _persist_auth_cookie():
-    """Persist current Supabase tokens so page navigation/refresh does not log out."""
-    access_token = st.session_state.get("access_token")
-    refresh_token = st.session_state.get("refresh_token")
-    if not cookie_manager or not access_token or not refresh_token:
-        return
-    try:
-        from datetime import datetime, timedelta
-        cookie_manager.set(
-            cookie="bom_auth",
-            val={"access_token": access_token, "refresh_token": refresh_token},
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            key="persist_bom_auth_cookie",
-        )
-    except TypeError:
-        try:
-            cookie_manager.set(
-                cookie="bom_auth",
-                val={"access_token": access_token, "refresh_token": refresh_token},
-                key="persist_bom_auth_cookie",
-            )
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-
+# Authentication is resolved before Cadivor renders either the public marketing
+# experience or the authenticated application shell.  During CookieManager /
+# Supabase restoration the app remains in a neutral UNKNOWN boot state, which
+# prevents marketing, login, and Dashboard screens from flashing in sequence.
 
 
 def _qp_value(name, default=""):
@@ -1566,144 +1527,51 @@ def _qp_value(name, default=""):
     except Exception:
         return default
 
-# Sprint 48.0.1 — restore authenticated follow-up state BEFORE the auth gate.
-# The Engineering Copilot component renders much later, so restoring its snapshot
-# inside the component is too late if a rerun momentarily loses auth or route
-# state. This block guarantees that an in-flight follow-up stays on the same
-# authenticated Analysis Details workspace.
+
+# Preserve a requested authenticated destination while auth is still UNKNOWN.
+_requested_page = str(_qp_value("page", "") or "").strip()
+if _requested_page:
+    st.session_state["cadivor_requested_page"] = _requested_page
+
+# Sprint 48.0.1 — restore authenticated follow-up state before the auth gate.
 _followup_snapshot = st.session_state.get("cv48_auth_snapshot")
 if st.session_state.get("cv4801_followup_inflight") and isinstance(_followup_snapshot, dict):
     for _key, _value in _followup_snapshot.items():
         if _value is not None and st.session_state.get(_key) is None:
             st.session_state[_key] = _value
 
-    _route_snapshot = st.session_state.get("cv4801_route_snapshot")
-    if isinstance(_route_snapshot, dict) and _route_snapshot:
-        try:
-            _current_route = str(st.query_params.get("page", "") or "")
-        except Exception:
-            _current_route = ""
-        if not _current_route:
-            try:
-                st.query_params.clear()
-                for _key, _value in _route_snapshot.items():
-                    st.query_params[_key] = _value
-            except Exception:
-                pass
-
-# Sprint 54.3 — an explicit logout must win over a late CookieManager read.
-# Keep this session signed out until the user successfully authenticates again.
-_force_signed_out = bool(st.session_state.get("cadivor_force_signed_out"))
-if _force_signed_out:
-    for _auth_key in ("user", "access_token", "refresh_token"):
-        st.session_state.pop(_auth_key, None)
-
-# 1) Restore tokens from cookie only if this Streamlit session does not have them.
-if (not _force_signed_out) and ("access_token" not in st.session_state or "refresh_token" not in st.session_state):
-    raw_auth_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
-    auth_cookie = _coerce_auth_cookie(raw_auth_cookie)
-    if auth_cookie and auth_cookie.get("access_token") and auth_cookie.get("refresh_token"):
-        st.session_state["access_token"] = auth_cookie.get("access_token")
-        st.session_state["refresh_token"] = auth_cookie.get("refresh_token")
-
-# 2) Validate tokens with Supabase before deciding whether to show landing/auth.
-if (not _force_signed_out) and "user" not in st.session_state and st.session_state.get("access_token") and st.session_state.get("refresh_token"):
+# Logout is resolved before profile loading or either visual shell renders.
+if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action") == "logout":
     try:
-        supabase.auth.set_session(
-            st.session_state["access_token"],
-            st.session_state["refresh_token"],
-        )
-        user_response = supabase.auth.get_user()
-        if user_response and user_response.user:
-            st.session_state["user"] = user_response.user
-            st.session_state["cadivor_auth_restore_checked"] = True
-            # Do not mark restore attempts as exhausted. If Streamlit creates a brief
-            # fresh frontend session during navigation, we still want the neutral
-            # loader to appear while CookieManager hydrates instead of flashing the
-            # public landing/auth page.
-            st.session_state["cadivor_auth_restore_attempts"] = 0
+        supabase.auth.sign_out()
     except Exception:
-        # A Copilot follow-up can trigger a brief Supabase/session hydration race
-        # on Streamlit Cloud. During that protected rerun, never discard otherwise
-        # valid credentials or fall through to the public landing page. Restore
-        # the snapshot and retry the authenticated route a few times. Outside an
-        # in-flight follow-up, preserve the original expired-token behavior.
-        _snapshot = st.session_state.get("cv48_auth_snapshot")
-        if st.session_state.get("cv4801_followup_inflight") and isinstance(_snapshot, dict):
-            for _key in ("user", "access_token", "refresh_token"):
-                _value = _snapshot.get(_key)
-                if _value is not None:
-                    st.session_state[_key] = _value
-            _retry = int(st.session_state.get("cv4801_auth_retry_count", 0)) + 1
-            st.session_state["cv4801_auth_retry_count"] = _retry
-            if _retry <= 4:
-                time.sleep(0.18)
-                st.rerun()
-        else:
-            # Tokens are invalid/expired. Remove them from session, but do not
-            # delete the cookie here; login/logout handlers own cookie deletion.
-            st.session_state.pop("user", None)
-            st.session_state.pop("access_token", None)
-            st.session_state.pop("refresh_token", None)
-
-
-if "user" not in st.session_state:
-
-    # Sprint 48.0.1 defensive guard: an authenticated Copilot follow-up must never
-    # render the public landing/auth page. Keep the workspace recovery screen and
-    # retry while the preserved auth snapshot is available.
-    _snapshot = st.session_state.get("cv48_auth_snapshot")
-    if st.session_state.get("cv4801_followup_inflight") and isinstance(_snapshot, dict) and _snapshot.get("user") is not None:
-        for _key in ("user", "access_token", "refresh_token"):
-            if _snapshot.get(_key) is not None:
-                st.session_state[_key] = _snapshot[_key]
-        time.sleep(0.15)
-        st.rerun()
-
-    # CookieManager can hydrate several reruns late on Streamlit Cloud, especially
-    # after query-string navigation or browser Back. During that window we must
-    # NEVER render the public landing page because it creates the visible flash.
-    # Instead, keep a neutral loader until either auth restores or we decide the
-    # visitor is genuinely signed out.
-    current_route = _qp_value("page", "") if "_qp_value" in globals() else ""
-    recovery_key = f"{current_route}|{_qp_value('action', '') if '_qp_value' in globals() else ''}"
-    if st.session_state.get("cadivor_auth_recovery_key") != recovery_key:
-        st.session_state["cadivor_auth_recovery_key"] = recovery_key
-        st.session_state["cadivor_auth_restore_attempts"] = 0
-
-    attempts = int(st.session_state.get("cadivor_auth_restore_attempts", 0))
+        pass
     try:
-        public_route = str(st.query_params.get("public") or "").strip()
-        auth_route = str(st.query_params.get("auth") or "").strip()
+        if cookie_manager:
+            # Overwrite first so a new frontend session cannot restore stale tokens
+            # while CookieManager processes deletion asynchronously.
+            cookie_manager.set(cookie="bom_auth", val={}, key="s551_clear_bom_auth")
+            cookie_manager.delete(cookie="bom_auth", key="s551_delete_bom_auth")
     except Exception:
-        public_route = ""
-        auth_route = ""
+        pass
+    _debug_log = list(st.session_state.get("cadivor_auth_debug_log") or [])
+    st.session_state.clear()
+    st.session_state["cadivor_auth_debug_log"] = _debug_log[-50:]
+    mark_signed_out("explicit_logout")
+    st.rerun()
 
-    # Public marketing and explicit sign-in/create-account routes must render
-    # immediately. Cookie hydration buffering is reserved only for deep links
-    # into an authenticated workspace. This removes the pre-login white loader.
-    is_public_intent = (not str(current_route).strip()) or bool(public_route) or auth_route in {"login", "signup"}
-    should_buffer = bool(cookie_manager) and (not is_public_intent) and attempts < 1
-
-    if should_buffer:
-        st.session_state["cadivor_auth_restore_attempts"] = attempts + 1
-        time.sleep(0.04)
-        st.rerun()
-
-    # If recovery did not restore a user, show auth only after the buffer. This
-    # preserves public access for signed-out visitors while preventing navigation
-    # flicker for signed-in users.
-    # Sprint 30.3: remember that this browser session actually displayed the
-    # sign-in screen. After a successful sign-in, this lets Cadivor return the
-    # customer to Dashboard without interfering with intentional deep links or
-    # ordinary query-string navigation inside an authenticated session.
-    st.session_state["cadivor_auth_ui_was_shown"] = True
+_auth_status = resolve_auth_state(supabase, cookie_manager)
+if _auth_status == AUTH_SIGNED_OUT:
     try:
         show_auth_ui(supabase, cookie_manager)
     except TypeError:
         show_auth_ui(supabase)
     st.stop()
 
+if _auth_status != AUTH_AUTHENTICATED:
+    # Defensive stop: resolve_auth_state renders the neutral boot surface while
+    # UNKNOWN, so neither public nor authenticated content can leak through.
+    st.stop()
 
 
 current_user = load_user_data()
@@ -2186,21 +2054,6 @@ NAV_OPTIONS = [
     "Help",
     "About",
 ]
-
-if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action") == "logout":
-    if cookie_manager:
-        try:
-            cookie_manager.delete(cookie="bom_auth", key="delete_bom_auth_from_shell")
-        except Exception:
-            pass
-    try:
-        supabase.auth.sign_out()
-    except Exception:
-        pass
-    st.session_state.clear()
-    # Prevent a delayed/stale cookie value from immediately signing the user back in.
-    st.session_state["cadivor_force_signed_out"] = True
-    st.rerun()
 
 if _qp_value("action") == "clear":
     st.session_state.pop("results_df", None)
@@ -12207,7 +12060,7 @@ Unlock more power:
 # shell and selected workspace page have rendered. A CookieManager component can
 # cause a frontend refresh; doing this last ensures any refresh remains inside
 # the authenticated shell instead of flashing the public marketing site.
-_pending_cookie = st.session_state.pop("cadivor_cookie_write_pending", None)
+_pending_cookie = st.session_state.get("cadivor_cookie_write_pending")
 if isinstance(_pending_cookie, dict) and cookie_manager:
     try:
         from datetime import datetime, timedelta
@@ -12218,8 +12071,9 @@ if isinstance(_pending_cookie, dict) and cookie_manager:
                 "refresh_token": _pending_cookie.get("refresh_token"),
             },
             expires_at=datetime.utcnow() + timedelta(days=7),
-            key="s55_persist_bom_auth",
+            key="s551_persist_bom_auth",
         )
+        st.session_state.pop("cadivor_cookie_write_pending", None)
     except Exception:
+        # Keep the pending payload so the next authenticated rerun can retry.
         pass
-st.session_state.pop("cadivor_auth_transition", None)
