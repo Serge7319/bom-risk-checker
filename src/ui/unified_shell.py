@@ -15,25 +15,25 @@ import streamlit as st
 
 NAV_GROUPS = (
     ("Analyze", (
-        ("Dashboard", "dashboard", "Dashboard"),
-        ("BOM Analyzer", "bom", "BOM Analyzer"),
-        ("Alternative Finder", "alternatives", "Alternative Finder"),
-        ("Design Impact", "impact", "Design Impact Analyzer"),
+        ("▦  Dashboard", "dashboard", "Dashboard"),
+        ("◇  BOM Analyzer", "bom", "BOM Analyzer"),
+        ("⇄  Alternative Finder", "alternatives", "Alternative Finder"),
+        ("⌁  Design Impact", "impact", "Design Impact Analyzer"),
     )),
     ("Decide", (
-        ("Engineering Decisions", "decisions", "Engineering Decisions"),
-        ("Procurement Advisor", "procurement", "Procurement Advisor"),
-        ("Cost Optimization", "cost", "Cost Optimization"),
-        ("Supply Scenario", "scenario", "Supply Risk Scenario"),
+        ("✓  Engineering Decisions", "decisions", "Engineering Decisions"),
+        ("⌂  Procurement Advisor", "procurement", "Procurement Advisor"),
+        ("$  Cost Optimization", "cost", "Cost Optimization"),
+        ("△  Supply Scenario", "scenario", "Supply Risk Scenario"),
     )),
     ("Monitor", (
-        ("Monitoring", "monitoring", "Monitoring"),
-        ("Portfolio Intelligence", "portfolio", "Portfolio Intelligence"),
-        ("Reports", "reports", "Reports"),
+        ("◉  Monitoring", "monitoring", "Monitoring"),
+        ("▤  Portfolio Intelligence", "portfolio", "Portfolio Intelligence"),
+        ("▧  Reports", "reports", "Reports"),
     )),
     ("Workspace", (
-        ("Settings", "settings", "Settings"),
-        ("Help", "help", "Help"),
+        ("⚙  Settings", "settings", "Settings"),
+        ("?  Help", "help", "Help"),
     )),
 )
 
