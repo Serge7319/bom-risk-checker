@@ -140,7 +140,7 @@ st.set_page_config(
     page_title="Cadivor",
     page_icon="C",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 st.markdown(
     """
@@ -2483,10 +2483,12 @@ render_command_center(
     workspace_commands=_workspace_command_records,
 )
 
-# Sprint 54.2 — native Streamlit sidebar navigation. HTML anchors caused a full
-# browser reload, a new Streamlit session, cookie rehydration, marketing flashes,
-# and lost destination state. Buttons rerun the existing session in place.
-with st.sidebar:
+# Sprint 54.5 — stable premium application navigation rendered in the main
+# document rather than Streamlit's native sidebar. Native sidebar mounting can
+# lag behind authentication reruns, which made navigation appear only after a
+# command-palette interaction. This container exists on the first authenticated
+# render and keeps all navigation inside the current Streamlit session.
+with st.container(key="cv_app_nav"):
     st.markdown(
         '<div class="cv-native-side-brand"><div class="cv-side-logo">C</div>'
         '<div><div class="cv-side-name">Cadivor</div>'
@@ -2520,20 +2522,23 @@ with st.sidebar:
     if str(selected_plan_name).lower() in {"starter", "free", "trial", "student"}:
         if st.button("Compare plans", key="cv_nav_compare_plans", use_container_width=True):
             navigate_to("Pricing")
-    if st.button("Clear Analysis", key="cv_nav_clear_analysis", use_container_width=True):
-        for _key in ("cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id", "results_df", "analysis_saved", "uploaded_filename"):
-            st.session_state.pop(_key, None)
-        navigate_to("BOM Analyzer")
-    if st.button("Log out", key="cv_nav_logout", use_container_width=True):
-        st.session_state["cadivor_logout_requested"] = True
-        st.rerun()
+    _utility_cols = st.columns(2, gap="small")
+    with _utility_cols[0]:
+        if st.button("Clear", key="cv_nav_clear_analysis", use_container_width=True):
+            for _key in ("cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id", "results_df", "analysis_saved", "uploaded_filename"):
+                st.session_state.pop(_key, None)
+            navigate_to("BOM Analyzer")
+    with _utility_cols[1]:
+        if st.button("Log out", key="cv_nav_logout", use_container_width=True):
+            st.session_state["cadivor_logout_requested"] = True
+            st.rerun()
 
 # Final deterministic shell rule. Do not add JavaScript layout patches above this line.
 st.markdown(
     """
     <style id="cadivor-sprint30-sidebar-upgrade">.cv-side-upgrade{display:block!important;margin-top:10px;padding:8px 10px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;color:#1d4ed8!important;text-decoration:none!important;font-size:11px;font-weight:900;text-align:center}</style>
     <style id="cadivor-shell-gap-deterministic-fix">
-    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:284px!important; }
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:236px!important; }
 
     html, body, .stApp, [data-testid="stAppViewContainer"] {
         overflow-x:hidden!important;
@@ -2553,22 +2558,26 @@ st.markdown(
         display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
     }
 
-    /* Native Streamlit sidebar: always visible, fixed below Cadivor topbar, and independently scrollable. */
-    section[data-testid="stSidebar"], [data-testid="stSidebar"] {
+    /* Native Streamlit sidebar is not part of the Cadivor shell. */
+    section[data-testid="stSidebar"], [data-testid="stSidebar"],
+    [data-testid="collapsedControl"], div[data-testid="stSidebarNav"] {
+        display:none!important; visibility:hidden!important; width:0!important;
+        min-width:0!important; max-width:0!important; transform:none!important;
+    }
+
+    /* Stable Cadivor navigation is a first-class main-document container. */
+    .st-key-cv_app_nav {
         display:block!important; visibility:visible!important; opacity:1!important;
-        position:fixed!important; transform:none!important;
-        left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
-        width:var(--cv-sidebar-width)!important; min-width:var(--cv-sidebar-width)!important; max-width:var(--cv-sidebar-width)!important;
-        height:calc(100vh - var(--cv-topbar-height))!important;
-        margin:0!important; padding:0!important;
-        background:#07152F!important; border-right:1px solid rgba(148,163,184,.16)!important;
+        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
+        width:var(--cv-sidebar-width)!important; min-width:var(--cv-sidebar-width)!important;
+        max-width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
+        margin:0!important; padding:14px 12px 18px!important; box-sizing:border-box!important;
+        background:linear-gradient(180deg,#07152F 0%,#0A1D3D 100%)!important;
+        border-right:1px solid rgba(148,163,184,.16)!important;
+        box-shadow:14px 0 36px rgba(15,23,42,.08)!important;
         overflow-y:auto!important; overflow-x:hidden!important; z-index:999997!important;
     }
-    div[data-testid="stSidebarNav"] { display:none!important; }
-    [data-testid="stSidebar"] > div:first-child {
-        width:100%!important; min-width:0!important; max-width:none!important;
-        padding:14px 14px 24px!important; box-sizing:border-box!important;
-    }
+    .st-key-cv_app_nav > div { width:100%!important; min-width:0!important; }
 
     /* Main canvas occupies exactly the space to the right of the fixed sidebar. */
     [data-testid="stAppViewContainer"] > .main,
@@ -2593,21 +2602,24 @@ st.markdown(
     [data-testid="stDataFrame"], .stDataFrame { max-width:100%!important; overflow-x:auto!important; }
 
     .cv-command-hero:first-child { margin-top:0!important; }
-    .cv-native-side-brand{display:flex;align-items:center;gap:10px;padding:8px 6px 18px;color:#fff}
-    .cv-native-side-section{margin:16px 5px 7px;color:#91A4C3;font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
-    .cv-native-plan{display:grid;gap:4px;margin:4px 2px 10px;padding:12px;border:1px solid rgba(148,163,184,.18);border-radius:14px;background:rgba(255,255,255,.045);color:#fff}
+    .cv-native-side-brand{display:flex;align-items:center;gap:10px;padding:5px 5px 12px;color:#fff}
+    .cv-native-side-brand .cv-side-logo{width:34px!important;height:34px!important;border-radius:10px!important;background:linear-gradient(145deg,#3B82F6,#1D4ED8)!important;box-shadow:0 9px 20px rgba(37,99,235,.28)!important}
+    .cv-native-side-brand .cv-side-name{font-size:15px!important;font-weight:900!important;letter-spacing:-.02em!important}
+    .cv-native-side-brand .cv-side-sub{font-size:8px!important;letter-spacing:.14em!important;color:#8FA8CC!important}
+    .cv-native-side-section{margin:13px 5px 6px;color:#8298BA;font-size:9px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}
+    .cv-native-plan{display:grid;gap:3px;margin:4px 1px 8px;padding:10px 11px;border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(255,255,255,.045);color:#fff}
     .cv-native-plan strong{font-size:13px}.cv-native-plan span{font-size:11px;color:#AFC0D8}.st-key-cv_nav_logout button{color:#FCA5A5!important}
-    [data-testid="stSidebar"] .stButton>button{width:100%!important;min-width:0!important;min-height:38px!important;border-radius:10px!important;text-align:left!important;justify-content:flex-start!important;font-size:12px!important;font-weight:780!important;border:1px solid transparent!important;background:transparent!important;color:#C8D5E8!important;box-shadow:none!important}
-    [data-testid="stSidebar"] .stButton>button:hover{background:rgba(59,130,246,.12)!important;color:#fff!important;border-color:rgba(96,165,250,.18)!important}
-    [data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#2563EB!important;color:#fff!important;box-shadow:0 10px 22px rgba(37,99,235,.22)!important}
+    .st-key-cv_app_nav .stButton>button{width:100%!important;min-width:0!important;min-height:36px!important;border-radius:9px!important;text-align:left!important;justify-content:flex-start!important;font-size:11.5px!important;font-weight:760!important;padding:0 10px!important;border:1px solid transparent!important;background:transparent!important;color:#C8D5E8!important;box-shadow:none!important}
+    .st-key-cv_app_nav .stButton>button:hover{background:rgba(59,130,246,.12)!important;color:#fff!important;border-color:rgba(96,165,250,.18)!important}
+    .st-key-cv_app_nav .stButton>button[kind="primary"]{background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;color:#fff!important;box-shadow:0 8px 20px rgba(37,99,235,.24)!important}
 
     @media(max-width:1100px){
-        :root{--cv-sidebar-width:244px!important}
+        :root{--cv-sidebar-width:208px!important}
         .cadivor-search-pill{display:none!important}
         .main .block-container,[data-testid="stMainBlockContainer"]{padding:80px 16px 40px!important}
     }
     @media(max-width:760px){
-        :root{--cv-sidebar-width:220px!important}
+        :root{--cv-sidebar-width:200px!important}
         .cadivor-topbar-center{display:none!important}
         .cadivor-user{min-width:0!important}
         .cadivor-user-meta{display:none!important}
@@ -2683,6 +2695,36 @@ st.markdown(
         color:#64748B !important;
         -webkit-text-fill-color:#64748B !important;
         opacity:1 !important;
+    }
+
+    /* Sprint 54.5: the dark application navigation owns its own button palette. */
+    .st-key-cv_app_nav div.stButton > button[kind="secondary"],
+    .st-key-cv_app_nav button[data-testid="stBaseButton-secondary"] {
+        background:transparent !important;
+        border-color:transparent !important;
+        color:#C8D5E8 !important;
+        -webkit-text-fill-color:#C8D5E8 !important;
+        box-shadow:none !important;
+    }
+    .st-key-cv_app_nav div.stButton > button[kind="secondary"] *,
+    .st-key-cv_app_nav button[data-testid="stBaseButton-secondary"] * {
+        color:#C8D5E8 !important;
+        -webkit-text-fill-color:#C8D5E8 !important;
+    }
+    .st-key-cv_app_nav div.stButton > button[kind="secondary"]:hover,
+    .st-key-cv_app_nav button[data-testid="stBaseButton-secondary"]:hover {
+        background:rgba(59,130,246,.12) !important;
+        border-color:rgba(96,165,250,.18) !important;
+        color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
+    }
+    .st-key-cv_app_nav div.stButton > button[kind="primary"],
+    .st-key-cv_app_nav button[data-testid="stBaseButton-primary"] {
+        background:linear-gradient(135deg,#2563EB,#1D4ED8) !important;
+        border-color:rgba(147,197,253,.26) !important;
+        color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
+        box-shadow:0 8px 20px rgba(37,99,235,.24) !important;
     }
 
     /* Explicit protection for the new customer-experience controls. */
