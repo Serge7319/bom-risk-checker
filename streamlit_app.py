@@ -1712,17 +1712,6 @@ if "user" not in st.session_state:
 
 current_user = load_user_data()
 
-# Sprint 30.3 — fresh sign-ins open Dashboard, while explicit deep links remain
-# untouched. The marker exists only when the auth screen was rendered in this
-# same Streamlit session, so cookie recovery during normal page navigation does
-# not unexpectedly send users home.
-if st.session_state.pop("cadivor_auth_ui_was_shown", False):
-    # Authentication already selected Dashboard in session state. Avoid mutating
-    # query parameters here because each mutation creates another Streamlit rerun
-    # and was responsible for the visible post-login flashes.
-    st.session_state.setdefault("app_mode", "Dashboard")
-    st.session_state.setdefault("pending_app_mode", "Dashboard")
-
 is_admin = str(current_user.get("role", "")).lower() == "admin"
 effective_plan_name, trial_expired = resolve_effective_plan(current_user)
 if trial_expired:
@@ -2490,15 +2479,17 @@ render_command_center(
 # render and keeps all navigation inside the current Streamlit session.
 with st.container(key="cv_app_nav"):
     st.markdown(
-        '<div class="cv-native-side-brand"><div class="cv-side-logo">C</div>'
-        '<div><div class="cv-side-name">Cadivor</div>'
-        '<div class="cv-side-sub">Engineering Intelligence</div></div></div>',
+        f'''<div class="cv-nav-workspace-card">
+              <div class="cv-nav-workspace-kicker">Active workspace</div>
+              <div class="cv-nav-workspace-name">{html.escape(str(shell_company or "Cadivor Workspace"))}</div>
+              <div class="cv-nav-workspace-user">{html.escape(str(shell_name))}</div>
+            </div>''',
         unsafe_allow_html=True,
     )
     for _group_label, _group_pages in _nav_groups:
         st.markdown(f'<div class="cv-native-side-section">{_group_label}</div>', unsafe_allow_html=True)
         for _nav in _group_pages:
-            _label = f"{_nav_icons.get(_nav, '•')}  {_nav}"
+            _label = _nav
             _button_type = "primary" if _nav == app_mode else "secondary"
             if st.button(_label, key=f"cv_nav_{_nav}", use_container_width=True, type=_button_type):
                 if _nav == "BOM Analyzer":
@@ -2524,7 +2515,7 @@ with st.container(key="cv_app_nav"):
             navigate_to("Pricing")
     _utility_cols = st.columns(2, gap="small")
     with _utility_cols[0]:
-        if st.button("Clear", key="cv_nav_clear_analysis", use_container_width=True):
+        if st.button("New analysis", key="cv_nav_clear_analysis", use_container_width=True):
             for _key in ("cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id", "results_df", "analysis_saved", "uploaded_filename"):
                 st.session_state.pop(_key, None)
             navigate_to("BOM Analyzer")
@@ -2623,6 +2614,146 @@ st.markdown(
         .cadivor-topbar-center{display:none!important}
         .cadivor-user{min-width:0!important}
         .cadivor-user-meta{display:none!important}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Sprint 54.6 — final authenticated shell and workspace consistency authority.
+st.markdown(
+    """
+    <style id="cadivor-sprint54-6-shell-consistency">
+    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:228px!important; }
+
+    /* Stable app chrome. */
+    .cadivor-topbar {
+        grid-template-columns:228px minmax(0,1fr) auto!important;
+        padding:0 18px!important;
+    }
+    .cadivor-brand { min-width:0!important; gap:9px!important; }
+    .cadivor-logo-mark { width:32px!important; height:32px!important; border-radius:9px!important; }
+    .cadivor-logo-text { font-size:15px!important; }
+    .cadivor-logo-subtitle { font-size:8px!important; letter-spacing:.13em!important; }
+    .cadivor-topbar-center { gap:12px!important; }
+    .cadivor-current-page { min-width:132px!important; font-size:13px!important; }
+    .cadivor-search-pill { max-width:310px!important; height:36px!important; }
+
+    .st-key-cv_app_nav {
+        width:228px!important; min-width:228px!important; max-width:228px!important;
+        padding:14px 12px 16px!important;
+        background:linear-gradient(180deg,#07152F 0%,#081A36 52%,#0A1D3D 100%)!important;
+        border-right:1px solid rgba(148,163,184,.15)!important;
+        box-shadow:10px 0 30px rgba(15,23,42,.075)!important;
+        scrollbar-width:thin!important;
+        scrollbar-color:rgba(148,163,184,.24) transparent!important;
+    }
+    .st-key-cv_app_nav::-webkit-scrollbar { width:5px!important; }
+    .st-key-cv_app_nav::-webkit-scrollbar-thumb { background:rgba(148,163,184,.24)!important; border-radius:999px!important; }
+
+    .cv-nav-workspace-card {
+        margin:0 2px 12px!important; padding:11px 12px!important;
+        border:1px solid rgba(147,197,253,.16)!important; border-radius:13px!important;
+        background:linear-gradient(145deg,rgba(37,99,235,.13),rgba(255,255,255,.035))!important;
+    }
+    .cv-nav-workspace-kicker { color:#8FA8CC!important; font-size:8px!important; font-weight:900!important; letter-spacing:.14em!important; text-transform:uppercase!important; }
+    .cv-nav-workspace-name { margin-top:4px!important; color:#F8FAFC!important; font-size:13px!important; font-weight:850!important; white-space:nowrap!important; overflow:hidden!important; text-overflow:ellipsis!important; }
+    .cv-nav-workspace-user { margin-top:2px!important; color:#AFC0D8!important; font-size:10.5px!important; white-space:nowrap!important; overflow:hidden!important; text-overflow:ellipsis!important; }
+
+    .cv-native-side-section {
+        margin:14px 8px 6px!important; color:#8FA8CC!important;
+        font-size:9.5px!important; font-weight:900!important; letter-spacing:.14em!important;
+    }
+    .st-key-cv_app_nav .stButton { margin:0 0 3px!important; }
+    .st-key-cv_app_nav .stButton>button {
+        position:relative!important; width:100%!important; min-height:38px!important;
+        border-radius:10px!important; justify-content:flex-start!important;
+        padding:0 12px 0 31px!important; font-size:12px!important; font-weight:720!important;
+        line-height:1.2!important; letter-spacing:-.005em!important;
+    }
+    .st-key-cv_app_nav .stButton>button::before {
+        content:""!important; position:absolute!important; left:12px!important; top:50%!important;
+        width:7px!important; height:7px!important; border-radius:3px!important;
+        transform:translateY(-50%) rotate(45deg)!important;
+        background:#6883AA!important; box-shadow:0 0 0 3px rgba(104,131,170,.08)!important;
+    }
+    .st-key-cv_app_nav .stButton>button[kind="primary"]::before {
+        background:#FFFFFF!important; box-shadow:0 0 0 3px rgba(255,255,255,.14)!important;
+    }
+    .st-key-cv_app_nav .stButton>button[kind="primary"] {
+        background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;
+        border-color:rgba(147,197,253,.22)!important;
+        box-shadow:0 9px 22px rgba(37,99,235,.22)!important;
+    }
+    .st-key-cv_app_nav .stButton>button:hover { transform:translateX(2px)!important; }
+
+    .cv-native-plan {
+        margin:5px 2px 8px!important; padding:10px 11px!important; border-radius:12px!important;
+        background:rgba(255,255,255,.04)!important;
+    }
+    .cv-native-plan strong { font-size:12px!important; }
+    .cv-native-plan span { font-size:10.5px!important; line-height:1.4!important; }
+    .st-key-cv_nav_clear_analysis button, .st-key-cv_nav_logout button {
+        padding-left:10px!important; justify-content:center!important; font-size:10.5px!important;
+    }
+    .st-key-cv_nav_clear_analysis button::before, .st-key-cv_nav_logout button::before { display:none!important; }
+    .st-key-cv_nav_logout button { color:#FCA5A5!important; }
+
+    /* One content canvas and one spacing rhythm across authenticated pages. */
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stAppViewContainer"] > section.main,
+    [data-testid="stMain"] {
+        margin-left:228px!important; width:calc(100% - 228px)!important; max-width:calc(100% - 228px)!important;
+        background:#F6F8FB!important;
+    }
+    .main .block-container, [data-testid="stMainBlockContainer"] {
+        padding:84px 22px 52px!important; max-width:1680px!important; margin:0 auto!important;
+        animation:cv54ContentIn .16s ease-out both!important;
+    }
+    @keyframes cv54ContentIn { from { opacity:.35; transform:translateY(3px); } to { opacity:1; transform:none; } }
+
+    /* Authenticated page design baseline. */
+    .cadivor-page-header, .cv-command-hero, .cv-hero, .premium-hero, .dashboard-hero {
+        border-radius:20px!important; border-color:#D8E5F7!important;
+        box-shadow:0 14px 34px rgba(15,23,42,.055)!important;
+    }
+    .cadivor-page-header h1, .cv-title, .premium-title,
+    [data-testid="stMainBlockContainer"] h1 {
+        color:#0F172A!important; font-size:clamp(29px,2.2vw,38px)!important;
+        line-height:1.12!important; letter-spacing:-.035em!important;
+    }
+    [data-testid="stMainBlockContainer"] h2 { color:#0F172A!important; font-size:23px!important; line-height:1.2!important; letter-spacing:-.025em!important; }
+    [data-testid="stMainBlockContainer"] h3 { color:#0F172A!important; font-size:18px!important; line-height:1.25!important; }
+    [data-testid="stMainBlockContainer"] p, [data-testid="stMarkdownContainer"] li { font-size:14px!important; line-height:1.62!important; }
+
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius:16px!important; border-color:#DFE7F2!important;
+        box-shadow:0 10px 28px rgba(15,23,42,.045)!important;
+    }
+    [data-testid="stMetric"] {
+        min-height:106px!important; padding:17px 18px!important; border:1px solid #DFE7F2!important;
+        border-radius:15px!important; background:#FFFFFF!important; box-shadow:0 8px 22px rgba(15,23,42,.04)!important;
+    }
+    [data-testid="stMetricLabel"] { font-size:11px!important; font-weight:850!important; color:#64748B!important; letter-spacing:.03em!important; }
+    [data-testid="stMetricValue"] { font-size:26px!important; color:#0F172A!important; }
+
+    [data-baseweb="tab-list"] { gap:8px!important; border-bottom:1px solid #DCE5F1!important; }
+    [data-baseweb="tab"] { min-height:42px!important; padding:0 12px!important; font-size:13px!important; font-weight:750!important; }
+    [data-baseweb="input"] > div, [data-baseweb="select"] > div, textarea {
+        min-height:43px!important; border-radius:11px!important; border-color:#CBD8E8!important;
+    }
+    [data-testid="stDataFrame"] { border:1px solid #DFE7F2!important; border-radius:14px!important; overflow:auto!important; }
+
+    /* Smooth rerenders without blocking navigation. */
+    .stApp { background:#F6F8FB!important; }
+    [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
+
+    @media(max-width:1180px){
+        :root{--cv-sidebar-width:210px!important}
+        .cadivor-topbar{grid-template-columns:210px minmax(0,1fr) auto!important}
+        .st-key-cv_app_nav{width:210px!important;min-width:210px!important;max-width:210px!important}
+        [data-testid="stAppViewContainer"] > .main,[data-testid="stAppViewContainer"] > section.main,[data-testid="stMain"]{margin-left:210px!important;width:calc(100% - 210px)!important;max-width:calc(100% - 210px)!important}
+        .main .block-container,[data-testid="stMainBlockContainer"]{padding:80px 16px 44px!important}
     }
     </style>
     """,
