@@ -2,6 +2,8 @@ import streamlit as st
 from datetime import datetime, timedelta
 from textwrap import dedent
 
+from src.auth_state import mark_authenticated
+
 
 def _set_auth_cookie(cookie_manager, session, key: str):
     if not cookie_manager or not session:
@@ -259,17 +261,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 with st.spinner("Creating your secure Cadivor workspace…"):
                     response = supabase.auth.sign_up({"email": email, "password": password})
                 if getattr(response, "session", None):
-                    st.session_state["user"] = response.user
-                    st.session_state.pop("cadivor_force_signed_out", None)
-                    st.session_state["access_token"] = response.session.access_token
-                    st.session_state["refresh_token"] = response.session.refresh_token
-                    st.session_state["app_mode"] = "Dashboard"
-                    st.session_state.pop("cadivor_auth_ui_was_shown", None)
-                    st.session_state["cadivor_auth_transition"] = "authenticated"
-                    st.session_state["cadivor_cookie_write_pending"] = {
-                        "access_token": response.session.access_token,
-                        "refresh_token": response.session.refresh_token,
-                    }
+                    mark_authenticated(response.user, response.session)
                     st.rerun()
                 else:
                     st.success("Account created. Please check your email to confirm your account, then return here to log in.")
@@ -282,17 +274,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 if not getattr(response, "session", None):
                     st.error("Login failed: no session was returned. Please confirm your email and try again.")
                     return
-                st.session_state["user"] = response.user
-                st.session_state.pop("cadivor_force_signed_out", None)
-                st.session_state["access_token"] = response.session.access_token
-                st.session_state["refresh_token"] = response.session.refresh_token
-                st.session_state["app_mode"] = "Dashboard"
-                st.session_state.pop("cadivor_auth_ui_was_shown", None)
-                st.session_state["cadivor_auth_transition"] = "authenticated"
-                st.session_state["cadivor_cookie_write_pending"] = {
-                    "access_token": response.session.access_token,
-                    "refresh_token": response.session.refresh_token,
-                }
+                mark_authenticated(response.user, response.session)
                 st.rerun()
             except Exception as error:
                 st.error(f"Login failed: {error}")
