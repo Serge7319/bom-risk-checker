@@ -164,7 +164,7 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
           parentDoc.addEventListener('keydown', parentWin.__cadivorCommandKeyHandler, true);
 
           parentDoc.querySelectorAll('.cadivor-search-pill').forEach(trigger => {{
-            trigger.setAttribute('href','#');
+            if (trigger.tagName === 'A') trigger.setAttribute('href','#');
             trigger.innerHTML = 'Search Cadivor <span style="margin-left:12px;color:#94a3b8;font-size:10px;font-weight:900">⌘K</span>';
             trigger.onclick = event => {{ event.preventDefault(); open(); }};
           }});
