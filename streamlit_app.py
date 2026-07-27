@@ -78,6 +78,7 @@ from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
+from src.ui.unified_shell import render_unified_shell
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
@@ -1606,7 +1607,7 @@ if (not _force_signed_out) and ("access_token" not in st.session_state or "refre
         st.session_state["refresh_token"] = auth_cookie.get("refresh_token")
 
 # 2) Validate tokens with Supabase before deciding whether to show landing/auth.
-if (not _force_signed_out) and st.session_state.get("access_token") and st.session_state.get("refresh_token"):
+if (not _force_signed_out) and "user" not in st.session_state and st.session_state.get("access_token") and st.session_state.get("refresh_token"):
     try:
         supabase.auth.set_session(
             st.session_state["access_token"],
@@ -1621,7 +1622,6 @@ if (not _force_signed_out) and st.session_state.get("access_token") and st.sessi
             # loader to appear while CookieManager hydrates instead of flashing the
             # public landing/auth page.
             st.session_state["cadivor_auth_restore_attempts"] = 0
-            _persist_auth_cookie()
     except Exception:
         # A Copilot follow-up can trigger a brief Supabase/session hydration race
         # on Streamlit Cloud. During that protected rerun, never discard otherwise
@@ -1646,10 +1646,6 @@ if (not _force_signed_out) and st.session_state.get("access_token") and st.sessi
             st.session_state.pop("access_token", None)
             st.session_state.pop("refresh_token", None)
 
-# 3) If auth.py just logged in and set session_state tokens, persist them before
-# any navigation link can create a fresh frontend session.
-if st.session_state.get("user") and st.session_state.get("access_token") and st.session_state.get("refresh_token"):
-    _persist_auth_cookie()
 
 if "user" not in st.session_state:
 
@@ -1687,11 +1683,11 @@ if "user" not in st.session_state:
     # immediately. Cookie hydration buffering is reserved only for deep links
     # into an authenticated workspace. This removes the pre-login white loader.
     is_public_intent = (not str(current_route).strip()) or bool(public_route) or auth_route in {"login", "signup"}
-    should_buffer = bool(cookie_manager) and (not is_public_intent) and attempts < 2
+    should_buffer = bool(cookie_manager) and (not is_public_intent) and attempts < 1
 
     if should_buffer:
         st.session_state["cadivor_auth_restore_attempts"] = attempts + 1
-        time.sleep(0.08)
+        time.sleep(0.04)
         st.rerun()
 
     # If recovery did not restore a user, show auth only after the buffer. This
@@ -2320,10 +2316,11 @@ saved_bom_count_response = (
 )
 saved_bom_count = saved_bom_count_response.count or 0
 
-if "pending_app_mode" in st.session_state:
-    app_mode = st.session_state.pop("pending_app_mode")
-else:
-    app_mode = _qp_value("page", st.session_state.get("app_mode", "Dashboard"))
+_external_page = _safe_text(_qp_value("page", ""), "")
+app_mode = st.session_state.get("app_mode", "Dashboard")
+if _external_page and not st.session_state.get("cadivor_external_route_consumed"):
+    app_mode = _external_page
+    st.session_state["cadivor_external_route_consumed"] = True
 
 if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
     app_mode = "Dashboard"
@@ -2434,32 +2431,41 @@ shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:
 
 import urllib.parse as _urlparse
 
-# ---------- Cadivor Stable Shell ----------
-# Single shell authority: load one CSS system, render fixed topbar/sidebar, then page content.
-# Previous Milestone 4 patches stacked multiple CSS/JS shell blocks here, creating the large top gap.
+
+# ---------- Cadivor Unified Application Shell ----------
+# One deterministic shell authority. Internal navigation uses session state and
+# the browser URL is not changed by ordinary sidebar interactions.
 inject_premium_css()
-inject_v32_ux_css()
 st.markdown(readability_css(), unsafe_allow_html=True)
-apply_milestone10a_design_system()
-# Sprint 33: final design-system authority. Loaded last so it safely normalizes
-# legacy milestone styles without changing page logic.
 inject_design_system_v1()
 
-_nav_icons = {
-    "Dashboard":"⌂", "BOM Analyzer":"▦", "Alternative Finder":"⇄", "Monitoring":"◷",
-    "Engineering Decisions":"◆", "Procurement Advisor":"$", "Portfolio Intelligence":"◈",
-    "Design Impact Analyzer":"◇", "Cost Optimization":"$", "Supply Risk Scenario":"△",
-    "Reports":"□", "Pricing":"$", "Settings":"⚙", "Workspace":"•",
-    "Notifications":"•", "Help":"?", "About":"?"
-}
-_nav_groups = [
-    ("Analyze", ["Dashboard", "BOM Analyzer", "Alternative Finder", "Design Impact Analyzer"]),
-    ("Decide", ["Engineering Decisions", "Procurement Advisor", "Cost Optimization", "Supply Risk Scenario"]),
-    ("Monitor", ["Monitoring", "Portfolio Intelligence", "Reports"]),
-    ("Workspace", ["Pricing", "Settings", "Workspace", "Notifications", "Help", "About"]),
-]
 
-render_topbar(profile_for_shell, app_mode)
+def _s55_clear_analysis():
+    for _key in (
+        "cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id",
+        "results_df", "analysis_saved", "uploaded_filename",
+    ):
+        st.session_state.pop(_key, None)
+    navigate_to("BOM Analyzer")
+
+
+def _s55_logout():
+    st.session_state["cadivor_logout_requested"] = True
+    st.rerun()
+
+
+render_unified_shell(
+    current_page=app_mode,
+    profile=profile_for_shell,
+    workspace_name=shell_company,
+    plan_name=selected_plan_name,
+    usage_summary=f"{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month",
+    saved_summary=f"{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')}",
+    navigate=navigate_to,
+    clear_analysis=_s55_clear_analysis,
+    request_logout=_s55_logout,
+)
+
 try:
     _workspace_command_records = build_workspace_commands(
         supabase, current_user["id"], limit_per_source=60,
@@ -2472,422 +2478,6 @@ render_command_center(
     workspace_commands=_workspace_command_records,
 )
 
-# Sprint 54.5 — stable premium application navigation rendered in the main
-# document rather than Streamlit's native sidebar. Native sidebar mounting can
-# lag behind authentication reruns, which made navigation appear only after a
-# command-palette interaction. This container exists on the first authenticated
-# render and keeps all navigation inside the current Streamlit session.
-with st.container(key="cv_app_nav"):
-    st.markdown(
-        f'''<div class="cv-nav-workspace-card">
-              <div class="cv-nav-workspace-kicker">Active workspace</div>
-              <div class="cv-nav-workspace-name">{html.escape(str(shell_company or "Cadivor Workspace"))}</div>
-              <div class="cv-nav-workspace-user">{html.escape(str(shell_name))}</div>
-            </div>''',
-        unsafe_allow_html=True,
-    )
-    for _group_label, _group_pages in _nav_groups:
-        st.markdown(f'<div class="cv-native-side-section">{_group_label}</div>', unsafe_allow_html=True)
-        for _nav in _group_pages:
-            _label = _nav
-            _button_type = "primary" if _nav == app_mode else "secondary"
-            if st.button(_label, key=f"cv_nav_{_nav}", use_container_width=True, type=_button_type):
-                if _nav == "BOM Analyzer":
-                    _active_analysis_id = _safe_text(
-                        st.session_state.get("cadivor_active_analysis_id")
-                        or st.session_state.get("analysis_id"), "",
-                    )
-                    if _active_analysis_id:
-                        navigate_to("Analysis Details", analysis_id=_active_analysis_id)
-                    else:
-                        navigate_to("BOM Analyzer")
-                else:
-                    navigate_to(_nav)
-    st.markdown('<div class="cv-native-side-section">Plan</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="cv-native-plan"><strong>{selected_plan_name}</strong>'
-        f'<span>{monthly_upload_count:,} / {format_limit(selected_plan["monthly_bom_limit"], "BOM analysis", "BOM analyses")} this month</span>'
-        f'<span>{saved_bom_count:,} / {format_limit(selected_plan["max_saved_boms"], "saved BOM")}</span></div>',
-        unsafe_allow_html=True,
-    )
-    if str(selected_plan_name).lower() in {"starter", "free", "trial", "student"}:
-        if st.button("Compare plans", key="cv_nav_compare_plans", use_container_width=True):
-            navigate_to("Pricing")
-    _utility_cols = st.columns(2, gap="small")
-    with _utility_cols[0]:
-        if st.button("New analysis", key="cv_nav_clear_analysis", use_container_width=True):
-            for _key in ("cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id", "results_df", "analysis_saved", "uploaded_filename"):
-                st.session_state.pop(_key, None)
-            navigate_to("BOM Analyzer")
-    with _utility_cols[1]:
-        if st.button("Log out", key="cv_nav_logout", use_container_width=True):
-            st.session_state["cadivor_logout_requested"] = True
-            st.rerun()
-
-# Final deterministic shell rule. Do not add JavaScript layout patches above this line.
-st.markdown(
-    """
-    <style id="cadivor-sprint30-sidebar-upgrade">.cv-side-upgrade{display:block!important;margin-top:10px;padding:8px 10px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;color:#1d4ed8!important;text-decoration:none!important;font-size:11px;font-weight:900;text-align:center}</style>
-    <style id="cadivor-shell-gap-deterministic-fix">
-    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:236px!important; }
-
-    html, body, .stApp, [data-testid="stAppViewContainer"] {
-        overflow-x:hidden!important;
-        background:#F6F8FB!important;
-    }
-
-    /* The topbar is fixed chrome. Its Streamlit wrapper must never create page height. */
-    .element-container:has(#cadivor-topbar-root),
-    div[data-testid="stMarkdownContainer"]:has(#cadivor-topbar-root) {
-        display:contents!important;
-        height:0!important; min-height:0!important;
-        margin:0!important; padding:0!important;
-    }
-
-    header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-    [data-testid="stStatusWidget"], .stDeployButton, [data-testid="collapsedControl"] {
-        display:none!important; visibility:hidden!important; width:0!important; height:0!important; min-height:0!important;
-    }
-
-    /* Native Streamlit sidebar is not part of the Cadivor shell. */
-    section[data-testid="stSidebar"], [data-testid="stSidebar"],
-    [data-testid="collapsedControl"], div[data-testid="stSidebarNav"] {
-        display:none!important; visibility:hidden!important; width:0!important;
-        min-width:0!important; max-width:0!important; transform:none!important;
-    }
-
-    /* Stable Cadivor navigation is a first-class main-document container. */
-    .st-key-cv_app_nav {
-        display:block!important; visibility:visible!important; opacity:1!important;
-        position:fixed!important; left:0!important; top:var(--cv-topbar-height)!important; bottom:0!important;
-        width:var(--cv-sidebar-width)!important; min-width:var(--cv-sidebar-width)!important;
-        max-width:var(--cv-sidebar-width)!important; height:calc(100vh - var(--cv-topbar-height))!important;
-        margin:0!important; padding:14px 12px 18px!important; box-sizing:border-box!important;
-        background:linear-gradient(180deg,#07152F 0%,#0A1D3D 100%)!important;
-        border-right:1px solid rgba(148,163,184,.16)!important;
-        box-shadow:14px 0 36px rgba(15,23,42,.08)!important;
-        overflow-y:auto!important; overflow-x:hidden!important; z-index:999997!important;
-    }
-    .st-key-cv_app_nav > div { width:100%!important; min-width:0!important; }
-
-    /* Main canvas occupies exactly the space to the right of the fixed sidebar. */
-    [data-testid="stAppViewContainer"] > .main,
-    [data-testid="stAppViewContainer"] > section.main,
-    [data-testid="stMain"] {
-        margin:0 0 0 var(--cv-sidebar-width)!important;
-        padding:0!important;
-        width:calc(100% - var(--cv-sidebar-width))!important;
-        max-width:calc(100% - var(--cv-sidebar-width))!important;
-        min-width:0!important;
-        box-sizing:border-box!important;
-        background:#F6F8FB!important;
-        overflow-x:hidden!important;
-    }
-    .main .block-container, [data-testid="stMainBlockContainer"] {
-        max-width:100%!important; width:100%!important; min-width:0!important;
-        box-sizing:border-box!important; margin:0!important;
-        padding:84px 22px 48px!important;
-        overflow-x:hidden!important;
-    }
-    [data-testid="stHorizontalBlock"], [data-testid="column"], .stColumn { min-width:0!important; }
-    [data-testid="stDataFrame"], .stDataFrame { max-width:100%!important; overflow-x:auto!important; }
-
-    .cv-command-hero:first-child { margin-top:0!important; }
-    .cv-native-side-brand{display:flex;align-items:center;gap:10px;padding:5px 5px 12px;color:#fff}
-    .cv-native-side-brand .cv-side-logo{width:34px!important;height:34px!important;border-radius:10px!important;background:linear-gradient(145deg,#3B82F6,#1D4ED8)!important;box-shadow:0 9px 20px rgba(37,99,235,.28)!important}
-    .cv-native-side-brand .cv-side-name{font-size:15px!important;font-weight:900!important;letter-spacing:-.02em!important}
-    .cv-native-side-brand .cv-side-sub{font-size:8px!important;letter-spacing:.14em!important;color:#8FA8CC!important}
-    .cv-native-side-section{margin:13px 5px 6px;color:#8298BA;font-size:9px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}
-    .cv-native-plan{display:grid;gap:3px;margin:4px 1px 8px;padding:10px 11px;border:1px solid rgba(148,163,184,.16);border-radius:12px;background:rgba(255,255,255,.045);color:#fff}
-    .cv-native-plan strong{font-size:13px}.cv-native-plan span{font-size:11px;color:#AFC0D8}.st-key-cv_nav_logout button{color:#FCA5A5!important}
-    .st-key-cv_app_nav .stButton>button{width:100%!important;min-width:0!important;min-height:36px!important;border-radius:9px!important;text-align:left!important;justify-content:flex-start!important;font-size:11.5px!important;font-weight:760!important;padding:0 10px!important;border:1px solid transparent!important;background:transparent!important;color:#C8D5E8!important;box-shadow:none!important}
-    .st-key-cv_app_nav .stButton>button:hover{background:rgba(59,130,246,.12)!important;color:#fff!important;border-color:rgba(96,165,250,.18)!important}
-    .st-key-cv_app_nav .stButton>button[kind="primary"]{background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;color:#fff!important;box-shadow:0 8px 20px rgba(37,99,235,.24)!important}
-
-    @media(max-width:1100px){
-        :root{--cv-sidebar-width:208px!important}
-        .cadivor-search-pill{display:none!important}
-        .main .block-container,[data-testid="stMainBlockContainer"]{padding:80px 16px 40px!important}
-    }
-    @media(max-width:760px){
-        :root{--cv-sidebar-width:200px!important}
-        .cadivor-topbar-center{display:none!important}
-        .cadivor-user{min-width:0!important}
-        .cadivor-user-meta{display:none!important}
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# Sprint 54.6 — final authenticated shell and workspace consistency authority.
-st.markdown(
-    """
-    <style id="cadivor-sprint54-6-shell-consistency">
-    :root { --cv-topbar-height:64px!important; --cv-sidebar-width:228px!important; }
-
-    /* Stable app chrome. */
-    .cadivor-topbar {
-        grid-template-columns:228px minmax(0,1fr) auto!important;
-        padding:0 18px!important;
-    }
-    .cadivor-brand { min-width:0!important; gap:9px!important; }
-    .cadivor-logo-mark { width:32px!important; height:32px!important; border-radius:9px!important; }
-    .cadivor-logo-text { font-size:15px!important; }
-    .cadivor-logo-subtitle { font-size:8px!important; letter-spacing:.13em!important; }
-    .cadivor-topbar-center { gap:12px!important; }
-    .cadivor-current-page { min-width:132px!important; font-size:13px!important; }
-    .cadivor-search-pill { max-width:310px!important; height:36px!important; }
-
-    .st-key-cv_app_nav {
-        width:228px!important; min-width:228px!important; max-width:228px!important;
-        padding:14px 12px 16px!important;
-        background:linear-gradient(180deg,#07152F 0%,#081A36 52%,#0A1D3D 100%)!important;
-        border-right:1px solid rgba(148,163,184,.15)!important;
-        box-shadow:10px 0 30px rgba(15,23,42,.075)!important;
-        scrollbar-width:thin!important;
-        scrollbar-color:rgba(148,163,184,.24) transparent!important;
-    }
-    .st-key-cv_app_nav::-webkit-scrollbar { width:5px!important; }
-    .st-key-cv_app_nav::-webkit-scrollbar-thumb { background:rgba(148,163,184,.24)!important; border-radius:999px!important; }
-
-    .cv-nav-workspace-card {
-        margin:0 2px 12px!important; padding:11px 12px!important;
-        border:1px solid rgba(147,197,253,.16)!important; border-radius:13px!important;
-        background:linear-gradient(145deg,rgba(37,99,235,.13),rgba(255,255,255,.035))!important;
-    }
-    .cv-nav-workspace-kicker { color:#8FA8CC!important; font-size:8px!important; font-weight:900!important; letter-spacing:.14em!important; text-transform:uppercase!important; }
-    .cv-nav-workspace-name { margin-top:4px!important; color:#F8FAFC!important; font-size:13px!important; font-weight:850!important; white-space:nowrap!important; overflow:hidden!important; text-overflow:ellipsis!important; }
-    .cv-nav-workspace-user { margin-top:2px!important; color:#AFC0D8!important; font-size:10.5px!important; white-space:nowrap!important; overflow:hidden!important; text-overflow:ellipsis!important; }
-
-    .cv-native-side-section {
-        margin:14px 8px 6px!important; color:#8FA8CC!important;
-        font-size:9.5px!important; font-weight:900!important; letter-spacing:.14em!important;
-    }
-    .st-key-cv_app_nav .stButton { margin:0 0 3px!important; }
-    .st-key-cv_app_nav .stButton>button {
-        position:relative!important; width:100%!important; min-height:38px!important;
-        border-radius:10px!important; justify-content:flex-start!important;
-        padding:0 12px 0 31px!important; font-size:12px!important; font-weight:720!important;
-        line-height:1.2!important; letter-spacing:-.005em!important;
-    }
-    .st-key-cv_app_nav .stButton>button::before {
-        content:""!important; position:absolute!important; left:12px!important; top:50%!important;
-        width:7px!important; height:7px!important; border-radius:3px!important;
-        transform:translateY(-50%) rotate(45deg)!important;
-        background:#6883AA!important; box-shadow:0 0 0 3px rgba(104,131,170,.08)!important;
-    }
-    .st-key-cv_app_nav .stButton>button[kind="primary"]::before {
-        background:#FFFFFF!important; box-shadow:0 0 0 3px rgba(255,255,255,.14)!important;
-    }
-    .st-key-cv_app_nav .stButton>button[kind="primary"] {
-        background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;
-        border-color:rgba(147,197,253,.22)!important;
-        box-shadow:0 9px 22px rgba(37,99,235,.22)!important;
-    }
-    .st-key-cv_app_nav .stButton>button:hover { transform:translateX(2px)!important; }
-
-    .cv-native-plan {
-        margin:5px 2px 8px!important; padding:10px 11px!important; border-radius:12px!important;
-        background:rgba(255,255,255,.04)!important;
-    }
-    .cv-native-plan strong { font-size:12px!important; }
-    .cv-native-plan span { font-size:10.5px!important; line-height:1.4!important; }
-    .st-key-cv_nav_clear_analysis button, .st-key-cv_nav_logout button {
-        padding-left:10px!important; justify-content:center!important; font-size:10.5px!important;
-    }
-    .st-key-cv_nav_clear_analysis button::before, .st-key-cv_nav_logout button::before { display:none!important; }
-    .st-key-cv_nav_logout button { color:#FCA5A5!important; }
-
-    /* One content canvas and one spacing rhythm across authenticated pages. */
-    [data-testid="stAppViewContainer"] > .main,
-    [data-testid="stAppViewContainer"] > section.main,
-    [data-testid="stMain"] {
-        margin-left:228px!important; width:calc(100% - 228px)!important; max-width:calc(100% - 228px)!important;
-        background:#F6F8FB!important;
-    }
-    .main .block-container, [data-testid="stMainBlockContainer"] {
-        padding:84px 22px 52px!important; max-width:1680px!important; margin:0 auto!important;
-        animation:cv54ContentIn .16s ease-out both!important;
-    }
-    @keyframes cv54ContentIn { from { opacity:.35; transform:translateY(3px); } to { opacity:1; transform:none; } }
-
-    /* Authenticated page design baseline. */
-    .cadivor-page-header, .cv-command-hero, .cv-hero, .premium-hero, .dashboard-hero {
-        border-radius:20px!important; border-color:#D8E5F7!important;
-        box-shadow:0 14px 34px rgba(15,23,42,.055)!important;
-    }
-    .cadivor-page-header h1, .cv-title, .premium-title,
-    [data-testid="stMainBlockContainer"] h1 {
-        color:#0F172A!important; font-size:clamp(29px,2.2vw,38px)!important;
-        line-height:1.12!important; letter-spacing:-.035em!important;
-    }
-    [data-testid="stMainBlockContainer"] h2 { color:#0F172A!important; font-size:23px!important; line-height:1.2!important; letter-spacing:-.025em!important; }
-    [data-testid="stMainBlockContainer"] h3 { color:#0F172A!important; font-size:18px!important; line-height:1.25!important; }
-    [data-testid="stMainBlockContainer"] p, [data-testid="stMarkdownContainer"] li { font-size:14px!important; line-height:1.62!important; }
-
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius:16px!important; border-color:#DFE7F2!important;
-        box-shadow:0 10px 28px rgba(15,23,42,.045)!important;
-    }
-    [data-testid="stMetric"] {
-        min-height:106px!important; padding:17px 18px!important; border:1px solid #DFE7F2!important;
-        border-radius:15px!important; background:#FFFFFF!important; box-shadow:0 8px 22px rgba(15,23,42,.04)!important;
-    }
-    [data-testid="stMetricLabel"] { font-size:11px!important; font-weight:850!important; color:#64748B!important; letter-spacing:.03em!important; }
-    [data-testid="stMetricValue"] { font-size:26px!important; color:#0F172A!important; }
-
-    [data-baseweb="tab-list"] { gap:8px!important; border-bottom:1px solid #DCE5F1!important; }
-    [data-baseweb="tab"] { min-height:42px!important; padding:0 12px!important; font-size:13px!important; font-weight:750!important; }
-    [data-baseweb="input"] > div, [data-baseweb="select"] > div, textarea {
-        min-height:43px!important; border-radius:11px!important; border-color:#CBD8E8!important;
-    }
-    [data-testid="stDataFrame"] { border:1px solid #DFE7F2!important; border-radius:14px!important; overflow:auto!important; }
-
-    /* Smooth rerenders without blocking navigation. */
-    .stApp { background:#F6F8FB!important; }
-    [data-testid="stAppViewContainer"] { background:#F6F8FB!important; }
-
-    @media(max-width:1180px){
-        :root{--cv-sidebar-width:210px!important}
-        .cadivor-topbar{grid-template-columns:210px minmax(0,1fr) auto!important}
-        .st-key-cv_app_nav{width:210px!important;min-width:210px!important;max-width:210px!important}
-        [data-testid="stAppViewContainer"] > .main,[data-testid="stAppViewContainer"] > section.main,[data-testid="stMain"]{margin-left:210px!important;width:calc(100% - 210px)!important;max-width:calc(100% - 210px)!important}
-        .main .block-container,[data-testid="stMainBlockContainer"]{padding:80px 16px 44px!important}
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# Milestone 11A.3 — universal Streamlit button contrast repair.
-st.markdown(
-    """
-    <style id="cadivor-button-contrast-v11a3">
-    /* Primary buttons */
-    button[data-testid="stBaseButton-primary"],
-    div.stButton > button[kind="primary"],
-    div.stDownloadButton > button {
-        background:#2563EB !important;
-        border:1px solid #2563EB !important;
-        color:#FFFFFF !important;
-        -webkit-text-fill-color:#FFFFFF !important;
-        opacity:1 !important;
-        box-shadow:0 10px 24px rgba(37,99,235,.20) !important;
-    }
-
-    button[data-testid="stBaseButton-primary"] *,
-    div.stButton > button[kind="primary"] *,
-    div.stDownloadButton > button * {
-        color:#FFFFFF !important;
-        -webkit-text-fill-color:#FFFFFF !important;
-        opacity:1 !important;
-    }
-
-    /* Secondary/internal navigation buttons */
-    button[data-testid="stBaseButton-secondary"],
-    div.stButton > button[kind="secondary"] {
-        background:#FFFFFF !important;
-        border:1px solid #93C5FD !important;
-        color:#1D4ED8 !important;
-        -webkit-text-fill-color:#1D4ED8 !important;
-        opacity:1 !important;
-        box-shadow:0 8px 18px rgba(37,99,235,.08) !important;
-    }
-
-    button[data-testid="stBaseButton-secondary"] *,
-    div.stButton > button[kind="secondary"] * {
-        color:#1D4ED8 !important;
-        -webkit-text-fill-color:#1D4ED8 !important;
-        opacity:1 !important;
-    }
-
-    button[data-testid="stBaseButton-secondary"]:hover,
-    div.stButton > button[kind="secondary"]:hover {
-        background:#EFF6FF !important;
-        border-color:#2563EB !important;
-        color:#1D4ED8 !important;
-    }
-
-    /* Disabled controls remain readable. */
-    button:disabled,
-    button[disabled] {
-        background:#E2E8F0 !important;
-        border-color:#CBD5E1 !important;
-        color:#64748B !important;
-        -webkit-text-fill-color:#64748B !important;
-        opacity:1 !important;
-        box-shadow:none !important;
-    }
-
-    button:disabled *,
-    button[disabled] * {
-        color:#64748B !important;
-        -webkit-text-fill-color:#64748B !important;
-        opacity:1 !important;
-    }
-
-    /* Sprint 54.5: the dark application navigation owns its own button palette. */
-    .st-key-cv_app_nav div.stButton > button[kind="secondary"],
-    .st-key-cv_app_nav button[data-testid="stBaseButton-secondary"] {
-        background:transparent !important;
-        border-color:transparent !important;
-        color:#C8D5E8 !important;
-        -webkit-text-fill-color:#C8D5E8 !important;
-        box-shadow:none !important;
-    }
-    .st-key-cv_app_nav div.stButton > button[kind="secondary"] *,
-    .st-key-cv_app_nav button[data-testid="stBaseButton-secondary"] * {
-        color:#C8D5E8 !important;
-        -webkit-text-fill-color:#C8D5E8 !important;
-    }
-    .st-key-cv_app_nav div.stButton > button[kind="secondary"]:hover,
-    .st-key-cv_app_nav button[data-testid="stBaseButton-secondary"]:hover {
-        background:rgba(59,130,246,.12) !important;
-        border-color:rgba(96,165,250,.18) !important;
-        color:#FFFFFF !important;
-        -webkit-text-fill-color:#FFFFFF !important;
-    }
-    .st-key-cv_app_nav div.stButton > button[kind="primary"],
-    .st-key-cv_app_nav button[data-testid="stBaseButton-primary"] {
-        background:linear-gradient(135deg,#2563EB,#1D4ED8) !important;
-        border-color:rgba(147,197,253,.26) !important;
-        color:#FFFFFF !important;
-        -webkit-text-fill-color:#FFFFFF !important;
-        box-shadow:0 8px 20px rgba(37,99,235,.24) !important;
-    }
-
-    /* Explicit protection for the new customer-experience controls. */
-    [class*="st-key-onboarding_"] button,
-    .st-key-settings_open_onboarding button,
-    .st-key-settings_open_workspace button,
-    .st-key-settings_view_plans button,
-    [class*="st-key-reports_open_"] button,
-    [class*="st-key-analysis_open_"] button,
-    [class*="st-key-analysis_find_"] button,
-    [class*="st-key-analysis_monitor_"] button {
-        min-height:42px !important;
-        font-weight:850 !important;
-    }
-
-    [class*="st-key-onboarding_"] button p,
-    .st-key-settings_open_onboarding button p,
-    .st-key-settings_open_workspace button p,
-    .st-key-settings_view_plans button p,
-    [class*="st-key-reports_open_"] button p,
-    [class*="st-key-analysis_open_"] button p,
-    [class*="st-key-analysis_find_"] button p,
-    [class*="st-key-analysis_monitor_"] button p {
-        visibility:visible !important;
-        opacity:1 !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ---------- Customer Onboarding ----------
 if app_mode == "Onboarding":
     progress = onboarding_progress or {}
     completed_steps = completion_count(progress)
@@ -3260,12 +2850,8 @@ if app_mode == "Dashboard":
                     key="dashboard_exit_onboarding_preview",
                     use_container_width=True,
                 ):
-                    try:
-                        st.query_params.clear()
-                        st.query_params["page"] = "Dashboard"
-                    except Exception:
-                        st.experimental_set_query_params(page="Dashboard")
-                    st.rerun()
+                    st.session_state.pop("preview_onboarding", None)
+                    navigate_to("Dashboard")
         # Sprint 30.4: use the normalized, persistent customer profile so
         # onboarding and onboarding preview match the shell/dashboard identity.
         render_first_run_dashboard(
@@ -3283,12 +2869,8 @@ if app_mode == "Dashboard":
             key="dashboard_preview_onboarding",
             use_container_width=True,
         ):
-            try:
-                st.query_params["page"] = "Dashboard"
-                st.query_params["preview_onboarding"] = "1"
-            except Exception:
-                st.experimental_set_query_params(page="Dashboard", preview_onboarding="1")
-            st.rerun()
+            st.session_state["preview_onboarding"] = "1"
+            navigate_to("Dashboard")
 
     overview_tab, portfolio_tab = st.tabs(
         ["Engineering Overview", "Portfolio Dashboard"]
@@ -8147,8 +7729,7 @@ if app_mode == "Notifications":
     with monitoring_tab:
         st.info("Lifecycle, stock, and supplier events remain available in the Monitoring dashboard. Milestone 10B keeps them separate from team collaboration notifications to avoid duplicate records.")
         if st.button("Open Monitoring Dashboard", type="primary"):
-            st.query_params["page"] = "Monitoring"
-            st.rerun()
+            navigate_to("Monitoring")
     st.stop()
 
 # ---------- Help ----------
@@ -11781,10 +11362,9 @@ if app_mode == "BOM Analyzer":
                             key="bom81_open_selected",
                         ):
                             selected_saved_id = selected_ids[0]
-                            st.query_params["page"] = "Analysis Details"
-                            st.query_params["analysis_id"] = selected_saved_id
-                            st.session_state["pending_app_mode"] = "Analysis Details"
-                            st.rerun()
+                            st.session_state["cadivor_active_analysis_id"] = str(selected_saved_id)
+                            st.session_state["analysis_id"] = str(selected_saved_id)
+                            navigate_to("Analysis Details", analysis_id=selected_saved_id)
 
                     with delete_col:
                         if st.button(
@@ -12621,43 +12201,25 @@ Unlock more power:
                     st.rerun()
 
 
-# Cadivor M4.6 — final visual gap compression.
-# This targets the remaining empty Streamlit wrapper space before the first real page section.
-components.html(
-    """
-    <script>
-    function cadivorCompressTopGap(){
-      const doc = window.parent.document;
-      const desiredTop = 76;
-      const firstContent = doc.querySelector('.cv-command-hero, .brc-hero, .cadivor-page-header, .cv-page-title, .cv-panel-title, h1, h2');
-      if (!firstContent) return;
 
-      let firstRow = firstContent.closest('.element-container');
-      if (!firstRow) {
-        let el = firstContent.parentElement;
-        for (let i = 0; i < 10 && el; i++) {
-          const cls = el.className ? String(el.className) : '';
-          if (cls.includes('element-container')) { firstRow = el; break; }
-          el = el.parentElement;
-        }
-      }
-      if (!firstRow) return;
 
-      const currentTop = firstContent.getBoundingClientRect().top;
-      const delta = Math.round(currentTop - desiredTop);
-
-      // Only compress excessive whitespace; never push content upward into the top bar.
-      if (delta > 28) {
-        firstRow.style.marginTop = `-${delta}px`;
-      }
-    }
-    cadivorCompressTopGap();
-    setTimeout(cadivorCompressTopGap, 100);
-    setTimeout(cadivorCompressTopGap, 350);
-    setTimeout(cadivorCompressTopGap, 800);
-    setTimeout(cadivorCompressTopGap, 1400);
-    window.addEventListener('resize', cadivorCompressTopGap);
-    </script>
-    """,
-    height=0,
-)
+# Sprint 55 — persist the freshly issued auth cookie only after the authenticated
+# shell and selected workspace page have rendered. A CookieManager component can
+# cause a frontend refresh; doing this last ensures any refresh remains inside
+# the authenticated shell instead of flashing the public marketing site.
+_pending_cookie = st.session_state.pop("cadivor_cookie_write_pending", None)
+if isinstance(_pending_cookie, dict) and cookie_manager:
+    try:
+        from datetime import datetime, timedelta
+        cookie_manager.set(
+            cookie="bom_auth",
+            val={
+                "access_token": _pending_cookie.get("access_token"),
+                "refresh_token": _pending_cookie.get("refresh_token"),
+            },
+            expires_at=datetime.utcnow() + timedelta(days=7),
+            key="s55_persist_bom_auth",
+        )
+    except Exception:
+        pass
+st.session_state.pop("cadivor_auth_transition", None)
