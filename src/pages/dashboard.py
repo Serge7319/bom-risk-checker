@@ -38,7 +38,6 @@ def render_dashboard(
         <style>
 
         /* Dashboard-specific styling only. Layout shell is defined globally above. */
-        .main .block-container, [data-testid="stMainBlockContainer"] { padding-left:calc(var(--cv-sidebar-width) + 24px)!important; padding-right:24px!important; max-width:none!important; }
         .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
         .cv-side-logo { width:38px; height:38px; border-radius:12px; background:#2563EB; color:#fff!important; display:flex; align-items:center; justify-content:center; font-weight:950; box-shadow:0 12px 24px rgba(37,99,235,.25); }
         .cv-side-name { color:#0F172A!important; font-size:20px; font-weight:950; line-height:1; }
