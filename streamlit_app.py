@@ -89,6 +89,7 @@ from src.ui.unified_shell import render_unified_shell
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
+from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.components.onboarding import (
     render_analysis_success,
     render_upload_detected,
@@ -2288,7 +2289,6 @@ import urllib.parse as _urlparse
 # the browser URL is not changed by ordinary sidebar interactions.
 inject_premium_css()
 st.markdown(readability_css(), unsafe_allow_html=True)
-inject_design_system_v1()
 
 
 def _s55_clear_analysis():
@@ -2318,6 +2318,9 @@ render_unified_shell(
     clear_analysis=_s55_clear_analysis,
     request_logout=_s55_logout,
 )
+
+# Design System v1 is deliberately injected after the application shell.
+inject_design_system_v1()
 
 try:
     _workspace_command_records = build_workspace_commands(
