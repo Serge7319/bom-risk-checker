@@ -1813,13 +1813,62 @@ def show_dashboard_summary(results_df):
 
     with col_a:
         st.subheader("Risk Breakdown")
-        risk_counts = results_df["Risk Level"].value_counts()
-        st.bar_chart(risk_counts)
+        risk_order = ["High", "Medium", "Low"]
+        risk_counts = (
+            results_df["Risk Level"]
+            .value_counts()
+            .reindex(risk_order, fill_value=0)
+            .rename_axis("Risk Level")
+            .reset_index(name="Components")
+        )
+        risk_fig = px.bar(
+            risk_counts,
+            x="Risk Level",
+            y="Components",
+            text="Components",
+            height=245,
+        )
+        risk_fig.update_traces(marker_color="#2563EB", textposition="outside", cliponaxis=False)
+        risk_fig.update_layout(
+            margin=dict(l=8, r=8, t=8, b=8),
+            showlegend=False,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            xaxis_title=None,
+            yaxis_title=None,
+            yaxis=dict(showgrid=True, gridcolor="#E8EEF6", zeroline=False),
+        )
+        st.plotly_chart(risk_fig, use_container_width=True, config={"displayModeBar": False})
 
     with col_b:
         st.subheader("Lifecycle Breakdown")
-        lifecycle_counts = results_df["Lifecycle Status"].value_counts()
-        st.bar_chart(lifecycle_counts)
+        lifecycle_counts = (
+            results_df["Lifecycle Status"]
+            .fillna("Unknown")
+            .value_counts()
+            .head(6)
+            .rename_axis("Lifecycle Status")
+            .reset_index(name="Components")
+        )
+        lifecycle_fig = px.bar(
+            lifecycle_counts,
+            x="Lifecycle Status",
+            y="Components",
+            text="Components",
+            height=245,
+        )
+        lifecycle_fig.update_traces(marker_color="#2563EB", textposition="outside", cliponaxis=False)
+        lifecycle_fig.update_layout(
+            margin=dict(l=8, r=8, t=8, b=8),
+            showlegend=False,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            xaxis_title=None,
+            yaxis_title=None,
+            xaxis=dict(tickangle=-18),
+            yaxis=dict(showgrid=True, gridcolor="#E8EEF6", zeroline=False),
+        )
+        st.plotly_chart(lifecycle_fig, use_container_width=True, config={"displayModeBar": False})
 
     st.divider()
 
