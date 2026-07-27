@@ -236,3 +236,12 @@ body,.stApp,[data-testid="stAppViewContainer"]{font-family:Inter,Manrope,ui-sans
 /* Sprint 54 — Beta Stabilization & Launch Readiness */
 .cv-launch-error{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:16px;padding:18px 20px;box-shadow:0 14px 34px rgba(15,23,42,.055);margin:12px 0}.cv-launch-error-icon{width:34px;height:34px;border-radius:11px;background:#FEF2F2;color:#B91C1C;display:grid;place-items:center;font-weight:950}.cv-launch-error strong{display:block;color:#0F172A;font-size:16px}.cv-launch-error p{color:#475569;font-size:14px;margin:5px 0}.cv-launch-error small{color:#64748B;font-size:12.5px}
 .cv-side-section{margin:20px 8px 8px!important;font-size:10px!important;letter-spacing:.12em!important;color:#94A3B8!important}.cv-side-section.first{margin-top:2px!important}.cv-side-nav-group{display:grid;gap:3px}.cv-beta-trust-note{display:flex;align-items:center;gap:9px;margin:12px 0 0;padding:10px 12px;border:1px solid #D7E3F4;border-radius:12px;background:#F8FBFF;color:#475569;font-size:12.5px}.cv-beta-trust-note strong{color:#0F172A}.bom8-column-example{display:grid;grid-template-columns:1.35fr .6fr 1.5fr;gap:1px;background:#DCE4EE;border:1px solid #DCE4EE;border-radius:11px;overflow:hidden;margin:12px 0 14px}.bom8-column-example span{background:#F8FAFC;padding:9px 10px;color:#475569;font-size:12px;font-weight:800}.bom8-column-example span:first-child{color:#2563EB}
+
+
+/* Sprint 54.6 authenticated workspace consistency baseline */
+:root { --cv-surface:#FFFFFF; --cv-canvas:#F6F8FB; --cv-border-soft:#DFE7F2; --cv-radius-card:16px; }
+.stApp, [data-testid="stAppViewContainer"] { background:var(--cv-canvas)!important; }
+[data-testid="stMainBlockContainer"] { color:#0F172A!important; }
+[data-testid="stMainBlockContainer"] .stButton>button { min-height:42px; border-radius:11px; font-weight:800; }
+[data-testid="stMainBlockContainer"] [data-testid="stDataFrame"] { font-size:14px!important; }
+[data-testid="stMainBlockContainer"] [data-testid="stExpander"] { border-color:var(--cv-border-soft)!important; border-radius:14px!important; }
