@@ -39,7 +39,8 @@ from src.auth import show_auth_ui
 from src.auth_state import (
     AUTH_AUTHENTICATED,
     AUTH_SIGNED_OUT,
-    mark_signed_out,
+    AUTH_LOGGING_OUT,
+    begin_logout,
     resolve_auth_state,
 )
 from supabase import create_client
@@ -1540,28 +1541,25 @@ if st.session_state.get("cv4801_followup_inflight") and isinstance(_followup_sna
         if _value is not None and st.session_state.get(_key) is None:
             st.session_state[_key] = _value
 
-# Logout is resolved before profile loading or either visual shell renders.
+# Logout is an explicit one-click state transition. Public content is not
+# rendered until the authenticated session and cookie are invalidated.
 if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action") == "logout":
+    begin_logout(supabase, cookie_manager)
     try:
-        supabase.auth.sign_out()
+        st.query_params.clear()
+        st.query_params["public"] = "home"
     except Exception:
         pass
-    try:
-        if cookie_manager:
-            # Overwrite first so a new frontend session cannot restore stale tokens
-            # while CookieManager processes deletion asynchronously.
-            cookie_manager.set(cookie="bom_auth", val={}, key="s551_clear_bom_auth")
-            cookie_manager.delete(cookie="bom_auth", key="s551_delete_bom_auth")
-    except Exception:
-        pass
-    _debug_log = list(st.session_state.get("cadivor_auth_debug_log") or [])
-    st.session_state.clear()
-    st.session_state["cadivor_auth_debug_log"] = _debug_log[-50:]
-    mark_signed_out("explicit_logout")
     st.rerun()
 
 _auth_status = resolve_auth_state(supabase, cookie_manager)
 if _auth_status == AUTH_SIGNED_OUT:
+    if st.session_state.pop("cadivor_public_after_logout", False):
+        try:
+            st.query_params.clear()
+            st.query_params["public"] = "home"
+        except Exception:
+            pass
     try:
         show_auth_ui(supabase, cookie_manager)
     except TypeError:
@@ -2303,6 +2301,8 @@ def _s55_clear_analysis():
 
 
 def _s55_logout():
+    if st.session_state.get("cadivor_logout_requested"):
+        return
     st.session_state["cadivor_logout_requested"] = True
     st.rerun()
 
