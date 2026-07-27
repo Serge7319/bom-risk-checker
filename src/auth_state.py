@@ -17,6 +17,7 @@ import streamlit as st
 AUTH_UNKNOWN = "unknown"
 AUTH_SIGNED_OUT = "signed_out"
 AUTH_AUTHENTICATED = "authenticated"
+AUTH_LOGGING_OUT = "logging_out"
 
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
 _MAX_RESTORE_ATTEMPTS = 3
@@ -86,6 +87,45 @@ def mark_signed_out(reason: str = "signed_out") -> None:
     st.session_state["cadivor_force_signed_out"] = True
     _log("signed_out", reason=reason)
 
+
+
+def begin_logout(supabase: Any, cookie_manager: Any) -> None:
+    """Commit logout as one explicit, idempotent transition.
+
+    The local authenticated state is removed before any public or login UI can
+    render. Cookie clearing is attempted in the same run, and the signed-out
+    guard prevents a delayed CookieManager value from restoring the user.
+    """
+    if st.session_state.get("cadivor_auth_status") == AUTH_LOGGING_OUT:
+        return
+    st.session_state["cadivor_auth_status"] = AUTH_LOGGING_OUT
+    st.session_state["cadivor_auth_resolved"] = False
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_logout_in_progress"] = True
+    _log("logout_started")
+    try:
+        supabase.auth.sign_out()
+    except Exception as exc:
+        _log("supabase_logout_warning", error=type(exc).__name__)
+    try:
+        if cookie_manager:
+            cookie_manager.set(cookie="bom_auth", val={}, key="s552_zero_bom_auth")
+            cookie_manager.delete(cookie="bom_auth", key="s552_delete_bom_auth")
+    except Exception as exc:
+        _log("cookie_logout_warning", error=type(exc).__name__)
+
+    # Preserve only diagnostic records; authenticated and workspace state must
+    # not survive the logout boundary.
+    records = list(st.session_state.get("cadivor_auth_debug_log") or [])[-50:]
+    for key in list(st.session_state.keys()):
+        if key != "cadivor_auth_debug_log":
+            st.session_state.pop(key, None)
+    st.session_state["cadivor_auth_debug_log"] = records
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state["cadivor_auth_resolved"] = True
+    st.session_state["cadivor_public_after_logout"] = True
+    _log("logout_committed")
 
 def render_auth_boot() -> None:
     """Neutral non-blocking-looking boot surface used only while auth is unknown."""
