@@ -114,8 +114,13 @@ def render_unified_shell(
             if st.button("Help center", key="cv552_help", use_container_width=True):
                 navigate("Help")
             st.divider()
-            if st.button("Sign out", key="cv552_signout", type="secondary", use_container_width=True):
-                request_logout()
+            st.button(
+                "Sign out",
+                key="cv552_signout",
+                type="secondary",
+                use_container_width=True,
+                on_click=request_logout,
+            )
 
     with st.container(key="cv55_navigation"):
         st.markdown(
