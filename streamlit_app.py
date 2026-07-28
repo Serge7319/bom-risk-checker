@@ -91,6 +91,7 @@ from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
+from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.components.onboarding import (
     render_analysis_success,
@@ -1574,6 +1575,15 @@ if _auth_status != AUTH_AUTHENTICATED:
     # UNKNOWN, so neither public nor authenticated content can leak through.
     st.stop()
 
+# Once authentication is committed, remove public/auth modal query flags. A stale
+# ?auth= or ?public= value must never re-open the sign-in surface during a long
+# supplier search or another ordinary authenticated rerun.
+try:
+    for _transient_key in ("auth", "public", "action"):
+        if _transient_key in st.query_params:
+            del st.query_params[_transient_key]
+except Exception:
+    pass
 
 current_user = load_user_data()
 
@@ -2352,10 +2362,9 @@ def _s55_clear_analysis():
 
 
 def _s55_logout():
-    if st.session_state.get("cadivor_logout_requested"):
-        return
+    """Queue logout in a widget callback so the auth gate handles it first."""
     st.session_state["cadivor_logout_requested"] = True
-    st.rerun()
+    st.session_state["cadivor_logout_source"] = "profile_menu"
 
 
 render_unified_shell(
@@ -2376,6 +2385,7 @@ inject_design_system_v1()
 # and leaves navigation, analysis continuity, and engineering calculations intact.
 inject_executive_workspace_css()
 inject_executive_ux_css()
+inject_enterprise_experience_css()
 render_page_context(app_mode)
 
 try:
@@ -9011,37 +9021,52 @@ if app_mode == "Alternative Finder":
         if not searched_part:
             st.warning("Please enter an original part number.")
         else:
-            with st.spinner(
-                "Searching suppliers • Loading original component intelligence • "
-                "Comparing electrical specs • Ranking alternatives..."
-            ):
+            # Keep this operation entirely inside the authenticated workspace.
+            # Supplier/API failures are converted into an in-page result state;
+            # they must never fall through to authentication or public routing.
+            st.session_state["cadivor_operation"] = "alternative_search"
+            operation_status(
+                "Searching component intelligence",
+                "Checking supplier coverage, lifecycle evidence, and replacement candidates.",
+            )
+            try:
                 try:
                     original_lookup = get_best_part_data(searched_part) or {}
                     if not isinstance(original_lookup, dict):
                         original_lookup = {}
-
                     try:
                         original_risk = calculate_risk(original_lookup) or {}
                     except Exception:
                         original_risk = {}
-
                     st.session_state["alternative_original_data"] = original_lookup
                     st.session_state["alternative_original_risk"] = original_risk
                     st.session_state["alternative_original_lookup_part"] = searched_part
                     st.session_state["alternative_original_lookup_error"] = ""
-
                 except Exception as lookup_error:
                     st.session_state["alternative_original_data"] = {}
                     st.session_state["alternative_original_risk"] = {}
                     st.session_state["alternative_original_lookup_part"] = searched_part
-                    st.session_state["alternative_original_lookup_error"] = str(
-                        lookup_error
+                    st.session_state["alternative_original_lookup_error"] = (
+                        "Original-component intelligence is temporarily unavailable. "
+                        f"{type(lookup_error).__name__}"
                     )
 
-                st.session_state["suggested_alternatives"] = suggest_alternatives_v2(
-                    searched_part
-                )
+                try:
+                    candidates = suggest_alternatives_v2(searched_part) or []
+                    st.session_state["suggested_alternatives"] = candidates
+                    st.session_state["alternative_search_error"] = ""
+                except Exception as search_error:
+                    st.session_state["suggested_alternatives"] = []
+                    st.session_state["alternative_search_error"] = (
+                        "Cadivor could not complete the supplier search. Your session is still active; "
+                        "please retry in a moment. " + type(search_error).__name__
+                    )
                 st.session_state["alternative_search_attempted"] = True
+            finally:
+                st.session_state.pop("cadivor_operation", None)
+
+    if st.session_state.get("alternative_search_error"):
+        st.error(st.session_state["alternative_search_error"], icon="⚠️")
 
     summary_col, tips_col = st.columns([1.35, 0.85], gap="medium")
 
@@ -10403,6 +10428,7 @@ if app_mode == "Alternative Finder":
             st.session_state["alternative_original_risk"] = {}
             st.session_state["alternative_original_lookup_part"] = ""
             st.session_state["alternative_original_lookup_error"] = ""
+            st.session_state["alternative_search_error"] = ""
             st.session_state["alternative_original_part"] = ""
             st.session_state["alternative_engineering_decisions"] = {}
             st.session_state["alternative_decision_notes"] = {}
