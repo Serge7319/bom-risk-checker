@@ -1435,22 +1435,22 @@ def render_dashboard(
 
     st.markdown(
         f"""
-        <section class="cv-v4-command cv-6a-command">
-          <div class="cv-v4-command-grid">
+        <section class="cv57-command">
+          <div class="cv57-command-grid">
             <div>
-              <div class="cv-v4-kicker">{_lucide_icon('sparkles',14)} Engineering Command Center</div>
-              <h1 class="cv-v4-title">{greeting_prefix}, {html.escape(user_name)}.</h1>
-              <p class="cv-v4-copy">Your portfolio has <strong>{total_high_risk} high-risk components</strong> and <strong>{alert_count} active lifecycle and supplier alerts</strong>. Cadivor connects engineering, procurement, supply chain, quality, and leadership around the next accountable action.</p>
-              <div class="cv-v4-actions">
-                <a class="cv-v4-btn" href="?page=BOM%20Analyzer" target="_self">Analyze New BOM {_lucide_icon('arrow',14)}</a>
-                <a class="cv-v4-btn secondary" href="?page=Alternative%20Finder" target="_self">Replacement Finder</a>
+              <div class="cv57-kicker">Engineering command center</div>
+              <h1>{greeting_prefix}, {html.escape(user_name)}.</h1>
+              <p><strong>{total_high_risk} components require attention.</strong> {high_alert_count} high-severity supplier or lifecycle conditions are active, with {total_analyses} saved engineering reviews available for decision support.</p>
+              <div class="cv57-actions">
+                <a class="cv57-primary" href="?page=BOM%20Analyzer" target="_self">Analyze a BOM</a>
+                <a class="cv57-secondary" href="?page=Engineering%20Decisions" target="_self">Review open decisions</a>
               </div>
             </div>
-            <div class="cv-v4-brief">
-              <div class="cv-v4-brief-card"><span>Portfolio Health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></div>
-              <div class="cv-v4-brief-card"><span>High Risk</span><strong>{total_high_risk}</strong><small>Components requiring review</small></div>
-              <div class="cv-v4-brief-card"><span>Supply-Chain Alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></div>
-              <div class="cv-v4-brief-card"><span>Saved Analyses</span><strong>{total_analyses}</strong><small>Engineering records available</small></div>
+            <div class="cv57-signal-grid">
+              <article class="cv57-signal cv57-signal-info"><span>Engineering health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></article>
+              <article class="cv57-signal cv57-signal-critical"><span>Critical components</span><strong>{total_high_risk}</strong><small>Require engineering review</small></article>
+              <article class="cv57-signal cv57-signal-attention"><span>Supply alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></article>
+              <article class="cv57-signal cv57-signal-healthy"><span>Analyses</span><strong>{total_analyses}</strong><small>Saved decision records</small></article>
             </div>
           </div>
         </section>
