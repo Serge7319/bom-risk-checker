@@ -90,6 +90,7 @@ from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
+from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.components.onboarding import (
     render_analysis_success,
@@ -2374,6 +2375,7 @@ inject_design_system_v1()
 # Sprint 56 is the final authenticated presentation layer. It is presentation-only
 # and leaves navigation, analysis continuity, and engineering calculations intact.
 inject_executive_workspace_css()
+inject_executive_ux_css()
 render_page_context(app_mode)
 
 try:
@@ -10918,6 +10920,8 @@ if app_mode == "BOM Analyzer":
         """,
         unsafe_allow_html=True,
     )
+
+    workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)
 
     st.markdown(
         """
