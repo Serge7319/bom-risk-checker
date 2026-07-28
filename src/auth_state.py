@@ -128,35 +128,35 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
     _log("logout_committed")
 
 def render_auth_boot() -> None:
-    """Neutral non-blocking-looking boot surface used only while auth is unknown."""
+    """Render a neutral light workspace skeleton while authentication resolves."""
     st.markdown(
         """
         <style id="cadivor-auth-boot-css">
         header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"]{
             display:none!important;visibility:hidden!important;height:0!important;
         }
-        .stApp{background:#07162f!important;}
+        .stApp{background:#F4F7FB!important;}
         .main .block-container{max-width:none!important;padding:0!important;margin:0!important;}
-        .cv-auth-boot{min-height:100vh;display:grid;place-items:center;background:
-          radial-gradient(circle at 75% 25%,rgba(37,99,235,.22),transparent 36%),
-          linear-gradient(135deg,#06142c 0%,#0a2249 100%);font-family:Inter,system-ui,sans-serif;}
-        .cv-auth-boot-card{display:flex;align-items:center;gap:14px;color:#fff;padding:18px 22px;
-          border:1px solid rgba(148,163,184,.22);border-radius:18px;background:rgba(7,22,47,.72);
-          box-shadow:0 24px 80px rgba(2,8,23,.34);backdrop-filter:blur(12px)}
-        .cv-auth-boot-mark{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;
-          background:linear-gradient(145deg,#3b82f6,#1d4ed8);font-weight:900;font-size:20px;}
-        .cv-auth-boot-copy strong{display:block;font-size:15px;letter-spacing:-.01em;}
-        .cv-auth-boot-copy span{display:block;color:#a9bad3;font-size:12px;margin-top:3px;}
-        .cv-auth-pulse{width:7px;height:7px;border-radius:50%;background:#60a5fa;margin-left:8px;
-          box-shadow:0 0 0 0 rgba(96,165,250,.6);animation:cvpulse 1.35s infinite;}
-        @keyframes cvpulse{70%{box-shadow:0 0 0 10px rgba(96,165,250,0)}100%{box-shadow:0 0 0 0 rgba(96,165,250,0)}}
+        .cv-auth-boot{min-height:100vh;background:#F4F7FB;font-family:Inter,system-ui,sans-serif;color:#0F172A;}
+        .cv-auth-top{height:64px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;padding:0 22px;gap:12px;}
+        .cv-auth-mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;}
+        .cv-auth-brand strong{display:block;font-size:15px;line-height:1.1}.cv-auth-brand span{display:block;color:#64748B;font-size:10px;margin-top:3px;letter-spacing:.08em;text-transform:uppercase}
+        .cv-auth-body{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:calc(100vh - 64px)}
+        .cv-auth-rail{background:#0B1F3A;padding:22px 16px}.cv-auth-rail-line{height:36px;border-radius:9px;background:rgba(255,255,255,.08);margin-bottom:8px}.cv-auth-rail-line.active{background:rgba(96,165,250,.22)}
+        .cv-auth-canvas{padding:26px 30px;max-width:1440px;width:100%;box-sizing:border-box}.cv-auth-title{width:260px;height:22px;border-radius:7px;background:#DCE4EE;margin-bottom:10px}.cv-auth-copy{width:min(560px,70%);height:12px;border-radius:6px;background:#E7EDF4;margin-bottom:24px}
+        .cv-auth-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.cv-auth-card{height:102px;border-radius:15px;background:#fff;border:1px solid #E2E8F0;position:relative;overflow:hidden}.cv-auth-panel{height:260px;border-radius:17px;background:#fff;border:1px solid #E2E8F0;position:relative;overflow:hidden}
+        .cv-auth-card:after,.cv-auth-panel:after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(226,232,240,.55),transparent);animation:cv-auth-shimmer 1.35s infinite}
+        .cv-auth-status{position:fixed;right:22px;bottom:20px;display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 13px;box-shadow:0 12px 30px rgba(15,23,42,.08);font-size:12px;font-weight:750;color:#475569}.cv-auth-dot{width:7px;height:7px;border-radius:50%;background:#2563EB;animation:cv-auth-pulse 1.2s infinite}
+        @keyframes cv-auth-shimmer{100%{transform:translateX(100%)}}@keyframes cv-auth-pulse{50%{opacity:.35}}
+        @media(max-width:900px){.cv-auth-body{grid-template-columns:1fr}.cv-auth-rail{display:none}.cv-auth-kpis{grid-template-columns:repeat(2,1fr)}}
         </style>
         <div class="cv-auth-boot">
-          <div class="cv-auth-boot-card">
-            <div class="cv-auth-boot-mark">C</div>
-            <div class="cv-auth-boot-copy"><strong>Cadivor</strong><span>Securing your workspace session…</span></div>
-            <div class="cv-auth-pulse"></div>
+          <div class="cv-auth-top"><div class="cv-auth-mark">C</div><div class="cv-auth-brand"><strong>Cadivor</strong><span>Engineering Intelligence</span></div></div>
+          <div class="cv-auth-body">
+            <aside class="cv-auth-rail"><div class="cv-auth-rail-line active"></div><div class="cv-auth-rail-line"></div><div class="cv-auth-rail-line"></div><div class="cv-auth-rail-line"></div><div class="cv-auth-rail-line"></div></aside>
+            <main class="cv-auth-canvas"><div class="cv-auth-title"></div><div class="cv-auth-copy"></div><div class="cv-auth-kpis"><div class="cv-auth-card"></div><div class="cv-auth-card"></div><div class="cv-auth-card"></div><div class="cv-auth-card"></div></div><div class="cv-auth-panel"></div></main>
           </div>
+          <div class="cv-auth-status"><span class="cv-auth-dot"></span>Restoring your secure workspace</div>
         </div>
         """,
         unsafe_allow_html=True,
