@@ -118,7 +118,11 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
     st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_auth_resolved"] = True
+    # The first signed-out render must always be the public homepage.  This
+    # server-side guard intentionally ignores any stale ?public= or ?auth=
+    # value left in browser history until the homepage has been painted once.
     st.session_state["cadivor_public_after_logout"] = True
+    st.session_state["cadivor_public_route"] = "home"
     st.session_state["cadivor_cookie_clear_pending"] = True
     _log("logout_committed")
 
@@ -147,6 +151,8 @@ def finalize_logout_cookie(cookie_manager: Any) -> None:
                 doc.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path}`;
               });
             });
+            // Commit the deterministic signed-out destination without
+            // causing a Streamlit rerun or exposing the previous public route.
             window.parent.history.replaceState({}, '', window.parent.location.pathname);
           } catch (_) {}
         })();
