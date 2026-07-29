@@ -90,42 +90,46 @@ def mark_signed_out(reason: str = "signed_out") -> None:
 
 
 def begin_logout(supabase: Any, cookie_manager: Any) -> None:
-    """Commit logout as one explicit, idempotent transition.
+    """Complete logout locally in one deterministic state transition.
 
-    The local authenticated state is removed before any public or login UI can
-    render. Cookie clearing is attempted in the same run, and the signed-out
-    guard prevents a delayed CookieManager value from restoring the user.
+    Logout must never wait for a network request or enter the ordinary page
+    transition pipeline.  Removing the local tokens and installing the
+    force-signed-out guard is sufficient to end the authenticated browser
+    session immediately.  Cookie cleanup is deferred to the signed-out render,
+    where it cannot hold the authenticated shell on screen.
     """
-    if st.session_state.get("cadivor_auth_status") == AUTH_LOGGING_OUT:
+    if st.session_state.get("cadivor_auth_status") == AUTH_SIGNED_OUT and st.session_state.get("cadivor_force_signed_out"):
         return
-    st.session_state["cadivor_auth_status"] = AUTH_LOGGING_OUT
-    st.session_state["cadivor_auth_resolved"] = False
-    st.session_state["cadivor_force_signed_out"] = True
-    st.session_state["cadivor_logout_in_progress"] = True
-    _log("logout_started")
-    try:
-        supabase.auth.sign_out()
-    except Exception as exc:
-        _log("supabase_logout_warning", error=type(exc).__name__)
-    try:
-        if cookie_manager:
-            cookie_manager.set(cookie="bom_auth", val={}, key="s552_zero_bom_auth")
-            cookie_manager.delete(cookie="bom_auth", key="s552_delete_bom_auth")
-    except Exception as exc:
-        _log("cookie_logout_warning", error=type(exc).__name__)
 
-    # Preserve only diagnostic records; authenticated and workspace state must
-    # not survive the logout boundary.
     records = list(st.session_state.get("cadivor_auth_debug_log") or [])[-50:]
+    _log("logout_started")
+
+    # Clear every authenticated/workspace value atomically.  Do not call
+    # supabase.auth.sign_out() here: a slow remote response previously left the
+    # user trapped behind the "Opening Sign out" transition surface.
     for key in list(st.session_state.keys()):
         if key != "cadivor_auth_debug_log":
             st.session_state.pop(key, None)
+
     st.session_state["cadivor_auth_debug_log"] = records
     st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state["cadivor_public_after_logout"] = True
+    st.session_state["cadivor_cookie_clear_pending"] = True
     _log("logout_committed")
+
+
+def finalize_logout_cookie(cookie_manager: Any) -> None:
+    """Best-effort cookie cleanup after the signed-out state is committed."""
+    if not st.session_state.pop("cadivor_cookie_clear_pending", False):
+        return
+    try:
+        if cookie_manager:
+            cookie_manager.set(cookie="bom_auth", val={}, key="shell_zero_bom_auth")
+            cookie_manager.delete(cookie="bom_auth", key="shell_delete_bom_auth")
+    except Exception as exc:
+        _log("cookie_logout_warning", error=type(exc).__name__)
 
 def render_auth_boot() -> None:
     """Render a neutral light workspace skeleton while authentication resolves."""
