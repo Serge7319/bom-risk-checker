@@ -141,3 +141,164 @@ section[data-testid="stMain"]{
   .cv-foundation-page-context>strong{min-width:0!important;font-size:12px!important}
   [data-testid="stMainBlockContainer"],.main .block-container{padding-top:calc(var(--cv-foundation-top) + 14px)!important}
 }
+
+/* ========================================================================
+   Navigation & Control System Redesign
+   Preserves foundation rail width, workspace offset, and routing behavior.
+   ======================================================================== */
+
+/* Compact workspace switcher */
+.cv-foundation-workspace{
+  display:grid!important;
+  grid-template-columns:32px minmax(0,1fr) 14px!important;
+  align-items:center!important;
+  gap:9px!important;
+  min-height:52px!important;
+  margin:1px 2px 17px!important;
+  padding:8px 9px!important;
+  border:1px solid rgba(148,163,184,.13)!important;
+  border-radius:11px!important;
+  background:rgba(255,255,255,.035)!important;
+  box-shadow:none!important;
+  cursor:default!important;
+}
+.cv-foundation-workspace:hover{background:rgba(255,255,255,.055)!important;border-color:rgba(148,163,184,.20)!important}
+.cv-foundation-workspace-mark{
+  width:30px!important;height:30px!important;display:grid!important;place-items:center!important;
+  border-radius:9px!important;background:linear-gradient(145deg,#2563eb,#1d4ed8)!important;
+  color:#fff!important;font-size:12px!important;font-weight:900!important;letter-spacing:0!important;
+  box-shadow:0 6px 14px rgba(37,99,235,.20)!important;
+}
+.cv-foundation-workspace-copy{display:block!important;min-width:0!important}
+.cv-foundation-workspace-copy small{display:block!important;margin:0 0 2px!important;color:#7f96b8!important;font-size:7px!important;font-weight:900!important;letter-spacing:.14em!important;text-transform:uppercase!important}
+.cv-foundation-workspace-copy strong{display:block!important;margin:0!important;color:#eef4ff!important;font-size:11px!important;font-weight:780!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.cv-foundation-workspace-copy em{display:block!important;margin-top:1px!important;color:#9eb0ca!important;font-size:9px!important;font-style:normal!important;font-weight:600!important;white-space:nowrap!important}
+.cv-foundation-workspace-chevron{display:grid!important;place-items:center!important;color:#7f96b8!important;font-size:13px!important;line-height:1!important}
+
+/* Navigation groups */
+.cv-foundation-nav-group{
+  margin:15px 10px 6px!important;
+  color:#6f86aa!important;
+  font-size:8px!important;
+  font-weight:900!important;
+  letter-spacing:.17em!important;
+  text-transform:uppercase!important;
+}
+.st-key-cv_foundation_navigation .stButton{position:relative!important;width:100%!important;margin:0 0 2px!important}
+.st-key-cv_foundation_navigation .stButton>button{
+  position:relative!important;
+  width:100%!important;
+  min-height:35px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:10px!important;
+  padding:0 10px!important;
+  border:1px solid transparent!important;
+  border-radius:8px!important;
+  background:transparent!important;
+  color:#aebdd2!important;
+  box-shadow:none!important;
+  font-size:11.5px!important;
+  font-weight:650!important;
+  line-height:1.2!important;
+  text-align:left!important;
+  transition:background .12s ease,color .12s ease,border-color .12s ease!important;
+  transform:none!important;
+}
+.st-key-cv_foundation_navigation .stButton>button p{
+  margin:0!important;padding:0!important;line-height:1.2!important;
+  white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+}
+.st-key-cv_foundation_navigation .stButton>button:hover{
+  background:rgba(148,163,184,.075)!important;
+  border-color:rgba(148,163,184,.07)!important;
+  color:#f1f5f9!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.st-key-cv_foundation_navigation .stButton>button[kind="primary"]{
+  background:rgba(59,130,246,.105)!important;
+  border-color:rgba(96,165,250,.08)!important;
+  color:#f8fbff!important;
+  box-shadow:inset 2px 0 0 #60a5fa!important;
+  font-weight:760!important;
+}
+.st-key-cv_foundation_navigation .stButton>button[kind="primary"]:hover{
+  background:rgba(59,130,246,.15)!important;
+  border-color:rgba(96,165,250,.12)!important;
+}
+
+/* Stable line icons rendered from embedded SVG, not font glyph placeholders. */
+.st-key-cv_foundation_navigation .stButton>button::before{
+  content:""!important;
+  display:block!important;
+  flex:0 0 16px!important;
+  width:16px!important;
+  height:16px!important;
+  opacity:.72!important;
+  background-repeat:no-repeat!important;
+  background-position:center!important;
+  background-size:16px 16px!important;
+}
+.st-key-cv_foundation_navigation .stButton>button:hover::before,
+.st-key-cv_foundation_navigation .stButton>button[kind="primary"]::before{opacity:1!important}
+
+/* dashboard */
+.st-key-cv_foundation_nav_dashboard button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1'/%3E%3C/svg%3E")!important}
+/* bom */
+.st-key-cv_foundation_nav_bom button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 2h9l5 5v15H6z'/%3E%3Cpath d='M14 2v6h6M9 13h7M9 17h7'/%3E%3C/svg%3E")!important}
+/* alternatives */
+.st-key-cv_foundation_nav_alternatives button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7h11l-3-3M17 17H6l3 3'/%3E%3C/svg%3E")!important}
+/* impact */
+.st-key-cv_foundation_nav_impact button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v18M3 12h18'/%3E%3Ccircle cx='12' cy='12' r='8'/%3E%3C/svg%3E")!important}
+/* decisions */
+.st-key-cv_foundation_nav_decisions button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 12 5 5L20 6'/%3E%3C/svg%3E")!important}
+/* procurement */
+.st-key-cv_foundation_nav_procurement button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18M5 6l2 14h10l2-14M9 10v6M15 10v6'/%3E%3C/svg%3E")!important}
+/* cost */
+.st-key-cv_foundation_nav_cost button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M15.5 8.5c-.7-.7-1.8-1.1-3-1.1-1.7 0-3 .8-3 2s1.2 1.8 3 2.1 3 1 3 2.2-1.3 2.2-3 2.2c-1.3 0-2.5-.4-3.2-1.2M12 5.5v13'/%3E%3C/svg%3E")!important}
+/* scenario */
+.st-key-cv_foundation_nav_scenario button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5h6v6H4zM14 13h6v6h-6zM10 8h4M12 8v7M12 15h2'/%3E%3C/svg%3E")!important}
+/* monitoring */
+.st-key-cv_foundation_nav_monitoring button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12h4l2-5 4 10 2-5h6'/%3E%3C/svg%3E")!important}
+/* portfolio */
+.st-key-cv_foundation_nav_portfolio button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7' width='18' height='13' rx='2'/%3E%3Cpath d='M8 7V4h8v3M3 12h18'/%3E%3C/svg%3E")!important}
+/* reports */
+.st-key-cv_foundation_nav_reports button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h14v18H5zM8 8h8M8 12h8M8 16h5'/%3E%3C/svg%3E")!important}
+/* settings */
+.st-key-cv_foundation_nav_settings button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1z'/%3E%3C/svg%3E")!important}
+/* help */
+.st-key-cv_foundation_nav_help button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb4d1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9.7 9a2.5 2.5 0 1 1 4.2 1.8c-1 .8-1.9 1.3-1.9 2.7M12 17h.01'/%3E%3C/svg%3E")!important}
+
+/* Bottom controls are quieter than primary page actions. */
+.st-key-cv_foundation_navigation .st-key-cv_foundation_compare_plans button{
+  justify-content:center!important;background:rgba(255,255,255,.035)!important;border-color:rgba(148,163,184,.10)!important;color:#aebdd2!important;
+}
+.st-key-cv_foundation_navigation .st-key-cv_foundation_new_analysis button{
+  justify-content:center!important;min-height:38px!important;margin-top:4px!important;background:#2563eb!important;border-color:#2563eb!important;color:#fff!important;box-shadow:0 8px 18px rgba(37,99,235,.20)!important;
+}
+.st-key-cv_foundation_navigation .st-key-cv_foundation_compare_plans button::before,
+.st-key-cv_foundation_navigation .st-key-cv_foundation_new_analysis button::before{display:none!important}
+.cv-foundation-plan-card{margin:17px 2px 7px!important;padding:9px 10px!important;border-radius:10px!important;background:rgba(255,255,255,.028)!important;border-color:rgba(148,163,184,.10)!important}
+.cv-foundation-plan-card strong{font-size:11px!important}.cv-foundation-plan-card span{font-size:9px!important;color:#8fa4c2!important}
+
+/* Remove residual markers and raw browser link decoration from control zones. */
+.st-key-cv_foundation_navigation li,.st-key-cv_foundation_navigation ul,.st-key-cv_foundation_navigation ol,
+[data-testid="stPopoverBody"] li,[data-testid="stPopoverBody"] ul,[data-testid="stPopoverBody"] ol,
+[role="tablist"] li,[role="tablist"] ul,[role="tablist"] ol,
+[data-testid="stButtonGroup"] li,[data-testid="stButtonGroup"] ul,[data-testid="stButtonGroup"] ol{
+  list-style:none!important;margin-left:0!important;padding-left:0!important;
+}
+.st-key-cv_foundation_navigation li::marker,[data-testid="stPopoverBody"] li::marker,
+[role="tablist"] li::marker,[data-testid="stButtonGroup"] li::marker{content:""!important;font-size:0!important}
+section[data-testid="stMain"] .stLinkButton>a,
+section[data-testid="stMain"] a[data-testid="stBaseLinkButton-secondary"]{
+  border-radius:8px!important;text-decoration:none!important;
+}
+
+/* Profile menu: only sign out is destructive. */
+[data-testid="stPopoverBody"] .stButton>button{color:#334155!important;background:transparent!important;border-color:transparent!important}
+[data-testid="stPopoverBody"] .stButton>button:hover{color:#0f172a!important;background:#f1f5f9!important}
+.st-key-cv_foundation_signout button{color:#b42318!important}
+.st-key-cv_foundation_signout button:hover{color:#912018!important;background:#fff1f0!important}
