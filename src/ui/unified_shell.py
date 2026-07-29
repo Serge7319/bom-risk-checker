@@ -68,6 +68,7 @@ def _commit_navigation(page: str) -> None:
     st.session_state["app_mode"] = page  # compatibility mirror
     st.session_state["cadivor_nav_params"] = {"page": page}
     st.session_state.pop("cadivor_route_transition", None)
+    st.session_state["cadivor_profile_menu_open"] = False
 
 
 def render_unified_shell(
@@ -129,6 +130,7 @@ def render_unified_shell(
                 type="secondary",
                 use_container_width=True,
             ):
+                st.session_state["cadivor_profile_menu_open"] = False
                 request_logout()
                 st.rerun()
 
