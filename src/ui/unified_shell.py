@@ -133,10 +133,14 @@ def render_unified_shell(
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
             f"""
-            <div class="cv-foundation-workspace">
-              <span>Workspace</span>
-              <strong>{_escape(workspace_name or 'Cadivor Workspace')}</strong>
-              <small>{_escape(plan_name)} plan</small>
+            <div class="cv-foundation-workspace" role="button" tabindex="0" aria-label="Current workspace">
+              <span class="cv-foundation-workspace-mark">{_escape((workspace_name or 'C')[:1].upper())}</span>
+              <span class="cv-foundation-workspace-copy">
+                <small>Workspace</small>
+                <strong>{_escape(workspace_name or 'Cadivor Workspace')}</strong>
+                <em>{_escape(plan_name)} plan</em>
+              </span>
+              <span class="cv-foundation-workspace-chevron" aria-hidden="true">⌄</span>
             </div>
             """,
             unsafe_allow_html=True,
