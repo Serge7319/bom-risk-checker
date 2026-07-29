@@ -10,7 +10,7 @@ from src.core.command_registry import command_payload
 
 def render_command_center(*, current_page: str = "Dashboard", user_name: str = "Engineer", workspace_commands=None) -> None:
     """Mount the global Ctrl/Command+K command palette into the parent Streamlit page."""
-    commands_json = json.dumps(command_payload(), ensure_ascii=False).replace("</", "<\\/")
+    commands_json = json.dumps(command_payload(dynamic_commands=workspace_commands or ()), ensure_ascii=False).replace("</", "<\\/")
     context_json = json.dumps({"currentPage": current_page, "userName": user_name}, ensure_ascii=False).replace("</", "<\\/")
 
     components.html(
@@ -106,9 +106,22 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
           const recentIds = () => {{ try {{ return JSON.parse(parentWin.localStorage.getItem(RECENT_KEY) || '[]'); }} catch (_) {{ return []; }} }};
           const remember = id => {{ const next = [id, ...recentIds().filter(item => item !== id)].slice(0,6); parentWin.localStorage.setItem(RECENT_KEY, JSON.stringify(next)); }};
           const navigate = command => {{
-            if (!command || !command.href) return;
+            if (!command) return;
             remember(command.id);
             close();
+            parentWin.__cadivorShowRouteMask?.(command.page || command.title);
+
+            // Prefer the existing Streamlit shell button so navigation remains
+            // session-state driven and does not reload the public application.
+            const aliases = {{
+              'Design Impact Analyzer':'Design Impact',
+              'Supply Risk Scenario':'Supply Scenario'
+            }};
+            const wanted = aliases[command.page] || command.page;
+            const shellButton = [...parentDoc.querySelectorAll('.st-key-cv_foundation_navigation .stButton > button')]
+              .find(button => button.innerText.trim() === wanted);
+            if (shellButton) {{ shellButton.click(); return; }}
+            if (!command.href) return;
 
             // Use a real link inside Streamlit's parent document. This follows the
             // same navigation path as Cadivor's sidebar links and reliably causes
@@ -163,10 +176,13 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
           }};
           parentDoc.addEventListener('keydown', parentWin.__cadivorCommandKeyHandler, true);
 
-          parentDoc.querySelectorAll('.cadivor-search-pill').forEach(trigger => {{
+          parentDoc.querySelectorAll('.cadivor-search-pill, .cv-foundation-search').forEach(trigger => {{
             if (trigger.tagName === 'A') trigger.setAttribute('href','#');
             trigger.innerHTML = 'Search Cadivor <span style="margin-left:12px;color:#94a3b8;font-size:10px;font-weight:900">⌘K</span>';
             trigger.onclick = event => {{ event.preventDefault(); open(); }};
+            trigger.onkeydown = event => {{
+              if (event.key === 'Enter' || event.key === ' ') {{ event.preventDefault(); open(); }}
+            }};
           }});
           parentWin.openCadivorCommandCenter = open;
         }})();
