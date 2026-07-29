@@ -85,15 +85,13 @@ from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
-from src.ui.unified_shell import render_unified_shell
+from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
-from src.ui.shell_recovery import inject_shell_recovery_css
-from src.ui.premium_product_reset import inject_premium_product_reset
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.components.onboarding import (
     render_analysis_success,
@@ -2387,12 +2385,8 @@ render_unified_shell(
 
 # Design System v1 is deliberately injected after the application shell.
 inject_design_system_v1()
-# Sprint 56 is the final authenticated presentation layer. It is presentation-only
-# and leaves navigation, analysis continuity, and engineering calculations intact.
-inject_executive_workspace_css()
-inject_executive_ux_css()
-inject_enterprise_experience_css()
-inject_shell_recovery_css()
+# Foundation recovery shell CSS is injected last so page-level design rules cannot alter shell geometry.
+inject_unified_shell_css()
 render_page_context(app_mode)
 
 try:
@@ -12149,10 +12143,6 @@ Unlock more power:
 
 
 
-
-# Sprint 60 — final premium product authority. Rendered after every page so
-# legacy page-local CSS cannot override shell geometry or visual primitives.
-inject_premium_product_reset()
 
 # Sprint 55 — persist the freshly issued auth cookie only after the authenticated
 # shell and selected workspace page have rendered. A CookieManager component can
