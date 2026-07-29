@@ -13,6 +13,9 @@ def navigate_to(page: str, **params: Any) -> None:
     still accepted for external/deep links, but ordinary clicks must not force
     CookieManager and Supabase authentication to hydrate again.
     """
+    # One authoritative route value. Legacy app_mode remains mirrored only for
+    # compatibility with older page modules.
+    st.session_state["cadivor_route"] = page
     st.session_state["app_mode"] = page
     nav_params = {"page": page}
     for key, value in params.items():
