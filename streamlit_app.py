@@ -2240,15 +2240,31 @@ saved_bom_count_response = (
 )
 saved_bom_count = saved_bom_count_response.count or 0
 
-_external_page = _safe_text(_qp_value("page", ""), "")
-app_mode = st.session_state.get("app_mode", "Dashboard")
+# Single-route authority. Query parameters are consumed only as an initial deep
+# link; internal navigation writes cadivor_route directly. Every shell and page
+# renderer below reads this same committed value.
+try:
+    _raw_external_page = st.query_params.get("page", "")
+    if isinstance(_raw_external_page, list):
+        _raw_external_page = _raw_external_page[0] if _raw_external_page else ""
+except Exception:
+    _raw_external_page = ""
+_external_page = _safe_text(_raw_external_page, "")
+
+app_mode = _safe_text(
+    st.session_state.get("cadivor_route")
+    or st.session_state.get("app_mode")
+    or "Dashboard",
+    "Dashboard",
+)
 if _external_page and not st.session_state.get("cadivor_external_route_consumed"):
     app_mode = _external_page
     st.session_state["cadivor_external_route_consumed"] = True
 
 if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
     app_mode = "Dashboard"
-st.session_state["app_mode"] = app_mode
+st.session_state["cadivor_route"] = app_mode
+st.session_state["app_mode"] = app_mode  # compatibility mirror
 
 # Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
 # Query values are treated only as navigation inputs; the durable browser-session
@@ -2373,7 +2389,9 @@ def _s55_clear_analysis():
 
 
 def _s55_logout():
-    """End the local session immediately; never route through a Sign out page."""
+    """End the local session immediately; never route through page handling."""
+    st.session_state.pop("cadivor_route_transition", None)
+    st.session_state.pop("cadivor_nav_params", None)
     begin_logout(supabase, cookie_manager)
 
 
