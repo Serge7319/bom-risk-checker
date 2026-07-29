@@ -390,6 +390,11 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     before client-side history normalization completes.
     """
     _marketing_css()
+
+    st.markdown("""<style id="cadivor-static-public-runtime">
+    html,body,.stApp,[data-testid="stAppViewContainer"]{background:#06142c!important}
+    .mk-hero,.mk-page-hero{animation:none!important;transition:none!important}
+    </style>""", unsafe_allow_html=True)
     if forced_page:
         page = str(forced_page).strip().lower() or "home"
     else:
