@@ -64,9 +64,10 @@ def _commit_navigation(page: str) -> None:
     Using a widget callback avoids the former click -> rerun -> explicit rerun
     sequence that could briefly expose an incomplete/public render.
     """
-    st.session_state["app_mode"] = page
+    st.session_state["cadivor_route"] = page
+    st.session_state["app_mode"] = page  # compatibility mirror
     st.session_state["cadivor_nav_params"] = {"page": page}
-    st.session_state["cadivor_route_transition"] = page
+    st.session_state.pop("cadivor_route_transition", None)
 
 
 def render_unified_shell(
@@ -122,13 +123,14 @@ def render_unified_shell(
             st.button("Notifications", key="cv_foundation_notifications", use_container_width=True, on_click=_commit_navigation, args=("Notifications",))
             st.button("Help center", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
             st.divider()
-            st.button(
+            if st.button(
                 "Sign out",
                 key="cv_foundation_signout",
                 type="secondary",
                 use_container_width=True,
-                on_click=request_logout,
-            )
+            ):
+                request_logout()
+                st.rerun()
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
