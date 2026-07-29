@@ -114,17 +114,13 @@ def render_unified_shell(
             if st.button("Help center", key="cv552_help", use_container_width=True):
                 navigate("Help")
             st.divider()
-            if st.button(
+            st.button(
                 "Sign out",
                 key="cv552_signout",
                 type="secondary",
                 use_container_width=True,
-            ):
-                # Logout is deliberately handled in the click branch, not as a
-                # delayed callback. Commit state, terminate this render, and
-                # restart at the authentication gate in one interaction.
-                request_logout()
-                st.rerun()
+                on_click=request_logout,
+            )
 
     with st.container(key="cv55_navigation"):
         st.markdown(
