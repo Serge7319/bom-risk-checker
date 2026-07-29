@@ -58,6 +58,17 @@ def _escape(value: object) -> str:
     return html.escape(str(value or ""))
 
 
+def _commit_navigation(page: str) -> None:
+    """Commit the route before Streamlit performs the widget rerun.
+
+    Using a widget callback avoids the former click -> rerun -> explicit rerun
+    sequence that could briefly expose an incomplete/public render.
+    """
+    st.session_state["app_mode"] = page
+    st.session_state["cadivor_nav_params"] = {"page": page}
+    st.session_state["cadivor_route_transition"] = page
+
+
 def render_unified_shell(
     *,
     current_page: str,
@@ -105,16 +116,11 @@ def render_unified_shell(
                 f"""<div class="cv-foundation-account-head"><b>{_escape(full_name)}</b><span>{_escape(email)}</span><small>{_escape(workspace_name)}</small></div>""",
                 unsafe_allow_html=True,
             )
-            if st.button("Profile & preferences", key="cv_foundation_profile", use_container_width=True):
-                navigate("Settings")
-            if st.button("Workspace", key="cv_foundation_workspace", use_container_width=True):
-                navigate("Workspace")
-            if st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True):
-                navigate("Pricing")
-            if st.button("Notifications", key="cv_foundation_notifications", use_container_width=True):
-                navigate("Notifications")
-            if st.button("Help center", key="cv_foundation_help", use_container_width=True):
-                navigate("Help")
+            st.button("Profile & preferences", key="cv_foundation_profile", use_container_width=True, on_click=_commit_navigation, args=("Settings",))
+            st.button("Workspace", key="cv_foundation_workspace", use_container_width=True, on_click=_commit_navigation, args=("Workspace",))
+            st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
+            st.button("Notifications", key="cv_foundation_notifications", use_container_width=True, on_click=_commit_navigation, args=("Notifications",))
+            st.button("Help center", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
             st.divider()
             st.button(
                 "Sign out",
@@ -143,21 +149,21 @@ def render_unified_shell(
             )
             for label, slug, destination in rows:
                 button_type = "primary" if destination == current_page else "secondary"
-                if st.button(
+                st.button(
                     label,
                     key=f"cv_foundation_nav_{slug}",
                     type=button_type,
                     use_container_width=True,
-                ):
-                    navigate(destination)
+                    on_click=_commit_navigation,
+                    args=(destination,),
+                )
 
         st.markdown(
             f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
             unsafe_allow_html=True,
         )
         if str(plan_name).lower() in {"starter", "free", "trial", "student"}:
-            if st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True):
-                navigate("Pricing")
+            st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
         if st.button(
             "＋ New BOM analysis",
             key="cv_foundation_new_analysis",
