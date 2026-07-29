@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 AUTH_UNKNOWN = "unknown"
 AUTH_SIGNED_OUT = "signed_out"
@@ -123,50 +124,74 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
 
 
 def finalize_logout_cookie(cookie_manager: Any) -> None:
-    """Best-effort cookie cleanup after the signed-out state is committed."""
+    """Clear the browser auth cookie without triggering another Streamlit run.
+
+    CookieManager.set/delete mounts a component and can schedule additional
+    reruns. During logout that made the public page appear, disappear, and then
+    appear again. Cadivor now removes the non-HttpOnly auth cookie directly in
+    the browser after local sign-out has already been committed.
+    """
     if not st.session_state.pop("cadivor_cookie_clear_pending", False):
         return
-    try:
-        if cookie_manager:
-            cookie_manager.set(cookie="bom_auth", val={}, key="shell_zero_bom_auth")
-            cookie_manager.delete(cookie="bom_auth", key="shell_delete_bom_auth")
-    except Exception as exc:
-        _log("cookie_logout_warning", error=type(exc).__name__)
-
-def render_auth_boot() -> None:
-    """Render a neutral light workspace skeleton while authentication resolves."""
-    st.markdown(
+    components.html(
         """
-        <style id="cadivor-auth-boot-css">
-        header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"]{
-            display:none!important;visibility:hidden!important;height:0!important;
-        }
-        .stApp{background:#F4F7FB!important;}
-        .main .block-container{max-width:none!important;padding:0!important;margin:0!important;}
-        .cv-auth-boot{min-height:100vh;background:#F4F7FB;font-family:Inter,system-ui,sans-serif;color:#0F172A;}
-        .cv-auth-top{height:64px;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;padding:0 22px;gap:12px;}
-        .cv-auth-mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;}
-        .cv-auth-brand strong{display:block;font-size:15px;line-height:1.1}.cv-auth-brand span{display:block;color:#64748B;font-size:10px;margin-top:3px;letter-spacing:.08em;text-transform:uppercase}
-        .cv-auth-body{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:calc(100vh - 64px)}
-        .cv-auth-rail{background:#0B1F3A;padding:22px 16px}.cv-auth-rail-line{height:36px;border-radius:9px;background:rgba(255,255,255,.08);margin-bottom:8px}.cv-auth-rail-line.active{background:rgba(96,165,250,.22)}
-        .cv-auth-canvas{padding:26px 30px;max-width:1440px;width:100%;box-sizing:border-box}.cv-auth-title{width:260px;height:22px;border-radius:7px;background:#DCE4EE;margin-bottom:10px}.cv-auth-copy{width:min(560px,70%);height:12px;border-radius:6px;background:#E7EDF4;margin-bottom:24px}
-        .cv-auth-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.cv-auth-card{height:102px;border-radius:15px;background:#fff;border:1px solid #E2E8F0;position:relative;overflow:hidden}.cv-auth-panel{height:260px;border-radius:17px;background:#fff;border:1px solid #E2E8F0;position:relative;overflow:hidden}
-        .cv-auth-card:after,.cv-auth-panel:after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(226,232,240,.55),transparent);animation:cv-auth-shimmer 1.35s infinite}
-        .cv-auth-status{position:fixed;right:22px;bottom:20px;display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 13px;box-shadow:0 12px 30px rgba(15,23,42,.08);font-size:12px;font-weight:750;color:#475569}.cv-auth-dot{width:7px;height:7px;border-radius:50%;background:#2563EB;animation:cv-auth-pulse 1.2s infinite}
-        @keyframes cv-auth-shimmer{100%{transform:translateX(100%)}}@keyframes cv-auth-pulse{50%{opacity:.35}}
-        @media(max-width:900px){.cv-auth-body{grid-template-columns:1fr}.cv-auth-rail{display:none}.cv-auth-kpis{grid-template-columns:repeat(2,1fr)}}
+        <script>
+        (() => {
+          try {
+            const doc = window.parent.document;
+            const names = ['bom_auth'];
+            const paths = ['/', window.parent.location.pathname || '/'];
+            names.forEach((name) => {
+              paths.forEach((path) => {
+                doc.cookie = `${name}=; Max-Age=0; path=${path}; SameSite=Lax`;
+                doc.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path}`;
+              });
+            });
+            window.parent.history.replaceState({}, '', window.parent.location.pathname);
+          } catch (_) {}
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+    _log("cookie_logout_cleared")
+
+
+def render_auth_transition(message: str = "Preparing Cadivor") -> None:
+    """Render one light branded transition surface for auth changes."""
+    safe_message = str(message or "Preparing Cadivor")
+    st.markdown(
+        f"""
+        <style id="cadivor-auth-transition-css">
+        header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
+        section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{display:none!important}}
+        html,body,.stApp,[data-testid="stAppViewContainer"]{{background:#F5F7FB!important;color:#0F172A!important}}
+        .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
+        .cv-auth-transition{{min-height:100vh;display:grid;place-items:center;padding:32px;background:radial-gradient(circle at 50% 35%,#fff 0,#F7F9FC 42%,#EEF3F8 100%);font-family:Inter,system-ui,sans-serif}}
+        .cv-auth-transition-card{{width:min(420px,calc(100vw - 40px));padding:30px 30px 26px;border:1px solid #DCE4EE;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 24px 70px rgba(15,23,42,.10);text-align:center}}
+        .cv-auth-transition-mark{{width:48px;height:48px;margin:0 auto 16px;border-radius:14px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:22px;box-shadow:0 12px 26px rgba(37,99,235,.25)}}
+        .cv-auth-transition-card h1{{margin:0;color:#0F172A!important;font-size:20px;letter-spacing:-.025em}}
+        .cv-auth-transition-card p{{margin:8px 0 18px;color:#64748B!important;font-size:13px}}
+        .cv-auth-progress{{height:4px;border-radius:999px;background:#E8EEF6;overflow:hidden}}
+        .cv-auth-progress span{{display:block;width:42%;height:100%;border-radius:inherit;background:#2563EB;animation:cv-auth-progress 1.1s ease-in-out infinite}}
+        @keyframes cv-auth-progress{{0%{{transform:translateX(-110%)}}100%{{transform:translateX(340%)}}}}
         </style>
-        <div class="cv-auth-boot">
-          <div class="cv-auth-top"><div class="cv-auth-mark">C</div><div class="cv-auth-brand"><strong>Cadivor</strong><span>Engineering Intelligence</span></div></div>
-          <div class="cv-auth-body">
-            <aside class="cv-auth-rail"><div class="cv-auth-rail-line active"></div><div class="cv-auth-rail-line"></div><div class="cv-auth-rail-line"></div><div class="cv-auth-rail-line"></div><div class="cv-auth-rail-line"></div></aside>
-            <main class="cv-auth-canvas"><div class="cv-auth-title"></div><div class="cv-auth-copy"></div><div class="cv-auth-kpis"><div class="cv-auth-card"></div><div class="cv-auth-card"></div><div class="cv-auth-card"></div><div class="cv-auth-card"></div></div><div class="cv-auth-panel"></div></main>
+        <div class="cv-auth-transition" role="status" aria-live="polite">
+          <div class="cv-auth-transition-card">
+            <div class="cv-auth-transition-mark">C</div>
+            <h1>Cadivor</h1>
+            <p>{safe_message}</p>
+            <div class="cv-auth-progress"><span></span></div>
           </div>
-          <div class="cv-auth-status"><span class="cv-auth-dot"></span>Restoring your secure workspace</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+def render_auth_boot() -> None:
+    """Use the same neutral branded surface while a saved session is restored."""
+    render_auth_transition("Restoring your secure workspace…")
 
 
 def _validate_tokens(supabase: Any, access_token: str, refresh_token: str) -> bool:
