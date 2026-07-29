@@ -41,6 +41,7 @@ from src.auth_state import (
     AUTH_SIGNED_OUT,
     AUTH_LOGGING_OUT,
     begin_logout,
+    finalize_logout_cookie,
     resolve_auth_state,
 )
 from supabase import create_client
@@ -1561,6 +1562,9 @@ if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action"
 
 _auth_status = resolve_auth_state(supabase, cookie_manager)
 if _auth_status == AUTH_SIGNED_OUT:
+    # Authentication is already gone. Cookie cleanup happens only after the
+    # signed-out state is committed, so it can never hold the workspace open.
+    finalize_logout_cookie(cookie_manager)
     if st.session_state.pop("cadivor_public_after_logout", False):
         try:
             st.query_params.clear()
@@ -2369,13 +2373,8 @@ def _s55_clear_analysis():
 
 
 def _s55_logout():
-    """Commit logout inside the widget callback before authenticated rendering."""
+    """End the local session immediately; never route through a Sign out page."""
     begin_logout(supabase, cookie_manager)
-    try:
-        st.query_params.clear()
-        st.query_params["public"] = "home"
-    except Exception:
-        pass
 
 
 render_unified_shell(
@@ -2392,10 +2391,11 @@ render_unified_shell(
 
 # Design System v1 is deliberately injected after the application shell.
 inject_design_system_v1()
-# Foundation recovery shell CSS is injected last so page-level design rules cannot alter shell geometry.
-inject_unified_shell_css()
 inject_workspace_consistency_css()
 inject_premium_interaction_css()
+# The shell authority must be the final stylesheet. This prevents broad page
+# button rules from turning transparent navigation rows into white form boxes.
+inject_unified_shell_css()
 
 try:
     _workspace_command_records = build_workspace_commands(
