@@ -302,3 +302,136 @@ section[data-testid="stMain"] a[data-testid="stBaseLinkButton-secondary"]{
 [data-testid="stPopoverBody"] .stButton>button:hover{color:#0f172a!important;background:#f1f5f9!important}
 .st-key-cv_foundation_signout button{color:#b42318!important}
 .st-key-cv_foundation_signout button:hover{color:#912018!important;background:#fff1f0!important}
+
+/* ========================================================================
+   Shell Navigation Rebuild & Logout State Repair
+   Final shell authority: preserves 232px rail and matching workspace offset.
+   ======================================================================== */
+
+/* A quieter, cohesive rail surface. */
+.st-key-cv_foundation_navigation{
+  background:
+    radial-gradient(circle at 12% 0%,rgba(37,99,235,.12),transparent 30%),
+    linear-gradient(180deg,#0b1830 0%,#0b1932 52%,#0c1b36 100%)!important;
+  border-right:1px solid rgba(148,163,184,.12)!important;
+  padding:13px 10px 16px!important;
+}
+.cv-foundation-workspace{
+  min-height:50px!important;
+  margin:0 2px 15px!important;
+  padding:8px 9px!important;
+  border-color:rgba(148,163,184,.12)!important;
+  background:rgba(255,255,255,.035)!important;
+  border-radius:12px!important;
+}
+.cv-foundation-workspace:hover{background:rgba(255,255,255,.055)!important}
+.cv-foundation-nav-group{
+  margin:16px 10px 6px!important;
+  color:#7185a4!important;
+  font-size:8px!important;
+  letter-spacing:.18em!important;
+}
+
+/* Navigation is a menu, never a collection of page buttons. These selectors
+   intentionally outrank the global premium interaction button rules. */
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton{
+  margin:0 0 2px!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="secondary"]{
+  min-height:36px!important;
+  height:36px!important;
+  padding:0 10px!important;
+  gap:11px!important;
+  border:1px solid transparent!important;
+  border-radius:9px!important;
+  background:transparent!important;
+  color:#b8c5d8!important;
+  box-shadow:none!important;
+  font-size:11.5px!important;
+  font-weight:650!important;
+  transform:none!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button:hover,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="secondary"]:hover{
+  background:rgba(148,163,184,.09)!important;
+  border-color:rgba(148,163,184,.06)!important;
+  color:#f8fafc!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"]{
+  background:linear-gradient(90deg,rgba(37,99,235,.16),rgba(37,99,235,.07))!important;
+  border-color:rgba(96,165,250,.08)!important;
+  color:#ffffff!important;
+  box-shadow:inset 2px 0 0 #60a5fa!important;
+  font-weight:760!important;
+  transform:none!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"]:hover{
+  background:linear-gradient(90deg,rgba(37,99,235,.21),rgba(37,99,235,.10))!important;
+  border-color:rgba(96,165,250,.12)!important;
+  transform:none!important;
+}
+
+/* Icons need enough scale and a stable column to read as icons—not bullets. */
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button::before{
+  display:block!important;
+  content:""!important;
+  flex:0 0 20px!important;
+  width:20px!important;
+  height:20px!important;
+  margin:0!important;
+  opacity:.82!important;
+  background-size:18px 18px!important;
+  background-position:center!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button:hover::before,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"]::before{
+  opacity:1!important;
+  filter:brightness(1.28)!important;
+}
+
+/* Footer hierarchy: one quiet status surface and one clear creation action. */
+.cv-foundation-plan-card{
+  margin:17px 2px 7px!important;
+  padding:9px 10px!important;
+  border-color:rgba(148,163,184,.10)!important;
+  background:rgba(255,255,255,.025)!important;
+  border-radius:11px!important;
+}
+.cv-foundation-plan-card strong{font-size:11px!important;color:#e8eef8!important}
+.cv-foundation-plan-card span{font-size:9px!important;color:#91a3bd!important}
+section[data-testid="stMain"] .st-key-cv_foundation_compare_plans .stButton>button{
+  min-height:32px!important;height:32px!important;background:transparent!important;
+  border:1px solid rgba(148,163,184,.13)!important;color:#9fb0c8!important;
+  justify-content:center!important;box-shadow:none!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_new_analysis .stButton>button{
+  min-height:38px!important;height:38px!important;justify-content:center!important;
+  background:#2563eb!important;border-color:#2563eb!important;color:#fff!important;
+  box-shadow:0 8px 18px rgba(37,99,235,.20)!important;
+}
+
+/* Profile menu remains neutral; only its final Sign out action is destructive. */
+[data-testid="stPopoverBody"] .stButton>button,
+section[data-testid="stMain"] [data-testid="stPopoverBody"] .stButton>button{
+  background:transparent!important;border:0!important;color:#334155!important;
+  box-shadow:none!important;transform:none!important;
+}
+[data-testid="stPopoverBody"] .stButton>button:hover{
+  background:#f1f5f9!important;color:#0f172a!important;transform:none!important;
+}
+[data-testid="stPopoverBody"] .stButton:last-of-type>button{color:#b42318!important}
+[data-testid="stPopoverBody"] .stButton:last-of-type>button:hover{background:#fff1f0!important;color:#912018!important}
+
+/* Never expose list markers inside application controls. */
+.st-key-cv_foundation_navigation ul,.st-key-cv_foundation_navigation ol,
+.st-key-cv_foundation_navigation li,[data-testid="stPopoverBody"] li,
+[role="tablist"] li,.stButton li,.stLinkButton li{
+  list-style:none!important;
+}
+.st-key-cv_foundation_navigation li::marker,[data-testid="stPopoverBody"] li::marker,
+[role="tablist"] li::marker,.stButton li::marker,.stLinkButton li::marker{
+  content:""!important;font-size:0!important;
+}
