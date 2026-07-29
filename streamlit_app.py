@@ -1553,11 +1553,6 @@ if st.session_state.get("cv4801_followup_inflight") and isinstance(_followup_sna
 # rendered until the authenticated session and cookie are invalidated.
 if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action") == "logout":
     begin_logout(supabase, cookie_manager)
-    try:
-        st.query_params.clear()
-        st.query_params["public"] = "home"
-    except Exception:
-        pass
     st.rerun()
 
 _auth_status = resolve_auth_state(supabase, cookie_manager)
@@ -1565,12 +1560,7 @@ if _auth_status == AUTH_SIGNED_OUT:
     # Authentication is already gone. Cookie cleanup happens only after the
     # signed-out state is committed, so it can never hold the workspace open.
     finalize_logout_cookie(cookie_manager)
-    if st.session_state.pop("cadivor_public_after_logout", False):
-        try:
-            st.query_params.clear()
-            st.query_params["public"] = "home"
-        except Exception:
-            pass
+    st.session_state.pop("cadivor_public_after_logout", False)
     try:
         show_auth_ui(supabase, cookie_manager)
     except TypeError:
@@ -1585,12 +1575,22 @@ if _auth_status != AUTH_AUTHENTICATED:
 # Once authentication is committed, remove public/auth modal query flags. A stale
 # ?auth= or ?public= value must never re-open the sign-in surface during a long
 # supplier search or another ordinary authenticated rerun.
-try:
-    for _transient_key in ("auth", "public", "action"):
-        if _transient_key in st.query_params:
-            del st.query_params[_transient_key]
-except Exception:
-    pass
+# Clean transient public/auth parameters in browser history without mutating
+# st.query_params. Server-side query-param writes can schedule another run and
+# were responsible for the public page and black loading surface appearing twice.
+components.html(
+    """<script>
+    (() => {
+      try {
+        const url = new URL(window.parent.location.href);
+        ['auth','public','action'].forEach((key) => url.searchParams.delete(key));
+        window.parent.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+      } catch (_) {}
+    })();
+    </script>""",
+    height=0,
+    width=0,
+)
 
 current_user = load_user_data()
 
