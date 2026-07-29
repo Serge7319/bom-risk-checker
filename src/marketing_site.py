@@ -382,14 +382,22 @@ def _legal_page(kind: str) -> None:
     _footer()
 
 
-def render_marketing_site() -> None:
-    """Render the signed-out Sprint 51 marketing website."""
+def render_marketing_site(*, forced_page: str | None = None) -> None:
+    """Render the signed-out marketing website.
+
+    ``forced_page`` is used only for deterministic authentication landings. It
+    prevents stale browser query parameters from painting the wrong public page
+    before client-side history normalization completes.
+    """
     _marketing_css()
-    try:
-        raw = st.query_params.get("public", "home")
-        page = raw[0] if isinstance(raw, list) else raw
-    except Exception:
-        page = "home"
+    if forced_page:
+        page = str(forced_page).strip().lower() or "home"
+    else:
+        try:
+            raw = st.query_params.get("public", "home")
+            page = raw[0] if isinstance(raw, list) else raw
+        except Exception:
+            page = "home"
     routes = {
         "home": _home,
         "product": _product,
