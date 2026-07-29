@@ -19,6 +19,7 @@ AUTH_UNKNOWN = "unknown"
 AUTH_SIGNED_OUT = "signed_out"
 AUTH_AUTHENTICATED = "authenticated"
 AUTH_LOGGING_OUT = "logging_out"
+AUTH_SIGNING_IN = "signing_in"
 
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
 _MAX_RESTORE_ATTEMPTS = 1
@@ -76,10 +77,6 @@ def mark_authenticated(user: Any, session: Any) -> None:
     route = requested or "Dashboard"
     st.session_state["cadivor_route"] = route
     st.session_state["app_mode"] = route
-    st.session_state["cadivor_cookie_write_pending"] = {
-        "access_token": session.access_token,
-        "refresh_token": session.refresh_token,
-    }
     _log("authenticated", page=st.session_state["app_mode"])
 
 
@@ -123,46 +120,16 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
     # value left in browser history until the homepage has been painted once.
     st.session_state["cadivor_public_after_logout"] = True
     st.session_state["cadivor_public_route"] = "home"
-    st.session_state["cadivor_cookie_clear_pending"] = True
     _log("logout_committed")
 
 
 def finalize_logout_cookie(cookie_manager: Any) -> None:
-    """Clear the browser auth cookie without triggering another Streamlit run.
+    """Compatibility no-op.
 
-    CookieManager.set/delete mounts a component and can schedule additional
-    reruns. During logout that made the public page appear, disappear, and then
-    appear again. Cadivor now removes the non-HttpOnly auth cookie directly in
-    the browser after local sign-out has already been committed.
+    Cookie cleanup is no longer performed by a browser component. The local
+    force-signed-out guard is authoritative for the active Streamlit session.
     """
-    if not st.session_state.pop("cadivor_cookie_clear_pending", False):
-        return
-    components.html(
-        """
-        <script>
-        (() => {
-          try {
-            const doc = window.parent.document;
-            const names = ['bom_auth'];
-            const paths = ['/', window.parent.location.pathname || '/'];
-            names.forEach((name) => {
-              paths.forEach((path) => {
-                doc.cookie = `${name}=; Max-Age=0; path=${path}; SameSite=Lax`;
-                doc.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path}`;
-              });
-            });
-            // Commit the deterministic signed-out destination without
-            // causing a Streamlit rerun or exposing the previous public route.
-            window.parent.history.replaceState({}, '', window.parent.location.pathname);
-          } catch (_) {}
-        })();
-        </script>
-        """,
-        height=0,
-        width=0,
-    )
-    _log("cookie_logout_cleared")
-
+    st.session_state.pop("cadivor_cookie_clear_pending", None)
 
 def render_auth_transition(message: str = "Preparing Cadivor") -> None:
     """Render one light branded transition surface for auth changes."""
@@ -247,42 +214,9 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
             return AUTH_AUTHENTICATED
         clear_auth_session(keep_status=True)
 
-    # CookieManager hydrates asynchronously in Streamlit Cloud. During this short
-    # UNKNOWN period, show only the neutral boot surface—never public marketing.
-    raw_cookie = None
-    try:
-        raw_cookie = cookie_manager.get(cookie="bom_auth") if cookie_manager else None
-    except Exception as exc:
-        _log("cookie_read_failed", error=type(exc).__name__)
-
-    auth_cookie = coerce_cookie(raw_cookie)
-    if auth_cookie and auth_cookie.get("access_token") and auth_cookie.get("refresh_token"):
-        if _validate_tokens(
-            supabase,
-            str(auth_cookie["access_token"]),
-            str(auth_cookie["refresh_token"]),
-        ):
-            return AUTH_AUTHENTICATED
-        # Invalid cookie must not be retried on every run.
-        try:
-            if cookie_manager:
-                cookie_manager.set(cookie="bom_auth", val={}, key="invalidate_bom_auth")
-        except Exception:
-            pass
-        clear_auth_session(keep_status=True)
-        st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-        st.session_state["cadivor_auth_resolved"] = True
-        return AUTH_SIGNED_OUT
-
-    attempts = int(st.session_state.get("cadivor_auth_restore_attempts", 0))
-    if status == AUTH_UNKNOWN and attempts < _MAX_RESTORE_ATTEMPTS:
-        st.session_state["cadivor_auth_restore_attempts"] = attempts + 1
-        _log("restore_wait", attempt=attempts + 1)
-        render_auth_boot()
-        if _RESTORE_DELAY_SECONDS > 0:
-            time.sleep(_RESTORE_DELAY_SECONDS)
-        st.rerun()
-
+    # No asynchronous cookie component participates in auth resolution.
+    # A fresh browser connection resolves to signed out immediately; the active
+    # Supabase session remains available through Streamlit session state.
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state.pop("cadivor_auth_restore_attempts", None)
