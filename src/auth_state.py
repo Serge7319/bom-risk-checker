@@ -20,8 +20,8 @@ AUTH_AUTHENTICATED = "authenticated"
 AUTH_LOGGING_OUT = "logging_out"
 
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
-_MAX_RESTORE_ATTEMPTS = 3
-_RESTORE_DELAY_SECONDS = 0.08
+_MAX_RESTORE_ATTEMPTS = 1
+_RESTORE_DELAY_SECONDS = 0.0
 
 
 def _log(event: str, **details: Any) -> None:
@@ -72,7 +72,9 @@ def mark_authenticated(user: Any, session: Any) -> None:
     st.session_state.pop("cadivor_auth_ui_was_shown", None)
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
-    st.session_state["app_mode"] = requested or "Dashboard"
+    route = requested or "Dashboard"
+    st.session_state["cadivor_route"] = route
+    st.session_state["app_mode"] = route
     st.session_state["cadivor_cookie_write_pending"] = {
         "access_token": session.access_token,
         "refresh_token": session.refresh_token,
@@ -246,7 +248,8 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
         st.session_state["cadivor_auth_restore_attempts"] = attempts + 1
         _log("restore_wait", attempt=attempts + 1)
         render_auth_boot()
-        time.sleep(_RESTORE_DELAY_SECONDS)
+        if _RESTORE_DELAY_SECONDS > 0:
+            time.sleep(_RESTORE_DELAY_SECONDS)
         st.rerun()
 
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
