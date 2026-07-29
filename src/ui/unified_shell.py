@@ -1,8 +1,7 @@
 """Cadivor authenticated application shell.
 
-Foundation recovery: navigation is rendered in Streamlit's native sidebar so
-it participates in layout instead of floating above the workspace. The top bar
-is presentation-only; page content remains in the main region.
+Launch foundation repair: one custom persistent navigation rail and one main
+workspace offset. The native Streamlit sidebar is deliberately not used.
 """
 from __future__ import annotations
 
@@ -50,7 +49,7 @@ def inject_unified_shell_css() -> None:
     css = _load_css()
     if css:
         st.markdown(
-            f"<style id='cadivor-foundation-shell-css'>{css}</style>",
+            f"<style id='cadivor-foundation-repair-css'>{css}</style>",
             unsafe_allow_html=True,
         )
 
@@ -71,7 +70,9 @@ def render_unified_shell(
     clear_analysis: Callable[[], None],
     request_logout: Callable[[], None],
 ) -> None:
-    """Render one top bar plus one native sidebar navigation shell."""
+    """Render exactly one top bar and one custom fixed navigation rail."""
+    inject_unified_shell_css()
+
     full_name = profile.get("full_name") or profile.get("email") or "Cadivor user"
     email = profile.get("email") or ""
     initials = profile.get("initials") or "C"
@@ -79,16 +80,18 @@ def render_unified_shell(
 
     st.markdown(
         f"""
-        <div class="cv-shell-topbar" aria-label="Cadivor application header">
-          <div class="cv-shell-brand">
-            <span class="cv-shell-brand-mark">C</span>
-            <span class="cv-shell-brand-copy"><strong>Cadivor</strong><small>Engineering Intelligence</small></span>
+        <div class="cv-foundation-topbar" aria-label="Cadivor application header">
+          <div class="cv-foundation-brand">
+            <span class="cv-foundation-brand-mark">C</span>
+            <span class="cv-foundation-brand-copy">
+              <strong>Cadivor</strong><small>Engineering Intelligence</small>
+            </span>
           </div>
-          <div class="cv-shell-page-context">
+          <div class="cv-foundation-page-context">
             <strong>{_escape(current_page)}</strong>
-            <span class="cv-shell-search">Search Cadivor <kbd>⌘K</kbd></span>
+            <span class="cv-foundation-search">Search Cadivor <kbd>⌘K</kbd></span>
           </div>
-          <div class="cv-shell-profile-copy">
+          <div class="cv-foundation-profile-copy">
             <small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em>
           </div>
         </div>
@@ -96,35 +99,35 @@ def render_unified_shell(
         unsafe_allow_html=True,
     )
 
-    with st.container(key="cv_shell_profile_menu"):
+    with st.container(key="cv_foundation_profile_menu"):
         with st.popover(initials, use_container_width=False):
             st.markdown(
-                f"""<div class="cv-shell-account-head"><b>{_escape(full_name)}</b><span>{_escape(email)}</span><small>{_escape(workspace_name)}</small></div>""",
+                f"""<div class="cv-foundation-account-head"><b>{_escape(full_name)}</b><span>{_escape(email)}</span><small>{_escape(workspace_name)}</small></div>""",
                 unsafe_allow_html=True,
             )
-            if st.button("Profile & preferences", key="cv_shell_profile", use_container_width=True):
+            if st.button("Profile & preferences", key="cv_foundation_profile", use_container_width=True):
                 navigate("Settings")
-            if st.button("Workspace", key="cv_shell_workspace", use_container_width=True):
+            if st.button("Workspace", key="cv_foundation_workspace", use_container_width=True):
                 navigate("Workspace")
-            if st.button("Plan & billing", key="cv_shell_billing", use_container_width=True):
+            if st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True):
                 navigate("Pricing")
-            if st.button("Notifications", key="cv_shell_notifications", use_container_width=True):
+            if st.button("Notifications", key="cv_foundation_notifications", use_container_width=True):
                 navigate("Notifications")
-            if st.button("Help center", key="cv_shell_help", use_container_width=True):
+            if st.button("Help center", key="cv_foundation_help", use_container_width=True):
                 navigate("Help")
             st.divider()
             st.button(
                 "Sign out",
-                key="cv_shell_signout",
+                key="cv_foundation_signout",
                 type="secondary",
                 use_container_width=True,
                 on_click=request_logout,
             )
 
-    with st.sidebar:
+    with st.container(key="cv_foundation_navigation"):
         st.markdown(
             f"""
-            <div class="cv-shell-workspace">
+            <div class="cv-foundation-workspace">
               <span>Workspace</span>
               <strong>{_escape(workspace_name or 'Cadivor Workspace')}</strong>
               <small>{_escape(plan_name)} plan</small>
@@ -134,28 +137,30 @@ def render_unified_shell(
         )
 
         for group_name, rows in NAV_GROUPS:
-            st.markdown(f'<div class="cv-shell-nav-group">{group_name}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
+                unsafe_allow_html=True,
+            )
             for label, slug, destination in rows:
-                active = destination == current_page
-                button_type = "primary" if active else "secondary"
+                button_type = "primary" if destination == current_page else "secondary"
                 if st.button(
                     label,
-                    key=f"cv_shell_nav_{slug}",
+                    key=f"cv_foundation_nav_{slug}",
                     type=button_type,
                     use_container_width=True,
                 ):
                     navigate(destination)
 
         st.markdown(
-            f"""<div class="cv-shell-plan-card"><strong>{_escape(plan_name)}</strong><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
+            f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
             unsafe_allow_html=True,
         )
         if str(plan_name).lower() in {"starter", "free", "trial", "student"}:
-            if st.button("Compare plans", key="cv_shell_compare_plans", use_container_width=True):
+            if st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True):
                 navigate("Pricing")
         if st.button(
             "＋ New BOM analysis",
-            key="cv_shell_new_analysis",
+            key="cv_foundation_new_analysis",
             type="primary",
             use_container_width=True,
         ):
