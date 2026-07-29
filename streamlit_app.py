@@ -87,6 +87,8 @@ from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
 from src.ui.workspace_consistency import inject_workspace_consistency_css
+from src.ui.premium_interaction_repair import inject_premium_interaction_css
+from src.ui.premium_interactions import render_premium_interactions
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
@@ -1965,8 +1967,12 @@ def show_dashboard_summary(results_df):
             "✅ No immediate sourcing risks detected. Continue periodic monitoring of lifecycle and stock availability."
         )
 
-    for action in recommended_actions:
-        st.write(f"• {action}")
+    st.markdown(
+        '<div class="cv-action-list">'
+        + "".join(f'<div class="cv-action-row">{html.escape(str(action))}</div>' for action in recommended_actions)
+        + '</div>',
+        unsafe_allow_html=True,
+    )
     
     st.subheader("🧾 Executive Summary")
 
@@ -2389,6 +2395,7 @@ inject_design_system_v1()
 # Foundation recovery shell CSS is injected last so page-level design rules cannot alter shell geometry.
 inject_unified_shell_css()
 inject_workspace_consistency_css()
+inject_premium_interaction_css()
 
 try:
     _workspace_command_records = build_workspace_commands(
@@ -2401,6 +2408,7 @@ render_command_center(
     user_name=shell_name.split()[0] if shell_name else "Engineer",
     workspace_commands=_workspace_command_records,
 )
+render_premium_interactions(current_page=app_mode)
 
 if app_mode == "Onboarding":
     progress = onboarding_progress or {}
@@ -12038,8 +12046,12 @@ Unlock more power:
                 if risk_reasons:
                     st.markdown("### ⚠️ Risk Drivers")
 
-                    for reason in risk_reasons:
-                        st.write(f"• {reason}")
+                    st.markdown(
+                        '<div class="cv-action-list">'
+                        + "".join(f'<div class="cv-action-row">{html.escape(str(reason))}</div>' for reason in risk_reasons)
+                        + '</div>',
+                        unsafe_allow_html=True,
+                    )
 
 
                 col1, col2 = st.columns(2)
