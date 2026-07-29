@@ -1508,7 +1508,23 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
     return buffer
 
-cookie_manager = stx.CookieManager(key="bom_cookie_manager") if stx else _FallbackCookieManager()
+# Phase 1.2 — authentication runtime elimination.
+# The third-party CookieManager component hydrates asynchronously and was the
+# remaining source of extra frontend remounts, white flashes, and repeated
+# public/authenticated paints. Authentication now uses the current Streamlit /
+# Supabase session only; no component is mounted during bootstrap or logout.
+cookie_manager = None
+
+st.markdown(
+    """
+    <style id="cadivor-root-surface">
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        background: #F5F7FB !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # -----------------------------------------------------------------------------
 # Sprint 55.1 — explicit authentication state machine
@@ -1571,25 +1587,8 @@ if _auth_status != AUTH_AUTHENTICATED:
     # UNKNOWN, so neither public nor authenticated content can leak through.
     st.stop()
 
-# Once authentication is committed, remove public/auth modal query flags. A stale
-# ?auth= or ?public= value must never re-open the sign-in surface during a long
-# supplier search or another ordinary authenticated rerun.
-# Clean transient public/auth parameters in browser history without mutating
-# st.query_params. Server-side query-param writes can schedule another run and
-# were responsible for the public page and black loading surface appearing twice.
-components.html(
-    """<script>
-    (() => {
-      try {
-        const url = new URL(window.parent.location.href);
-        ['auth','public','action'].forEach((key) => url.searchParams.delete(key));
-        window.parent.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
-      } catch (_) {}
-    })();
-    </script>""",
-    height=0,
-    width=0,
-)
+# Authenticated routing is session-state based. No browser-history mutation is
+# performed here; browser-level URL changes caused full-page remount flashes.
 
 current_user = load_user_data()
 
@@ -12176,24 +12175,6 @@ Unlock more power:
 
 
 
-# Sprint 55 — persist the freshly issued auth cookie only after the authenticated
-# shell and selected workspace page have rendered. A CookieManager component can
-# cause a frontend refresh; doing this last ensures any refresh remains inside
-# the authenticated shell instead of flashing the public marketing site.
-_pending_cookie = st.session_state.get("cadivor_cookie_write_pending")
-if isinstance(_pending_cookie, dict) and cookie_manager:
-    try:
-        from datetime import datetime, timedelta
-        cookie_manager.set(
-            cookie="bom_auth",
-            val={
-                "access_token": _pending_cookie.get("access_token"),
-                "refresh_token": _pending_cookie.get("refresh_token"),
-            },
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            key="s551_persist_bom_auth",
-        )
-        st.session_state.pop("cadivor_cookie_write_pending", None)
-    except Exception:
-        # Keep the pending payload so the next authenticated rerun can retry.
-        pass
+# Authentication persistence is intentionally session scoped in this repair.
+# Re-introduce durable persistence only through a server-side/HttpOnly mechanism,
+# not a visible Streamlit component that can schedule frontend reruns.
