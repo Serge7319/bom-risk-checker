@@ -1560,7 +1560,6 @@ if _auth_status == AUTH_SIGNED_OUT:
     # Authentication is already gone. Cookie cleanup happens only after the
     # signed-out state is committed, so it can never hold the workspace open.
     finalize_logout_cookie(cookie_manager)
-    st.session_state.pop("cadivor_public_after_logout", False)
     try:
         show_auth_ui(supabase, cookie_manager)
     except TypeError:
