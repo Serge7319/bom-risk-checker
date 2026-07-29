@@ -86,6 +86,7 @@ from src.pages.analysis_detail import render_analysis_detail
 from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
+from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
@@ -2387,7 +2388,7 @@ render_unified_shell(
 inject_design_system_v1()
 # Foundation recovery shell CSS is injected last so page-level design rules cannot alter shell geometry.
 inject_unified_shell_css()
-render_page_context(app_mode)
+inject_workspace_consistency_css()
 
 try:
     _workspace_command_records = build_workspace_commands(
@@ -2820,6 +2821,8 @@ if app_mode == "Dashboard":
             workspace_id=active_workspace_id,
             workspace_name=active_workspace_name,
         )
+    inject_workspace_consistency_css()
+    st.session_state.pop("cadivor_route_transition", None)
     st.stop()
 
 if app_mode == "Analysis Details":
