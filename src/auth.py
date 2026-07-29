@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 from textwrap import dedent
 
@@ -197,6 +198,73 @@ def _auth_css():
     )
 
 
+
+
+def _install_auth_submit_feedback() -> None:
+    """Give immediate feedback before the blocking Supabase request begins.
+
+    Streamlit cannot flush newly rendered Python output while a synchronous
+    authentication call is in progress.  This tiny browser-side enhancement
+    updates and disables the submit control on the initial click, then presents
+    a stable Cadivor overlay if the request lasts longer than a brief moment.
+    """
+    components.html(
+        """
+        <script>
+        (() => {
+          const parent = window.parent;
+          const doc = parent.document;
+          const bind = () => {
+            const form = [...doc.querySelectorAll('form')].find((node) =>
+              node.querySelector('button[kind="primaryFormSubmit"], button[type="submit"]')
+            );
+            if (!form || form.dataset.cvAuthBound === '1') return;
+            const button = form.querySelector('button[kind="primaryFormSubmit"], button[type="submit"]');
+            if (!button) return;
+            form.dataset.cvAuthBound = '1';
+            form.addEventListener('submit', () => {
+              button.disabled = true;
+              button.setAttribute('aria-busy', 'true');
+              const label = button.querySelector('p, span');
+              if (label) label.textContent = 'Signing in…';
+              else button.textContent = 'Signing in…';
+              parent.setTimeout(() => {
+                if (doc.getElementById('cv-auth-client-transition')) return;
+                const overlay = doc.createElement('div');
+                overlay.id = 'cv-auth-client-transition';
+                overlay.setAttribute('role', 'status');
+                overlay.innerHTML = `
+                  <div class="cv-auth-client-card">
+                    <div class="cv-auth-client-mark">C</div>
+                    <strong>Cadivor</strong>
+                    <span>Opening your engineering workspace…</span>
+                    <i><b></b></i>
+                  </div>`;
+                const style = doc.createElement('style');
+                style.id = 'cv-auth-client-transition-style';
+                style.textContent = `
+                  #cv-auth-client-transition{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:28px;background:radial-gradient(circle at 50% 35%,#fff 0,#f7f9fc 44%,#eef3f8 100%);font-family:Inter,system-ui,sans-serif}
+                  .cv-auth-client-card{width:min(420px,calc(100vw - 40px));padding:30px;border:1px solid #dce4ee;border-radius:22px;background:rgba(255,255,255,.97);box-shadow:0 24px 70px rgba(15,23,42,.11);text-align:center;color:#0f172a}
+                  .cv-auth-client-mark{width:48px;height:48px;margin:0 auto 15px;border-radius:14px;display:grid;place-items:center;background:#2563eb;color:#fff;font-size:22px;font-weight:900;box-shadow:0 12px 26px rgba(37,99,235,.24)}
+                  .cv-auth-client-card strong{display:block;font-size:20px;letter-spacing:-.025em}.cv-auth-client-card span{display:block;margin:8px 0 18px;color:#64748b;font-size:13px}
+                  .cv-auth-client-card i{display:block;height:4px;border-radius:999px;background:#e8eef6;overflow:hidden}.cv-auth-client-card i b{display:block;width:42%;height:100%;border-radius:inherit;background:#2563eb;animation:cvAuthClient 1.1s ease-in-out infinite}
+                  @keyframes cvAuthClient{0%{transform:translateX(-110%)}100%{transform:translateX(340%)}}`;
+                doc.head.appendChild(style);
+                doc.body.appendChild(overlay);
+              }, 450);
+            }, {once:true});
+          };
+          bind();
+          const observer = new MutationObserver(bind);
+          observer.observe(doc.documentElement, {childList:true, subtree:true});
+          parent.setTimeout(() => observer.disconnect(), 15000);
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
 def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     st.markdown(
         """
@@ -248,6 +316,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
 
         submit = st.form_submit_button("Create Account" if auth_mode == "Create Account" else "Login", use_container_width=True)
     st.markdown('<a class="auth-back" href="?" target="_self">← Back to Home</a>', unsafe_allow_html=True)
+    _install_auth_submit_feedback()
 
     if submit:
         if not email or not password:
@@ -258,12 +327,9 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             return
         if auth_mode == "Create Account":
             try:
-                with st.spinner("Creating your secure Cadivor workspace…"):
-                    response = supabase.auth.sign_up({"email": email, "password": password})
+                response = supabase.auth.sign_up({"email": email, "password": password})
                 if getattr(response, "session", None):
                     mark_authenticated(response.user, response.session)
-                    st.session_state["cadivor_auth_transition_message"] = "Opening your engineering workspace…"
-                    render_auth_transition("Opening your engineering workspace…")
                     st.rerun()
                 else:
                     st.success("Account created. Please check your email to confirm your account, then return here to log in.")
@@ -271,14 +337,11 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 st.error(f"Signup failed: {error}")
         else:
             try:
-                with st.spinner("Signing in securely…"):
-                    response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                response = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if not getattr(response, "session", None):
                     st.error("Login failed: no session was returned. Please confirm your email and try again.")
                     return
                 mark_authenticated(response.user, response.session)
-                st.session_state["cadivor_auth_transition_message"] = "Opening your engineering workspace…"
-                render_auth_transition("Opening your engineering workspace…")
                 st.rerun()
             except Exception as error:
                 st.error(f"Login failed: {error}")
@@ -515,6 +578,18 @@ def _render_landing_page():
 def show_auth_ui(supabase, cookie_manager=None):
     """Cadivor public landing page and authentication flow."""
     _auth_css()
+
+    # A logout always owns its first signed-out paint. Ignore stale auth/public
+    # query parameters and render the homepage immediately; browser history is
+    # normalized independently without scheduling another Streamlit run.
+    force_home = bool(st.session_state.get("cadivor_public_after_logout"))
+    if force_home:
+        st.session_state.pop("cadivor_public_after_logout", None)
+        st.session_state.pop("cadivor_public_route", None)
+        from src.marketing_site import render_marketing_site
+        render_marketing_site(forced_page="home")
+        return
+
     try:
         auth_route = st.query_params.get("auth")
     except Exception:
@@ -528,7 +603,7 @@ def show_auth_ui(supabase, cookie_manager=None):
         )
         return
 
-    # Sprint 51 — signed-out launch marketing website. Authenticated workspace
-    # routing and all analysis/scrolling behavior remain outside this module.
+    # Signed-out launch marketing website. Authenticated workspace routing and
+    # all analysis/scrolling behavior remain outside this module.
     from src.marketing_site import render_marketing_site
     render_marketing_site()
