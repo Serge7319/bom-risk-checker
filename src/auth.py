@@ -2,7 +2,7 @@ import streamlit as st
 from datetime import datetime, timedelta
 from textwrap import dedent
 
-from src.auth_state import mark_authenticated
+from src.auth_state import mark_authenticated, render_auth_transition
 
 
 def _set_auth_cookie(cookie_manager, session, key: str):
@@ -262,6 +262,8 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                     response = supabase.auth.sign_up({"email": email, "password": password})
                 if getattr(response, "session", None):
                     mark_authenticated(response.user, response.session)
+                    st.session_state["cadivor_auth_transition_message"] = "Opening your engineering workspace…"
+                    render_auth_transition("Opening your engineering workspace…")
                     st.rerun()
                 else:
                     st.success("Account created. Please check your email to confirm your account, then return here to log in.")
@@ -275,6 +277,8 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                     st.error("Login failed: no session was returned. Please confirm your email and try again.")
                     return
                 mark_authenticated(response.user, response.session)
+                st.session_state["cadivor_auth_transition_message"] = "Opening your engineering workspace…"
+                render_auth_transition("Opening your engineering workspace…")
                 st.rerun()
             except Exception as error:
                 st.error(f"Login failed: {error}")
