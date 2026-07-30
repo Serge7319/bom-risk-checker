@@ -118,10 +118,11 @@ def render_unified_shell(
                 f"""<div class="cv-foundation-account-head"><b>{_escape(full_name)}</b><span>{_escape(email)}</span><small>{_escape(workspace_name)}</small></div>""",
                 unsafe_allow_html=True,
             )
+            st.markdown('<div class="cv-profile-menu-group">Account</div>', unsafe_allow_html=True)
             st.button("Profile & preferences", key="cv_foundation_profile", use_container_width=True, on_click=_commit_navigation, args=("Settings",))
-            st.button("Workspace", key="cv_foundation_workspace", use_container_width=True, on_click=_commit_navigation, args=("Workspace",))
             st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
-            st.button("Notifications", key="cv_foundation_notifications", use_container_width=True, on_click=_commit_navigation, args=("Notifications",))
+            st.markdown('<div class="cv-profile-menu-group">Workspace</div>', unsafe_allow_html=True)
+            st.button("Workspace settings", key="cv_foundation_workspace", use_container_width=True, on_click=_commit_navigation, args=("Settings",))
             st.button("Help center", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
             st.divider()
             def _commit_signout() -> None:
