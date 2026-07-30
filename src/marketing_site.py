@@ -153,10 +153,15 @@ def _marketing_css() -> None:
         /* Public Navigation Runtime Conversion */
         .st-key-cv_public_nav{background:var(--mk-navy)!important;border-bottom:1px solid rgba(255,255,255,.09)!important;padding:13px max(24px,calc((100vw - 1400px)/2))!important;position:relative;z-index:40;margin:0!important}
         .st-key-cv_public_nav [data-testid="stHorizontalBlock"]{align-items:center!important;gap:8px!important}
-        .st-key-cv_public_nav .stButton>button{min-height:44px!important;height:44px!important;border:0!important;border-radius:8px!important;background:transparent!important;color:#d1daea!important;box-shadow:none!important;padding:0 10px!important;font-size:13px!important;font-weight:750!important;white-space:nowrap!important}
+        .st-key-cv_public_nav .stButton>button{min-height:44px!important;height:44px!important;border:0!important;border-radius:8px!important;background:transparent!important;color:#d7dfed!important;box-shadow:none!important;padding:0 11px!important;font-size:14px!important;font-weight:760!important;white-space:nowrap!important}
         .st-key-cv_public_nav .stButton>button:hover{background:rgba(255,255,255,.07)!important;color:#fff!important;transform:none!important}
-        .st-key-cv_public_home .stButton>button{justify-content:flex-start!important;color:#fff!important;font-size:21px!important;font-weight:900!important;letter-spacing:-.035em!important}
-        .st-key-cv_public_home .stButton>button::first-letter{background:#2f6df6;color:#fff}
+        .st-key-cv_public_brand{position:relative!important;min-height:46px!important;display:flex!important;align-items:center!important}
+        .cv-public-brand-visual{display:flex;align-items:center;gap:11px;color:#fff;font-size:22px;font-weight:900;letter-spacing:-.035em;pointer-events:none;white-space:nowrap}
+        .cv-public-brand-mark{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px;border-radius:9px;background:linear-gradient(145deg,#4b8cff,#1f5be5);color:#fff;font-size:18px;font-weight:900;line-height:1;box-shadow:0 9px 22px rgba(37,99,235,.36),inset 0 1px 0 rgba(255,255,255,.26)}
+        .st-key-cv_public_brand .stButton{position:absolute!important;inset:0!important;z-index:2!important;margin:0!important}
+        .st-key-cv_public_brand .stButton>button{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:46px!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important;box-shadow:none!important;color:transparent!important;font-size:0!important;opacity:1!important;cursor:pointer!important}
+        .st-key-cv_public_brand .stButton>button:hover,.st-key-cv_public_brand .stButton>button:focus{background:rgba(255,255,255,.035)!important;box-shadow:none!important;outline:none!important}
+        .st-key-cv_public_brand .stButton>button:focus-visible{outline:2px solid rgba(96,165,250,.9)!important;outline-offset:3px!important;border-radius:10px!important}
         .st-key-cv_public_login .stButton>button,.st-key-cv_public_contact .stButton>button{border:1px solid rgba(255,255,255,.28)!important;color:#fff!important}
         .st-key-cv_public_signup .stButton>button{background:linear-gradient(180deg,#3978fb,#2462eb)!important;border:1px solid #4b82f7!important;color:#fff!important;box-shadow:0 10px 24px rgba(37,99,235,.28)!important}
         .cv-public-active-route{display:none!important}
@@ -222,7 +227,19 @@ def _nav(active: str = "home") -> None:
     with st.container(key="cv_public_nav"):
         cols = st.columns([1.65, .78, .82, .72, .86, .76, .34, .74, 1.02, .94], gap="small")
         with cols[0]:
-            st.button("C  Cadivor", key="cv_public_home", on_click=_set_public_route, args=("home",), use_container_width=True)
+            with st.container(key="cv_public_brand"):
+                st.markdown(
+                    '<div class="cv-public-brand-visual" aria-hidden="true"><span class="cv-public-brand-mark">C</span><span>Cadivor</span></div>',
+                    unsafe_allow_html=True,
+                )
+                st.button(
+                    "Home",
+                    key="cv_public_home",
+                    on_click=_set_public_route,
+                    args=("home",),
+                    help="Return to the Cadivor homepage",
+                    use_container_width=True,
+                )
         for col, (route, label) in zip(cols[1:6], PRODUCT_LINKS):
             with col:
                 st.button(label, key=f"cv_public_{route}", on_click=_set_public_route, args=(route,), use_container_width=True)
