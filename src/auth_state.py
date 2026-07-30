@@ -21,6 +21,12 @@ AUTH_AUTHENTICATED = "authenticated"
 AUTH_LOGGING_OUT = "logging_out"
 AUTH_SIGNING_IN = "signing_in"
 
+APP_PUBLIC = "public"
+APP_LOGIN = "login"
+APP_SIGNUP = "signup"
+APP_SIGNING_IN = "signing_in"
+APP_AUTHENTICATED = "authenticated"
+
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
 _MAX_RESTORE_ATTEMPTS = 1
 _RESTORE_DELAY_SECONDS = 0.0
@@ -68,6 +74,7 @@ def mark_authenticated(user: Any, session: Any) -> None:
     st.session_state["access_token"] = session.access_token
     st.session_state["refresh_token"] = session.refresh_token
     st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
+    st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state.pop("cadivor_force_signed_out", None)
     st.session_state.pop("cadivor_auth_restore_attempts", None)
@@ -83,6 +90,7 @@ def mark_authenticated(user: Any, session: Any) -> None:
 def mark_signed_out(reason: str = "signed_out") -> None:
     clear_auth_session(keep_status=True)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state.setdefault("cadivor_root_state", APP_PUBLIC)
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state["cadivor_force_signed_out"] = True
     _log("signed_out", reason=reason)
@@ -90,38 +98,23 @@ def mark_signed_out(reason: str = "signed_out") -> None:
 
 
 def begin_logout(supabase: Any, cookie_manager: Any) -> None:
-    """Complete logout locally in one deterministic state transition.
+    """Commit logout in one local state change.
 
-    Logout must never wait for a network request or enter the ordinary page
-    transition pipeline.  Removing the local tokens and installing the
-    force-signed-out guard is sufficient to end the authenticated browser
-    session immediately.  Cookie cleanup is deferred to the signed-out render,
-    where it cannot hold the authenticated shell on screen.
+    The widget rerun caused by the Sign out button is the only rerun used. No
+    browser navigation, query parameter, cookie component, or second rerun is
+    allowed to participate.
     """
-    if st.session_state.get("cadivor_auth_status") == AUTH_SIGNED_OUT and st.session_state.get("cadivor_force_signed_out"):
-        return
-
     records = list(st.session_state.get("cadivor_auth_debug_log") or [])[-50:]
-    _log("logout_started")
-
-    # Clear every authenticated/workspace value atomically.  Do not call
-    # supabase.auth.sign_out() here: a slow remote response previously left the
-    # user trapped behind the "Opening Sign out" transition surface.
     for key in list(st.session_state.keys()):
         if key != "cadivor_auth_debug_log":
             st.session_state.pop(key, None)
-
     st.session_state["cadivor_auth_debug_log"] = records
-    st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-    st.session_state["cadivor_auth_resolved"] = True
-    # The first signed-out render must always be the public homepage.  This
-    # server-side guard intentionally ignores any stale ?public= or ?auth=
-    # value left in browser history until the homepage has been painted once.
-    st.session_state["cadivor_public_after_logout"] = True
+    st.session_state["cadivor_root_state"] = APP_PUBLIC
     st.session_state["cadivor_public_route"] = "home"
+    st.session_state["cadivor_profile_menu_open"] = False
+    st.session_state["cadivor_auth_resolved"] = True
     _log("logout_committed")
-
 
 def finalize_logout_cookie(cookie_manager: Any) -> None:
     """Compatibility no-op.
@@ -204,6 +197,7 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
 
     if st.session_state.get("user") is not None:
         st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
+        st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
         st.session_state["cadivor_auth_resolved"] = True
         return AUTH_AUTHENTICATED
 
