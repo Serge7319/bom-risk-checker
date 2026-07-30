@@ -150,24 +150,68 @@ def _marketing_css() -> None:
 
         @media(max-width:1180px){.mk-hero-grid,.mk-page-hero-grid{grid-template-columns:1fr}.mk-product,.mk-hero-visual{justify-self:stretch;max-width:none}.mk-pricing{grid-template-columns:repeat(2,1fr)}}
         @media(max-width:700px){.mk-pricing{grid-template-columns:1fr}.mk-page-hero{padding:58px 0}.mk-page-hero h1{font-size:42px}.mk-security-banner{grid-template-columns:1fr}}
+        /* Public Navigation Runtime Conversion */
+        .st-key-cv_public_nav{background:var(--mk-navy)!important;border-bottom:1px solid rgba(255,255,255,.09)!important;padding:13px max(24px,calc((100vw - 1400px)/2))!important;position:relative;z-index:40}
+        .st-key-cv_public_nav [data-testid="stHorizontalBlock"]{align-items:center!important;gap:8px!important}
+        .st-key-cv_public_nav .stButton>button{min-height:44px!important;height:44px!important;border:0!important;border-radius:8px!important;background:transparent!important;color:#d1daea!important;box-shadow:none!important;padding:0 10px!important;font-size:13px!important;font-weight:750!important;white-space:nowrap!important}
+        .st-key-cv_public_nav .stButton>button:hover{background:rgba(255,255,255,.07)!important;color:#fff!important;transform:none!important}
+        .st-key-cv_public_home .stButton>button{justify-content:flex-start!important;color:#fff!important;font-size:21px!important;font-weight:900!important;letter-spacing:-.035em!important}
+        .st-key-cv_public_home .stButton>button::first-letter{background:#2f6df6;color:#fff}
+        .st-key-cv_public_login .stButton>button,.st-key-cv_public_contact .stButton>button{border:1px solid rgba(255,255,255,.28)!important;color:#fff!important}
+        .st-key-cv_public_signup .stButton>button{background:linear-gradient(180deg,#3978fb,#2462eb)!important;border:1px solid #4b82f7!important;color:#fff!important;box-shadow:0 10px 24px rgba(37,99,235,.28)!important}
+        .cv-public-active-route{display:none!important}
+        @media(max-width:1050px){.st-key-cv_public_nav [data-testid="column"]:nth-child(n+7){display:none!important}.st-key-cv_public_nav{overflow-x:auto!important}.st-key-cv_public_nav [data-testid="stHorizontalBlock"]{min-width:760px!important}}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
+def _set_public_route(route: str) -> None:
+    """Commit a marketing route without replacing the browser document."""
+    normalized = str(route or "home").strip().lower() or "home"
+    st.session_state["cadivor_public_route"] = normalized
+    st.session_state["cadivor_root_state"] = "public"
+    st.session_state.pop("cadivor_last_public_render", None)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
+
+def _open_auth_surface(surface: str) -> None:
+    """Open Login or Signup through the root state machine."""
+    normalized = "signup" if str(surface).lower() == "signup" else "login"
+    st.session_state["cadivor_root_state"] = normalized
+    st.session_state.pop("cadivor_last_public_render", None)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
+
 def _nav(active: str = "home") -> None:
-    links = "".join(
-        f'<a class="{"active" if key == active else ""}" href="?public={key}" target="_self">{label}</a>'
-        for key, label in PRODUCT_LINKS
-    )
-    _html(f"""
-    <div class="mk-nav-wrap"><div class="mk-wide mk-nav">
-      <a class="mk-brand" href="?public=home" target="_self"><span class="mk-logo">C</span>Cadivor</a>
-      <div class="mk-links">{links}</div>
-      <div class="mk-nav-actions"><a class="mk-btn mk-btn-ghost" href="?auth=login" target="_self">Sign In</a><a class="mk-btn mk-btn-primary" href="?auth=signup" target="_self">Start Free Trial</a><a class="mk-btn mk-btn-ghost" href="?public=contact" target="_self">Book a Demo</a></div>
-    </div></div>
-    """)
+    """Native Streamlit marketing navigation.
+
+    Browser query anchors previously destroyed the Streamlit document and
+    exposed the host skeleton, raw HTML, and white/black initialization frames.
+    These keyed buttons commit session state before the widget rerun, keeping
+    navigation inside the active application session.
+    """
+    with st.container(key="cv_public_nav"):
+        cols = st.columns([1.65, .78, .82, .72, .86, .76, .34, .74, 1.02, .94], gap="small")
+        with cols[0]:
+            st.button("C  Cadivor", key="cv_public_home", on_click=_set_public_route, args=("home",), use_container_width=True)
+        for col, (route, label) in zip(cols[1:6], PRODUCT_LINKS):
+            with col:
+                st.button(label, key=f"cv_public_{route}", on_click=_set_public_route, args=(route,), use_container_width=True)
+        with cols[7]:
+            st.button("Sign In", key="cv_public_login", on_click=_open_auth_surface, args=("login",), use_container_width=True)
+        with cols[8]:
+            st.button("Start Free Trial", key="cv_public_signup", on_click=_open_auth_surface, args=("signup",), use_container_width=True)
+        with cols[9]:
+            st.button("Book a Demo", key="cv_public_contact", on_click=_set_public_route, args=("contact",), use_container_width=True)
+    st.markdown(f'<div class="cv-public-active-route" data-route="{escape(active)}"></div>', unsafe_allow_html=True)
 
 
 def _footer() -> None:
@@ -450,13 +494,23 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     .mk-hero,.mk-page-hero{animation:none!important;transition:none!important}
     </style>""", unsafe_allow_html=True)
     requested_page = _query_value("public")
-    if requested_page:
+    session_page = str(st.session_state.get("cadivor_public_route") or "").strip().lower()
+    if forced_page:
+        page = str(forced_page).strip().lower() or "home"
+        st.session_state["cadivor_public_route"] = page
+    elif session_page:
+        page = session_page
+    elif requested_page:
+        # Optional external deep link only. Ordinary navigation is state-driven.
         page = requested_page.lower()
         st.session_state["cadivor_public_route"] = page
-    elif forced_page:
-        page = str(forced_page).strip().lower() or "home"
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
     else:
-        page = str(st.session_state.get("cadivor_public_route") or "home").strip().lower()
+        page = "home"
+        st.session_state["cadivor_public_route"] = page
     routes = {
         "home": _home,
         "product": _product,
