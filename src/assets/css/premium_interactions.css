@@ -67,8 +67,6 @@ section[data-testid="stMain"] a:focus-visible,
 div[data-testid="stPopoverBody"]{padding:10px!important}
 div[data-testid="stPopoverBody"] hr{margin:7px 4px!important;border-color:#e7edf5!important}
 div[data-testid="stPopoverBody"] .stButton>button{transition:background .12s ease,color .12s ease!important}
-div[data-testid="stPopoverBody"] .stButton:last-of-type>button{color:#b42318!important}
-div[data-testid="stPopoverBody"] .stButton:last-of-type>button:hover{background:#fff1f0!important;color:#912018!important}
 
 @media(prefers-reduced-motion:reduce){
   .cv-foundation-search,section[data-testid="stMain"] .stButton>button{transition:none!important}
