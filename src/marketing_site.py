@@ -151,7 +151,7 @@ def _marketing_css() -> None:
         @media(max-width:1180px){.mk-hero-grid,.mk-page-hero-grid{grid-template-columns:1fr}.mk-product,.mk-hero-visual{justify-self:stretch;max-width:none}.mk-pricing{grid-template-columns:repeat(2,1fr)}}
         @media(max-width:700px){.mk-pricing{grid-template-columns:1fr}.mk-page-hero{padding:58px 0}.mk-page-hero h1{font-size:42px}.mk-security-banner{grid-template-columns:1fr}}
         /* Public Navigation Runtime Conversion */
-        .st-key-cv_public_nav{background:var(--mk-navy)!important;border-bottom:1px solid rgba(255,255,255,.09)!important;padding:13px max(24px,calc((100vw - 1400px)/2))!important;position:relative;z-index:40}
+        .st-key-cv_public_nav{background:var(--mk-navy)!important;border-bottom:1px solid rgba(255,255,255,.09)!important;padding:13px max(24px,calc((100vw - 1400px)/2))!important;position:relative;z-index:40;margin:0!important}
         .st-key-cv_public_nav [data-testid="stHorizontalBlock"]{align-items:center!important;gap:8px!important}
         .st-key-cv_public_nav .stButton>button{min-height:44px!important;height:44px!important;border:0!important;border-radius:8px!important;background:transparent!important;color:#d1daea!important;box-shadow:none!important;padding:0 10px!important;font-size:13px!important;font-weight:750!important;white-space:nowrap!important}
         .st-key-cv_public_nav .stButton>button:hover{background:rgba(255,255,255,.07)!important;color:#fff!important;transform:none!important}
@@ -160,6 +160,27 @@ def _marketing_css() -> None:
         .st-key-cv_public_login .stButton>button,.st-key-cv_public_contact .stButton>button{border:1px solid rgba(255,255,255,.28)!important;color:#fff!important}
         .st-key-cv_public_signup .stButton>button{background:linear-gradient(180deg,#3978fb,#2462eb)!important;border:1px solid #4b82f7!important;color:#fff!important;box-shadow:0 10px 24px rgba(37,99,235,.28)!important}
         .cv-public-active-route{display:none!important}
+
+        /* Sprint 62 — Landing Page polish. Keep the native Streamlit navigation
+           and the marketing hero on one uninterrupted dark canvas. */
+        [data-testid="stMainBlockContainer"]>.stVerticalBlock,
+        [data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"],
+        .main .block-container>.stVerticalBlock,
+        .main .block-container>[data-testid="stVerticalBlock"]{gap:0!important}
+        [data-testid="stElementContainer"]:has(>.st-key-cv_public_nav),
+        [data-testid="element-container"]:has(>.st-key-cv_public_nav){margin:0!important;padding:0!important}
+        .st-key-cv_public_nav+div,
+        .st-key-cv_public_nav~[data-testid="stElementContainer"]:first-of-type{margin-top:0!important;padding-top:0!important}
+        .st-key-cv_public_nav{isolation:isolate;box-shadow:0 18px 0 var(--mk-navy)!important}
+        .mk-shell{margin:0!important;padding:0!important}
+        .mk-shell>.mk-hero,.mk-shell>.mk-page-hero{margin-top:0!important;border-top:0!important}
+        .mk-hero,.mk-page-hero{background-color:var(--mk-navy)!important}
+        .mk-section{padding:76px 0}
+        .mk-heading{margin-bottom:38px}
+        .mk-heading h2{font-size:clamp(34px,3.25vw,46px)}
+        .mk-heading p{max-width:760px;margin-left:auto;margin-right:auto}
+        .mk-footer{margin-top:0!important}
+        @media(max-width:820px){.st-key-cv_public_nav{box-shadow:0 12px 0 var(--mk-navy)!important}.mk-section{padding:62px 0}}
         @media(max-width:1050px){.st-key-cv_public_nav [data-testid="column"]:nth-child(n+7){display:none!important}.st-key-cv_public_nav{overflow-x:auto!important}.st-key-cv_public_nav [data-testid="stHorizontalBlock"]{min-width:760px!important}}
         </style>
         """,
