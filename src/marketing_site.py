@@ -239,7 +239,6 @@ def _nav(active: str = "home") -> None:
                     key="cv_public_home",
                     on_click=_set_public_route,
                     args=("home",),
-                    help="Return to the Cadivor homepage",
                     use_container_width=True,
                 )
         for col, (route, label) in zip(cols[1:6], PRODUCT_LINKS):
