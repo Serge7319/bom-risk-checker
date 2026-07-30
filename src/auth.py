@@ -315,6 +315,11 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         st.session_state.pop("cadivor_auth_submission", None)
         st.session_state["cadivor_root_state"] = APP_PUBLIC
         st.session_state["cadivor_public_route"] = "home"
+        try:
+            st.query_params.clear()
+            st.query_params["public"] = "home"
+        except Exception:
+            pass
         st.rerun()
 
 
@@ -551,6 +556,21 @@ def show_auth_ui(supabase, cookie_manager=None):
     _auth_css()
     state = str(st.session_state.get("cadivor_root_state") or APP_PUBLIC)
 
+    # Public header actions intentionally use stable query links so they remain
+    # inside the custom marketing navigation rather than floating Streamlit
+    # widgets. Translate those links once at the signed-out boundary.
+    try:
+        requested_auth = st.query_params.get("auth", "")
+    except Exception:
+        requested_auth = ""
+    if isinstance(requested_auth, (list, tuple)):
+        requested_auth = requested_auth[0] if requested_auth else ""
+    requested_auth = str(requested_auth or "").strip().lower()
+    if state == APP_PUBLIC and requested_auth in {"login", "signup"}:
+        state = APP_SIGNUP if requested_auth == "signup" else APP_LOGIN
+        st.session_state["cadivor_root_state"] = state
+        st.session_state.pop("cadivor_auth_submission", None)
+
     if state == APP_SIGNING_IN:
         pending = st.session_state.get("cadivor_auth_submission")
         if not isinstance(pending, dict):
@@ -612,4 +632,4 @@ def show_auth_ui(supabase, cookie_manager=None):
 
     from src.marketing_site import render_marketing_site
     st.session_state["cadivor_root_state"] = APP_PUBLIC
-    render_marketing_site(forced_page=st.session_state.get("cadivor_public_route", "home"))
+    render_marketing_site()
