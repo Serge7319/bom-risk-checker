@@ -200,6 +200,7 @@ def _set_public_route(route: str) -> None:
     normalized = str(route or "home").strip().lower() or "home"
     st.session_state["cadivor_public_route"] = normalized
     st.session_state["cadivor_root_state"] = "public"
+    st.session_state["cadivor_public_scroll_nonce"] = int(st.session_state.get("cadivor_public_scroll_nonce", 0)) + 1
     st.session_state.pop("cadivor_last_public_render", None)
     try:
         st.query_params.clear()
@@ -528,7 +529,12 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     st.markdown("""<style id="cadivor-static-public-runtime">
     html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],section.main{background:#ffffff!important;color:#0b1730!important}
     [data-testid="stAppViewContainer"]{transition:none!important}
-    [data-testid="stSkeleton"],[data-testid="stSkeleton"]>div{background:#eef3f8!important;box-shadow:none!important}
+    [data-testid="stSkeleton"],[data-testid="stSkeleton"]>div,
+    [data-testid="stSkeleton"] span,[data-testid="stSkeleton"] svg{
+      background:#f4f7fb!important;background-image:none!important;box-shadow:none!important;color:transparent!important;
+    }
+    [data-testid="stSkeleton"]{opacity:.18!important;min-height:0!important;max-height:6px!important;overflow:hidden!important}
+    [data-testid="stStatusWidget"],[data-testid="stConnectionStatus"]{background:#fff!important;color:#64748b!important}
     .mk-shell,.mk-shell *{box-sizing:border-box}
     .mk-hero,.mk-page-hero{animation:none!important;transition:none!important}
     </style>""", unsafe_allow_html=True)
@@ -570,12 +576,23 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
         # scroll position. Reset only when the public destination changes.
         components.html(
             """<script>
-            try {
-              window.parent.scrollTo({top: 0, left: 0, behavior: 'instant'});
-              const doc = window.parent.document;
-              const main = doc.querySelector('section.main, [data-testid="stMain"], [data-testid="stAppViewContainer"]');
-              if (main) main.scrollTop = 0;
-            } catch (e) {}
+            (() => {
+              const reset = () => {
+                try {
+                  const win = window.parent;
+                  const doc = win.document;
+                  win.scrollTo(0, 0);
+                  doc.documentElement.scrollTop = 0;
+                  doc.body.scrollTop = 0;
+                  const targets = doc.querySelectorAll('section.main, [data-testid="stMain"], [data-testid="stAppViewContainer"], [data-testid="stMainBlockContainer"]');
+                  targets.forEach((node) => { node.scrollTop = 0; });
+                } catch (e) {}
+              };
+              reset();
+              requestAnimationFrame(reset);
+              setTimeout(reset, 40);
+              setTimeout(reset, 160);
+            })();
             </script>""",
             height=0,
             width=0,
