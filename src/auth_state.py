@@ -114,6 +114,14 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
     st.session_state["cadivor_public_route"] = "home"
     st.session_state["cadivor_profile_menu_open"] = False
     st.session_state["cadivor_auth_resolved"] = True
+    # Remove stale login/public destinations before the signed-out surface is
+    # selected. This prevents logout from reopening Login or retaining a lower
+    # marketing route on the next run.
+    try:
+        st.query_params.clear()
+        st.query_params["public"] = "home"
+    except Exception:
+        pass
     _log("logout_committed")
 
 def finalize_logout_cookie(cookie_manager: Any) -> None:
