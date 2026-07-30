@@ -501,3 +501,29 @@ section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundatio
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout div.stButton > button:hover{
   background:#fff1f0!important;
 }
+
+
+/* Sprint 62.1 — public transition, profile menu, and readability refinement. */
+[data-testid="stPopoverBody"]{
+  min-width:272px!important;
+  padding:10px!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:14px!important;
+  box-shadow:0 18px 45px rgba(15,23,42,.18)!important;
+}
+[data-testid="stPopoverBody"] .cv-foundation-account-head{padding:10px 10px 12px!important;margin-bottom:4px!important}
+[data-testid="stPopoverBody"] .cv-foundation-account-head b{font-size:13px!important;color:#0f172a!important}
+[data-testid="stPopoverBody"] .cv-foundation-account-head span,[data-testid="stPopoverBody"] .cv-foundation-account-head small{font-size:11px!important;color:#64748b!important}
+[data-testid="stPopoverBody"] .cv-profile-menu-group{margin:10px 10px 5px!important;font-size:10px!important;letter-spacing:.12em!important;color:#7c8ba1!important}
+[data-testid="stPopoverBody"] div.stButton>button{
+  min-height:38px!important;padding:8px 10px!important;border-radius:9px!important;text-align:left!important;font-size:12px!important;font-weight:650!important;
+}
+[data-testid="stPopoverBody"] div.stButton>button:hover{background:#f1f5f9!important}
+[data-testid="stPopoverBody"] hr{margin:8px 4px!important;border-color:#e2e8f0!important}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout div.stButton>button{margin-top:2px!important;color:#b42318!important}
+
+/* Slightly more legible authenticated navigation without changing geometry. */
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button{font-size:12.5px!important;line-height:1.25!important}
+section[data-testid="stMain"] .cv-foundation-nav-group{font-size:9.5px!important;letter-spacing:.14em!important}
+section[data-testid="stMain"] .cv-foundation-profile-copy strong{font-size:12.5px!important}
+section[data-testid="stMain"] .cv-foundation-profile-copy em{font-size:10px!important}
