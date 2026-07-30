@@ -435,3 +435,13 @@ section[data-testid="stMain"] [data-testid="stPopoverBody"] .stButton>button{
 [role="tablist"] li::marker,.stButton li::marker,.stLinkButton li::marker{
   content:""!important;font-size:0!important;
 }
+
+
+/* Emergency Restoration 61.0.3 — explicit one-click sign-out control. */
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button,
+section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button{
+  color:#b42318!important;background:transparent!important;border:0!important;
+}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button:hover{
+  background:#fff1f0!important;color:#912018!important;
+}
