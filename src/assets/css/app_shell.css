@@ -422,8 +422,6 @@ section[data-testid="stMain"] [data-testid="stPopoverBody"] .stButton>button{
 [data-testid="stPopoverBody"] .stButton>button:hover{
   background:#f1f5f9!important;color:#0f172a!important;transform:none!important;
 }
-[data-testid="stPopoverBody"] .stButton:last-of-type>button{color:#b42318!important}
-[data-testid="stPopoverBody"] .stButton:last-of-type>button:hover{background:#fff1f0!important;color:#912018!important}
 
 /* Never expose list markers inside application controls. */
 .st-key-cv_foundation_navigation ul,.st-key-cv_foundation_navigation ol,
@@ -454,3 +452,18 @@ section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundatio
 [data-testid="stPopoverBody"] .stButton>button:hover,[data-testid="stPopoverBody"] .stButton>button:hover p{color:#0f172a!important}
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout button,[data-testid="stPopoverBody"] .st-key-cv_foundation_signout button p{color:#b42318!important;font-weight:780!important}
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout button:hover{background:#fff1f0!important}
+
+
+/* Emergency Restoration 61.0.5 — only the keyed Sign out action is destructive. */
+section[data-testid="stMain"] [data-testid="stPopoverBody"] .stButton:not(.st-key-cv_foundation_signout) > button,
+section[data-testid="stMain"] [data-testid="stPopoverBody"] .stButton:not(.st-key-cv_foundation_signout) > button p,
+[data-testid="stPopoverBody"] .stButton:not(.st-key-cv_foundation_signout) > button,
+[data-testid="stPopoverBody"] .stButton:not(.st-key-cv_foundation_signout) > button p{
+  color:#334155!important;
+}
+section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundation_signout button,
+section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundation_signout button p,
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout button,
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout button p{
+  color:#b42318!important;
+}
