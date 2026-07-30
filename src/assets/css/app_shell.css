@@ -445,3 +445,12 @@ section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundatio
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button:hover{
   background:#fff1f0!important;color:#912018!important;
 }
+
+
+/* Emergency Restoration 61.0.4 — profile menu completion */
+[data-testid="stPopoverBody"]{min-width:248px!important;padding:8px!important}
+[data-testid="stPopoverBody"] .cv-profile-menu-group{margin:7px 10px 4px!important;color:#94a3b8!important;font-size:9px!important;font-weight:900!important;letter-spacing:.13em!important;text-transform:uppercase!important}
+[data-testid="stPopoverBody"] .stButton>button,[data-testid="stPopoverBody"] .stButton>button p{color:#334155!important}
+[data-testid="stPopoverBody"] .stButton>button:hover,[data-testid="stPopoverBody"] .stButton>button:hover p{color:#0f172a!important}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout button,[data-testid="stPopoverBody"] .st-key-cv_foundation_signout button p{color:#b42318!important;font-weight:780!important}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout button:hover{background:#fff1f0!important}
