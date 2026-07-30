@@ -467,3 +467,12 @@ section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundatio
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout button p{
   color:#b42318!important;
 }
+
+/* Public Navigation Runtime Conversion — final profile menu authority. */
+[data-testid="stPopoverBody"] div[class*="st-key-cv_foundation_"] .stButton>button,
+[data-testid="stPopoverBody"] div[class*="st-key-cv_foundation_"] .stButton>button p,
+[data-testid="stPopoverBody"] .stButton>button,
+[data-testid="stPopoverBody"] .stButton>button p{color:#334155!important;background:transparent!important;border-color:transparent!important}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button,
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button p{color:#b42318!important;font-weight:800!important}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button:hover{background:#fff1f0!important;color:#912018!important}
