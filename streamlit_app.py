@@ -40,6 +40,8 @@ from src.auth_state import (
     AUTH_AUTHENTICATED,
     AUTH_SIGNED_OUT,
     AUTH_LOGGING_OUT,
+    APP_AUTHENTICATED,
+    APP_PUBLIC,
     begin_logout,
     finalize_logout_cookie,
     resolve_auth_state,
@@ -89,7 +91,9 @@ from src.ui.navigation import navigate_to, internal_nav_button
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
 from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.ui.premium_interaction_repair import inject_premium_interaction_css
-from src.ui.premium_interactions import render_premium_interactions
+from src.runtime.app_controller import enter_application
+from src.runtime.auth_controller import logout as runtime_logout
+from src.runtime.navigation_controller import resolve_route
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
@@ -168,6 +172,17 @@ st.markdown(
     .main .block-container, [data-testid="stAppViewContainer"] .main .block-container {
         padding-top: 0 !important;
     }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <style id="cadivor-sprint61-runtime">
+    [data-cadivor-transition-overlay], .cadivor-transition-overlay,
+    .cv-transition-mask, .cv-navigation-loading { display:none!important; }
+    .stApp { min-height:100vh; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1527,68 +1542,12 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# Sprint 55.1 — explicit authentication state machine
+# Sprint 61 — Application Runtime Consolidation
 # -----------------------------------------------------------------------------
-# Authentication is resolved before Cadivor renders either the public marketing
-# experience or the authenticated application shell.  During CookieManager /
-# Supabase restoration the app remains in a neutral UNKNOWN boot state, which
-# prevents marketing, login, and Dashboard screens from flashing in sequence.
-
-
-def _qp_value(name, default=""):
-    """Read internal session navigation first, then external query parameters."""
-    try:
-        nav_params = st.session_state.get("cadivor_nav_params") or {}
-        if name in nav_params:
-            value = nav_params.get(name, default)
-            return value or default
-    except Exception:
-        pass
-    try:
-        value = st.query_params.get(name, default)
-        if isinstance(value, list):
-            return value[0] if value else default
-        return value or default
-    except Exception:
-        return default
-
-
-# Preserve a requested authenticated destination while auth is still UNKNOWN.
-_requested_page = str(_qp_value("page", "") or "").strip()
-if _requested_page:
-    st.session_state["cadivor_requested_page"] = _requested_page
-
-# Sprint 48.0.1 — restore authenticated follow-up state before the auth gate.
-_followup_snapshot = st.session_state.get("cv48_auth_snapshot")
-if st.session_state.get("cv4801_followup_inflight") and isinstance(_followup_snapshot, dict):
-    for _key, _value in _followup_snapshot.items():
-        if _value is not None and st.session_state.get(_key) is None:
-            st.session_state[_key] = _value
-
-# Logout is an explicit one-click state transition. Public content is not
-# rendered until the authenticated session and cookie are invalidated.
-if st.session_state.pop("cadivor_logout_requested", False) or _qp_value("action") == "logout":
-    begin_logout(supabase, cookie_manager)
-    st.rerun()
-
-_auth_status = resolve_auth_state(supabase, cookie_manager)
-if _auth_status == AUTH_SIGNED_OUT:
-    # Authentication is already gone. Cookie cleanup happens only after the
-    # signed-out state is committed, so it can never hold the workspace open.
-    finalize_logout_cookie(cookie_manager)
-    try:
-        show_auth_ui(supabase, cookie_manager)
-    except TypeError:
-        show_auth_ui(supabase)
-    st.stop()
-
-if _auth_status != AUTH_AUTHENTICATED:
-    # Defensive stop: resolve_auth_state renders the neutral boot surface while
-    # UNKNOWN, so neither public nor authenticated content can leak through.
-    st.stop()
-
-# Authenticated routing is session-state based. No browser-history mutation is
-# performed here; browser-level URL changes caused full-page remount flashes.
+# The root application controller is the only authority allowed to select a
+# public, authentication, or authenticated workspace surface. Signed-out runs
+# stop before any workspace queries, integrations, or page modules initialize.
+enter_application(supabase)
 
 current_user = load_user_data()
 
@@ -2238,31 +2197,9 @@ saved_bom_count_response = (
 )
 saved_bom_count = saved_bom_count_response.count or 0
 
-# Single-route authority. Query parameters are consumed only as an initial deep
-# link; internal navigation writes cadivor_route directly. Every shell and page
-# renderer below reads this same committed value.
-try:
-    _raw_external_page = st.query_params.get("page", "")
-    if isinstance(_raw_external_page, list):
-        _raw_external_page = _raw_external_page[0] if _raw_external_page else ""
-except Exception:
-    _raw_external_page = ""
-_external_page = _safe_text(_raw_external_page, "")
-
-app_mode = _safe_text(
-    st.session_state.get("cadivor_route")
-    or st.session_state.get("app_mode")
-    or "Dashboard",
-    "Dashboard",
-)
-if _external_page and not st.session_state.get("cadivor_external_route_consumed"):
-    app_mode = _external_page
-    st.session_state["cadivor_external_route_consumed"] = True
-
-if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
-    app_mode = "Dashboard"
-st.session_state["cadivor_route"] = app_mode
-st.session_state["app_mode"] = app_mode  # compatibility mirror
+# Sprint 61 — one committed workspace route. Browser query parameters no longer
+# compete with the rail, top bar, command center, or page renderer.
+app_mode = resolve_route(allowed=NAV_OPTIONS)
 
 # Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
 # Query values are treated only as navigation inputs; the durable browser-session
@@ -2387,10 +2324,8 @@ def _s55_clear_analysis():
 
 
 def _s55_logout():
-    """End the local session immediately; never route through page handling."""
-    st.session_state.pop("cadivor_route_transition", None)
-    st.session_state.pop("cadivor_nav_params", None)
-    begin_logout(supabase, cookie_manager)
+    """End the local session through the Sprint 61 auth controller."""
+    runtime_logout(supabase)
 
 
 render_unified_shell(
@@ -2424,7 +2359,6 @@ render_command_center(
     user_name=shell_name.split()[0] if shell_name else "Engineer",
     workspace_commands=_workspace_command_records,
 )
-render_premium_interactions(current_page=app_mode)
 
 if app_mode == "Onboarding":
     progress = onboarding_progress or {}
