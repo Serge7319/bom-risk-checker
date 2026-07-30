@@ -111,6 +111,7 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
     st.session_state["cadivor_auth_debug_log"] = records
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_root_state"] = APP_PUBLIC
+    st.session_state["cadivor_signing_out"] = True
     st.session_state["cadivor_public_route"] = "home"
     st.session_state["cadivor_profile_menu_open"] = False
     st.session_state["cadivor_auth_resolved"] = True
