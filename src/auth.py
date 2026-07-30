@@ -3,7 +3,10 @@ import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 from textwrap import dedent
 
-from src.auth_state import mark_authenticated, render_auth_transition
+from src.auth_state import (
+    APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
+    mark_authenticated, render_auth_transition,
+)
 
 
 def _set_auth_cookie(cookie_manager, session, key: str):
@@ -265,6 +268,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             "password": password,
         }
         st.session_state["cadivor_auth_status"] = "signing_in"
+        st.session_state["cadivor_root_state"] = APP_SIGNING_IN
         st.rerun()
 
     pending = st.session_state.get("cadivor_auth_submission")
@@ -285,6 +289,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                     mark_authenticated(response.user, response.session)
                     st.rerun()
                 st.session_state["cadivor_auth_status"] = "signed_out"
+                st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.success("Account created. Please check your email to confirm your account, then return here to log in.")
                 return
             response = supabase.auth.sign_in_with_password({
@@ -294,6 +299,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             st.session_state.pop("cadivor_auth_submission", None)
             if not getattr(response, "session", None):
                 st.session_state["cadivor_auth_status"] = "signed_out"
+                st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.error("Login failed: no session was returned. Please confirm your email and try again.")
                 return
             mark_authenticated(response.user, response.session)
@@ -301,10 +307,15 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         except Exception as error:
             st.session_state.pop("cadivor_auth_submission", None)
             st.session_state["cadivor_auth_status"] = "signed_out"
+            st.session_state["cadivor_root_state"] = APP_LOGIN
             st.error(f"Authentication failed: {error}")
             return
 
-    st.markdown('<a class="auth-back" href="?" target="_self">← Back to Home</a>', unsafe_allow_html=True)
+    if st.button("← Back to Home", key="cadivor_auth_back_home", type="tertiary", use_container_width=False):
+        st.session_state.pop("cadivor_auth_submission", None)
+        st.session_state["cadivor_root_state"] = APP_PUBLIC
+        st.session_state["cadivor_public_route"] = "home"
+        st.rerun()
 
 
 
@@ -327,8 +338,8 @@ def _nav(active: str = "home"):
         </a>
         <div class="cadivor-nav-links">
           {links}
-          <a href="?auth=login" target="_self" class="cadivor-signin">Sign In</a>
-          <a href="?auth=signup" target="_self" class="cadivor-nav-cta">Get Started</a>
+          <a href="#" aria-disabled="true" class="cadivor-signin">Sign In</a>
+          <a href="#" aria-disabled="true" class="cadivor-nav-cta">Get Started</a>
         </div>
       </div>
     </div>
@@ -384,7 +395,7 @@ def _render_home_page():
           <h1 class="cadivor-title"><span>Run every BOM through Cadivor.</span><br><span class="blue">Find better alternatives.</span></h1>
           <p class="cadivor-subtitle">Turn BOM spreadsheets into lifecycle, supplier, risk, and replacement-part intelligence your engineering and sourcing teams can review with confidence.</p>
           <div class="cadivor-cta-row">
-            <a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a>
+            <a class="cadivor-primary" href="#" aria-disabled="true">Get Started</a>
             <a class="cadivor-secondary" href="?public=features" target="_self">See How It Works</a>
           </div>
           <div class="cadivor-proof">
@@ -405,8 +416,8 @@ def _render_home_page():
           <div class="feature-card"><div class="feature-icon">▤</div><strong>Executive Reports</strong><span>Export clean BOM risk summaries for engineering, sourcing, and leadership review.</span></div>
         </div>
       </section>
-      <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Run it through Cadivor and review supplier, lifecycle, and alternative-part intelligence in minutes.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
-      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
+      <div class="bottom-cta"><div><strong>Ready to reduce your BOM risk?</strong><span>Run it through Cadivor and review supplier, lifecycle, and alternative-part intelligence in minutes.</span></div><a class="cadivor-primary" href="#" aria-disabled="true">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="#" aria-disabled="true">Sign In</a></div></div>
     </div>
     """)
 
@@ -441,8 +452,8 @@ def _render_features_page():
           <div class="feature-card"><div class="feature-icon">◎</div><strong>Monitoring</strong><span>Track saved parts for stock, lifecycle, and supplier changes that may affect ongoing projects.</span></div>
         </div>
       </section>
-      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
-      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="#" aria-disabled="true">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="#" aria-disabled="true">Sign In</a></div></div>
     </div>
     """)
 
@@ -467,8 +478,8 @@ def _render_solutions_page():
           <div class="flow-step"><b>04</b><strong>Leadership review</strong><span>Export concise reports so managers can see project risk clearly.</span></div>
         </div>
       </section>
-      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
-      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="#" aria-disabled="true">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="#" aria-disabled="true">Sign In</a></div></div>
     </div>
     """)
 
@@ -479,14 +490,14 @@ def _render_pricing_page():
       <section class="cadivor-section page-section" id="pricing">
         <div class="section-heading"><h2>Simple plans for BOM review workflows</h2><p>Start small, then scale as your team reviews more projects and monitors more parts.</p></div>
         <div class="pricing-grid">
-          <div class="pricing-card"><div class="pricing-name">Starter</div><div class="pricing-price">$29/mo</div><p>For individual engineers reviewing smaller BOMs.</p><ul><li>5 BOMs/month</li><li>10 parts per BOM</li><li>CSV/XLSX export</li></ul><a class="cadivor-secondary" href="?auth=signup" target="_self">Get Started</a></div>
-          <div class="pricing-card"><div class="pricing-name">Pro</div><div class="pricing-price">$99/mo</div><p>For engineers reviewing multiple BOMs.</p><ul><li>10 BOMs/month</li><li>20 parts per BOM</li><li>Alternative Finder</li><li>Supplier intelligence</li></ul><a class="cadivor-primary" href="?auth=signup" target="_self">Start Pro</a></div>
-          <div class="pricing-card"><div class="pricing-name">Business</div><div class="pricing-price">$299/mo</div><p>For teams standardizing BOM risk review.</p><ul><li>25 BOMs/month</li><li>100 parts per BOM</li><li>Advanced reports</li><li>Team workflows</li></ul><a class="cadivor-secondary" href="?auth=signup" target="_self">Start Business</a></div>
-          <div class="pricing-card"><div class="pricing-name">Enterprise</div><div class="pricing-price">Custom</div><p>For organizations with broader component intelligence needs.</p><ul><li>Higher limits</li><li>Custom workflows</li><li>Priority support</li><li>Supplier integrations</li></ul><a class="cadivor-secondary" href="?auth=signup" target="_self">Contact Us</a></div>
+          <div class="pricing-card"><div class="pricing-name">Starter</div><div class="pricing-price">$29/mo</div><p>For individual engineers reviewing smaller BOMs.</p><ul><li>5 BOMs/month</li><li>10 parts per BOM</li><li>CSV/XLSX export</li></ul><a class="cadivor-secondary" href="#" aria-disabled="true">Get Started</a></div>
+          <div class="pricing-card"><div class="pricing-name">Pro</div><div class="pricing-price">$99/mo</div><p>For engineers reviewing multiple BOMs.</p><ul><li>10 BOMs/month</li><li>20 parts per BOM</li><li>Alternative Finder</li><li>Supplier intelligence</li></ul><a class="cadivor-primary" href="#" aria-disabled="true">Start Pro</a></div>
+          <div class="pricing-card"><div class="pricing-name">Business</div><div class="pricing-price">$299/mo</div><p>For teams standardizing BOM risk review.</p><ul><li>25 BOMs/month</li><li>100 parts per BOM</li><li>Advanced reports</li><li>Team workflows</li></ul><a class="cadivor-secondary" href="#" aria-disabled="true">Start Business</a></div>
+          <div class="pricing-card"><div class="pricing-name">Enterprise</div><div class="pricing-price">Custom</div><p>For organizations with broader component intelligence needs.</p><ul><li>Higher limits</li><li>Custom workflows</li><li>Priority support</li><li>Supplier integrations</li></ul><a class="cadivor-secondary" href="#" aria-disabled="true">Contact Us</a></div>
         </div>
       </section>
-      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
-      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="#" aria-disabled="true">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="#" aria-disabled="true">Sign In</a></div></div>
     </div>
     """)
 
@@ -514,16 +525,14 @@ def _render_resources_page():
           <div class="faq-card"><strong>Is AI used?</strong><span>Cadivor uses AI-assisted analysis alongside supplier data and engineering rules, while keeping final decisions with your team.</span></div>
         </div>
       </section>
-      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="?auth=signup" target="_self">Get Started</a></div>
-      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="?auth=login" target="_self">Sign In</a></div></div>
+      <div class="bottom-cta"><div><strong>Ready to run your next BOM through Cadivor?</strong><span>Review lifecycle, supplier exposure, risk, and alternatives in one connected workspace.</span></div><a class="cadivor-primary" href="#" aria-disabled="true">Get Started</a></div>
+      <div class="footer"><div><strong>Cadivor</strong><p>Engineering intelligence for electronics teams. Analyze BOM risk, compare alternatives, and make sourcing decisions with confidence.</p></div><div class="footer-links"><a href="?public=features" target="_self">Features</a><a href="?public=solutions" target="_self">Solutions</a><a href="?public=pricing" target="_self">Pricing</a><a href="?public=resources" target="_self">Resources</a><a href="#" aria-disabled="true">Sign In</a></div></div>
     </div>
     """)
 
 def _render_landing_page():
-    try:
-        page = st.query_params.get("public", "home")
-    except Exception:
-        page = "home"
+    # Sprint 61: public routing is session-state only.
+    page = str(st.session_state.get("cadivor_public_route") or "home")
     if page == "features":
         _render_features_page()
     elif page == "solutions":
@@ -536,34 +545,69 @@ def _render_landing_page():
         _render_home_page()
 
 def show_auth_ui(supabase, cookie_manager=None):
-    """Cadivor public landing page and authentication flow."""
+    """Render exactly one signed-out/authentication surface per run."""
     _auth_css()
+    state = str(st.session_state.get("cadivor_root_state") or APP_PUBLIC)
 
-    # A logout always owns its first signed-out paint. Ignore stale auth/public
-    # query parameters and render the homepage immediately; browser history is
-    # normalized independently without scheduling another Streamlit run.
-    force_home = bool(st.session_state.get("cadivor_public_after_logout"))
-    if force_home:
-        st.session_state.pop("cadivor_public_after_logout", None)
-        st.session_state.pop("cadivor_public_route", None)
-        from src.marketing_site import render_marketing_site
-        render_marketing_site(forced_page="home")
-        return
+    if state == APP_SIGNING_IN:
+        pending = st.session_state.get("cadivor_auth_submission")
+        if not isinstance(pending, dict):
+            st.session_state["cadivor_root_state"] = APP_LOGIN
+            st.rerun()
+        # The transition is the only visible surface in this state.
+        render_auth_transition(
+            "Creating your secure workspace…"
+            if pending.get("mode") == "Create Account"
+            else "Opening your engineering workspace…"
+        )
+        try:
+            if pending.get("mode") == "Create Account":
+                response = supabase.auth.sign_up({
+                    "email": pending.get("email", ""),
+                    "password": pending.get("password", ""),
+                })
+                st.session_state.pop("cadivor_auth_submission", None)
+                if getattr(response, "session", None):
+                    mark_authenticated(response.user, response.session)
+                    st.rerun()
+                st.session_state["cadivor_auth_status"] = "signed_out"
+                st.session_state["cadivor_root_state"] = APP_LOGIN
+                st.session_state["cadivor_auth_notice"] = "Account created. Check your email to confirm the account, then sign in."
+                st.rerun()
+            response = supabase.auth.sign_in_with_password({
+                "email": pending.get("email", ""),
+                "password": pending.get("password", ""),
+            })
+            st.session_state.pop("cadivor_auth_submission", None)
+            if not getattr(response, "session", None):
+                st.session_state["cadivor_auth_status"] = "signed_out"
+                st.session_state["cadivor_root_state"] = APP_LOGIN
+                st.session_state["cadivor_auth_error"] = "Login failed: no session was returned."
+                st.rerun()
+            mark_authenticated(response.user, response.session)
+            st.rerun()
+        except Exception as error:
+            st.session_state.pop("cadivor_auth_submission", None)
+            st.session_state["cadivor_auth_status"] = "signed_out"
+            st.session_state["cadivor_root_state"] = APP_LOGIN
+            st.session_state["cadivor_auth_error"] = f"Authentication failed: {error}"
+            st.rerun()
+        st.stop()
 
-    try:
-        auth_route = st.query_params.get("auth")
-    except Exception:
-        auth_route = None
-
-    if auth_route in ("login", "signup"):
+    if state in (APP_LOGIN, APP_SIGNUP):
+        notice = st.session_state.pop("cadivor_auth_notice", None)
+        error = st.session_state.pop("cadivor_auth_error", None)
+        if notice:
+            st.success(notice)
+        if error:
+            st.error(error)
         _render_auth_page(
             supabase=supabase,
             cookie_manager=cookie_manager,
-            initial_mode="Create Account" if auth_route == "signup" else "Login",
+            initial_mode="Create Account" if state == APP_SIGNUP else "Login",
         )
         return
 
-    # Signed-out launch marketing website. Authenticated workspace routing and
-    # all analysis/scrolling behavior remain outside this module.
     from src.marketing_site import render_marketing_site
-    render_marketing_site()
+    st.session_state["cadivor_root_state"] = APP_PUBLIC
+    render_marketing_site(forced_page=st.session_state.get("cadivor_public_route", "home"))
