@@ -531,8 +531,10 @@ def _render_resources_page():
     """)
 
 def _render_landing_page():
-    # Sprint 61: public routing is session-state only.
-    page = str(st.session_state.get("cadivor_public_route") or "home")
+    try:
+        page = st.query_params.get("public", "home")
+    except Exception:
+        page = "home"
     if page == "features":
         _render_features_page()
     elif page == "solutions":
