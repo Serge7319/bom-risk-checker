@@ -476,3 +476,28 @@ section[data-testid="stMain"] [data-testid="stPopoverBody"] .st-key-cv_foundatio
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button,
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button p{color:#b42318!important;font-weight:800!important}
 [data-testid="stPopoverBody"] .st-key-cv_foundation_signout .stButton>button:hover{background:#fff1f0!important;color:#912018!important}
+
+
+/* Sprint 62.0.1 — final profile menu color authority. */
+[data-testid="stPopoverBody"] div.stButton > button,
+[data-testid="stPopoverBody"] div.stButton > button p,
+[data-testid="stPopoverBody"] div.stButton > button span,
+[data-testid="stPopoverBody"] div.stButton > button div{
+  color:#334155!important;
+}
+[data-testid="stPopoverBody"] div.stButton > button:hover,
+[data-testid="stPopoverBody"] div.stButton > button:hover p,
+[data-testid="stPopoverBody"] div.stButton > button:hover span,
+[data-testid="stPopoverBody"] div.stButton > button:hover div{
+  color:#0f172a!important;
+}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout div.stButton > button,
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout div.stButton > button p,
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout div.stButton > button span,
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout div.stButton > button div{
+  color:#b42318!important;
+  font-weight:800!important;
+}
+[data-testid="stPopoverBody"] .st-key-cv_foundation_signout div.stButton > button:hover{
+  background:#fff1f0!important;
+}
