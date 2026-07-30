@@ -61,18 +61,17 @@ def _marketing_css() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
         :root{--mk-navy:#06142c;--mk-navy-2:#0b2248;--mk-blue:#2f6df6;--mk-blue-2:#1f56d8;--mk-sky:#78a9ff;--mk-ink:#0b1730;--mk-copy:#53657b;--mk-muted:#73839a;--mk-border:#dce5f0;--mk-soft:#f5f8fc;--mk-green:#18a865;--mk-amber:#e09a22;--mk-red:#e0474c;--mk-shadow:0 24px 70px rgba(10,28,59,.12)}
         html,body,.stApp,[data-testid="stAppViewContainer"]{background:#fff!important;color:var(--mk-ink)!important;font-family:Manrope,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;scroll-behavior:smooth}
         [data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],section[data-testid="stSidebar"],[data-testid="collapsedControl"]{display:none!important}
         .block-container{width:100%!important;max-width:none!important;padding:0!important;margin:0!important}
-        #cadivor-public-transition-curtain{position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;background:#f5f7fb;font-family:Manrope,Inter,system-ui,sans-serif;animation:cv-public-curtain-in .08s ease-out both}
-        .cv-public-transition-card{width:min(390px,calc(100vw - 40px));padding:28px 28px 24px;border:1px solid #dce4ee;border-radius:20px;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.12);text-align:center;color:#0f172a}
-        .cv-public-transition-mark{width:46px;height:46px;margin:0 auto 13px;border-radius:13px;display:grid;place-items:center;background:#2563eb;color:#fff;font-size:21px;font-weight:900;box-shadow:0 12px 26px rgba(37,99,235,.24)}
-        .cv-public-transition-card strong,.cv-public-transition-card small{display:block}.cv-public-transition-card strong{font-size:18px;letter-spacing:-.025em}.cv-public-transition-card small{margin-top:6px;color:#64748b;font-size:12px;font-weight:650}
-        .cv-public-transition-card i{display:block;height:4px;margin-top:17px;border-radius:999px;background:#e8eef6;overflow:hidden}.cv-public-transition-card i b{display:block;width:38%;height:100%;border-radius:inherit;background:#2563eb;animation:cv-public-progress 1s ease-in-out infinite}
+        /* Emergency Restoration 61.0.5 — CSS-first public bootstrap. */
+        html,body{background:#fff!important}
+        .stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],section.main{background:#fff!important}
+        [data-testid="stAppViewContainer"]::before{content:"";position:fixed;inset:0;z-index:-1;background:#fff}
+        [data-testid="stSkeleton"],[data-testid="stSkeleton"]>div{background:#eef3f8!important;color:transparent!important}
         .cv-public-signout-toast{position:fixed;top:18px;left:50%;z-index:2147483645;transform:translateX(-50%);padding:10px 15px;border:1px solid #cfe0f5;border-radius:999px;background:#fff;color:#17345f;font-size:12px;font-weight:800;box-shadow:0 12px 34px rgba(15,23,42,.14);animation:cv-public-toast 3s ease both}
-        @keyframes cv-public-curtain-in{from{opacity:.7}to{opacity:1}}@keyframes cv-public-progress{0%{transform:translateX(-110%)}100%{transform:translateX(330%)}}@keyframes cv-public-toast{0%,80%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-8px)}}
+        @keyframes cv-public-toast{0%,80%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-8px)}}
         .mk-shell{width:100%;overflow:hidden}.mk-wrap{width:min(1240px,calc(100% - 48px));margin:0 auto}.mk-wide{width:min(1400px,calc(100% - 48px));margin:0 auto}
         .mk-shell h1 a,.mk-shell h2 a,.mk-shell h3 a,.mk-page-hero h1 a,.mk-footer h1 a,[data-testid="stMarkdownContainer"] h1 a,[data-testid="stMarkdownContainer"] h2 a,[data-testid="stMarkdownContainer"] h3 a{display:none!important}
         .mk-nav-wrap{position:relative;z-index:30;background:var(--mk-navy);border-bottom:1px solid rgba(255,255,255,.09)}.mk-nav{height:72px;display:flex;align-items:center;justify-content:space-between;gap:26px}.mk-brand{display:flex;align-items:center;gap:11px;color:#fff!important;text-decoration:none!important;font-size:23px;font-weight:800;letter-spacing:-.04em}.mk-logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#4b8cff,#1f5be5);box-shadow:0 10px 25px rgba(47,109,246,.35);font-weight:800;color:#fff!important}.mk-links{display:flex;align-items:center;gap:29px;font-size:13px;font-weight:700}.mk-links a{color:#d1daea!important;text-decoration:none!important}.mk-links a:not(:last-child)::after{content:"⌄";font-size:10px;margin-left:5px;color:#8393aa}.mk-links a:nth-child(3)::after{content:""}.mk-links a:hover,.mk-links a.active{color:#fff!important}.mk-nav-actions{display:flex;align-items:center;gap:10px}.mk-btn{display:inline-flex;align-items:center;justify-content:center;min-height:43px;padding:0 18px;border-radius:8px;text-decoration:none!important;font-size:13px;font-weight:800;white-space:nowrap;transition:.2s ease}.mk-btn:hover{transform:translateY(-1px)}.mk-btn-primary{background:linear-gradient(180deg,#3978fb,#2462eb);border:1px solid #4b82f7;color:#fff!important;box-shadow:0 10px 24px rgba(37,99,235,.28)}.mk-btn-light{background:#fff;border:1px solid #d9e2ee;color:var(--mk-ink)!important;box-shadow:0 8px 20px rgba(15,23,42,.08)}.mk-btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.28);color:#fff!important}
@@ -434,53 +433,6 @@ def _legal_page(kind: str) -> None:
 
 
 
-def _install_public_transition_bridge() -> None:
-    """Cover browser/Streamlit remounts with one deterministic Cadivor surface.
-
-    Public marketing pages are still query-addressable for deep links. Streamlit
-    Cloud may briefly expose its host canvas while a query destination remounts.
-    This bridge does not create an additional route or reload; it only covers the
-    current document from the user's click until the next page is ready.
-    """
-    components.html(
-        """<script>
-        (() => {
-          try {
-            const doc = window.parent.document;
-            if (doc.documentElement.dataset.cadivorPublicBridge === '1') return;
-            doc.documentElement.dataset.cadivorPublicBridge = '1';
-
-            const showCurtain = (label) => {
-              if (doc.getElementById('cadivor-public-transition-curtain')) return;
-              const curtain = doc.createElement('div');
-              curtain.id = 'cadivor-public-transition-curtain';
-              curtain.setAttribute('role', 'status');
-              curtain.setAttribute('aria-live', 'polite');
-              curtain.innerHTML = `
-                <div class="cv-public-transition-card">
-                  <span class="cv-public-transition-mark">C</span>
-                  <strong>Cadivor</strong>
-                  <small>${label || 'Opening page…'}</small>
-                  <i><b></b></i>
-                </div>`;
-              doc.body.appendChild(curtain);
-            };
-
-            doc.addEventListener('click', (event) => {
-              const link = event.target && event.target.closest
-                ? event.target.closest('.mk-shell a[href]') : null;
-              if (!link) return;
-              const href = link.getAttribute('href') || '';
-              if (!href.startsWith('?public=') && !href.startsWith('?auth=')) return;
-              const text = (link.textContent || '').trim();
-              showCurtain(text ? `Opening ${text}…` : 'Opening Cadivor…');
-            }, true);
-          } catch (error) {}
-        })();
-        </script>""",
-        height=0,
-        width=0,
-    )
 
 def render_marketing_site(*, forced_page: str | None = None) -> None:
     """Render the signed-out marketing website.
@@ -490,10 +442,11 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     before client-side history normalization completes.
     """
     _marketing_css()
-    _install_public_transition_bridge()
-
     st.markdown("""<style id="cadivor-static-public-runtime">
-    html,body,.stApp,[data-testid="stAppViewContainer"]{background:#ffffff!important}
+    html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],section.main{background:#ffffff!important;color:#0b1730!important}
+    [data-testid="stAppViewContainer"]{transition:none!important}
+    [data-testid="stSkeleton"],[data-testid="stSkeleton"]>div{background:#eef3f8!important;box-shadow:none!important}
+    .mk-shell,.mk-shell *{box-sizing:border-box}
     .mk-hero,.mk-page-hero{animation:none!important;transition:none!important}
     </style>""", unsafe_allow_html=True)
     requested_page = _query_value("public")
