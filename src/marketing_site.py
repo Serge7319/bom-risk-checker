@@ -321,10 +321,18 @@ def _nav(active: str = "home") -> None:
                     on_click=_set_public_route,
                     args=("home",),
                     use_container_width=True,
+                    type="primary" if active == "home" else "secondary",
                 )
         for col, (route, label) in zip(cols[1:6], PRODUCT_LINKS):
             with col:
-                st.button(label, key=f"cv_public_{route}", on_click=_set_public_route, args=(route,), use_container_width=True)
+                st.button(
+                    label,
+                    key=f"cv_public_{route}",
+                    on_click=_set_public_route,
+                    args=(route,),
+                    use_container_width=True,
+                    type="primary" if active == route else "secondary",
+                )
         with cols[7]:
             st.button("Sign In", key="cv_public_login", on_click=_open_auth_surface, args=("login",), use_container_width=True)
         with cols[8]:
@@ -334,38 +342,39 @@ def _nav(active: str = "home") -> None:
     st.markdown(f'<div class="cv-public-active-route" data-route="{escape(active)}"></div>', unsafe_allow_html=True)
 
 
-def _footer() -> None:
-    """Render the public footer with direct native Streamlit controls.
+def _footer(active: str | None = None) -> None:
+    """Render one persistent, direct-control footer.
 
-    Unlike the marketing body bridge, each visible footer link is the actual
-    Streamlit button that owns its callback. There is no HTML click proxy,
-    hidden target, or JavaScript forwarding layer in the footer.
+    Widget keys are explicit and invariant across every public route. The visible
+    control is the Streamlit widget that owns the callback; no proxy, delegated
+    JavaScript handler, or route-derived key participates in footer navigation.
     """
+    current_route = str(active or st.session_state.get("cadivor_public_route") or "home").strip().lower()
     footer_groups = (
         ("Product", (
-            ("Overview", "product"),
-            ("Engineering Intelligence", "product"),
-            ("Ask Cadivor", "product"),
-            ("Pricing", "pricing"),
+            ("overview", "Overview", "product"),
+            ("engineering_intelligence", "Engineering Intelligence", "product"),
+            ("ask_cadivor", "Ask Cadivor", "product"),
+            ("pricing", "Pricing", "pricing"),
         )),
         ("Solutions", (
-            ("Robotics", "solutions"),
-            ("Medical Devices", "solutions"),
-            ("Industrial Automation", "solutions"),
-            ("Hardware Startups", "solutions"),
+            ("robotics", "Robotics", "solutions"),
+            ("medical_devices", "Medical Devices", "solutions"),
+            ("industrial_automation", "Industrial Automation", "solutions"),
+            ("hardware_startups", "Hardware Startups", "solutions"),
         )),
         ("Resources", (
-            ("Getting Started", "resources"),
-            ("Demo BOMs", "resources"),
-            ("Engineering Guides", "resources"),
-            ("FAQ", "resources"),
+            ("getting_started", "Getting Started", "resources"),
+            ("demo_boms", "Demo BOMs", "resources"),
+            ("engineering_guides", "Engineering Guides", "resources"),
+            ("faq", "FAQ", "resources"),
         )),
         ("Company", (
-            ("About", "company"),
-            ("Security", "security"),
-            ("Contact", "contact"),
-            ("Privacy", "privacy"),
-            ("Terms", "terms"),
+            ("about", "About", "company"),
+            ("security", "Security", "security"),
+            ("contact", "Contact", "contact"),
+            ("privacy", "Privacy", "privacy"),
+            ("terms", "Terms", "terms"),
         )),
     )
 
@@ -373,107 +382,35 @@ def _footer() -> None:
         """
         <style>
         .st-key-cv_native_footer {
-          position: relative;
-          margin-top: 0;
+          position: relative; margin-top: 0;
           padding: 52px max(24px, calc((100vw - 1180px) / 2)) 24px;
-          background: #06142c;
-          color: #ffffff;
+          background: #06142c; color: #ffffff;
         }
-        .st-key-cv_native_footer::before {
-          content: "";
-          position: absolute;
-          inset: 0 calc(50% - 50vw);
-          z-index: -1;
-          background: #06142c;
-        }
-        .st-key-cv_native_footer [data-testid="stHorizontalBlock"] { gap: 34px; }
-        .st-key-cv_native_footer [data-testid="stMarkdownContainer"] p {
-          margin: 0;
-          color: #91a4bf !important;
-          font-size: 13px !important;
-          line-height: 1.7 !important;
-        }
-        .st-key-cv_native_footer .cv-footer-heading {
-          margin: 1px 0 10px;
-          color: #ffffff !important;
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: .12em;
-          text-transform: uppercase;
-        }
-        .st-key-cv_native_footer .cv-footer-coverage {
-          display: grid;
-          gap: 11px;
-          color: #8fa0b8 !important;
-          font-size: 13px;
-        }
+        .st-key-cv_native_footer::before {content:"";position:absolute;inset:0 calc(50% - 50vw);z-index:-1;background:#06142c}
+        .st-key-cv_native_footer [data-testid="stHorizontalBlock"] {gap:34px}
+        .st-key-cv_native_footer [data-testid="stMarkdownContainer"] p {margin:0;color:#91a4bf!important;font-size:13px!important;line-height:1.7!important}
+        .st-key-cv_native_footer .cv-footer-heading {margin:1px 0 10px;color:#fff!important;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+        .st-key-cv_native_footer .cv-footer-coverage {display:grid;gap:11px;color:#8fa0b8!important;font-size:13px}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] {margin-bottom:2px}
         .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button {
-          min-height: 28px !important;
-          height: auto !important;
-          width: auto !important;
-          margin: 0 !important;
-          padding: 3px 0 !important;
-          border: 0 !important;
-          border-radius: 4px !important;
-          background: transparent !important;
-          box-shadow: none !important;
-          color: #9fb0c5 !important;
-          font-size: 13px !important;
-          font-weight: 500 !important;
-          line-height: 1.35 !important;
-          text-align: left !important;
-          justify-content: flex-start !important;
-          cursor: pointer !important;
-          transition: color .16s ease, background-color .16s ease !important;
+          min-height:36px!important;height:36px!important;width:100%!important;margin:0!important;
+          padding:7px 10px!important;border:1px solid transparent!important;border-radius:8px!important;
+          background:transparent!important;box-shadow:none!important;color:#aebdd0!important;
+          font-size:13px!important;font-weight:550!important;line-height:1.2!important;text-align:left!important;
+          justify-content:flex-start!important;cursor:pointer!important;
+          transition:color .14s ease,background-color .14s ease,border-color .14s ease,transform .08s ease!important;
         }
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:hover {
-          color: #ffffff !important;
-          background: rgba(255,255,255,.055) !important;
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:hover {color:#fff!important;background:rgba(255,255,255,.075)!important;border-color:rgba(255,255,255,.09)!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:active {transform:translateY(1px)!important;background:rgba(255,255,255,.12)!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:focus-visible {color:#fff!important;outline:2px solid #75a7ff!important;outline-offset:2px!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"] {
+          color:#fff!important;background:rgba(47,109,246,.24)!important;border-color:rgba(117,167,255,.34)!important;font-weight:750!important;
         }
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:focus-visible {
-          color: #ffffff !important;
-          outline: 2px solid #75a7ff !important;
-          outline-offset: 2px !important;
-        }
-        .st-key-cv_native_footer .st-key-cv_footer_brand button {
-          display: inline-flex !important;
-          align-items: center !important;
-          gap: 10px !important;
-          min-height: 38px !important;
-          padding: 0 !important;
-          color: #ffffff !important;
-          font-size: 20px !important;
-          font-weight: 800 !important;
-          letter-spacing: -.025em !important;
-        }
-        .st-key-cv_native_footer .st-key-cv_footer_brand button::before {
-          content: "C";
-          display: grid;
-          place-items: center;
-          width: 30px;
-          height: 30px;
-          border-radius: 9px;
-          background: linear-gradient(145deg,#3478ff,#1e56cf);
-          color: #ffffff;
-          font-size: 16px;
-          font-weight: 900;
-          box-shadow: 0 8px 24px rgba(47,109,246,.28);
-        }
-        .st-key-cv_native_footer .cv-footer-bottom {
-          display: flex;
-          justify-content: space-between;
-          gap: 20px;
-          margin-top: 34px;
-          padding-top: 18px;
-          border-top: 1px solid rgba(255,255,255,.09);
-          color: #8192aa;
-          font-size: 11px;
-        }
-        @media (max-width: 900px) {
-          .st-key-cv_native_footer [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
-          .st-key-cv_native_footer [data-testid="column"] { min-width: 42%; flex: 1 1 42%; }
-          .st-key-cv_native_footer .cv-footer-bottom { flex-direction: column; }
-        }
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"]::after {content:"";width:6px;height:6px;border-radius:999px;background:#75a7ff;margin-left:auto;box-shadow:0 0 0 4px rgba(117,167,255,.12)}
+        .st-key-cv_native_footer .st-key-cv_footer_brand button {display:inline-flex!important;align-items:center!important;gap:10px!important;min-height:42px!important;width:auto!important;padding:4px 8px 4px 0!important;color:#fff!important;font-size:20px!important;font-weight:800!important;letter-spacing:-.025em!important}
+        .st-key-cv_native_footer .st-key-cv_footer_brand button::before {content:"C";display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#3478ff,#1e56cf);color:#fff;font-size:16px;font-weight:900;box-shadow:0 8px 24px rgba(47,109,246,.28)}
+        .st-key-cv_native_footer .cv-footer-bottom {display:flex;justify-content:space-between;gap:20px;margin-top:34px;padding-top:18px;border-top:1px solid rgba(255,255,255,.09);color:#8192aa;font-size:11px}
+        @media(max-width:900px){.st-key-cv_native_footer [data-testid="stHorizontalBlock"]{flex-wrap:wrap}.st-key-cv_native_footer [data-testid="column"]{min-width:42%;flex:1 1 42%}.st-key-cv_native_footer .cv-footer-bottom{flex-direction:column}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -483,49 +420,33 @@ def _footer() -> None:
         cols = st.columns([1.55, 1, 1, 1, 1, 1], gap="large")
         with cols[0]:
             st.button(
-                "Cadivor",
-                key="cv_footer_brand",
-                on_click=_set_public_route,
-                args=("home",),
+                "Cadivor", key="cv_footer_brand", on_click=_set_public_route,
+                args=("home",), type="primary" if current_route == "home" else "secondary",
             )
-            st.markdown(
-                "Engineering intelligence that helps hardware teams understand "
-                "BOM risk, evaluate alternatives, and make better decisions "
-                "before production."
-            )
+            st.markdown("Engineering intelligence that helps hardware teams understand BOM risk, evaluate alternatives, and make better decisions before production.")
 
-        for group_index, (heading, links) in enumerate(footer_groups, start=1):
-            with cols[group_index]:
+        for column_index, (heading, links) in enumerate(footer_groups, start=1):
+            with cols[column_index]:
                 st.markdown(f'<div class="cv-footer-heading">{escape(heading)}</div>', unsafe_allow_html=True)
-                for link_index, (label, route) in enumerate(links):
+                for item_id, label, route in links:
                     st.button(
                         label,
-                        key=f"cv_footer_{group_index}_{link_index}_{route}",
+                        key=f"cv_footer_{item_id}",
                         on_click=_set_public_route,
                         args=(route,),
+                        use_container_width=True,
+                        type="primary" if current_route == route else "secondary",
                     )
 
         with cols[5]:
-            st.markdown(
-                """
+            st.markdown("""
                 <div class="cv-footer-heading">Data coverage</div>
-                <div class="cv-footer-coverage">
-                  <span>DigiKey</span><span>Mouser</span><span>Newark</span>
-                  <span>Octopart — Coming soon</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                <div class="cv-footer-coverage"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>Octopart — Coming soon</span></div>
+            """, unsafe_allow_html=True)
 
-        st.markdown(
-            """
-            <div class="cv-footer-bottom">
-              <span>© 2026 Cadivor. All rights reserved.</span>
-              <span>Engineering decision support—not a replacement for professional validation.</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("""
+            <div class="cv-footer-bottom"><span>© 2026 Cadivor. All rights reserved.</span><span>Engineering decision support—not a replacement for professional validation.</span></div>
+        """, unsafe_allow_html=True)
 
 
 def _cta(title: str = "Make your next BOM review faster and more decisive.", copy: str = "Start with a 14-day full-access trial. No credit card required.") -> None:
@@ -797,6 +718,8 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     [data-testid="stStatusWidget"],[data-testid="stConnectionStatus"]{background:#fff!important;color:#64748b!important}
     .mk-shell,.mk-shell *{box-sizing:border-box}
     .mk-hero,.mk-page-hero{animation:none!important;transition:none!important}
+    .st-key-cv_public_nav button[kind="primary"]{color:#245edb!important;background:#eef4ff!important;border-color:#c8d9ff!important;box-shadow:inset 0 -2px 0 #2f6df6!important}
+    .st-key-cv_public_nav button:active{transform:translateY(1px)!important}
     </style>""", unsafe_allow_html=True)
     requested_page = _query_value("public")
     session_page = str(st.session_state.get("cadivor_public_route") or "").strip().lower()
