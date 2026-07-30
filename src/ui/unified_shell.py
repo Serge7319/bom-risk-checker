@@ -132,7 +132,8 @@ def render_unified_shell(
             ):
                 st.session_state["cadivor_profile_menu_open"] = False
                 request_logout()
-                st.rerun()
+                # The button click already schedules the one required rerun.
+                # A second explicit rerun caused the public page to remount.
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
