@@ -39,6 +39,70 @@ def _query_value(name: str, default: str = "") -> str:
     return str(value or default).strip()
 
 
+
+def _install_internal_link_bridge() -> None:
+    """Route every internal marketing link through Streamlit session state.
+
+    The marketing content is intentionally authored as HTML for visual fidelity.
+    This bridge converts those internal anchors into native Streamlit button
+    clicks, so footer, card, CTA, legal, and body links never replace the
+    browser document or expose the Streamlit host bootstrap.
+    """
+    public_routes = ("home", "product", "solutions", "pricing", "resources", "company", "contact", "security", "privacy", "terms")
+    with st.container(key="cv_public_link_bridge"):
+        for route in public_routes:
+            st.button(
+                f"Open {route}",
+                key=f"cv_bridge_public_{route}",
+                on_click=_set_public_route,
+                args=(route,),
+            )
+        for surface in ("login", "signup"):
+            st.button(
+                f"Open {surface}",
+                key=f"cv_bridge_auth_{surface}",
+                on_click=_open_auth_surface,
+                args=(surface,),
+            )
+
+    components.html(
+        """<script>
+        (() => {
+          const win = window.parent;
+          const doc = win.document;
+          if (win.__cadivorInternalLinkBridgeInstalled) return;
+          win.__cadivorInternalLinkBridgeInstalled = true;
+
+          const activate = (kind, value) => {
+            const safe = String(value || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+            if (!safe) return false;
+            const selector = kind === 'auth'
+              ? `.st-key-cv_bridge_auth_${safe} button`
+              : `.st-key-cv_bridge_public_${safe} button`;
+            const button = doc.querySelector(selector);
+            if (!button) return false;
+            button.click();
+            return true;
+          };
+
+          doc.addEventListener('click', (event) => {
+            const link = event.target && event.target.closest
+              ? event.target.closest('a[data-cv-public], a[data-cv-auth]')
+              : null;
+            if (!link) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+            const auth = link.getAttribute('data-cv-auth');
+            const route = link.getAttribute('data-cv-public');
+            activate(auth ? 'auth' : 'public', auth || route);
+          }, true);
+        })();
+        </script>""",
+        height=0,
+        width=0,
+    )
+
 def _icon(name: str) -> str:
     icons = {
         "bom": '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>',
@@ -189,6 +253,10 @@ def _marketing_css() -> None:
         .mk-footer{margin-top:0!important}
         @media(max-width:820px){.st-key-cv_public_nav{box-shadow:0 12px 0 var(--mk-navy)!important}.mk-section{padding:62px 0}}
         @media(max-width:1050px){.st-key-cv_public_nav [data-testid="column"]:nth-child(n+7){display:none!important}.st-key-cv_public_nav{overflow-x:auto!important}.st-key-cv_public_nav [data-testid="stHorizontalBlock"]{min-width:760px!important}}
+
+        /* Sprint 62.2 — all body/footer internal links stay in the active runtime. */
+        .st-key-cv_public_link_bridge{position:fixed!important;left:-10000px!important;top:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+        .mk-shell a[data-cv-public],.mk-shell a[data-cv-auth],.mk-footer a[data-cv-public],.mk-footer a[data-cv-auth]{cursor:pointer!important}
         </style>
         """,
         unsafe_allow_html=True,
@@ -258,11 +326,11 @@ def _footer() -> None:
     _html("""
     <footer class="mk-footer"><div class="mk-wrap">
       <div class="mk-footer-grid">
-        <div class="mk-footer-brand"><a class="mk-brand" href="?public=home" target="_self"><span class="mk-logo">C</span>Cadivor</a><p>Engineering intelligence that helps hardware teams understand BOM risk, evaluate alternatives, and make better decisions before production.</p></div>
-        <div class="mk-footer-col"><strong>Product</strong><a href="?public=product" target="_self">Overview</a><a href="?public=product#engineering-intelligence" target="_self">Engineering Intelligence</a><a href="?public=product#copilot" target="_self">Ask Cadivor</a><a href="?public=pricing" target="_self">Pricing</a></div>
-        <div class="mk-footer-col"><strong>Solutions</strong><a href="?public=solutions#robotics" target="_self">Robotics</a><a href="?public=solutions#medical" target="_self">Medical Devices</a><a href="?public=solutions#industrial" target="_self">Industrial Automation</a><a href="?public=solutions#startups" target="_self">Hardware Startups</a></div>
-        <div class="mk-footer-col"><strong>Resources</strong><a href="?public=resources" target="_self">Getting Started</a><a href="?public=resources" target="_self">Demo BOMs</a><a href="?public=resources" target="_self">Engineering Guides</a><a href="?public=resources" target="_self">FAQ</a></div>
-        <div class="mk-footer-col"><strong>Company</strong><a href="?public=company" target="_self">About</a><a href="?public=security" target="_self">Security</a><a href="?public=contact" target="_self">Contact</a><a href="?public=privacy" target="_self">Privacy</a><a href="?public=terms" target="_self">Terms</a></div><div class="mk-footer-col"><strong>Data coverage</strong><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>Octopart — Coming soon</span></div>
+        <div class="mk-footer-brand"><a class="mk-brand" href="#" data-cv-public="home"><span class="mk-logo">C</span>Cadivor</a><p>Engineering intelligence that helps hardware teams understand BOM risk, evaluate alternatives, and make better decisions before production.</p></div>
+        <div class="mk-footer-col"><strong>Product</strong><a href="#" data-cv-public="product">Overview</a><a href="#" data-cv-public="product">Engineering Intelligence</a><a href="#" data-cv-public="product">Ask Cadivor</a><a href="#" data-cv-public="pricing">Pricing</a></div>
+        <div class="mk-footer-col"><strong>Solutions</strong><a href="#" data-cv-public="solutions">Robotics</a><a href="#" data-cv-public="solutions">Medical Devices</a><a href="#" data-cv-public="solutions">Industrial Automation</a><a href="#" data-cv-public="solutions">Hardware Startups</a></div>
+        <div class="mk-footer-col"><strong>Resources</strong><a href="#" data-cv-public="resources">Getting Started</a><a href="#" data-cv-public="resources">Demo BOMs</a><a href="#" data-cv-public="resources">Engineering Guides</a><a href="#" data-cv-public="resources">FAQ</a></div>
+        <div class="mk-footer-col"><strong>Company</strong><a href="#" data-cv-public="company">About</a><a href="#" data-cv-public="security">Security</a><a href="#" data-cv-public="contact">Contact</a><a href="#" data-cv-public="privacy">Privacy</a><a href="#" data-cv-public="terms">Terms</a></div><div class="mk-footer-col"><strong>Data coverage</strong><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>Octopart — Coming soon</span></div>
       </div>
       <div class="mk-footer-bottom"><span>© 2026 Cadivor. All rights reserved.</span><span>Engineering decision support—not a replacement for professional validation.</span></div>
     </div></footer>
@@ -273,7 +341,7 @@ def _cta(title: str = "Make your next BOM review faster and more decisive.", cop
     _html(f"""
     <section class="mk-section"><div class="mk-wrap"><div class="mk-cta">
       <div><h2>{escape(title)}</h2><p>{escape(copy)}</p></div>
-      <div class="mk-actions" style="margin:0"><a class="mk-btn mk-btn-primary" href="?auth=signup" target="_self">Start Free Trial</a><a class="mk-btn mk-btn-light" href="?public=contact" target="_self">Book a Demo</a></div>
+      <div class="mk-actions" style="margin:0"><a class="mk-btn mk-btn-primary" href="#" data-cv-auth="signup">Start Free Trial</a><a class="mk-btn mk-btn-light" href="#" data-cv-public="contact">Book a Demo</a></div>
     </div></div></section>
     """)
 
@@ -310,21 +378,21 @@ def _home() -> None:
     _html(f"""
     <main class="mk-shell">
       <section class="mk-hero"><div class="mk-wide mk-hero-grid">
-        <div><div class="mk-eyebrow"><i class="mk-eyebrow-dot"></i>AI-powered engineering and supply-chain intelligence</div><h1><span class="line">Make Better Engineering</span><span class="line">Decisions. <span class="mk-accent">Faster.</span></span></h1><p class="mk-hero-copy">Cadivor analyzes BOMs, monitors supply-chain and lifecycle risk, evaluates supplier exposure, recommends qualified alternatives, and helps engineering, procurement, and supply-chain teams keep production on track.</p><div class="mk-hero-capabilities"><span>Lifecycle & obsolescence</span><span>Supplier concentration</span><span>Qualified alternatives</span><span>AI recommendations</span></div><div class="mk-actions"><a class="mk-btn mk-btn-primary" href="?auth=signup" target="_self">Start Free Trial</a><a class="mk-btn mk-btn-light" href="?public=contact" target="_self">Book a Demo</a></div><div class="mk-proof"><span><b>✓</b>No credit card required</span><span><b>✓</b>Setup in minutes</span><span><b>✓</b>Cancel anytime</span></div></div>
+        <div><div class="mk-eyebrow"><i class="mk-eyebrow-dot"></i>AI-powered engineering and supply-chain intelligence</div><h1><span class="line">Make Better Engineering</span><span class="line">Decisions. <span class="mk-accent">Faster.</span></span></h1><p class="mk-hero-copy">Cadivor analyzes BOMs, monitors supply-chain and lifecycle risk, evaluates supplier exposure, recommends qualified alternatives, and helps engineering, procurement, and supply-chain teams keep production on track.</p><div class="mk-hero-capabilities"><span>Lifecycle & obsolescence</span><span>Supplier concentration</span><span>Qualified alternatives</span><span>AI recommendations</span></div><div class="mk-actions"><a class="mk-btn mk-btn-primary" href="#" data-cv-auth="signup">Start Free Trial</a><a class="mk-btn mk-btn-light" href="#" data-cv-public="contact">Book a Demo</a></div><div class="mk-proof"><span><b>✓</b>No credit card required</span><span><b>✓</b>Setup in minutes</span><span><b>✓</b>Cancel anytime</span></div></div>
         {_dashboard_mockup()}
       </div></section>
       <section class="mk-trust"><div class="mk-wrap mk-trust-inner"><span class="mk-trust-label">Connected component and supplier data</span><span class="mk-logo-text">DigiKey</span><span class="mk-logo-text">Mouser</span><span class="mk-logo-text">Newark</span><span class="mk-trust-divider"></span><span class="mk-trust-label">Planned data integrations</span><span class="mk-logo-text">Octopart <small>Coming soon</small></span><span class="mk-logo-text">Additional suppliers <small>Coming soon</small></span></div></section>
       <section class="mk-section mk-story-section"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">From fragmented research to accountable action</div><h2>Turn hours of BOM review into one connected decision workflow.</h2><p>Cadivor consolidates the work engineers, procurement teams, and supply-chain professionals normally complete across supplier sites, spreadsheets, meetings, and reports.</p></div><div class="mk-story-grid"><div class="mk-story-card before"><span class="mk-story-label">Without Cadivor</span><h3>Manual review across disconnected tools</h3><ul><li>Search multiple supplier and lifecycle sources</li><li>Rebuild risk summaries in spreadsheets</li><li>Compare alternatives without shared context</li><li>Coordinate engineering and procurement by email</li><li>Create reports and decision history manually</li></ul><div class="mk-story-metric"><strong>Hours</strong><span>to assemble a review</span></div></div><div class="mk-story-arrow">→</div><div class="mk-story-card after"><span class="mk-story-label">With Cadivor</span><h3>One evidence-backed engineering review</h3><ul><li>Upload the BOM and surface priority risks</li><li>See lifecycle, sourcing, supplier, and cost exposure</li><li>Rank alternatives with engineering context</li><li>Align engineering, procurement, and supply chain</li><li>Record decisions, monitor parts, and export reports</li></ul><div class="mk-story-metric"><strong>Minutes</strong><span>to understand what needs action</span></div></div></div></div></section>
       <section class="mk-section soft"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">One connected operating flow</div><h2>From uploaded BOM to accountable release decision.</h2><p>Each step creates evidence for the next team instead of restarting the review in another spreadsheet or meeting.</p></div><div class="mk-flow-story"><div class="mk-flow-node"><b>1 · Engineering</b><strong>Upload the BOM</strong><span>Normalize parts, quantities, and product context.</span></div><div class="mk-flow-node"><b>2 · Cadivor</b><strong>Surface exposure</strong><span>Lifecycle, supplier, inventory, lead-time, and cost risks.</span></div><div class="mk-flow-node"><b>3 · Procurement</b><strong>Validate options</strong><span>Compare suppliers and qualify replacement candidates.</span></div><div class="mk-flow-node"><b>4 · Review team</b><strong>Record the decision</strong><span>Approve, reject, assign, and preserve rationale.</span></div><div class="mk-flow-node"><b>5 · Leadership</b><strong>Release with confidence</strong><span>Use executive reports and continuous monitoring.</span></div></div></div></section>
       <section class="mk-section"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">The Cadivor platform</div><h2>Everything you need to manage engineering and supply-chain risk</h2><p>From first BOM upload through release, monitoring, and audit-ready decisions, Cadivor keeps the full engineering review connected.</p></div><div class="mk-card-grid eight">
-        <div class="mk-card"><div class="mk-icon">{_icon('bom')}</div><h3>BOM & Supply-Chain Intelligence</h3><p>Analyze lifecycle, availability, lead-time, supplier concentration, sourcing resilience, and supply-chain exposure across every component.</p><a href="?public=product" target="_self">Learn more →</a></div>
-        <div class="mk-card"><div class="mk-icon">{_icon('brain')}</div><h3>Engineering Intelligence</h3><p>Turn risk signals into prioritized conclusions, evidence, and release-oriented recommendations.</p><a href="?public=product#engineering-intelligence" target="_self">Learn more →</a></div>
-        <div class="mk-card"><div class="mk-icon">{_icon('chat')}</div><h3>Ask Cadivor</h3><p>Ask natural-language questions about the active BOM and challenge recommendations with evidence.</p><a href="?public=product#copilot" target="_self">Learn more →</a></div>
-        <div class="mk-card"><div class="mk-icon">{_icon('compare')}</div><h3>Alternative Finder</h3><p>Compare replacement candidates with lifecycle, sourcing, and implementation context.</p><a href="?public=product#alternatives" target="_self">Learn more →</a></div>
-        <div class="mk-card"><div class="mk-icon">{_icon('monitor')}</div><h3>Continuous Monitoring</h3><p>Track critical components and surface lifecycle, stock, and supplier changes early.</p><a href="?public=product#monitoring" target="_self">Learn more →</a></div>
-        <div class="mk-card"><div class="mk-icon">{_icon('decision')}</div><h3>Engineering Decisions</h3><p>Approve, reject, assign, and document decisions with rationale and review history.</p><a href="?public=product" target="_self">Learn more →</a></div>
-        <div class="mk-card"><div class="mk-icon">{_icon('report')}</div><h3>Executive Reports</h3><p>Generate decision-ready summaries, lifecycle reports, and engineering evidence packages.</p><a href="?public=product#reports" target="_self">Learn more →</a></div>
-        <div class="mk-card"><div class="mk-icon">{_icon('portfolio')}</div><h3>Portfolio Intelligence</h3><p>See risk exposure, monitored parts, trends, and priority actions across product programs.</p><a href="?public=product" target="_self">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('bom')}</div><h3>BOM & Supply-Chain Intelligence</h3><p>Analyze lifecycle, availability, lead-time, supplier concentration, sourcing resilience, and supply-chain exposure across every component.</p><a href="#" data-cv-public="product">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('brain')}</div><h3>Engineering Intelligence</h3><p>Turn risk signals into prioritized conclusions, evidence, and release-oriented recommendations.</p><a href="#" data-cv-public="product">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('chat')}</div><h3>Ask Cadivor</h3><p>Ask natural-language questions about the active BOM and challenge recommendations with evidence.</p><a href="#" data-cv-public="product">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('compare')}</div><h3>Alternative Finder</h3><p>Compare replacement candidates with lifecycle, sourcing, and implementation context.</p><a href="#" data-cv-public="product">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('monitor')}</div><h3>Continuous Monitoring</h3><p>Track critical components and surface lifecycle, stock, and supplier changes early.</p><a href="#" data-cv-public="product">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('decision')}</div><h3>Engineering Decisions</h3><p>Approve, reject, assign, and document decisions with rationale and review history.</p><a href="#" data-cv-public="product">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('report')}</div><h3>Executive Reports</h3><p>Generate decision-ready summaries, lifecycle reports, and engineering evidence packages.</p><a href="#" data-cv-public="product">Learn more →</a></div>
+        <div class="mk-card"><div class="mk-icon">{_icon('portfolio')}</div><h3>Portfolio Intelligence</h3><p>See risk exposure, monitored parts, trends, and priority actions across product programs.</p><a href="#" data-cv-public="product">Learn more →</a></div>
       </div></div></section>
       <section class="mk-section soft" id="engineering-intelligence"><div class="mk-wrap mk-feature-split"><div class="mk-feature-copy"><div class="mk-kicker">Executive Decision Cockpit</div><h2>See what matters before production release.</h2><p>Cadivor turns a complex BOM into a concise decision view with release posture, confidence, cost exposure, priority risks, evidence, and next actions.</p><div class="mk-check-list"><div class="mk-check"><b>✓</b><span>Prioritized risks instead of undifferentiated alerts</span></div><div class="mk-check"><b>✓</b><span>Release-oriented engineering recommendations</span></div><div class="mk-check"><b>✓</b><span>Evidence explaining why each conclusion matters</span></div><div class="mk-check"><b>✓</b><span>Persistent engineering decision history</span></div></div></div><div class="mk-surface"><div class="mk-cockpit"><div class="mk-cockpit-title">Executive Decision Cockpit</div><div class="mk-cockpit-grid"><div class="mk-cockpit-card"><span>Release posture</span><strong>HOLD</strong></div><div class="mk-cockpit-card"><span>Confidence</span><strong>87%</strong></div><div class="mk-cockpit-card"><span>BOM health</span><strong>84</strong></div><div class="mk-cockpit-card"><span>Cost exposure</span><strong>$12.4K</strong></div></div><div class="mk-recommendation"><b>Recommended decision:</b> Resolve the two single-source lifecycle risks before production release. Qualify the proposed alternate for MPU6050 first.</div><div class="mk-cockpit-actions"><div class="mk-cockpit-action"><b>Priority action 01</b><span>Qualify MPU6050 alternate and confirm firmware impact.</span></div><div class="mk-cockpit-action"><b>Evidence needed</b><span>Manufacturer lifecycle confirmation and approved second source.</span></div></div></div></div></div></section>
       <section class="mk-section"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">Built for engineers</div><h2>A complete workflow from BOM to supply-chain decision</h2><p>Cadivor connects component evidence, engineering review, action, and monitoring without breaking context.</p></div><div class="mk-steps"><div class="mk-step"><div class="mk-step-num">1</div><h3>Upload BOM</h3><p>Import CSV or Excel component lists.</p></div><div class="mk-step"><div class="mk-step-num">2</div><h3>Analyze</h3><p>Evaluate lifecycle, stock, lead time, supplier concentration, and exposure.</p></div><div class="mk-step"><div class="mk-step-num">3</div><h3>Get insights</h3><p>Review prioritized risks and engineering evidence.</p></div><div class="mk-step"><div class="mk-step-num">4</div><h3>Compare options</h3><p>Shortlist and qualify replacement candidates.</p></div><div class="mk-step"><div class="mk-step-num">5</div><h3>Record decisions</h3><p>Approve actions with rationale and ownership.</p></div><div class="mk-step"><div class="mk-step-num">6</div><h3>Monitor</h3><p>Track lifecycle, inventory, pricing, lead-time, and supplier changes; then generate reports.</p></div></div></div></section>
@@ -360,7 +428,7 @@ def _page_hero(active: str, kicker: str, title: str, copy: str, visual: str | No
     _nav(active)
     visual_markup = visual or _hero_visual(active if active in {"product", "solutions", "pricing", "resources", "company", "security"} else "product")
     _html(f"""
-    <section class="mk-page-hero"><div class="mk-wide mk-page-hero-grid"><div><div class="mk-eyebrow"><i class="mk-eyebrow-dot"></i>{escape(kicker)}</div><h1>{escape(title)}</h1><p>{escape(copy)}</p><div class="mk-actions"><a class="mk-btn mk-btn-primary" href="?auth=signup" target="_self">Start Free Trial</a><a class="mk-btn mk-btn-light" href="?public=contact" target="_self">Book a Demo</a></div><div class="mk-proof"><span><b>✓</b>14-day full access</span><span><b>✓</b>No credit card</span><span><b>✓</b>CSV and Excel BOMs</span></div><div class="mk-page-outcomes"><span>Lifecycle risk</span><span>Supplier exposure</span><span>Alternatives</span><span>Decision records</span></div></div>{visual_markup}</div></section>
+    <section class="mk-page-hero"><div class="mk-wide mk-page-hero-grid"><div><div class="mk-eyebrow"><i class="mk-eyebrow-dot"></i>{escape(kicker)}</div><h1>{escape(title)}</h1><p>{escape(copy)}</p><div class="mk-actions"><a class="mk-btn mk-btn-primary" href="#" data-cv-auth="signup">Start Free Trial</a><a class="mk-btn mk-btn-light" href="#" data-cv-public="contact">Book a Demo</a></div><div class="mk-proof"><span><b>✓</b>14-day full access</span><span><b>✓</b>No credit card</span><span><b>✓</b>CSV and Excel BOMs</span></div><div class="mk-page-outcomes"><span>Lifecycle risk</span><span>Supplier exposure</span><span>Alternatives</span><span>Decision records</span></div></div>{visual_markup}</div></section>
     """)
 
 
@@ -413,10 +481,10 @@ def _pricing() -> None:
     _html("""
     <section class="mk-section"><div class="mk-wrap"><div class="mk-pricing">
       <div class="mk-price-card"><span class="mk-plan-label">Academic adoption</span><div class="mk-price-name">Student</div><div class="mk-price">$0</div><p>For university students, engineering clubs, and capstone teams.</p><ul><li>3 BOM analyses/month</li><li>25 components/BOM</li><li>Basic risk analysis and health score</li><li>Limited alternative search</li><li>Student Edition PDF watermark</li><li>Community support</li></ul><a class="mk-btn mk-btn-light" href="#" aria-disabled="true">Create Student Account</a></div>
-      <div class="mk-price-card"><span class="mk-plan-label">Individual use</span><div class="mk-price-name">Starter</div><div class="mk-price">$29<small>/month</small></div><p>For hobbyists, freelancers, makers, and prototype companies.</p><ul><li>10 BOM analyses/month</li><li>100 components/BOM</li><li>Basic reports and alternatives</li><li>PDF export</li><li>Email support</li><li>No monitoring or AI assistant</li></ul><a class="mk-btn mk-btn-light" href="?auth=signup" target="_self">Start Free Trial</a></div>
-      <div class="mk-price-card featured"><div class="mk-popular">Most popular</div><span class="mk-plan-label">Best value for professional teams</span><div class="mk-price-name">Professional</div><div class="mk-price">$99<small>/month</small></div><p>For professional engineers, hardware startups, procurement leads, and small engineering companies.</p><ul><li>Unlimited BOM analyses and components</li><li>Advanced AI recommendations</li><li>Engineering Decision Records</li><li>Supplier intelligence and advanced reports</li><li>2,500 monitored components</li><li>Priority email support</li></ul><a class="mk-btn mk-btn-primary" href="?auth=signup" target="_self">Start Free Trial</a></div>
-      <div class="mk-price-card"><span class="mk-plan-label">Best for teams</span><div class="mk-price-name">Business</div><div class="mk-price">$299<small>/month</small></div><p>For growing companies and engineering organizations.</p><ul><li>Everything in Professional</li><li>10 users included</li><li>Role-based approvals and shared BOM library</li><li>Unlimited monitoring</li><li>API, webhooks, audit logs, comments</li><li>Advanced analytics and priority support</li></ul><a class="mk-btn mk-btn-light" href="?auth=signup" target="_self">Start Free Trial</a></div>
-      <div class="mk-price-card enterprise"><span class="mk-plan-label">Organization-wide</span><div class="mk-price-name">Enterprise</div><div class="mk-price">Custom</div><p>Flexible deployment, integrations, security, support, and commercial terms tailored to your organization.</p><ul><li>Unlimited users, API, and monitoring</li><li>SSO, priority SLA, dedicated success manager</li><li>ERP and PLM integrations</li><li>Custom integrations and AI models</li><li>Training and migration assistance</li><li>On-premises option planned</li></ul><a class="mk-btn mk-btn-light" href="?public=contact" target="_self">Contact Sales</a></div>
+      <div class="mk-price-card"><span class="mk-plan-label">Individual use</span><div class="mk-price-name">Starter</div><div class="mk-price">$29<small>/month</small></div><p>For hobbyists, freelancers, makers, and prototype companies.</p><ul><li>10 BOM analyses/month</li><li>100 components/BOM</li><li>Basic reports and alternatives</li><li>PDF export</li><li>Email support</li><li>No monitoring or AI assistant</li></ul><a class="mk-btn mk-btn-light" href="#" data-cv-auth="signup">Start Free Trial</a></div>
+      <div class="mk-price-card featured"><div class="mk-popular">Most popular</div><span class="mk-plan-label">Best value for professional teams</span><div class="mk-price-name">Professional</div><div class="mk-price">$99<small>/month</small></div><p>For professional engineers, hardware startups, procurement leads, and small engineering companies.</p><ul><li>Unlimited BOM analyses and components</li><li>Advanced AI recommendations</li><li>Engineering Decision Records</li><li>Supplier intelligence and advanced reports</li><li>2,500 monitored components</li><li>Priority email support</li></ul><a class="mk-btn mk-btn-primary" href="#" data-cv-auth="signup">Start Free Trial</a></div>
+      <div class="mk-price-card"><span class="mk-plan-label">Best for teams</span><div class="mk-price-name">Business</div><div class="mk-price">$299<small>/month</small></div><p>For growing companies and engineering organizations.</p><ul><li>Everything in Professional</li><li>10 users included</li><li>Role-based approvals and shared BOM library</li><li>Unlimited monitoring</li><li>API, webhooks, audit logs, comments</li><li>Advanced analytics and priority support</li></ul><a class="mk-btn mk-btn-light" href="#" data-cv-auth="signup">Start Free Trial</a></div>
+      <div class="mk-price-card enterprise"><span class="mk-plan-label">Organization-wide</span><div class="mk-price-name">Enterprise</div><div class="mk-price">Custom</div><p>Flexible deployment, integrations, security, support, and commercial terms tailored to your organization.</p><ul><li>Unlimited users, API, and monitoring</li><li>SSO, priority SLA, dedicated success manager</li><li>ERP and PLM integrations</li><li>Custom integrations and AI models</li><li>Training and migration assistance</li><li>On-premises option planned</li></ul><a class="mk-btn mk-btn-light" href="#" data-cv-public="contact">Contact Sales</a></div>
     </div></div></section>
     <section class="mk-section soft"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">Feature comparison</div><h2>Choose the level that matches your review process.</h2></div><div class="mk-table-wrap"><table class="mk-compare"><thead><tr><th>Feature</th><th>Student</th><th>Starter</th><th>Professional</th><th>Business</th><th>Enterprise</th></tr></thead><tbody>
     <tr><td>BOM analysis</td><td>3/month</td><td>10/month</td><td class="mk-yes">Unlimited</td><td class="mk-yes">Unlimited</td><td class="mk-yes">Unlimited</td></tr>
@@ -442,10 +510,10 @@ def _resources() -> None:
     <section class="mk-section soft"><div class="mk-wrap"><div class="mk-resource-grid">
       <article class="mk-resource"><div class="mk-resource-type">Getting started</div><h3>Your first Cadivor analysis</h3><p>Prepare a BOM, upload it, understand the health score, review priority risks, and export a decision-ready report.</p><a href="#" aria-disabled="true">Open a workspace →</a></article>
       <article class="mk-resource"><div class="mk-resource-type">Template</div><h3>BOM formatting guide</h3><p>Use clean manufacturer part numbers and quantities in supported CSV or Excel files.</p><a href="#" aria-disabled="true">Use a sample BOM →</a></article>
-      <article class="mk-resource"><div class="mk-resource-type">Engineering guide</div><h3>Lifecycle exposure</h3><p>Understand Active, NRND, EOL, obsolete, and unknown lifecycle signals.</p><a href="?public=contact" target="_self">Request the guide →</a></article>
-      <article class="mk-resource"><div class="mk-resource-type">Engineering guide</div><h3>Single-source risk</h3><p>Learn when supplier concentration becomes an engineering concern.</p><a href="?public=contact" target="_self">Request the guide →</a></article>
+      <article class="mk-resource"><div class="mk-resource-type">Engineering guide</div><h3>Lifecycle exposure</h3><p>Understand Active, NRND, EOL, obsolete, and unknown lifecycle signals.</p><a href="#" data-cv-public="contact">Request the guide →</a></article>
+      <article class="mk-resource"><div class="mk-resource-type">Engineering guide</div><h3>Single-source risk</h3><p>Learn when supplier concentration becomes an engineering concern.</p><a href="#" data-cv-public="contact">Request the guide →</a></article>
       <article class="mk-resource"><div class="mk-resource-type">Demo BOM</div><h3>Industrial controller example</h3><p>Explore lifecycle issues, sourcing concentration, alternatives, and release recommendations.</p><a href="#" aria-disabled="true">Analyze a demo BOM →</a></article>
-      <article class="mk-resource"><div class="mk-resource-type">Release notes</div><h3>Cadivor launch edition</h3><p>Review Engineering Intelligence, Ask Cadivor, Decision Cockpit, reports, and monitoring.</p><a href="?public=product" target="_self">Review the platform →</a></article>
+      <article class="mk-resource"><div class="mk-resource-type">Release notes</div><h3>Cadivor launch edition</h3><p>Review Engineering Intelligence, Ask Cadivor, Decision Cockpit, reports, and monitoring.</p><a href="#" data-cv-public="product">Review the platform →</a></article>
     </div></div></section>
     """)
     _cta("Start with a real BOM and see what Cadivor surfaces.", "Create a workspace and run your first analysis in minutes.")
@@ -526,6 +594,7 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     before client-side history normalization completes.
     """
     _marketing_css()
+    _install_internal_link_bridge()
     st.markdown("""<style id="cadivor-static-public-runtime">
     html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],section.main{background:#ffffff!important;color:#0b1730!important}
     [data-testid="stAppViewContainer"]{transition:none!important}
