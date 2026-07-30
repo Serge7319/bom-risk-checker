@@ -9,6 +9,7 @@ from html import escape
 from textwrap import dedent
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 PRODUCT_LINKS = [
@@ -90,6 +91,37 @@ def _marketing_css() -> None:
 
         /* Sprint 51.2 final polish */
         .mk-hero-grid{grid-template-columns:minmax(500px,525px) minmax(0,1fr);gap:56px}.mk-hero-copy{max-width:520px}.mk-product{width:100%;max-width:860px;justify-self:end}
+        /* Emergency Restoration 61.0.3 — explicit contrast tokens for navy surfaces. */
+        .mk-section.dark .mk-kicker,
+        .mk-section.dark .mk-eyebrow,
+        .mk-cta .mk-kicker,
+        .mk-footer .mk-kicker{color:#bcd4ff!important}
+        .mk-section.dark .mk-heading h2,
+        .mk-section.dark .mk-feature-copy h2,
+        .mk-section.dark .mk-feature-copy h3,
+        .mk-section.dark>.mk-wrap>h2,
+        .mk-section.dark>.mk-wrap>h3{color:#ffffff!important}
+        .mk-section.dark .mk-heading p,
+        .mk-section.dark .mk-feature-copy>p,
+        .mk-section.dark>.mk-wrap>p,
+        .mk-section.dark .mk-check span{color:#c8d6e9!important}
+        .mk-section.dark a:not(.mk-btn),
+        .mk-cta a:not(.mk-btn),
+        .mk-footer a{color:#b9d1ff!important}
+        .mk-section.dark a:not(.mk-btn):hover,
+        .mk-cta a:not(.mk-btn):hover,
+        .mk-footer a:hover{color:#ffffff!important}
+        .mk-cta .mk-btn-primary,.mk-cta .mk-btn-primary *{color:#ffffff!important}
+        .mk-cta .mk-btn-light,.mk-cta .mk-btn-light *{color:#0b1730!important}
+        .mk-security-banner a:not(.mk-btn),
+        .mk-visual-highlight a:not(.mk-btn),
+        .mk-ai-box a:not(.mk-btn),
+        .mk-cockpit a:not(.mk-btn){color:#c7dcff!important}
+        .mk-security-banner a:not(.mk-btn):hover,
+        .mk-visual-highlight a:not(.mk-btn):hover,
+        .mk-ai-box a:not(.mk-btn):hover,
+        .mk-cockpit a:not(.mk-btn):hover{color:#ffffff!important}
+
         .mk-page-hero{padding:72px 0;background:radial-gradient(circle at 80% 18%,rgba(49,111,246,.24),transparent 31%),linear-gradient(135deg,#06142c,#0d2a59);color:#fff}.mk-page-hero-grid{display:grid;grid-template-columns:minmax(0,.95fr) minmax(420px,.85fr);gap:70px;align-items:center}.mk-page-hero h1{font-size:clamp(46px,4vw,64px);line-height:1.05;letter-spacing:-.05em;color:#fff!important;max-width:760px}.mk-page-hero p{font-size:17px;line-height:1.7;color:#c7d2e4!important;max-width:720px}.mk-hero-visual{background:rgba(255,255,255,.96);border:1px solid rgba(255,255,255,.5);border-radius:18px;padding:18px;box-shadow:0 30px 85px rgba(0,0,0,.28)}.mk-visual-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;color:#0b1730;font-size:12px;font-weight:800}.mk-visual-chip{padding:5px 8px;border-radius:999px;background:#eaf1ff;color:#2563eb!important;font-size:9px}.mk-visual-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.mk-visual-card{border:1px solid #dfe7f1;border-radius:11px;padding:13px;background:#fff}.mk-visual-card strong{display:block;color:#0b1730!important;font-size:18px}.mk-visual-card span{font-size:9px;color:#718198!important;text-transform:uppercase;letter-spacing:.06em}.mk-visual-list{margin-top:10px;display:grid;gap:8px}.mk-visual-row{display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:center;padding:9px;border-radius:9px;background:#f5f8fc;color:#53657b!important;font-size:10px}.mk-visual-row b{color:#0b1730!important}.mk-visual-badge{width:28px;height:28px;border-radius:8px;background:#e8f0ff;display:grid;place-items:center;color:#2563eb!important;font-weight:800}.mk-visual-status{font-size:9px;font-weight:800;color:#15985a!important}.mk-visual-status.warn{color:#c77b11!important}.mk-visual-status.risk{color:#d74349!important}.mk-visual-highlight{margin-top:10px;padding:11px 12px;border-radius:10px;background:linear-gradient(135deg,#0d2b59,#19468d);color:#fff!important;display:flex;justify-content:space-between;gap:14px;align-items:center}.mk-visual-highlight b{display:block;color:#fff!important;font-size:11px}.mk-visual-highlight span{color:#d5e3f8!important;font-size:9px;line-height:1.45}.mk-visual-cta{flex:none;padding:6px 9px;border-radius:7px;background:#2f6df6;color:#fff!important;font-size:8px;font-weight:800}.mk-subnav{border-bottom:1px solid #e2e8f0;background:#fff}.mk-subnav-inner{display:flex;gap:9px;flex-wrap:wrap;padding:15px 0}.mk-subnav-inner a{display:inline-flex;padding:8px 12px;border-radius:999px;background:#f3f6fb;border:1px solid #e0e7f0;color:#334155!important;text-decoration:none!important;font-size:12px;font-weight:750}.mk-subnav-inner a:hover{background:#e8f0ff;color:#1d4ed8!important}.mk-pricing{grid-template-columns:repeat(5,1fr)}.mk-price-card{display:flex;flex-direction:column}.mk-price-card ul{flex:1}.mk-price-card.enterprise{background:linear-gradient(145deg,#0b1d3e,#15366e);border-color:#284f93}.mk-price-card.enterprise *{color:#fff!important}.mk-price-card.enterprise p,.mk-price-card.enterprise li{color:#cfdbed!important}.mk-price-card.enterprise .mk-btn-light{background:#fff!important;color:#0b1730!important;border-color:#fff!important;width:100%;box-sizing:border-box}.mk-price-card.enterprise .mk-btn-light:hover{background:#edf4ff!important}.mk-plan-label{display:inline-flex;align-self:flex-start;padding:5px 9px;border-radius:999px;background:#eef4ff;color:#2563eb!important;font-size:9px;font-weight:800;margin-bottom:10px}.mk-price-card.enterprise .mk-plan-label{background:rgba(255,255,255,.12)}.mk-security-banner{background:linear-gradient(135deg,#0c2855,#123a78);border-radius:18px;padding:28px;color:#fff;margin-bottom:28px;display:grid;grid-template-columns:1.2fr .8fr;gap:25px;align-items:center}.mk-security-banner h2{color:#fff!important;margin:0 0 10px}.mk-security-banner p{color:#d3deef!important}.mk-security-points{display:grid;gap:9px}.mk-security-point{display:flex;gap:9px;align-items:flex-start;color:#e8effa!important;font-size:13px}.mk-security-point b{color:#75e2a7!important}.mk-trust-note{font-size:12px;color:#64748b!important;margin-top:14px}.mk-table-wrap{overflow-x:auto}.mk-compare{min-width:900px}
         /* Sprint 51.2.4 — Atlassian-inspired readable type scale */
         .mk-shell{font-size:16px}
@@ -404,7 +436,7 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     _marketing_css()
 
     st.markdown("""<style id="cadivor-static-public-runtime">
-    html,body,.stApp,[data-testid="stAppViewContainer"]{background:#06142c!important}
+    html,body,.stApp,[data-testid="stAppViewContainer"]{background:#ffffff!important}
     .mk-hero,.mk-page-hero{animation:none!important;transition:none!important}
     </style>""", unsafe_allow_html=True)
     requested_page = _query_value("public")
@@ -428,4 +460,23 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
         "privacy": lambda: _legal_page("privacy"),
         "terms": lambda: _legal_page("terms"),
     }
-    routes.get(str(page or "home").lower(), _home)()
+    normalized_page = str(page or "home").lower()
+    previous_page = str(st.session_state.get("cadivor_last_public_render") or "")
+    if normalized_page != previous_page:
+        # Query-based marketing navigation can preserve the browser's former
+        # scroll position. Reset only when the public destination changes.
+        components.html(
+            """<script>
+            try {
+              window.parent.scrollTo({top: 0, left: 0, behavior: 'instant'});
+              const doc = window.parent.document;
+              const main = doc.querySelector('section.main, [data-testid="stMain"], [data-testid="stAppViewContainer"]');
+              if (main) main.scrollTop = 0;
+            } catch (e) {}
+            </script>""",
+            height=0,
+            width=0,
+        )
+        st.session_state["cadivor_last_public_render"] = normalized_page
+    routes.get(normalized_page, _home)()
+    st.session_state.pop("cadivor_signing_out", None)
