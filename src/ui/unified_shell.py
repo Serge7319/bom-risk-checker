@@ -124,16 +124,21 @@ def render_unified_shell(
             st.button("Notifications", key="cv_foundation_notifications", use_container_width=True, on_click=_commit_navigation, args=("Notifications",))
             st.button("Help center", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
             st.divider()
-            if st.button(
+            def _commit_signout() -> None:
+                # Streamlit runs on_click callbacks before the widget rerun.  By
+                # committing logout here, the first click cannot be consumed by
+                # the popover closing before authentication state changes.
+                st.session_state["cadivor_profile_menu_open"] = False
+                st.session_state["cadivor_signing_out"] = True
+                request_logout()
+
+            st.button(
                 "Sign out",
                 key="cv_foundation_signout",
                 type="secondary",
                 use_container_width=True,
-            ):
-                st.session_state["cadivor_profile_menu_open"] = False
-                request_logout()
-                # The button click already schedules the one required rerun.
-                # A second explicit rerun caused the public page to remount.
+                on_click=_commit_signout,
+            )
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
