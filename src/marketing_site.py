@@ -689,6 +689,53 @@ def _legal_page(kind: str) -> None:
 
 
 
+def _sprint63_marketing_polish() -> None:
+    """Apply the final public-site design system without changing routing or auth."""
+    st.markdown(
+        """
+        <style id="cadivor-sprint-63-marketing-polish">
+        :root{
+          --mk-space-1:8px;--mk-space-2:12px;--mk-space-3:16px;--mk-space-4:24px;
+          --mk-space-5:32px;--mk-space-6:48px;--mk-space-7:72px;--mk-space-8:96px;
+          --mk-radius-sm:10px;--mk-radius-md:16px;--mk-radius-lg:22px;
+          --mk-ease:cubic-bezier(.2,.8,.2,1);
+          --mk-card-shadow:0 14px 42px rgba(12,31,64,.07);
+          --mk-card-shadow-hover:0 22px 55px rgba(12,31,64,.11);
+        }
+        .mk-shell{font-size:16px;line-height:1.65;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+        .mk-wrap{width:min(1200px,calc(100% - 48px))}.mk-wide{width:min(1360px,calc(100% - 48px))}
+        .mk-section{padding:var(--mk-space-8) 0!important}.mk-section.compact{padding:var(--mk-space-7) 0!important}
+        .mk-heading{max-width:760px;margin:0 auto var(--mk-space-6)!important}.mk-heading h2,.mk-feature-copy h2{font-size:clamp(34px,3.35vw,46px)!important;line-height:1.1!important;letter-spacing:-.04em!important;margin:0 0 16px!important}.mk-heading p,.mk-feature-copy>p{font-size:17px!important;line-height:1.75!important}
+        .mk-page-hero{padding:92px 0 88px!important}.mk-page-hero h1{font-size:clamp(44px,4.7vw,66px)!important;line-height:1.03!important;letter-spacing:-.052em!important}.mk-page-hero p{max-width:680px;font-size:18px!important;line-height:1.72!important}
+        .mk-hero{padding:100px 0 92px!important}.mk-hero h1{line-height:1.02!important;letter-spacing:-.055em!important}.mk-hero-copy{font-size:18px!important;line-height:1.72!important}
+        .mk-card,.mk-industry,.mk-resource,.mk-price-card,.mk-story-card,.mk-role-card,.mk-industry-pill,.mk-flow-node,.mk-faq-item{border-radius:var(--mk-radius-md)!important;box-shadow:var(--mk-card-shadow)!important;transition:transform 180ms var(--mk-ease),box-shadow 180ms var(--mk-ease),border-color 180ms var(--mk-ease)!important}
+        .mk-card,.mk-industry,.mk-resource,.mk-price-card{padding:30px!important}.mk-card h3,.mk-industry h3,.mk-resource h3{margin:17px 0 9px!important;line-height:1.3!important}.mk-card p,.mk-industry p,.mk-resource p,.mk-price-card p,.mk-price-card li{line-height:1.7!important}
+        @media(hover:hover){.mk-card:hover,.mk-industry:hover,.mk-resource:hover,.mk-role-card:hover,.mk-industry-pill:hover{transform:translateY(-2px);box-shadow:var(--mk-card-shadow-hover)!important;border-color:#c7d8ee!important}.mk-btn:hover{transform:translateY(-1px);filter:brightness(1.02)}}
+        .mk-btn{min-height:44px!important;padding:0 19px!important;border-radius:9px!important;transition:transform 160ms var(--mk-ease),box-shadow 160ms var(--mk-ease),background 160ms var(--mk-ease)!important}.mk-btn:focus-visible{outline:3px solid rgba(117,167,255,.42)!important;outline-offset:3px!important}
+        .mk-nav{height:74px!important}.mk-links{gap:25px!important}.mk-nav-actions{gap:11px!important}
+        .st-key-cv_public_nav button{min-height:40px!important;border-radius:8px!important;transition:background 150ms var(--mk-ease),color 150ms var(--mk-ease),border-color 150ms var(--mk-ease)!important}.st-key-cv_public_nav button:focus-visible{outline:2px solid #75a7ff!important;outline-offset:2px!important}
+        .mk-cta{border-radius:var(--mk-radius-lg)!important;padding:42px 46px!important}.mk-cta h2{font-size:clamp(28px,3vw,38px)!important}.mk-cta p{font-size:15px!important;line-height:1.65!important}
+        .mk-footer{padding-top:64px!important}.st-key-cv_native_footer{padding-top:60px!important;padding-bottom:26px!important}
+        .st-key-cv_native_footer [data-testid="stHorizontalBlock"]{gap:40px!important;align-items:flex-start!important}
+        .st-key-cv_native_footer [data-testid="column"]{min-width:0!important}
+        .st-key-cv_native_footer .cv-footer-heading{height:auto!important;min-height:28px!important;margin:0 0 10px!important;align-items:flex-start!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"]{min-height:34px!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button{min-height:34px!important;padding:6px 0!important;font-size:13px!important;line-height:1.42!important;letter-spacing:0!important;align-items:flex-start!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button p{margin:0!important;text-align:left!important;line-height:1.42!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"]::after{left:0!important;bottom:2px!important;width:18px!important;height:2px!important}
+        .st-key-cv_native_footer .cv-footer-coverage span{height:34px!important;align-items:flex-start!important;padding-top:6px!important;line-height:1.42!important}
+        .st-key-cv_native_footer .cv-footer-bottom{margin-top:40px!important;padding-top:20px!important;line-height:1.55!important}
+        .mk-footer-col a,.mk-footer-col button{transition:color 150ms var(--mk-ease)!important}
+        @media(max-width:1100px){.mk-section{padding:78px 0!important}.mk-page-hero{padding:78px 0 72px!important}}
+        @media(max-width:820px){.mk-wrap,.mk-wide{width:min(100% - 34px,1200px)}.mk-section{padding:66px 0!important}.mk-page-hero,.mk-hero{padding:70px 0 64px!important}.mk-heading{margin-bottom:38px!important}.mk-cta{padding:32px!important}.st-key-cv_native_footer{padding-left:20px!important;padding-right:20px!important}.st-key-cv_native_footer [data-testid="stHorizontalBlock"]{gap:28px!important}}
+        @media(max-width:560px){.mk-section{padding:56px 0!important}.mk-page-hero h1{font-size:40px!important}.mk-heading h2,.mk-feature-copy h2{font-size:32px!important}.mk-hero-copy,.mk-page-hero p{font-size:16px!important}.mk-card,.mk-industry,.mk-resource,.mk-price-card{padding:24px!important}.mk-cta{padding:28px 24px!important}.st-key-cv_native_footer [data-testid="column"]{min-width:100%!important;flex-basis:100%!important}}
+        @media(prefers-reduced-motion:reduce){.mk-shell *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_marketing_site(*, forced_page: str | None = None) -> None:
     """Render the signed-out marketing website.
 
@@ -697,6 +744,7 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     before client-side history normalization completes.
     """
     _marketing_css()
+    _sprint63_marketing_polish()
     _install_internal_link_bridge()
     st.markdown("""<style id="cadivor-static-public-runtime">
     html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],section.main{background:#ffffff!important;color:#0b1730!important}
