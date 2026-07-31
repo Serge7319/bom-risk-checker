@@ -276,10 +276,28 @@ def _marketing_css() -> None:
 
 
 def _set_public_route(route: str) -> None:
-    """Commit a marketing route without replacing the browser document."""
+    """Commit a top-level marketing route without replacing the browser document."""
     normalized = str(route or "home").strip().lower() or "home"
     st.session_state["cadivor_public_route"] = normalized
     st.session_state["cadivor_root_state"] = "public"
+    st.session_state["cadivor_public_section"] = ""
+    st.session_state["cadivor_footer_active_item"] = ""
+    st.session_state["cadivor_public_scroll_nonce"] = int(st.session_state.get("cadivor_public_scroll_nonce", 0)) + 1
+    st.session_state.pop("cadivor_last_public_render", None)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
+
+def _set_public_destination(route: str, section: str = "", item_id: str = "") -> None:
+    """Navigate to a public page or a named section with one stable callback."""
+    normalized = str(route or "home").strip().lower() or "home"
+    target = str(section or "").strip().lower().lstrip("#")
+    st.session_state["cadivor_public_route"] = normalized
+    st.session_state["cadivor_root_state"] = "public"
+    st.session_state["cadivor_public_section"] = target
+    st.session_state["cadivor_footer_active_item"] = str(item_id or "").strip().lower()
     st.session_state["cadivor_public_scroll_nonce"] = int(st.session_state.get("cadivor_public_scroll_nonce", 0)) + 1
     st.session_state.pop("cadivor_last_public_render", None)
     try:
@@ -343,124 +361,81 @@ def _nav(active: str = "home") -> None:
 
 
 def _footer(active: str | None = None) -> None:
-    """Render one persistent, direct-control footer.
-
-    Widget keys are explicit and invariant across every public route. The visible
-    control is the Streamlit widget that owns the callback; no proxy, delegated
-    JavaScript handler, or route-derived key participates in footer navigation.
-    """
+    """Render a stable footer with explicit page/section destinations."""
     current_route = str(active or st.session_state.get("cadivor_public_route") or "home").strip().lower()
-    # One restrained active marker per route. Several footer labels intentionally
-    # share a destination, so route equality alone must not highlight them all.
-    active_footer_item = {
-        "product": "overview",
-        "solutions": "robotics",
-        "pricing": "pricing",
-        "resources": "getting_started",
-        "company": "about",
-        "security": "security",
-        "contact": "contact",
-        "privacy": "privacy",
-        "terms": "terms",
-    }.get(current_route)
+    active_footer_item = str(st.session_state.get("cadivor_footer_active_item") or "").strip().lower()
+    if not active_footer_item:
+        active_footer_item = {
+            "product": "overview", "solutions": "robotics", "pricing": "pricing",
+            "resources": "getting_started", "company": "about", "security": "security",
+            "contact": "contact", "privacy": "privacy", "terms": "terms",
+        }.get(current_route, "")
+
     footer_groups = (
         ("Product", (
-            ("overview", "Overview", "product"),
-            ("engineering_intelligence", "Engineering Intelligence", "product"),
-            ("ask_cadivor", "Ask Cadivor", "product"),
-            ("pricing", "Pricing", "pricing"),
+            ("overview", "Overview", "product", "bom-analyzer"),
+            ("engineering_intelligence", "Engineering Intelligence", "product", "engineering-intelligence"),
+            ("ask_cadivor", "Ask Cadivor", "product", "copilot"),
+            ("pricing", "Pricing", "pricing", ""),
         )),
         ("Solutions", (
-            ("robotics", "Robotics", "solutions"),
-            ("medical_devices", "Medical Devices", "solutions"),
-            ("industrial_automation", "Industrial Automation", "solutions"),
-            ("hardware_startups", "Hardware Startups", "solutions"),
+            ("robotics", "Robotics", "solutions", "robotics"),
+            ("medical_devices", "Medical Devices", "solutions", "medical"),
+            ("industrial_automation", "Industrial Automation", "solutions", "industrial"),
+            ("hardware_startups", "Hardware Startups", "solutions", "hardware-startups"),
         )),
         ("Resources", (
-            ("getting_started", "Getting Started", "resources"),
-            ("demo_boms", "Demo BOMs", "resources"),
-            ("engineering_guides", "Engineering Guides", "resources"),
-            ("faq", "FAQ", "resources"),
+            ("getting_started", "Getting Started", "resources", "getting-started"),
+            ("demo_boms", "Demo BOMs", "resources", "demo-boms"),
+            ("engineering_guides", "Engineering Guides", "resources", "engineering-guides"),
+            ("faq", "FAQ", "resources", "faq"),
         )),
         ("Company", (
-            ("about", "About", "company"),
-            ("security", "Security", "security"),
-            ("contact", "Contact", "contact"),
-            ("privacy", "Privacy", "privacy"),
-            ("terms", "Terms", "terms"),
+            ("about", "About", "company", "about"),
+            ("security", "Security", "security", ""),
+            ("contact", "Contact", "contact", ""),
+            ("privacy", "Privacy", "privacy", ""),
+            ("terms", "Terms", "terms", ""),
         )),
     )
 
     st.markdown(
         """
         <style>
-        .st-key-cv_native_footer {
-          position: relative; margin-top: 0;
-          padding: 52px max(24px, calc((100vw - 1180px) / 2)) 24px;
-          background: #06142c; color: #ffffff;
-        }
-        .st-key-cv_native_footer::before {content:"";position:absolute;inset:0 calc(50% - 50vw);z-index:-1;background:#06142c}
-        .st-key-cv_native_footer [data-testid="stHorizontalBlock"] {gap:34px}
-        .st-key-cv_native_footer [data-testid="stMarkdownContainer"] p {margin:0;color:#91a4bf!important;font-size:13px!important;line-height:1.7!important}
-        .st-key-cv_native_footer .cv-footer-heading {margin:1px 0 10px;color:#fff!important;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
-        .st-key-cv_native_footer .cv-footer-coverage {display:grid;gap:11px;color:#8fa0b8!important;font-size:13px}
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] {margin-bottom:2px}
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button {
-          min-height:36px!important;height:36px!important;width:100%!important;margin:0!important;
-          padding:7px 10px!important;border:1px solid transparent!important;border-radius:8px!important;
-          background:transparent!important;box-shadow:none!important;color:#aebdd0!important;
-          font-size:13px!important;font-weight:550!important;line-height:1.2!important;text-align:left!important;
-          justify-content:flex-start!important;cursor:pointer!important;
-          transition:color .14s ease,background-color .14s ease,border-color .14s ease,transform .08s ease!important;
-        }
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:hover {color:#fff!important;background:rgba(255,255,255,.075)!important;border-color:rgba(255,255,255,.09)!important}
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:active {transform:translateY(1px)!important;background:rgba(255,255,255,.12)!important}
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:focus-visible {color:#fff!important;outline:2px solid #75a7ff!important;outline-offset:2px!important}
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"] {
-          color:#ffffff!important;background:transparent!important;border-color:transparent!important;font-weight:700!important;
-          box-shadow:inset 2px 0 0 #75a7ff!important;
-        }
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"]::after {content:none!important}
-        .st-key-cv_native_footer .st-key-cv_footer_brand button {display:inline-flex!important;align-items:center!important;gap:10px!important;min-height:42px!important;width:auto!important;padding:4px 8px 4px 0!important;color:#fff!important;font-size:20px!important;font-weight:800!important;letter-spacing:-.025em!important}
-        .st-key-cv_native_footer .st-key-cv_footer_brand button::before {content:"C";display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#3478ff,#1e56cf);color:#fff;font-size:16px;font-weight:900;box-shadow:0 8px 24px rgba(47,109,246,.28)}
-        .st-key-cv_native_footer .cv-footer-bottom {display:flex;justify-content:space-between;gap:20px;margin-top:34px;padding-top:18px;border-top:1px solid rgba(255,255,255,.09);color:#8192aa;font-size:11px}
+        .st-key-cv_native_footer{position:relative;margin-top:0;padding:52px max(24px,calc((100vw - 1180px)/2)) 24px;background:#06142c;color:#fff}
+        .st-key-cv_native_footer::before{content:"";position:absolute;inset:0 calc(50% - 50vw);z-index:-1;background:#06142c}
+        .st-key-cv_native_footer [data-testid="stHorizontalBlock"]{gap:34px;align-items:flex-start!important}
+        .st-key-cv_native_footer [data-testid="stMarkdownContainer"] p{margin:0;color:#91a4bf!important;font-size:13px!important;line-height:1.7!important}
+        .st-key-cv_native_footer .cv-footer-heading{height:24px;margin:0 0 8px;color:#fff!important;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center}
+        .st-key-cv_native_footer .cv-footer-coverage{display:grid;gap:0;color:#8fa0b8!important;font-size:13px}
+        .st-key-cv_native_footer .cv-footer-coverage span{height:36px;display:flex;align-items:center;margin:0!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"]{margin:0!important;padding:0!important;min-height:36px!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button{min-height:36px!important;height:auto!important;width:100%!important;margin:0!important;padding:7px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:#aebdd0!important;font-size:13px!important;font-weight:550!important;line-height:1.35!important;text-align:left!important;justify-content:flex-start!important;white-space:normal!important;cursor:pointer!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:hover{color:#fff!important;background:transparent!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:active{transform:none!important;color:#fff!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:focus-visible{color:#fff!important;outline:1px solid #75a7ff!important;outline-offset:2px!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"]{color:#fff!important;background:transparent!important;border:0!important;font-weight:700!important;box-shadow:none!important;position:relative!important}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"]::after{content:""!important;position:absolute!important;left:0!important;bottom:4px!important;width:22px!important;height:2px!important;border-radius:2px!important;background:#75a7ff!important}
+        .st-key-cv_native_footer .st-key-cv_footer_brand button{display:inline-flex!important;align-items:center!important;gap:10px!important;min-height:42px!important;width:auto!important;padding:4px 8px 4px 0!important;color:#fff!important;font-size:20px!important;font-weight:800!important;letter-spacing:-.025em!important}
+        .st-key-cv_native_footer .st-key-cv_footer_brand button::before{content:"C";display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#3478ff,#1e56cf);color:#fff;font-size:16px;font-weight:900;box-shadow:0 8px 24px rgba(47,109,246,.28)}
+        .st-key-cv_native_footer .cv-footer-bottom{display:flex;justify-content:space-between;gap:20px;margin-top:34px;padding-top:18px;border-top:1px solid rgba(255,255,255,.09);color:#8192aa;font-size:11px}
         @media(max-width:900px){.st-key-cv_native_footer [data-testid="stHorizontalBlock"]{flex-wrap:wrap}.st-key-cv_native_footer [data-testid="column"]{min-width:42%;flex:1 1 42%}.st-key-cv_native_footer .cv-footer-bottom{flex-direction:column}}
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+        """, unsafe_allow_html=True)
 
     with st.container(key="cv_native_footer"):
-        cols = st.columns([1.55, 1, 1, 1, 1, 1], gap="large")
+        cols=st.columns([1.55,1,1,1,1,1],gap="large")
         with cols[0]:
-            st.button(
-                "Cadivor", key="cv_footer_brand", on_click=_set_public_route,
-                args=("home",), type="secondary",
-            )
+            st.button("Cadivor",key="cv_footer_brand",on_click=_set_public_route,args=("home",),type="secondary")
             st.markdown("Engineering intelligence that helps hardware teams understand BOM risk, evaluate alternatives, and make better decisions before production.")
-
-        for column_index, (heading, links) in enumerate(footer_groups, start=1):
+        for column_index,(heading,links) in enumerate(footer_groups,start=1):
             with cols[column_index]:
-                st.markdown(f'<div class="cv-footer-heading">{escape(heading)}</div>', unsafe_allow_html=True)
-                for item_id, label, route in links:
-                    st.button(
-                        label,
-                        key=f"cv_footer_{item_id}",
-                        on_click=_set_public_route,
-                        args=(route,),
-                        use_container_width=True,
-                        type="primary" if active_footer_item == item_id else "secondary",
-                    )
-
+                st.markdown(f'<div class="cv-footer-heading">{escape(heading)}</div>',unsafe_allow_html=True)
+                for item_id,label,route,section in links:
+                    st.button(label,key=f"cv_footer_{item_id}",on_click=_set_public_destination,args=(route,section,item_id),use_container_width=True,type="primary" if active_footer_item==item_id else "secondary")
         with cols[5]:
-            st.markdown("""
-                <div class="cv-footer-heading">Data coverage</div>
-                <div class="cv-footer-coverage"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>Octopart — Coming soon</span></div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("""
-            <div class="cv-footer-bottom"><span>© 2026 Cadivor. All rights reserved.</span><span>Engineering decision support—not a replacement for professional validation.</span></div>
-        """, unsafe_allow_html=True)
+            st.markdown('<div class="cv-footer-heading">Data coverage</div><div class="cv-footer-coverage"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>Octopart — Coming soon</span></div>',unsafe_allow_html=True)
+        st.markdown('<div class="cv-footer-bottom"><span>© 2026 Cadivor. All rights reserved.</span><span>Engineering decision support—not a replacement for professional validation.</span></div>',unsafe_allow_html=True)
 
 
 def _cta(title: str = "Make your next BOM review faster and more decisive.", copy: str = "Start with a 14-day full-access trial. No credit card required.") -> None:
@@ -586,6 +561,7 @@ def _solutions() -> None:
       <article class="mk-industry" id="robotics"><div class="mk-kicker">Robotics</div><h3>Protect long-lived robotic platforms from component disruption.</h3><p>Review controller, sensing, communications, and power-system BOMs before fragile components become field problems.</p></article>
       <article class="mk-industry" id="medical"><div class="mk-kicker">Medical devices</div><h3>Support controlled design decisions with clearer evidence.</h3><p>Connect lifecycle, supplier, and alternate-part evidence to disciplined engineering review.</p></article>
       <article class="mk-industry" id="industrial"><div class="mk-kicker">Industrial automation</div><h3>Maintain production continuity across long product lifecycles.</h3><p>Find exposure in PLC, I/O, drive, and controller BOMs before it reaches manufacturing.</p></article>
+      <article class="mk-industry" id="hardware-startups"><div class="mk-kicker">Hardware startups</div><h3>Build supply resilience before scaling production.</h3><p>Identify fragile sourcing, lifecycle, and alternate-part decisions while redesign is still affordable.</p></article>
       <article class="mk-industry"><div class="mk-kicker">Aerospace and defense</div><h3>Improve visibility into constrained and long-life electronics.</h3><p>Support obsolescence review, supplier exposure analysis, and alternate qualification planning.</p></article>
       <article class="mk-industry"><div class="mk-kicker">Hardware startups</div><h3>Build supply resilience before scale.</h3><p>Find avoidable lifecycle and sourcing risks while changes are still inexpensive.</p></article>
       <article class="mk-industry"><div class="mk-kicker">Universities and research</div><h3>Teach engineering decisions with real component evidence.</h3><p>Help capstone and research teams understand lifecycle and sourcing tradeoffs.</p></article>
@@ -634,13 +610,14 @@ def _resources() -> None:
     _page_hero("resources", "Engineering resources", "Build a stronger BOM review practice.", "Use Cadivor guides, demo BOMs, templates, and technical explanations to standardize how your team reviews component risk and engineering decisions.")
     _html("""
     <section class="mk-section soft"><div class="mk-wrap"><div class="mk-resource-grid">
-      <article class="mk-resource"><div class="mk-resource-type">Getting started</div><h3>Your first Cadivor analysis</h3><p>Prepare a BOM, upload it, understand the health score, review priority risks, and export a decision-ready report.</p><a href="#" aria-disabled="true">Open a workspace →</a></article>
-      <article class="mk-resource"><div class="mk-resource-type">Template</div><h3>BOM formatting guide</h3><p>Use clean manufacturer part numbers and quantities in supported CSV or Excel files.</p><a href="#" aria-disabled="true">Use a sample BOM →</a></article>
-      <article class="mk-resource"><div class="mk-resource-type">Engineering guide</div><h3>Lifecycle exposure</h3><p>Understand Active, NRND, EOL, obsolete, and unknown lifecycle signals.</p><button type="button" data-cv-public="contact">Request the guide →</button></article>
+      <article class="mk-resource" id="getting-started"><div class="mk-resource-type">Getting started</div><h3>Your first Cadivor analysis</h3><p>Prepare a BOM, upload it, understand the health score, review priority risks, and export a decision-ready report.</p><a href="#" aria-disabled="true">Open a workspace →</a></article>
+      <article class="mk-resource" id="demo-boms"><div class="mk-resource-type">Template</div><h3>BOM formatting guide</h3><p>Use clean manufacturer part numbers and quantities in supported CSV or Excel files.</p><a href="#" aria-disabled="true">Use a sample BOM →</a></article>
+      <article class="mk-resource" id="engineering-guides"><div class="mk-resource-type">Engineering guide</div><h3>Lifecycle exposure</h3><p>Understand Active, NRND, EOL, obsolete, and unknown lifecycle signals.</p><button type="button" data-cv-public="contact">Request the guide →</button></article>
       <article class="mk-resource"><div class="mk-resource-type">Engineering guide</div><h3>Single-source risk</h3><p>Learn when supplier concentration becomes an engineering concern.</p><button type="button" data-cv-public="contact">Request the guide →</button></article>
       <article class="mk-resource"><div class="mk-resource-type">Demo BOM</div><h3>Industrial controller example</h3><p>Explore lifecycle issues, sourcing concentration, alternatives, and release recommendations.</p><a href="#" aria-disabled="true">Analyze a demo BOM →</a></article>
       <article class="mk-resource"><div class="mk-resource-type">Release notes</div><h3>Cadivor launch edition</h3><p>Review Engineering Intelligence, Ask Cadivor, Decision Cockpit, reports, and monitoring.</p><button type="button" data-cv-public="product">Review the platform →</button></article>
     </div></div></section>
+    <section class="mk-section" id="faq"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">FAQ</div><h2>Common questions before your first analysis.</h2></div><div class="mk-card-grid"><div class="mk-card"><h3>What files can I upload?</h3><p>Cadivor supports structured CSV and Excel BOMs with manufacturer part numbers and quantities.</p></div><div class="mk-card"><h3>Does Cadivor replace engineering validation?</h3><p>No. Cadivor organizes decision evidence and recommendations; your team retains final qualification and release authority.</p></div><div class="mk-card"><h3>Can I evaluate the full workflow?</h3><p>Yes. The 14-day trial is designed to let teams test analysis, alternatives, monitoring, decisions, and reports.</p></div></div></div></section>
     """)
     _cta("Start with a real BOM and see what Cadivor surfaces.", "Create a workspace and run your first analysis in minutes.")
     _footer()
@@ -649,7 +626,7 @@ def _resources() -> None:
 def _company() -> None:
     _page_hero("company", "About Cadivor", "Hardware teams deserve better decision infrastructure.", "Cadivor replaces fragmented BOM review with a connected engineering intelligence workflow built around evidence, priorities, and action.")
     _html("""
-    <section class="mk-section"><div class="mk-wrap mk-feature-split"><div class="mk-feature-copy"><div class="mk-kicker">Mission</div><h2>Help engineering teams make better decisions before problems reach production.</h2><p>Cadivor turns fragmented supplier pages, spreadsheets, lifecycle signals, alternatives, and review notes into one repeatable workflow.</p></div><div class="mk-surface"><div class="mk-card" style="box-shadow:none"><div class="mk-icon">C</div><h3>Our core promise</h3><p>Upload a BOM. Understand the risks. See what matters. Decide what to do next.</p></div></div></div></section>
+    <section class="mk-section" id="about"><div class="mk-wrap mk-feature-split"><div class="mk-feature-copy"><div class="mk-kicker">Mission</div><h2>Help engineering teams make better decisions before problems reach production.</h2><p>Cadivor turns fragmented supplier pages, spreadsheets, lifecycle signals, alternatives, and review notes into one repeatable workflow.</p></div><div class="mk-surface"><div class="mk-card" style="box-shadow:none"><div class="mk-icon">C</div><h3>Our core promise</h3><p>Upload a BOM. Understand the risks. See what matters. Decide what to do next.</p></div></div></div></section>
     """)
     _cta("Help shape the future of engineering intelligence.", "Join the launch program and evaluate Cadivor on a real BOM.")
     _footer()
@@ -771,33 +748,39 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     }
     normalized_page = str(page or "home").lower()
     previous_page = str(st.session_state.get("cadivor_last_public_render") or "")
-    if normalized_page != previous_page:
-        # Query-based marketing navigation can preserve the browser's former
-        # scroll position. Reset only when the public destination changes.
-        components.html(
-            """<script>
-            (() => {
-              const reset = () => {
-                try {
-                  const win = window.parent;
-                  const doc = win.document;
-                  win.scrollTo(0, 0);
-                  doc.documentElement.scrollTop = 0;
-                  doc.body.scrollTop = 0;
-                  const targets = doc.querySelectorAll('section.main, [data-testid="stMain"], [data-testid="stAppViewContainer"], [data-testid="stMainBlockContainer"]');
-                  targets.forEach((node) => { node.scrollTop = 0; });
-                } catch (e) {}
-              };
-              reset();
-              requestAnimationFrame(reset);
-              setTimeout(reset, 40);
-              setTimeout(reset, 160);
-            })();
-            </script>""",
-            height=0,
-            width=0,
-        )
-        st.session_state["cadivor_last_public_render"] = normalized_page
+    requested_section = str(st.session_state.get("cadivor_public_section") or "").strip().lower().lstrip("#")
+    should_scroll = normalized_page != previous_page or bool(requested_section)
     if st.session_state.pop("cadivor_signing_out", False):
         st.markdown('<div class="cv-public-signout-toast">Signed out securely</div>', unsafe_allow_html=True)
     routes.get(normalized_page, _home)()
+    if should_scroll:
+        section_json = repr(requested_section)
+        components.html(
+            f"""<script>
+            (() => {{
+              const targetId = {section_json};
+              const apply = () => {{
+                try {{
+                  const win = window.parent;
+                  const doc = win.document;
+                  if (targetId) {{
+                    const target = doc.getElementById(targetId);
+                    if (target) {{ target.scrollIntoView({{behavior:'auto', block:'start'}}); return true; }}
+                  }}
+                  win.scrollTo(0, 0);
+                  doc.documentElement.scrollTop = 0;
+                  doc.body.scrollTop = 0;
+                  const nodes = doc.querySelectorAll('section.main,[data-testid="stMain"],[data-testid="stAppViewContainer"],[data-testid="stMainBlockContainer"]');
+                  nodes.forEach((node) => {{ node.scrollTop = 0; }});
+                  return !targetId;
+                }} catch (e) {{ return false; }}
+              }};
+              let attempts = 0;
+              const settle = () => {{ attempts += 1; if (!apply() && attempts < 12) setTimeout(settle, 50); }};
+              requestAnimationFrame(settle);
+              setTimeout(settle, 80);
+              setTimeout(settle, 220);
+            }})();
+            </script>""", height=0, width=0)
+        st.session_state["cadivor_last_public_render"] = normalized_page
+        st.session_state["cadivor_public_section"] = ""
