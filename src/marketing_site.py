@@ -350,6 +350,19 @@ def _footer(active: str | None = None) -> None:
     JavaScript handler, or route-derived key participates in footer navigation.
     """
     current_route = str(active or st.session_state.get("cadivor_public_route") or "home").strip().lower()
+    # One restrained active marker per route. Several footer labels intentionally
+    # share a destination, so route equality alone must not highlight them all.
+    active_footer_item = {
+        "product": "overview",
+        "solutions": "robotics",
+        "pricing": "pricing",
+        "resources": "getting_started",
+        "company": "about",
+        "security": "security",
+        "contact": "contact",
+        "privacy": "privacy",
+        "terms": "terms",
+    }.get(current_route)
     footer_groups = (
         ("Product", (
             ("overview", "Overview", "product"),
@@ -404,9 +417,10 @@ def _footer(active: str | None = None) -> None:
         .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:active {transform:translateY(1px)!important;background:rgba(255,255,255,.12)!important}
         .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button:focus-visible {color:#fff!important;outline:2px solid #75a7ff!important;outline-offset:2px!important}
         .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"] {
-          color:#fff!important;background:rgba(47,109,246,.24)!important;border-color:rgba(117,167,255,.34)!important;font-weight:750!important;
+          color:#ffffff!important;background:transparent!important;border-color:transparent!important;font-weight:700!important;
+          box-shadow:inset 2px 0 0 #75a7ff!important;
         }
-        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"]::after {content:"";width:6px;height:6px;border-radius:999px;background:#75a7ff;margin-left:auto;box-shadow:0 0 0 4px rgba(117,167,255,.12)}
+        .st-key-cv_native_footer div[class*="st-key-cv_footer_"] button[kind="primary"]::after {content:none!important}
         .st-key-cv_native_footer .st-key-cv_footer_brand button {display:inline-flex!important;align-items:center!important;gap:10px!important;min-height:42px!important;width:auto!important;padding:4px 8px 4px 0!important;color:#fff!important;font-size:20px!important;font-weight:800!important;letter-spacing:-.025em!important}
         .st-key-cv_native_footer .st-key-cv_footer_brand button::before {content:"C";display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#3478ff,#1e56cf);color:#fff;font-size:16px;font-weight:900;box-shadow:0 8px 24px rgba(47,109,246,.28)}
         .st-key-cv_native_footer .cv-footer-bottom {display:flex;justify-content:space-between;gap:20px;margin-top:34px;padding-top:18px;border-top:1px solid rgba(255,255,255,.09);color:#8192aa;font-size:11px}
@@ -421,7 +435,7 @@ def _footer(active: str | None = None) -> None:
         with cols[0]:
             st.button(
                 "Cadivor", key="cv_footer_brand", on_click=_set_public_route,
-                args=("home",), type="primary" if current_route == "home" else "secondary",
+                args=("home",), type="secondary",
             )
             st.markdown("Engineering intelligence that helps hardware teams understand BOM risk, evaluate alternatives, and make better decisions before production.")
 
@@ -435,7 +449,7 @@ def _footer(active: str | None = None) -> None:
                         on_click=_set_public_route,
                         args=(route,),
                         use_container_width=True,
-                        type="primary" if current_route == route else "secondary",
+                        type="primary" if active_footer_item == item_id else "secondary",
                     )
 
         with cols[5]:
@@ -718,8 +732,11 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     [data-testid="stStatusWidget"],[data-testid="stConnectionStatus"]{background:#fff!important;color:#64748b!important}
     .mk-shell,.mk-shell *{box-sizing:border-box}
     .mk-hero,.mk-page-hero{animation:none!important;transition:none!important}
-    .st-key-cv_public_nav button[kind="primary"]{color:#245edb!important;background:#eef4ff!important;border-color:#c8d9ff!important;box-shadow:inset 0 -2px 0 #2f6df6!important}
+    .st-key-cv_public_nav button[kind="primary"]{color:#ffffff!important;background:rgba(47,109,246,.18)!important;border:1px solid rgba(117,167,255,.22)!important;box-shadow:inset 0 -2px 0 #75a7ff!important}
     .st-key-cv_public_nav button:active{transform:translateY(1px)!important}
+    .st-key-cv_public_nav button:focus:not(:focus-visible),
+    .st-key-cv_native_footer button:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+    .st-key-cv_native_footer button[kind="primary"]:focus:not(:focus-visible){box-shadow:inset 2px 0 0 #75a7ff!important}
     </style>""", unsafe_allow_html=True)
     requested_page = _query_value("public")
     session_page = str(st.session_state.get("cadivor_public_route") or "").strip().lower()
