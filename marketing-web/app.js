@@ -4,6 +4,8 @@
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const MOTION = { fast: 180, standard: 520, slow: 650, steps: 14, tick: 32, hover: 220 };
+  /** Hero + workflow auto-play; other homepage sections stay static until replay. */
+  const HOME_SECTION_AUTOPLAY = false;
 
   const homeCleanup = [];
   function registerHomeCleanup(fn) {
@@ -99,8 +101,10 @@
     threshold = 0.4,
     pauseOnHover = true,
     pauseOnFocus = false,
+    autoplay = true,
     onReplayReady,
-    showFinal
+    showFinal,
+    showIdle
   }) {
     const state = { isVisible: false, isPlaying: false, isPaused: false, timerIds: [], runToken: 0 };
     let tabHidden = document.hidden;
@@ -197,15 +201,26 @@
     function onTabVisibility() {
       tabHidden = document.hidden;
       if (tabHidden) clearTimers();
-      else if (state.isVisible && !state.isPlaying && !reducedMotion) beginCycle();
+      else if (autoplay && state.isVisible && !state.isPlaying && !reducedMotion) beginCycle();
     }
 
     observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         state.isVisible = entry.isIntersecting;
         if (entry.isIntersecting) {
+          if (!autoplay) {
+            if (!hasStarted) {
+              showIdle?.();
+              hasStarted = true;
+              setReplayDisabled(false);
+            }
+            return;
+          }
           if (!state.isPlaying && !reducedMotion) beginCycle();
-        } else stopCycle();
+        } else {
+          stopCycle();
+          if (!autoplay) hasStarted = false;
+        }
       });
     }, { threshold });
 
@@ -218,7 +233,7 @@
       const pause = () => { state.isPaused = true; };
       const resume = () => {
         state.isPaused = false;
-        if (state.isVisible && !state.isPlaying && !reducedMotion) beginCycle();
+        if (autoplay && state.isVisible && !state.isPlaying && !reducedMotion) beginCycle();
       };
       element.addEventListener('mouseenter', pause);
       element.addEventListener('mouseleave', resume);
@@ -233,7 +248,7 @@
       const resume = (e) => {
         if (element.contains(e.relatedTarget)) return;
         state.isPaused = false;
-        if (state.isVisible && !state.isPlaying && !reducedMotion) beginCycle();
+        if (autoplay && state.isVisible && !state.isPlaying && !reducedMotion) beginCycle();
       };
       element.addEventListener('focusin', pause);
       element.addEventListener('focusout', resume);
@@ -250,6 +265,7 @@
     }
 
     if (reducedMotion) showFinal?.();
+    else if (!autoplay) onReplayReady?.(false, true);
 
     return { state, requestReplay, destroy, beginCycle };
   }
@@ -508,6 +524,7 @@
 
     function bindSection(section) {
       if (!section || seen.has(section)) return;
+      if (!HOME_SECTION_AUTOPLAY && section.classList.contains('launch-proof')) return;
       seen.add(section);
       const counters = $$('[data-kpi-counter]', section);
       if (!counters.length) return;
@@ -516,11 +533,8 @@
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             counters.forEach((el, i) => {
-              if (reducedMotion) {
-                animateKpiElement(el);
-                return;
-              }
-              setTimeout(() => animateKpiElement(el), i * 90);
+              if (reducedMotion) animateKpiElement(el);
+              else setTimeout(() => animateKpiElement(el), i * 90);
             });
           } else {
             counters.forEach(resetKpiElement);
@@ -1136,8 +1150,10 @@
       finalHold: 9000,
       restartDelay: 750,
       pauseOnHover: true,
+      autoplay: HOME_SECTION_AUTOPLAY,
       onReplayReady: (disabled, show) => setReplayButton(replayBtn, disabled, show),
       showFinal: showCommandFinal,
+      showIdle: () => applyCommandStep(0, false),
       reset: resetCommandStep,
       play: (ctx) => {
         let step = 0;
@@ -1157,6 +1173,7 @@
     registerHomeCleanup(() => cmdLoop.destroy());
 
     if (reducedMotion) showCommandFinal();
+    else if (!HOME_SECTION_AUTOPLAY) applyCommandStep(0, false);
     return cmdLoop;
   }
 
@@ -1309,8 +1326,10 @@
       restartDelay: 650,
       pauseOnHover: true,
       pauseOnFocus: true,
+      autoplay: HOME_SECTION_AUTOPLAY,
       onReplayReady: (disabled, show) => setReplayButton(replayBtn, disabled, show),
       showFinal: setCopilotFinalShell,
+      showIdle: setCopilotIdleShell,
       reset: softResetCopilotShell,
       play: (ctx) => {
         clearCopilotTyping();
@@ -1508,8 +1527,11 @@
       element: workspace,
       pauseOnHover: true,
       pauseOnFocus: true,
+      autoplay: HOME_SECTION_AUTOPLAY,
       showFinal: () => selectSupplier(0, false),
+      showIdle: () => selectSupplier(0, false),
       play: (ctx) => {
+        manualPaused = false;
         const advance = () => {
           if (!ctx.isActive()) { ctx.abort(); return; }
           if (manualPaused) {
@@ -1528,6 +1550,7 @@
     function bindSupplierClick(i) {
       selectSupplier(i, true);
       clearManualResume();
+      if (!HOME_SECTION_AUTOPLAY) return;
       manualResumeTimer = setTimeout(() => {
         manualPaused = false;
         if (supplierLoop.state.isVisible && !supplierLoop.state.isPlaying && !reducedMotion) {
@@ -1734,8 +1757,12 @@
 
     decisionObserver = new IntersectionObserver(entries => {
       entries.forEach(entry => {
-        if (entry.isIntersecting) runDecisionSequence();
-        else resetDecisionPresentation();
+        if (entry.isIntersecting) {
+          if (HOME_SECTION_AUTOPLAY) runDecisionSequence();
+          else resetDecisionPresentation();
+        } else {
+          resetDecisionPresentation();
+        }
       });
     }, { threshold: 0.35 });
 
@@ -1764,7 +1791,15 @@
     try {
       homeInitialized = true;
       launchAudit.onHomeInit();
+      document.body.classList.add('home-motion-restrained');
       initHeroTheater();
+      if (!HOME_SECTION_AUTOPLAY) {
+        $$('.launch-proof [data-kpi-counter]').forEach(el => {
+          const target = Number(el.dataset.kpiCounter);
+          const suffix = el.dataset.kpiSuffix || '';
+          if (Number.isFinite(target)) el.textContent = `${target}${suffix}`;
+        });
+      }
       registerHomeCleanup(() => {
         clearTimeout(reviewTimer);
         clearHeroTimers();
@@ -1806,6 +1841,7 @@
       else setReviewStage(REVIEW.length - 1);
     } else {
       cleanupHomePage();
+      document.body.classList.remove('home-motion-restrained');
       homeInitialized = false;
       clearTimeout(reviewTimer);
       clearHeroTimers();
