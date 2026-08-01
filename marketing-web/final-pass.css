@@ -3726,3 +3726,209 @@ summary:focus-visible {
     padding: 12px 10px;
   }
 }
+
+/* Cadivor Marketing Freeze v3 — hero demo typography + motion restraint */
+.page[data-page="home"] .product-theater .app-window {
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .float-file strong,
+.page[data-page="home"] .product-theater .float-file small {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .product-header small {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .product-header__status {
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .window-layout aside button {
+  padding: 10px 4px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.page[data-page="home"] .product-theater .demo-main > header small,
+.page[data-page="home"] .product-theater .demo-main cite {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater #analysisState {
+  padding: 7px 10px;
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .theater-stage-rail span,
+.page[data-page="home"] .product-theater .activity-strip span {
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .phase-track span {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .upload-card strong,
+.page[data-page="home"] .product-theater .upload-card small {
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .upload-card em {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .import-workspace {
+  padding: 14px;
+}
+
+.page[data-page="home"] .product-theater .import-workspace small {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .import-cols,
+.page[data-page="home"] .product-theater .import-row {
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .import-row b {
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .import-meta {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .demo-metrics span,
+.page[data-page="home"] .product-theater .demo-metrics small {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .demo-workspace header b {
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .demo-workspace header small {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .risk-row {
+  gap: 8px;
+  margin: 8px;
+  padding: 9px;
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .risk-row b,
+.page[data-page="home"] .product-theater .risk-row small {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .risk-row em {
+  font-size: 10px;
+}
+
+.page[data-page="home"] .product-theater .supplier-row {
+  gap: 6px;
+  padding: 9px 10px;
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .supplier-row em {
+  font-size: 10px;
+}
+
+.page[data-page="home"] .product-theater .supplier-panel header {
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .chat-question {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.page[data-page="home"] .product-theater .reasoning-steps span {
+  padding: 6px;
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .chat-response strong {
+  font-size: 12px;
+}
+
+.page[data-page="home"] .product-theater .chat-response small {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .evidence-chip {
+  padding: 5px 6px;
+  font-size: 10px;
+}
+
+.page[data-page="home"] .product-theater .chat-actions button,
+.page[data-page="home"] .product-theater .decision-panel__approve {
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .decision-panel__meta,
+.page[data-page="home"] .product-theater .decision-panel__track {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .decision-panel__verdict {
+  font-size: 13px;
+}
+
+.page[data-page="home"] .product-theater .monitor-row {
+  font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .monitor-row small {
+  font-size: 10px;
+}
+
+.page[data-page="home"] .product-theater .window-evidence {
+  padding: 11px 20px;
+  font-size: 11px;
+}
+
+/* Homepage motion restraint — static sections until replay */
+body.home-motion-restrained .page[data-page="home"] .supplier-path.active {
+  animation: none;
+}
+
+body.home-motion-restrained .page[data-page="home"] .supplier-node.active {
+  animation: none;
+}
+
+body.home-motion-restrained .page[data-page="home"] .monitor-switch.is-active .monitor-pulse-dot {
+  animation: none;
+}
+
+body.home-motion-restrained .page[data-page="home"] .decision-record .decision-badge.is-ready {
+  animation: none;
+}
+
+body.home-motion-restrained .page[data-page="home"] .launch-proof .kpi-card:hover,
+body.home-motion-restrained .page[data-page="home"] .command-kpis .kpi-card:hover,
+body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hover {
+  transform: none;
+  box-shadow: var(--shadow-card);
+}
+
+@media (max-width: 1179px) {
+  .page[data-page="home"] .product-theater .app-window {
+    font-size: 11px;
+  }
+
+  .page[data-page="home"] .product-theater .import-cols,
+  .page[data-page="home"] .product-theater .import-row,
+  .page[data-page="home"] .product-theater .import-row b {
+    font-size: 11px;
+  }
+}
