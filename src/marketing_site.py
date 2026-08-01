@@ -573,9 +573,9 @@ def _product() -> None:
     _page_hero("product", "Cadivor platform", "Engineering and supply-chain intelligence from BOM to production.", "Analyze lifecycle, inventory, supplier concentration, and supply-chain exposure; qualify alternatives; record decisions; and monitor risk in one connected workspace for engineering and procurement.")
     _html(f"""
     <div class="mk-subnav"><div class="mk-wrap mk-subnav-inner"><a href="#bom-analyzer" target="_self">BOM Analyzer</a><a href="#engineering-intelligence" target="_self">Engineering Intelligence</a><a href="#copilot" target="_self">Ask Cadivor</a><a href="#alternatives" target="_self">Alternative Finder</a><a href="#monitoring" target="_self">Monitoring</a><a href="#reports" target="_self">Reports</a></div></div>
-    <section class="mk-section" id="bom-analyzer"><div class="mk-wrap mk-feature-split"><div class="mk-feature-copy"><div class="mk-kicker">BOM Analyzer</div><h2>Turn a parts list into an engineering review.</h2><p>Normalize CSV and Excel BOMs, evaluate lifecycle and sourcing exposure, and prioritize the components that deserve attention first.</p><div class="mk-check-list"><div class="mk-check"><b>✓</b><span>Lifecycle, inventory, supplier, and concentration analysis</span></div><div class="mk-check"><b>✓</b><span>Health scoring and release-oriented risk prioritization</span></div><div class="mk-check"><b>✓</b><span>Connected alternatives, monitoring, decisions, and reports</span></div></div></div><div class="mk-surface">{_dashboard_mockup()}</div></div></section>
+    <section class="mk-section" id="bom-analyzer"><div class="mk-wrap mk-feature-split"><div class="mk-feature-copy"><div class="mk-kicker">BOM Analyzer</div><h2>Turn a parts list into an engineering review.</h2><p>Normalize CSV and Excel BOMs, evaluate lifecycle and sourcing exposure, and prioritize the components that deserve attention first.</p><div class="mk-check-list"><div class="mk-check"><b>✓</b><span>Lifecycle, inventory, supplier, and concentration analysis</span></div><div class="mk-check"><b>✓</b><span>Health scoring and release-oriented risk prioritization</span></div><div class="mk-check"><b>✓</b><span>Connected alternatives, monitoring, decisions, and reports</span></div></div></div><div class="mk-surface cv6352-bom-demo"><div class="cv6352-upload-card"><span class="cv6352-file-icon">XLSX</span><div><b>motor_controller_rev_c.xlsx</b><small>1,842 components · validating columns</small></div><em>Uploading</em></div><div class="cv6352-upload-progress"><i></i></div>{_dashboard_mockup()}</div></div></section>
     <section class="mk-section soft" id="engineering-intelligence"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">Engineering Intelligence</div><h2>Move from alerts to engineering conclusions.</h2><p>Understand release posture, priority risks, confidence, evidence, and the best next action.</p></div><div class="mk-card-grid"><div class="mk-card"><div class="mk-icon">{_icon('decision')}</div><h3>Executive Decision Cockpit</h3><p>Summarizes release posture, confidence, evidence, and recommended actions.</p></div><div class="mk-card"><div class="mk-icon">{_icon('shield')}</div><h3>Risk prioritization</h3><p>Identifies which issue deserves attention first and why.</p></div><div class="mk-card"><div class="mk-icon">{_icon('audit')}</div><h3>Decision evidence</h3><p>Explains what supports a recommendation and what could change it.</p></div></div></div></section>
-    <section class="mk-section cv6351-product-copilot" id="copilot"><div class="mk-wrap mk-feature-split"><div class="mk-surface cv6351-ask-demo"><div class="mk-cockpit"><div class="mk-cockpit-title"><span>Ask Cadivor</span><em><i></i>Analyzing active BOM</em></div><div class="cv6351-chat-user"><small>Engineer</small><strong>Is this BOM ready for production release?</strong></div><div class="cv6351-thinking"><span></span><span></span><span></span><b>Reviewing engineering evidence</b></div><div class="cv6351-evidence"><span class="e1">BOM-1048 loaded</span><span class="e2">Lifecycle notices checked</span><span class="e3">Supplier exposure compared</span><span class="e4">Qualified alternates reviewed</span></div><div class="cv6351-chat-ai"><small>Cadivor · 93% confidence</small><strong>Production release is blocked.</strong><p>Two components create unresolved lifecycle and single-source exposure.</p><div><b>01</b><span>Replace MPU6050 before release</span><em>Blocker</em></div><div><b>02</b><span>Qualify a second source for LM35DN</span><em>Required</em></div></div><div class="cv6351-followup"><span>Suggested follow-up</span><b>What evidence would change this recommendation?</b></div></div></div><div class="mk-feature-copy"><div class="mk-kicker">Ask Cadivor</div><h2>Challenge the analysis in plain language.</h2><p>Watch Cadivor retrieve BOM, lifecycle, supplier, and alternate-part evidence before reaching an engineering conclusion.</p><div class="cv6351-capabilities"><span>Evidence retrieval</span><span>Confidence scoring</span><span>Actionable conclusions</span></div></div></div></section>
+    <section class="mk-section cv6351-product-copilot" id="copilot"><div class="mk-wrap mk-feature-split"><div class="mk-surface cv6351-ask-demo"><div class="mk-cockpit"><div class="mk-cockpit-title"><span>Ask Cadivor</span><em><i></i>Analyzing active BOM</em></div><div class="cv6351-chat-user"><small>Engineer</small><strong><span class="cv6352-typed-question">Is this BOM ready for production release?</span><i class="cv6352-caret"></i></strong></div><div class="cv6351-thinking"><span></span><span></span><span></span><b class="cv6352-thinking-label">Reviewing engineering evidence</b></div><div class="cv6351-evidence"><span class="e1">BOM-1048 loaded</span><span class="e2">Lifecycle notices checked</span><span class="e3">Supplier exposure compared</span><span class="e4">Qualified alternates reviewed</span></div><div class="cv6351-chat-ai"><small>Cadivor · 93% confidence</small><strong><span class="cv6352-typed-answer">Production release is blocked.</span><i class="cv6352-ai-caret"></i></strong><p>Two components create unresolved lifecycle and single-source exposure.</p><div><b>01</b><span>Replace MPU6050 before release</span><em>Blocker</em></div><div><b>02</b><span>Qualify a second source for LM35DN</span><em>Required</em></div></div><div class="cv6351-followup"><span>Suggested follow-up</span><b>What evidence would change this recommendation?</b></div></div></div><div class="mk-feature-copy"><div class="mk-kicker">Ask Cadivor</div><h2>Challenge the analysis in plain language.</h2><p>Watch Cadivor retrieve BOM, lifecycle, supplier, and alternate-part evidence before reaching an engineering conclusion.</p><div class="cv6351-capabilities"><span>Evidence retrieval</span><span>Confidence scoring</span><span>Actionable conclusions</span></div></div></div></section>
     <section class="mk-section soft" id="alternatives"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">Alternative Finder</div><h2>Shortlist replacements with engineering context.</h2><p>Compare lifecycle, supplier coverage, inventory, and compatibility considerations before qualification.</p></div></div></section>
     <section class="mk-section" id="monitoring"><div class="mk-wrap mk-feature-split"><div class="mk-feature-copy"><div class="mk-kicker">Monitoring</div><h2>Keep critical components under review.</h2><p>Track meaningful lifecycle, stock, and sourcing changes after the initial analysis.</p></div>{_hero_visual('solutions')}</div></section>
     <section class="mk-section soft" id="reports"><div class="mk-wrap"><div class="mk-heading"><div class="mk-kicker">Reports and decisions</div><h2>Communicate engineering risk clearly.</h2><p>Export executive, lifecycle, and engineering decision records for cross-functional review.</p></div></div></section>
@@ -963,6 +963,70 @@ def _sprint_63_5_1_motion_and_hero_fixes_css() -> None:
     </style>
     """, unsafe_allow_html=True)
 
+
+def _sprint_63_5_2_interactive_polish_css() -> None:
+    """Reduce secondary hero scale and keep animated product stories continuously populated."""
+    st.markdown(r"""
+    <style id="cadivor-sprint-63-5-2-interactive-polish">
+    /* Secondary-page heroes: confident, readable, and never oversized. */
+    .mk-page-hero{padding:68px 0 64px!important}
+    .mk-page-hero-grid{grid-template-columns:minmax(500px,.92fr) minmax(500px,1.08fr)!important;gap:54px!important}
+    .mk-page-hero h1{font-size:clamp(38px,3.25vw,52px)!important;line-height:1.06!important;letter-spacing:-.045em!important;max-width:690px!important;text-wrap:balance}
+    .mk-page-hero p{font-size:16px!important;line-height:1.66!important;max-width:680px!important}
+    .mk-page-hero .mk-eyebrow{margin-bottom:18px!important}
+    .mk-page-hero .mk-actions{margin-top:23px!important;margin-bottom:18px!important}
+    .mk-page-hero .mk-hero-visual{min-height:350px!important}
+
+    /* Never hide a complete section while waiting for viewport detection. */
+    .mk-launch-story>section:not(.mk-launch-hero){opacity:1!important;transform:none!important}
+    .mk-launch-story>section .cv634-heading,.mk-launch-story>section .cv634-copy-block,.mk-launch-story>section .cv634-decision-copy{transition:transform .5s ease,opacity .5s ease}
+
+    /* BOM upload demonstration: visible at all times, with activity layered over the product. */
+    .cv6352-bom-demo{position:relative!important;overflow:hidden!important;padding-top:76px!important}
+    .cv6352-upload-card{position:absolute;z-index:8;left:20px;right:20px;top:17px;display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:11px;padding:10px 12px;border:1px solid #dce6f3;border-radius:11px;background:rgba(255,255,255,.97);box-shadow:0 12px 28px rgba(22,55,99,.12)}
+    .cv6352-file-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#e9f2ff;color:#2563eb;font-size:8px;font-weight:900;letter-spacing:.05em}
+    .cv6352-upload-card b,.cv6352-upload-card small{display:block}.cv6352-upload-card b{font-size:11px;color:#0d1b32}.cv6352-upload-card small{margin-top:3px;font-size:8px;color:#75859b}.cv6352-upload-card em{font-size:8px;font-style:normal;font-weight:850;color:#2563eb}
+    .cv6352-upload-progress{position:absolute;z-index:9;left:20px;right:20px;top:67px;height:3px;border-radius:999px;background:#edf2f8;overflow:hidden}.cv6352-upload-progress i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#2f6df6,#69a2ff);transform-origin:left;animation:cv6352-upload 7.5s ease-in-out infinite}
+    .cv6352-bom-demo>.mk-cockpit{animation:cv6352-dashboard-live 7.5s ease-in-out infinite}
+
+    /* Ask Cadivor: keep the interface populated and animate typing/reasoning inside it. */
+    .cv6351-chat-user{opacity:1!important;transform:none!important;animation:none!important;min-height:58px}
+    .cv6351-chat-user strong{display:flex!important;align-items:center;min-height:20px;overflow:hidden}
+    .cv6352-typed-question{display:inline-block;white-space:nowrap;overflow:hidden;width:0;animation:cv6352-type-question 9s steps(40,end) infinite}
+    .cv6352-caret,.cv6352-ai-caret{display:inline-block;width:1px;height:14px;margin-left:3px;background:#8cb6f8;animation:cv6352-caret .7s step-end infinite}
+    .cv6351-thinking{min-height:40px;opacity:.72!important;animation:cv6352-thinking-shell 9s infinite!important}
+    .cv6352-thinking-label::after{content:' · BOM';animation:cv6352-reason-label 9s steps(1,end) infinite}
+    .cv6351-evidence span{opacity:.42!important;transform:none!important}
+    .cv6351-evidence .e1{animation:cv6352-evidence 9s .9s infinite!important}.cv6351-evidence .e2{animation:cv6352-evidence 9s 1.55s infinite!important}.cv6351-evidence .e3{animation:cv6352-evidence 9s 2.2s infinite!important}.cv6351-evidence .e4{animation:cv6352-evidence 9s 2.85s infinite!important}
+    .cv6351-chat-ai{display:block!important;min-height:202px;opacity:1!important;transform:none!important;animation:cv6352-answer-shell 9s infinite!important}
+    .cv6351-chat-ai>strong{display:flex!important;align-items:center;min-height:23px;overflow:hidden}
+    .cv6352-typed-answer{display:inline-block;white-space:nowrap;overflow:hidden;width:0;animation:cv6352-type-answer 9s steps(30,end) infinite}
+    .cv6351-chat-ai>p,.cv6351-chat-ai>div{animation:cv6352-answer-detail 9s infinite}
+    .cv6351-followup{min-height:52px;opacity:.35!important;transform:none!important;animation:cv6352-followup 9s infinite!important}
+
+    /* Add purposeful motion to otherwise static product visuals. */
+    .mk-hero-visual .mk-visual-row:nth-child(1){animation:cv6352-row-focus 8s 0s infinite}.mk-hero-visual .mk-visual-row:nth-child(2){animation:cv6352-row-focus 8s 1.4s infinite}.mk-hero-visual .mk-visual-row:nth-child(3){animation:cv6352-row-focus 8s 2.8s infinite}.mk-hero-visual .mk-visual-row:nth-child(4){animation:cv6352-row-focus 8s 4.2s infinite}
+    .mk-hero-visual .mk-visual-highlight{position:relative;overflow:hidden}.mk-hero-visual .mk-visual-highlight::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.16) 48%,transparent 70%);transform:translateX(-120%);animation:cv6352-shimmer 6s infinite}
+
+    @keyframes cv6352-upload{0%,8%{transform:scaleX(.05)}38%,68%{transform:scaleX(1)}82%,100%{transform:scaleX(.05)}}
+    @keyframes cv6352-dashboard-live{0%,18%{filter:saturate(.72);transform:translateY(2px)}38%,78%{filter:saturate(1);transform:none}100%{filter:saturate(.72);transform:translateY(2px)}}
+    @keyframes cv6352-type-question{0%,7%{width:0}30%,82%{width:40ch}92%,100%{width:40ch}}
+    @keyframes cv6352-caret{50%{opacity:0}}
+    @keyframes cv6352-thinking-shell{0%,28%{opacity:.42}34%,52%{opacity:1;border-color:rgba(117,167,255,.35)}58%,100%{opacity:.5}}
+    @keyframes cv6352-reason-label{0%,32%{content:' · BOM'}38%,43%{content:' · lifecycle'}49%,54%{content:' · suppliers'}60%,100%{content:' · alternatives'}}
+    @keyframes cv6352-evidence{0%,25%,100%{opacity:.42;background:rgba(255,255,255,.035);border-color:rgba(132,169,227,.16)}31%,74%{opacity:1;background:rgba(85,217,150,.08);border-color:rgba(85,217,150,.42);transform:translateY(-1px)}}
+    @keyframes cv6352-answer-shell{0%,47%{background:linear-gradient(145deg,#0a244b,#103269)}55%,88%{background:linear-gradient(145deg,#0c2a57,#123b78)}100%{background:linear-gradient(145deg,#0a244b,#103269)}}
+    @keyframes cv6352-type-answer{0%,48%{width:0}66%,90%{width:31ch}100%{width:31ch}}
+    @keyframes cv6352-answer-detail{0%,58%{opacity:.16;transform:translateY(3px)}68%,92%{opacity:1;transform:none}100%{opacity:.16;transform:translateY(3px)}}
+    @keyframes cv6352-followup{0%,72%{opacity:.32}80%,94%{opacity:1;border-color:rgba(126,165,224,.38)}100%{opacity:.32}}
+    @keyframes cv6352-row-focus{0%,14%,100%{transform:none;box-shadow:none}20%,34%{transform:translateX(3px);box-shadow:0 8px 20px rgba(37,99,235,.1)}}
+    @keyframes cv6352-shimmer{0%,30%{transform:translateX(-120%)}58%,100%{transform:translateX(120%)}}
+    @media(max-width:1180px){.mk-page-hero-grid{grid-template-columns:1fr!important}.mk-page-hero h1{max-width:820px!important}.mk-page-hero .mk-hero-visual{max-width:900px;width:100%;justify-self:center}}
+    @media(max-width:620px){.mk-page-hero h1{font-size:38px!important}.cv6352-typed-question,.cv6352-typed-answer{white-space:normal!important;width:auto!important;animation:none!important}.cv6352-caret,.cv6352-ai-caret{display:none}.cv6352-bom-demo{padding-top:88px!important}.cv6352-upload-card{grid-template-columns:34px 1fr}.cv6352-upload-card em{display:none}}
+    @media(prefers-reduced-motion:reduce){.cv6352-upload-progress i,.cv6352-bom-demo>.mk-cockpit,.cv6352-typed-question,.cv6352-typed-answer,.cv6352-caret,.cv6352-ai-caret,.cv6351-thinking,.cv6351-evidence span,.cv6351-chat-ai,.cv6351-chat-ai>p,.cv6351-chat-ai>div,.cv6351-followup,.mk-hero-visual .mk-visual-row,.mk-hero-visual .mk-visual-highlight::after{animation:none!important}.cv6352-typed-question,.cv6352-typed-answer{width:auto!important}}
+    </style>
+    """, unsafe_allow_html=True)
+
 def _install_marketing_motion() -> None:
     """Add lightweight viewport reveals without adding a frontend library."""
     components.html(
@@ -1010,6 +1074,7 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     _sprint_63_4_product_led_css()
     _sprint_63_5_design_excellence_css()
     _sprint_63_5_1_motion_and_hero_fixes_css()
+    _sprint_63_5_2_interactive_polish_css()
     _install_internal_link_bridge()
     st.markdown("""<style id="cadivor-static-public-runtime">
     html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],section.main{background:#ffffff!important;color:#0b1730!important}
