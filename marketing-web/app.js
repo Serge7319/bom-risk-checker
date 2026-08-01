@@ -3,7 +3,7 @@
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const MOTION = { fast: 180, standard: 360, slow: 650 };
+  const MOTION = { fast: 180, standard: 520, slow: 650, steps: 14, tick: 32, hover: 220 };
 
   const homeCleanup = [];
   function registerHomeCleanup(fn) {
@@ -275,6 +275,13 @@
     $('#mainNav')?.classList.remove('open');
     window.scrollTo(0, 0);
     syncHomeMode();
+    refreshGlobalMotion();
+    const anchor = (location.hash.match(/#\/[^#]+#([^?#]+)/) || [])[1];
+    if (anchor) {
+      requestAnimationFrame(() => {
+        document.getElementById(anchor)?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+      });
+    }
   }
   addEventListener('hashchange', route);
   $('#menuToggle')?.addEventListener('click', () => $('#mainNav')?.classList.toggle('open'));
@@ -434,23 +441,143 @@
     addChunk();
   }
 
-  function animateNumber(el, value) {
+  function animateNumber(el, value, suffix = '') {
     if (!el || value == null) return;
-    const article = el.closest('article');
-    const current = el.textContent === '—' ? 0 : parseInt(el.textContent, 10) || 0;
-    if (current === value) { el.textContent = value; return; }
-    if (reducedMotion) { el.textContent = value; return; }
+    const raw = String(el.textContent);
+    const current = raw === '—' || raw === '0' ? 0 : parseInt(raw.replace(/[^\d-]/g, ''), 10) || 0;
+    const display = (n) => { el.textContent = `${n}${suffix}`; };
+    if (current === value) { display(value); return; }
+    if (reducedMotion) { display(value); return; }
     let step = 0;
-    const steps = 14;
     const diff = value - current;
     const tick = setInterval(() => {
       step++;
-      el.textContent = Math.round(current + (diff * step / steps));
-      if (step >= steps) {
+      display(Math.round(current + (diff * step / MOTION.steps)));
+      if (step >= MOTION.steps) {
         clearInterval(tick);
-        el.textContent = value;
+        display(value);
       }
-    }, 32);
+    }, MOTION.tick);
+  }
+
+  function animateKpiElement(el) {
+    if (!el || el.dataset.kpiAnimated === '1') return;
+    const target = Number(el.dataset.kpiCounter);
+    if (!Number.isFinite(target)) return;
+    el.dataset.kpiAnimated = '1';
+    const suffix = el.dataset.kpiSuffix || '';
+    if (reducedMotion) {
+      el.textContent = `${target}${suffix}`;
+      return;
+    }
+    el.textContent = `0${suffix}`;
+    animateNumber(el, target, suffix);
+  }
+
+  function resetKpiElement(el) {
+    if (!el || !el.dataset.kpiCounter) return;
+    delete el.dataset.kpiAnimated;
+    el.textContent = `0${el.dataset.kpiSuffix || ''}`;
+  }
+
+  function animateMetricText(el) {
+    if (!el) return;
+    const text = el.dataset.fullText || el.textContent;
+    const match = text.match(/([\d,]+)/);
+    if (!match) return;
+    if (!el.dataset.fullText) el.dataset.fullText = text;
+    if (reducedMotion) return;
+    const target = parseInt(match[1].replace(/,/g, ''), 10);
+    const prefix = text.slice(0, match.index);
+    const suffix = text.slice(match.index + match[1].length);
+    let step = 0;
+    const tick = setInterval(() => {
+      step++;
+      const val = Math.round((target * step) / MOTION.steps);
+      el.textContent = `${prefix}${val.toLocaleString()}${suffix}`;
+      if (step >= MOTION.steps) {
+        clearInterval(tick);
+        el.textContent = text;
+      }
+    }, MOTION.tick);
+  }
+
+  function initKpiCards() {
+    const kpiRoots = $$('[data-kpi-section], .launch-proof, .company-stats');
+    const seen = new WeakSet();
+
+    function bindSection(section) {
+      if (!section || seen.has(section)) return;
+      seen.add(section);
+      const counters = $$('[data-kpi-counter]', section);
+      if (!counters.length) return;
+
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            counters.forEach((el, i) => {
+              if (reducedMotion) {
+                animateKpiElement(el);
+                return;
+              }
+              setTimeout(() => animateKpiElement(el), i * 90);
+            });
+          } else {
+            counters.forEach(resetKpiElement);
+          }
+        });
+      }, { threshold: 0.35 });
+
+      observer.observe(section);
+    }
+
+    kpiRoots.forEach(bindSection);
+    $$('.page.active [data-kpi-counter]').forEach(el => {
+      const section = el.closest('.launch-proof, .company-stats, .resource-showcase, .report-stack') || el.closest('section, .page-hero');
+      if (section) bindSection(section);
+    });
+  }
+
+  let motionObserver = null;
+  const motionSeen = new WeakSet();
+
+  function applyMotionDelays(root = document) {
+    $$('[data-motion-delay]', root).forEach(el => {
+      el.style.setProperty('--motion-delay', `${el.dataset.motionDelay}ms`);
+    });
+  }
+
+  function observeMotionElements(root = document) {
+    applyMotionDelays(root);
+    if (reducedMotion) {
+      $$('[data-motion="reveal"]', root).forEach(el => el.classList.add('motion-visible'));
+      return;
+    }
+    if (!motionObserver) {
+      motionObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          entry.target.classList.toggle('motion-visible', entry.isIntersecting);
+        });
+      }, { threshold: 0.14, rootMargin: '0px 0px -6% 0px' });
+    }
+    const page = $('.page.active');
+    if (page) {
+      ['.page-hero', '.product-module', '.solution-scene', '.pricing-grid > article', '.resource-showcase', '.company-story', '.company-stats article', '.inner-cta'].forEach(sel => {
+        $$(sel, page).forEach(el => {
+          if (!el.dataset.motion) el.dataset.motion = 'reveal';
+        });
+      });
+    }
+    const scope = page || root;
+    $$('[data-motion="reveal"]', scope).forEach(el => {
+      if (motionSeen.has(el)) return;
+      motionSeen.add(el);
+      motionObserver.observe(el);
+    });
+  }
+
+  function refreshGlobalMotion() {
+    observeMotionElements();
   }
 
   function applyHeroMetrics(i, stagger = false) {
@@ -921,8 +1048,8 @@
       play: (ctx) => {
         let step = 0;
         applyWorkflowStep(step);
-        const travelMs = 800;
-        const holdMs = 1300;
+        const travelMs = 760;
+        const holdMs = 1200;
         const advance = () => {
           if (!ctx.isActive()) { ctx.abort(); return; }
           step++;
@@ -1298,20 +1425,25 @@
         $$('.supplier-path', lines).forEach(p => p.removeAttribute('d'));
         return;
       }
-      const dest = $('#supplierPathDestination') || $('.supplier-insight', workspace) || $('#supplierDestination');
+      const layout = $('.supplier-layout', workspace);
+      const container = layout || network;
+      if (layout && lines.parentElement !== layout) {
+        layout.insertBefore(lines, layout.firstChild);
+      }
+      const dest = $('#supplierPathDestination') || $('#supplierQualSummary');
       if (!dest) return;
-      const w = Math.max(network.clientWidth, 1);
-      const h = Math.max(network.clientHeight, 1);
+      const w = Math.max(container.clientWidth, 1);
+      const h = Math.max(container.clientHeight, 1);
       lines.setAttribute('viewBox', `0 0 ${w} ${h}`);
       lines.setAttribute('width', String(w));
       lines.setAttribute('height', String(h));
-      const end = centerWithin(network, dest);
+      const end = centerWithin(container, dest);
       $$('.supplier-node', network).forEach((node, i) => {
         const path = $(`#${pathIds[i]}`);
         if (!path) return;
-        const start = centerWithin(network, node);
+        const start = centerWithin(container, node);
         const ctrlX = (start.x + end.x) / 2;
-        const lift = Math.max(24, Math.min(56, Math.abs(start.x - end.x) * 0.12));
+        const lift = Math.max(28, Math.min(64, Math.abs(start.x - end.x) * 0.12));
         const ctrlY = Math.min(start.y, end.y) - lift;
         path.setAttribute('d', `M ${start.x} ${start.y} Q ${ctrlX} ${ctrlY} ${end.x} ${end.y}`);
       });
@@ -1319,6 +1451,8 @@
 
     function selectSupplier(i, fromUser = false) {
       cycleIndex = i;
+      const insight = $('.supplier-insight', workspace);
+      insight?.classList.add('is-updating');
       $$('.supplier-node', network).forEach((n, j) => n.classList.toggle('active', i === j));
       $$('#supplierComparisonTable button').forEach((n, j) => n.classList.toggle('selected', i === j));
       $$('.supplier-path', lines).forEach((p, j) => {
@@ -1328,16 +1462,39 @@
       const d = supplierData[i];
       if (!d) return;
       const tableBtn = $$('#supplierComparisonTable button')[i];
-      $('#supplierRecommendation').textContent = `${d.name} is ${i === 0 ? 'the preferred' : 'a qualified'} source.`;
-      $('#supplierAvailability').textContent = d.availability;
-      $('#supplierLead').textContent = d.lead;
-      $('#supplierConcentration').textContent = d.concentration;
+      const statusLabels = ['Recommended', 'Qualified', 'Available'];
+      const rec = $('#supplierRecommendation');
+      if (rec) {
+        rec.style.opacity = '0';
+        rec.style.transform = 'translateY(6px)';
+        requestAnimationFrame(() => {
+          rec.textContent = `${d.name} is ${i === 0 ? 'the preferred' : 'a qualified'} source.`;
+          rec.style.opacity = '1';
+          rec.style.transform = 'translateY(0)';
+        });
+      }
       $('#supplierAltQual').textContent = d.altQual;
-      $('#supplierReason').textContent = d.reason;
+      if ($('#supplierStatus')) $('#supplierStatus').textContent = statusLabels[i] || 'Qualified';
+      const qualInv = $('#qualInventory');
+      if (qualInv) {
+        qualInv.textContent = d.availability;
+        qualInv.classList.remove('inventory-tick');
+        void qualInv.offsetWidth;
+        qualInv.classList.add('inventory-tick');
+      }
+      $('#qualLead') && ($('#qualLead').textContent = d.lead);
+      $('#qualConcentration') && ($('#qualConcentration').textContent = d.concentration);
+      $('#qualRationale') && ($('#qualRationale').textContent = d.reason);
+      setTimeout(() => insight?.classList.remove('is-updating'), 380);
       if (tableBtn) {
         const spans = $$('span', tableBtn);
+        if (spans[0] && $('#supplierAuth')) $('#supplierAuth').textContent = spans[0].textContent;
+        if (spans[4] && $('#supplierRegion')) $('#supplierRegion').textContent = spans[4].textContent;
+        if (spans[5] && $('#qualLifecycle')) $('#qualLifecycle').textContent = spans[5].textContent;
         if (spans[7]) spans[7].textContent = d.altQual;
         if (spans[8]) spans[8].textContent = d.score;
+        const statusEl = $('em', tableBtn);
+        if (statusEl) statusEl.textContent = statusLabels[i] || statusEl.textContent;
       }
       requestAnimationFrame(scheduleSupplierPaths);
       launchAudit.onSupplierSelect(i, fromUser);
@@ -1385,10 +1542,12 @@
     resizeObserver = new ResizeObserver(scheduleSupplierPaths);
     resizeObserver.observe(network);
     resizeObserver.observe(workspace);
+    const layout = $('.supplier-layout', workspace);
+    if (layout) resizeObserver.observe(layout);
     const tableWrap = $('.supplier-table-wrap', workspace);
-    const insight = $('.supplier-insight', workspace);
+    const qualSummary = $('#supplierQualSummary', workspace);
     if (tableWrap) resizeObserver.observe(tableWrap);
-    if (insight) resizeObserver.observe(insight);
+    if (qualSummary) resizeObserver.observe(qualSummary);
     document.fonts?.ready?.then(scheduleSupplierPaths).catch(() => scheduleSupplierPaths());
     onResize = () => scheduleSupplierPaths();
     addEventListener('resize', onResize);
@@ -1406,51 +1565,192 @@
 
   function initDecisionRecordMotion() {
     const record = $('#decisionRecord');
+    const section = record?.closest('.decision-showcase');
     const approveBtn = $('#approveDecision');
-    if (!record || !approveBtn) return null;
+    if (!record || !approveBtn || !section) return null;
 
-    let played = false;
+    const confidenceEl = $('#recordConfidence');
+    const evidenceEl = $('#recordEvidence');
+    const ownerEl = $('#recordOwner');
+    const statusEl = $('#recordStatus');
+    const monitorEl = $('#recordMonitor');
+    const monitorSwitch = $('#monitorSwitch');
+    const monitorLabel = $('#monitorSwitchLabel');
+    const approvedBadge = $('#recordApprovedBadge');
+    const timeline = $('#engineeringTimeline');
+    const timelineNodes = $$('.timeline-node', timeline);
+    const decisionLines = $$('.decision-line', record);
+    const signatureName = $('#signatureName');
+    const signatureTime = $('#signatureTime');
+
+    let decisionTimers = [];
     let decisionObserver = null;
-    let decisionTimer = null;
+    let sequenceToken = 0;
 
-    function applyApproved() {
-      record.classList.add('approved', 'signing');
+    function clearDecisionTimers() {
+      decisionTimers.forEach(t => clearTimeout(t));
+      decisionTimers = [];
+    }
+
+    function schedule(fn, delay) {
+      const token = sequenceToken;
+      decisionTimers.push(setTimeout(() => {
+        if (token !== sequenceToken) return;
+        fn();
+      }, delay));
+    }
+
+    function animatePercent(el, target) {
+      if (!el) return;
+      if (reducedMotion) { el.textContent = `${target}%`; return; }
+      let step = 0;
+      const tick = setInterval(() => {
+        step++;
+        el.textContent = `${Math.round((target * step) / MOTION.steps)}%`;
+        if (step >= MOTION.steps) {
+          clearInterval(tick);
+          el.textContent = `${target}%`;
+        }
+      }, MOTION.tick);
+    }
+
+    function animateSources(el, target) {
+      if (!el) return;
+      if (reducedMotion) { el.textContent = `${target} sources`; return; }
+      let step = 0;
+      const tick = setInterval(() => {
+        step++;
+        el.textContent = `${Math.round((target * step) / MOTION.steps)} sources`;
+        if (step >= MOTION.steps) {
+          clearInterval(tick);
+          el.textContent = `${target} sources`;
+        }
+      }, MOTION.tick);
+    }
+
+    function fadeMonitoringLabel(el, text) {
+      if (!el) return;
+      if (reducedMotion) { el.textContent = text; return; }
+      el.classList.add('is-fading');
+      schedule(() => {
+        el.textContent = text;
+        el.classList.remove('is-fading');
+        el.classList.add('is-active');
+      }, MOTION.fast);
+    }
+
+    function resetDecisionPresentation() {
+      sequenceToken++;
+      clearDecisionTimers();
+      record.classList.remove('approved', 'signing', 'decision-sequence-active', 'decision-sequence-complete');
+      approveBtn.textContent = 'Approve decision';
+      approveBtn.disabled = false;
+      if (statusEl) statusEl.textContent = 'READY FOR APPROVAL';
+      if (ownerEl) { ownerEl.textContent = '—'; ownerEl.classList.remove('is-visible'); }
+      if (confidenceEl) confidenceEl.textContent = '0%';
+      if (evidenceEl) evidenceEl.textContent = '0 sources';
+      if (monitorEl) { monitorEl.textContent = 'Pending'; monitorEl.classList.remove('is-active', 'is-fading'); }
+      if (monitorLabel) { monitorLabel.textContent = 'Pending'; monitorLabel.classList.remove('is-active', 'is-fading'); }
+      monitorSwitch?.classList.remove('is-active');
+      approvedBadge?.classList.remove('is-visible');
+      approvedBadge?.setAttribute('hidden', '');
+      timelineNodes.forEach(n => n.classList.remove('done', 'is-current'));
+      decisionLines.forEach(l => l.classList.remove('is-visible'));
+      if (signatureName) signatureName.textContent = 'Awaiting signature';
+      if (signatureTime) signatureTime.textContent = '—';
+    }
+
+    function applyFinalDecisionState() {
+      record.classList.add('approved', 'signing', 'decision-sequence-complete');
       approveBtn.textContent = '✓ Approved';
       approveBtn.disabled = true;
-      $('#recordStatus').textContent = 'APPROVED';
-      if ($('#recordMonitor')) $('#recordMonitor').textContent = 'Active';
-      $$('.approval-track span').forEach(s => s.classList.add('done'));
-      const track = $$('.approval-track span');
-      if (track[2]) track[2].textContent = 'Decision approved';
-      if (track[3]) track[3].textContent = 'Monitoring active';
-      $('#signatureName').textContent = 'Jordan Ellis';
-      $('#signatureTime').textContent = 'Approved moments ago · Evidence hash EV-84A2';
-      $('#monitorSwitch b').textContent = 'Active';
-      decisionTimer = setTimeout(() => record.classList.remove('signing'), 900);
+      if (statusEl) statusEl.textContent = 'APPROVED';
+      if (ownerEl) { ownerEl.textContent = 'Jordan Ellis'; ownerEl.classList.add('is-visible'); }
+      if (confidenceEl) confidenceEl.textContent = '93%';
+      if (evidenceEl) evidenceEl.textContent = '14 sources';
+      if (monitorEl) { monitorEl.textContent = 'Active'; monitorEl.classList.add('is-active'); }
+      if (monitorLabel) { monitorLabel.textContent = 'Active'; monitorLabel.classList.add('is-active'); }
+      monitorSwitch?.classList.add('is-active');
+      approvedBadge?.removeAttribute('hidden');
+      approvedBadge?.classList.add('is-visible');
+      timelineNodes.forEach(n => n.classList.add('done'));
+      decisionLines.forEach(l => l.classList.add('is-visible'));
+      if (signatureName) signatureName.textContent = 'Jordan Ellis';
+      if (signatureTime) signatureTime.textContent = 'Approved moments ago · Evidence hash EV-84A2';
+      schedule(() => record.classList.remove('signing'), 900);
     }
 
-    if (reducedMotion) {
-      applyApproved();
-      played = true;
-    } else {
-      decisionObserver = new IntersectionObserver(entries => {
-        entries.forEach(entry => {
-          if (!entry.isIntersecting || played) return;
-          played = true;
-          decisionTimer = setTimeout(applyApproved, 1400);
-        });
-      }, { threshold: 0.4 });
-      decisionObserver.observe(record);
+    function runDecisionSequence() {
+      resetDecisionPresentation();
+      record.classList.add('decision-sequence-active');
+
+      if (reducedMotion) {
+        applyFinalDecisionState();
+        return;
+      }
+
+      schedule(() => {
+        animatePercent(confidenceEl, 93);
+        animateSources(evidenceEl, 14);
+      }, MOTION.fast);
+
+      schedule(() => {
+        if (ownerEl) {
+          ownerEl.textContent = 'Jordan Ellis';
+          ownerEl.classList.add('is-visible');
+        }
+      }, MOTION.standard - 100);
+
+      decisionLines.forEach((line, i) => {
+        schedule(() => line.classList.add('is-visible'), MOTION.standard + 460 + i * MOTION.fast);
+      });
+
+      timelineNodes.forEach((node, i) => {
+        schedule(() => {
+          timelineNodes.forEach((n, j) => n.classList.toggle('is-current', j === i));
+          node.classList.add('done');
+        }, MOTION.standard + 1380 + i * (MOTION.standard + 100));
+      });
+
+      schedule(() => {
+        approveBtn.textContent = '✓ Approved';
+        approveBtn.disabled = true;
+        if (statusEl) statusEl.textContent = 'APPROVED';
+        approvedBadge?.removeAttribute('hidden');
+        approvedBadge?.classList.add('is-visible');
+        record.classList.add('approved', 'signing');
+        if (signatureName) signatureName.textContent = 'Jordan Ellis';
+        if (signatureTime) signatureTime.textContent = 'Approved moments ago · Evidence hash EV-84A2';
+        schedule(() => record.classList.remove('signing'), MOTION.standard + 80);
+      }, MOTION.standard + 1380 + 2 * (MOTION.standard + 100) + 120);
+
+      schedule(() => {
+        fadeMonitoringLabel(monitorEl, 'Active');
+        fadeMonitoringLabel(monitorLabel, 'Active');
+        monitorSwitch?.classList.add('is-active');
+        record.classList.add('decision-sequence-complete');
+      }, MOTION.standard + 1380 + 3 * (MOTION.standard + 100) + 80);
     }
+
+    decisionObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) runDecisionSequence();
+        else resetDecisionPresentation();
+      });
+    }, { threshold: 0.35 });
+
+    decisionObserver.observe(section);
 
     approveBtn.addEventListener('click', () => {
       if (record.classList.contains('approved')) return;
-      applyApproved();
-      played = true;
+      sequenceToken++;
+      clearDecisionTimers();
+      applyFinalDecisionState();
     });
 
     const destroy = () => {
-      if (decisionTimer) clearTimeout(decisionTimer);
+      sequenceToken++;
+      clearDecisionTimers();
       decisionObserver?.disconnect();
     };
     registerHomeCleanup(destroy);
@@ -1521,51 +1821,106 @@
     ];
     const cmdDemo = $('#productCommandDemo');
     if (cmdDemo) {
-      let cmdPlayed = false;
-      const applyCmd = (s) => {
+      let cmdPlaying = false;
+      let cmdTimer = null;
+      const applyCmd = (s, animate = false) => {
         $('#productCmdPhase').textContent = s.phase;
-        $('#productCmdHealth').textContent = s.health;
-        $('#productCmdBlockers').textContent = s.blockers;
-        $('#productCmdAlerts').textContent = s.alerts;
-        $('#productCmdDecisions').textContent = s.decisions;
+        const fields = [
+          ['#productCmdHealth', s.health],
+          ['#productCmdBlockers', s.blockers],
+          ['#productCmdAlerts', s.alerts],
+          ['#productCmdDecisions', s.decisions]
+        ];
+        fields.forEach(([sel, val], idx) => {
+          const el = $(sel);
+          if (!el) return;
+          if (animate && !reducedMotion) {
+            setTimeout(() => animateNumber(el, val), idx * 80);
+          } else {
+            el.textContent = val;
+          }
+        });
       };
-      applyCmd(cmdStates[0]);
+      const resetCmd = () => {
+        cmdPlaying = false;
+        if (cmdTimer) clearTimeout(cmdTimer);
+        cmdTimer = null;
+        applyCmd(cmdStates[0], false);
+      };
+      const runCmd = () => {
+        if (reducedMotion) {
+          applyCmd(cmdStates[cmdStates.length - 1], false);
+          return;
+        }
+        if (cmdPlaying) return;
+        cmdPlaying = true;
+        applyCmd(cmdStates[0], true);
+        let step = 0;
+        const tick = () => {
+          step++;
+          if (step >= cmdStates.length) {
+            cmdPlaying = false;
+            return;
+          }
+          applyCmd(cmdStates[step], true);
+          cmdTimer = setTimeout(tick, 1800);
+        };
+        cmdTimer = setTimeout(tick, 1200);
+      };
       new IntersectionObserver(entries => {
         entries.forEach(entry => {
-          if (!entry.isIntersecting || cmdPlayed) return;
-          cmdPlayed = true;
-          let step = 0;
-          const tick = () => {
-            step++;
-            if (step >= cmdStates.length) return;
-            applyCmd(cmdStates[step]);
-            if (step < cmdStates.length - 1) setTimeout(tick, reducedMotion ? 0 : 1800);
-          };
-          setTimeout(tick, reducedMotion ? 0 : 1200);
+          if (entry.isIntersecting) runCmd();
+          else resetCmd();
         });
       }, { threshold: 0.45 }).observe(cmdDemo);
     }
 
+    $$('.page[data-page="product"] .product-module__metrics').forEach(metrics => {
+      new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) {
+            delete metrics.dataset.animated;
+            return;
+          }
+          if (metrics.dataset.animated) return;
+          metrics.dataset.animated = '1';
+          $$('b', metrics).forEach(b => animateMetricText(b));
+        });
+      }, { threshold: 0.35 }).observe(metrics);
+    });
+
     const copilotDemo = $('#productCopilotDemo');
     if (copilotDemo) {
       let played = false;
-      new IntersectionObserver(entries => {
+      let copilotObserver = null;
+      const runCopilot = () => {
+        if (played && !reducedMotion) return;
+        played = true;
+        $('#productCopilotState').textContent = 'Reviewing evidence';
+        type($('#productCopilotQ'), q, 18);
+        setTimeout(() => {
+          streamChunks($('#productCopilotA'), [
+            'No.',
+            'Two issues block release.',
+            'Qualify LM35DN second source and replace MPU6050 before approval.'
+          ], reducedMotion ? 0 : 260, () => {
+            $('#productCopilotState').textContent = '93% confidence';
+          });
+        }, reducedMotion ? 0 : 1400);
+      };
+      const resetCopilot = () => {
+        played = false;
+        $('#productCopilotState').textContent = 'Ready';
+        $('#productCopilotQ').textContent = q;
+        $('#productCopilotA').textContent = 'Analyzing release blockers and supplier exposure…';
+      };
+      copilotObserver = new IntersectionObserver(entries => {
         entries.forEach(entry => {
-          if (!entry.isIntersecting || played) return;
-          played = true;
-          $('#productCopilotState').textContent = 'Reviewing evidence';
-          type($('#productCopilotQ'), q, 18);
-          setTimeout(() => {
-            streamChunks($('#productCopilotA'), [
-              'No.',
-              'Two issues block release.',
-              'Qualify LM35DN second source and replace MPU6050 before approval.'
-            ], reducedMotion ? 0 : 260, () => {
-              $('#productCopilotState').textContent = '93% confidence';
-            });
-          }, reducedMotion ? 0 : 1400);
+          if (entry.isIntersecting) runCopilot();
+          else resetCopilot();
         });
-      }, { threshold: 0.45 }).observe(copilotDemo);
+      }, { threshold: 0.45 });
+      copilotObserver.observe(copilotDemo);
     }
 
     const supplierRows = $$('[data-ps-supplier]', $('#product-supplier'));
@@ -1582,47 +1937,163 @@
   }
 
   function initSolutionsDemos() {
+    const solScene = $('#solution-supply');
     const solRows = $$('[data-sol-supplier]');
     const solRec = $('#solutionSupplierRec');
     const solData = ['DigiKey recommended', 'Mouser qualified', 'Newark available'];
-    solRows.forEach(row => {
+    let solIndex = 0;
+    let solTimer = null;
+    let solObserver = null;
+
+    function selectSolutionSupplier(i, fromUser = false) {
+      solIndex = i;
+      solRows.forEach((row, j) => {
+        row.classList.toggle('selected', j === i);
+        row.classList.toggle('sol-row-active', j === i);
+      });
+      if (solRec) solRec.textContent = solData[i] || solData[0];
+      if (fromUser) {
+        if (solTimer) clearInterval(solTimer);
+        solTimer = setTimeout(() => startSolutionSupplierCycle(), 8000);
+      }
+    }
+
+    function startSolutionSupplierCycle() {
+      if (solTimer) clearInterval(solTimer);
+      if (reducedMotion || !solScene) return;
+      solTimer = setInterval(() => {
+        solIndex = (solIndex + 1) % solRows.length;
+        selectSolutionSupplier(solIndex, false);
+      }, 3200);
+    }
+
+    solRows.forEach((row, i) => {
       row.style.cursor = 'pointer';
-      row.onclick = () => {
-        solRows.forEach(r => r.classList.remove('selected'));
-        row.classList.add('selected');
-        if (solRec) solRec.textContent = solData[Number(row.dataset.solSupplier)] || solData[0];
-      };
+      row.onclick = () => selectSolutionSupplier(i, true);
+    });
+
+    if (solScene) {
+      solObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) startSolutionSupplierCycle();
+          else if (solTimer) { clearInterval(solTimer); solTimer = null; }
+        });
+      }, { threshold: 0.35 });
+      solObserver.observe(solScene);
+    }
+
+    $$('.page[data-page="solutions"] [data-solution-kpi]').forEach(row => {
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) {
+            delete row.dataset.counted;
+            $$('strong[data-count-target]', row).forEach(el => { el.textContent = '0'; });
+            return;
+          }
+          if (row.dataset.counted) return;
+          row.dataset.counted = '1';
+          $$('strong[data-count-target]', row).forEach(el => {
+            animateNumber(el, Number(el.dataset.countTarget));
+          });
+        });
+      }, { threshold: 0.4 });
+      observer.observe(row);
+    });
+  }
+
+  function initResourceModals() {
+    const modal = $('#resourceModal');
+    if (!modal) return;
+    const title = $('#resourceModalTitle');
+    const desc = $('#resourceModalDesc');
+    const label = $('#resourceModalLabel');
+    const labels = { preview: 'PREVIEW', 'sample-output': 'SAMPLE OUTPUT', 'open-example': 'OPEN EXAMPLE', sample: 'SAMPLE OUTPUT', download: 'OPEN EXAMPLE' };
+
+    function closeModal() {
+      modal.classList.remove('is-open');
+      document.body.style.overflow = '';
+      setTimeout(() => {
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+      }, reducedMotion ? 0 : MOTION.standard);
+    }
+
+    function openModal(type, modalTitle, modalDesc) {
+      if (label) label.textContent = labels[type] || 'PREVIEW';
+      if (title) title.textContent = modalTitle || 'Resource preview';
+      if (desc) desc.textContent = modalDesc || '';
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      requestAnimationFrame(() => modal.classList.add('is-open'));
+    }
+
+    $$('[data-resource-modal]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openModal(btn.dataset.resourceModal, btn.dataset.resourceTitle, btn.dataset.resourceDesc);
+      });
+    });
+    $$('[data-resource-close]', modal).forEach(el => el.addEventListener('click', closeModal));
+    addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+  }
+
+  function initContactForm() {
+    const form = $('#contactForm');
+    const card = $('#contactFormCard');
+    const success = $('#contactSuccess');
+    const resetBtn = $('#contactReset');
+    const submitBtn = $('#contactSubmit');
+    const status = $('#formStatus');
+    if (!form) return;
+
+    resetBtn?.addEventListener('click', () => {
+      card?.classList.remove('is-success');
+      success?.setAttribute('hidden', '');
+      form.reset();
+      if (status) status.textContent = 'This form opens your email client with the completed request.';
+    });
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const f = new FormData(form);
+      const name = String(f.get('name') || '').trim();
+      const email = String(f.get('email') || '').trim();
+      const message = String(f.get('message') || '').trim();
+      if (!name || !email || !message) {
+        if (status) status.textContent = 'Please complete all required fields before submitting.';
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (status) status.textContent = 'Enter a valid work email address.';
+        return;
+      }
+      const subject = encodeURIComponent(`Cadivor demo request from ${name}`);
+      const body = encodeURIComponent(`Name: ${name}\nEmail: ${email}\nCompany: ${f.get('company')}\n\n${message}`);
+      submitBtn?.classList.add('is-submitting');
+      if (status) status.textContent = 'Preparing your request…';
+      const mailto = `mailto:info@cadivor.com?subject=${subject}&body=${body}`;
+      setTimeout(() => {
+        submitBtn?.classList.remove('is-submitting');
+        card?.classList.add('is-success');
+        success?.removeAttribute('hidden');
+        if (status) status.textContent = '';
+        setTimeout(() => { location.href = mailto; }, reducedMotion ? 0 : MOTION.standard + 160);
+      }, reducedMotion ? 0 : MOTION.standard - 40);
     });
   }
 
   initProductPageDemos();
   initSolutionsDemos();
+  initResourceModals();
+  initContactForm();
+  initKpiCards();
+  refreshGlobalMotion();
 
   $$('.billing-toggle button').forEach(b => b.onclick = () => {
     $$('.billing-toggle button').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
-  });
-
-  $('#contactForm')?.addEventListener('submit', e => {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const f = new FormData(form);
-    const name = String(f.get('name') || '').trim();
-    const email = String(f.get('email') || '').trim();
-    const message = String(f.get('message') || '').trim();
-    const status = $('#formStatus');
-    if (!name || !email || !message) {
-      if (status) status.textContent = 'Please complete all required fields before submitting.';
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      if (status) status.textContent = 'Enter a valid work email address.';
-      return;
-    }
-    const subject = encodeURIComponent(`Cadivor demo request from ${name}`);
-    const body = encodeURIComponent(`Name: ${name}\nEmail: ${email}\nCompany: ${f.get('company')}\n\n${message}`);
-    if (status) status.textContent = 'Opening your email client to send the request…';
-    location.href = `mailto:info@cadivor.com?subject=${subject}&body=${body}`;
   });
 
   if (launchAudit.enabled) {
