@@ -1,6 +1,6 @@
-# Cadivor Interactive Marketing Experience
+# Cadivor Interactive Marketing Website
 
-Sprint 64 introduces a dedicated, zero-dependency public frontend for `cadivor.com` while preserving the existing Streamlit product for `app.cadivor.com`.
+This folder is the dedicated public frontend for `cadivor.com`. The existing Streamlit application remains the authenticated product and should be deployed at `app.cadivor.com`.
 
 ## Run locally
 
@@ -9,19 +9,32 @@ cd marketing-web
 python3 -m http.server 3000
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000/#/home`.
 
-## Configure the application URL
+## Routes
 
-By default, Sign In and Start Free Trial point to `https://app.cadivor.com`.
-To override this before `app.js` loads, define:
+- `#/home`
+- `#/product`
+- `#/solutions`
+- `#/pricing`
+- `#/resources`
+- `#/company`
+- `#/contact`
+- `#/security`
+- `#/privacy`
+- `#/terms`
+
+## Application URL
+
+The frontend defaults Sign In and trial links to `https://app.cadivor.com`. To override it before `app.js` loads, set:
 
 ```html
-<script>window.CADIVOR_APP_URL = "https://your-streamlit-app.example.com";</script>
+<script>window.CADIVOR_APP_URL = 'https://your-streamlit-url.example';</script>
 ```
 
 ## Deployment
 
-Upload the contents of `marketing-web/` to Cloudflare Pages, Vercel static hosting, Netlify, Railway, or any static host. Set the public domain to `cadivor.com`, and keep the current Streamlit deployment on `app.cadivor.com`.
+This is a zero-build static site. Deploy `marketing-web/` as the site root on Cloudflare Pages, Vercel, Netlify, Railway, or another static host.
 
-No build step or JavaScript package installation is required.
+## Premium v1.0 recovery
+This release is based on the full Experience Engine rather than the stripped-down Premium regression. The marketing site remains a zero-build static frontend. Keep the Streamlit product deployed separately and configure the application URL before production deployment.
