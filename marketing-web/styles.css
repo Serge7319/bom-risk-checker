@@ -10,7 +10,7 @@
   --blue-bright: #3b77f2;
   --green: #1ba879;
   --premium-max: 1580px;
-  --motion-standard: 420ms;
+  --motion-standard: 520ms;
   --ease-premium: cubic-bezier(.22, 1, .36, 1);
 }
 * { box-sizing: border-box; }
