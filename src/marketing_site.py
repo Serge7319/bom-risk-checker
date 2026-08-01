@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from html import escape
 from textwrap import dedent
+import re
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -22,7 +23,17 @@ PRODUCT_LINKS = [
 
 
 def _html(markup: str) -> None:
-    st.markdown(dedent(markup).strip(), unsafe_allow_html=True)
+    """Render marketing HTML without Markdown treating indented lines as code.
+
+    Streamlit's Markdown parser can expose fragments of large multiline HTML
+    blocks when an embedded element contains preformatted or indented content.
+    Normalizing inter-tag whitespace keeps the markup in one HTML block while
+    preserving visible copy and avoids source text leaking into the page.
+    """
+    normalized = dedent(markup).strip()
+    normalized = re.sub(r"\n[ \t]+", " ", normalized)
+    normalized = re.sub(r">\s+<", "><", normalized)
+    st.markdown(normalized, unsafe_allow_html=True)
 
 
 
@@ -786,10 +797,60 @@ def _sprint63_marketing_polish() -> None:
         .mk-decision-card{border-top:4px solid #22a06b}.mk-decision-topline{display:flex;justify-content:space-between;gap:16px;align-items:center}.mk-decision-time{font-size:10px;color:#73839a}.mk-confidence{display:block;height:5px;margin:6px 0 5px;border-radius:999px;background:#e4ebf4;overflow:hidden}.mk-confidence em{display:block;height:100%;border-radius:inherit;background:#22a06b}.mk-rationale{padding:15px 16px;margin:-6px 0 22px;border-left:3px solid #2f6df6;background:#f3f7fd}.mk-rationale b{font-size:11px;color:#203b63}.mk-rationale p{margin:5px 0 0;font-size:12px;line-height:1.55;color:#607188!important}
         @media(max-width:1180px){.mk-demo-stage{transform:none}.mk-workflow-grid::before{display:none}}
         @media(max-width:700px){.mk-decision-topline,.mk-supplier-summary{align-items:flex-start;flex-direction:column}.mk-demo-stage{margin-top:10px}}
-        @media(prefers-reduced-motion:reduce){.mk-shell *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+        /* Sprint 63.3 — lightweight motion and product-presence system */
+        .mk-launch-hero{position:relative;isolation:isolate;overflow:hidden}.mk-launch-hero::before,.mk-launch-hero::after{content:"";position:absolute;border-radius:50%;pointer-events:none;filter:blur(2px);opacity:.55;z-index:-1}.mk-launch-hero::before{width:420px;height:420px;right:-130px;top:-170px;background:radial-gradient(circle,rgba(72,134,255,.28),transparent 68%);animation:cv-orbit 12s ease-in-out infinite alternate}.mk-launch-hero::after{width:320px;height:320px;left:36%;bottom:-230px;background:radial-gradient(circle,rgba(36,197,160,.13),transparent 68%);animation:cv-orbit 15s ease-in-out infinite alternate-reverse}
+        .mk-launch-copy>*{opacity:0;transform:translateY(15px);animation:cv-hero-in .7s var(--mk-ease) forwards}.mk-launch-copy>*:nth-child(1){animation-delay:.05s}.mk-launch-copy>*:nth-child(2){animation-delay:.13s}.mk-launch-copy>*:nth-child(3){animation-delay:.21s}.mk-launch-copy>*:nth-child(4){animation-delay:.29s}.mk-launch-copy>*:nth-child(5){animation-delay:.37s}
+        .mk-demo-stage{opacity:0;animation:cv-product-in .9s .18s var(--mk-ease) forwards}.mk-demo-frame::after{content:"";position:absolute;inset:48px 0 auto;height:90px;background:linear-gradient(180deg,transparent,rgba(72,132,255,.08),transparent);transform:translateY(-120px);pointer-events:none;animation:cv-scan 7s 1.4s ease-in-out infinite}.mk-demo-frame::before{content:"LIVE ANALYSIS";position:absolute;right:18px;bottom:15px;z-index:4;padding:5px 8px;border-radius:999px;background:rgba(8,29,61,.9);border:1px solid rgba(124,169,245,.28);color:#bcd5ff;font-size:7px;font-weight:900;letter-spacing:.12em;box-shadow:0 8px 22px rgba(7,19,42,.25)}
+        .mk-live-dot{animation:cv-live 2s ease-out infinite}.mk-risk-line{position:relative;overflow:hidden}.mk-risk-line::before{content:"";position:absolute;left:0;top:20%;bottom:20%;width:2px;border-radius:2px;background:#3b78f3;opacity:0;animation:cv-risk-focus 6s ease-in-out infinite}.mk-risk-line:nth-child(3)::before{animation-delay:2s}.mk-risk-line:nth-child(4)::before{animation-delay:4s}
+        .mk-demo-kpis>div{transition:transform .28s var(--mk-ease),box-shadow .28s var(--mk-ease),border-color .28s var(--mk-ease)}.mk-demo-kpis>div:nth-child(1){animation:cv-kpi-focus 8s 1.2s ease-in-out infinite}.mk-demo-kpis>div:nth-child(2){animation:cv-kpi-focus 8s 3.2s ease-in-out infinite}.mk-demo-kpis>div:nth-child(5){animation:cv-kpi-focus 8s 5.2s ease-in-out infinite}
+        .mk-trust-inner{position:relative}.mk-trust-inner::after{content:"";position:absolute;left:0;bottom:-1px;width:22%;height:1px;background:linear-gradient(90deg,transparent,#4c83ed,transparent);animation:cv-trust-line 7s linear infinite}
+        .mk-workflow-grid article{overflow:hidden}.mk-workflow-grid article::before{content:"";position:absolute;inset:auto 0 0;height:3px;background:linear-gradient(90deg,#2f6df6,#70a3ff);transform:scaleX(0);transform-origin:left;transition:transform .35s var(--mk-ease)}@media(hover:hover){.mk-workflow-grid article:hover{transform:translateY(-6px);border-color:#b9cfee;box-shadow:0 24px 56px rgba(18,48,93,.13)}.mk-workflow-grid article:hover::before{transform:scaleX(1)}}
+        .mk-metric-showcase>div{position:relative;overflow:hidden}.mk-metric-showcase>div::after{content:"";position:absolute;left:22px;right:22px;bottom:15px;height:3px;border-radius:999px;background:#edf2f8}.mk-metric-showcase>div::before{content:"";position:absolute;left:22px;bottom:15px;height:3px;border-radius:999px;background:linear-gradient(90deg,#2f6df6,#76a7ff);width:var(--metric-fill,72%);transform:scaleX(0);transform-origin:left;transition:transform .9s .12s var(--mk-ease);z-index:1}.mk-metric-showcase>div:nth-child(2){--metric-fill:44%}.mk-metric-showcase>div:nth-child(3){--metric-fill:61%}.mk-metric-showcase>div:nth-child(4){--metric-fill:82%}.mk-metric-showcase>div:nth-child(5){--metric-fill:68%}.mk-metric-showcase>div:nth-child(6){--metric-fill:91%}.mk-section.cv-in-view .mk-metric-showcase>div::before{transform:scaleX(1)}
+        .mk-copilot-window{position:relative}.mk-copilot-window::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(60,119,225,.08);animation:cv-copilot-glow 5s ease-in-out infinite}.mk-message.assistant:last-child::after{content:"";display:inline-block;width:5px;height:12px;margin-left:5px;vertical-align:-2px;background:#2f6df6;animation:cv-cursor 1s steps(1) infinite}
+        .mk-supplier-row:not(.head){transition:background .2s ease,transform .2s ease}.mk-supplier-row:not(.head):hover{background:#f5f8ff;transform:translateX(3px)}.mk-decision-card{transition:transform .3s var(--mk-ease),box-shadow .3s var(--mk-ease)}.mk-decision-card:hover{transform:translateY(-4px);box-shadow:0 30px 75px rgba(15,23,42,.13)}
+        .mk-launch-story>section:not(.mk-launch-hero){opacity:0;transform:translateY(28px);transition:opacity .72s var(--mk-ease),transform .72s var(--mk-ease)}.mk-launch-story>section.cv-in-view{opacity:1;transform:none}.mk-launch-story>section.mk-trust{transform:translateY(12px)}.mk-launch-story>section.mk-trust.cv-in-view{transform:none}
+        @keyframes cv-hero-in{to{opacity:1;transform:none}}@keyframes cv-product-in{from{opacity:0;transform:perspective(1400px) rotateY(-4deg) translateY(24px) scale(.975)}to{opacity:1;transform:perspective(1400px) rotateY(-1.4deg) translateY(0) scale(1)}}@keyframes cv-orbit{to{transform:translate3d(-34px,24px,0) scale(1.08)}}@keyframes cv-scan{0%,15%{transform:translateY(-130px);opacity:0}30%{opacity:1}70%{opacity:.65}85%,100%{transform:translateY(570px);opacity:0}}@keyframes cv-live{0%{box-shadow:0 0 0 0 rgba(34,181,115,.35)}70%{box-shadow:0 0 0 7px rgba(34,181,115,0)}100%{box-shadow:0 0 0 0 rgba(34,181,115,0)}}@keyframes cv-risk-focus{0%,25%,100%{opacity:0}8%,18%{opacity:1}}@keyframes cv-kpi-focus{0%,18%,100%{transform:none;box-shadow:none;border-color:#e0e7f0}7%,12%{transform:translateY(-2px);box-shadow:0 12px 24px rgba(35,83,158,.12);border-color:#a9c5ed}}@keyframes cv-trust-line{from{transform:translateX(-100%)}to{transform:translateX(560%)}}@keyframes cv-copilot-glow{0%,100%{opacity:.25}50%{opacity:1}}@keyframes cv-cursor{50%{opacity:0}}
+        @media(max-width:1180px){@keyframes cv-product-in{from{opacity:0;transform:translateY(24px) scale(.98)}to{opacity:1;transform:none}}}
+        @media(prefers-reduced-motion:reduce){.mk-shell *{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}.mk-launch-story>section{opacity:1!important;transform:none!important}.mk-metric-showcase>div::before{transform:scaleX(1)!important}}
         </style>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def _install_marketing_motion() -> None:
+    """Add lightweight viewport reveals without adding a frontend library."""
+    components.html(
+        """<script>
+        (() => {
+          const win = window.parent;
+          const doc = win.document;
+          const sections = [...doc.querySelectorAll('.mk-launch-story > section')];
+          if (!sections.length) return;
+          if (win.__cadivorMarketingObserver) win.__cadivorMarketingObserver.disconnect();
+          const reduced = win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (reduced || !('IntersectionObserver' in win)) {
+            sections.forEach((section) => section.classList.add('cv-in-view'));
+            return;
+          }
+          const observer = new win.IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('cv-in-view');
+                observer.unobserve(entry.target);
+              }
+            });
+          }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+          sections.forEach((section, index) => {
+            if (index < 2) section.classList.add('cv-in-view');
+            else observer.observe(section);
+          });
+          win.__cadivorMarketingObserver = observer;
+        })();
+        </script>""",
+        height=0,
+        width=0,
     )
 
 
@@ -858,6 +919,7 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     if st.session_state.pop("cadivor_signing_out", False):
         st.markdown('<div class="cv-public-signout-toast">Signed out securely</div>', unsafe_allow_html=True)
     routes.get(normalized_page, _home)()
+    _install_marketing_motion()
     if should_scroll:
         section_json = repr(requested_section)
         components.html(
