@@ -7,6 +7,7 @@ from src.auth_state import (
     APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
     mark_authenticated, render_auth_transition,
 )
+from src.config import CADIVOR_MARKETING_URL
 
 
 def _set_auth_cookie(cookie_manager, session, key: str):
@@ -166,7 +167,7 @@ def _auth_css():
         .faq-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}.faq-card{padding:22px;}.faq-card strong{display:block;color:#0F172A!important;margin-bottom:8px;font-size:17px;}.faq-card span{color:#64748B!important;line-height:1.6;font-size:14px;}.footer{margin:70px 0 0 0;background:#0F172A;border-radius:24px;padding:34px;display:flex;justify-content:space-between;gap:28px;align-items:flex-start;box-shadow:0 24px 60px rgba(15,23,42,.20);}.footer strong{color:#fff!important;font-size:22px;}.footer p{color:#CBD5E1!important;max-width:520px;line-height:1.6;}.footer-links{display:flex;gap:22px;flex-wrap:wrap;}.footer-links a{color:#E2E8F0!important;text-decoration:none!important;font-weight:800;}
         .bottom-cta{margin:54px 0 0 0;background:linear-gradient(135deg,#0F172A,#1E3A8A);border-radius:24px;padding:30px 34px;display:flex;align-items:center;justify-content:space-between;gap:22px;box-shadow:0 26px 60px rgba(15,23,42,.20);}.bottom-cta strong{color:#fff!important;font-size:26px;display:block;margin-bottom:6px;}.bottom-cta span{color:#CBD5E1!important;font-size:15px;}
         /* Auth route */
-        .auth-card-header{text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
+        .auth-card-header{text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-card-brand-link{display:inline-block;text-decoration:none!important;color:inherit!important;}.auth-card-brand-link:hover{text-decoration:none!important;}.auth-card-brand-link:hover .auth-card-title{color:#2563EB!important;}.cadivor-back-home{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:8px 0;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;transition:color .18s ease;}.cadivor-back-home:hover{color:#2563EB!important;text-decoration:none!important;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
         div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}div[data-testid="stRadio"] label,div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}div[data-testid="stTextInput"] label,div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;}div[data-testid="stTextInput"] > div{overflow:visible!important;}div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}div[data-testid="stTextInput"] [data-baseweb="input"]::before,div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}div[data-testid="stTextInput"] [data-baseweb="input"] > div,div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}div[data-testid="stTextInput"] input,div[data-testid="stTextInput"] input[type="text"],div[data-testid="stTextInput"] input[type="password"],div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}div[data-testid="stTextInput"] input:focus,div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}div[data-testid="stTextInput"] button:focus,div[data-testid="stTextInput"] button:focus-visible{outline:0!important;box-shadow:none!important;}div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}div.stButton > button{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}div.stButton > button:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}div.stButton > button *{color:#fff!important;}
         .page-section{padding-top:58px!important;} .compact-section{padding-top:42px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
 
@@ -198,11 +199,27 @@ def _install_auth_submit_feedback() -> None:
     """No browser overlay is installed; Streamlit owns the auth transition."""
     return
 
+
+def _render_back_to_marketing_link() -> None:
+    st.markdown(
+        f"""
+        <a
+            href="{CADIVOR_MARKETING_URL}"
+            target="_self"
+            class="cadivor-back-home"
+        >
+            ← Back to Cadivor
+        </a>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     st.markdown(
-        """
+        f"""
         <style>
-        .block-container{
+        .block-container{{
             max-width:540px!important;
             width:min(540px,92vw)!important;
             margin:7vh auto 0 auto!important;
@@ -213,12 +230,14 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             border-radius:22px!important;
             box-shadow:0 28px 70px rgba(15,23,42,.13)!important;
             overflow:visible!important;
-        }
-        @media(max-width:700px){.block-container{margin:3vh auto 0 auto!important;width:94vw!important;padding:28px 22px 28px 22px!important;border-radius:18px!important}.auth-divider{margin-left:-22px!important;margin-right:-22px!important;}}
+        }}
+        @media(max-width:700px){{.block-container{{margin:3vh auto 0 auto!important;width:94vw!important;padding:28px 22px 28px 22px!important;border-radius:18px!important}}.auth-divider{{margin-left:-22px!important;margin-right:-22px!important;}}}}
         </style>
         <div class="auth-card-header">
-            <div class="auth-card-logo">C</div>
-            <div class="auth-card-title">Cadivor</div>
+            <a href="{CADIVOR_MARKETING_URL}" target="_self" class="auth-card-brand-link">
+                <div class="auth-card-logo">C</div>
+                <div class="auth-card-title">Cadivor</div>
+            </a>
             <div class="auth-card-sub">Engineering intelligence for modern electronics teams.</div>
         </div>
         <div class="auth-heading">Access your workspace</div>
@@ -311,16 +330,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             st.error(f"Authentication failed: {error}")
             return
 
-    if st.button("← Back to Home", key="cadivor_auth_back_home", type="tertiary", use_container_width=False):
-        st.session_state.pop("cadivor_auth_submission", None)
-        st.session_state["cadivor_root_state"] = APP_PUBLIC
-        st.session_state["cadivor_public_route"] = "home"
-        try:
-            st.query_params.clear()
-            st.query_params["public"] = "home"
-        except Exception:
-            pass
-        st.rerun()
+    _render_back_to_marketing_link()
 
 
 
