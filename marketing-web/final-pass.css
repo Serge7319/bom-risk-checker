@@ -1674,24 +1674,6 @@ summary:focus-visible {
 }
 
 /* Cadivor Premium v1.0 — Pricing width repair */
-.page[data-page="pricing"] .page-hero {
-  padding-inline: clamp(24px, 3vw, 56px);
-}
-
-.page[data-page="pricing"] .page-hero > .eyebrow,
-.page[data-page="pricing"] .page-hero > h1,
-.page[data-page="pricing"] .page-hero > p,
-.page[data-page="pricing"] .page-hero > .billing-toggle {
-  width: min(100%, 1180px);
-  max-width: 1180px;
-  margin-inline: auto;
-}
-
-.page[data-page="pricing"] .page-hero > h1,
-.page[data-page="pricing"] .page-hero > p {
-  max-width: 760px;
-}
-
 .page[data-page="pricing"] .pricing-grid article {
   display: flex;
   flex-direction: column;
@@ -1934,10 +1916,6 @@ summary:focus-visible {
   }
 }
 
-.page[data-page="pricing"] .page-hero > .eyebrow,
-.page[data-page="pricing"] .page-hero > h1,
-.page[data-page="pricing"] .page-hero > p,
-.page[data-page="pricing"] .page-hero > .billing-toggle,
 .page[data-page="pricing"] .pricing-grid,
 .page[data-page="pricing"] .comparison {
   width: min(calc(100% - 48px), 1180px);
@@ -2115,24 +2093,13 @@ summary:focus-visible {
   }
 }
 
-.page[data-page="company"] .page-hero {
-  padding-inline: clamp(28px, 3vw, 56px);
-}
-
-.page[data-page="company"] .page-hero > .eyebrow,
-.page[data-page="company"] .page-hero > h1,
-.page[data-page="company"] .page-hero > p {
-  width: min(calc(100% - 48px), 1200px);
-  max-width: 1200px;
-  margin-inline: auto;
-}
-
 .page[data-page="company"] .company-story,
 .page[data-page="company"] .company-stats,
 .page[data-page="company"] .company-product {
-  width: min(calc(100% - 48px), 1200px);
-  max-width: 1200px;
+  width: 100%;
+  max-width: var(--premium-max);
   margin-inline: auto;
+  padding-inline: max(28px, calc((100vw - var(--premium-max)) / 2));
   box-sizing: border-box;
 }
 
@@ -2973,6 +2940,24 @@ summary:focus-visible {
   background:
     radial-gradient(circle at 78% 14%, #173f78 0, transparent 38%),
     linear-gradient(135deg, #061329, #092550);
+}
+
+.page.inner-page > .page-hero > .eyebrow,
+.page.inner-page > .page-hero > h1,
+.page.inner-page > .page-hero > p,
+.page.inner-page > .page-hero > .billing-toggle,
+.page.inner-page > .page-hero > div {
+  margin-inline: 0;
+  width: auto;
+  max-width: none;
+}
+
+.page.inner-page > .page-hero > p {
+  max-width: 680px;
+}
+
+.page.inner-page > .page-hero > div {
+  display: flex;
 }
 
 .page.inner-page .page-hero h1 {
