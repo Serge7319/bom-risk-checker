@@ -21,7 +21,7 @@
   --space-section: 32px;
   --space-card: 20px;
   --control-height: 44px;
-  --cadivor-content-max: 1360px;
+  --cadivor-content-max: none;
   --cadivor-focus-ring: 0 0 0 3px rgba(47, 111, 237, 0.18);
 
   /* Bridge legacy design-system tokens */
@@ -41,8 +41,8 @@
 .cv-core-page-shell,
 .cvds-page-header {
   width: 100%;
-  max-width: var(--cadivor-content-max);
-  margin: 0 auto var(--space-section);
+  max-width: none;
+  margin: 0 0 var(--space-section);
 }
 
 .cv-core-page-shell > .cv-core-page-intro {
@@ -62,8 +62,63 @@
   max-width: 760px;
 }
 
-section[data-testid="stMain"] [data-testid="stMainBlockContainer"] {
-  max-width: var(--cadivor-content-max) !important;
+section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+section[data-testid="stMain"] .main .block-container {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-top: calc(var(--cv-foundation-top, 64px) + 16px) !important;
+  padding-left: var(--cv-foundation-gutter, 28px) !important;
+  padding-right: var(--cv-foundation-gutter, 28px) !important;
+  box-sizing: border-box !important;
+}
+
+section[data-testid="stMain"] [data-testid="stMainBlockContainer"] [data-testid="stMainBlockContainer"],
+section[data-testid="stMain"] .main .block-container .block-container {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+/* Fixed shell chrome must not reserve vertical space in the main column. */
+section[data-testid="stMain"] .stMarkdown:has(.cv-foundation-topbar),
+section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_navigation),
+section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_menu),
+section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_navigation),
+section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_menu) {
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Zero-height component iframes (command palette, interaction runtime). */
+section[data-testid="stMain"] iframe[height="0"],
+section[data-testid="stMain"] iframe[width="0"] {
+  display: block !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+/* Legacy page wrappers fill the available workspace on large displays. */
+section[data-testid="stMain"] .cv-dashboard-shell,
+section[data-testid="stMain"] .cv-living-workspace,
+section[data-testid="stMain"] .cv-portfolio-dashboard,
+section[data-testid="stMain"] .cv56-page-shell,
+section[data-testid="stMain"] .cv-page-shell,
+section[data-testid="stMain"] .page-shell,
+section[data-testid="stMain"] .content-shell,
+section[data-testid="stMain"] .cv-core-page-shell {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 /* ------------------------------------------------------------------ */
