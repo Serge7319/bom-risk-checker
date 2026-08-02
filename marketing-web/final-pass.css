@@ -1799,6 +1799,9 @@ summary:focus-visible {
   align-items: flex-start;
   min-height: 92px;
   padding: 18px 22px;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
   background: #fff;
 }
 
@@ -2965,6 +2968,11 @@ summary:focus-visible {
 .page.inner-page .page-hero {
   padding-bottom: var(--heading-gap);
   border-radius: 0;
+  opacity: 1;
+  transform: none;
+  background:
+    radial-gradient(circle at 78% 14%, #173f78 0, transparent 38%),
+    linear-gradient(135deg, #061329, #092550);
 }
 
 .page.inner-page .page-hero h1 {
@@ -3592,7 +3600,10 @@ summary:focus-visible {
 
 .launch-proof .kpi-card {
   padding: 22px 20px;
-  background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  background: #fff;
 }
 
 .command-kpis .kpi-card {
