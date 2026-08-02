@@ -95,6 +95,7 @@ from src.ui.premium_interactions import render_premium_interactions
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
+from src.ui.core_premium_ui import inject_core_premium_ui
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
@@ -2405,9 +2406,10 @@ render_unified_shell(
 inject_design_system_v1()
 inject_workspace_consistency_css()
 inject_premium_interaction_css()
-# The shell authority must be the final stylesheet. This prevents broad page
-# button rules from turning transparent navigation rows into white form boxes.
+# Shell geometry loads before the final premium UI authority layer.
 inject_unified_shell_css()
+# Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
+inject_core_premium_ui()
 
 try:
     _workspace_command_records = build_workspace_commands(
