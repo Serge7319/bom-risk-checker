@@ -1,5 +1,28 @@
 (() => {
-  const APP_URL = window.CADIVOR_APP_URL || 'https://app.cadivor.com';
+  /** Verified Streamlit Cloud production app; override via window.CADIVOR_APP_ORIGIN when app.cadivor.com is live. */
+  const STREAMLIT_PRODUCTION_FALLBACK = 'https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app';
+  const APP_ORIGIN = String(
+    window.CADIVOR_APP_ORIGIN || window.CADIVOR_APP_URL || STREAMLIT_PRODUCTION_FALLBACK
+  ).replace(/\/$/, '');
+
+  function buildAppUrl({ auth, intent, entry, source = 'marketing' } = {}) {
+    const params = new URLSearchParams();
+    if (auth) params.set('auth', auth);
+    if (intent) params.set('intent', intent);
+    if (entry) params.set('entry', entry);
+    if (source) params.set('source', source);
+    const qs = params.toString();
+    return qs ? `${APP_ORIGIN}/?${qs}` : `${APP_ORIGIN}/`;
+  }
+
+  const CADIVOR_LINKS = {
+    app: APP_ORIGIN,
+    signIn: buildAppUrl({ auth: 'login' }),
+    signUp: buildAppUrl({ auth: 'signup', intent: 'trial' }),
+    workspace: buildAppUrl({ source: 'marketing' }),
+    demo: '#/contact?intent=demo'
+  };
+
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -277,9 +300,88 @@
     else if (reducedMotion) btn.setAttribute('hidden', '');
   }
 
-  document.querySelectorAll('.app-link').forEach(a => {
-    a.href = `${APP_URL}?auth=${encodeURIComponent(a.dataset.auth || 'login')}`;
-  });
+  function hashQueryParams() {
+    const qs = (location.hash.match(/\?([^#]+)/) || [])[1] || '';
+    return new URLSearchParams(qs);
+  }
+
+  function bindApplicationLinks() {
+    $$('.app-link').forEach(a => {
+      const auth = String(a.dataset.auth || '').trim().toLowerCase();
+      if (auth === 'login' || auth === 'signin') {
+        a.href = buildAppUrl({ auth: 'login', entry: a.dataset.entry || '' });
+      } else if (auth === 'signup' || auth === 'trial') {
+        a.href = buildAppUrl({
+          auth: 'signup',
+          intent: a.dataset.intent || 'trial',
+          entry: a.dataset.entry || ''
+        });
+      } else if (a.dataset.app === 'workspace' || a.dataset.app === 'open') {
+        a.href = CADIVOR_LINKS.workspace;
+      } else {
+        a.href = CADIVOR_LINKS.workspace;
+      }
+      a.removeAttribute('target');
+    });
+    $$('.demo-link').forEach(a => {
+      const plan = String(a.dataset.plan || '').trim();
+      a.href = plan ? `${CADIVOR_LINKS.demo}&plan=${encodeURIComponent(plan)}` : CADIVOR_LINKS.demo;
+    });
+  }
+  bindApplicationLinks();
+
+  const CONTACT_COPY = {
+    general: {
+      eyebrow: 'CONTACT',
+      headline: 'Show us the engineering decision you need to improve.',
+      intro: 'Tell us about your BOM workflow, supplier-risk process, or upcoming release. We will help determine whether Cadivor fits.',
+      formEyebrow: 'CONTACT',
+      formTitle: 'Send us a message',
+      formIntro: 'Share your workflow context — we respond within one business day.',
+      submitLabel: 'Send message',
+      formNote: 'This form opens your email client with the completed request.',
+      mailSubject: 'Cadivor inquiry from'
+    },
+    demo: {
+      eyebrow: 'BOOK A DEMO',
+      headline: 'Book a Cadivor demo for your engineering team.',
+      intro: 'See how Cadivor connects BOM analysis, supplier intelligence, Ask Cadivor, decision records, and continuous monitoring in one release workflow.',
+      formEyebrow: 'BOOK A DEMO',
+      formTitle: 'Request a demo',
+      formIntro: 'Share your BOM workflow and team context — we respond within one business day.',
+      submitLabel: 'Request a demo',
+      formNote: 'This form opens your email client with your demo request.',
+      mailSubject: 'Cadivor demo request from'
+    }
+  };
+
+  function applyContactMode() {
+    const page = $('.page[data-page="contact"]');
+    if (!page) return;
+    const qs = hashQueryParams();
+    const mode = qs.get('intent') === 'demo' ? 'demo' : 'general';
+    const copy = CONTACT_COPY[mode];
+    const plan = String(qs.get('plan') || '').trim();
+    page.dataset.contactMode = mode;
+    if (plan) page.dataset.contactPlan = plan;
+    else delete page.dataset.contactPlan;
+    const aside = $('.contact-panel--copy', page);
+    $('.eyebrow', aside)?.replaceChildren(document.createTextNode(copy.eyebrow));
+    const headline = $('h1', aside);
+    if (headline) headline.textContent = copy.headline;
+    const intro = $('p', aside);
+    if (intro) intro.textContent = copy.intro;
+    const formCard = $('#contactFormCard');
+    $('.contact-form-card__header .eyebrow', formCard)?.replaceChildren(document.createTextNode(copy.formEyebrow));
+    const formTitle = $('.contact-form-card__header h2', formCard);
+    if (formTitle) formTitle.textContent = copy.formTitle;
+    const formIntro = $('.contact-form-card__header p', formCard);
+    if (formIntro) formIntro.textContent = copy.formIntro;
+    const submitLabel = $('.contact-submit-label');
+    if (submitLabel) submitLabel.textContent = copy.submitLabel;
+    const status = $('#formStatus');
+    if (status && !formCard?.classList.contains('is-success')) status.textContent = copy.formNote;
+  }
 
   const validPages = ['home', 'product', 'solutions', 'pricing', 'resources', 'company', 'contact', 'security', 'privacy', 'terms'];
   function route() {
@@ -289,7 +391,9 @@
     $$('.site-header nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#/${page}`));
     document.title = `${page === 'home' ? 'Cadivor' : page[0].toUpperCase() + page.slice(1) + ' — Cadivor'}`;
     $('#mainNav')?.classList.remove('open');
+    document.body.classList.remove('menu-open');
     window.scrollTo(0, 0);
+    if (page === 'contact') applyContactMode();
     syncHomeMode();
     refreshGlobalMotion();
     const anchor = (location.hash.match(/#\/[^#]+#([^?#]+)/) || [])[1];
@@ -2100,8 +2204,15 @@
         if (status) status.textContent = 'Enter a valid work email address.';
         return;
       }
-      const subject = encodeURIComponent(`Cadivor demo request from ${name}`);
-      const body = encodeURIComponent(`Name: ${name}\nEmail: ${email}\nCompany: ${f.get('company')}\n\n${message}`);
+      const qs = hashQueryParams();
+      const isDemo = qs.get('intent') === 'demo';
+      const plan = String(qs.get('plan') || '').trim();
+      const copy = CONTACT_COPY[isDemo ? 'demo' : 'general'];
+      const subject = encodeURIComponent(`${copy.mailSubject} ${name}`);
+      const bodyParts = [`Name: ${name}`, `Email: ${email}`, `Company: ${f.get('company') || ''}`];
+      if (plan) bodyParts.push(`Plan interest: ${plan}`);
+      bodyParts.push('', message);
+      const body = encodeURIComponent(bodyParts.join('\n'));
       submitBtn?.classList.add('is-submitting');
       if (status) status.textContent = 'Preparing your request…';
       const mailto = `mailto:info@cadivor.com?subject=${subject}&body=${body}`;
@@ -2121,6 +2232,12 @@
   initContactForm();
   initKpiCards();
   refreshGlobalMotion();
+
+  $('#copilotCreateDecision')?.addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    location.href = CADIVOR_LINKS.signUp;
+  });
 
   $$('.billing-toggle button').forEach(b => b.onclick = () => {
     $$('.billing-toggle button').forEach(x => x.classList.remove('active'));
