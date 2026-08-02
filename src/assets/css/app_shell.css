@@ -2,7 +2,7 @@
   --cv-foundation-top:64px;
   --cv-foundation-rail:232px;
   --cv-foundation-bg:#f5f7fb;
-  --cv-foundation-canvas:1480px;
+  --cv-foundation-canvas:none;
   --cv-foundation-gutter:28px;
   --cv-foundation-border:#dfe7f2;
   --cv-foundation-text:#0f172a;
@@ -107,10 +107,10 @@ section[data-testid="stMain"]{
 }
 [data-testid="stMainBlockContainer"],.main .block-container{
   width:100%!important;
-  max-width:var(--cv-foundation-canvas)!important;
+  max-width:none!important;
   min-width:0!important;
-  margin:0 auto!important;
-  padding:calc(var(--cv-foundation-top) + 22px) var(--cv-foundation-gutter) 60px!important;
+  margin:0!important;
+  padding:calc(var(--cv-foundation-top) + 16px) var(--cv-foundation-gutter) 60px!important;
   box-sizing:border-box!important;
   overflow:visible!important;
 }
