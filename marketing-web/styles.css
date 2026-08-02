@@ -289,7 +289,7 @@ button { cursor: pointer; }
 .closing-cta p { color: #b6c8e0; }
 
 .inner-page { min-height: 70vh; }
-.page-hero { padding: 100px max(28px, calc((100vw - var(--premium-max)) / 2)) 70px; color: #fff; background: linear-gradient(135deg,#061329,#12396f); }
+.page-hero { padding: 100px max(28px, calc((100vw - var(--premium-max)) / 2)) 70px; color: #fff; background: linear-gradient(135deg,#061329,#12396f); border-radius: 0; }
 .page-hero.compact { padding-block: 78px 56px; }
 .page-hero p { max-width: 680px; color: #b8cae1; line-height: 1.65; }
 .page-hero > div { display: flex; gap: 10px; margin-top: 20px; }
