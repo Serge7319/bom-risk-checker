@@ -392,7 +392,11 @@
     document.title = `${page === 'home' ? 'Cadivor' : page[0].toUpperCase() + page.slice(1) + ' — Cadivor'}`;
     $('#mainNav')?.classList.remove('open');
     document.body.classList.remove('menu-open');
+    $('#menuToggle')?.setAttribute('aria-expanded', 'false');
+    $('#menuToggle')?.setAttribute('aria-label', 'Open navigation');
     window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     if (page === 'contact') applyContactMode();
     syncHomeMode();
     refreshGlobalMotion();
@@ -404,7 +408,13 @@
     }
   }
   addEventListener('hashchange', route);
-  $('#menuToggle')?.addEventListener('click', () => $('#mainNav')?.classList.toggle('open'));
+  $('#menuToggle')?.addEventListener('click', () => {
+    const nav = $('#mainNav');
+    const open = !!nav?.classList.toggle('open');
+    document.body.classList.toggle('menu-open', open);
+    $('#menuToggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    $('#menuToggle')?.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+  });
   $$('[data-home-anchor]').forEach(a => a.addEventListener('click', e => {
     e.preventDefault();
     const id = a.dataset.homeAnchor;
@@ -2187,7 +2197,7 @@
       card?.classList.remove('is-success');
       success?.setAttribute('hidden', '');
       form.reset();
-      if (status) status.textContent = 'This form opens your email client with the completed request.';
+      applyContactMode();
     });
 
     form.addEventListener('submit', e => {
@@ -2197,11 +2207,17 @@
       const email = String(f.get('email') || '').trim();
       const message = String(f.get('message') || '').trim();
       if (!name || !email || !message) {
-        if (status) status.textContent = 'Please complete all required fields before submitting.';
+        if (status) {
+          status.textContent = 'Please complete all required fields before submitting.';
+          status.setAttribute('role', 'alert');
+        }
         return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        if (status) status.textContent = 'Enter a valid work email address.';
+        if (status) {
+          status.textContent = 'Enter a valid work email address.';
+          status.setAttribute('role', 'alert');
+        }
         return;
       }
       const qs = hashQueryParams();
