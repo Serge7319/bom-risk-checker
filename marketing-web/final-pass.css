@@ -3919,3 +3919,89 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
 .page[data-page="contact"] .contact-layout .page-hero {
   border-radius: 0;
 }
+
+/* Company page — fix compressed value cards, decision card, and KPI row */
+.page[data-page="company"] .company-story,
+.page[data-page="company"] .company-product,
+.page[data-page="company"] .company-stats {
+  width: min(100%, var(--premium-max));
+  max-width: var(--premium-max);
+  margin-inline: auto;
+  padding-inline: max(28px, calc((100vw - var(--premium-max)) / 2));
+  box-sizing: border-box;
+}
+
+.page[data-page="company"] .company-story {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(32px, 4vw, 56px);
+  align-items: start;
+}
+
+.page[data-page="company"] .company-story > article {
+  min-width: 0;
+}
+
+.page[data-page="company"] .values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+.page[data-page="company"] .values div {
+  min-height: 148px;
+  padding: 18px 16px;
+}
+
+.page[data-page="company"] .company-product {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 440px);
+  gap: clamp(32px, 4vw, 56px);
+  align-items: center;
+}
+
+.page[data-page="company"] .company-product > * {
+  min-width: 0;
+}
+
+.page[data-page="company"] .company-decision {
+  width: 100%;
+  max-width: 440px;
+  justify-self: end;
+  box-sizing: border-box;
+}
+
+.page[data-page="company"] .company-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  padding-bottom: 80px;
+}
+
+.page[data-page="company"] .company-stats .kpi-card {
+  min-width: 0;
+  height: 100%;
+}
+
+@media (max-width: 1024px) {
+  .page[data-page="company"] .company-story,
+  .page[data-page="company"] .company-product {
+    grid-template-columns: 1fr;
+  }
+
+  .page[data-page="company"] .company-decision {
+    max-width: none;
+    justify-self: stretch;
+  }
+
+  .page[data-page="company"] .company-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .page[data-page="company"] .company-stats {
+    grid-template-columns: 1fr;
+  }
+}
