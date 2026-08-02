@@ -27,7 +27,7 @@ section[data-testid="stMain"] > div,
   box-sizing:border-box!important;
 }
 [data-testid="stMainBlockContainer"],.main .block-container{
-  padding-top:calc(var(--cv-foundation-top) + 22px)!important;
+  padding-top:calc(var(--cv-foundation-top) + 16px)!important;
   padding-bottom:60px!important;
 }
 [data-testid="stMainBlockContainer"] [data-testid="stMainBlockContainer"],
