@@ -63,4 +63,12 @@ def empty_state(title: str, body: str, action: str = "", icon: str = "◇") -> N
 
 
 def status_badge(label: str, tone: str = "neutral") -> str:
-    return f'<span class="cvds-badge cvds-badge-{escape(tone)}">{escape(label)}</span>'
+    from src.ui.core_premium_ui import status_badge as core_status_badge
+
+    allowed = {
+        "neutral", "success", "warning", "danger", "info", "approved", "active",
+        "blocked", "high", "medium", "low", "monitoring", "qualified", "available",
+        "pending", "draft", "eol", "nrnd", "recommended",
+    }
+    mapped = tone if tone in allowed else "neutral"
+    return core_status_badge(label, mapped)  # type: ignore[arg-type]
