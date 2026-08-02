@@ -201,17 +201,8 @@ def _install_auth_submit_feedback() -> None:
 
 
 def _render_back_to_marketing_link() -> None:
-    st.markdown(
-        f"""
-        <a
-            href="{CADIVOR_MARKETING_URL}"
-            target="_self"
-            class="cadivor-back-home"
-        >
-            ← Back to Cadivor
-        </a>
-        """,
-        unsafe_allow_html=True,
+    _html(
+        f'<a href="{CADIVOR_MARKETING_URL}" target="_self" class="cadivor-back-home">← Back to Cadivor</a>'
     )
 
 
