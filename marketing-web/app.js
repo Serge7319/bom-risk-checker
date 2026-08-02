@@ -576,7 +576,7 @@
     }
     const page = $('.page.active');
     if (page) {
-      ['.page-hero', '.product-module', '.solution-scene', '.pricing-grid > article', '.resource-showcase', '.company-story', '.company-stats article', '.inner-cta'].forEach(sel => {
+      ['.product-module', '.solution-scene', '.pricing-grid > article', '.resource-showcase', '.company-story', '.company-stats article', '.inner-cta'].forEach(sel => {
         $$(sel, page).forEach(el => {
           if (!el.dataset.motion) el.dataset.motion = 'reveal';
         });
@@ -592,6 +592,10 @@
 
   function refreshGlobalMotion() {
     observeMotionElements();
+    $$('.page.active .page-hero').forEach(el => {
+      el.classList.add('motion-visible');
+      el.removeAttribute('data-motion');
+    });
   }
 
   function applyHeroMetrics(i, stagger = false) {
