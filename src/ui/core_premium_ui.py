@@ -80,6 +80,63 @@ def inject_core_premium_ui_auth() -> None:
     inject_core_premium_ui()
 
 
+def inject_workspace_geometry_final() -> None:
+    """Final authenticated-workspace geometry authority.
+
+    Must run after page-level CSS so large displays use the full workspace
+    width and shell chrome does not reserve vertical space in the main column.
+    """
+    st.markdown(
+        """
+        <style id="cadivor-workspace-geometry-final">
+        section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+        section[data-testid="stMain"] .main .block-container {
+          width: 100% !important;
+          max-width: none !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-top: calc(var(--cv-foundation-top, 64px) + 16px) !important;
+          padding-left: var(--cv-foundation-gutter, 28px) !important;
+          padding-right: var(--cv-foundation-gutter, 28px) !important;
+          box-sizing: border-box !important;
+        }
+        section[data-testid="stMain"] [data-testid="stMainBlockContainer"] [data-testid="stMainBlockContainer"],
+        section[data-testid="stMain"] .main .block-container .block-container {
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          max-width: none !important;
+          margin: 0 !important;
+        }
+        section[data-testid="stMain"] .stMarkdown:has(.cv-foundation-topbar),
+        section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_navigation),
+        section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_menu),
+        section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_navigation),
+        section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_menu) {
+          height: 0 !important;
+          min-height: 0 !important;
+          overflow: visible !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        section[data-testid="stMain"] .cv-dashboard-shell,
+        section[data-testid="stMain"] .cv-living-workspace,
+        section[data-testid="stMain"] .cv-portfolio-dashboard,
+        section[data-testid="stMain"] .cv56-page-shell,
+        section[data-testid="stMain"] .cv-page-shell,
+        section[data-testid="stMain"] .page-shell,
+        section[data-testid="stMain"] .content-shell,
+        section[data-testid="stMain"] .cv-core-page-shell {
+          width: 100% !important;
+          max-width: none !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def page_shell(title: str, subtitle: str = "", eyebrow: str = "") -> None:
     """Standard Cadivor page shell opener."""
     eyebrow_html = f'<div class="cvds-eyebrow">{escape(eyebrow)}</div>' if eyebrow else ""
