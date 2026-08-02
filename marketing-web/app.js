@@ -5,7 +5,7 @@
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const MOTION = { fast: 180, standard: 520, slow: 650, steps: 14, tick: 32, hover: 220 };
   /** Hero + workflow auto-play; other homepage sections stay static until replay. */
-  const HOME_SECTION_AUTOPLAY = false;
+  const HOME_SECTION_AUTOPLAY = true;
 
   const homeCleanup = [];
   function registerHomeCleanup(fn) {
@@ -1791,15 +1791,7 @@
     try {
       homeInitialized = true;
       launchAudit.onHomeInit();
-      document.body.classList.add('home-motion-restrained');
       initHeroTheater();
-      if (!HOME_SECTION_AUTOPLAY) {
-        $$('.launch-proof [data-kpi-counter]').forEach(el => {
-          const target = Number(el.dataset.kpiCounter);
-          const suffix = el.dataset.kpiSuffix || '';
-          if (Number.isFinite(target)) el.textContent = `${target}${suffix}`;
-        });
-      }
       registerHomeCleanup(() => {
         clearTimeout(reviewTimer);
         clearHeroTimers();
@@ -1841,7 +1833,6 @@
       else setReviewStage(REVIEW.length - 1);
     } else {
       cleanupHomePage();
-      document.body.classList.remove('home-motion-restrained');
       homeInitialized = false;
       clearTimeout(reviewTimer);
       clearHeroTimers();
