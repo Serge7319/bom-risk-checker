@@ -2964,6 +2964,7 @@ summary:focus-visible {
 
 .page.inner-page .page-hero {
   padding-bottom: var(--heading-gap);
+  border-radius: 0;
 }
 
 .page.inner-page .page-hero h1 {
@@ -3693,7 +3694,6 @@ summary:focus-visible {
   animation-duration: calc(var(--motion-enter) - 80ms);
 }
 
-.page.inner-page .page-hero,
 .page.inner-page .pricing-grid > article,
 .page.inner-page .resource-card,
 .page[data-page="product"] .product-module__surface,
@@ -3898,22 +3898,6 @@ summary:focus-visible {
 }
 
 /* Homepage motion restraint — static sections until replay */
-body.home-motion-restrained .page[data-page="home"] .supplier-path.active {
-  animation: none;
-}
-
-body.home-motion-restrained .page[data-page="home"] .supplier-node.active {
-  animation: none;
-}
-
-body.home-motion-restrained .page[data-page="home"] .monitor-switch.is-active .monitor-pulse-dot {
-  animation: none;
-}
-
-body.home-motion-restrained .page[data-page="home"] .decision-record .decision-badge.is-ready {
-  animation: none;
-}
-
 body.home-motion-restrained .page[data-page="home"] .launch-proof .kpi-card:hover,
 body.home-motion-restrained .page[data-page="home"] .command-kpis .kpi-card:hover,
 body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hover {
@@ -3931,4 +3915,11 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
   .page[data-page="home"] .product-theater .import-row b {
     font-size: 11px;
   }
+}
+
+/* Inner page heroes: flush under sticky nav (no white corner gaps) */
+.page.inner-page > .page-hero,
+.page.inner-page .page-hero.compact,
+.page[data-page="contact"] .contact-layout .page-hero {
+  border-radius: 0;
 }
