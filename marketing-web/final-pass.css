@@ -1216,8 +1216,8 @@ summary:focus-visible {
 }
 
 .page[data-page="company"] .company-story {
-  display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: clamp(40px, 5vw, 56px);
   width: 100%;
   max-width: var(--premium-max);
@@ -1257,7 +1257,6 @@ summary:focus-visible {
 }
 
 @media (max-width: 1024px) {
-  .page[data-page="company"] .company-story,
   .page[data-page="company"] .company-product {
     grid-template-columns: 1fr;
   }
@@ -2129,7 +2128,6 @@ summary:focus-visible {
 }
 
 @media (max-width: 1024px) {
-  .page[data-page="company"] .company-story,
   .page[data-page="company"] .company-product {
     grid-template-columns: 1fr;
   }
@@ -3920,7 +3918,7 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
   border-radius: 0;
 }
 
-/* Company page — fix compressed value cards, decision card, and KPI row */
+/* Company page — v11: mission stacks above full-width value cards and KPI row */
 .page[data-page="company"] .company-story,
 .page[data-page="company"] .company-product,
 .page[data-page="company"] .company-stats {
@@ -3932,31 +3930,43 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
 }
 
 .page[data-page="company"] .company-story {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: clamp(32px, 4vw, 56px);
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(40px, 5vw, 56px);
+  margin-top: 64px;
+  margin-bottom: 48px;
 }
 
 .page[data-page="company"] .company-story > article {
   min-width: 0;
+  width: 100%;
+}
+
+.page[data-page="company"] .company-story article:first-child {
+  max-width: 780px;
 }
 
 .page[data-page="company"] .values {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
   width: 100%;
 }
 
 .page[data-page="company"] .values div {
-  min-height: 148px;
-  padding: 18px 16px;
+  min-height: 0;
+  padding: 20px 18px;
+}
+
+@media (min-width: 900px) {
+  .page[data-page="company"] .values {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .page[data-page="company"] .company-product {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 440px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
   gap: clamp(32px, 4vw, 56px);
   align-items: center;
 }
@@ -3967,7 +3977,7 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
 
 .page[data-page="company"] .company-decision {
   width: 100%;
-  max-width: 440px;
+  max-width: 420px;
   justify-self: end;
   box-sizing: border-box;
 }
@@ -3975,17 +3985,18 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
 .page[data-page="company"] .company-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 20px;
   padding-bottom: 80px;
 }
 
 .page[data-page="company"] .company-stats .kpi-card {
   min-width: 0;
-  height: 100%;
+  min-height: 110px;
+  height: auto;
+  padding: 22px 20px;
 }
 
 @media (max-width: 1024px) {
-  .page[data-page="company"] .company-story,
   .page[data-page="company"] .company-product {
     grid-template-columns: 1fr;
   }
@@ -4000,7 +4011,11 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 640px) {
+  .page[data-page="company"] .values {
+    grid-template-columns: 1fr;
+  }
+
   .page[data-page="company"] .company-stats {
     grid-template-columns: 1fr;
   }
