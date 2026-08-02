@@ -25,6 +25,7 @@ button { cursor: pointer; }
 .logo b { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #fff; background: linear-gradient(135deg,#4e8cff,#2359c8); box-shadow: 0 8px 24px rgba(43,106,220,.35); }
 .site-header nav { display: flex; flex: 1; justify-content: center; gap: 28px; color: #c4d0e4; font-size: 13px; }
 .site-header nav a:hover { color: #fff; }
+.site-header nav a.active { color: #fff; font-weight: 750; }
 .header-actions { display: flex; align-items: center; gap: 9px; }
 .menu-toggle { display: none; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 10px 16px; border: 1px solid transparent; border-radius: 7px; font-size: 13px; font-weight: 750; transition: transform .2s, box-shadow .2s, background .2s; }
