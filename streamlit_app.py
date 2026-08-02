@@ -95,7 +95,7 @@ from src.ui.premium_interactions import render_premium_interactions
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
-from src.ui.core_premium_ui import inject_core_premium_ui
+from src.ui.core_premium_ui import inject_core_premium_ui, inject_workspace_geometry_final
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
@@ -12176,3 +12176,4 @@ Unlock more power:
 # Authentication persistence is intentionally session scoped in this repair.
 # Re-introduce durable persistence only through a server-side/HttpOnly mechanism,
 # not a visible Streamlit component that can schedule frontend reruns.
+inject_workspace_geometry_final()
