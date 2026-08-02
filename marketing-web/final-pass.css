@@ -4005,3 +4005,72 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
     grid-template-columns: 1fr;
   }
 }
+
+/* Launch polish — mobile navigation drawer + coverage status badge */
+.mobile-nav-cta {
+  display: none;
+}
+
+.coverage-status {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #5a6a7f;
+  background: #eef2f7;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+@media (max-width: 1024px) {
+  #mainNav {
+    display: none;
+    position: fixed;
+    inset: 72px 0 0;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 12px 18px 28px;
+    background: rgba(6, 19, 41, 0.98);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    overflow-y: auto;
+    z-index: 99;
+  }
+
+  #mainNav.open {
+    display: flex;
+  }
+
+  #mainNav > .route-link {
+    padding: 14px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 15px;
+    color: #dbe7f8;
+  }
+
+  #mainNav > .route-link.active {
+    color: #fff;
+    font-weight: 750;
+  }
+
+  .mobile-nav-cta {
+    display: inline-flex;
+    width: 100%;
+    margin-top: 10px;
+    justify-content: center;
+  }
+
+  body.menu-open {
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 820px) {
+  #mainNav {
+    inset: 64px 0 0;
+  }
+}
