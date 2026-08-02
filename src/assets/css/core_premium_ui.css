@@ -524,7 +524,41 @@ section[data-testid="stMain"] [data-testid="stAlert"] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Auth shell (signed-out)                                            */
+/* Auth login/signup — keep card centered and constrained on wide displays */
+[data-testid="stAppViewContainer"]:has(.auth-card-header) {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  background: var(--cadivor-surface-soft, #f6f9fd) !important;
+}
+
+[data-testid="stAppViewContainer"]:has(.auth-card-header) [data-testid="stMainBlockContainer"],
+[data-testid="stAppViewContainer"]:has(.auth-card-header) .block-container {
+  width: min(480px, 92vw) !important;
+  max-width: 480px !important;
+  margin: 7vh auto 48px auto !important;
+  padding: 38px !important;
+  background: var(--cadivor-surface, #fff) !important;
+  border: 1px solid var(--cadivor-border, #d9e3f0) !important;
+  border-top: 6px solid var(--cadivor-blue, #2f6fed) !important;
+  border-radius: 22px !important;
+  box-shadow: var(--shadow-card, 0 10px 30px rgba(15, 35, 65, 0.07)) !important;
+  box-sizing: border-box !important;
+}
+
+[data-testid="stAppViewContainer"]:has(.auth-card-header) [data-testid="stForm"],
+[data-testid="stAppViewContainer"]:has(.auth-card-header) div[data-testid="stTextInput"],
+[data-testid="stAppViewContainer"]:has(.auth-card-header) div[data-testid="stRadio"] {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+[data-testid="stAppViewContainer"]:has(.auth-card-header) .cadivor-back-home {
+  display: flex !important;
+  justify-content: center !important;
+  width: 100% !important;
+  margin-top: 18px !important;
+}
 /* ------------------------------------------------------------------ */
 .cadivor-back-home,
 .auth-card-brand-link {
@@ -539,8 +573,8 @@ section[data-testid="stMain"] [data-testid="stAlert"] {
   text-decoration: underline !important;
 }
 
-.cadivor-auth-shell .stButton > button[kind="primary"],
-.cadivor-auth-shell div[data-testid="stFormSubmitButton"] > button {
+[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button,
+[data-testid="stMainBlockContainer"]:has(.auth-card-header) .stButton > button {
   min-height: var(--control-height) !important;
   background: var(--cadivor-blue) !important;
   border-color: var(--cadivor-blue) !important;
@@ -549,16 +583,10 @@ section[data-testid="stMain"] [data-testid="stAlert"] {
   border-radius: var(--radius-control) !important;
 }
 
-.cadivor-auth-shell .stButton > button[kind="primary"]:hover,
-.cadivor-auth-shell div[data-testid="stFormSubmitButton"] > button:hover {
+[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button:hover,
+[data-testid="stMainBlockContainer"]:has(.auth-card-header) .stButton > button:hover {
   background: var(--cadivor-blue-dark) !important;
   border-color: var(--cadivor-blue-dark) !important;
-}
-
-.cadivor-auth-shell .stButton > button[kind="secondary"] {
-  background: #fff !important;
-  color: var(--cadivor-text) !important;
-  border: 1px solid var(--cadivor-border) !important;
 }
 
 /* ------------------------------------------------------------------ */
