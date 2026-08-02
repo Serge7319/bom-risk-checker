@@ -26,7 +26,15 @@ def inject_design_system_v1() -> None:
 
 
 def badge_html(label: str, tone: Tone = "neutral") -> str:
-    css_tone = "muted" if tone == "neutral" else tone
+    tone_map = {
+        "neutral": "muted",
+        "info": "info",
+        "success": "success",
+        "warning": "warning",
+        "danger": "danger",
+        "purple": "info",
+    }
+    css_tone = tone_map.get(tone, "muted")
     return f'<span class="cv-status-pill {css_tone}">{escape(str(label))}</span>'
 
 
