@@ -13,7 +13,7 @@
  --cvds-space-3:24px;--cvds-space-4:32px;
 }
 [data-testid="stAppViewContainer"],.stApp{background:var(--cvds-bg)!important;color:var(--cvds-text)!important}
-[data-testid="stMainBlockContainer"]{max-width:1480px!important;padding-top:86px!important;padding-bottom:56px!important}
+[data-testid="stMainBlockContainer"]{max-width:none!important;padding-top:calc(var(--cv-foundation-top, 64px) + 16px)!important;padding-bottom:56px!important}
 [data-testid="stMainBlockContainer"]>*{min-width:0!important}
 [data-testid="stMainBlockContainer"] h1{font-size:34px!important;line-height:1.12!important;font-weight:850!important;letter-spacing:-.035em!important;margin:0 0 8px!important}
 [data-testid="stMainBlockContainer"] h2{font-size:23px!important;line-height:1.22!important;font-weight:820!important;letter-spacing:-.025em!important;margin:28px 0 12px!important}
@@ -70,7 +70,7 @@ div[data-testid="stExpander"] details summary{min-height:46px!important;padding:
 .st-key-cv55_navigation{width:var(--cv55-nav)!important}.st-key-cv55_navigation .stButton>button{background:transparent!important;border:1px solid transparent!important;box-shadow:none!important;color:#b8c7dc!important}.st-key-cv55_navigation .stButton>button:hover{background:rgba(148,163,184,.08)!important;color:#fff!important}.st-key-cv55_navigation .stButton>button[kind="primary"]{background:rgba(37,99,235,.14)!important;color:#fff!important;border-color:rgba(96,165,250,.16)!important;box-shadow:inset 3px 0 0 #60a5fa!important}
 
 /* Kill known page-level shell overrides */
-[data-testid="stMainBlockContainer"],.main .block-container{padding-left:24px!important;padding-right:24px!important;max-width:1480px!important;margin-left:auto!important;margin-right:auto!important}
+[data-testid="stMainBlockContainer"],.main .block-container{padding-left:var(--cv-foundation-gutter, 24px)!important;padding-right:var(--cv-foundation-gutter, 24px)!important;max-width:none!important;margin-left:0!important;margin-right:0!important}
 [data-testid="stHorizontalBlock"]{gap:16px!important}.element-container{min-width:0!important}
 @media(max-width:1000px){.cvds-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cvds-page-header{align-items:flex-start;flex-direction:column}}
 @media(max-width:680px){[data-testid="stMainBlockContainer"],.main .block-container{padding-left:14px!important;padding-right:14px!important}.cvds-kpi-grid{grid-template-columns:1fr}.cvds-page-header h1{font-size:29px!important}}
