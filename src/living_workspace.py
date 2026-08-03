@@ -244,6 +244,7 @@ def render_living_workspace(
     internal_nav_button: Callable[..., Any],
 ) -> None:
     """Render the Living Engineering Workspace using prepared intelligence."""
+    _render_css()
     st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
 
     changes = overview.get("recent_change_summary", {})
