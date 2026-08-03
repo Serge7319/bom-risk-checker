@@ -12,6 +12,8 @@ from typing import Any, Callable, Dict, Iterable, List
 import pandas as pd
 import streamlit as st
 
+from src.ui.cadivor_design_system import MetricCard, cadivor_dataframe, cadivor_section_header, render_kpi_row_safe
+
 
 def _text(value: Any, default: str = "") -> str:
     if value is None:
@@ -314,18 +316,15 @@ def render_design_impact(
 ) -> None:
     _css()
 
-    st.markdown(
-        """
-        <section class="cv20-hero">
-          <div class="cv20-eyebrow">Engineering Change Intelligence</div>
-          <div class="cv20-title">Design Impact Analyzer</div>
-          <div class="cv20-copy">
-            See where a component is used, how a sourcing or lifecycle change may affect saved projects,
-            and which engineering reviews should happen before approving a replacement.
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+    cadivor_section_header(
+        "Design Impact Analyzer",
+        eyebrow="Engineering Change Intelligence",
+        description=(
+            "See where a component is used, how a sourcing or lifecycle change may affect saved projects, "
+            "and which engineering reviews should happen before approving a replacement."
+        ),
+        icon="activity",
     )
 
     options = intelligence["available_mpns"]
@@ -358,12 +357,16 @@ def render_design_impact(
         unsafe_allow_html=True,
     )
 
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Affected Projects", intelligence["project_count"])
-    k2.metric("Impact Score", f"{intelligence['impact_score']}/100")
-    k3.metric("Available Stock", f"{intelligence['minimum_stock']:,}")
-    k4.metric("Supplier Sources", intelligence["minimum_sources"])
-    k5.metric("Estimated Review", f"{intelligence['engineering_hours']} hrs")
+    render_kpi_row_safe(
+        [
+            MetricCard(label="Affected Projects", value=str(intelligence["project_count"]), tone="info", icon="layers"),
+            MetricCard(label="Impact Score", value=f"{intelligence['impact_score']}/100", tone="warning", icon="alert"),
+            MetricCard(label="Available Stock", value=f"{intelligence['minimum_stock']:,}", tone="monitoring", icon="factory"),
+            MetricCard(label="Supplier Sources", value=str(intelligence["minimum_sources"]), tone="info", icon="chart"),
+            MetricCard(label="Estimated Review", value=f"{intelligence['engineering_hours']} hrs", tone="confidence", icon="activity"),
+        ],
+        columns=4,
+    )
 
     left, right = st.columns([1.35, 1])
 
@@ -438,7 +441,7 @@ def render_design_impact(
     st.markdown('<div class="cv20-section">Cross-Project Evidence</div>', unsafe_allow_html=True)
     if intelligence["affected_projects"]:
         evidence_df = pd.DataFrame(intelligence["affected_projects"])
-        st.dataframe(
+        cadivor_dataframe(
             evidence_df[
                 [
                     "Project",
@@ -452,8 +455,11 @@ def render_design_impact(
                     "Risk Score",
                 ]
             ],
-            hide_index=True,
-            use_container_width=True,
+            column_config={
+                "Part Number": st.column_config.TextColumn(width="medium"),
+                "Available Stock": st.column_config.NumberColumn(format="%,d"),
+                "Risk Score": st.column_config.NumberColumn(format="%d"),
+            },
         )
 
     st.markdown('<div class="cv20-section">Continue the Engineering Review</div>', unsafe_allow_html=True)
@@ -487,3 +493,5 @@ def render_design_impact(
             key="impact_portfolio",
             use_container_width=True,
         )
+
+    st.markdown("</div>", unsafe_allow_html=True)
