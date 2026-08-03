@@ -14,7 +14,7 @@ import streamlit as st
 
 from src.ui.cadivor_design_system import (
     MetricCard,
-    cadivor_badge,
+    cadivor_meta_row,
     cadivor_metric_row,
     cadivor_panel,
     cadivor_panel_end,
@@ -341,14 +341,13 @@ def render_living_workspace(
             effort = "10 min" if priority >= 85 else "20 min" if priority >= 60 else "30 min"
             due_label = _text(action.get("due"), "This week")
             cadivor_panel(title=_text(action.get("item"), "BOM"), subtitle=_text(action.get("title"), "Review engineering action"))
-            st.markdown(
-                f'<div class="cv64-meta-row">'
-                f'{cadivor_badge(f"Priority {priority}/100", "info")}'
-                f'{cadivor_badge(_text(action.get("owner"), "Engineering"), "neutral")}'
-                f'{cadivor_badge(f"Estimated {effort}", "monitoring")}'
-                f'{cadivor_badge(f"Due {due_label}", "warning")}'
-                f"</div>",
-                unsafe_allow_html=True,
+            cadivor_meta_row(
+                [
+                    (f"Priority {priority}/100", "info"),
+                    (_text(action.get("owner"), "Engineering"), "neutral"),
+                    (f"Estimated {effort}", "monitoring"),
+                    (f"Due {due_label}", "warning"),
+                ]
             )
             cadivor_panel_end()
             destination = _text(action.get("page"), "Engineering Decisions")
@@ -418,8 +417,8 @@ def render_living_workspace(
                 subtitle=f"Updated {updated}",
                 tone="soft",
             )
+            cadivor_meta_row([(status, badge_tone)])
             st.markdown(
-                f'<div class="cv64-meta-row">{cadivor_badge(status, badge_tone)}</div>'
                 f'<div class="cv64-progress"><i style="width:{int(_number(project.get("health"), 0))}%"></i></div>'
                 f'<div class="cv64-mini-metrics">'
                 f'<div><strong>{int(_number(project.get("health"), 0))}/100</strong><span>Health</span></div>'
