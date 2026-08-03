@@ -44,9 +44,11 @@
 .stButton>button:hover,.stDownloadButton>button:hover{transform:translateY(-1px)!important}
 input,textarea,[data-baseweb="select"]>div,[data-testid="stDateInput"]>div>div{border-radius:var(--cvds-r-sm)!important;border-color:#cfd9e7!important;background:#fff!important;box-shadow:none!important;font-size:14px!important}
 input:focus,textarea:focus,[data-baseweb="select"]>div:focus-within{border-color:var(--cvds-blue)!important;box-shadow:0 0 0 3px rgba(37,99,235,.11)!important}
-.stTabs [data-baseweb="tab-list"]{gap:4px!important;padding:4px!important;border:1px solid var(--cvds-border)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important}
-.stTabs [data-baseweb="tab"]{min-height:38px!important;padding:6px 12px!important;border-radius:8px!important;font-size:13px!important;font-weight:750!important;color:var(--cvds-muted)!important}
-.stTabs [aria-selected="true"]{background:var(--cvds-blue-soft)!important;color:var(--cvds-blue)!important}
+section[data-testid="stMain"] .stTabs [data-baseweb="tab-border"]{display:none!important}
+section[data-testid="stMain"] .stTabs [data-baseweb="tab-list"]{gap:4px!important;padding:0!important;margin-bottom:18px!important;border:0!important;border-bottom:1px solid var(--cvds-border)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-height:44px!important}
+section[data-testid="stMain"] .stTabs [data-baseweb="tab"]{min-height:42px!important;padding:10px 16px 12px!important;margin-bottom:-1px!important;border:0!important;border-radius:10px 10px 0 0!important;background:transparent!important;color:#334155!important;font-size:14px!important;font-weight:650!important;box-shadow:none!important;opacity:1!important}
+section[data-testid="stMain"] .stTabs [data-baseweb="tab"]:hover{background:#f8fbff!important;color:#0b1f3a!important}
+section[data-testid="stMain"] .stTabs [aria-selected="true"]{background:#eff6ff!important;color:#1d4ed8!important;font-weight:700!important;box-shadow:inset 0 -3px 0 #2563eb!important}
 
 /* Tables, charts, expanders */
 [data-testid="stDataFrame"],div[data-testid="stTable"],div[data-testid="stPlotlyChart"],div[data-testid="stExpander"]{border:1px solid var(--cvds-border)!important;border-radius:var(--cvds-r)!important;background:#fff!important;box-shadow:var(--cvds-shadow)!important;overflow:hidden!important}
