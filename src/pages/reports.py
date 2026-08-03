@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from src.ui.cadivor_design_system import MetricCard, cadivor_metric_row, cadivor_button_wrap, cadivor_button_wrap_end
+from src.ui.cadivor_design_system import MetricCard, cadivor_metric_row, cadivor_button_wrap, cadivor_button_wrap_end, render_kpi_row_safe
 
 
 def _safe_text(value, fallback="—"):
@@ -149,7 +149,7 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         """,
         unsafe_allow_html=True,
     )
-    cadivor_metric_row(
+    render_kpi_row_safe(
         [
             MetricCard(label="Saved analyses", value=str(total_reports), detail="Available report sources", tone="info", icon="file"),
             MetricCard(label="Average health", value=str(avg_health), detail="Across saved BOMs", tone="success" if avg_health >= 80 else "warning", icon="shield"),
