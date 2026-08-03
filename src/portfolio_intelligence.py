@@ -12,6 +12,8 @@ from typing import Any, Callable, Dict, Iterable, List
 import pandas as pd
 import streamlit as st
 
+from src.ui.cadivor_design_system import MetricCard, cadivor_dataframe, render_kpi_row_safe
+
 
 def _text(value: Any, default: str = "") -> str:
     if value is None:
@@ -269,12 +271,16 @@ def render_portfolio_intelligence(
         unsafe_allow_html=True,
     )
 
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Saved Projects", intelligence["total_projects"])
-    k2.metric("Component Records", intelligence["total_component_records"])
-    k3.metric("Shared Components", intelligence["shared_component_count"])
-    k4.metric("Single-Source Records", intelligence["single_source_count"])
-    k5.metric("Lifecycle Exposure", intelligence["lifecycle_count"])
+    render_kpi_row_safe(
+        [
+            MetricCard(label="Saved Projects", value=str(intelligence["total_projects"]), tone="info", icon="chart"),
+            MetricCard(label="Component Records", value=str(intelligence["total_component_records"]), tone="info", icon="layers"),
+            MetricCard(label="Shared Components", value=str(intelligence["shared_component_count"]), tone="warning", icon="activity"),
+            MetricCard(label="Single-Source Records", value=str(intelligence["single_source_count"]), tone="danger", icon="alert"),
+            MetricCard(label="Lifecycle Exposure", value=str(intelligence["lifecycle_count"]), tone="warning", icon="shield"),
+        ],
+        columns=4,
+    )
 
     left, right = st.columns([1.45, 1])
 
@@ -326,11 +332,7 @@ def render_portfolio_intelligence(
 
         with st.expander("View all shared components", expanded=False):
             if intelligence["shared_components"]:
-                st.dataframe(
-                    pd.DataFrame(intelligence["shared_components"]),
-                    hide_index=True,
-                    use_container_width=True,
-                )
+                cadivor_dataframe(pd.DataFrame(intelligence["shared_components"]))
 
     with right:
         st.markdown('<div class="cv19-section">Portfolio Exposure</div>', unsafe_allow_html=True)
@@ -372,10 +374,13 @@ def render_portfolio_intelligence(
     )
     if intelligence["project_health"]:
         project_df = pd.DataFrame(intelligence["project_health"])
-        st.dataframe(
+        cadivor_dataframe(
             project_df[["Project", "Health", "High-Risk", "Components"]],
-            hide_index=True,
-            use_container_width=True,
+            column_config={
+                "Health": st.column_config.NumberColumn(format="%d"),
+                "High-Risk": st.column_config.NumberColumn(format="%d"),
+                "Components": st.column_config.NumberColumn(format="%d"),
+            },
         )
     else:
         st.info("No saved project health records are available.")
@@ -386,12 +391,10 @@ def render_portfolio_intelligence(
     with exposure_tab:
         rows = intelligence["single_source"]
         if rows:
-            st.dataframe(
+            cadivor_dataframe(
                 pd.DataFrame(rows)[
                     ["Project", "Part Number", "Manufacturer", "Supplier Sources", "Available Stock", "Risk Score"]
                 ],
-                hide_index=True,
-                use_container_width=True,
             )
         else:
             st.success("No single-source component record is currently identified.")
@@ -399,12 +402,10 @@ def render_portfolio_intelligence(
     with lifecycle_tab:
         rows = intelligence["lifecycle_exposed"]
         if rows:
-            st.dataframe(
+            cadivor_dataframe(
                 pd.DataFrame(rows)[
                     ["Project", "Part Number", "Manufacturer", "Lifecycle", "Risk Score"]
                 ],
-                hide_index=True,
-                use_container_width=True,
             )
         else:
             st.success("No lifecycle-exposed component record is currently identified.")
@@ -412,7 +413,7 @@ def render_portfolio_intelligence(
     with alerts_tab:
         rows = intelligence["recurring_alerts"]
         if rows:
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            cadivor_dataframe(pd.DataFrame(rows))
         else:
             st.success("No component has multiple recorded monitoring alerts.")
 
