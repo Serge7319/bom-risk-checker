@@ -25,6 +25,7 @@ from src.ui.cadivor_design_system.components import (
     cadivor_dataframe,
     inject_cadivor_design_system,
     render_kpi_card,
+    render_kpi_row_safe,
 )
 
 __all__ = [
@@ -53,4 +54,5 @@ __all__ = [
     "cadivor_dataframe",
     "inject_cadivor_design_system",
     "render_kpi_card",
+    "render_kpi_row_safe",
 ]
