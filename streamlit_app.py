@@ -98,6 +98,7 @@ from src.ui.design_system_v1 import inject_design_system_v1
 from src.ui.core_premium_ui import (
     inject_core_premium_ui,
     inject_workspace_geometry_final,
+    mark_authenticated_surface_ready,
     stop_authenticated_page,
 )
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
@@ -1581,12 +1582,12 @@ _auth_status = resolve_auth_state(supabase, cookie_manager)
 _root_state = str(st.session_state.get("cadivor_root_state") or (APP_AUTHENTICATED if _auth_status == AUTH_AUTHENTICATED else APP_PUBLIC))
 if _auth_status == AUTH_SIGNED_OUT or _root_state != APP_AUTHENTICATED:
     show_auth_ui(supabase, cookie_manager)
-    stop_authenticated_page()
+    st.stop()
 
 if _auth_status != AUTH_AUTHENTICATED:
     # Defensive stop: resolve_auth_state renders the neutral boot surface while
     # UNKNOWN, so neither public nor authenticated content can leak through.
-    stop_authenticated_page()
+    st.stop()
 
 # Authenticated routing is session-state based. No browser-history mutation is
 # performed here; browser-level URL changes caused full-page remount flashes.
@@ -2414,6 +2415,7 @@ inject_premium_interaction_css()
 inject_unified_shell_css()
 # Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
 inject_core_premium_ui()
+mark_authenticated_surface_ready()
 
 try:
     _workspace_command_records = build_workspace_commands(
