@@ -106,6 +106,8 @@ from src.ui.enterprise_experience import inject_enterprise_experience_css, opera
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.ui.cadivor_design_system import (
     MetricCard,
+    cadivor_button_wrap,
+    cadivor_button_wrap_end,
     cadivor_dataframe,
     cadivor_metric_row,
     cadivor_panel,
@@ -1908,7 +1910,7 @@ def show_dashboard_summary(results_df):
         ascending=False
     ).head(5)
 
-    st.dataframe(
+    cadivor_dataframe(
         top_risks[
             [
                 "MPN",
@@ -1920,7 +1922,12 @@ def show_dashboard_summary(results_df):
                 "Risk Reasons",
             ]
         ].reset_index(drop=True),
-        use_container_width=True,
+        column_config={
+            "MPN": st.column_config.TextColumn(width="medium"),
+            "Risk Score": st.column_config.NumberColumn(format="%d"),
+            "Stock Available": st.column_config.NumberColumn(format="%,d"),
+            "Supplier Count": st.column_config.NumberColumn(format="%d"),
+        },
     )
     st.divider()
 
@@ -3410,21 +3417,23 @@ if app_mode == "Procurement Advisor":
         parts=pa_parts,
         alerts=[],
     )
-    st.markdown(
-        f"""
-        <section class="cv151-hero">
-          <div class="cv151-title">Procurement Advisor</div>
-          <div class="cv151-subtitle">{html.escape(advisor['summary'])}</div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+    cadivor_section_header(
+        "Procurement Advisor",
+        eyebrow="Sourcing & Purchasing",
+        description=advisor["summary"],
+        icon="factory",
     )
 
-    p1, p2, p3, p4 = st.columns(4)
-    p1.metric("Action Needed", advisor["urgent_count"])
-    p2.metric("Monitor", advisor["monitor_count"])
-    p3.metric("Need Second Source", advisor["second_source_count"])
-    p4.metric("Replacement Needed", advisor["replace_count"])
+    render_kpi_row_safe(
+        [
+            MetricCard(label="Action Needed", value=str(advisor["urgent_count"]), tone="danger", icon="alert"),
+            MetricCard(label="Monitor", value=str(advisor["monitor_count"]), tone="monitoring", icon="activity"),
+            MetricCard(label="Need Second Source", value=str(advisor["second_source_count"]), tone="warning", icon="factory"),
+            MetricCard(label="Replacement Needed", value=str(advisor["replace_count"]), tone="info", icon="layers"),
+        ],
+        columns=4,
+    )
 
     priority_tab, details_tab = st.tabs(
         ["Action Needed", "All Components"]
@@ -3476,11 +3485,14 @@ if app_mode == "Procurement Advisor":
         if advisor["recommendation_df"].empty:
             st.info("No component purchasing data is available.")
         else:
-            st.dataframe(
+            cadivor_dataframe(
                 advisor["recommendation_df"],
-                hide_index=True,
-                use_container_width=True,
+                column_config={
+                    "Risk Level": st.column_config.TextColumn(width="small"),
+                    "Recommended Action": st.column_config.TextColumn(width="medium"),
+                },
             )
+            cadivor_button_wrap("secondary")
             st.download_button(
                 "Download Procurement Details",
                 advisor["recommendation_df"].to_csv(index=False).encode("utf-8"),
@@ -3488,6 +3500,10 @@ if app_mode == "Procurement Advisor":
                 mime="text/csv",
                 key="pa_export",
             )
+            cadivor_button_wrap_end()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    stop_authenticated_page()
 
 
 # ---------- Engineering Decision Center ----------
@@ -3621,11 +3637,15 @@ if app_mode == "Engineering Decisions":
         )
 
         with summary_tab:
-            overview_cols = st.columns(4)
-            overview_cols[0].metric("Component / BOM", selected_decision["part_number"])
-            overview_cols[1].metric("Priority", f"{selected_decision['priority_score']}/100")
-            overview_cols[2].metric("Confidence", f"{selected_decision['confidence']}%")
-            overview_cols[3].metric("Estimated Effort", f"{selected_decision['estimated_effort_hours']} hrs")
+            render_kpi_row_safe(
+                [
+                    MetricCard(label="Component / BOM", value=str(selected_decision["part_number"]), tone="info", icon="layers"),
+                    MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="alert"),
+                    MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="shield"),
+                    MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="activity"),
+                ],
+                columns=4,
+            )
 
             st.markdown("### Cadivor Recommendation")
             st.info(selected_decision["recommended_action"])
@@ -3807,7 +3827,7 @@ if app_mode == "Engineering Decisions":
                     },
                 ]
             )
-            st.dataframe(context_df, hide_index=True, use_container_width=True)
+            cadivor_dataframe(context_df)
 
         with notes_tab:
             note = st.text_area(
@@ -5493,10 +5513,12 @@ if app_mode == "Reports":
             if engineering_df.empty:
                 st.info("No component-level risk data is available.")
             else:
-                st.dataframe(
+                cadivor_dataframe(
                     engineering_df,
-                    hide_index=True,
-                    use_container_width=True,
+                    column_config={
+                        "MPN": st.column_config.TextColumn(width="medium"),
+                        "Risk Score": st.column_config.NumberColumn(format="%d"),
+                    },
                 )
                 risk_pdf_col, risk_csv_col = st.columns(2)
                 with risk_pdf_col:
@@ -5527,10 +5549,12 @@ if app_mode == "Reports":
             if sourcing_df.empty:
                 st.info("No sourcing fields are available for this analysis.")
             else:
-                st.dataframe(
+                cadivor_dataframe(
                     sourcing_df,
-                    hide_index=True,
-                    use_container_width=True,
+                    column_config={
+                        "MPN": st.column_config.TextColumn(width="medium"),
+                        "Stock Available": st.column_config.NumberColumn(format="%,d"),
+                    },
                 )
                 sourcing_pdf_col, sourcing_csv_col = st.columns(2)
                 with sourcing_pdf_col:
@@ -5561,11 +5585,7 @@ if app_mode == "Reports":
             if lifecycle_df.empty:
                 st.info("No lifecycle fields are available for this analysis.")
             else:
-                st.dataframe(
-                    lifecycle_df,
-                    hide_index=True,
-                    use_container_width=True,
-                )
+                cadivor_dataframe(lifecycle_df)
                 lifecycle_pdf_col, lifecycle_csv_col = st.columns(2)
                 with lifecycle_pdf_col:
                     st.download_button(
@@ -5595,11 +5615,7 @@ if app_mode == "Reports":
             if alternative_df.empty:
                 st.info("No alternative-readiness fields are available for this analysis.")
             else:
-                st.dataframe(
-                    alternative_df,
-                    hide_index=True,
-                    use_container_width=True,
-                )
+                cadivor_dataframe(alternative_df)
                 alt_pdf_col, alt_csv_col = st.columns(2)
                 with alt_pdf_col:
                     st.download_button(
@@ -7179,12 +7195,15 @@ if app_mode == "Workspace":
 
         with collaboration_right:
             st.markdown("#### Collaboration snapshot")
-            c1, c2 = st.columns(2)
-            c1.metric("Online now", len(online_members))
-            c2.metric("Active this hour", len(online_members) + len(idle_members))
-            c3, c4 = st.columns(2)
-            c3.metric("Activity events", len(activity_rows))
-            c4.metric("Audit records", len(audit_rows))
+            render_kpi_row_safe(
+                [
+                    MetricCard(label="Online now", value=str(len(online_members)), tone="success", icon="activity"),
+                    MetricCard(label="Active this hour", value=str(len(online_members) + len(idle_members)), tone="info", icon="chart"),
+                    MetricCard(label="Activity events", value=str(len(activity_rows)), tone="monitoring", icon="clipboard"),
+                    MetricCard(label="Audit records", value=str(len(audit_rows)), tone="confidence", icon="file"),
+                ],
+                columns=4,
+            )
 
             st.markdown("#### Latest team events")
             if not activity_rows:
@@ -7494,10 +7513,8 @@ if app_mode == "Workspace":
             if not filtered_history:
                 st.info("No workspace events match the current filters.")
             else:
-                st.dataframe(
+                cadivor_dataframe(
                     pd.DataFrame(filtered_history[:history_limit]),
-                    use_container_width=True,
-                    hide_index=True,
                     height=min(520, 75 + 36 * min(len(filtered_history), history_limit)),
                 )
 
@@ -7584,10 +7601,8 @@ if app_mode == "Workspace":
                 st.info("No audit records match the current filters.")
             else:
                 display_columns = ["Time", "Actor", "Category", "Action", "Details"]
-                st.dataframe(
+                cadivor_dataframe(
                     pd.DataFrame(friendly_audit[:audit_limit])[display_columns],
-                    use_container_width=True,
-                    hide_index=True,
                     height=min(560, 75 + 36 * min(len(friendly_audit), audit_limit)),
                 )
 
@@ -7738,29 +7753,67 @@ if app_mode == "Notifications":
             navigate_to("Monitoring")
     stop_authenticated_page()
 
-# ---------- Help ----------
+# ---------- Help / Support ----------
 if app_mode == "Help":
+    st.markdown('<div class="cv-help-shell cv64-page-shell">', unsafe_allow_html=True)
+    cadivor_section_header(
+        "Cadivor Support",
+        eyebrow="Help Center",
+        description="Get engineering workflow guidance, report an issue, or return to your workspace.",
+        icon="clipboard",
+    )
+    render_kpi_row_safe(
+        [
+            MetricCard(label="Workflow guides", value="3", detail="BOM, alternatives, monitoring", tone="info", icon="file"),
+            MetricCard(label="Response channel", value="Email", detail="support@cadivor.com", tone="info", icon="clipboard"),
+            MetricCard(label="Workspace", value="Secure", detail="Your saved analyses remain private", tone="success", icon="shield"),
+        ],
+        columns=3,
+    )
     st.markdown(
         """
-        <div class="cv-dashboard-header">
-          <div>
-            <div class="cv-eyebrow">Help Center</div>
-            <h1 class="cv-title">Cadivor support</h1>
-            <p class="cv-subtitle">Guides, templates, and answers for engineering teams using Cadivor BOM intelligence.</p>
-          </div>
+        <div class="cv-help-grid">
+          <div class="cv-help-card"><h3>Upload and analyze a BOM</h3><p>Use CSV or Excel exports from your PLM or spreadsheet. Cadivor validates columns, scores risk, and preserves your saved analysis history.</p></div>
+          <div class="cv-help-card"><h3>Review engineering decisions</h3><p>Track approvals, replacements, and evidence in Engineering Decisions before release.</p></div>
+          <div class="cv-help-card"><h3>Monitor supplier change</h3><p>Monitoring alerts surface stock, lifecycle, and sourcing movement across saved component records.</p></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    h1, h2, h3 = st.columns(3)
-    with h1:
-        action_card("BOM upload guide", "CSV and Excel formatting recommendations.", "?page=BOM%20Analyzer", "▦")
-    with h2:
-        action_card("Alternative search", "How to review replacement candidates.", "?page=Alternative%20Finder", "⇄")
-    with h3:
-        action_card("Contact support", "Support workflow coming soon.", "?page=About", "?")
-    st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
-    empty_state("Documentation is being prepared", "Cadivor documentation, API notes, and engineering guides will be added as the product matures.", None, None, "◇")
+    action_row = st.columns([1, 1, 1, 1])
+    with action_row[0]:
+        cadivor_button_wrap("primary")
+        if st.button("Open BOM Analyzer", key="help_open_bom", use_container_width=True):
+            navigate_to("BOM Analyzer")
+        cadivor_button_wrap_end()
+    with action_row[1]:
+        cadivor_button_wrap("secondary")
+        if st.button("Open Monitoring", key="help_open_monitoring", use_container_width=True):
+            navigate_to("Monitoring")
+        cadivor_button_wrap_end()
+    with action_row[2]:
+        cadivor_button_wrap("secondary")
+        st.link_button(
+            "Email support",
+            "mailto:support@cadivor.com?subject=Cadivor%20Support%20Request",
+            use_container_width=True,
+        )
+        cadivor_button_wrap_end()
+    with action_row[3]:
+        cadivor_button_wrap("secondary")
+        if st.button("Back to Dashboard", key="help_back_dashboard", use_container_width=True):
+            navigate_to("Dashboard")
+        cadivor_button_wrap_end()
+    st.markdown(
+        """
+        <div class="cv-help-card" style="margin-top:18px;">
+          <h3>Common topics</h3>
+          <p>BOM formatting • alternative qualification • procurement recommendations • report exports • workspace roles • billing and plan limits</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
     stop_authenticated_page()
 
 # ---------- About ----------
