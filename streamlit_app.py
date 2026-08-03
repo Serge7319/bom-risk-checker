@@ -86,7 +86,6 @@ from src.ui.framework import (
 )
 from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
-from src.pages.reports import render_reports_center
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
 from src.ui.workspace_consistency import inject_workspace_consistency_css
@@ -107,6 +106,7 @@ from src.ui.enterprise_experience import inject_enterprise_experience_css, opera
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.ui.cadivor_design_system import (
     MetricCard,
+    cadivor_dataframe,
     cadivor_metric_row,
     cadivor_panel,
     cadivor_panel_end,
@@ -2836,15 +2836,8 @@ if app_mode == "Dashboard":
             navigate_to("Dashboard")
 
     overview_tab, portfolio_tab = st.tabs(
-        ["Engineering Overview", "Portfolio Dashboard"]
+        ["Portfolio Dashboard", "Engineering Overview"]
     )
-
-    with overview_tab:
-        render_living_workspace(
-            overview=overview,
-            parts=overview_parts,
-            internal_nav_button=internal_nav_button,
-        )
 
     with portfolio_tab:
         render_dashboard(
@@ -2859,6 +2852,13 @@ if app_mode == "Dashboard":
             _qp_value=_qp_value,
             workspace_id=active_workspace_id,
             workspace_name=active_workspace_name,
+        )
+
+    with overview_tab:
+        render_living_workspace(
+            overview=overview,
+            parts=overview_parts,
+            internal_nav_button=internal_nav_button,
         )
     inject_workspace_consistency_css()
     st.session_state.pop("cadivor_route_transition", None)
@@ -4606,32 +4606,38 @@ if app_mode == "Reports":
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        f"""
-        <div class="cv-r9-metrics">
-          <div class="cv-r9-metric">
-            <span>Saved Analyses</span>
-            <strong>{total_reports}</strong>
-            <small>Report-ready BOM engineering records</small>
-          </div>
-          <div class="cv-r9-metric">
-            <span>Average Health</span>
-            <strong>{average_health}</strong>
-            <small>Across all saved BOM analyses</small>
-          </div>
-          <div class="cv-r9-metric">
-            <span>High-Risk Findings</span>
-            <strong>{total_high_risk}</strong>
-            <small>Components requiring engineering review</small>
-          </div>
-          <div class="cv-r9-metric">
-            <span>Tracked Components</span>
-            <strong>{total_parts}</strong>
-            <small>Saved component intelligence records</small>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    cadivor_metric_row(
+        [
+            MetricCard(
+                label="Saved analyses",
+                value=str(total_reports),
+                detail="Report-ready BOM engineering records",
+                tone="info",
+                icon="file",
+            ),
+            MetricCard(
+                label="Average health",
+                value=str(average_health),
+                detail="Across all saved BOM analyses",
+                tone="success" if average_health >= 80 else "warning",
+                icon="shield",
+            ),
+            MetricCard(
+                label="High-risk findings",
+                value=str(total_high_risk),
+                detail="Components requiring engineering review",
+                tone="danger" if total_high_risk else "success",
+                icon="alert",
+            ),
+            MetricCard(
+                label="Tracked components",
+                value=str(total_parts),
+                detail="Saved component intelligence records",
+                tone="info",
+                icon="layers",
+            ),
+        ],
+        columns=4,
     )
 
     st.markdown(
@@ -5784,11 +5790,7 @@ if app_mode == "Reports":
             [],
         )
         if session_history:
-            st.dataframe(
-                pd.DataFrame(session_history),
-                hide_index=True,
-                use_container_width=True,
-            )
+            cadivor_dataframe(pd.DataFrame(session_history))
         else:
             st.markdown(
                 '<div class="cv-r9-empty">No reports have been downloaded during this session yet.</div>',
@@ -5864,11 +5866,7 @@ if app_mode == "Reports":
                         ),
                     }
                 )
-            st.dataframe(
-                pd.DataFrame(display_rows),
-                hide_index=True,
-                use_container_width=True,
-            )
+            cadivor_dataframe(pd.DataFrame(display_rows))
     else:
         st.markdown(
             '<div class="cv-r9-empty">No saved BOM analyses are available. Analyze and save a BOM before generating reports.</div>',
