@@ -99,9 +99,7 @@ def inject_workspace_geometry_final() -> None:
         if final_css
         else ""
     )
-    st.markdown(
-        f"""
-        {final_block}
+    geometry_block = """
         <style id="cadivor-workspace-geometry-final">
         section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
         section[data-testid="stMain"] .main .block-container {
@@ -146,9 +144,8 @@ def inject_workspace_geometry_final() -> None:
           margin-right: 0 !important;
         }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+    st.markdown(final_block + geometry_block, unsafe_allow_html=True)
 
 
 def page_shell(title: str, subtitle: str = "", eyebrow: str = "") -> None:
