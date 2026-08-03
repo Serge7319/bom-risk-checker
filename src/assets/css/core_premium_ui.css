@@ -232,6 +232,7 @@ section[data-testid="stMain"] .cv-btn-destructive .stButton > button:hover {
 .cv-kpi-row,
 .cv-metric-grid {
   display: grid;
+  grid-template-columns: repeat(var(--cvds-cols, 4), minmax(0, 1fr));
   gap: 16px;
   margin: 0 0 var(--space-card);
 }
