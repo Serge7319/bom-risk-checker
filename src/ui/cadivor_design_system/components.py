@@ -56,6 +56,14 @@ def cadivor_badge(label: Any, tone: Tone | None = None) -> str:
     )
 
 
+def cadivor_meta_row(badges: Sequence[tuple[str, str]]) -> None:
+    """Render a row of status badges without exposing raw HTML markup."""
+    if not badges:
+        return
+    items = "".join(cadivor_badge(label, tone) for label, tone in badges)
+    st.markdown(f'<div class="cv64-meta-row">{items}</div>', unsafe_allow_html=True)
+
+
 @dataclass(frozen=True)
 class MetricCard:
     label: str
