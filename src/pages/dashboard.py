@@ -15,7 +15,6 @@ import streamlit as st
 
 from src.components.onboarding import render_activation_strip, render_first_run_dashboard
 from src.components.upgrade_prompt import render_upgrade_prompt
-from src.ui.cadivor_design_system import MetricCard, cadivor_metric_row
 
 
 def render_dashboard(
@@ -31,6 +30,7 @@ def render_dashboard(
     _qp_value,
     workspace_id=None,
     workspace_name=None,
+    fallback_analyses=None,
 ):
     """Render the Cadivor Dashboard page."""
 
@@ -602,6 +602,11 @@ def render_dashboard(
         return any(value not in (None, "", 0, 0.0) for value in meaningful)
 
     analysis_data = [row for row in raw_analysis_data if _is_real_saved_analysis(row)]
+    if not analysis_data and fallback_analyses:
+        analysis_data = [
+            row for row in fallback_analyses
+            if _is_real_saved_analysis(row)
+        ]
     total_analyses = len(analysis_data)
 
     if analysis_data:
@@ -1410,47 +1415,16 @@ def render_dashboard(
                 <a class="cv57-secondary" href="?page=Engineering%20Decisions" target="_self">Review open decisions</a>
               </div>
             </div>
+            <div class="cv57-signal-grid">
+              <article class="cv57-signal cv57-signal-info"><span>Engineering health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></article>
+              <article class="cv57-signal cv57-signal-critical"><span>Critical components</span><strong>{total_high_risk}</strong><small>Require engineering review</small></article>
+              <article class="cv57-signal cv57-signal-attention"><span>Supply alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></article>
+              <article class="cv57-signal cv57-signal-healthy"><span>Analyses</span><strong>{total_analyses}</strong><small>Saved decision records</small></article>
+            </div>
           </div>
         </section>
         """,
         unsafe_allow_html=True,
-    )
-
-    health_trend = "up" if health_delta >= 0 else "down"
-    cadivor_metric_row(
-        [
-            MetricCard(
-                label="BOM health",
-                value=str(avg_health_score),
-                status=health_badge,
-                tone=health_kind or "info",
-                icon="shield",
-                trend=health_trend,
-                trend_label=f"{health_delta_label} vs previous" if prev_health is not None else "Save another analysis to track",
-            ),
-            MetricCard(
-                label="High-risk components",
-                value=str(total_high_risk),
-                detail="Require engineering review",
-                tone="danger",
-                icon="alert",
-            ),
-            MetricCard(
-                label="Supplier alerts",
-                value=str(alert_count),
-                detail=f"{high_alert_count} high severity",
-                tone="warning",
-                icon="bell",
-            ),
-            MetricCard(
-                label="Saved analyses",
-                value=str(total_analyses),
-                detail="Engineering decision records",
-                tone="info",
-                icon="file",
-            ),
-        ],
-        columns=4,
     )
 
     if _qp_value("focus", "") == "search":
@@ -1499,39 +1473,48 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    cadivor_metric_row(
-        [
-            MetricCard(
-                label="Portfolio health",
-                value=str(avg_health_score),
-                trend=health_trend,
-                trend_label=f"{health_delta_label} vs previous",
-                tone=health_kind or "info",
-                icon="shield",
-            ),
-            MetricCard(
-                label="High risk",
-                value=str(total_high_risk),
-                detail="Components requiring review",
-                tone="danger",
-                icon="alert",
-            ),
-            MetricCard(
-                label="Supplier alerts",
-                value=str(alert_count),
-                detail=f"{high_alert_count} high severity",
-                tone="warning",
-                icon="bell",
-            ),
-            MetricCard(
-                label="Saved analyses",
-                value=str(total_analyses),
-                detail=f"{alternatives_found} replacement records",
-                tone="info",
-                icon="file",
-            ),
-        ],
-        columns=4,
+    st.markdown(
+        f"""
+        <div class="cv-6b-kpi-strip">
+          <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open portfolio analyses and reports">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('shield',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>Portfolio Health</span>
+              <strong>{avg_health_score}</strong>
+              <small style="color:#DC2626!important;">{health_delta_label} vs previous</small>
+              <small style="color:#2563EB!important;margin-top:14px;">View details →</small>
+            </div>
+          </a>
+          <a class="cv-6b-kpi warn" href="?page=BOM%20Analyzer" target="_self" title="Open BOM analyses requiring review">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('alert',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>High Risk</span>
+              <strong>{total_high_risk}</strong>
+              <small>Components requiring review</small>
+              <small style="color:#2563EB!important;margin-top:14px;">Open analyzer →</small>
+            </div>
+          </a>
+          <a class="cv-6b-kpi danger" href="?page=Monitoring" target="_self" title="Open supplier and lifecycle monitoring">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('bell',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>Supplier Alerts</span>
+              <strong>{alert_count}</strong>
+              <small>{high_alert_count} high severity</small>
+              <small style="color:#2563EB!important;margin-top:14px;">Review alerts →</small>
+            </div>
+          </a>
+          <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open saved analyses and report sources">
+            <div class="cv-6b-kpi-icon">{_lucide_icon('file',23)}</div>
+            <div class="cv-6b-kpi-copy">
+              <span>Saved Analyses</span>
+              <strong>{total_analyses}</strong>
+              <small>Engineering records available</small>
+              <small style="color:#2563EB!important;margin-top:14px;">Open reports →</small>
+            </div>
+          </a>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     # Milestone 24.1 — Put executive signals before supporting charts.
