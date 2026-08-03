@@ -1,0 +1,511 @@
+/* Cadivor Core — Laptop KPI, Button, and Table Pass
+   Scoped to authenticated main workspace. Loads last. */
+
+:root {
+  --cv-kpi-label-size: 14px;
+  --cv-kpi-value-size: clamp(28px, 2.2vw, 38px);
+  --cv-kpi-detail-size: 13px;
+  --cv-kpi-min-height: 138px;
+  --cv-kpi-padding: 22px;
+  --cv-kpi-radius: 12px;
+  --cv-table-header-size: 13px;
+  --cv-table-cell-size: 14px;
+  --cv-btn-min-height: 46px;
+  --cv-btn-font-size: 14px;
+  --cv-navy: #10264a;
+  --cv-slate: #4a5d78;
+  --cv-muted: #5f718c;
+}
+
+/* ------------------------------------------------------------------ */
+/* Unified KPI card pattern                                           */
+/* ------------------------------------------------------------------ */
+.cv-kpi-grid,
+.cvds-kpi-grid,
+.cv-kpi-row,
+.cv-metric-grid,
+.cv18-status-grid,
+.bom8-kpis,
+.cv57-signal-grid,
+.cv-v4-metrics,
+.cv-v4-brief,
+.cv-6b-kpi-strip {
+  display: grid !important;
+  gap: 14px !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+}
+
+.cv-kpi-card,
+.cvds-kpi,
+.kpi-card,
+.cv-metric,
+.metric-card,
+.cv18-status,
+.bom8-kpi,
+.cv57-signal,
+.cv-v4-metric,
+.cv-v4-brief-card,
+.cv-6b-kpi,
+section[data-testid="stMain"] [data-testid="stMetric"] {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: var(--cv-kpi-min-height) !important;
+  padding: var(--cv-kpi-padding) !important;
+  border: 1px solid #d9e3f0 !important;
+  border-radius: var(--cv-kpi-radius) !important;
+  background: #fff !important;
+  box-shadow: 0 10px 28px rgba(15, 35, 65, 0.06) !important;
+  overflow: hidden !important;
+}
+
+.cv-kpi-card::before,
+.cvds-kpi::before,
+.cv18-status::before,
+.bom8-kpi::before,
+.cv57-signal::before,
+.cv-v4-metric::before,
+.cv-6b-kpi::before,
+section[data-testid="stMain"] [data-testid="stMetric"]::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 3px !important;
+  background: #2f6fed !important;
+}
+
+.cv-kpi-label,
+.cvds-kpi-label,
+.cv-metric-label,
+.bom8-kpi-label,
+.cv-v4-metric .name,
+.cv-v4-brief-card span,
+.cv-6b-kpi-copy > span,
+.cv57-signal span,
+section[data-testid="stMain"] [data-testid="stMetricLabel"],
+section[data-testid="stMain"] [data-testid="stMetric"] label {
+  display: block !important;
+  order: 1 !important;
+  min-height: 34px !important;
+  color: var(--cv-navy) !important;
+  font-size: var(--cv-kpi-label-size) !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+}
+
+.cv-kpi-value,
+.cvds-kpi strong,
+.cv-metric strong,
+.kpi-card strong,
+.bom8-kpi-value,
+.cv-v4-metric .value,
+.cv-v4-brief-card strong,
+.cv-6b-kpi-copy > strong,
+.cv57-signal strong,
+.cv18-status strong,
+section[data-testid="stMain"] [data-testid="stMetricValue"] {
+  order: 2 !important;
+  margin-top: 10px !important;
+  color: var(--cv-navy) !important;
+  font-size: var(--cv-kpi-value-size) !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.035em !important;
+}
+
+.cv-kpi-detail,
+.cvds-kpi small,
+.cv-metric-note,
+.bom8-kpi-note,
+.cv57-signal small,
+.cv-v4-metric .note,
+.cv-v4-brief-card small,
+.cv-6b-kpi-copy > small,
+section[data-testid="stMain"] [data-testid="stMetricDelta"] {
+  order: 3 !important;
+  margin-top: auto !important;
+  padding-top: 14px !important;
+  color: var(--cv-slate) !important;
+  font-size: var(--cv-kpi-detail-size) !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
+/* cv18 HTML puts value before label — reorder visually */
+.cv18-status strong { order: 2 !important; margin-top: 10px !important; margin-bottom: 0 !important; }
+.cv18-status span { order: 1 !important; margin-top: 0 !important; padding-top: 0 !important; min-height: 34px !important; }
+
+/* Semantic KPI accents */
+.cv-kpi-tone-success::before,
+.cvds-tone-success::before,
+.cv-kpi-success::before { background: #17875d !important; }
+.cv-kpi-tone-warning::before,
+.cvds-tone-warning::before,
+.cv-kpi-warning::before,
+.cv57-signal-attention::before { background: #b7791f !important; }
+.cv-kpi-tone-danger::before,
+.cvds-tone-danger::before,
+.cv-kpi-danger::before,
+.cv57-signal-critical::before { background: #c53b3b !important; }
+.cv-kpi-tone-info::before,
+.cvds-tone-info::before,
+.cv-kpi-info::before,
+.cv57-signal-info::before { background: #2f6fed !important; }
+.cv-kpi-tone-monitoring::before,
+.cv57-signal-healthy::before { background: #0d9488 !important; }
+.cv-kpi-tone-confidence::before { background: #6366f1 !important; }
+.cv-kpi-tone-approved::before { background: #17875d !important; }
+
+.cv57-signal::before {
+  top: 14px !important;
+  bottom: 14px !important;
+  left: 0 !important;
+  right: auto !important;
+  width: 3px !important;
+  height: auto !important;
+}
+
+/* Compact KPI variant */
+.cv-kpi-card.cv-kpi-compact,
+.cvds-kpi.cv-kpi-compact {
+  min-height: 126px !important;
+  padding: 18px 20px !important;
+}
+
+.cv-kpi-card.cv-kpi-compact .cv-kpi-value,
+.cvds-kpi.cv-kpi-compact strong {
+  font-size: clamp(24px, 2vw, 28px) !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* KPI grid breakpoints (laptop-first)                                */
+/* ------------------------------------------------------------------ */
+@media (max-width: 1439px) {
+  .cv-kpi-grid,
+  .cvds-kpi-grid,
+  .cv18-status-grid,
+  .bom8-kpis,
+  .cv57-signal-grid,
+  .cv-v4-metrics,
+  .cv-6b-kpi-strip {
+    grid-template-columns: repeat(2, minmax(220px, 1fr)) !important;
+  }
+
+  /* Streamlit metric rows (e.g. 6-up decision KPIs) */
+  section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div [data-testid="stMetric"]) {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(220px, 1fr)) !important;
+    gap: 14px !important;
+  }
+
+  section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div [data-testid="stMetric"]) > div {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: unset !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .cv-kpi-grid,
+  .cvds-kpi-grid,
+  .cv18-status-grid,
+  .bom8-kpis,
+  .cv57-signal-grid,
+  .cv-v4-metrics,
+  .cv-v4-brief,
+  .cv-6b-kpi-strip,
+  section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div [data-testid="stMetric"]) {
+    grid-template-columns: repeat(2, minmax(200px, 1fr)) !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .cv-kpi-grid,
+  .cvds-kpi-grid,
+  .cv18-status-grid,
+  .bom8-kpis,
+  .cv57-signal-grid,
+  .cv-v4-metrics,
+  .cv-6b-kpi-strip,
+  section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div [data-testid="stMetric"]) {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons — contrast and visibility                                  */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button,
+section[data-testid="stMain"] .stDownloadButton > button,
+section[data-testid="stMain"] .stFormSubmitButton > button {
+  min-height: var(--cv-btn-min-height) !important;
+  min-width: 140px !important;
+  padding: 0 18px !important;
+  font-size: var(--cv-btn-font-size) !important;
+  font-weight: 650 !important;
+  line-height: 1.2 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button p,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button span,
+section[data-testid="stMain"] .stDownloadButton > button p {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  color: inherit !important;
+  opacity: 1 !important;
+}
+
+/* Primary */
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled),
+section[data-testid="stMain"] .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .stFormSubmitButton > button:not(:disabled) {
+  background: #2f6fed !important;
+  border: 1px solid #2f6fed !important;
+  color: #fff !important;
+  box-shadow: 0 8px 18px rgba(47, 111, 237, 0.22) !important;
+}
+
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled):hover,
+section[data-testid="stMain"] .stDownloadButton > button:not(:disabled):hover {
+  background: #174ea6 !important;
+  border-color: #174ea6 !important;
+}
+
+/* Secondary */
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled),
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not([kind="primary"]):not(:disabled) {
+  background: #f8fbff !important;
+  border: 1px solid #94a3b8 !important;
+  color: var(--cv-navy) !important;
+  box-shadow: none !important;
+}
+
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled):hover,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not([kind="primary"]):not(:disabled):hover {
+  background: #eff6ff !important;
+  border-color: #2f6fed !important;
+  color: #174ea6 !important;
+}
+
+/* Tertiary / link-style */
+section[data-testid="stMain"] .stLinkButton > a,
+section[data-testid="stMain"] a[data-testid="stBaseLinkButton-secondary"] {
+  min-height: var(--cv-btn-min-height) !important;
+  color: #2f6fed !important;
+  font-size: var(--cv-btn-font-size) !important;
+  font-weight: 650 !important;
+  opacity: 1 !important;
+}
+
+/* Destructive keyed actions */
+section[data-testid="stMain"] [class*="st-key-"][class*="delete"] .stButton > button:not(:disabled),
+section[data-testid="stMain"] [class*="st-key-"][class*="remove"] .stButton > button:not(:disabled),
+section[data-testid="stMain"] .st-key-bom81_request_bulk_delete .stButton > button:not(:disabled),
+section[data-testid="stMain"] .st-key-bom8_delete_saved_analysis .stButton > button:not(:disabled) {
+  background: #fff !important;
+  border: 1px solid #e08a8a !important;
+  color: #b42323 !important;
+  opacity: 1 !important;
+}
+
+/* Disabled — intentional, not ghosted active controls */
+section[data-testid="stMain"] .stButton > button:disabled,
+section[data-testid="stMain"] .stDownloadButton > button:disabled {
+  opacity: 0.58 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Action groups — wrap on laptop */
+section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton) {
+  flex-wrap: wrap !important;
+  gap: 10px 12px !important;
+  align-items: stretch !important;
+}
+
+section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton) > div {
+  min-width: min(180px, 100%) !important;
+}
+
+/* Preview onboarding + nav shortcut rows */
+section[data-testid="stMain"] .st-key-dashboard_preview_onboarding .stButton > button {
+  min-width: 160px !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Engineering tables                                                 */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] [data-testid="stDataFrame"],
+section[data-testid="stMain"] [data-testid="stDataEditor"],
+section[data-testid="stMain"] div[data-testid="stTable"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  border: 1px solid #d9e3f0 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 10px 28px rgba(15, 35, 65, 0.06) !important;
+  overflow: auto !important;
+}
+
+section[data-testid="stMain"] [data-testid="stDataFrame"] [role="columnheader"],
+section[data-testid="stMain"] [data-testid="stDataEditor"] [role="columnheader"] {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 2 !important;
+  background: #eef3fa !important;
+  color: var(--cv-navy) !important;
+  font-size: var(--cv-table-header-size) !important;
+  font-weight: 650 !important;
+  min-height: 44px !important;
+  border-bottom: 1px solid #c5d3e4 !important;
+}
+
+section[data-testid="stMain"] [data-testid="stDataFrame"] [role="gridcell"],
+section[data-testid="stMain"] [data-testid="stDataEditor"] [role="gridcell"] {
+  background: #fff !important;
+  color: var(--cv-navy) !important;
+  font-size: var(--cv-table-cell-size) !important;
+  font-weight: 500 !important;
+  min-height: 44px !important;
+  border-bottom: 1px solid #edf2f8 !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+section[data-testid="stMain"] [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"],
+section[data-testid="stMain"] [data-testid="stDataEditor"] [role="row"]:hover [role="gridcell"] {
+  background: #f3f7fd !important;
+}
+
+section[data-testid="stMain"] [data-testid="stDataFrame"] [role="row"][aria-selected="true"] [role="gridcell"],
+section[data-testid="stMain"] [data-testid="stDataEditor"] [role="row"][aria-selected="true"] [role="gridcell"] {
+  background: rgba(47, 111, 237, 0.1) !important;
+}
+
+/* Saved BOM manager */
+section[data-testid="stMain"] .st-key-bom81_saved_manager [data-testid="stDataEditor"] {
+  min-height: 280px !important;
+}
+
+section[data-testid="stMain"] .st-key-bom81_open_selected .stButton > button[kind="primary"]:not(:disabled) {
+  min-width: 180px !important;
+}
+
+/* Expander-wrapped tables (work queue) */
+section[data-testid="stMain"] [data-testid="stExpander"] [data-testid="stDataFrame"] {
+  margin-top: 8px !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Table / inline status badges                                       */
+/* ------------------------------------------------------------------ */
+.cv-status-pill,
+.cvds-badge,
+.cv-badge,
+.cv130-badge,
+.cv123-alert-pill,
+.cv18-meta span,
+.bom8-trust {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 26px !important;
+  padding: 4px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+}
+
+.cv-status-pill.danger,
+.cvds-badge-danger,
+.cv-badge-high,
+.cv-badge-blocked,
+.cv-badge-eol,
+.cv130-badge.bad {
+  background: #fef2f2 !important;
+  border: 1px solid #f3caca !important;
+  color: #b42323 !important;
+}
+
+.cv-status-pill.warning,
+.cvds-badge-warning,
+.cv-badge-medium,
+.cv-badge-nrnd,
+.cv130-badge.warn {
+  background: #fff8eb !important;
+  border: 1px solid #f3ddb0 !important;
+  color: #9a6700 !important;
+}
+
+.cv-status-pill.success,
+.cvds-badge-success,
+.cv-badge-approved,
+.cv-badge-active,
+.cv-badge-qualified,
+.cv130-badge.good {
+  background: #ecf8f2 !important;
+  border: 1px solid #b8e4cf !important;
+  color: #17875d !important;
+}
+
+.cv-status-pill.info,
+.cvds-badge-info,
+.cv-badge-monitoring {
+  background: #eef4ff !important;
+  border: 1px solid #c8d9fb !important;
+  color: #2f6fed !important;
+}
+
+.cv-status-pill.muted,
+.cvds-badge-neutral,
+.cv-badge-draft,
+.cv-badge-pending {
+  background: #f1f4f8 !important;
+  border: 1px solid #dbe3ee !important;
+  color: #5f718c !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Body readability baseline (authenticated main)                     */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] .stApp p,
+section[data-testid="stMain"] .stApp li,
+section[data-testid="stMain"] [data-testid="stCaptionContainer"] p,
+section[data-testid="stMain"] [data-testid="stWidgetLabel"] p {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+/* Decision card summary grid readability */
+.cv131-summary-grid span {
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.cv131-summary-grid strong {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.cv130-decision-title {
+  font-size: 17px !important;
+}
+
+.cv130-reason,
+.cv131-next {
+  font-size: 13px !important;
+}
