@@ -160,3 +160,112 @@ section[data-testid="stMain"] .cv64-panel [role="row"]:hover [role="gridcell"] {
 .cv-report-row:not(.cv-report-head):hover {
   background: #f8fbff !important;
 }
+
+/* ------------------------------------------------------------------ */
+/* Page action buttons — scoped wrappers only                         */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] .cv64-page-shell .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv-core-page-shell .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stFormSubmitButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 46px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #2563eb !important;
+  border: 1px solid #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2) !important;
+}
+
+section[data-testid="stMain"] .cv64-page-shell .stButton > button[kind="secondary"]:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:not([kind="primary"]):not(:disabled),
+section[data-testid="stMain"] .st-key-dashboard_preview_onboarding .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0b1f3a !important;
+}
+
+section[data-testid="stMain"] .cv64-btn-wrap--danger .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  background: #fef2f2 !important;
+  border: 1px solid #f87171 !important;
+  color: #b91c1c !important;
+}
+
+section[data-testid="stMain"] .cv64-page-shell .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stDownloadButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  color: #0b1f3a !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+}
+
+section[data-testid="stMain"] .cv-help-shell .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv-help-shell .stDownloadButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+}
+
+section[data-testid="stMain"] .cv64-page-shell .stButton > button:disabled,
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:disabled {
+  opacity: 0.55 !important;
+}
+
+/* Help / support page */
+.cv-help-shell {
+  max-width: 1180px;
+  margin: 0 auto 48px;
+}
+
+.cv-help-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.cv-help-card {
+  border: 1px solid #d7e2ef;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 20px 22px;
+  box-shadow: 0 12px 28px rgba(11, 31, 58, 0.06);
+  min-height: 148px;
+}
+
+.cv-help-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0b1f3a;
+}
+
+.cv-help-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #52647a;
+}
+
+@media (max-width: 1024px) {
+  .cv-help-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .cv-help-grid {
+    grid-template-columns: 1fr;
+  }
+}
