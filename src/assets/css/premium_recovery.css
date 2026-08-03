@@ -1,142 +1,46 @@
-/* Cadivor Core Premium Recovery — final authority layer (loads last) */
+/* Cadivor Core Premium Recovery — scoped polish (wrapper-only) */
 
 /* ------------------------------------------------------------------ */
-/* Global buttons — visible enabled state on all main-canvas controls   */
+/* Premium KPI typography (cv64 + legacy dashboard classes)           */
 /* ------------------------------------------------------------------ */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not(:disabled),
-section[data-testid="stMain"] .stDownloadButton > button:not(:disabled),
-section[data-testid="stMain"] .stFormSubmitButton > button:not(:disabled),
-section[data-testid="stMain"] .stLinkButton > a:not(:disabled) {
-  opacity: 1 !important;
-  -webkit-text-fill-color: currentColor !important;
-  filter: none !important;
-  font-size: 14px !important;
-  font-weight: 650 !important;
-  min-height: 44px !important;
-  border-radius: 10px !important;
-}
-
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled),
-section[data-testid="stMain"] .stFormSubmitButton > button[kind="primary"]:not(:disabled) {
-  background: #2563eb !important;
-  border: 1px solid #2563eb !important;
-  color: #ffffff !important;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24) !important;
-}
-
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled):hover,
-section[data-testid="stMain"] .stFormSubmitButton > button[kind="primary"]:not(:disabled):hover {
-  background: #1d4ed8 !important;
-  border-color: #1d4ed8 !important;
-  transform: translateY(-1px);
-}
-
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled),
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not([kind="primary"]):not(:disabled),
-section[data-testid="stMain"] .stDownloadButton > button:not(:disabled),
-section[data-testid="stMain"] .st-key-dashboard_preview_onboarding .stButton > button:not(:disabled) {
-  background: #ffffff !important;
-  border: 1px solid #94a3b8 !important;
-  color: #0b1f3a !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
-}
-
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled):hover,
-section[data-testid="stMain"] .stDownloadButton > button:not(:disabled):hover,
-section[data-testid="stMain"] .st-key-dashboard_preview_onboarding .stButton > button:not(:disabled):hover {
-  background: #eff6ff !important;
-  border-color: #2563eb !important;
-  color: #1d4ed8 !important;
-}
-
-section[data-testid="stMain"] .stButton > button:disabled,
-section[data-testid="stMain"] .stDownloadButton > button:disabled,
-section[data-testid="stMain"] .stFormSubmitButton > button:disabled {
-  opacity: 0.55 !important;
-  cursor: not-allowed !important;
-}
-
-/* ------------------------------------------------------------------ */
-/* Global Streamlit tables — Cadivor production treatment               */
-/* ------------------------------------------------------------------ */
-section[data-testid="stMain"] [data-testid="stDataFrame"],
-section[data-testid="stMain"] [data-testid="stDataEditor"],
-section[data-testid="stMain"] .cv64-table-host [data-testid="stDataFrame"],
-section[data-testid="stMain"] .cv64-table-host [data-testid="stDataEditor"] {
-  width: 100% !important;
-  max-width: 100% !important;
-  border: 1px solid #d7e2ef !important;
-  border-radius: 14px !important;
-  overflow: hidden !important;
-  box-shadow: 0 14px 34px rgba(11, 31, 58, 0.06) !important;
-  background: #ffffff !important;
-}
-
-section[data-testid="stMain"] [data-testid="stDataFrame"] [role="columnheader"],
-section[data-testid="stMain"] [data-testid="stDataEditor"] [role="columnheader"] {
-  background: #e8eef7 !important;
-  color: #0b1f3a !important;
-  font-size: 13px !important;
-  font-weight: 650 !important;
-  min-height: 44px !important;
-  border-bottom: 1px solid #d7e2ef !important;
-}
-
-section[data-testid="stMain"] [data-testid="stDataFrame"] [role="gridcell"],
-section[data-testid="stMain"] [data-testid="stDataEditor"] [role="gridcell"] {
-  font-size: 13px !important;
-  min-height: 44px !important;
-  color: #10264a !important;
-  border-bottom: 1px solid #eef2f7 !important;
-}
-
-section[data-testid="stMain"] [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"],
-section[data-testid="stMain"] [data-testid="stDataEditor"] [role="row"]:hover [role="gridcell"] {
-  background: #f8fbff !important;
-}
-
-section[data-testid="stMain"] .cv64-table-host {
-  width: 100%;
-  margin: 0 0 20px;
-}
-
-/* ------------------------------------------------------------------ */
-/* Legacy dashboard KPI classes — readable laptop typography            */
-/* ------------------------------------------------------------------ */
+.cv64-metric-grid,
+.cv64-metric__label,
 .cv57-signal span,
 .cv-6b-kpi-copy > span,
-.cv-report-mini-label {
+.cv-r9-metric span {
   font-size: 14px !important;
   font-weight: 650 !important;
-  letter-spacing: 0.02em !important;
-  text-transform: none !important;
 }
 
+.cv64-metric__value,
 .cv57-signal strong,
 .cv-6b-kpi-copy > strong,
-.cv-report-mini-value {
+.cv-r9-metric strong {
   font-size: clamp(30px, 2.6vw, 38px) !important;
   font-weight: 750 !important;
   line-height: 1 !important;
   white-space: nowrap !important;
 }
 
+.cv64-metric__detail,
+.cv64-metric__status,
+.cv64-metric__trend,
 .cv57-signal small,
 .cv-6b-kpi-copy > small,
-.cv-report-mini-note {
+.cv-r9-metric small {
   font-size: 13px !important;
-  font-weight: 600 !important;
 }
 
-.cv57-signal {
-  min-height: 120px !important;
-  padding: 20px !important;
-  box-shadow: 0 12px 28px rgba(11, 31, 58, 0.06) !important;
-}
-
-.cv-6b-kpi {
+.cv64-metric {
   min-height: 132px !important;
-  padding: 20px 22px !important;
+  padding: 22px !important;
+}
+
+.cv64-metric-grid {
+  display: grid !important;
+  gap: 16px !important;
+  margin: 0 0 24px !important;
+  grid-template-columns: repeat(var(--cv64-cols, 4), minmax(0, 1fr)) !important;
 }
 
 .cv-6b-kpi-strip {
@@ -145,59 +49,21 @@ section[data-testid="stMain"] .cv64-table-host {
   gap: 16px !important;
 }
 
-.cv57-primary,
-.cv57-secondary,
-.cv-report-btn {
-  min-height: 44px !important;
-  font-size: 14px !important;
-  font-weight: 650 !important;
-}
-
-/* ------------------------------------------------------------------ */
-/* cv64 metrics — laptop grid without six-column compression          */
-/* ------------------------------------------------------------------ */
-section[data-testid="stMain"] .cv64-metric-grid {
-  gap: 16px !important;
-  margin-bottom: 24px !important;
-}
-
-section[data-testid="stMain"] .cv64-metric {
-  min-height: 148px !important;
-  padding: 22px !important;
-}
-
-section[data-testid="stMain"] .cv64-metric__label {
-  font-size: 15px !important;
-}
-
-section[data-testid="stMain"] .cv64-metric__value {
-  font-size: clamp(30px, 2.6vw, 38px) !important;
-  white-space: nowrap !important;
-}
-
-section[data-testid="stMain"] .cv64-metric__detail,
-section[data-testid="stMain"] .cv64-metric__status,
-section[data-testid="stMain"] .cv64-metric__trend {
-  font-size: 13px !important;
-}
-
-@media (min-width: 1280px) and (max-width: 1439px) {
-  section[data-testid="stMain"] .cv64-metric-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  }
+.cv57-signal-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
 }
 
 @media (max-width: 1279px) {
-  section[data-testid="stMain"] .cv64-metric-grid {
-    grid-template-columns: repeat(2, minmax(240px, 1fr)) !important;
-  }
+  .cv64-metric-grid,
   .cv-6b-kpi-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(2, minmax(240px, 1fr)) !important;
   }
 }
 
 @media (max-width: 767px) {
-  section[data-testid="stMain"] .cv64-metric-grid,
+  .cv64-metric-grid,
   .cv-6b-kpi-strip,
   .cv57-signal-grid {
     grid-template-columns: 1fr !important;
@@ -205,14 +71,66 @@ section[data-testid="stMain"] .cv64-metric__trend {
 }
 
 /* ------------------------------------------------------------------ */
-/* Reports / team HTML tables                                           */
+/* Buttons — scoped to explicit Cadivor wrappers only                   */
 /* ------------------------------------------------------------------ */
-.cv-report-board,
-.cv-report-row {
-  width: 100%;
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stFormSubmitButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 46px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #2563eb !important;
+  border: 1px solid #2563eb !important;
+  color: #ffffff !important;
 }
 
-.cv-report-head {
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stFormSubmitButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0b1f3a !important;
+}
+
+section[data-testid="stMain"] .cv64-btn-wrap--danger .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  background: #fef2f2 !important;
+  border: 1px solid #f87171 !important;
+  color: #b91c1c !important;
+}
+
+section[data-testid="stMain"] .st-key-dashboard_preview_onboarding .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0b1f3a !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tables — scoped to Cadivor table hosts only                          */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] .cv64-table-host [data-testid="stDataFrame"],
+section[data-testid="stMain"] .cv64-table-host [data-testid="stDataEditor"],
+section[data-testid="stMain"] .cv64-panel [data-testid="stDataFrame"],
+section[data-testid="stMain"] .cv64-panel [data-testid="stDataEditor"] {
+  width: 100% !important;
+  border: 1px solid #d7e2ef !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  box-shadow: 0 14px 34px rgba(11, 31, 58, 0.06) !important;
+  background: #ffffff !important;
+}
+
+section[data-testid="stMain"] .cv64-table-host [role="columnheader"],
+section[data-testid="stMain"] .cv64-panel [role="columnheader"] {
   background: #e8eef7 !important;
   color: #0b1f3a !important;
   font-size: 13px !important;
@@ -220,9 +138,23 @@ section[data-testid="stMain"] .cv64-metric__trend {
   min-height: 44px !important;
 }
 
-.cv-report-row:not(.cv-report-head) {
-  min-height: 46px !important;
+section[data-testid="stMain"] .cv64-table-host [role="gridcell"],
+section[data-testid="stMain"] .cv64-panel [role="gridcell"] {
   font-size: 13px !important;
+  min-height: 44px !important;
+}
+
+section[data-testid="stMain"] .cv64-table-host [role="row"]:hover [role="gridcell"],
+section[data-testid="stMain"] .cv64-panel [role="row"]:hover [role="gridcell"] {
+  background: #f8fbff !important;
+}
+
+/* Reports HTML board */
+.cv-report-head {
+  background: #e8eef7 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  min-height: 44px !important;
 }
 
 .cv-report-row:not(.cv-report-head):hover {
