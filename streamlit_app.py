@@ -95,7 +95,11 @@ from src.ui.premium_interactions import render_premium_interactions
 from src.components.command_center import render_command_center
 from src.core.workspace_search import build_workspace_commands
 from src.ui.design_system_v1 import inject_design_system_v1
-from src.ui.core_premium_ui import inject_core_premium_ui, inject_workspace_geometry_final
+from src.ui.core_premium_ui import (
+    inject_core_premium_ui,
+    inject_workspace_geometry_final,
+    stop_authenticated_page,
+)
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
@@ -199,7 +203,7 @@ def load_user_data():
         return response.data[0]
 
     st.error("User profile not found. Please log out and create a new account.")
-    st.stop()
+    stop_authenticated_page()
 
 
 
@@ -1577,12 +1581,12 @@ _auth_status = resolve_auth_state(supabase, cookie_manager)
 _root_state = str(st.session_state.get("cadivor_root_state") or (APP_AUTHENTICATED if _auth_status == AUTH_AUTHENTICATED else APP_PUBLIC))
 if _auth_status == AUTH_SIGNED_OUT or _root_state != APP_AUTHENTICATED:
     show_auth_ui(supabase, cookie_manager)
-    st.stop()
+    stop_authenticated_page()
 
 if _auth_status != AUTH_AUTHENTICATED:
     # Defensive stop: resolve_auth_state renders the neutral boot surface while
     # UNKNOWN, so neither public nor authenticated content can leak through.
-    st.stop()
+    stop_authenticated_page()
 
 # Authenticated routing is session-state based. No browser-history mutation is
 # performed here; browser-level URL changes caused full-page remount flashes.
@@ -2638,7 +2642,7 @@ if app_mode == "Onboarding":
             )
             navigate_to("Dashboard")
 
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Dashboard ----------
@@ -2804,7 +2808,7 @@ if app_mode == "Dashboard":
             current_user=profile_for_shell,
             workspace_name=active_workspace_name,
         )
-        st.stop()
+        stop_authenticated_page()
 
     # Existing customers can revisit the first-time experience without creating
     # a disposable account. This is a preview only and never changes saved data.
@@ -2813,6 +2817,7 @@ if app_mode == "Dashboard":
         if st.button(
             "Preview onboarding",
             key="dashboard_preview_onboarding",
+            type="secondary",
             use_container_width=True,
         ):
             st.session_state["preview_onboarding"] = "1"
@@ -2845,7 +2850,7 @@ if app_mode == "Dashboard":
         )
     inject_workspace_consistency_css()
     st.session_state.pop("cadivor_route_transition", None)
-    st.stop()
+    stop_authenticated_page()
 
 if app_mode == "Analysis Details":
     # Sprint 30.2: make persistence explicit on every saved-analysis page.
@@ -2888,7 +2893,7 @@ if app_mode == "Analysis Details":
             else []
         ),
     )
-    st.stop()
+    stop_authenticated_page()
 
 st.markdown(
     """
@@ -2938,7 +2943,7 @@ if app_mode == "Monitoring":
         )
         if st.button("View Professional plan", type="primary", key="monitoring_upgrade_plan"):
             navigate_to("Pricing")
-        st.stop()
+        stop_authenticated_page()
 
     return_analysis_id = _qp_value("return_analysis_id")
     if return_analysis_id and st.button("← Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
@@ -3154,7 +3159,7 @@ if app_mode == "Monitoring":
         e1.download_button("Download monitoring action queue", data=queue.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitoring_action_queue.csv", mime="text/csv", type="primary", use_container_width=True, key="m32_queue_export")
         e2.download_button("Download monitored component snapshot", data=components.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitored_components.csv", mime="text/csv", use_container_width=True, key="m32_components_export")
 
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Supply Risk Scenario ----------
@@ -3235,7 +3240,7 @@ if app_mode == "Supply Risk Scenario":
         intelligence=scenario_intelligence,
         internal_nav_button=internal_nav_button,
     )
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Cost Optimization ----------
@@ -3290,7 +3295,7 @@ if app_mode == "Cost Optimization":
         intelligence=cost_intelligence,
         internal_nav_button=internal_nav_button,
     )
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Design Impact Analyzer ----------
@@ -3327,7 +3332,7 @@ if app_mode == "Design Impact Analyzer":
         intelligence=impact_intelligence,
         internal_nav_button=internal_nav_button,
     )
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Portfolio Intelligence ----------
@@ -3369,7 +3374,7 @@ if app_mode == "Portfolio Intelligence":
         intelligence=portfolio_intelligence,
         internal_nav_button=internal_nav_button,
     )
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Procurement Advisor ----------
@@ -5824,7 +5829,7 @@ if app_mode == "Reports":
             unsafe_allow_html=True,
         )
 
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Pricing ----------
@@ -6222,7 +6227,7 @@ if app_mode == "Pricing":
     st.caption(
         "Stripe handles Professional and Business payments securely. Plan activation is applied through the existing Cadivor subscription webhook."
     )
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Settings ----------
@@ -6826,7 +6831,7 @@ if app_mode == "Settings":
             use_container_width=True,
         )
 
-    st.stop()
+    stop_authenticated_page()
 
 
 # ---------- Workspace ----------
@@ -6929,10 +6934,10 @@ if app_mode == "Workspace":
             unsafe_allow_html=True,
         )
         st.info("Your existing BOM analyses and engineering decisions are not changed by this migration.")
-        st.stop()
+        stop_authenticated_page()
     if workspace_error or not workspace:
         st.error(f"Unable to load the workspace: {workspace_error or 'Unknown workspace error'}")
-        st.stop()
+        stop_authenticated_page()
 
     workspace_id = str(workspace.get("id"))
     current_role = str(workspace.get("current_role") or "viewer").lower()
@@ -7595,7 +7600,7 @@ if app_mode == "Workspace":
             """,
             unsafe_allow_html=True,
         )
-    st.stop()
+    stop_authenticated_page()
 
 # ---------- Notifications ----------
 if app_mode == "Notifications":
@@ -7618,10 +7623,10 @@ if app_mode == "Notifications":
     )
     if workspace_error == "migration_required":
         st.info("Apply the Milestone 10B Supabase migration to activate workspace notifications.")
-        st.stop()
+        stop_authenticated_page()
     if workspace_error or not workspace:
         st.error(f"Unable to load notifications: {workspace_error or 'Workspace unavailable'}")
-        st.stop()
+        stop_authenticated_page()
 
     notification_rows, notification_error = list_notifications(supabase, str(workspace.get("id")), user_id, 75)
     unread_rows = [row for row in notification_rows if not row.get("is_read")]
@@ -7678,7 +7683,7 @@ if app_mode == "Notifications":
         st.info("Lifecycle, stock, and supplier events remain available in the Monitoring dashboard. Milestone 10B keeps them separate from team collaboration notifications to avoid duplicate records.")
         if st.button("Open Monitoring Dashboard", type="primary"):
             navigate_to("Monitoring")
-    st.stop()
+    stop_authenticated_page()
 
 # ---------- Help ----------
 if app_mode == "Help":
@@ -7703,7 +7708,7 @@ if app_mode == "Help":
         action_card("Contact support", "Support workflow coming soon.", "?page=About", "?")
     st.markdown('<div class="cv-section-spacer"></div>', unsafe_allow_html=True)
     empty_state("Documentation is being prepared", "Cadivor documentation, API notes, and engineering guides will be added as the product matures.", None, None, "◇")
-    st.stop()
+    stop_authenticated_page()
 
 # ---------- About ----------
 if app_mode == "About":
@@ -7762,7 +7767,7 @@ if app_mode == "About":
             unsafe_allow_html=True,
         )
 
-    st.stop()
+    stop_authenticated_page()
 
 if app_mode == "Admin":
     st.subheader("Admin Dashboard")
@@ -7906,7 +7911,7 @@ if app_mode == "Admin":
 
     st.dataframe(activity_df, use_container_width=True, hide_index=True)
 
-    st.stop()
+    stop_authenticated_page()
 
 if app_mode == "Alternative Finder":
     return_analysis_id = _qp_value("return_analysis_id")
@@ -10488,7 +10493,7 @@ if app_mode == "Alternative Finder":
     elif st.session_state["alternative_search_attempted"]:
         st.warning("No suggested alternatives found.")
 
-    st.stop()
+    stop_authenticated_page()
 if app_mode == "BOM Analyzer":
     # Sprint 50.1.2 — returning through navigation resumes the active engineering
     # analysis instead of reopening the Saved BOM selector. A deliberate New
@@ -11493,11 +11498,11 @@ if app_mode == "BOM Analyzer":
 
     if uploaded_file is None:
         st.info("Upload a CSV or Excel BOM to begin.")
-        st.stop()
+        stop_authenticated_page()
 
     if not project_name.strip():
         st.warning("Please enter a Project / BOM Name before analyzing")
-        st.stop()
+        stop_authenticated_page()
 
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -11509,7 +11514,7 @@ if app_mode == "BOM Analyzer":
         st.error(
             f"Could not read the uploaded BOM file: {e}"
         )
-        st.stop()
+        stop_authenticated_page()
 
     column_rename_map = {
         "part number": "mpn",
@@ -11547,15 +11552,15 @@ if app_mode == "BOM Analyzer":
             + ", ".join(missing_columns)
             + ". Please include at least MPN and Quantity columns."
         )
-        st.stop()
+        stop_authenticated_page()
 
     if bom_df.empty:
         st.error("The uploaded BOM file is empty.")
-        st.stop()
+        stop_authenticated_page()
 
     if len(bom_df) == 0:
         st.error("No BOM rows were detected in the uploaded file.")
-        st.stop()
+        stop_authenticated_page()
 
     
 
@@ -11590,11 +11595,11 @@ if app_mode == "BOM Analyzer":
 
     if bom_df["quantity"].isna().any():
         st.error("Some quantity values are missing or invalid. Please use numeric quantities only.")
-        st.stop()
+        stop_authenticated_page()
 
     if (bom_df["quantity"] <= 0).any():
         st.error("Quantity values must be greater than zero.")
-        st.stop()
+        stop_authenticated_page()
 
     render_upload_detected(
         filename=uploaded_file.name,
@@ -11638,7 +11643,7 @@ if app_mode == "BOM Analyzer":
                 st.session_state["upgrade_plan_name"] = upgrade_plan
 
                 # Rerun so the persistent upgrade checkout section below can render.
-                # Using st.stop() here would show the text but prevent the button from appearing.
+                # Using stop_authenticated_page() here would show the text but prevent the button from appearing.
                 st.rerun()
 
             saved_analysis_count = (
@@ -11658,7 +11663,7 @@ if app_mode == "BOM Analyzer":
                     f"Your {selected_plan_name} workspace includes {max_saved_boms:,} saved BOMs and that storage allowance is full. "
                     "Your existing work is safe. Delete an older analysis or upgrade to continue saving new results."
                 )
-                st.stop()
+                stop_authenticated_page()
 
             st.success(message)
 
@@ -11683,7 +11688,7 @@ if app_mode == "BOM Analyzer":
 
             except Exception as e:
                 st.error(f"BOM analysis failed unexpectedly: {e}")
-                st.stop()
+                stop_authenticated_page()
 
             results_df = st.session_state["results_df"]
 
@@ -11789,7 +11794,7 @@ Unlock more power:
 
             except Exception as e:
                 st.error(f"Could not save analysis summary: {e}")
-                st.stop()
+                stop_authenticated_page()
 
             part_records = []
 
@@ -11838,7 +11843,7 @@ Unlock more power:
                     supabase.table("analysis_parts").insert(part_records).execute()
                 except Exception as e:
                     st.error(f"Could not save BOM parts: {e}")
-                    st.stop()
+                    stop_authenticated_page()
 
             monitor_records = []
             alert_records = []
