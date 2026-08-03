@@ -94,11 +94,15 @@ def inject_workspace_geometry_final() -> None:
     width, shell chrome does not reserve vertical space in the main column,
     and late component polish wins over page-inline styles.
     """
-    final_css = _load_css("core_premium_ui_final.css")
-    if not final_css.strip():
+    css_chunks = [
+        _load_css("core_premium_ui_final.css"),
+        _load_css("laptop_kpi_table_pass.css"),
+    ]
+    combined = "\n".join(chunk for chunk in css_chunks if chunk.strip())
+    if not combined.strip():
         return
     st.markdown(
-        f"<style id='cadivor-core-premium-ui-final'>{final_css}</style>",
+        f"<style id='cadivor-core-premium-ui-final'>{combined}</style>",
         unsafe_allow_html=True,
     )
 
@@ -140,14 +144,15 @@ def kpi_row(items: Sequence[Mapping[str, object]], columns: int = 4) -> None:
     cards = []
     for item in items:
         tone = escape(str(item.get("tone", "info")))
+        detail = escape(str(item.get("note", "")))
         cards.append(
-            f'<article class="cvds-kpi cvds-tone-{tone}">'
-            f'<span class="cvds-kpi-label">{escape(str(item.get("label", "")))}</span>'
-            f'<strong>{escape(str(item.get("value", "—")))}</strong>'
-            f'<small>{escape(str(item.get("note", "")))}</small>'
+            f'<article class="cv-kpi-card cv-kpi-tone-{tone} cvds-kpi cvds-tone-{tone}">'
+            f'<span class="cv-kpi-label cvds-kpi-label">{escape(str(item.get("label", "")))}</span>'
+            f'<strong class="cv-kpi-value">{escape(str(item.get("value", "—")))}</strong>'
+            f'<small class="cv-kpi-detail">{detail}</small>'
             f"</article>"
         )
     st.markdown(
-        f'<div class="cvds-kpi-grid" style="--cvds-cols:{max(1, columns)}">{"".join(cards)}</div>',
+        f'<div class="cv-kpi-grid cvds-kpi-grid" style="--cvds-cols:{max(1, columns)}">{"".join(cards)}</div>',
         unsafe_allow_html=True,
     )
