@@ -94,17 +94,19 @@ def inject_workspace_geometry_final() -> None:
     width, shell chrome does not reserve vertical space in the main column,
     and late component polish wins over page-inline styles.
     """
+    from src.ui.cadivor_design_system import inject_cadivor_design_system
+
     css_chunks = [
         _load_css("core_premium_ui_final.css"),
         _load_css("laptop_kpi_table_pass.css"),
     ]
     combined = "\n".join(chunk for chunk in css_chunks if chunk.strip())
-    if not combined.strip():
-        return
-    st.markdown(
-        f"<style id='cadivor-core-premium-ui-final'>{combined}</style>",
-        unsafe_allow_html=True,
-    )
+    if combined.strip():
+        st.markdown(
+            f"<style id='cadivor-core-premium-ui-final'>{combined}</style>",
+            unsafe_allow_html=True,
+        )
+    inject_cadivor_design_system()
 
 
 def mark_authenticated_surface_ready() -> None:
