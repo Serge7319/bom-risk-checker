@@ -81,8 +81,9 @@ def inject_core_premium_ui_auth() -> None:
 
 
 def stop_authenticated_page() -> None:
-    """Inject late CSS polish, then halt the Streamlit script."""
-    inject_workspace_geometry_final()
+    """Inject late CSS polish on authenticated pages, then halt the script."""
+    if st.session_state.get("_cadivor_authenticated_surface_ready"):
+        inject_workspace_geometry_final()
     st.stop()
 
 
@@ -94,58 +95,17 @@ def inject_workspace_geometry_final() -> None:
     and late component polish wins over page-inline styles.
     """
     final_css = _load_css("core_premium_ui_final.css")
-    final_block = (
-        f"<style id='cadivor-core-premium-ui-final'>{final_css}</style>"
-        if final_css
-        else ""
+    if not final_css.strip():
+        return
+    st.markdown(
+        f"<style id='cadivor-core-premium-ui-final'>{final_css}</style>",
+        unsafe_allow_html=True,
     )
-    geometry_block = """
-        <style id="cadivor-workspace-geometry-final">
-        section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
-        section[data-testid="stMain"] .main .block-container {
-          width: 100% !important;
-          max-width: none !important;
-          margin-left: 0 !important;
-          margin-right: 0 !important;
-          padding-top: calc(var(--cv-foundation-top, 64px) + 16px) !important;
-          padding-left: var(--cv-foundation-gutter, 28px) !important;
-          padding-right: var(--cv-foundation-gutter, 28px) !important;
-          box-sizing: border-box !important;
-        }
-        section[data-testid="stMain"] [data-testid="stMainBlockContainer"] [data-testid="stMainBlockContainer"],
-        section[data-testid="stMain"] .main .block-container .block-container {
-          padding-left: 0 !important;
-          padding-right: 0 !important;
-          max-width: none !important;
-          margin: 0 !important;
-        }
-        section[data-testid="stMain"] .stMarkdown:has(.cv-foundation-topbar),
-        section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_navigation),
-        section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_menu),
-        section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_navigation),
-        section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_menu) {
-          height: 0 !important;
-          min-height: 0 !important;
-          overflow: visible !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        section[data-testid="stMain"] .cv-dashboard-shell,
-        section[data-testid="stMain"] .cv-living-workspace,
-        section[data-testid="stMain"] .cv-portfolio-dashboard,
-        section[data-testid="stMain"] .cv56-page-shell,
-        section[data-testid="stMain"] .cv-page-shell,
-        section[data-testid="stMain"] .page-shell,
-        section[data-testid="stMain"] .content-shell,
-        section[data-testid="stMain"] .cv-core-page-shell {
-          width: 100% !important;
-          max-width: none !important;
-          margin-left: 0 !important;
-          margin-right: 0 !important;
-        }
-        </style>
-        """
-    st.markdown(final_block + geometry_block, unsafe_allow_html=True)
+
+
+def mark_authenticated_surface_ready() -> None:
+    """Call once the authenticated shell/stylesheet stack is mounted."""
+    st.session_state["_cadivor_authenticated_surface_ready"] = True
 
 
 def page_shell(title: str, subtitle: str = "", eyebrow: str = "") -> None:
