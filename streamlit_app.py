@@ -114,6 +114,7 @@ from src.ui.cadivor_design_system import (
     cadivor_table,
     cadivor_toolbar_end,
     cadivor_toolbar_start,
+    render_kpi_row_safe,
 )
 from src.components.onboarding import (
     render_analysis_success,
@@ -2836,8 +2837,15 @@ if app_mode == "Dashboard":
             navigate_to("Dashboard")
 
     overview_tab, portfolio_tab = st.tabs(
-        ["Portfolio Dashboard", "Engineering Overview"]
+        ["Engineering Overview", "Portfolio Dashboard"]
     )
+
+    with overview_tab:
+        render_living_workspace(
+            overview=overview,
+            parts=overview_parts,
+            internal_nav_button=internal_nav_button,
+        )
 
     with portfolio_tab:
         render_dashboard(
@@ -2852,13 +2860,7 @@ if app_mode == "Dashboard":
             _qp_value=_qp_value,
             workspace_id=active_workspace_id,
             workspace_name=active_workspace_name,
-        )
-
-    with overview_tab:
-        render_living_workspace(
-            overview=overview,
-            parts=overview_parts,
-            internal_nav_button=internal_nav_button,
+            fallback_analyses=real_overview_analyses,
         )
     inject_workspace_consistency_css()
     st.session_state.pop("cadivor_route_transition", None)
@@ -3128,7 +3130,7 @@ if app_mode == "Monitoring":
             if component_search.strip():
                 q = component_search.strip().lower()
                 visible = visible[visible.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
-            st.dataframe(visible, hide_index=True, use_container_width=True)
+            cadivor_dataframe(visible)
             if monitoring_limit is not None and not is_admin and monitored_count >= int(monitoring_limit):
                 st.warning(f"Your {selected_plan_name} workspace has reached its {int(monitoring_limit):,}-part monitoring limit. Existing monitoring remains active; upgrade to Business for unlimited monitoring.")
 
@@ -4606,7 +4608,7 @@ if app_mode == "Reports":
         unsafe_allow_html=True,
     )
 
-    cadivor_metric_row(
+    render_kpi_row_safe(
         [
             MetricCard(
                 label="Saved analyses",
@@ -7408,7 +7410,14 @@ if app_mode == "Workspace":
                     for row in pending_invites
                 ]
             )
-            st.dataframe(invite_df, use_container_width=True, hide_index=True)
+            cadivor_dataframe(
+                invite_df,
+                column_config={
+                    "Email": st.column_config.TextColumn(width="medium"),
+                    "Role": st.column_config.TextColumn(width="small"),
+                    "Status": st.column_config.TextColumn(width="small"),
+                },
+            )
             if can_administer:
                 invite_lookup = {f"{row.get('email')} — {str(row.get('created_at',''))[:10]}": row for row in pending_invites}
                 selected_invite_label = st.selectbox("Select an invitation to cancel", list(invite_lookup.keys()))
