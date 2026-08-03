@@ -105,6 +105,16 @@ from src.ui.executive_workspace import inject_executive_workspace_css, render_pa
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
+from src.ui.cadivor_design_system import (
+    MetricCard,
+    cadivor_metric_row,
+    cadivor_panel,
+    cadivor_panel_end,
+    cadivor_section_header,
+    cadivor_table,
+    cadivor_toolbar_end,
+    cadivor_toolbar_start,
+)
 from src.components.onboarding import (
     render_analysis_success,
     render_upload_detected,
@@ -3547,18 +3557,15 @@ if app_mode == "Engineering Decisions":
             None,
         )
 
-    st.markdown(
-        """
-        <section class="cv130-hero">
-          <div class="cv130-eyebrow">Cadivor Engineering Decision Center</div>
-          <div class="cv130-title">Turn component intelligence into approved engineering action.</div>
-          <div class="cv130-copy">
-            Review prioritized decisions, assign ownership, simulate expected impact,
-            document engineering notes, and move work from open review to production readiness.
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+    cadivor_section_header(
+        "Turn component intelligence into approved engineering action",
+        eyebrow="Cadivor Engineering Decision Center",
+        description=(
+            "Review prioritized decisions, assign ownership, simulate expected impact, "
+            "document engineering notes, and move work from open review to production readiness."
+        ),
+        icon="clipboard",
     )
 
     decision_load_error = st.session_state.get(
@@ -3870,24 +3877,26 @@ if app_mode == "Engineering Decisions":
                 history_df = pd.DataFrame(history).rename(
                     columns={"event": "Event", "time": "Time"}
                 )
-                st.dataframe(
+                cadivor_table(
                     history_df.iloc[::-1],
-                    hide_index=True,
-                    use_container_width=True,
+                    caption="Decision history",
                 )
 
     else:
-        k1, k2, k3, k4, k5, k6 = st.columns(6)
-        k1.metric("Open Decisions", decision_center["open_count"])
-        k2.metric("Critical", decision_center["critical_count"])
-        k3.metric("Manager Approval", decision_center["awaiting_approval_count"])
-        k4.metric("Production Approved", decision_center["production_ready_count"])
-        k5.metric("Engineering Hours", f"{decision_center['estimated_hours']} hrs")
-        k6.metric("Average Age", f"{decision_center['average_age_days']} days")
-
-        refresh_decision_col, persistence_scope_col = st.columns(
-            [1, 3]
+        cadivor_metric_row(
+            [
+                MetricCard(label="Open Decisions", value=str(decision_center["open_count"]), tone="info", icon="clipboard"),
+                MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="alert"),
+                MetricCard(label="Manager Approval", value=str(decision_center["awaiting_approval_count"]), tone="warning", icon="shield"),
+                MetricCard(label="Production Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="chart"),
+                MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="activity"),
+                MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="radar"),
+            ],
+            columns=3,
         )
+
+        cadivor_toolbar_start()
+        refresh_decision_col, persistence_scope_col = st.columns([1, 3])
         with refresh_decision_col:
             if st.button(
                 "Refresh Decisions",
@@ -3904,6 +3913,7 @@ if app_mode == "Engineering Decisions":
             st.caption(
                 f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
             )
+        cadivor_toolbar_end()
 
         queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
             [
@@ -4047,30 +4057,51 @@ if app_mode == "Engineering Decisions":
                             ),
                         }
                     )
-                st.dataframe(
+                cadivor_table(
                     pd.DataFrame(workload_rows),
-                    hide_index=True,
-                    use_container_width=True,
+                    caption="Team workload by owner",
+                    numeric_columns=["Open Decisions", "Critical", "Estimated Hours", "Average Confidence"],
+                    align={
+                        "Open Decisions": "right",
+                        "Critical": "right",
+                        "Estimated Hours": "right",
+                        "Average Confidence": "right",
+                    },
                 )
 
         with analytics_tab:
-            st.markdown("### Decision Analytics")
-            analytics_cols = st.columns(4)
-            analytics_cols[0].metric(
-                "Projected Health Gain",
-                f"+{decision_center['projected_health_gain']}",
+            cadivor_section_header(
+                "Decision Analytics",
+                description="Portfolio impact from open and closed engineering decisions.",
+                icon="chart",
             )
-            analytics_cols[1].metric(
-                "Projected Supply Risk Reduction",
-                f"-{decision_center['projected_risk_reduction']}",
-            )
-            analytics_cols[2].metric(
-                "Closed / Rejected",
-                decision_center["closed_count"],
-            )
-            analytics_cols[3].metric(
-                "Average Open Age",
-                f"{decision_center['average_age_days']} days",
+            cadivor_metric_row(
+                [
+                    MetricCard(
+                        label="Projected Health Gain",
+                        value=f"+{decision_center['projected_health_gain']}",
+                        tone="success",
+                        icon="shield",
+                    ),
+                    MetricCard(
+                        label="Supply Risk Reduction",
+                        value=f"-{decision_center['projected_risk_reduction']}",
+                        tone="monitoring",
+                        icon="radar",
+                    ),
+                    MetricCard(
+                        label="Closed / Rejected",
+                        value=str(decision_center["closed_count"]),
+                        tone="neutral",
+                        icon="clipboard",
+                    ),
+                    MetricCard(
+                        label="Average Open Age",
+                        value=f"{decision_center['average_age_days']} days",
+                        tone="warning",
+                        icon="activity",
+                    ),
+                ],
             )
 
             if all_decisions:
@@ -4104,10 +4135,19 @@ if app_mode == "Engineering Decisions":
                 analytics_left, analytics_right = st.columns(2)
                 with analytics_left:
                     st.markdown("#### Decisions by Workflow Stage")
-                    st.dataframe(status_counts, hide_index=True, use_container_width=True)
+                    cadivor_table(
+                        status_counts,
+                        badge_columns=["Workflow Stage"],
+                        numeric_columns=["Decisions"],
+                        align={"Decisions": "right"},
+                    )
                 with analytics_right:
                     st.markdown("#### Open Workload Impact")
-                    st.dataframe(owner_hours, hide_index=True, use_container_width=True)
+                    cadivor_table(
+                        owner_hours,
+                        numeric_columns=["Estimated Hours", "Average Priority"],
+                        align={"Estimated Hours": "right", "Average Priority": "right"},
+                    )
 
         with archive_tab:
             st.markdown("### Searchable Decision Archive")
@@ -4155,10 +4195,12 @@ if app_mode == "Engineering Decisions":
                         for decision in archived
                     ]
                 )
-                st.dataframe(
+                cadivor_table(
                     archive_df,
-                    hide_index=True,
-                    use_container_width=True,
+                    caption="Archived and production-approved decisions",
+                    monospace_columns=["Project / Component"],
+                    badge_columns=["Outcome"],
+                    align={"Confidence": "right"},
                 )
                 st.download_button(
                     "Export Decision Archive CSV",
@@ -4168,6 +4210,8 @@ if app_mode == "Engineering Decisions":
                     key="decision_archive_csv",
                     type="primary",
                 )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _mark_first_report_complete() -> None:
@@ -10942,42 +10986,48 @@ if app_mode == "BOM Analyzer":
         total_high_risk = 0
         best_health = 0
 
-    st.markdown(
-        f"""
-        <section class="bom8-hero">
-          <div class="bom8-eyebrow">BOM intelligence workspace</div>
-          <h1>Turn a parts list into an engineering risk decision.</h1>
-          <p>
-            Upload a CSV or Excel BOM to evaluate lifecycle exposure, sourcing risk,
-            component availability, and portfolio health. Cadivor converts the file
-            into a prioritized engineering review rather than another raw spreadsheet.
-          </p>
-        </section>
-
-        <section class="bom8-kpis">
-          <div class="bom8-kpi">
-            <div class="bom8-kpi-label">Saved analyses</div>
-            <div class="bom8-kpi-value">{saved_analysis_count}</div>
-            <div class="bom8-kpi-note">Previous BOM engineering reviews</div>
-          </div>
-          <div class="bom8-kpi">
-            <div class="bom8-kpi-label">Average health</div>
-            <div class="bom8-kpi-value">{average_health}</div>
-            <div class="bom8-kpi-note">Across all saved analyses</div>
-          </div>
-          <div class="bom8-kpi">
-            <div class="bom8-kpi-label">High-risk findings</div>
-            <div class="bom8-kpi-value">{total_high_risk}</div>
-            <div class="bom8-kpi-note">Components requiring engineering review</div>
-          </div>
-          <div class="bom8-kpi">
-            <div class="bom8-kpi-label">Best recorded health</div>
-            <div class="bom8-kpi-value">{best_health}</div>
-            <div class="bom8-kpi-note">Highest-performing saved BOM</div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+    cadivor_section_header(
+        "Turn a parts list into an engineering risk decision",
+        eyebrow="BOM intelligence workspace",
+        description=(
+            "Upload a CSV or Excel BOM to evaluate lifecycle exposure, sourcing risk, "
+            "component availability, and portfolio health. Cadivor converts the file "
+            "into a prioritized engineering review rather than another raw spreadsheet."
+        ),
+        icon="layers",
+    )
+    cadivor_metric_row(
+        [
+            MetricCard(
+                label="Saved analyses",
+                value=str(saved_analysis_count),
+                detail="Previous BOM engineering reviews",
+                tone="info",
+                icon="file",
+            ),
+            MetricCard(
+                label="Average health",
+                value=str(average_health),
+                status="Portfolio baseline",
+                tone="success" if average_health >= 85 else "warning",
+                icon="shield",
+            ),
+            MetricCard(
+                label="High-risk findings",
+                value=str(total_high_risk),
+                detail="Components requiring engineering review",
+                tone="danger" if total_high_risk else "monitoring",
+                icon="alert",
+            ),
+            MetricCard(
+                label="Best recorded health",
+                value=str(best_health),
+                detail="Highest-performing saved BOM",
+                tone="success",
+                icon="chart",
+            ),
+        ]
     )
 
     workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)
@@ -11097,15 +11147,16 @@ if app_mode == "BOM Analyzer":
         )
 
     # Milestone 8.1 — Saved BOM Manager
+    cadivor_panel(
+        title=f"Saved BOM Manager ({saved_analysis_count})",
+        subtitle="Search, sort, open, or select multiple analyses for bulk deletion.",
+        tone="soft",
+    )
     with st.container(key="bom81_saved_manager"):
         with st.expander(
-            f"Saved BOM Manager ({saved_analysis_count})",
+            "Manage saved analyses",
             expanded=False,
         ):
-            st.caption(
-                "Search, sort, open, or select multiple analyses for bulk deletion. "
-                "Check the box in the first column to select a record."
-            )
 
             if history_data:
                 manager_df = pd.DataFrame(history_data).copy()
@@ -11496,14 +11547,16 @@ if app_mode == "BOM Analyzer":
                     unsafe_allow_html=True,
                 )
 
-
+    cadivor_panel_end()
 
     if uploaded_file is None:
         st.info("Upload a CSV or Excel BOM to begin.")
+        st.markdown("</div>", unsafe_allow_html=True)
         stop_authenticated_page()
 
     if not project_name.strip():
         st.warning("Please enter a Project / BOM Name before analyzing")
+        st.markdown("</div>", unsafe_allow_html=True)
         stop_authenticated_page()
 
     try:
