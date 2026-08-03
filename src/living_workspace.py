@@ -12,6 +12,18 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 import pandas as pd
 import streamlit as st
 
+from src.ui.cadivor_design_system import (
+    MetricCard,
+    cadivor_badge,
+    cadivor_metric_row,
+    cadivor_panel,
+    cadivor_panel_end,
+    cadivor_section_header,
+    cadivor_table,
+    cadivor_toolbar_end,
+    cadivor_toolbar_start,
+)
+
 
 def _text(value: Any, default: str = "") -> str:
     if value is None:
@@ -232,7 +244,7 @@ def render_living_workspace(
     internal_nav_button: Callable[..., Any],
 ) -> None:
     """Render the Living Engineering Workspace using prepared intelligence."""
-    _render_css()
+    st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
 
     changes = overview.get("recent_change_summary", {})
     projects = overview.get("projects", [])
@@ -254,27 +266,53 @@ def render_living_workspace(
     brief_action = _text(top_action.get("title"), "Continue routine monitoring.")
     brief_item = _text(top_action.get("item"), "your component portfolio")
 
-    st.markdown(
-        f"""
-        <section class="cv18-brief">
-          <div class="cv18-eyebrow">Engineering Workspace</div>
-          <div class="cv18-title">Your Engineering Brief</div>
-          <div class="cv18-copy">
-            {html.escape(_text(overview.get('summary')))}
-            The most important next step is to {html.escape(brief_action.lower())}
-            for {html.escape(brief_item)}.
-          </div>
-          <div class="cv18-status-grid">
-            <div class="cv18-status"><strong>{portfolio_health}%</strong><span>Portfolio Health</span></div>
-            <div class="cv18-status"><strong>{overview.get('ready_projects', 0)}</strong><span>Ready for Production</span></div>
-            <div class="cv18-status"><strong>{len(overview.get('action_today', []))}</strong><span>Action Today</span></div>
-            <div class="cv18-status"><strong>{blocked_projects}</strong><span>Blocked Projects</span></div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    health_tone = "success" if portfolio_health >= 85 else "warning" if portfolio_health >= 70 else "danger"
+    health_status = "Excellent" if portfolio_health >= 90 else "Stable" if portfolio_health >= 75 else "Needs attention"
+
+    cadivor_section_header(
+        "Your Engineering Brief",
+        eyebrow="Engineering Workspace",
+        description=(
+            f"{_text(overview.get('summary'))} "
+            f"The most important next step is to {brief_action.lower()} for {brief_item}."
+        ),
+        icon="sparkles",
     )
 
+    cadivor_metric_row(
+        [
+            MetricCard(
+                label="Portfolio Health",
+                value=f"{portfolio_health}%",
+                status=health_status,
+                tone=health_tone,
+                icon="shield",
+            ),
+            MetricCard(
+                label="Ready for Production",
+                value=str(overview.get("ready_projects", 0)),
+                detail="Projects cleared for release",
+                tone="success",
+                icon="chart",
+            ),
+            MetricCard(
+                label="Action Today",
+                value=str(len(overview.get("action_today", []))),
+                detail="Prioritized engineering tasks",
+                tone="info",
+                icon="clipboard",
+            ),
+            MetricCard(
+                label="Blocked Projects",
+                value=str(blocked_projects),
+                detail="Require immediate review",
+                tone="danger" if blocked_projects else "monitoring",
+                icon="alert",
+            ),
+        ]
+    )
+
+    cadivor_toolbar_start()
     nav_cols = st.columns(4)
     with nav_cols[0]:
         internal_nav_button("Engineering Decisions", "Engineering Decisions", key="living_decisions", use_container_width=True)
@@ -284,33 +322,34 @@ def render_living_workspace(
         internal_nav_button("Monitoring", "Monitoring", key="living_monitoring", use_container_width=True)
     with nav_cols[3]:
         internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
+    cadivor_toolbar_end()
 
     left, right = st.columns([1.28, 1])
 
     with left:
-        st.markdown('<div class="cv18-section">Engineering Work Queue</div>', unsafe_allow_html=True)
-        st.markdown('<div class="cv18-subtitle">Work is ranked by release and supply impact.</div>', unsafe_allow_html=True)
+        cadivor_section_header(
+            "Engineering Work Queue",
+            description="Work is ranked by release and supply impact.",
+            icon="clipboard",
+        )
 
         if not overview.get("top_actions"):
             st.success("No urgent work is currently recorded.")
         for index, action in enumerate(overview.get("top_actions", [])):
             priority = int(_number(action.get("priority"), 0))
             effort = "10 min" if priority >= 85 else "20 min" if priority >= 60 else "30 min"
+            due_label = _text(action.get("due"), "This week")
+            cadivor_panel(title=_text(action.get("item"), "BOM"), subtitle=_text(action.get("title"), "Review engineering action"))
             st.markdown(
-                f"""
-                <section class="cv18-card">
-                  <div class="cv18-card-title">{html.escape(_text(action.get('item'), 'BOM'))}</div>
-                  <div class="cv18-card-copy">{html.escape(_text(action.get('title'), 'Review engineering action'))}</div>
-                  <div class="cv18-meta">
-                    <span>Priority {priority}/100</span>
-                    <span>{html.escape(_text(action.get('owner'), 'Engineering'))}</span>
-                    <span>Estimated {effort}</span>
-                    <span>Due {html.escape(_text(action.get('due'), 'This week'))}</span>
-                  </div>
-                </section>
-                """,
+                f'<div class="cv64-meta-row">'
+                f'{cadivor_badge(f"Priority {priority}/100", "info")}'
+                f'{cadivor_badge(_text(action.get("owner"), "Engineering"), "neutral")}'
+                f'{cadivor_badge(f"Estimated {effort}", "monitoring")}'
+                f'{cadivor_badge(f"Due {due_label}", "warning")}'
+                f"</div>",
                 unsafe_allow_html=True,
             )
+            cadivor_panel_end()
             destination = _text(action.get("page"), "Engineering Decisions")
             kwargs: Dict[str, Any] = {}
             if destination == "Engineering Decisions" and action.get("decision_id"):
@@ -327,7 +366,7 @@ def render_living_workspace(
             with st.expander(f"View complete work queue ({len(actions)})", expanded=False):
                 queue_df = pd.DataFrame(actions)
                 visible = [column for column in ("item", "title", "owner", "due", "priority") if column in queue_df.columns]
-                st.dataframe(
+                cadivor_table(
                     queue_df[visible].rename(
                         columns={
                             "item": "Component or Project",
@@ -337,20 +376,25 @@ def render_living_workspace(
                             "priority": "Priority",
                         }
                     ),
-                    hide_index=True,
-                    use_container_width=True,
+                    caption="Complete prioritized engineering queue",
+                    monospace_columns=["Component or Project"],
+                    numeric_columns=["Priority"],
+                    align={"Priority": "right"},
                 )
 
-        st.markdown('<div class="cv18-section">Engineering Timeline</div>', unsafe_allow_html=True)
-        st.markdown('<div class="cv18-subtitle">The latest lifecycle, inventory, pricing, and supplier changes.</div>', unsafe_allow_html=True)
+        cadivor_section_header(
+            "Engineering Timeline",
+            description="The latest lifecycle, inventory, pricing, and supplier changes.",
+            icon="activity",
+        )
         if timeline:
-            timeline_html = ['<div class="cv18-timeline">']
+            timeline_html = ['<div class="cv64-timeline">']
             for event in timeline[:6]:
                 timeline_html.append(
-                    '<div class="cv18-event">'
-                    f'<div class="cv18-event-time">{html.escape(event["time"])}</div>'
-                    f'<div class="cv18-event-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
-                    f'<div class="cv18-event-copy">{html.escape(event["change"])}</div>'
+                    '<div class="cv64-timeline-item">'
+                    f'<div class="cv64-timeline-time">{html.escape(event["time"])}</div>'
+                    f'<div class="cv64-timeline-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
+                    f'<div class="cv64-timeline-copy">{html.escape(event["change"])}</div>'
                     '</div>'
                 )
             timeline_html.append('</div>')
@@ -359,30 +403,31 @@ def render_living_workspace(
             st.info("No recent engineering changes are available.")
 
     with right:
-        st.markdown('<div class="cv18-section">Production Readiness</div>', unsafe_allow_html=True)
-        st.markdown('<div class="cv18-subtitle">Projects requiring attention appear first.</div>', unsafe_allow_html=True)
+        cadivor_section_header(
+            "Production Readiness",
+            description="Projects requiring attention appear first.",
+            icon="shield",
+        )
         for index, project in enumerate(projects[:5]):
             status = _text(project.get("status"), "Needs Review")
-            css_status = "ready" if status == "Ready for Production" else "review"
+            badge_tone = "success" if status == "Ready for Production" else "warning"
             updated = _relative_time(project.get("updated_at") or project.get("created_at"))
+            cadivor_panel(
+                title=_text(project.get("name"), "Saved BOM"),
+                subtitle=f"Updated {updated}",
+                tone="soft",
+            )
             st.markdown(
-                f"""
-                <section class="cv18-project">
-                  <div class="cv18-project-top">
-                    <div class="cv18-project-name">{html.escape(_text(project.get('name'), 'Saved BOM'))}</div>
-                    <span class="cv18-pill {css_status}">{html.escape(status)}</span>
-                  </div>
-                  <div class="cv18-progress"><i style="width:{int(_number(project.get('health'), 0))}%"></i></div>
-                  <div class="cv18-project-stats">
-                    <div><strong>{int(_number(project.get('health'), 0))}/100</strong>Health</div>
-                    <div><strong>{int(_number(project.get('parts'), 0))}</strong>Components</div>
-                    <div><strong>{int(_number(project.get('high'), 0))}</strong>High-Risk</div>
-                  </div>
-                  <div class="cv18-meta"><span>Updated {html.escape(updated)}</span></div>
-                </section>
-                """,
+                f'<div class="cv64-meta-row">{cadivor_badge(status, badge_tone)}</div>'
+                f'<div class="cv64-progress"><i style="width:{int(_number(project.get("health"), 0))}%"></i></div>'
+                f'<div class="cv64-mini-metrics">'
+                f'<div><strong>{int(_number(project.get("health"), 0))}/100</strong><span>Health</span></div>'
+                f'<div><strong>{int(_number(project.get("parts"), 0))}</strong><span>Components</span></div>'
+                f'<div><strong>{int(_number(project.get("high"), 0))}</strong><span>High-Risk</span></div>'
+                f"</div>",
                 unsafe_allow_html=True,
             )
+            cadivor_panel_end()
             if project.get("id"):
                 internal_nav_button(
                     "Open Project",
@@ -392,65 +437,55 @@ def render_living_workspace(
                     analysis_id=project["id"],
                 )
 
-        st.markdown('<div class="cv18-section">Supplier Watch</div>', unsafe_allow_html=True)
-        st.markdown('<div class="cv18-subtitle">Components with the clearest sourcing exposure.</div>', unsafe_allow_html=True)
+        cadivor_section_header(
+            "Supplier Watch",
+            description="Components with the clearest sourcing exposure.",
+            icon="factory",
+        )
         if supplier_watch:
-            watch_html = []
+            watch_rows = []
             for item in supplier_watch:
-                watch_html.append(
-                    '<div class="cv18-watch">'
-                    '<div>'
-                    f'<strong>{html.escape(item["part"])} · {html.escape(item["manufacturer"])}</strong>'
-                    f'<p>{html.escape(item["signal"])}: {html.escape(item["detail"])}</p>'
-                    '</div>'
-                    f'<span class="cv18-score">{item["priority"]}/100</span>'
-                    '</div>'
+                watch_rows.append(
+                    {
+                        "Component": f'{item["part"]} · {item["manufacturer"]}',
+                        "Signal": item["signal"],
+                        "Detail": item["detail"],
+                        "Priority": item["priority"],
+                    }
                 )
-            st.markdown('<section class="cv18-card">' + ''.join(watch_html) + '</section>', unsafe_allow_html=True)
+            cadivor_table(
+                pd.DataFrame(watch_rows),
+                monospace_columns=["Component"],
+                numeric_columns=["Priority"],
+                align={"Priority": "right"},
+            )
         else:
             st.success("No supplier exception currently requires attention.")
 
-        st.markdown('<div class="cv18-section">Team Workload</div>', unsafe_allow_html=True)
+        cadivor_section_header("Team Workload", icon="clipboard")
         if workload:
-            workload_html = ['<div class="cv18-workload">']
-            for item in workload:
-                workload_html.append(
-                    '<div class="cv18-workload-card">'
-                    f'<strong>{html.escape(item["team"])}</strong>'
-                    f'<span>{item["actions"]} open action(s)</span>'
-                    f'<span>Approximately {item["hours"]} hour(s)</span>'
-                    '</div>'
-                )
-            workload_html.append('</div>')
-            st.markdown(''.join(workload_html), unsafe_allow_html=True)
+            cadivor_table(
+                pd.DataFrame(workload).rename(
+                    columns={"team": "Team", "actions": "Open Actions", "hours": "Estimated Hours"}
+                ),
+                numeric_columns=["Open Actions", "Estimated Hours"],
+                align={"Open Actions": "right", "Estimated Hours": "right"},
+            )
         else:
             st.info("No assigned workload is currently recorded.")
 
-    st.markdown('<div class="cv18-section">What Changed Since the Last Review</div>', unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <section class="cv170-change-card">
-          <div class="cv170-change-grid">
-            <div class="cv170-change-item">
-              <div class="cv170-change-value">{int(_number(changes.get('components'), 0))}</div>
-              <div class="cv170-change-label">Components Changed</div>
-            </div>
-            <div class="cv170-change-item">
-              <div class="cv170-change-value">{int(_number(changes.get('lifecycle'), 0))}</div>
-              <div class="cv170-change-label">Lifecycle Updates</div>
-            </div>
-            <div class="cv170-change-item">
-              <div class="cv170-change-value">{int(_number(changes.get('stock'), 0))}</div>
-              <div class="cv170-change-label">Stock Changes</div>
-            </div>
-            <div class="cv170-change-item">
-              <div class="cv170-change-value">{int(_number(changes.get('price'), 0))}</div>
-              <div class="cv170-change-label">Price Changes</div>
-            </div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    cadivor_section_header(
+        "What Changed Since the Last Review",
+        icon="activity",
+    )
+    cadivor_metric_row(
+        [
+            MetricCard(label="Components Changed", value=str(int(_number(changes.get("components"), 0))), tone="info", icon="layers"),
+            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="alert"),
+            MetricCard(label="Stock Changes", value=str(int(_number(changes.get("stock"), 0))), tone="monitoring", icon="factory"),
+            MetricCard(label="Price Changes", value=str(int(_number(changes.get("price"), 0))), tone="confidence", icon="chart"),
+        ],
+        columns=4,
     )
 
     with st.expander("More workspace tools", expanded=False):
@@ -470,3 +505,5 @@ def render_living_workspace(
                     key=f"living_shortcut_{index}",
                     use_container_width=True,
                 )
+
+    st.markdown("</div>", unsafe_allow_html=True)
