@@ -5,6 +5,8 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
+from src.ui.cadivor_design_system import MetricCard, cadivor_metric_row, cadivor_button_wrap, cadivor_button_wrap_end
+
 
 def _safe_text(value, fallback="—"):
     if value is None:
@@ -132,7 +134,7 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
 
     st.markdown('<div class="cv-report-shell">', unsafe_allow_html=True)
     st.markdown(
-        f"""
+        """
         <section class="cv-report-hero">
           <div>
             <div class="cv-report-pill">▣ Reports Center</div>
@@ -143,15 +145,18 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
               <a class="cv-report-btn secondary" href="?page=Dashboard" target="_self">Open dashboard</a>
             </div>
           </div>
-          <div class="cv-report-hero-grid">
-            <div class="cv-report-mini"><div class="cv-report-mini-label">Saved analyses</div><div class="cv-report-mini-value">{total_reports}</div><div class="cv-report-mini-note">Available report sources</div></div>
-            <div class="cv-report-mini"><div class="cv-report-mini-label">Average health</div><div class="cv-report-mini-value">{avg_health}</div><div class="cv-report-mini-note">Across saved BOMs</div></div>
-            <div class="cv-report-mini"><div class="cv-report-mini-label">High-risk parts</div><div class="cv-report-mini-value">{high_risk}</div><div class="cv-report-mini-note">Need review</div></div>
-            <div class="cv-report-mini"><div class="cv-report-mini-label">Total parts</div><div class="cv-report-mini-value">{total_parts}</div><div class="cv-report-mini-note">Tracked in reports</div></div>
-          </div>
         </section>
         """,
         unsafe_allow_html=True,
+    )
+    cadivor_metric_row(
+        [
+            MetricCard(label="Saved analyses", value=str(total_reports), detail="Available report sources", tone="info", icon="file"),
+            MetricCard(label="Average health", value=str(avg_health), detail="Across saved BOMs", tone="success" if avg_health >= 80 else "warning", icon="shield"),
+            MetricCard(label="High-risk parts", value=str(high_risk), detail="Need review", tone="danger" if high_risk else "success", icon="alert"),
+            MetricCard(label="Total parts", value=str(total_parts), detail="Tracked in reports", tone="info", icon="layers"),
+        ],
+        columns=4,
     )
 
     st.markdown(
@@ -198,12 +203,15 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         )
 
     csv_data = _download_csv(records)
+    cadivor_button_wrap("secondary")
     st.download_button(
         "Download report-source CSV",
         data=csv_data,
         file_name="cadivor_report_sources.csv",
         mime="text/csv",
+        use_container_width=True,
     )
+    cadivor_button_wrap_end()
 
     st.markdown(
         """

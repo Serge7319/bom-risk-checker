@@ -291,6 +291,42 @@ def cadivor_button_wrap_end() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+def render_kpi_card(
+    label: str,
+    value: str,
+    *,
+    detail: str = "",
+    status: str = "",
+    tone: Tone = "info",
+    icon: str = "activity",
+    trend: str = "",
+    trend_label: str = "",
+) -> MetricCard:
+    """Build a single KPI card definition for use with cadivor_metric_row."""
+    return MetricCard(
+        label=label,
+        value=value,
+        detail=detail,
+        status=status,
+        tone=tone,
+        icon=icon,
+        trend=trend,
+        trend_label=trend_label,
+    )
+
+
+def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
+    """Render a Streamlit dataframe inside the Cadivor table host shell."""
+    st.markdown('<div class="cv64-table-host">', unsafe_allow_html=True)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        **kwargs,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # Aliases requested in sprint brief
 CadivorCard = cadivor_card
 CadivorMetricCard = MetricCard

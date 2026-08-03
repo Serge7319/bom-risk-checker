@@ -99,6 +99,8 @@ def inject_workspace_geometry_final() -> None:
     css_chunks = [
         _load_css("core_premium_ui_final.css"),
         _load_css("laptop_kpi_table_pass.css"),
+        _load_css("executive_ux.css"),
+        _load_css("premium_recovery.css"),
     ]
     combined = "\n".join(chunk for chunk in css_chunks if chunk.strip())
     if combined.strip():

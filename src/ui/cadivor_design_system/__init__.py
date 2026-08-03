@@ -22,7 +22,9 @@ from src.ui.cadivor_design_system.components import (
     cadivor_table,
     cadivor_toolbar_end,
     cadivor_toolbar_start,
+    cadivor_dataframe,
     inject_cadivor_design_system,
+    render_kpi_card,
 )
 
 __all__ = [
@@ -48,5 +50,7 @@ __all__ = [
     "cadivor_table",
     "cadivor_toolbar_end",
     "cadivor_toolbar_start",
+    "cadivor_dataframe",
     "inject_cadivor_design_system",
+    "render_kpi_card",
 ]

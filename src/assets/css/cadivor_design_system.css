@@ -484,8 +484,8 @@ section[data-testid="stMain"] .stButton > button:disabled {
   opacity: 0.58 !important;
 }
 
-/* Hide legacy Streamlit metric chrome when cv64 grid present */
-section[data-testid="stMain"] .cv64-page-shell [data-testid="stMetric"] {
+/* Hide legacy Streamlit metric chrome only when cv64 metrics are rendered */
+section[data-testid="stMain"] .cv64-page-shell:has(.cv64-metric-grid) [data-testid="stMetric"] {
   display: none !important;
 }
 
