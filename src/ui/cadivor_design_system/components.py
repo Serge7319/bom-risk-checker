@@ -68,7 +68,47 @@ class MetricCard:
     icon: str = "chart"
 
 
-def cadivor_metric_row(metrics: Sequence[MetricCard], *, columns: int = 4) -> None:
+_ALLOWED_TONES = frozenset(
+    {"success", "warning", "danger", "info", "monitoring", "confidence", "neutral"}
+)
+
+
+def _normalize_tone(raw: Any) -> str:
+    tone = str(raw or "info").strip().lower()
+    return tone if tone in _ALLOWED_TONES else "info"
+
+
+def _sanitize_metric(metric: MetricCard) -> MetricCard:
+    value = metric.value
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        value_text = "—"
+    else:
+        value_text = str(value)
+    return MetricCard(
+        label=str(metric.label or "Metric"),
+        value=value_text,
+        status=str(metric.status or ""),
+        detail=str(metric.detail or ""),
+        trend=str(metric.trend or ""),
+        trend_label=str(metric.trend_label or ""),
+        tone=_normalize_tone(metric.tone),
+        icon=str(metric.icon or "chart"),
+    )
+
+
+def _render_native_metric_row(metrics: Sequence[MetricCard], *, columns: int) -> None:
+    """Last-resort KPI row using Streamlit metrics — never hides data."""
+    if not metrics:
+        return
+    count = min(max(1, columns), 4, len(metrics))
+    cols = st.columns(count)
+    for index, metric in enumerate(metrics):
+        with cols[index % count]:
+            delta = metric.trend_label or metric.status or metric.detail or None
+            st.metric(metric.label, metric.value, delta=delta or None)
+
+
+def _render_premium_metric_html(metrics: Sequence[MetricCard], *, columns: int) -> None:
     cards = []
     for metric in metrics:
         trend_html = ""
@@ -105,6 +145,21 @@ def cadivor_metric_row(metrics: Sequence[MetricCard], *, columns: int = 4) -> No
         f'<div class="cv64-metric-grid" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>',
         unsafe_allow_html=True,
     )
+
+
+def render_kpi_row_safe(metrics: Sequence[MetricCard], *, columns: int = 4) -> None:
+    """Premium KPI row with native Streamlit fallback if HTML rendering fails."""
+    cleaned = [_sanitize_metric(metric) for metric in (metrics or [])]
+    if not cleaned:
+        return
+    try:
+        _render_premium_metric_html(cleaned, columns=columns)
+    except Exception:
+        _render_native_metric_row(cleaned, columns=columns)
+
+
+def cadivor_metric_row(metrics: Sequence[MetricCard], *, columns: int = 4) -> None:
+    render_kpi_row_safe(metrics, columns=columns)
 
 
 def cadivor_section_header(
@@ -317,13 +372,16 @@ def render_kpi_card(
 
 def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
     """Render a Streamlit dataframe inside the Cadivor table host shell."""
+    if df is None or getattr(df, "empty", True):
+        cadivor_empty_state("No records", "Nothing matches the current filters.", icon="search")
+        return
+    kwargs.setdefault("use_container_width", True)
+    kwargs.setdefault("hide_index", True)
     st.markdown('<div class="cv64-table-host">', unsafe_allow_html=True)
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        **kwargs,
-    )
+    try:
+        st.dataframe(df, **kwargs)
+    except Exception:
+        st.dataframe(df, use_container_width=True, hide_index=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
