@@ -57,8 +57,8 @@ _BADGE_CLASS = {
 }
 
 
-def _load_css() -> str:
-    path = Path(__file__).resolve().parents[1] / "assets" / "css" / "core_premium_ui.css"
+def _load_css(filename: str = "core_premium_ui.css") -> str:
+    path = Path(__file__).resolve().parents[1] / "assets" / "css" / filename
     try:
         return path.read_text(encoding="utf-8")
     except OSError:
@@ -80,14 +80,28 @@ def inject_core_premium_ui_auth() -> None:
     inject_core_premium_ui()
 
 
+def stop_authenticated_page() -> None:
+    """Inject late CSS polish, then halt the Streamlit script."""
+    inject_workspace_geometry_final()
+    st.stop()
+
+
 def inject_workspace_geometry_final() -> None:
-    """Final authenticated-workspace geometry authority.
+    """Final authenticated-workspace geometry and premium polish authority.
 
     Must run after page-level CSS so large displays use the full workspace
-    width and shell chrome does not reserve vertical space in the main column.
+    width, shell chrome does not reserve vertical space in the main column,
+    and late component polish wins over page-inline styles.
     """
+    final_css = _load_css("core_premium_ui_final.css")
+    final_block = (
+        f"<style id='cadivor-core-premium-ui-final'>{final_css}</style>"
+        if final_css
+        else ""
+    )
     st.markdown(
-        """
+        f"""
+        {final_block}
         <style id="cadivor-workspace-geometry-final">
         section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
         section[data-testid="stMain"] .main .block-container {
