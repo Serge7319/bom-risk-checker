@@ -30,9 +30,9 @@ def readability_css() -> str:
         padding-right:14px!important;
       }
       .stButton button,.stDownloadButton button{
-        font-size:13px!important;
-        font-weight:850!important;
-        min-height:43px!important;
+        font-size:14px!important;
+        font-weight:650!important;
+        min-height:46px!important;
         border-radius:10px!important;
       }
       [data-testid="stCaptionContainer"] p{font-size:12px!important}
