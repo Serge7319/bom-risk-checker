@@ -242,8 +242,8 @@ section[data-testid="stMain"] .cv-btn-destructive .stButton > button:hover {
 .metric-card,
 .kpi-card,
 [data-testid="stMetric"] {
-  min-height: 118px !important;
-  padding: 18px 20px !important;
+  min-height: 138px !important;
+  padding: 22px !important;
   border: 1px solid var(--cadivor-border) !important;
   border-radius: var(--radius-card) !important;
   background: var(--cadivor-surface) !important;
@@ -255,8 +255,8 @@ section[data-testid="stMain"] .cv-btn-destructive .stButton > button:hover {
 .kpi-card strong,
 [data-testid="stMetricValue"] {
   color: var(--cadivor-text) !important;
-  font-size: clamp(26px, 2.4vw, 32px) !important;
-  font-weight: 880 !important;
+  font-size: clamp(28px, 2.2vw, 38px) !important;
+  font-weight: 750 !important;
   white-space: nowrap !important;
 }
 
@@ -264,10 +264,10 @@ section[data-testid="stMain"] .cv-btn-destructive .stButton > button:hover {
 .cv-metric-label,
 [data-testid="stMetric"] label {
   color: var(--cadivor-muted) !important;
-  font-size: 11px !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.07em !important;
-  text-transform: uppercase !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
 }
 
 .cvds-tone-success::before,
@@ -279,12 +279,19 @@ section[data-testid="stMain"] .cv-btn-destructive .stButton > button:hover {
 .cvds-tone-info::before,
 .cv-kpi-info::before { background: var(--cadivor-info) !important; }
 
-@media (max-width: 1024px) {
-  .cvds-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+@media (max-width: 1439px) {
+  .cvds-kpi-grid,
+  .cv-kpi-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)) !important; }
 }
 
-@media (max-width: 640px) {
-  .cvds-kpi-grid { grid-template-columns: 1fr !important; }
+@media (max-width: 1024px) {
+  .cvds-kpi-grid,
+  .cv-kpi-grid { grid-template-columns: repeat(2, minmax(200px, 1fr)) !important; }
+}
+
+@media (max-width: 767px) {
+  .cvds-kpi-grid,
+  .cv-kpi-grid { grid-template-columns: 1fr !important; }
 }
 
 /* ------------------------------------------------------------------ */
@@ -299,21 +306,23 @@ section[data-testid="stMain"] div[data-testid="stTable"] {
   overflow: hidden !important;
 }
 
-section[data-testid="stMain"] [data-testid="stDataFrame"] [role="columnheader"] {
+section[data-testid="stMain"] [data-testid="stDataFrame"] [role="columnheader"],
+section[data-testid="stMain"] [data-testid="stDataEditor"] [role="columnheader"] {
   background: var(--cadivor-surface-soft) !important;
   color: var(--cadivor-text) !important;
-  font-size: 12px !important;
-  font-weight: 800 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
   border-bottom: 1px solid var(--cadivor-border) !important;
-  min-height: 42px !important;
+  min-height: 44px !important;
 }
 
-section[data-testid="stMain"] [data-testid="stDataFrame"] [role="gridcell"] {
+section[data-testid="stMain"] [data-testid="stDataFrame"] [role="gridcell"],
+section[data-testid="stMain"] [data-testid="stDataEditor"] [role="gridcell"] {
   background: var(--cadivor-surface) !important;
   color: var(--cadivor-text) !important;
-  font-size: 13px !important;
+  font-size: 14px !important;
   border-bottom: 1px solid #edf2f8 !important;
-  min-height: 40px !important;
+  min-height: 44px !important;
 }
 
 section[data-testid="stMain"] [data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"] {
