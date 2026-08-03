@@ -24,13 +24,15 @@ def kpi_grid(items: Sequence[Mapping[str, object]], columns: int = 4) -> None:
     for item in items:
         tone = escape(str(item.get("tone", "neutral")))
         cards.append(
-            f'''<article class="cvds-kpi cvds-tone-{tone}"><div class="cvds-kpi-top">
-            <span class="cvds-kpi-label">{escape(str(item.get('label','')))}</span>
-            <span class="cvds-kpi-icon">{escape(str(item.get('icon','•')))}</span></div>
-            <strong>{escape(str(item.get('value','—')))}</strong>
-            <small>{escape(str(item.get('note','')))}</small></article>'''
+            f'''<article class="cv-kpi-card cv-kpi-tone-{tone} cvds-kpi cvds-tone-{tone}">
+            <span class="cv-kpi-label cvds-kpi-label">{escape(str(item.get('label','')))}</span>
+            <strong class="cv-kpi-value">{escape(str(item.get('value','—')))}</strong>
+            <small class="cv-kpi-detail">{escape(str(item.get('note','')))}</small></article>'''
         )
-    st.markdown(f'<div class="cvds-kpi-grid" style="--cvds-cols:{max(1, columns)}">{"".join(cards)}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="cv-kpi-grid cvds-kpi-grid" style="--cvds-cols:{max(1, columns)}">{"".join(cards)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def section_header(title: str, subtitle: str = "", eyebrow: str = "") -> None:
