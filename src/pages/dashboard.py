@@ -15,6 +15,7 @@ import streamlit as st
 
 from src.components.onboarding import render_activation_strip, render_first_run_dashboard
 from src.components.upgrade_prompt import render_upgrade_prompt
+from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
 
 
 def render_dashboard(
@@ -1402,120 +1403,99 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    st.markdown(
+    st.html(
         f"""
         <section class="cv57-command">
-          <div class="cv57-command-grid">
-            <div>
-              <div class="cv57-kicker">Engineering command center</div>
-              <h1>{greeting_prefix}, {html.escape(user_name)}.</h1>
-              <p><strong>{total_high_risk} components require attention.</strong> {high_alert_count} high-severity supplier or lifecycle conditions are active, with {total_analyses} saved engineering reviews available for decision support.</p>
-              <div class="cv57-actions">
-                <a class="cv57-primary" href="?page=BOM%20Analyzer" target="_self">Analyze a BOM</a>
-                <a class="cv57-secondary" href="?page=Engineering%20Decisions" target="_self">Review open decisions</a>
+          <div class="cv57-kicker">Portfolio Dashboard</div>
+          <h1>{html.escape(greeting_prefix)}, {html.escape(user_name)}.</h1>
+          <p class="cv57-lead">Review portfolio health, open risks, and the next engineering action from one place.</p>
+        </section>
+        """
+    )
+
+    portfolio_tone = health_kind if health_kind in {"success", "warning", "danger"} else "info"
+    render_kpi_row_safe(
+        [
+            MetricCard(
+                label="Health",
+                value=str(avg_health_score),
+                detail=f"{health_badge} · {health_delta_label} vs previous",
+                tone=portfolio_tone,
+                icon="shield",
+            ),
+            MetricCard(
+                label="Critical components",
+                value=str(total_high_risk),
+                detail="Require engineering review",
+                tone="danger" if total_high_risk else "success",
+                icon="alert",
+            ),
+            MetricCard(
+                label="Supplier/lifecycle alerts",
+                value=str(alert_count),
+                detail=f"{high_alert_count} high severity",
+                tone="warning" if alert_count else "monitoring",
+                icon="bell",
+            ),
+            MetricCard(
+                label="Saved reviews",
+                value=str(total_analyses),
+                detail="Saved engineering analyses",
+                tone="info",
+                icon="file",
+            ),
+        ],
+        columns=4,
+    )
+
+    priority_col, quick_col = st.columns([1.15, 0.85], gap="medium")
+    with priority_col:
+        st.html(
+            f"""
+            <div class="cv-6a-focus">
+              <div class="cv-6a-focus-icon">{_lucide_icon('alert',20)}</div>
+              <div>
+                <div class="cv-6a-label">Primary engineering priority</div>
+                <div class="cv-6a-headline">{html.escape(next_action_title)}</div>
+                <div class="cv-6a-text">{html.escape(next_action_copy)}</div>
+                <div class="cv-6a-text" style="margin-top:8px;">Portfolio health has {html.escape(trend_word)} by {abs(health_delta)} points compared with the previous saved analysis.</div>
               </div>
             </div>
-            <div class="cv57-signal-grid">
-              <article class="cv57-signal cv57-signal-info"><span>Engineering health</span><strong>{avg_health_score}</strong><small>{health_badge} • {health_delta_label} vs previous</small></article>
-              <article class="cv57-signal cv57-signal-critical"><span>Critical components</span><strong>{total_high_risk}</strong><small>Require engineering review</small></article>
-              <article class="cv57-signal cv57-signal-attention"><span>Supply alerts</span><strong>{alert_count}</strong><small>{high_alert_count} high severity</small></article>
-              <article class="cv57-signal cv57-signal-healthy"><span>Analyses</span><strong>{total_analyses}</strong><small>Saved decision records</small></article>
+            """
+        )
+    with quick_col:
+        st.html(
+            f"""
+            <div class="cv-6a-actions-card">
+              <a class="cv-6a-action-row" href="?page=BOM%20Analyzer" target="_self">
+                <div><strong>{html.escape(next_action_title)}</strong><span>Start or continue BOM analysis</span></div>
+                <div class="cv-6a-action-arrow">→</div>
+              </a>
+              <a class="cv-6a-action-row" href="?page=Monitoring" target="_self">
+                <div><strong>Review supplier alerts</strong><span>{alert_count} active · {high_alert_count} high severity</span></div>
+                <div class="cv-6a-action-arrow">→</div>
+              </a>
+              <a class="cv-6a-action-row" href="?page=Reports" target="_self">
+                <div><strong>Generate engineering report</strong><span>{total_analyses} saved review(s) available</span></div>
+                <div class="cv-6a-action-arrow">→</div>
+              </a>
             </div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
+            """
+        )
 
-    if _qp_value("focus", "") == "search":
-        render_global_search_panel(current_user["id"])
-
-    st.markdown(f'<div class="cv-v4-eyebrow">{_lucide_icon("sparkles",15)} Today\'s Engineering Brief</div>', unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="cv-6a-briefing">
-          <div class="cv-6a-focus">
-            <div class="cv-6a-focus-icon">{_lucide_icon('alert',20)}</div>
-            <div>
-              <div class="cv-6a-label">Primary Engineering Priority</div>
-              <div class="cv-6a-headline">{html.escape(next_action_title)}</div>
-              <div class="cv-6a-text">{html.escape(next_action_copy)} Portfolio health has {trend_word} by {abs(health_delta)} points compared with the previous saved analysis.</div>
-            </div>
-          </div>
-          <div class="cv-6a-actions-card">
-            <a class="cv-6a-action-row" href="?page=Monitoring" target="_self">
-              <div><strong>Review supplier alerts</strong><span>{alert_count} active • {high_alert_count} high severity</span></div>
-              <div class="cv-6a-action-arrow">→</div>
-            </a>
-            <a class="cv-6a-action-row" href="?page=Alternative%20Finder" target="_self">
-              <div><strong>Validate replacements</strong><span>{alternatives_found} saved candidate records</span></div>
-              <div class="cv-6a-action-arrow">→</div>
-            </a>
-            <a class="cv-6a-action-row" href="?page=Reports" target="_self">
-              <div><strong>Generate engineering report</strong><span>PDF and CSV reporting workspace</span></div>
-              <div class="cv-6a-action-arrow">→</div>
-            </a>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
+    st.html(
         """
         <div class="cv-v4-section-head">
           <div>
             <div class="cv-v4-section-title">Portfolio Snapshot</div>
-            <div class="cv-v4-section-meta">Only the essential signals needed to decide where to go next.</div>
+            <div class="cv-v4-section-meta">Essential signals to decide where to go next.</div>
           </div>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
-    st.markdown(
-        f"""
-        <div class="cv-6b-kpi-strip">
-          <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open portfolio analyses and reports">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('shield',23)}</div>
-            <div class="cv-6b-kpi-copy">
-              <span>Portfolio Health</span>
-              <strong>{avg_health_score}</strong>
-              <small style="color:#DC2626!important;">{health_delta_label} vs previous</small>
-              <small style="color:#2563EB!important;margin-top:14px;">View details →</small>
-            </div>
-          </a>
-          <a class="cv-6b-kpi warn" href="?page=BOM%20Analyzer" target="_self" title="Open BOM analyses requiring review">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('alert',23)}</div>
-            <div class="cv-6b-kpi-copy">
-              <span>High Risk</span>
-              <strong>{total_high_risk}</strong>
-              <small>Components requiring review</small>
-              <small style="color:#2563EB!important;margin-top:14px;">Open analyzer →</small>
-            </div>
-          </a>
-          <a class="cv-6b-kpi danger" href="?page=Monitoring" target="_self" title="Open supplier and lifecycle monitoring">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('bell',23)}</div>
-            <div class="cv-6b-kpi-copy">
-              <span>Supplier Alerts</span>
-              <strong>{alert_count}</strong>
-              <small>{high_alert_count} high severity</small>
-              <small style="color:#2563EB!important;margin-top:14px;">Review alerts →</small>
-            </div>
-          </a>
-          <a class="cv-6b-kpi" href="?page=Reports" target="_self" title="Open saved analyses and report sources">
-            <div class="cv-6b-kpi-icon">{_lucide_icon('file',23)}</div>
-            <div class="cv-6b-kpi-copy">
-              <span>Saved Analyses</span>
-              <strong>{total_analyses}</strong>
-              <small>Engineering records available</small>
-              <small style="color:#2563EB!important;margin-top:14px;">Open reports →</small>
-            </div>
-          </a>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if _qp_value("focus", "") == "search":
+        render_global_search_panel(current_user["id"])
 
     # Milestone 24.1 — Put executive signals before supporting charts.
     if latest_trend and previous_trend:
@@ -2020,10 +2000,8 @@ def render_dashboard(
                         for event in recent_activity
                     ]
                 )
-                st.dataframe(
+                cadivor_engineering_dataframe(
                     activity_rows,
-                    use_container_width=True,
-                    hide_index=True,
                     height=min(420, 38 + len(activity_rows) * 34),
                 )
 
