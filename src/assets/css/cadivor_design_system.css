@@ -31,11 +31,22 @@
   flex-shrink: 0;
 }
 
+.cv64-metric__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cv64-metric--compact .cv64-metric__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .cv64-metric-grid {
   display: grid;
   grid-template-columns: repeat(var(--cv64-cols, 4), minmax(0, 1fr));
   gap: 14px;
   margin: 0 0 18px;
+  align-items: stretch;
 }
 
 .cv64-metric {
