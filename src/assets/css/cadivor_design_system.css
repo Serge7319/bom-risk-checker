@@ -1535,3 +1535,126 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   .cv671-impact-grid { grid-template-columns: 1fr; }
   .cv671-workspace { padding: 14px 12px; }
 }
+
+/* Sprint 67.2 — Engineering Decision Workspace navigation */
+.cv672-workspace-shell {
+  margin-bottom: 10px;
+}
+
+.cv672-exec-strip .cv671-exec-stat--action strong,
+.cv672-exec-strip .cv671-exec-stat--action small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.cv672-category {
+  margin-top: 6px;
+}
+
+.cv672-section-label,
+.cv672-subheading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cv64-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.cv672-subheading {
+  font-size: 11px;
+  margin-top: 12px;
+}
+
+.cv672-overview-action,
+.cv672-release-note {
+  border: 1px solid var(--cv64-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.cv672-overview-action strong {
+  display: block;
+  color: var(--cv64-navy);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cv672-overview-action span,
+.cv672-release-note p {
+  display: block;
+  margin: 4px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cv672-evidence-confidence {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cv64-border);
+}
+
+.cv672-based-on {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cv672-review-divider {
+  margin: 16px 0 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cv64-border);
+  color: var(--cv64-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  row-gap: 8px;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--cv64-border);
+  border-radius: 999px;
+  background: #fff;
+  margin-right: 0 !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label:focus-within {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label[data-checked="true"],
+div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+@media (max-width: 1023px) {
+  div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] > div {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .cv672-workspace-shell .cv671-exec-grid {
+    grid-template-columns: 1fr;
+  }
+}
