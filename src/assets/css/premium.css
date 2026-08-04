@@ -107,9 +107,9 @@ p, label, span, div, .stMarkdown, .stCaptionContainer { color: inherit; }
 .cv-action-title { color: #0F172A !important; font-size: 14px !important; font-weight: 900 !important; margin-bottom: 4px !important; }
 .cv-action-copy { color: #64748B !important; font-size: 12px !important; line-height: 1.45 !important; }
 /* Forms/tables/charts */
-div.stButton > button, div.stDownloadButton > button { background: var(--cv-primary) !important; color: #fff !important; border: 1px solid var(--cv-primary) !important; border-radius: 11px !important; min-height: 42px !important; padding: .55rem 1.05rem !important; font-weight: 850 !important; box-shadow: 0 12px 24px rgba(37,99,235,.20) !important; }
-div.stButton > button:hover, div.stDownloadButton > button:hover { background: var(--cv-primary-dark) !important; border-color: var(--cv-primary-dark) !important; color: #fff !important; transform: translateY(-1px) !important; }
-div.stButton > button *, div.stDownloadButton > button * { color: #fff !important; }
+div.stButton:not(.st-key-cv_foundation_navigation .stButton) > button, div.stDownloadButton > button { background: var(--cv-primary) !important; color: #fff !important; border: 1px solid var(--cv-primary) !important; border-radius: 11px !important; min-height: 42px !important; padding: .55rem 1.05rem !important; font-weight: 850 !important; box-shadow: 0 12px 24px rgba(37,99,235,.20) !important; }
+div.stButton:not(.st-key-cv_foundation_navigation .stButton) > button:hover, div.stDownloadButton > button:hover { background: var(--cv-primary-dark) !important; border-color: var(--cv-primary-dark) !important; color: #fff !important; transform: translateY(-1px) !important; }
+div.stButton:not(.st-key-cv_foundation_navigation .stButton) > button *, div.stDownloadButton > button * { color: #fff !important; }
 div[data-testid="stTextInput"] input, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stFileUploader"] section, textarea { background: #fff !important; border: 1px solid #CBD5E1 !important; border-radius: 11px !important; color: #0F172A !important; }
 [data-testid="stDataFrame"] { border-radius: 14px !important; overflow: hidden !important; border: 1px solid #E5E7EB !important; box-shadow: 0 14px 34px rgba(15,23,42,.045) !important; background: #fff !important; }
 [data-testid="stDataFrame"] [role="columnheader"] { background: #F8FAFC !important; color: #64748B !important; font-size: 12px !important; font-weight: 900 !important; }
