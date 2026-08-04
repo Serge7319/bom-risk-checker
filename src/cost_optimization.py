@@ -13,6 +13,8 @@ from typing import Any, Callable, Dict, Iterable, List
 import pandas as pd
 import streamlit as st
 
+from src.ui.cadivor_design_system import cadivor_engineering_dataframe
+
 
 def _text(value: Any, default: str = "") -> str:
     if value is None:
@@ -377,7 +379,7 @@ def render_cost_optimization(
     )
     if intelligence["top_cost_parts"]:
         top_df = pd.DataFrame(intelligence["top_cost_parts"])
-        st.dataframe(
+        cadivor_engineering_dataframe(
             top_df[
                 [
                     "Project",
@@ -391,8 +393,6 @@ def render_cost_optimization(
                     "Risk Score",
                 ]
             ],
-            hide_index=True,
-            use_container_width=True,
             column_config={
                 "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
                 "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
@@ -408,7 +408,7 @@ def render_cost_optimization(
     with opportunity_tab:
         if intelligence["opportunities"]:
             opportunity_df = pd.DataFrame(intelligence["opportunities"])
-            st.dataframe(
+            cadivor_engineering_dataframe(
                 opportunity_df[
                     [
                         "Part Number",
@@ -423,8 +423,6 @@ def render_cost_optimization(
                         "Risk Score",
                     ]
                 ],
-                hide_index=True,
-                use_container_width=True,
                 column_config={
                     "Current Unit Price": st.column_config.NumberColumn(format="$%.4f"),
                     "Estimated Target Price": st.column_config.NumberColumn(format="$%.4f"),
@@ -437,7 +435,7 @@ def render_cost_optimization(
     with missing_tab:
         if intelligence["missing_price_rows"]:
             missing_df = pd.DataFrame(intelligence["missing_price_rows"])
-            st.dataframe(
+            cadivor_engineering_dataframe(
                 missing_df[
                     [
                         "Project",
@@ -449,8 +447,6 @@ def render_cost_optimization(
                         "Risk Score",
                     ]
                 ],
-                hide_index=True,
-                use_container_width=True,
             )
         else:
             st.success("Every component record contains pricing data.")
@@ -458,7 +454,7 @@ def render_cost_optimization(
     with all_tab:
         if intelligence["rows"]:
             all_df = pd.DataFrame(intelligence["rows"])
-            st.dataframe(
+            cadivor_engineering_dataframe(
                 all_df[
                     [
                         "Project",
@@ -473,8 +469,6 @@ def render_cost_optimization(
                         "Risk Score",
                     ]
                 ],
-                hide_index=True,
-                use_container_width=True,
                 column_config={
                     "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
                     "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
