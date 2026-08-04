@@ -225,7 +225,7 @@ def render_living_workspace(
             f"{_text(overview.get('summary'))} "
             f"The most important next step is to {brief_action.lower()} for {brief_item}."
         ),
-        icon="briefcase",
+        icon="briefcase-business",
     )
 
     render_kpi_row_safe(
@@ -235,7 +235,7 @@ def render_living_workspace(
                 value=f"{portfolio_health}%",
                 status=health_status,
                 tone=health_tone,
-                icon="heart-pulse",
+                icon="gauge",
             ),
             MetricCard(
                 label="Ready for Production",
@@ -249,7 +249,7 @@ def render_living_workspace(
                 value=str(len(overview.get("action_today", []))),
                 detail="Prioritized engineering tasks",
                 tone="info",
-                icon="list-checks",
+                icon="clipboard-list",
             ),
             MetricCard(
                 label="Blocked Projects",
@@ -279,7 +279,7 @@ def render_living_workspace(
     render_subsection_header(
         "Engineering recommendations",
         description="Cadivor-ranked actions based on saved evidence and open workflow.",
-        icon="lightbulb",
+        icon="sparkles",
     )
     if recommendations:
         for index, recommendation in enumerate(recommendations[:3]):
@@ -314,7 +314,7 @@ def render_living_workspace(
         render_subsection_header(
             "Project impact",
             description="Saved BOMs ranked by health and release readiness.",
-            icon="chart-no-axes",
+            icon="chart-no-axes-combined",
         )
         impact_rows = []
         for project in projects[:8]:
