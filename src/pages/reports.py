@@ -151,10 +151,10 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
     )
     render_kpi_row_safe(
         [
-            MetricCard(label="Saved analyses", value=str(total_reports), detail="Available report sources", tone="info", icon="file"),
-            MetricCard(label="Average health", value=str(avg_health), detail="Across saved BOMs", tone="success" if avg_health >= 80 else "warning", icon="shield"),
-            MetricCard(label="High-risk parts", value=str(high_risk), detail="Need review", tone="danger" if high_risk else "success", icon="alert"),
-            MetricCard(label="Total parts", value=str(total_parts), detail="Tracked in reports", tone="info", icon="layers"),
+            MetricCard(label="Saved analyses", value=str(total_reports), detail="Available report sources", tone="info", icon="file-text"),
+            MetricCard(label="Average health", value=str(avg_health), detail="Across saved BOMs", tone="success" if avg_health >= 80 else "warning", icon="gauge"),
+            MetricCard(label="High-risk parts", value=str(high_risk), detail="Need review", tone="danger" if high_risk else "success", icon="triangle-alert"),
+            MetricCard(label="Total parts", value=str(total_parts), detail="Tracked in reports", tone="info", icon="boxes"),
         ],
         columns=4,
     )
