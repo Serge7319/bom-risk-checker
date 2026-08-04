@@ -1036,3 +1036,90 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   .cv64-metric-grid { grid-template-columns: 1fr; }
   .cv66-decision-brief { padding: 18px 16px; }
 }
+
+/* Sprint 67 — minimal action-card layout for Decision Engine v2 only */
+.cv67-evidence-ref {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cv67-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.cv67-action-card {
+  border: 1px solid var(--cv64-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.cv67-action-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cv67-priority {
+  color: var(--cv64-blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cv67-owner {
+  color: var(--cv64-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.cv67-action-title {
+  margin: 0 0 8px;
+  color: var(--cv64-navy);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.cv67-action-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 0;
+}
+
+.cv67-action-meta div {
+  min-width: 0;
+}
+
+.cv67-action-meta dt {
+  margin: 0 0 2px;
+  color: var(--cv64-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cv67-action-meta dd {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cv67-empty {
+  margin: 0;
+  color: var(--cv64-muted);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .cv67-action-meta { grid-template-columns: 1fr; }
+}
