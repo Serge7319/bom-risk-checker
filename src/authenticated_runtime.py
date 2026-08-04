@@ -2914,6 +2914,13 @@ def run_authenticated_app() -> None:
         monitor_limit_label = "Unlimited" if monitoring_limit is None or is_admin else f"{int(monitoring_limit):,}"
         monitor_usage = 0 if monitoring_limit in (None, 0) or is_admin else min(100, round(monitored_count / int(monitoring_limit) * 100))
 
+        cadivor_section_header(
+            str(monitoring_center["posture"]),
+            eyebrow="Monitoring Intelligence Center",
+            description=str(monitoring_center["summary"]),
+            icon="radar",
+        )
+
         st.markdown(
             """
             <style>
@@ -2929,22 +2936,25 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             f"""
-            <section class="cv123-monitor-hero"><div class="cv123-monitor-top"><div>
-              <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
-              <div class="cv123-monitor-title">{html.escape(monitoring_center['posture'])}</div>
-              <div class="cv123-monitor-copy">{html.escape(monitoring_center['summary'])}</div>
-            </div><span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">{monitoring_center['active_alerts']} active alert(s)</span></div></section>
-            <div class="cv320-limit"><div class="cv320-limitrow"><span>{html.escape(str(selected_plan_name))} monitoring usage</span><span>{monitored_count:,} / {monitor_limit_label}</span></div><div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div></div>
-            <div class="cv320-kpis">
-              <div class="cv320-kpi"><span>Monitored</span><strong>{monitored_count:,}</strong><small>components</small></div>
-              <div class="cv320-kpi"><span>Critical action</span><strong>{monitoring_center['immediate_actions']:,}</strong><small>priority ≥ 75</small></div>
-              <div class="cv320-kpi"><span>Lifecycle</span><strong>{monitoring_center['lifecycle_alerts']:,}</strong><small>active changes</small></div>
-              <div class="cv320-kpi"><span>Inventory</span><strong>{monitoring_center['inventory_alerts']:,}</strong><small>stock alerts</small></div>
-              <div class="cv320-kpi"><span>Supplier</span><strong>{monitoring_center['supplier_alerts']:,}</strong><small>coverage changes</small></div>
-              <div class="cv320-kpi"><span>Needs review</span><strong>{monitoring_center['needs_review']:,}</strong><small>open workflow</small></div>
+            <div class="cv123-monitor-hero cv123-monitor-hero--compact">
+              <span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">{monitoring_center['active_alerts']} active alert(s)</span>
             </div>
+            <div class="cv320-limit"><div class="cv320-limitrow"><span>{html.escape(str(selected_plan_name))} monitoring usage</span><span>{monitored_count:,} / {monitor_limit_label}</span></div><div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div></div>
             """,
             unsafe_allow_html=True,
+        )
+
+        render_kpi_row_safe(
+            [
+                MetricCard(label="Monitored", value=f"{monitored_count:,}", detail="components", tone="info", icon="radar"),
+                MetricCard(label="Critical action", value=str(monitoring_center["immediate_actions"]), detail="priority ≥ 75", tone="danger", icon="octagon-alert"),
+                MetricCard(label="Lifecycle", value=str(monitoring_center["lifecycle_alerts"]), detail="active changes", tone="warning", icon="clock"),
+                MetricCard(label="Inventory", value=str(monitoring_center["inventory_alerts"]), detail="stock alerts", tone="monitoring", icon="package-search"),
+                MetricCard(label="Supplier", value=str(monitoring_center["supplier_alerts"]), detail="coverage changes", tone="info", icon="factory"),
+                MetricCard(label="Needs review", value=str(monitoring_center["needs_review"]), detail="open workflow", tone="warning", icon="clipboard-check"),
+            ],
+            columns=6,
+            compact=True,
         )
 
         def _monitor_display(value, fallback="—"):
@@ -3344,15 +3354,15 @@ def run_authenticated_app() -> None:
             "Procurement Advisor",
             eyebrow="Sourcing & Purchasing",
             description=advisor["summary"],
-            icon="factory",
+            icon="shopping-cart",
         )
 
         render_kpi_row_safe(
             [
-                MetricCard(label="Action Needed", value=str(advisor["urgent_count"]), tone="danger", icon="alert"),
-                MetricCard(label="Monitor", value=str(advisor["monitor_count"]), tone="monitoring", icon="activity"),
-                MetricCard(label="Need Second Source", value=str(advisor["second_source_count"]), tone="warning", icon="factory"),
-                MetricCard(label="Replacement Needed", value=str(advisor["replace_count"]), tone="info", icon="layers"),
+                MetricCard(label="Action Needed", value=str(advisor["urgent_count"]), tone="danger", icon="shopping-cart"),
+                MetricCard(label="Monitor", value=str(advisor["monitor_count"]), tone="monitoring", icon="radar"),
+                MetricCard(label="Need Second Source", value=str(advisor["second_source_count"]), tone="warning", icon="git-branch"),
+                MetricCard(label="Replacement Needed", value=str(advisor["replace_count"]), tone="info", icon="refresh-cw"),
             ],
             columns=4,
         )
@@ -3505,7 +3515,7 @@ def run_authenticated_app() -> None:
                 "Review prioritized decisions, assign ownership, simulate expected impact, "
                 "document engineering notes, and move work from open review to production readiness."
             ),
-            icon="clipboard",
+            icon="clipboard-check",
         )
 
         decision_load_error = st.session_state.get(
@@ -3829,12 +3839,12 @@ def run_authenticated_app() -> None:
         else:
             cadivor_metric_row(
                 [
-                    MetricCard(label="Open Decisions", value=str(decision_center["open_count"]), tone="info", icon="clipboard"),
-                    MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="alert"),
-                    MetricCard(label="Manager Approval", value=str(decision_center["awaiting_approval_count"]), tone="warning", icon="shield"),
-                    MetricCard(label="Production Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="chart"),
-                    MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="activity"),
-                    MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="radar"),
+                    MetricCard(label="Open Decisions", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
+                    MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
+                    MetricCard(label="Manager Approval", value=str(decision_center["awaiting_approval_count"]), tone="warning", icon="clipboard-check"),
+                    MetricCard(label="Production Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
+                    MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock"),
+                    MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
                 ],
                 columns=3,
             )
@@ -3985,7 +3995,7 @@ def run_authenticated_app() -> None:
                 cadivor_section_header(
                     "Decision Analytics",
                     description="Portfolio impact from open and closed engineering decisions.",
-                    icon="chart",
+                    icon="chart-no-axes-combined",
                 )
                 cadivor_metric_row(
                     [
@@ -3993,7 +4003,7 @@ def run_authenticated_app() -> None:
                             label="Projected Health Gain",
                             value=f"+{decision_center['projected_health_gain']}",
                             tone="success",
-                            icon="shield",
+                            icon="gauge",
                         ),
                         MetricCard(
                             label="Supply Risk Reduction",
@@ -4005,13 +4015,13 @@ def run_authenticated_app() -> None:
                             label="Closed / Rejected",
                             value=str(decision_center["closed_count"]),
                             tone="neutral",
-                            icon="clipboard",
+                            icon="circle-x",
                         ),
                         MetricCard(
                             label="Average Open Age",
                             value=f"{decision_center['average_age_days']} days",
                             tone="warning",
-                            icon="activity",
+                            icon="clock",
                         ),
                     ],
                 )
@@ -4505,17 +4515,19 @@ def run_authenticated_app() -> None:
                 .cv-r9-title{font-size:31px}
             }
             </style>
-            <div class="cv-r9-hero">
-              <div class="cv-r9-eyebrow">▤ Cadivor Report Library</div>
-              <h1 class="cv-r9-title">Turn BOM intelligence into decisions.</h1>
-              <p class="cv-r9-copy">
-                Select a saved BOM, preview the engineering story, and generate the right
-                deliverable for leadership, design review, sourcing, lifecycle management,
-                or replacement planning.
-              </p>
-            </div>
             """,
             unsafe_allow_html=True,
+        )
+
+        cadivor_section_header(
+            "Turn BOM intelligence into decisions.",
+            eyebrow="Cadivor Report Library",
+            description=(
+                "Select a saved BOM, preview the engineering story, and generate the right "
+                "deliverable for leadership, design review, sourcing, lifecycle management, "
+                "or replacement planning."
+            ),
+            icon="file-text",
         )
 
         render_kpi_row_safe(
@@ -4525,28 +4537,28 @@ def run_authenticated_app() -> None:
                     value=str(total_reports),
                     detail="Report-ready BOM engineering records",
                     tone="info",
-                    icon="file",
+                    icon="file-text",
                 ),
                 MetricCard(
                     label="Average health",
                     value=str(average_health),
                     detail="Across all saved BOM analyses",
                     tone="success" if average_health >= 80 else "warning",
-                    icon="shield",
+                    icon="gauge",
                 ),
                 MetricCard(
                     label="High-risk findings",
                     value=str(total_high_risk),
                     detail="Components requiring engineering review",
                     tone="danger" if total_high_risk else "success",
-                    icon="alert",
+                    icon="triangle-alert",
                 ),
                 MetricCard(
                     label="Tracked components",
                     value=str(total_parts),
                     detail="Saved component intelligence records",
                     tone="info",
-                    icon="layers",
+                    icon="boxes",
                 ),
             ],
             columns=4,
@@ -8987,16 +8999,14 @@ def run_authenticated_app() -> None:
             st.session_state["alternative_decision_flash"] = ""
 
         with st.container(border=True, key="af62_hero"):
-            st.markdown(
-                """
-                <div class="af62-eyebrow">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-                  Alternative Component Finder
-                </div>
-                <div class="af62-title">Find a stronger replacement path.</div>
-                <p class="af62-copy">Search a manufacturer part number, compare sourcing intelligence, and prepare an engineering-compatible replacement workflow without leaving the Cadivor workspace.</p>
-                """,
-                unsafe_allow_html=True,
+            cadivor_section_header(
+                "Find a stronger replacement path.",
+                eyebrow="Alternative Component Finder",
+                description=(
+                    "Search a manufacturer part number, compare sourcing intelligence, and prepare "
+                    "an engineering-compatible replacement workflow without leaving the Cadivor workspace."
+                ),
+                icon="arrow-right-left",
             )
 
         with st.container(border=True, key="af62_search"):
@@ -10923,7 +10933,7 @@ def run_authenticated_app() -> None:
                 "component availability, and portfolio health. Cadivor converts the file "
                 "into a prioritized engineering review rather than another raw spreadsheet."
             ),
-            icon="layers",
+            icon="folder-archive",
         )
         cadivor_metric_row(
             [
@@ -10932,7 +10942,7 @@ def run_authenticated_app() -> None:
                     value=str(saved_analysis_count),
                     detail="Previous BOM engineering reviews",
                     tone="info",
-                    icon="file-stack",
+                    icon="folder-archive",
                 ),
                 MetricCard(
                     label="Average health",
