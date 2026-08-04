@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from typing import Any
 
@@ -169,30 +170,41 @@ def render_auth_boot() -> None:
     render_auth_transition("Restoring your secure workspace…")
 
 
+_RESTORE_TIMEOUT_SECONDS = 5.0
+
+
 def _validate_tokens(supabase: Any, access_token: str, refresh_token: str) -> bool:
-    try:
-        session_response = supabase.auth.set_session(access_token, refresh_token)
-        user_response = supabase.auth.get_user()
-        user = getattr(user_response, "user", None)
-        if user is None:
+    def _restore() -> bool:
+        try:
+            session_response = supabase.auth.set_session(access_token, refresh_token)
+            user_response = supabase.auth.get_user()
+            user = getattr(user_response, "user", None)
+            if user is None:
+                return False
+            st.session_state["user"] = user
+            fresh_session = getattr(session_response, "session", None)
+            if fresh_session:
+                st.session_state["access_token"] = fresh_session.access_token
+                st.session_state["refresh_token"] = fresh_session.refresh_token
+            else:
+                st.session_state["access_token"] = access_token
+                st.session_state["refresh_token"] = refresh_token
+            st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
+            st.session_state["cadivor_auth_resolved"] = True
+            st.session_state.pop("cadivor_auth_restore_attempts", None)
+            _log("restored")
+            return True
+        except Exception as exc:
+            _log("restore_failed", error=type(exc).__name__)
             return False
-        st.session_state["user"] = user
-        # set_session can rotate tokens; retain fresh values when available.
-        fresh_session = getattr(session_response, "session", None)
-        if fresh_session:
-            st.session_state["access_token"] = fresh_session.access_token
-            st.session_state["refresh_token"] = fresh_session.refresh_token
-        else:
-            st.session_state["access_token"] = access_token
-            st.session_state["refresh_token"] = refresh_token
-        st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
-        st.session_state["cadivor_auth_resolved"] = True
-        st.session_state.pop("cadivor_auth_restore_attempts", None)
-        _log("restored")
-        return True
-    except Exception as exc:
-        _log("restore_failed", error=type(exc).__name__)
-        return False
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_restore)
+        try:
+            return bool(future.result(timeout=_RESTORE_TIMEOUT_SECONDS))
+        except FuturesTimeoutError:
+            _log("restore_failed", error="timeout")
+            return False
 
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
