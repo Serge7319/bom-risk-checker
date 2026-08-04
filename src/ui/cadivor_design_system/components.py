@@ -38,7 +38,8 @@ def _render_html(html: str) -> None:
     """Render trusted Cadivor HTML — never return markup to callers."""
     if not html:
         return
-    st.html(html)
+    # Streamlit's st.html sanitizer can strip inline SVG paths; markdown preserves Lucide icons.
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def inject_cadivor_design_system() -> None:
@@ -231,9 +232,10 @@ def render_section_header(
     actions = (
         f'<div class="cv64-section__actions">{action_html}</div>' if action_html else ""
     )
+    icon_markup = lucide(icon, 17) if icon else ""
     icon_block = (
-        f'<span class="cv64-section__icon">{icon_or_empty(icon, 17)}</span>'
-        if icon and icon_or_empty(icon, 17)
+        f'<span class="cv64-section__icon" aria-hidden="true">{icon_markup}</span>'
+        if icon_markup
         else ""
     )
     _render_html(
@@ -274,9 +276,10 @@ def render_subsection_header(
     icon: str = "",
 ) -> None:
     """Compact in-column section title — avoids full page-header chrome."""
+    icon_markup = lucide(icon, 16) if icon else ""
     icon_block = (
-        f'<span class="cv64-subsection__icon">{icon_or_empty(icon, 16)}</span>'
-        if icon and icon_or_empty(icon, 16)
+        f'<span class="cv64-subsection__icon" aria-hidden="true">{icon_markup}</span>'
+        if icon_markup
         else ""
     )
     desc_block = (
