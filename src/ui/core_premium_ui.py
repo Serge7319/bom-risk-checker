@@ -87,6 +87,16 @@ def stop_authenticated_page() -> None:
     st.stop()
 
 
+def inject_navigation_recovery_css() -> None:
+    """Restore foundation navigation after late global button/KPI styles."""
+    css = _load_css("navigation_recovery.css")
+    if css.strip():
+        st.markdown(
+            f"<style id='cadivor-navigation-recovery'>{css}</style>",
+            unsafe_allow_html=True,
+        )
+
+
 def inject_workspace_geometry_final() -> None:
     """Final authenticated-workspace geometry and premium polish authority.
 
@@ -109,6 +119,7 @@ def inject_workspace_geometry_final() -> None:
             unsafe_allow_html=True,
         )
     inject_cadivor_design_system()
+    inject_navigation_recovery_css()
 
 
 def mark_authenticated_surface_ready() -> None:
@@ -117,6 +128,7 @@ def mark_authenticated_surface_ready() -> None:
     from src.ui.cadivor_design_system import inject_cadivor_design_system
 
     inject_cadivor_design_system()
+    inject_navigation_recovery_css()
 
 
 def page_shell(title: str, subtitle: str = "", eyebrow: str = "") -> None:
