@@ -18,6 +18,8 @@ from reportlab.platypus import (
     PageBreak,
 )
 
+from src.engineering_decision_engine import format_decision_brief_for_report
+
 
 def _num(value: Any, default: float = 0.0) -> float:
     try:
@@ -230,7 +232,30 @@ def _metric_table(report: Dict[str, Any]) -> Table:
     return table
 
 
-def build_ai_executive_pdf(report: Dict[str, Any]) -> bytes:
+def _decision_brief_pdf_sections(decision_brief: Dict[str, Any], styles) -> list:
+    """Append Sprint 67 decision brief sections to a ReportLab story."""
+    sections = format_decision_brief_for_report(decision_brief)
+    blocks = [
+        ("Executive Engineering Summary", sections["executive_summary"]),
+        ("Production Readiness", sections["production_readiness"]),
+        ("Critical Findings", sections["critical_findings"]),
+        ("Recommended Actions", sections["recommended_actions"]),
+        ("Business Impact", sections["business_impact"]),
+        ("Engineering Confidence", sections["confidence"]),
+        ("Supporting Evidence", sections["supporting_evidence"]),
+    ]
+    story = []
+    for title, body in blocks:
+        story.append(Paragraph(title, styles["CadivorSection"]))
+        story.append(Paragraph(body.replace("\n", "<br/>"), styles["CadivorBody"]))
+        story.append(Spacer(1, 10))
+    return story
+
+
+def build_ai_executive_pdf(
+    report: Dict[str, Any],
+    decision_brief: Dict[str, Any] | None = None,
+) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -247,19 +272,26 @@ def build_ai_executive_pdf(report: Dict[str, Any]) -> bytes:
         Spacer(1, 10),
         _metric_table(report),
         Spacer(1, 16),
-        Paragraph("Production Readiness", styles["CadivorSection"]),
-        Paragraph(report["readiness"], styles["CadivorBody"]),
-        Paragraph("Executive Assessment", styles["CadivorSection"]),
-        Paragraph(report["executive_summary"], styles["CadivorBody"]),
-        Paragraph("Recommended Management Decision", styles["CadivorSection"]),
-        Paragraph(report["executive_decision"], styles["CadivorBody"]),
-        Paragraph("Estimated Resolution Effort", styles["CadivorSection"]),
-        Paragraph(
-            f"Engineering: approximately {report['engineering_hours']} hours. "
-            f"Procurement: approximately {report['procurement_hours']} hours.",
-            styles["CadivorBody"],
-        ),
     ]
+    if decision_brief:
+        story.extend(_decision_brief_pdf_sections(decision_brief, styles))
+    else:
+        story.extend(
+            [
+                Paragraph("Production Readiness", styles["CadivorSection"]),
+                Paragraph(report["readiness"], styles["CadivorBody"]),
+                Paragraph("Executive Assessment", styles["CadivorSection"]),
+                Paragraph(report["executive_summary"], styles["CadivorBody"]),
+                Paragraph("Recommended Management Decision", styles["CadivorSection"]),
+                Paragraph(report["executive_decision"], styles["CadivorBody"]),
+                Paragraph("Estimated Resolution Effort", styles["CadivorSection"]),
+                Paragraph(
+                    f"Engineering: approximately {report['engineering_hours']} hours. "
+                    f"Procurement: approximately {report['procurement_hours']} hours.",
+                    styles["CadivorBody"],
+                ),
+            ]
+        )
     doc.build(story)
     return buffer.getvalue()
 
