@@ -34,13 +34,20 @@ _BADGE_TONES: dict[str, Tone] = {
 }
 
 
+def _render_html(html: str) -> None:
+    """Render trusted Cadivor HTML — never return markup to callers."""
+    if not html:
+        return
+    st.html(html)
+
+
 def inject_cadivor_design_system() -> None:
     css_path = Path(__file__).resolve().parents[2] / "assets" / "css" / "cadivor_design_system.css"
     try:
         css = css_path.read_text(encoding="utf-8")
     except OSError:
         return
-    st.markdown(f"<style id='cadivor-design-system-s64'>{css}</style>", unsafe_allow_html=True)
+    _render_html(f"<style id='cadivor-design-system-s64'>{css}</style>")
 
 
 def badge_tone(raw: Any) -> Tone:
@@ -61,7 +68,7 @@ def cadivor_meta_row(badges: Sequence[tuple[str, str]]) -> None:
     if not badges:
         return
     items = "".join(cadivor_badge(label, tone) for label, tone in badges)
-    st.markdown(f'<div class="cv64-meta-row">{items}</div>', unsafe_allow_html=True)
+    _render_html(f'<div class="cv64-meta-row">{items}</div>')
 
 
 @dataclass(frozen=True)
@@ -116,7 +123,9 @@ def _render_native_metric_row(metrics: Sequence[MetricCard], *, columns: int) ->
             st.metric(metric.label, metric.value, delta=delta or None)
 
 
-def _render_premium_metric_html(metrics: Sequence[MetricCard], *, columns: int) -> None:
+def _render_premium_metric_html(
+    metrics: Sequence[MetricCard], *, columns: int, compact: bool = False
+) -> None:
     cards = []
     for metric in metrics:
         trend_html = ""
@@ -149,25 +158,63 @@ def _render_premium_metric_html(metrics: Sequence[MetricCard], *, columns: int) 
             f"{status_html}{detail_html}{trend_html}"
             f"</article>"
         )
-    st.markdown(
-        f'<div class="cv64-metric-grid" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>',
-        unsafe_allow_html=True,
+    grid_class = "cv64-metric-grid"
+    if compact:
+        grid_class += " cv64-metric-grid--compact"
+    _render_html(
+        f'<div class="{grid_class}" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>'
     )
 
 
-def render_kpi_row_safe(metrics: Sequence[MetricCard], *, columns: int = 4) -> None:
+def render_kpi_row_safe(
+    metrics: Sequence[MetricCard], *, columns: int = 4, compact: bool = False
+) -> None:
     """Premium KPI row with native Streamlit fallback if HTML rendering fails."""
     cleaned = [_sanitize_metric(metric) for metric in (metrics or [])]
     if not cleaned:
         return
     try:
-        _render_premium_metric_html(cleaned, columns=columns)
+        _render_premium_metric_html(cleaned, columns=columns, compact=compact)
     except Exception:
         _render_native_metric_row(cleaned, columns=columns)
 
 
-def cadivor_metric_row(metrics: Sequence[MetricCard], *, columns: int = 4) -> None:
-    render_kpi_row_safe(metrics, columns=columns)
+def cadivor_metric_row(
+    metrics: Sequence[MetricCard], *, columns: int = 4, compact: bool = False
+) -> None:
+    render_kpi_row_safe(metrics, columns=columns, compact=compact)
+
+
+def render_section_header(
+    title: str,
+    *,
+    description: str = "",
+    eyebrow: str = "",
+    icon: str = "layers",
+    action_html: str = "",
+) -> None:
+    """Render a page-level section header (single trusted HTML path)."""
+    eyebrow_block = (
+        f'<div class="cv64-section__eyebrow">{escape(eyebrow)}</div>' if eyebrow else ""
+    )
+    desc_block = (
+        f'<p class="cv64-section__desc">{escape(description)}</p>' if description else ""
+    )
+    actions = (
+        f'<div class="cv64-section__actions">{action_html}</div>' if action_html else ""
+    )
+    _render_html(
+        f'<section class="cv64-section">'
+        f'<div class="cv64-section__icon">{lucide(icon, 22)}</div>'
+        f'<div class="cv64-section__copy">'
+        f"{eyebrow_block}"
+        f'<h1 class="cv64-section__title">{escape(title)}</h1>'
+        f"{desc_block}"
+        f"</div>"
+        f"{actions}"
+        f'<div class="cv64-section__rule"></div>'
+        f"</section>"
+    )
 
 
 def cadivor_section_header(
@@ -178,29 +225,35 @@ def cadivor_section_header(
     icon: str = "layers",
     action_html: str = "",
 ) -> None:
-    eyebrow_block = (
-        f'<div class="cv64-section__eyebrow">{escape(eyebrow)}</div>' if eyebrow else ""
+    render_section_header(
+        title,
+        description=description,
+        eyebrow=eyebrow,
+        icon=icon,
+        action_html=action_html,
+    )
+
+
+def render_subsection_header(
+    title: str,
+    *,
+    description: str = "",
+    icon: str = "",
+) -> None:
+    """Compact in-column section title — avoids full page-header chrome."""
+    icon_block = (
+        f'<span class="cv64-subsection__icon">{lucide(icon, 18)}</span>' if icon else ""
     )
     desc_block = (
-        f'<p class="cv64-section__desc">{escape(description)}</p>' if description else ""
+        f'<p class="cv64-subsection__desc">{escape(description)}</p>' if description else ""
     )
-    actions = (
-        f'<div class="cv64-section__actions">{action_html}</div>' if action_html else ""
-    )
-    st.markdown(
-        f"""
-        <section class="cv64-section">
-          <div class="cv64-section__icon">{lucide(icon, 22)}</div>
-          <div class="cv64-section__copy">
-            {eyebrow_block}
-            <h1 class="cv64-section__title">{escape(title)}</h1>
-            {desc_block}
-          </div>
-          {actions}
-          <div class="cv64-section__rule"></div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    _render_html(
+        f'<div class="cv64-subsection">'
+        f"{icon_block}"
+        f"<div>"
+        f'<h2 class="cv64-subsection__title">{escape(title)}</h2>'
+        f"{desc_block}"
+        f"</div></div>"
     )
 
 
@@ -221,26 +274,23 @@ def cadivor_panel(
             f'<div class="cv64-panel__head">'
             f'<h3 class="cv64-panel__title">{escape(title)}</h3>{sub}</div>'
         )
-    st.markdown(f'<div class="{cls}">{heading}', unsafe_allow_html=True)
+    _render_html(f'<div class="{cls}">{heading}')
 
 
 def cadivor_panel_end() -> None:
-    st.markdown("</div>", unsafe_allow_html=True)
+    _render_html("</div>")
 
 
 def cadivor_card(title: str, body: str, *, badge: str = "", badge_tone: Tone = "info") -> None:
     badge_html = cadivor_badge(badge, badge_tone) if badge else ""
-    st.markdown(
-        f"""
-        <article class="cv64-card">
-          <div class="cv64-card__top">
-            <h4 class="cv64-card__title">{escape(title)}</h4>
-            {badge_html}
-          </div>
-          <p class="cv64-card__body">{escape(body)}</p>
-        </article>
-        """,
-        unsafe_allow_html=True,
+    _render_html(
+        f'<article class="cv64-card">'
+        f'<div class="cv64-card__top">'
+        f'<h4 class="cv64-card__title">{escape(title)}</h4>'
+        f"{badge_html}"
+        f"</div>"
+        f'<p class="cv64-card__body">{escape(body)}</p>'
+        f"</article>"
     )
 
 
@@ -256,25 +306,22 @@ def cadivor_empty_state(
         if action_label
         else ""
     )
-    st.markdown(
-        f"""
-        <div class="cv64-empty">
-          <div class="cv64-empty__icon">{lucide(icon, 28)}</div>
-          <h3 class="cv64-empty__title">{escape(title)}</h3>
-          <p class="cv64-empty__body">{escape(body)}</p>
-          {action}
-        </div>
-        """,
-        unsafe_allow_html=True,
+    _render_html(
+        f'<div class="cv64-empty">'
+        f'<div class="cv64-empty__icon">{lucide(icon, 28)}</div>'
+        f'<h3 class="cv64-empty__title">{escape(title)}</h3>'
+        f'<p class="cv64-empty__body">{escape(body)}</p>'
+        f"{action}"
+        f"</div>"
     )
 
 
 def cadivor_toolbar_start() -> None:
-    st.markdown('<div class="cv64-toolbar">', unsafe_allow_html=True)
+    _render_html('<div class="cv64-toolbar">')
 
 
 def cadivor_toolbar_end() -> None:
-    st.markdown("</div>", unsafe_allow_html=True)
+    _render_html("</div>")
 
 
 def _format_cell(value: Any, *, numeric: bool, monospace: bool, badge: bool) -> str:
@@ -330,28 +377,23 @@ def cadivor_table(
         rows.append(f'<tr class="cv64-table__row{zebra}">{"".join(cells)}</tr>')
 
     cap = f'<div class="cv64-table__caption">{escape(caption)}</div>' if caption else ""
-    st.markdown(
-        f"""
-        <div class="cv64-table-wrap">
-          {cap}
-          <div class="cv64-table-scroll">
-            <table class="cv64-table">
-              <thead><tr>{"".join(headers)}</tr></thead>
-              <tbody>{"".join(rows)}</tbody>
-            </table>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    _render_html(
+        f'<div class="cv64-table-wrap">'
+        f"{cap}"
+        f'<div class="cv64-table-scroll">'
+        f'<table class="cv64-table">'
+        f"<thead><tr>{''.join(headers)}</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody>"
+        f"</table></div></div>"
     )
 
 
 def cadivor_button_wrap(variant: str = "primary") -> None:
-    st.markdown(f'<div class="cv64-btn-wrap cv64-btn-wrap--{escape(variant)}">', unsafe_allow_html=True)
+    _render_html(f'<div class="cv64-btn-wrap cv64-btn-wrap--{escape(variant)}">')
 
 
 def cadivor_button_wrap_end() -> None:
-    st.markdown("</div>", unsafe_allow_html=True)
+    _render_html("</div>")
 
 
 def render_kpi_card(
@@ -385,12 +427,12 @@ def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
         return
     kwargs.setdefault("use_container_width", True)
     kwargs.setdefault("hide_index", True)
-    st.markdown('<div class="cv64-table-host">', unsafe_allow_html=True)
+    _render_html('<div class="cv64-table-host">')
     try:
         st.dataframe(df, **kwargs)
     except Exception:
         st.dataframe(df, use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    _render_html("</div>")
 
 
 # Aliases requested in sprint brief
