@@ -125,10 +125,10 @@ def _render_native_metric_row(metrics: Sequence[MetricCard], *, columns: int) ->
 
 def _metric_icon_html(name: str, *, compact: bool) -> str:
     size = 16 if compact else 18
-    markup = icon_or_empty(name, size)
+    markup = lucide(name, size)
     if not markup:
         return ""
-    return f'<span class="cv64-metric__icon">{markup}</span>'
+    return f'<span class="cv64-metric__icon" aria-hidden="true">{markup}</span>'
 
 
 def _render_premium_metric_html(
