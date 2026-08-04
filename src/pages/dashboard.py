@@ -1421,7 +1421,7 @@ def render_dashboard(
                 value=str(avg_health_score),
                 detail=f"{health_badge} · {health_delta_label} vs previous",
                 tone=portfolio_tone,
-                icon="heart-pulse",
+                icon="gauge",
             ),
             MetricCard(
                 label="Critical components",
