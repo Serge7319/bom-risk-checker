@@ -9,7 +9,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 import pandas as pd
 import streamlit as st
 
-from src.ui.cadivor_design_system.icons import lucide
+from src.ui.cadivor_design_system.icons import icon_or_empty, lucide
 
 Tone = str
 
@@ -123,9 +123,18 @@ def _render_native_metric_row(metrics: Sequence[MetricCard], *, columns: int) ->
             st.metric(metric.label, metric.value, delta=delta or None)
 
 
+def _metric_icon_html(name: str, *, compact: bool) -> str:
+    size = 16 if compact else 18
+    markup = icon_or_empty(name, size)
+    if not markup:
+        return ""
+    return f'<span class="cv64-metric__icon">{markup}</span>'
+
+
 def _render_premium_metric_html(
     metrics: Sequence[MetricCard], *, columns: int, compact: bool = False
 ) -> None:
+    density = "compact" if compact else "primary"
     cards = []
     for metric in metrics:
         trend_html = ""
@@ -134,35 +143,54 @@ def _render_premium_metric_html(
             cards_trend_icon = "arrow-up" if arrow == "up" else "arrow-down" if arrow == "down" else "activity"
             trend_html = (
                 f'<div class="cv64-metric__trend cv64-metric__trend--{escape(arrow)}">'
-                f'{lucide(cards_trend_icon, 14)}'
+                f'{icon_or_empty(cards_trend_icon, 14)}'
                 f"<span>{escape(metric.trend_label)}</span></div>"
             )
-        status_html = (
-            f'<div class="cv64-metric__status">{escape(metric.status)}</div>'
-            if metric.status
-            else ""
-        )
-        detail_html = (
-            f'<div class="cv64-metric__detail">{escape(metric.detail)}</div>'
-            if metric.detail and not metric.trend_label
-            else ""
-        )
+        footer_parts = []
+        if metric.status:
+            footer_parts.append(f'<div class="cv64-metric__status">{escape(metric.status)}</div>')
+        if metric.detail and not metric.trend_label:
+            footer_parts.append(f'<div class="cv64-metric__detail">{escape(metric.detail)}</div>')
+        footer_html = ""
+        if footer_parts or trend_html:
+            inner = "".join(footer_parts)
+            if trend_html:
+                inner += trend_html.replace('cv64-metric__footer ', "")
+            footer_html = f'<div class="cv64-metric__footer">{inner}</div>'
+
+        icon_html = _metric_icon_html(metric.icon, compact=compact)
+        header_inner = icon_html + f'<span class="cv64-metric__label">{escape(metric.label)}</span>'
         cards.append(
-            f'<article class="cv64-metric cv64-metric--{escape(metric.tone)}">'
+            f'<article class="cv64-metric cv64-metric--{escape(metric.tone)} cv64-metric--{density}">'
             f'<div class="cv64-metric__accent"></div>'
-            f'<div class="cv64-metric__head">'
-            f'<span class="cv64-metric__icon">{lucide(metric.icon, 18)}</span>'
-            f'<span class="cv64-metric__label">{escape(metric.label)}</span>'
-            f"</div>"
+            f'<div class="cv64-metric__header">{header_inner}</div>'
             f'<div class="cv64-metric__value">{escape(metric.value)}</div>'
-            f"{status_html}{detail_html}{trend_html}"
+            f"{footer_html}"
             f"</article>"
         )
-    grid_class = "cv64-metric-grid"
-    if compact:
-        grid_class += " cv64-metric-grid--compact"
+    grid_class = f"cv64-metric-grid cv64-metric-grid--{density}"
     _render_html(
         f'<div class="{grid_class}" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>'
+    )
+
+
+def render_metric_strip(metrics: Sequence[MetricCard], *, columns: int = 3) -> None:
+    """Horizontal compact metric strip for nested panels such as project summaries."""
+    cleaned = [_sanitize_metric(metric) for metric in (metrics or [])]
+    if not cleaned:
+        return
+    cells = []
+    for metric in cleaned:
+        icon_html = _metric_icon_html(metric.icon, compact=True)
+        cells.append(
+            f'<div class="cv64-metric-strip__cell cv64-metric-strip__cell--{escape(metric.tone)}">'
+            f'<div class="cv64-metric-strip__head">{icon_html}'
+            f'<span class="cv64-metric-strip__label">{escape(metric.label)}</span></div>'
+            f'<div class="cv64-metric-strip__value">{escape(metric.value)}</div>'
+            f"</div>"
+        )
+    _render_html(
+        f'<div class="cv64-metric-strip" style="--cv64-strip-cols:{max(1, columns)}">{"".join(cells)}</div>'
     )
 
 
@@ -203,9 +231,14 @@ def render_section_header(
     actions = (
         f'<div class="cv64-section__actions">{action_html}</div>' if action_html else ""
     )
+    icon_block = (
+        f'<span class="cv64-section__icon">{icon_or_empty(icon, 17)}</span>'
+        if icon and icon_or_empty(icon, 17)
+        else ""
+    )
     _render_html(
         f'<section class="cv64-section">'
-        f'<div class="cv64-section__icon">{lucide(icon, 22)}</div>'
+        f"{icon_block}"
         f'<div class="cv64-section__copy">'
         f"{eyebrow_block}"
         f'<h1 class="cv64-section__title">{escape(title)}</h1>'
@@ -242,7 +275,9 @@ def render_subsection_header(
 ) -> None:
     """Compact in-column section title — avoids full page-header chrome."""
     icon_block = (
-        f'<span class="cv64-subsection__icon">{lucide(icon, 18)}</span>' if icon else ""
+        f'<span class="cv64-subsection__icon">{icon_or_empty(icon, 16)}</span>'
+        if icon and icon_or_empty(icon, 16)
+        else ""
     )
     desc_block = (
         f'<p class="cv64-subsection__desc">{escape(description)}</p>' if description else ""
@@ -308,7 +343,7 @@ def cadivor_empty_state(
     )
     _render_html(
         f'<div class="cv64-empty">'
-        f'<div class="cv64-empty__icon">{lucide(icon, 28)}</div>'
+        f'<div class="cv64-empty__icon">{icon_or_empty(icon, 24)}</div>'
         f'<h3 class="cv64-empty__title">{escape(title)}</h3>'
         f'<p class="cv64-empty__body">{escape(body)}</p>'
         f"{action}"
