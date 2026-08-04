@@ -13,7 +13,14 @@ from src.ui.navigation import navigate_to, internal_nav_button
 from src.ai_advisor import build_engineering_supply_advisor
 from src.engineering_decision_engine import (
     build_engineering_decision_brief,
-    render_engineering_decision_workspace,
+    render_engineering_workspace_strip,
+    render_engineering_workspace_overview,
+    render_engineering_workspace_findings,
+    render_engineering_workspace_actions,
+    render_engineering_workspace_impact,
+    render_engineering_workspace_evidence,
+    workspace_category_counts,
+    WORKSPACE_CATEGORIES,
     get_cached_decision_brief,
     cache_decision_brief,
     decision_brief_cache_key,
@@ -1007,7 +1014,6 @@ def render_analysis_detail(
     top_ranked_part = ranked_parts[0] if ranked_parts else None
 
     with advisor_tab:
-        _section_header("Executive Decision Cockpit", "Release readiness, risk drivers, evidence coverage, and next actions.")
         brief_cache_key = decision_brief_cache_key(analysis_id=analysis_id)
         decision_brief = get_cached_decision_brief(brief_cache_key)
         if decision_brief is None:
@@ -1022,524 +1028,574 @@ def render_analysis_detail(
                 advisor=advisor,
             )
             cache_decision_brief(brief_cache_key, decision_brief)
-        render_engineering_decision_workspace(decision_brief)
-        assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
-        confidence = _num(advisor.get("confidence"), 0)
-        metrics = advisor.get("metrics") or {}
-        saved_alternatives = _num(metrics.get("saved_alternatives"), len(alternatives))
-        lifecycle_count, stock_count = len(lifecycle_exposed_parts), len(no_stock_parts)
-        source_count, lead_count = len(limited_source_parts), len(long_lead_parts)
 
-        if high >= 3 or health < 55:
-            release_recommendation, cockpit_status, cockpit_class = "Hold Release", "Release hold recommended", "bad"
-        elif high > 0 or health < 80 or lifecycle_count > 0:
-            release_recommendation, cockpit_status, cockpit_class = "Focused Review", "Focused engineering review", "warn"
-        else:
-            release_recommendation, cockpit_status, cockpit_class = "Controlled Release", "Ready for controlled release", "good"
+        st.markdown('<div class="cv672-workspace-root"></div>', unsafe_allow_html=True)
+        render_engineering_workspace_strip(decision_brief)
+        category_counts = workspace_category_counts(decision_brief)
+        workspace_radio_key = f"cv672_workspace_radio_{analysis_id}"
+        ws_state_key = f"engineering_workspace_tab_{analysis_id}"
 
-        engineering_readiness = max(0, min(100, round((health * .60) + (max(0, 100 - min(100, high * 12 + medium * 4)) * .25) + (confidence * .15))))
-        readiness_class = _health_class(engineering_readiness)
-        readiness_label = "Excellent" if engineering_readiness >= 90 else "Strong" if engineering_readiness >= 75 else "Needs attention" if engineering_readiness >= 55 else "At risk"
-        lifecycle_health = max(0, round(100 - lifecycle_count / max(1, total_parts) * 100))
-        inventory_coverage = max(0, round(100 - stock_count / max(1, total_parts) * 100))
-        supplier_diversity = max(0, round(100 - source_count / max(1, total_parts) * 100))
-        engineering_review = max(0, min(100, round((engineering_readiness + confidence) / 2)))
-
-        checklist = [("Lifecycle validated", lifecycle_count == 0), ("Inventory reviewed", stock_count == 0), ("Alternatives reviewed", saved_alternatives > 0), ("Supplier diversity verified", source_count == 0), ("Procurement signoff", confidence >= 85 and stock_count == 0), ("Engineering approval", high == 0 and lifecycle_count == 0)]
-        checklist_complete = sum(1 for _, done in checklist if done)
-        checklist_percent = round(checklist_complete / len(checklist) * 100)
-        top_ranked_part = ranked_parts[0] if ranked_parts else None
-        primary_part = _safe(top_ranked_part.get("mpn") if top_ranked_part else None, "No critical component")
-        primary_reason = _safe(top_ranked_part.get("reason") if top_ranked_part else None, "No component-level risk explanation is currently available.")
-
-        # Milestone 27.1 — persistent, resumable engineering review workflow.
-        review_key = f"cv271_review_{analysis_id}"
-        reviewer_name = _safe(
-            current_user.get("full_name") or current_user.get("name") or current_user.get("email"),
-            "Current reviewer",
+        shortcut_cols = st.columns(4)
+        shortcut_map = (
+            ("Production Status", "Decision Overview"),
+            (f"Confidence · {int(decision_brief.get('confidence', {}).get('score') or 0)}%", "Evidence"),
+            (f"Findings · {category_counts['findings']}", "Critical Findings"),
+            (f"Actions · {category_counts['actions']}", "Recommended Actions"),
         )
-        reviewer_email = _safe(current_user.get("email"), "")
-        review_parts = ranked_parts[:5]
-        total_review_items = len(review_parts)
-        editable_roles = {"owner", "admin", "editor", "member"}
-        role_text = str(workspace_role or "viewer").lower()
-        can_edit_review = role_text in editable_roles or not workspace_id
-        can_manage_review = role_text in {"owner", "admin"} or not workspace_id
+        for col, (label, target) in zip(shortcut_cols, shortcut_map):
+            with col:
+                if st.button(
+                    label,
+                    key=f"cv672_shortcut_{target.replace(' ', '_').lower()}_{analysis_id}",
+                    use_container_width=True,
+                ):
+                    st.session_state[workspace_radio_key] = target
+                    st.session_state[ws_state_key] = target
+                    st.rerun()
 
-        # Load the latest review session and its items from Supabase once per rerun.
-        review_session, review_session_error = get_latest_review_session(
-            supabase,
-            analysis_id=analysis_id,
-            user_id=user_id,
-            workspace_id=workspace_id,
+        workspace_category = st.radio(
+            "Engineering workspace category",
+            WORKSPACE_CATEGORIES,
+            horizontal=True,
+            key=workspace_radio_key,
+            label_visibility="collapsed",
         )
-        review_items = []
-        review_items_error = None
-        review_events = []
-        review_events_error = None
-        if review_session:
-            review_items, review_items_error = list_review_items(
-                supabase,
-                session_id=review_session.get("id"),
-                user_id=user_id,
-                workspace_id=workspace_id,
+        st.session_state[ws_state_key] = workspace_category
+
+        if workspace_category == "Decision Overview":
+            render_engineering_workspace_overview(decision_brief)
+        elif workspace_category == "Critical Findings":
+            render_engineering_workspace_findings(decision_brief)
+        elif workspace_category == "Business Impact":
+            render_engineering_workspace_impact(decision_brief)
+        elif workspace_category == "Evidence":
+            render_engineering_workspace_evidence(decision_brief)
+
+        elif workspace_category == "Recommended Actions":
+            render_engineering_workspace_actions(decision_brief)
+            st.markdown(
+                '<div class="cv672-review-divider">Engineering review workflow</div>',
+                unsafe_allow_html=True,
             )
-            review_events, review_events_error = list_review_events(
+
+            # Milestone 27.1 — persistent, resumable engineering review workflow.
+            review_key = f"cv271_review_{analysis_id}"
+            reviewer_name = _safe(
+                current_user.get("full_name") or current_user.get("name") or current_user.get("email"),
+                "Current reviewer",
+            )
+            reviewer_email = _safe(current_user.get("email"), "")
+            review_parts = ranked_parts[:5]
+            total_review_items = len(review_parts)
+            editable_roles = {"owner", "admin", "editor", "member"}
+            role_text = str(workspace_role or "viewer").lower()
+            can_edit_review = role_text in editable_roles or not workspace_id
+            can_manage_review = role_text in {"owner", "admin"} or not workspace_id
+
+            # Load the latest review session and its items from Supabase once per rerun.
+            review_session, review_session_error = get_latest_review_session(
                 supabase,
                 analysis_id=analysis_id,
                 user_id=user_id,
                 workspace_id=workspace_id,
-                limit=250,
             )
-
-        review_db_unavailable = bool(review_session_error and "does not exist" in review_session_error.lower())
-        if review_db_unavailable:
-            st.warning(
-                "Engineering review persistence is not enabled yet. Run the Milestone 27.1 Supabase migration, then refresh this page."
-            )
-        elif review_session_error:
-            st.warning(f"Engineering review data could not be loaded: {review_session_error}")
-
-        decision_map = {
-            _safe(row.get("mpn"), "Unknown MPN"): row
-            for row in review_items
-        }
-        reviewed_count = sum(
-            1
-            for part in review_parts
-            if decision_map.get(_safe(part.get("mpn"), "Unknown MPN"), {}).get("decision")
-            in ("Approve", "Needs Investigation", "Reject")
-        )
-        review_percent = round(reviewed_count / max(1, total_review_items) * 100)
-        session_status = _safe(review_session.get("status") if review_session else None, "not_started")
-        session_locked = bool(review_session and review_session.get("is_locked"))
-        session_active = bool(review_session and session_status in {"active", "completed"})
-
-        if not session_active:
-            start_col, note_col = st.columns([0.28, 0.72])
-            with start_col:
-                start_disabled = not can_edit_review or review_db_unavailable
-                start_label = "Resume Engineering Review" if session_status == "paused" else "Start Engineering Review"
-                if st.button(
-                    start_label,
-                    type="primary",
-                    use_container_width=True,
-                    key=f"cv271_start_{analysis_id}",
-                    disabled=start_disabled,
-                ):
-                    created_session, create_error = create_review_session(
-                        supabase,
-                        analysis_id=analysis_id,
-                        user_id=user_id,
-                        workspace_id=workspace_id,
-                        reviewer_name=reviewer_name,
-                        reviewer_email=reviewer_email,
-                        total_items=total_review_items,
-                    )
-                    if create_error:
-                        st.error(f"Could not start the review: {create_error}")
-                    else:
-                        st.session_state[review_key] = created_session
-                        st.rerun()
-            with note_col:
-                # Sprint 50.1.2 — the large persistent-review banner was removed.
-                # Review persistence remains unchanged and the compact autosave
-                # badge inside Ask Cadivor continues to communicate save status.
-                pass
-        else:
-            started_display = _relative_date(review_session.get("started_at"))
-            updated_display = _relative_date(review_session.get("updated_at"))
-            remaining = max(0, total_review_items - reviewed_count)
-            lock_label = "Locked" if session_locked else "Saved to Supabase"
-            st.markdown(
-                f'''<section class="cv27-session"><div class="cv27-session-top"><div><div class="cv27-session-title">{'Completed' if session_status == 'completed' else 'Engineering'} Review Session</div><div class="cv27-session-sub">Persistent review · last updated {html.escape(updated_display)}</div></div><span class="cv27-saved">{lock_label}</span></div><div class="cv27-session-grid"><div class="cv27-session-kpi"><span>Progress</span><strong>{reviewed_count}/{total_review_items}</strong></div><div class="cv27-session-kpi"><span>Remaining</span><strong>{remaining}</strong></div><div class="cv27-session-kpi"><span>Reviewer</span><strong style="font-size:15px">{html.escape(_safe(review_session.get('reviewer_name'), reviewer_name))}</strong></div><div class="cv27-session-kpi"><span>Started</span><strong style="font-size:15px">{html.escape(started_display)}</strong></div></div><div class="cv27-review-progress"><i style="width:{review_percent}%"></i></div></section>''',
-                unsafe_allow_html=True,
-            )
-
-            counts = {"Approve": 0, "Needs Investigation": 0, "Reject": 0, "Skip": 0}
-            for row in review_items:
-                decision_value = row.get("decision")
-                if decision_value in counts:
-                    counts[decision_value] += 1
-            st.markdown(
-                f'''<div class="cv27-summary"><div class="cv27-summary-card"><span>Approved</span><strong>{counts["Approve"]}</strong></div><div class="cv27-summary-card"><span>Investigate</span><strong>{counts["Needs Investigation"]}</strong></div><div class="cv27-summary-card"><span>Rejected</span><strong>{counts["Reject"]}</strong></div><div class="cv27-summary-card"><span>Skipped</span><strong>{counts["Skip"]}</strong></div></div>''',
-                unsafe_allow_html=True,
-            )
-
-            if review_items_error:
-                st.warning(f"Saved review items could not be loaded: {review_items_error}")
-
-            # Milestone 28.1 — shared collaborative workflow rules.
-            today = date.today()
-            workflow = summarize_review_workflow(
-                review_items,
-                reviewer_email=reviewer_email,
-                total_items=total_review_items,
-                today=today,
-            )
-            open_rows = workflow["open_rows"]
-            overdue_rows = workflow["overdue_rows"]
-            due_week_rows = workflow["due_week_rows"]
-            assigned_me_rows = workflow["assigned_me_rows"]
-            waiting_rows = workflow["waiting_rows"]
-            completed_today = workflow["completed_today"]
-            unassigned_count = workflow["unassigned_count"]
-            workflow_health = workflow["workflow_health"]
-            action_html = f'<div class="cv272-action-grid"><div class="cv272-action"><span>Assigned to Me</span><strong>{len(assigned_me_rows)}</strong></div><div class="cv272-action"><span>Due This Week</span><strong>{len(due_week_rows)}</strong></div><div class="cv272-action {"bad" if overdue_rows else ""}"><span>Overdue</span><strong>{len(overdue_rows)}</strong></div><div class="cv272-action"><span>Waiting on Others</span><strong>{len(waiting_rows)}</strong></div><div class="cv272-action"><span>Completed Today</span><strong>{len(completed_today)}</strong></div></div><section class="cv272-health"><div class="cv272-health-top"><div><h4>Review Health</h4><p>{len(overdue_rows)} overdue · {unassigned_count} unassigned · {reviewed_count} completed</p></div><strong style="font-size:26px">{workflow_health}%</strong></div><div class="cv27-review-progress"><i style="width:{workflow_health}%"></i></div></section>'
-            st.markdown(action_html, unsafe_allow_html=True)
-
-            if total_review_items == 0:
-                st.markdown(
-                    f'''<section class="cv28-empty"><h4>No engineering review queue has been generated</h4><p>Cadivor creates review items from component-level risk, lifecycle, supplier, inventory, lead-time, and alternative evidence. Reopen this BOM in the Analyzer and rerun or save the analysis to attach component records.</p><a class="cv28-link" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open BOM Analyzer</a></section>''',
-                    unsafe_allow_html=True,
+            review_items = []
+            review_items_error = None
+            review_events = []
+            review_events_error = None
+            if review_session:
+                review_items, review_items_error = list_review_items(
+                    supabase,
+                    session_id=review_session.get("id"),
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                )
+                review_events, review_events_error = list_review_events(
+                    supabase,
+                    analysis_id=analysis_id,
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    limit=250,
                 )
 
-            member_options = [("Unassigned", "", "")]
-            for member in workspace_members:
-                member_name = _safe(member.get("full_name") or member.get("name") or member.get("email"), "Workspace member")
-                member_email = _safe(member.get("email"), "")
-                member_id = _safe(member.get("user_id") or member.get("id"), "")
-                if member_email or member_id:
-                    member_options.append((member_name, member_email, member_id))
-            if reviewer_email and not any(x[1].lower() == reviewer_email.lower() for x in member_options if x[1]):
-                member_options.append((reviewer_name, reviewer_email, user_id))
-            member_labels = [x[0] + (f" · {x[1]}" if x[1] else "") for x in member_options]
+            review_db_unavailable = bool(review_session_error and "does not exist" in review_session_error.lower())
+            if review_db_unavailable:
+                st.warning(
+                    "Engineering review persistence is not enabled yet. Run the Milestone 27.1 Supabase migration, then refresh this page."
+                )
+            elif review_session_error:
+                st.warning(f"Engineering review data could not be loaded: {review_session_error}")
 
-            f1,f2,f3,f4 = st.columns(4)
-            status_filter = f1.selectbox("Review status", ["All", "Open", "Completed", "Overdue"], key=f"cv272_status_{analysis_id}")
-            assignee_filter = f2.selectbox("Assignee", ["All", "Assigned to me", "Unassigned"] + member_labels[1:], key=f"cv272_assignee_{analysis_id}")
-            priority_filter = f3.selectbox("Priority", ["All", "High", "Medium", "Low"], key=f"cv272_priority_{analysis_id}")
-            decision_filter = f4.selectbox("Decision", ["All", "Approve", "Needs Investigation", "Reject", "Skip", "Not reviewed"], key=f"cv272_decision_filter_{analysis_id}")
-            unresolved_only = st.checkbox(
-                "Show unresolved only",
-                value=False,
-                key=f"cv281_unresolved_{analysis_id}",
-                help="Includes open, investigation, rejected, unassigned, and overdue items.",
+            decision_map = {
+                _safe(row.get("mpn"), "Unknown MPN"): row
+                for row in review_items
+            }
+            reviewed_count = sum(
+                1
+                for part in review_parts
+                if decision_map.get(_safe(part.get("mpn"), "Unknown MPN"), {}).get("decision")
+                in ("Approve", "Needs Investigation", "Reject")
             )
-            filtered_review_parts = []
-            for candidate in review_parts:
-                c_mpn = _safe(candidate.get("mpn"), "Unknown MPN")
-                c_saved = decision_map.get(c_mpn, {})
-                c_decision = c_saved.get("decision") or "Not reviewed"
-                c_due = parse_due_date(c_saved, today=today)
-                c_score = _num(candidate.get("risk_score"),0)
-                c_priority = "High" if c_score >= 70 else "Medium" if c_score >= 35 else "Low"
-                is_completed = c_decision in {"Approve","Reject","Skip"}
-                if status_filter == "Open" and is_completed: continue
-                if status_filter == "Completed" and not is_completed: continue
-                if status_filter == "Overdue" and not (c_due and c_due < today and not is_completed): continue
-                if assignee_filter == "Assigned to me" and str(c_saved.get("assignee_email") or "").lower() != reviewer_email.lower(): continue
-                if assignee_filter == "Unassigned" and c_saved.get("assignee_name"): continue
-                saved_assignee_label = _safe(c_saved.get("assignee_name"),"") + (f" · {c_saved.get('assignee_email')}" if c_saved.get("assignee_email") else "")
-                if assignee_filter not in {"All","Assigned to me","Unassigned"} and assignee_filter != saved_assignee_label: continue
-                if priority_filter != "All" and c_priority != priority_filter: continue
-                if decision_filter != "All" and c_decision != decision_filter: continue
-                if unresolved_only and not is_unresolved_review(c_saved, today=today): continue
-                filtered_review_parts.append(candidate)
-            st.caption(f"Showing {len(filtered_review_parts)} of {len(review_parts)} review items")
-            for review_index, part in enumerate(filtered_review_parts, 1):
-                mpn = _safe(part.get("mpn"), "Unknown MPN")
-                saved = decision_map.get(mpn, {})
-                status_label = saved.get("decision") or "Not reviewed"
-                updated_label = _relative_date(saved.get("updated_at")) if saved else "Not saved"
-                saved_priority = _safe(saved.get("priority"), "High" if _num(part.get("risk_score"), 0) >= 70 else "Medium" if _num(part.get("risk_score"), 0) >= 35 else "Low")
-                saved_assignee = _safe(saved.get("assignee_name"), "Unassigned")
-                saved_due = _safe(saved.get("due_label"), "No due date")
-                with st.expander(
-                    f"{review_index}. {mpn} · {status_label} · {saved_priority} · {saved_assignee} · {saved_due}",
-                    expanded=(review_index == 1 and reviewed_count == 0),
-                ):
-                    st.caption(f"Component {review_index} of {len(filtered_review_parts)}")
-                    risk_score = _num(part.get("risk_score"), 0)
-                    suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
-                    rec_reason = _safe(
-                        part.get("reason"),
-                        "Review recorded engineering evidence before approval.",
-                    )
-                    recommendation_confidence = max(0, min(100, 100 - abs(risk_score - 50)))
-                    risk_class = _risk_class(part.get("risk_level"), risk_score)
-                    lifecycle_value = _safe(part.get("lifecycle"), "Unknown")
-                    stock_value = _num(part.get("stock"), 0)
-                    supplier_value = _num(part.get("sources"), 0)
-                    due_badge_class = "bad" if saved.get("due_date") and str(saved.get("due_date"))[:10] < today.isoformat() and status_label not in {"Approve", "Reject", "Skip"} else "warn"
-                    st.markdown(
-                        f'''<div class="cv28-review-head"><div class="cv28-review-main"><span>Component Under Review</span><strong>{html.escape(mpn)}</strong><p>{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))}</p><div class="cv28-badge-row"><span class="cv28-badge {risk_class}">{html.escape(_safe(part.get("risk_level"), "Low"))} risk</span><span class="cv28-badge">{html.escape(saved_priority)} priority</span><span class="cv28-badge {"good" if status_label == "Approve" else "bad" if status_label == "Reject" else "warn"}">{html.escape(status_label)}</span></div></div><div class="cv28-review-stat"><span>Assignee</span><strong>{html.escape(saved_assignee)}</strong><small>{html.escape(_safe(saved.get("assignee_email"), "No member assigned"))}</small></div><div class="cv28-review-stat"><span>Due</span><strong>{html.escape(saved_due)}</strong><small>{html.escape(_date(saved.get("due_date"))) if saved.get("due_date") else "No calendar deadline"}</small></div><div class="cv28-review-stat"><span>Last Saved</span><strong>{html.escape(updated_label)}</strong><small>{html.escape(_safe(saved.get("reviewer_name"), "Not reviewed"))}</small></div><div class="cv28-review-stat"><span>Decision</span><strong>{html.escape(status_label)}</strong><small>Persistent audit record</small></div></div><div class="cv28-confidence"><div class="cv28-confidence-top"><div><span>Cadivor Recommendation</span><strong>{html.escape(suggested)}</strong></div><strong>{recommendation_confidence}%</strong></div><p>{html.escape(rec_reason)}</p></div><div class="cv28-evidence-grid"><div class="cv28-evidence-card"><span>Lifecycle Evidence</span><strong>{html.escape(lifecycle_value)}</strong><small>{"Lifecycle action is required." if any(x in lifecycle_value.lower() for x in ("obsolete","replacement","eol","nrnd")) else "No severe lifecycle state recorded."}</small></div><div class="cv28-evidence-card"><span>Inventory Evidence</span><strong>{stock_value:,} available</strong><small>{"No recorded stock is available." if stock_value <= 0 else "Recorded inventory is available."}</small></div><div class="cv28-evidence-card"><span>Supplier Coverage</span><strong>{supplier_value} source(s)</strong><small>{"Single-source exposure requires validation." if supplier_value <= 1 else "Multiple recorded sources improve resilience."}</small></div><div class="cv28-evidence-card"><span>Risk Score</span><strong>{risk_score}/100</strong><small>Component-level release exposure.</small></div><div class="cv28-evidence-card"><span>Alternative Evidence</span><strong>{"Available" if alternatives else "Not linked"}</strong><small>Open Alternative Finder to evaluate candidates.</small></div><div class="cv28-evidence-card"><span>Monitoring Evidence</span><strong>{len([a for a in alerts if _safe(a.get("mpn") or a.get("part_number"), "") == mpn])} alert(s)</strong><small>Recorded monitoring changes for this component.</small></div></div><div class="cv28-link-row"><a class="cv28-link" href="{html.escape(_alternative_url(mpn, analysis_id), quote=True)}" target="_self">Compare Alternatives</a><a class="cv28-link" href="{html.escape(_monitor_url(mpn, analysis_id), quote=True)}" target="_self">Open Monitoring</a></div>''',
-                        unsafe_allow_html=True,
-                    )
-                    col_decision, col_owner, col_due = st.columns([1.15, 1, 1])
-                    options = ["Approve", "Needs Investigation", "Reject", "Skip"]
-                    current_decision = saved.get("decision") if saved.get("decision") in options else suggested
-                    owner_options = ["Electrical", "Procurement", "Supply Chain", "Firmware", "Quality", "General Engineering"]
-                    current_owner = saved.get("owner") if saved.get("owner") in owner_options else "General Engineering"
-                    due_options = ["No due date", "Today", "Tomorrow", "This Week", "Next Week", "Next Sprint", "Custom"]
-                    current_due = saved.get("due_label") if saved.get("due_label") in due_options else "This Week"
-                    disabled = session_locked or not can_edit_review
-                    with col_decision:
-                        decision_value = st.selectbox(
-                            "Decision",
-                            options,
-                            index=options.index(current_decision),
-                            key=f"cv271_decision_{analysis_id}_{review_index}",
-                            disabled=disabled,
-                        )
-                    with col_owner:
-                        owner_value = st.selectbox(
-                            "Owner",
-                            owner_options,
-                            index=owner_options.index(current_owner),
-                            key=f"cv271_owner_{analysis_id}_{review_index}",
-                            disabled=disabled,
-                        )
-                    with col_due:
-                        due_value = st.selectbox(
-                            "Due",
-                            due_options,
-                            index=due_options.index(current_due),
-                            key=f"cv271_due_{analysis_id}_{review_index}",
-                            disabled=disabled,
-                        )
-                    saved_assignee_label = _safe(saved.get("assignee_name"), "Unassigned") + (f" · {saved.get('assignee_email')}" if saved.get("assignee_email") else "")
-                    assignee_index = member_labels.index(saved_assignee_label) if saved_assignee_label in member_labels else 0
-                    assign_col, priority_col = st.columns([1.35, .65])
-                    assignee_label = assign_col.selectbox("Assigned workspace member", member_labels, index=assignee_index, key=f"cv272_assignee_item_{analysis_id}_{review_index}", disabled=disabled)
-                    selected_member = member_options[member_labels.index(assignee_label)]
-                    priority_options = ["High", "Medium", "Low"]
-                    default_priority = saved.get("priority") if saved.get("priority") in priority_options else ("High" if risk_score >= 70 else "Medium" if risk_score >=35 else "Low")
-                    priority_value = priority_col.selectbox("Priority", priority_options, index=priority_options.index(default_priority), key=f"cv272_priority_item_{analysis_id}_{review_index}", disabled=disabled)
-                    due_date_value = saved.get("due_date")
-                    if due_value == "Custom":
-                        default_custom = date.fromisoformat(str(due_date_value)[:10]) if due_date_value else today + timedelta(days=7)
-                        due_date_value = st.date_input("Custom due date", value=default_custom, key=f"cv272_custom_due_{analysis_id}_{review_index}", disabled=disabled).isoformat()
-                    elif due_value == "No due date":
-                        due_date_value = None
-                    else:
-                        due_date_value = {"Today":today,"Tomorrow":today+timedelta(days=1),"This Week":today+timedelta(days=7),"Next Week":today+timedelta(days=14),"Next Sprint":today+timedelta(days=21)}[due_value].isoformat()
-                    note_value = st.text_area(
-                        "Engineering Notes",
-                        value=_safe(saved.get("notes"), "") if saved else "",
-                        placeholder="Record validation evidence, assumptions, and follow-up actions.",
-                        key=f"cv271_notes_{analysis_id}_{review_index}",
-                        disabled=disabled,
-                    )
+            review_percent = round(reviewed_count / max(1, total_review_items) * 100)
+            session_status = _safe(review_session.get("status") if review_session else None, "not_started")
+            session_locked = bool(review_session and review_session.get("is_locked"))
+            session_active = bool(review_session and session_status in {"active", "completed"})
 
-                    # Streamlit reruns after widget changes. Persist only when values differ.
-                    changed = (
-                        decision_value != saved.get("decision")
-                        or owner_value != saved.get("owner")
-                        or due_value != saved.get("due_label")
-                        or note_value.strip() != _safe(saved.get("notes"), "").strip()
-                        or selected_member[1] != _safe(saved.get("assignee_email"), "")
-                        or priority_value != _safe(saved.get("priority"), default_priority)
-                        or (due_date_value or "") != _safe(saved.get("due_date"), "")
-                    )
-                    selected_assignee_name = selected_member[0] if selected_member[0] != "Unassigned" else ""
-                    can_save_decision, validation_error, validation_warning = validate_review_decision(
-                        decision=decision_value,
-                        notes=note_value,
-                        assignee_name=selected_assignee_name,
-                        risk_score=risk_score,
-                        lifecycle=lifecycle_value,
-                    )
-                    if validation_error and changed and not disabled:
-                        st.warning(validation_error)
-                    elif validation_warning and changed and not disabled:
-                        st.warning(validation_warning)
-
-                    if changed and not disabled and can_save_decision:
-                        st.caption("Saving…")
-                        saved_item, save_error = save_review_item(
+            if not session_active:
+                start_col, note_col = st.columns([0.28, 0.72])
+                with start_col:
+                    start_disabled = not can_edit_review or review_db_unavailable
+                    start_label = "Resume Engineering Review" if session_status == "paused" else "Start Engineering Review"
+                    if st.button(
+                        start_label,
+                        type="primary",
+                        use_container_width=True,
+                        key=f"cv271_start_{analysis_id}",
+                        disabled=start_disabled,
+                    ):
+                        created_session, create_error = create_review_session(
                             supabase,
-                            session_id=review_session.get("id"),
                             analysis_id=analysis_id,
                             user_id=user_id,
                             workspace_id=workspace_id,
-                            mpn=mpn,
-                            manufacturer=_safe(part.get("manufacturer"), ""),
-                            decision=decision_value,
-                            owner=owner_value,
-                            due_label=due_value,
-                            due_date=due_date_value,
-                            assignee_name=selected_assignee_name,
-                            assignee_email=selected_member[1],
-                            assignee_user_id=selected_member[2],
-                            priority=priority_value,
-                            notes=note_value.strip(),
                             reviewer_name=reviewer_name,
                             reviewer_email=reviewer_email,
-                            recommendation=suggested,
-                            recommendation_confidence=max(0, min(100, 100 - abs(risk_score - 50))),
-                            evidence={
-                                "risk_score": risk_score,
-                                "lifecycle": _safe(part.get("lifecycle"), "Unknown"),
-                                "stock": _num(part.get("stock"), 0),
-                                "supplier_sources": _num(part.get("sources"), 0),
-                                "reason": rec_reason,
-                            },
+                            total_items=total_review_items,
                         )
-                        if save_error:
-                            st.error(f"Save failed for {mpn}: {save_error}")
-                        elif saved_item:
-                            st.caption("Saved just now")
+                        if create_error:
+                            st.error(f"Could not start the review: {create_error}")
+                        else:
+                            st.session_state[review_key] = created_session
                             st.rerun()
-                    elif saved:
-                        st.caption(f"Saved by {_safe(saved.get('reviewer_name'), reviewer_name)} · {updated_label}")
-
-                    component_history = [
-                        event for event in review_events
-                        if mpn.lower() in (
-                            _safe(event.get("title"), "") + " " + _safe(event.get("body"), "")
-                        ).lower()
-                    ][:6]
-                    if component_history:
-                        history_html = []
-                        for event in component_history:
-                            history_html.append(
-                                f'<div class="cv28-history-item"><strong>{html.escape(_safe(event.get("title"), "Engineering review activity"))}</strong>'
-                                f'<span>{html.escape(_safe(event.get("actor_name"), "Cadivor user"))} · {html.escape(_relative_date(event.get("created_at")))}</span>'
-                                f'<p>{html.escape(_safe(event.get("body"), ""))}</p></div>'
-                            )
-                        with st.expander("Decision history", expanded=False):
-                            st.markdown('<div class="cv28-history">' + "".join(history_html) + '</div>', unsafe_allow_html=True)
-
-                    if saved.get("id"):
-                        with st.expander("Component discussion", expanded=False):
-                            review_comments, comment_error = list_review_comments(supabase, review_item_id=saved.get("id"), user_id=user_id, workspace_id=workspace_id)
-                            if comment_error:
-                                st.warning(f"Comments unavailable: {comment_error}")
-                            for comment in review_comments:
-                                st.markdown(f"**{html.escape(_safe(comment.get('author_name'),'Reviewer'))}** · {_relative_date(comment.get('created_at'))}")
-                                st.write(_safe(comment.get("body"), ""))
-                            with st.form(f"cv272_comment_form_{analysis_id}_{review_index}", clear_on_submit=True):
-                                comment_body = st.text_area("Add comment", placeholder="Ask a question, add evidence, or explain the decision.", disabled=disabled)
-                                submitted_comment = st.form_submit_button("Post comment", disabled=disabled)
-                                if submitted_comment:
-                                    if not comment_body.strip():
-                                        st.error("Enter a comment before posting.")
-                                    else:
-                                        _, comment_save_error = add_review_comment(supabase, review_item_id=saved.get("id"), session_id=review_session.get("id"), analysis_id=analysis_id, user_id=user_id, workspace_id=workspace_id, body=comment_body.strip(), author_name=reviewer_name, author_email=reviewer_email)
-                                        if comment_save_error: st.error(comment_save_error)
-                                        else: st.rerun()
-
-            finish_col, reset_col = st.columns(2)
-            confirm_key = f"cv281_confirm_complete_{analysis_id}"
-            with finish_col:
-                if session_status != "completed":
-                    if st.button(
-                        "Complete and Lock Review",
-                        type="primary",
-                        use_container_width=True,
-                        key=f"cv271_lock_{analysis_id}",
-                        disabled=(not can_manage_review or session_locked or reviewed_count == 0 or total_review_items == 0),
-                    ):
-                        st.session_state[confirm_key] = True
-                else:
-                    st.success("Engineering review completed and locked.")
-
-            if st.session_state.get(confirm_key):
-                unresolved_count = max(0, total_review_items - reviewed_count)
-                st.warning(
-                    f"Confirm review completion: {reviewed_count} reviewed, "
-                    f"{counts['Approve']} approved, {counts['Needs Investigation']} investigating, "
-                    f"{counts['Reject']} rejected, {counts['Skip']} skipped, and {unresolved_count} unresolved."
+                with note_col:
+                    # Sprint 50.1.2 — the large persistent-review banner was removed.
+                    # Review persistence remains unchanged and the compact autosave
+                    # badge inside Ask Cadivor continues to communicate save status.
+                    pass
+            else:
+                started_display = _relative_date(review_session.get("started_at"))
+                updated_display = _relative_date(review_session.get("updated_at"))
+                remaining = max(0, total_review_items - reviewed_count)
+                lock_label = "Locked" if session_locked else "Saved to Supabase"
+                st.markdown(
+                    f'''<section class="cv27-session"><div class="cv27-session-top"><div><div class="cv27-session-title">{'Completed' if session_status == 'completed' else 'Engineering'} Review Session</div><div class="cv27-session-sub">Persistent review · last updated {html.escape(updated_display)}</div></div><span class="cv27-saved">{lock_label}</span></div><div class="cv27-session-grid"><div class="cv27-session-kpi"><span>Progress</span><strong>{reviewed_count}/{total_review_items}</strong></div><div class="cv27-session-kpi"><span>Remaining</span><strong>{remaining}</strong></div><div class="cv27-session-kpi"><span>Reviewer</span><strong style="font-size:15px">{html.escape(_safe(review_session.get('reviewer_name'), reviewer_name))}</strong></div><div class="cv27-session-kpi"><span>Started</span><strong style="font-size:15px">{html.escape(started_display)}</strong></div></div><div class="cv27-review-progress"><i style="width:{review_percent}%"></i></div></section>''',
+                    unsafe_allow_html=True,
                 )
-                confirm_complete_col, cancel_complete_col = st.columns(2)
-                with confirm_complete_col:
-                    if st.button("Confirm and Lock", type="primary", use_container_width=True, key=f"cv281_confirm_lock_{analysis_id}"):
-                        completed, complete_error = complete_review_session(
+
+                counts = {"Approve": 0, "Needs Investigation": 0, "Reject": 0, "Skip": 0}
+                for row in review_items:
+                    decision_value = row.get("decision")
+                    if decision_value in counts:
+                        counts[decision_value] += 1
+                st.markdown(
+                    f'''<div class="cv27-summary"><div class="cv27-summary-card"><span>Approved</span><strong>{counts["Approve"]}</strong></div><div class="cv27-summary-card"><span>Investigate</span><strong>{counts["Needs Investigation"]}</strong></div><div class="cv27-summary-card"><span>Rejected</span><strong>{counts["Reject"]}</strong></div><div class="cv27-summary-card"><span>Skipped</span><strong>{counts["Skip"]}</strong></div></div>''',
+                    unsafe_allow_html=True,
+                )
+
+                if review_items_error:
+                    st.warning(f"Saved review items could not be loaded: {review_items_error}")
+
+                # Milestone 28.1 — shared collaborative workflow rules.
+                today = date.today()
+                workflow = summarize_review_workflow(
+                    review_items,
+                    reviewer_email=reviewer_email,
+                    total_items=total_review_items,
+                    today=today,
+                )
+                open_rows = workflow["open_rows"]
+                overdue_rows = workflow["overdue_rows"]
+                due_week_rows = workflow["due_week_rows"]
+                assigned_me_rows = workflow["assigned_me_rows"]
+                waiting_rows = workflow["waiting_rows"]
+                completed_today = workflow["completed_today"]
+                unassigned_count = workflow["unassigned_count"]
+                workflow_health = workflow["workflow_health"]
+                action_html = f'<div class="cv272-action-grid"><div class="cv272-action"><span>Assigned to Me</span><strong>{len(assigned_me_rows)}</strong></div><div class="cv272-action"><span>Due This Week</span><strong>{len(due_week_rows)}</strong></div><div class="cv272-action {"bad" if overdue_rows else ""}"><span>Overdue</span><strong>{len(overdue_rows)}</strong></div><div class="cv272-action"><span>Waiting on Others</span><strong>{len(waiting_rows)}</strong></div><div class="cv272-action"><span>Completed Today</span><strong>{len(completed_today)}</strong></div></div><section class="cv272-health"><div class="cv272-health-top"><div><h4>Review Health</h4><p>{len(overdue_rows)} overdue · {unassigned_count} unassigned · {reviewed_count} completed</p></div><strong style="font-size:26px">{workflow_health}%</strong></div><div class="cv27-review-progress"><i style="width:{workflow_health}%"></i></div></section>'
+                st.markdown(action_html, unsafe_allow_html=True)
+
+                if total_review_items == 0:
+                    st.markdown(
+                        f'''<section class="cv28-empty"><h4>No engineering review queue has been generated</h4><p>Cadivor creates review items from component-level risk, lifecycle, supplier, inventory, lead-time, and alternative evidence. Reopen this BOM in the Analyzer and rerun or save the analysis to attach component records.</p><a class="cv28-link" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open BOM Analyzer</a></section>''',
+                        unsafe_allow_html=True,
+                    )
+
+                member_options = [("Unassigned", "", "")]
+                for member in workspace_members:
+                    member_name = _safe(member.get("full_name") or member.get("name") or member.get("email"), "Workspace member")
+                    member_email = _safe(member.get("email"), "")
+                    member_id = _safe(member.get("user_id") or member.get("id"), "")
+                    if member_email or member_id:
+                        member_options.append((member_name, member_email, member_id))
+                if reviewer_email and not any(x[1].lower() == reviewer_email.lower() for x in member_options if x[1]):
+                    member_options.append((reviewer_name, reviewer_email, user_id))
+                member_labels = [x[0] + (f" · {x[1]}" if x[1] else "") for x in member_options]
+
+                f1,f2,f3,f4 = st.columns(4)
+                status_filter = f1.selectbox("Review status", ["All", "Open", "Completed", "Overdue"], key=f"cv272_status_{analysis_id}")
+                assignee_filter = f2.selectbox("Assignee", ["All", "Assigned to me", "Unassigned"] + member_labels[1:], key=f"cv272_assignee_{analysis_id}")
+                priority_filter = f3.selectbox("Priority", ["All", "High", "Medium", "Low"], key=f"cv272_priority_{analysis_id}")
+                decision_filter = f4.selectbox("Decision", ["All", "Approve", "Needs Investigation", "Reject", "Skip", "Not reviewed"], key=f"cv272_decision_filter_{analysis_id}")
+                unresolved_only = st.checkbox(
+                    "Show unresolved only",
+                    value=False,
+                    key=f"cv281_unresolved_{analysis_id}",
+                    help="Includes open, investigation, rejected, unassigned, and overdue items.",
+                )
+                filtered_review_parts = []
+                for candidate in review_parts:
+                    c_mpn = _safe(candidate.get("mpn"), "Unknown MPN")
+                    c_saved = decision_map.get(c_mpn, {})
+                    c_decision = c_saved.get("decision") or "Not reviewed"
+                    c_due = parse_due_date(c_saved, today=today)
+                    c_score = _num(candidate.get("risk_score"),0)
+                    c_priority = "High" if c_score >= 70 else "Medium" if c_score >= 35 else "Low"
+                    is_completed = c_decision in {"Approve","Reject","Skip"}
+                    if status_filter == "Open" and is_completed: continue
+                    if status_filter == "Completed" and not is_completed: continue
+                    if status_filter == "Overdue" and not (c_due and c_due < today and not is_completed): continue
+                    if assignee_filter == "Assigned to me" and str(c_saved.get("assignee_email") or "").lower() != reviewer_email.lower(): continue
+                    if assignee_filter == "Unassigned" and c_saved.get("assignee_name"): continue
+                    saved_assignee_label = _safe(c_saved.get("assignee_name"),"") + (f" · {c_saved.get('assignee_email')}" if c_saved.get("assignee_email") else "")
+                    if assignee_filter not in {"All","Assigned to me","Unassigned"} and assignee_filter != saved_assignee_label: continue
+                    if priority_filter != "All" and c_priority != priority_filter: continue
+                    if decision_filter != "All" and c_decision != decision_filter: continue
+                    if unresolved_only and not is_unresolved_review(c_saved, today=today): continue
+                    filtered_review_parts.append(candidate)
+                st.caption(f"Showing {len(filtered_review_parts)} of {len(review_parts)} review items")
+                for review_index, part in enumerate(filtered_review_parts, 1):
+                    mpn = _safe(part.get("mpn"), "Unknown MPN")
+                    saved = decision_map.get(mpn, {})
+                    status_label = saved.get("decision") or "Not reviewed"
+                    updated_label = _relative_date(saved.get("updated_at")) if saved else "Not saved"
+                    saved_priority = _safe(saved.get("priority"), "High" if _num(part.get("risk_score"), 0) >= 70 else "Medium" if _num(part.get("risk_score"), 0) >= 35 else "Low")
+                    saved_assignee = _safe(saved.get("assignee_name"), "Unassigned")
+                    saved_due = _safe(saved.get("due_label"), "No due date")
+                    with st.expander(
+                        f"{review_index}. {mpn} · {status_label} · {saved_priority} · {saved_assignee} · {saved_due}",
+                        expanded=(review_index == 1 and reviewed_count == 0),
+                    ):
+                        st.caption(f"Component {review_index} of {len(filtered_review_parts)}")
+                        risk_score = _num(part.get("risk_score"), 0)
+                        suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
+                        rec_reason = _safe(
+                            part.get("reason"),
+                            "Review recorded engineering evidence before approval.",
+                        )
+                        recommendation_confidence = max(0, min(100, 100 - abs(risk_score - 50)))
+                        risk_class = _risk_class(part.get("risk_level"), risk_score)
+                        lifecycle_value = _safe(part.get("lifecycle"), "Unknown")
+                        stock_value = _num(part.get("stock"), 0)
+                        supplier_value = _num(part.get("sources"), 0)
+                        due_badge_class = "bad" if saved.get("due_date") and str(saved.get("due_date"))[:10] < today.isoformat() and status_label not in {"Approve", "Reject", "Skip"} else "warn"
+                        st.markdown(
+                            f'''<div class="cv28-review-head"><div class="cv28-review-main"><span>Component Under Review</span><strong>{html.escape(mpn)}</strong><p>{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))}</p><div class="cv28-badge-row"><span class="cv28-badge {risk_class}">{html.escape(_safe(part.get("risk_level"), "Low"))} risk</span><span class="cv28-badge">{html.escape(saved_priority)} priority</span><span class="cv28-badge {"good" if status_label == "Approve" else "bad" if status_label == "Reject" else "warn"}">{html.escape(status_label)}</span></div></div><div class="cv28-review-stat"><span>Assignee</span><strong>{html.escape(saved_assignee)}</strong><small>{html.escape(_safe(saved.get("assignee_email"), "No member assigned"))}</small></div><div class="cv28-review-stat"><span>Due</span><strong>{html.escape(saved_due)}</strong><small>{html.escape(_date(saved.get("due_date"))) if saved.get("due_date") else "No calendar deadline"}</small></div><div class="cv28-review-stat"><span>Last Saved</span><strong>{html.escape(updated_label)}</strong><small>{html.escape(_safe(saved.get("reviewer_name"), "Not reviewed"))}</small></div><div class="cv28-review-stat"><span>Decision</span><strong>{html.escape(status_label)}</strong><small>Persistent audit record</small></div></div><div class="cv28-confidence"><div class="cv28-confidence-top"><div><span>Cadivor Recommendation</span><strong>{html.escape(suggested)}</strong></div><strong>{recommendation_confidence}%</strong></div><p>{html.escape(rec_reason)}</p></div><div class="cv28-evidence-grid"><div class="cv28-evidence-card"><span>Lifecycle Evidence</span><strong>{html.escape(lifecycle_value)}</strong><small>{"Lifecycle action is required." if any(x in lifecycle_value.lower() for x in ("obsolete","replacement","eol","nrnd")) else "No severe lifecycle state recorded."}</small></div><div class="cv28-evidence-card"><span>Inventory Evidence</span><strong>{stock_value:,} available</strong><small>{"No recorded stock is available." if stock_value <= 0 else "Recorded inventory is available."}</small></div><div class="cv28-evidence-card"><span>Supplier Coverage</span><strong>{supplier_value} source(s)</strong><small>{"Single-source exposure requires validation." if supplier_value <= 1 else "Multiple recorded sources improve resilience."}</small></div><div class="cv28-evidence-card"><span>Risk Score</span><strong>{risk_score}/100</strong><small>Component-level release exposure.</small></div><div class="cv28-evidence-card"><span>Alternative Evidence</span><strong>{"Available" if alternatives else "Not linked"}</strong><small>Open Alternative Finder to evaluate candidates.</small></div><div class="cv28-evidence-card"><span>Monitoring Evidence</span><strong>{len([a for a in alerts if _safe(a.get("mpn") or a.get("part_number"), "") == mpn])} alert(s)</strong><small>Recorded monitoring changes for this component.</small></div></div><div class="cv28-link-row"><a class="cv28-link" href="{html.escape(_alternative_url(mpn, analysis_id), quote=True)}" target="_self">Compare Alternatives</a><a class="cv28-link" href="{html.escape(_monitor_url(mpn, analysis_id), quote=True)}" target="_self">Open Monitoring</a></div>''',
+                            unsafe_allow_html=True,
+                        )
+                        col_decision, col_owner, col_due = st.columns([1.15, 1, 1])
+                        options = ["Approve", "Needs Investigation", "Reject", "Skip"]
+                        current_decision = saved.get("decision") if saved.get("decision") in options else suggested
+                        owner_options = ["Electrical", "Procurement", "Supply Chain", "Firmware", "Quality", "General Engineering"]
+                        current_owner = saved.get("owner") if saved.get("owner") in owner_options else "General Engineering"
+                        due_options = ["No due date", "Today", "Tomorrow", "This Week", "Next Week", "Next Sprint", "Custom"]
+                        current_due = saved.get("due_label") if saved.get("due_label") in due_options else "This Week"
+                        disabled = session_locked or not can_edit_review
+                        with col_decision:
+                            decision_value = st.selectbox(
+                                "Decision",
+                                options,
+                                index=options.index(current_decision),
+                                key=f"cv271_decision_{analysis_id}_{review_index}",
+                                disabled=disabled,
+                            )
+                        with col_owner:
+                            owner_value = st.selectbox(
+                                "Owner",
+                                owner_options,
+                                index=owner_options.index(current_owner),
+                                key=f"cv271_owner_{analysis_id}_{review_index}",
+                                disabled=disabled,
+                            )
+                        with col_due:
+                            due_value = st.selectbox(
+                                "Due",
+                                due_options,
+                                index=due_options.index(current_due),
+                                key=f"cv271_due_{analysis_id}_{review_index}",
+                                disabled=disabled,
+                            )
+                        saved_assignee_label = _safe(saved.get("assignee_name"), "Unassigned") + (f" · {saved.get('assignee_email')}" if saved.get("assignee_email") else "")
+                        assignee_index = member_labels.index(saved_assignee_label) if saved_assignee_label in member_labels else 0
+                        assign_col, priority_col = st.columns([1.35, .65])
+                        assignee_label = assign_col.selectbox("Assigned workspace member", member_labels, index=assignee_index, key=f"cv272_assignee_item_{analysis_id}_{review_index}", disabled=disabled)
+                        selected_member = member_options[member_labels.index(assignee_label)]
+                        priority_options = ["High", "Medium", "Low"]
+                        default_priority = saved.get("priority") if saved.get("priority") in priority_options else ("High" if risk_score >= 70 else "Medium" if risk_score >=35 else "Low")
+                        priority_value = priority_col.selectbox("Priority", priority_options, index=priority_options.index(default_priority), key=f"cv272_priority_item_{analysis_id}_{review_index}", disabled=disabled)
+                        due_date_value = saved.get("due_date")
+                        if due_value == "Custom":
+                            default_custom = date.fromisoformat(str(due_date_value)[:10]) if due_date_value else today + timedelta(days=7)
+                            due_date_value = st.date_input("Custom due date", value=default_custom, key=f"cv272_custom_due_{analysis_id}_{review_index}", disabled=disabled).isoformat()
+                        elif due_value == "No due date":
+                            due_date_value = None
+                        else:
+                            due_date_value = {"Today":today,"Tomorrow":today+timedelta(days=1),"This Week":today+timedelta(days=7),"Next Week":today+timedelta(days=14),"Next Sprint":today+timedelta(days=21)}[due_value].isoformat()
+                        note_value = st.text_area(
+                            "Engineering Notes",
+                            value=_safe(saved.get("notes"), "") if saved else "",
+                            placeholder="Record validation evidence, assumptions, and follow-up actions.",
+                            key=f"cv271_notes_{analysis_id}_{review_index}",
+                            disabled=disabled,
+                        )
+
+                        # Streamlit reruns after widget changes. Persist only when values differ.
+                        changed = (
+                            decision_value != saved.get("decision")
+                            or owner_value != saved.get("owner")
+                            or due_value != saved.get("due_label")
+                            or note_value.strip() != _safe(saved.get("notes"), "").strip()
+                            or selected_member[1] != _safe(saved.get("assignee_email"), "")
+                            or priority_value != _safe(saved.get("priority"), default_priority)
+                            or (due_date_value or "") != _safe(saved.get("due_date"), "")
+                        )
+                        selected_assignee_name = selected_member[0] if selected_member[0] != "Unassigned" else ""
+                        can_save_decision, validation_error, validation_warning = validate_review_decision(
+                            decision=decision_value,
+                            notes=note_value,
+                            assignee_name=selected_assignee_name,
+                            risk_score=risk_score,
+                            lifecycle=lifecycle_value,
+                        )
+                        if validation_error and changed and not disabled:
+                            st.warning(validation_error)
+                        elif validation_warning and changed and not disabled:
+                            st.warning(validation_warning)
+
+                        if changed and not disabled and can_save_decision:
+                            st.caption("Saving…")
+                            saved_item, save_error = save_review_item(
+                                supabase,
+                                session_id=review_session.get("id"),
+                                analysis_id=analysis_id,
+                                user_id=user_id,
+                                workspace_id=workspace_id,
+                                mpn=mpn,
+                                manufacturer=_safe(part.get("manufacturer"), ""),
+                                decision=decision_value,
+                                owner=owner_value,
+                                due_label=due_value,
+                                due_date=due_date_value,
+                                assignee_name=selected_assignee_name,
+                                assignee_email=selected_member[1],
+                                assignee_user_id=selected_member[2],
+                                priority=priority_value,
+                                notes=note_value.strip(),
+                                reviewer_name=reviewer_name,
+                                reviewer_email=reviewer_email,
+                                recommendation=suggested,
+                                recommendation_confidence=max(0, min(100, 100 - abs(risk_score - 50))),
+                                evidence={
+                                    "risk_score": risk_score,
+                                    "lifecycle": _safe(part.get("lifecycle"), "Unknown"),
+                                    "stock": _num(part.get("stock"), 0),
+                                    "supplier_sources": _num(part.get("sources"), 0),
+                                    "reason": rec_reason,
+                                },
+                            )
+                            if save_error:
+                                st.error(f"Save failed for {mpn}: {save_error}")
+                            elif saved_item:
+                                st.caption("Saved just now")
+                                st.rerun()
+                        elif saved:
+                            st.caption(f"Saved by {_safe(saved.get('reviewer_name'), reviewer_name)} · {updated_label}")
+
+                        component_history = [
+                            event for event in review_events
+                            if mpn.lower() in (
+                                _safe(event.get("title"), "") + " " + _safe(event.get("body"), "")
+                            ).lower()
+                        ][:6]
+                        if component_history:
+                            history_html = []
+                            for event in component_history:
+                                history_html.append(
+                                    f'<div class="cv28-history-item"><strong>{html.escape(_safe(event.get("title"), "Engineering review activity"))}</strong>'
+                                    f'<span>{html.escape(_safe(event.get("actor_name"), "Cadivor user"))} · {html.escape(_relative_date(event.get("created_at")))}</span>'
+                                    f'<p>{html.escape(_safe(event.get("body"), ""))}</p></div>'
+                                )
+                            with st.expander("Decision history", expanded=False):
+                                st.markdown('<div class="cv28-history">' + "".join(history_html) + '</div>', unsafe_allow_html=True)
+
+                        if saved.get("id"):
+                            with st.expander("Component discussion", expanded=False):
+                                review_comments, comment_error = list_review_comments(supabase, review_item_id=saved.get("id"), user_id=user_id, workspace_id=workspace_id)
+                                if comment_error:
+                                    st.warning(f"Comments unavailable: {comment_error}")
+                                for comment in review_comments:
+                                    st.markdown(f"**{html.escape(_safe(comment.get('author_name'),'Reviewer'))}** · {_relative_date(comment.get('created_at'))}")
+                                    st.write(_safe(comment.get("body"), ""))
+                                with st.form(f"cv272_comment_form_{analysis_id}_{review_index}", clear_on_submit=True):
+                                    comment_body = st.text_area("Add comment", placeholder="Ask a question, add evidence, or explain the decision.", disabled=disabled)
+                                    submitted_comment = st.form_submit_button("Post comment", disabled=disabled)
+                                    if submitted_comment:
+                                        if not comment_body.strip():
+                                            st.error("Enter a comment before posting.")
+                                        else:
+                                            _, comment_save_error = add_review_comment(supabase, review_item_id=saved.get("id"), session_id=review_session.get("id"), analysis_id=analysis_id, user_id=user_id, workspace_id=workspace_id, body=comment_body.strip(), author_name=reviewer_name, author_email=reviewer_email)
+                                            if comment_save_error: st.error(comment_save_error)
+                                            else: st.rerun()
+
+                finish_col, reset_col = st.columns(2)
+                confirm_key = f"cv281_confirm_complete_{analysis_id}"
+                with finish_col:
+                    if session_status != "completed":
+                        if st.button(
+                            "Complete and Lock Review",
+                            type="primary",
+                            use_container_width=True,
+                            key=f"cv271_lock_{analysis_id}",
+                            disabled=(not can_manage_review or session_locked or reviewed_count == 0 or total_review_items == 0),
+                        ):
+                            st.session_state[confirm_key] = True
+                    else:
+                        st.success("Engineering review completed and locked.")
+
+                if st.session_state.get(confirm_key):
+                    unresolved_count = max(0, total_review_items - reviewed_count)
+                    st.warning(
+                        f"Confirm review completion: {reviewed_count} reviewed, "
+                        f"{counts['Approve']} approved, {counts['Needs Investigation']} investigating, "
+                        f"{counts['Reject']} rejected, {counts['Skip']} skipped, and {unresolved_count} unresolved."
+                    )
+                    confirm_complete_col, cancel_complete_col = st.columns(2)
+                    with confirm_complete_col:
+                        if st.button("Confirm and Lock", type="primary", use_container_width=True, key=f"cv281_confirm_lock_{analysis_id}"):
+                            completed, complete_error = complete_review_session(
+                                supabase,
+                                session_id=review_session.get("id"),
+                                user_id=user_id,
+                                workspace_id=workspace_id,
+                                reviewed_items=reviewed_count,
+                                decision_counts=counts,
+                            )
+                            if complete_error:
+                                st.error(f"Could not complete the review: {complete_error}")
+                            else:
+                                st.session_state.pop(confirm_key, None)
+                                st.rerun()
+                    with cancel_complete_col:
+                        if st.button("Cancel", use_container_width=True, key=f"cv281_cancel_lock_{analysis_id}"):
+                            st.session_state.pop(confirm_key, None)
+                            st.rerun()
+
+                with reset_col:
+                    if session_locked:
+                        with st.form(f"cv272_reopen_{analysis_id}"):
+                            reopen_reason = st.text_input("Reason for reopening", placeholder="Example: Supplier PCN received")
+                            reopen_submit = st.form_submit_button("Reopen Review", use_container_width=True, disabled=not can_manage_review)
+                            if reopen_submit:
+                                if not reopen_reason.strip():
+                                    st.error("Enter a reason before reopening the review.")
+                                else:
+                                    _, unlock_error = reopen_review_session(supabase, session_id=review_session.get("id"), user_id=user_id, workspace_id=workspace_id, reason=reopen_reason.strip(), actor_name=reviewer_name, actor_email=reviewer_email)
+                                    if unlock_error: st.error(f"Could not reopen the review: {unlock_error}")
+                                    else: st.rerun()
+                    elif session_status == "active" and st.button(
+                        "Pause Review Session",
+                        use_container_width=True,
+                        key=f"cv271_pause_{analysis_id}",
+                        disabled=not can_edit_review,
+                    ):
+                        _, pause_error = update_review_session_status(
                             supabase,
                             session_id=review_session.get("id"),
                             user_id=user_id,
                             workspace_id=workspace_id,
-                            reviewed_items=reviewed_count,
-                            decision_counts=counts,
+                            status="paused",
                         )
-                        if complete_error:
-                            st.error(f"Could not complete the review: {complete_error}")
+                        if pause_error:
+                            st.error(f"Could not pause the review: {pause_error}")
                         else:
-                            st.session_state.pop(confirm_key, None)
                             st.rerun()
-                with cancel_complete_col:
-                    if st.button("Cancel", use_container_width=True, key=f"cv281_cancel_lock_{analysis_id}"):
-                        st.session_state.pop(confirm_key, None)
-                        st.rerun()
 
-            with reset_col:
-                if session_locked:
-                    with st.form(f"cv272_reopen_{analysis_id}"):
-                        reopen_reason = st.text_input("Reason for reopening", placeholder="Example: Supplier PCN received")
-                        reopen_submit = st.form_submit_button("Reopen Review", use_container_width=True, disabled=not can_manage_review)
-                        if reopen_submit:
-                            if not reopen_reason.strip():
-                                st.error("Enter a reason before reopening the review.")
-                            else:
-                                _, unlock_error = reopen_review_session(supabase, session_id=review_session.get("id"), user_id=user_id, workspace_id=workspace_id, reason=reopen_reason.strip(), actor_name=reviewer_name, actor_email=reviewer_email)
-                                if unlock_error: st.error(f"Could not reopen the review: {unlock_error}")
-                                else: st.rerun()
-                elif session_status == "active" and st.button(
-                    "Pause Review Session",
-                    use_container_width=True,
-                    key=f"cv271_pause_{analysis_id}",
-                    disabled=not can_edit_review,
-                ):
-                    _, pause_error = update_review_session_status(
-                        supabase,
-                        session_id=review_session.get("id"),
-                        user_id=user_id,
-                        workspace_id=workspace_id,
-                        status="paused",
-                    )
-                    if pause_error:
-                        st.error(f"Could not pause the review: {pause_error}")
-                    else:
-                        st.rerun()
-        st.markdown(f'''<section class="cv26-summary"><div class="cv26-summary-top"><div><div class="cv26-kicker">Cadivor Executive BOM Summary</div><div class="cv26-title">{html.escape(cockpit_status)}</div><div class="cv26-copy">Cadivor combined BOM health, lifecycle, inventory, supplier coverage, monitoring, and replacement evidence to produce this release recommendation.</div></div><span class="cv26-status {cockpit_class}">{html.escape(release_recommendation)}</span></div><div class="cv26-kpis"><div class="cv26-kpi"><span>Overall Health</span><strong>{health}/100</strong><small>{html.escape(risk_status)}</small></div><div class="cv26-kpi"><span>Readiness</span><strong>{engineering_readiness}%</strong><small>{readiness_label}</small></div><div class="cv26-kpi"><span>Critical Components</span><strong>{high}</strong><small>{medium} medium-risk parts</small></div><div class="cv26-kpi"><span>Qualified Alternatives</span><strong>{saved_alternatives}</strong><small>Saved replacement evidence</small></div><div class="cv26-kpi"><span>Monitoring Alerts</span><strong>{len(alerts)}</strong><small>Recorded alerts</small></div><div class="cv26-kpi"><span>Decision Confidence</span><strong>{confidence}%</strong><small>Evidence coverage</small></div></div></section>''', unsafe_allow_html=True)
+        elif workspace_category == "Risk Analytics":
+            st.markdown('<section class="cv672-category"><h3 class="cv671-heading">BOM Risk Dashboard</h3></section>', unsafe_allow_html=True)
+            assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
+            confidence = _num(advisor.get("confidence"), 0)
+            metrics = advisor.get("metrics") or {}
+            saved_alternatives = _num(metrics.get("saved_alternatives"), len(alternatives))
+            lifecycle_count, stock_count = len(lifecycle_exposed_parts), len(no_stock_parts)
+            source_count, lead_count = len(limited_source_parts), len(long_lead_parts)
 
-        left, right = st.columns([1.03, .97])
-        with left:
-            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Readiness</div><div class="cv26-card-meta">Directional readiness based on BOM health, severity, and evidence coverage.</div><div class="cv26-readiness-line"><div><div class="cv26-readiness-score">{engineering_readiness}%</div><div class="cv26-readiness-label">{readiness_label}</div></div><span class="cv26-status {cockpit_class}">{release_recommendation}</span></div><div class="cv26-meter {readiness_class}"><i style="width:{engineering_readiness}%"></i></div><div class="cv26-copy"><strong>Top recommendation:</strong> validate {html.escape(primary_part)}. {html.escape(primary_reason)}</div></section>''', unsafe_allow_html=True)
-            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-            checks_html = "".join(f'<div class="cv26-check"><div class="cv26-check-left"><span class="cv26-check-icon {"done" if done else "open"}">{"✓" if done else "!"}</span>{html.escape(label)}</div><span class="cv26-status {"good" if done else "warn"}">{"Complete" if done else "Open"}</span></div>' for label, done in checklist)
-            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Checklist</div><div class="cv26-card-meta">{checklist_complete} of {len(checklist)} release controls are satisfied.</div><div class="cv26-checks">{checks_html}</div><div class="cv26-meter {"good" if checklist_percent >= 80 else "warn"}"><i style="width:{checklist_percent}%"></i></div><div class="cv26-copy">Completion: <strong>{checklist_percent}%</strong></div></section>''', unsafe_allow_html=True)
-        with right:
-            issues=[]
-            if lead_count: issues.append(f"{lead_count} component(s) have elevated lead-time exposure.")
-            if source_count: issues.append(f"{source_count} component(s) have limited supplier coverage.")
-            if lifecycle_count: issues.append(f"{lifecycle_count} component(s) require lifecycle validation.")
-            if stock_count: issues.append(f"{stock_count} component(s) have no recorded stock.")
-            if not issues: issues.append("No major exposure is currently recorded.")
-            issue_html="".join(f"<li>{html.escape(x)}</li>" for x in issues)
-            evidence=[("Lifecycle data", lifecycle_count==0),("Inventory coverage",stock_count==0),("Supplier coverage",source_count==0),("Alternative evidence",saved_alternatives>0),("Monitoring evidence",len(alerts)>0),("Engineering confidence",confidence>=80)]
-            evidence_html="".join(f'<div class="cv26-evidence">{"✓" if ok else "⚠"} {html.escape(label)}</div>' for label,ok in evidence)
-            st.markdown(f'''<section class="cv26-insight"><div class="cv26-insight-kicker">Cadivor Executive Insight</div><h3>{html.escape(assessment)}</h3><p>This BOM is assessed as <strong>{html.escape(release_recommendation.lower())}</strong>.</p><ul>{issue_html}</ul><p><strong>Suggested action:</strong> close the remaining checklist items before final approval.</p><div class="cv26-confidence">{evidence_html}</div></section>''', unsafe_allow_html=True)
-            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-            risk_rows=[("Lead Time",min(100,lead_count*28)),("Lifecycle",min(100,lifecycle_count*32)),("Inventory",min(100,stock_count*30)),("Supplier",min(100,source_count*25))]
-            risk_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}</div></div>' for label,value in risk_rows)
-            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Top Risk Drivers</div><div class="cv26-card-meta">Relative exposure derived from recorded evidence.</div><div class="cv26-bars">{risk_html}</div></section>''', unsafe_allow_html=True)
+            if high >= 3 or health < 55:
+                release_recommendation, cockpit_status, cockpit_class = "Hold Release", "Release hold recommended", "bad"
+            elif high > 0 or health < 80 or lifecycle_count > 0:
+                release_recommendation, cockpit_status, cockpit_class = "Focused Review", "Focused engineering review", "warn"
+            else:
+                release_recommendation, cockpit_status, cockpit_class = "Controlled Release", "Ready for controlled release", "good"
 
-        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-        progress=[("Engineering Review",engineering_review),("Supplier Diversity",supplier_diversity),("Lifecycle Health",lifecycle_health),("Inventory Coverage",inventory_coverage)]
-        progress_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}%</div></div>' for label,value in progress)
-        healthy_count=max(0,total_parts-high-medium); healthy_pct=round(healthy_count/max(1,total_parts)*100); medium_pct=round(medium/max(1,total_parts)*100); critical_pct=max(0,100-healthy_pct-medium_pct)
-        c1,c2=st.columns(2)
-        with c1: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Review Progress</div><div class="cv26-card-meta">Cross-functional completion inferred from evidence.</div><div class="cv26-bars">{progress_html}</div></section>''', unsafe_allow_html=True)
-        with c2: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Component Health Distribution</div><div class="cv26-card-meta">Healthy, medium-risk, and critical components.</div><div class="cv26-riskdist"><i class="healthy" style="width:{healthy_pct}%"></i><i class="medium" style="width:{medium_pct}%"></i><i class="critical" style="width:{critical_pct}%"></i></div><div class="cv26-legend"><span>Healthy {healthy_count}</span><span>Medium {medium}</span><span>Critical {high}</span></div></section>''', unsafe_allow_html=True)
+            engineering_readiness = max(0, min(100, round((health * .60) + (max(0, 100 - min(100, high * 12 + medium * 4)) * .25) + (confidence * .15))))
+            readiness_class = _health_class(engineering_readiness)
+            readiness_label = "Excellent" if engineering_readiness >= 90 else "Strong" if engineering_readiness >= 75 else "Needs attention" if engineering_readiness >= 55 else "At risk"
+            lifecycle_health = max(0, round(100 - lifecycle_count / max(1, total_parts) * 100))
+            inventory_coverage = max(0, round(100 - stock_count / max(1, total_parts) * 100))
+            supplier_diversity = max(0, round(100 - source_count / max(1, total_parts) * 100))
+            engineering_review = max(0, min(100, round((engineering_readiness + confidence) / 2)))
 
-        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-        phases=[]
-        for period,idx,copy in [("Immediate",0,"Resolve the highest-priority risk."),("This Week",1,"Validate supplier and lifecycle evidence."),("Next Sprint",2,"Complete replacement or second-source qualification.")]:
-            if len(ranked_parts)>idx: phases.append((period,_safe(ranked_parts[idx].get("mpn")),copy))
-            else: phases.append((period,"No urgent component action","Continue controlled monitoring; no elevated component evidence is currently recorded."))
-        phase_html="".join(f'<div class="cv26-phase"><span>{p}</span><strong>{html.escape(t)}</strong><small>{html.escape(c)}</small></div>' for p,t,c in phases)
-        st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Timeline</div><div class="cv26-card-meta">A practical sequence for closing release risk.</div><div class="cv26-timeline">{phase_html}</div></section>''', unsafe_allow_html=True)
+            checklist = [("Lifecycle validated", lifecycle_count == 0), ("Inventory reviewed", stock_count == 0), ("Alternatives reviewed", saved_alternatives > 0), ("Supplier diversity verified", source_count == 0), ("Procurement signoff", confidence >= 85 and stock_count == 0), ("Engineering approval", high == 0 and lifecycle_count == 0)]
+            checklist_complete = sum(1 for _, done in checklist if done)
+            checklist_percent = round(checklist_complete / len(checklist) * 100)
+            top_ranked_part = ranked_parts[0] if ranked_parts else None
+            primary_part = _safe(top_ranked_part.get("mpn") if top_ranked_part else None, "No critical component")
+            primary_reason = _safe(top_ranked_part.get("reason") if top_ranked_part else None, "No component-level risk explanation is currently available.")
 
-        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-        action_html=[]
-        for index,action in enumerate((advisor.get("priority_actions") or [])[:6],1):
-            urgency=_safe(action.get("urgency"),"Medium"); pc="high" if urgency.lower() in ("immediate","high") or index<=2 else "medium" if index<=4 else "low"
-            action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{pc.upper()}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(_safe(action.get("reason"),"Risk signal detected."))}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
-        if not action_html: action_html.append('<div class="cv-analysis-empty">No priority actions are currently available.</div>')
-        st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Action Priority Matrix</div><div class="cv26-card-meta">Actions ordered by urgency and release impact.</div><div class="cv26-actions">{"".join(action_html)}</div></section>''', unsafe_allow_html=True)
+            st.markdown(f'''<section class="cv26-summary"><div class="cv26-summary-top"><div><div class="cv26-kicker">Cadivor Executive BOM Summary</div><div class="cv26-title">{html.escape(cockpit_status)}</div><div class="cv26-copy">Cadivor combined BOM health, lifecycle, inventory, supplier coverage, monitoring, and replacement evidence to produce this release recommendation.</div></div><span class="cv26-status {cockpit_class}">{html.escape(release_recommendation)}</span></div><div class="cv26-kpis"><div class="cv26-kpi"><span>Overall Health</span><strong>{health}/100</strong><small>{html.escape(risk_status)}</small></div><div class="cv26-kpi"><span>Readiness</span><strong>{engineering_readiness}%</strong><small>{readiness_label}</small></div><div class="cv26-kpi"><span>Critical Components</span><strong>{high}</strong><small>{medium} medium-risk parts</small></div><div class="cv26-kpi"><span>Qualified Alternatives</span><strong>{saved_alternatives}</strong><small>Saved replacement evidence</small></div><div class="cv26-kpi"><span>Monitoring Alerts</span><strong>{len(alerts)}</strong><small>Recorded alerts</small></div><div class="cv26-kpi"><span>Decision Confidence</span><strong>{confidence}%</strong><small>Evidence coverage</small></div></div></section>''', unsafe_allow_html=True)
 
+            left, right = st.columns([1.03, .97])
+            with left:
+                st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Readiness</div><div class="cv26-card-meta">Directional readiness based on BOM health, severity, and evidence coverage.</div><div class="cv26-readiness-line"><div><div class="cv26-readiness-score">{engineering_readiness}%</div><div class="cv26-readiness-label">{readiness_label}</div></div><span class="cv26-status {cockpit_class}">{release_recommendation}</span></div><div class="cv26-meter {readiness_class}"><i style="width:{engineering_readiness}%"></i></div><div class="cv26-copy"><strong>Top recommendation:</strong> validate {html.escape(primary_part)}. {html.escape(primary_reason)}</div></section>''', unsafe_allow_html=True)
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                checks_html = "".join(f'<div class="cv26-check"><div class="cv26-check-left"><span class="cv26-check-icon {"done" if done else "open"}">{"✓" if done else "!"}</span>{html.escape(label)}</div><span class="cv26-status {"good" if done else "warn"}">{"Complete" if done else "Open"}</span></div>' for label, done in checklist)
+                st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Checklist</div><div class="cv26-card-meta">{checklist_complete} of {len(checklist)} release controls are satisfied.</div><div class="cv26-checks">{checks_html}</div><div class="cv26-meter {"good" if checklist_percent >= 80 else "warn"}"><i style="width:{checklist_percent}%"></i></div><div class="cv26-copy">Completion: <strong>{checklist_percent}%</strong></div></section>''', unsafe_allow_html=True)
+            with right:
+                issues=[]
+                if lead_count: issues.append(f"{lead_count} component(s) have elevated lead-time exposure.")
+                if source_count: issues.append(f"{source_count} component(s) have limited supplier coverage.")
+                if lifecycle_count: issues.append(f"{lifecycle_count} component(s) require lifecycle validation.")
+                if stock_count: issues.append(f"{stock_count} component(s) have no recorded stock.")
+                if not issues: issues.append("No major exposure is currently recorded.")
+                issue_html="".join(f"<li>{html.escape(x)}</li>" for x in issues)
+                evidence=[("Lifecycle data", lifecycle_count==0),("Inventory coverage",stock_count==0),("Supplier coverage",source_count==0),("Alternative evidence",saved_alternatives>0),("Monitoring evidence",len(alerts)>0),("Engineering confidence",confidence>=80)]
+                evidence_html="".join(f'<div class="cv26-evidence">{"✓" if ok else "⚠"} {html.escape(label)}</div>' for label,ok in evidence)
+                st.markdown(f'''<section class="cv26-insight"><div class="cv26-insight-kicker">Cadivor Executive Insight</div><h3>{html.escape(assessment)}</h3><p>This BOM is assessed as <strong>{html.escape(release_recommendation.lower())}</strong>.</p><ul>{issue_html}</ul><p><strong>Suggested action:</strong> close the remaining checklist items before final approval.</p><div class="cv26-confidence">{evidence_html}</div></section>''', unsafe_allow_html=True)
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                risk_rows=[("Lead Time",min(100,lead_count*28)),("Lifecycle",min(100,lifecycle_count*32)),("Inventory",min(100,stock_count*30)),("Supplier",min(100,source_count*25))]
+                risk_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}</div></div>' for label,value in risk_rows)
+                st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Top Risk Drivers</div><div class="cv26-card-meta">Relative exposure derived from recorded evidence.</div><div class="cv26-bars">{risk_html}</div></section>''', unsafe_allow_html=True)
+
+            st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+            progress=[("Engineering Review",engineering_review),("Supplier Diversity",supplier_diversity),("Lifecycle Health",lifecycle_health),("Inventory Coverage",inventory_coverage)]
+            progress_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}%</div></div>' for label,value in progress)
+            healthy_count=max(0,total_parts-high-medium); healthy_pct=round(healthy_count/max(1,total_parts)*100); medium_pct=round(medium/max(1,total_parts)*100); critical_pct=max(0,100-healthy_pct-medium_pct)
+            c1,c2=st.columns(2)
+            with c1: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Review Progress</div><div class="cv26-card-meta">Cross-functional completion inferred from evidence.</div><div class="cv26-bars">{progress_html}</div></section>''', unsafe_allow_html=True)
+            with c2: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Component Health Distribution</div><div class="cv26-card-meta">Healthy, medium-risk, and critical components.</div><div class="cv26-riskdist"><i class="healthy" style="width:{healthy_pct}%"></i><i class="medium" style="width:{medium_pct}%"></i><i class="critical" style="width:{critical_pct}%"></i></div><div class="cv26-legend"><span>Healthy {healthy_count}</span><span>Medium {medium}</span><span>Critical {high}</span></div></section>''', unsafe_allow_html=True)
+
+            st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+            phases=[]
+            for period,idx,copy in [("Immediate",0,"Resolve the highest-priority risk."),("This Week",1,"Validate supplier and lifecycle evidence."),("Next Sprint",2,"Complete replacement or second-source qualification.")]:
+                if len(ranked_parts)>idx: phases.append((period,_safe(ranked_parts[idx].get("mpn")),copy))
+                else: phases.append((period,"No urgent component action","Continue controlled monitoring; no elevated component evidence is currently recorded."))
+            phase_html="".join(f'<div class="cv26-phase"><span>{p}</span><strong>{html.escape(t)}</strong><small>{html.escape(c)}</small></div>' for p,t,c in phases)
+            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Timeline</div><div class="cv26-card-meta">A practical sequence for closing release risk.</div><div class="cv26-timeline">{phase_html}</div></section>''', unsafe_allow_html=True)
+
+            st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+            action_html=[]
+            for index,action in enumerate((advisor.get("priority_actions") or [])[:6],1):
+                urgency=_safe(action.get("urgency"),"Medium"); pc="high" if urgency.lower() in ("immediate","high") or index<=2 else "medium" if index<=4 else "low"
+                action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{pc.upper()}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(_safe(action.get("reason"),"Risk signal detected."))}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
+            if not action_html: action_html.append('<div class="cv-analysis-empty">No priority actions are currently available.</div>')
     with overview_tab:
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
         context_score = context_coverage.score
