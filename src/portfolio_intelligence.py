@@ -273,11 +273,11 @@ def render_portfolio_intelligence(
 
     render_kpi_row_safe(
         [
-            MetricCard(label="Saved Projects", value=str(intelligence["total_projects"]), tone="info", icon="chart"),
-            MetricCard(label="Component Records", value=str(intelligence["total_component_records"]), tone="info", icon="layers"),
-            MetricCard(label="Shared Components", value=str(intelligence["shared_component_count"]), tone="warning", icon="activity"),
-            MetricCard(label="Single-Source Records", value=str(intelligence["single_source_count"]), tone="danger", icon="alert"),
-            MetricCard(label="Lifecycle Exposure", value=str(intelligence["lifecycle_count"]), tone="warning", icon="shield"),
+            MetricCard(label="Saved Projects", value=str(intelligence["total_projects"]), tone="info", icon="folder-archive"),
+            MetricCard(label="Component Records", value=str(intelligence["total_component_records"]), tone="info", icon="package"),
+            MetricCard(label="Shared Components", value=str(intelligence["shared_component_count"]), tone="warning", icon="git-branch"),
+            MetricCard(label="Single-Source Records", value=str(intelligence["single_source_count"]), tone="danger", icon="triangle-alert"),
+            MetricCard(label="Lifecycle Exposure", value=str(intelligence["lifecycle_count"]), tone="warning", icon="clock-3"),
         ],
         columns=4,
     )
