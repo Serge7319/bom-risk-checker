@@ -324,7 +324,7 @@ def render_design_impact(
             "See where a component is used, how a sourcing or lifecycle change may affect saved projects, "
             "and which engineering reviews should happen before approving a replacement."
         ),
-        icon="activity",
+        icon="git-compare-arrows",
     )
 
     options = intelligence["available_mpns"]
@@ -359,11 +359,11 @@ def render_design_impact(
 
     render_kpi_row_safe(
         [
-            MetricCard(label="Affected Projects", value=str(intelligence["project_count"]), tone="info", icon="layers"),
-            MetricCard(label="Impact Score", value=f"{intelligence['impact_score']}/100", tone="warning", icon="alert"),
-            MetricCard(label="Available Stock", value=f"{intelligence['minimum_stock']:,}", tone="monitoring", icon="factory"),
-            MetricCard(label="Supplier Sources", value=str(intelligence["minimum_sources"]), tone="info", icon="chart"),
-            MetricCard(label="Estimated Review", value=f"{intelligence['engineering_hours']} hrs", tone="confidence", icon="activity"),
+            MetricCard(label="Affected Projects", value=str(intelligence["project_count"]), tone="info", icon="briefcase-business"),
+            MetricCard(label="Impact Score", value=f"{intelligence['impact_score']}/100", tone="warning", icon="target"),
+            MetricCard(label="Available Stock", value=f"{intelligence['minimum_stock']:,}", tone="monitoring", icon="package"),
+            MetricCard(label="Supplier Sources", value=str(intelligence["minimum_sources"]), tone="info", icon="factory"),
+            MetricCard(label="Estimated Review", value=f"{intelligence['engineering_hours']} hrs", tone="confidence", icon="clock-3"),
         ],
         columns=4,
     )
