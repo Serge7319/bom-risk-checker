@@ -41,6 +41,16 @@
   height: 16px;
 }
 
+.cv64-section__icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.cv64-subsection__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .cv64-metric-grid {
   display: grid;
   grid-template-columns: repeat(var(--cv64-cols, 4), minmax(0, 1fr));
