@@ -1,0 +1,82 @@
+/* Sprint 66.0.1 — Navigation Recovery
+   Final authority for the dark foundation rail. Loaded after all global
+   button/KPI styles so sidebar labels, icons, and states stay visible. */
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton {
+  margin: 0 0 2px !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="secondary"] {
+  min-height: 36px !important;
+  height: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 11px !important;
+  padding: 0 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  color: #b8c5d8 !important;
+  box-shadow: none !important;
+  font-size: 11.5px !important;
+  font-weight: 650 !important;
+  line-height: 1.2 !important;
+  text-align: left !important;
+  opacity: 1 !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button p,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button span,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button div {
+  color: inherit !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  -webkit-text-fill-color: currentColor !important;
+  background: transparent !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button:hover,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="secondary"]:hover {
+  background: rgba(148, 163, 184, 0.09) !important;
+  border-color: rgba(148, 163, 184, 0.06) !important;
+  color: #f8fafc !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="primary"] {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.16), rgba(37, 99, 235, 0.07)) !important;
+  border-color: rgba(96, 165, 250, 0.08) !important;
+  color: #ffffff !important;
+  box-shadow: inset 2px 0 0 #60a5fa !important;
+  font-weight: 760 !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="primary"]:hover {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.21), rgba(37, 99, 235, 0.10)) !important;
+  border-color: rgba(96, 165, 250, 0.12) !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button::before {
+  content: "" !important;
+  display: block !important;
+  flex: 0 0 16px !important;
+  width: 16px !important;
+  height: 16px !important;
+  opacity: 0.72 !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 16px 16px !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button:hover::before,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="primary"]::before {
+  opacity: 1 !important;
+}
