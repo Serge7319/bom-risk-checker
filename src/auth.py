@@ -592,6 +592,7 @@ def show_auth_ui(supabase, cookie_manager=None):
     if state == APP_PUBLIC and requested_auth in {"login", "signup"}:
         state = APP_SIGNUP if requested_auth == "signup" else APP_LOGIN
         st.session_state["cadivor_root_state"] = state
+        st.session_state["cadivor_auth_intent_applied"] = True
         st.session_state.pop("cadivor_auth_submission", None)
 
     if state == APP_SIGNING_IN:
