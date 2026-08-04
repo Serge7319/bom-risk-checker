@@ -11,6 +11,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ai_advisor import build_engineering_supply_advisor
+from src.engineering_decision_engine import (
+    build_engineering_decision_brief,
+    render_engineering_decision_brief,
+)
 from src.services.engineering_context import build_engineering_context
 from src.services.knowledge_graph import build_knowledge_graph
 from src.components.engineering_assistant import render_engineering_assistant
@@ -1000,6 +1004,14 @@ def render_analysis_detail(
 
     with advisor_tab:
         _section_header("Executive Decision Cockpit", "Release readiness, risk drivers, evidence coverage, and next actions.")
+        decision_brief = build_engineering_decision_brief(
+            analysis=analysis,
+            parts=parts,
+            alerts=alerts,
+            alternatives=alternatives,
+            health_score=health,
+        )
+        render_engineering_decision_brief(decision_brief)
         assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
         confidence = _num(advisor.get("confidence"), 0)
         metrics = advisor.get("metrics") or {}
