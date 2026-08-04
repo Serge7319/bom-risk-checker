@@ -10932,28 +10932,28 @@ def run_authenticated_app() -> None:
                     value=str(saved_analysis_count),
                     detail="Previous BOM engineering reviews",
                     tone="info",
-                    icon="file",
+                    icon="file-stack",
                 ),
                 MetricCard(
                     label="Average health",
                     value=str(average_health),
                     status="Portfolio baseline",
                     tone="success" if average_health >= 85 else "warning",
-                    icon="shield",
+                    icon="gauge",
                 ),
                 MetricCard(
                     label="High-risk findings",
                     value=str(total_high_risk),
                     detail="Components requiring engineering review",
-                    tone="danger" if total_high_risk else "monitoring",
-                    icon="alert",
+                    tone="danger" if total_high_risk else "success",
+                    icon="triangle-alert",
                 ),
                 MetricCard(
                     label="Best recorded health",
                     value=str(best_health),
                     detail="Highest-performing saved BOM",
                     tone="success",
-                    icon="chart",
+                    icon="trophy",
                 ),
             ]
         )
