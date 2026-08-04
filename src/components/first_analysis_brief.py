@@ -7,6 +7,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from src.ui.cadivor_design_system import cadivor_button_wrap, cadivor_button_wrap_end
+
 
 def _number(value: Any, default: float = 0.0) -> float:
     try:
@@ -199,6 +201,7 @@ def render_first_analysis_brief(
 
     action_left, action_mid, action_right = st.columns([1.1, 1.1, 2.2])
     with action_left:
+        cadivor_button_wrap("primary")
         if st.button("Start engineering review", type="primary", use_container_width=True, key="first_brief_review"):
             if analysis_id:
                 try:
@@ -209,10 +212,13 @@ def render_first_analysis_brief(
                 st.rerun()
             else:
                 st.info("Save the analysis to begin the engineering review.")
+        cadivor_button_wrap_end()
     with action_mid:
+        cadivor_button_wrap("secondary")
         if st.button("Open Alternative Finder", use_container_width=True, key="first_brief_alternatives"):
             try:
                 st.query_params["page"] = "Alternative Finder"
             except Exception:
                 st.experimental_set_query_params(page="Alternative Finder")
             st.rerun()
+        cadivor_button_wrap_end()
