@@ -27,6 +27,8 @@ from src.ui.cadivor_design_system.components import (
     inject_cadivor_design_system,
     render_kpi_card,
     render_kpi_row_safe,
+    render_section_header,
+    render_subsection_header,
 )
 
 __all__ = [
@@ -57,4 +59,6 @@ __all__ = [
     "inject_cadivor_design_system",
     "render_kpi_card",
     "render_kpi_row_safe",
+    "render_section_header",
+    "render_subsection_header",
 ]
