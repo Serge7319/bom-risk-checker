@@ -256,7 +256,7 @@ def render_living_workspace(
                 value=str(blocked_projects),
                 detail="Require immediate review" if blocked_projects else "No blockers recorded",
                 tone="danger" if blocked_projects else "success",
-                icon="octagon-alert" if blocked_projects else "badge-check",
+                icon="octagon-alert",
             ),
         ],
         columns=4,
@@ -267,7 +267,7 @@ def render_living_workspace(
     cadivor_metric_row(
         [
             MetricCard(label="Components Changed", value=str(int(_number(changes.get("components"), 0))), tone="info", icon="git-compare"),
-            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="refresh-cw"),
+            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="clock-3"),
             MetricCard(label="Stock Changes", value=str(int(_number(changes.get("stock"), 0))), tone="monitoring", icon="package-search"),
             MetricCard(label="Price Changes", value=str(int(_number(changes.get("price"), 0))), tone="confidence", icon="dollar-sign"),
         ],
