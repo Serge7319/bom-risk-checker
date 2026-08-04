@@ -13,7 +13,7 @@ from src.ui.navigation import navigate_to, internal_nav_button
 from src.ai_advisor import build_engineering_supply_advisor
 from src.engineering_decision_engine import (
     build_engineering_decision_brief,
-    render_engineering_decision_brief,
+    render_engineering_decision_workspace,
     get_cached_decision_brief,
     cache_decision_brief,
     decision_brief_cache_key,
@@ -1022,7 +1022,7 @@ def render_analysis_detail(
                 advisor=advisor,
             )
             cache_decision_brief(brief_cache_key, decision_brief)
-        render_engineering_decision_brief(decision_brief)
+        render_engineering_decision_workspace(decision_brief)
         assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
         confidence = _num(advisor.get("confidence"), 0)
         metrics = advisor.get("metrics") or {}
