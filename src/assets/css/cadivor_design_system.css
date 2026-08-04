@@ -667,7 +667,7 @@ section[data-testid="stMain"] .cv64-toolbar .stButton > button:not(:disabled) {
   min-width: 120px !important;
 }
 
-section[data-testid="stMain"] .stButton > button:disabled {
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:disabled {
   opacity: 0.58 !important;
 }
 
@@ -811,7 +811,8 @@ section[data-testid="stMain"] .cv64-btn-wrap--ghost .stButton > button:not(:disa
   border-color: #bfdbfe !important;
 }
 
-section[data-testid="stMain"] .stButton > button:not(:disabled),
+/* Global Streamlit button baseline — excludes foundation navigation rail. */
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not(:disabled),
 section[data-testid="stMain"] .stDownloadButton > button:not(:disabled) {
   min-height: 44px !important;
   border-radius: 10px !important;
@@ -820,22 +821,22 @@ section[data-testid="stMain"] .stDownloadButton > button:not(:disabled) {
   opacity: 1 !important;
 }
 
-section[data-testid="stMain"] .stButton > button[kind="primary"]:not(:disabled),
-section[data-testid="stMain"] .stButton > button[data-testid="stBaseButton-primary"]:not(:disabled) {
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled),
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-primary"]:not(:disabled) {
   background: var(--cv64-blue) !important;
   border: 1px solid var(--cv64-blue) !important;
   color: #fff !important;
   box-shadow: 0 8px 20px rgba(37, 99, 235, 0.22) !important;
 }
 
-section[data-testid="stMain"] .stButton > button[kind="secondary"]:not(:disabled),
-section[data-testid="stMain"] .stButton > button:not([kind="primary"]):not(:disabled):not([data-testid="stBaseButton-primary"]) {
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled),
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not([kind="primary"]):not(:disabled):not([data-testid="stBaseButton-primary"]) {
   background: #fff !important;
   border: 1px solid #94a3b8 !important;
   color: var(--cv64-navy) !important;
 }
 
-section[data-testid="stMain"] .stButton > button:disabled,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:disabled,
 section[data-testid="stMain"] .stDownloadButton > button:disabled {
   opacity: 0.45 !important;
   cursor: not-allowed !important;
