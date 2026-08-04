@@ -23,6 +23,7 @@ from src.ui.cadivor_design_system import (
     cadivor_panel_end,
     cadivor_table,
     render_kpi_row_safe,
+    render_metric_strip,
     render_section_header,
     render_subsection_header,
 )
@@ -224,7 +225,7 @@ def render_living_workspace(
             f"{_text(overview.get('summary'))} "
             f"The most important next step is to {brief_action.lower()} for {brief_item}."
         ),
-        icon="sparkles",
+        icon="briefcase",
     )
 
     render_kpi_row_safe(
@@ -234,28 +235,28 @@ def render_living_workspace(
                 value=f"{portfolio_health}%",
                 status=health_status,
                 tone=health_tone,
-                icon="shield",
+                icon="heart-pulse",
             ),
             MetricCard(
                 label="Ready for Production",
                 value=str(overview.get("ready_projects", 0)),
                 detail="Projects cleared for release",
                 tone="success",
-                icon="chart",
+                icon="badge-check",
             ),
             MetricCard(
                 label="Action Today",
                 value=str(len(overview.get("action_today", []))),
                 detail="Prioritized engineering tasks",
                 tone="info",
-                icon="clipboard",
+                icon="list-checks",
             ),
             MetricCard(
                 label="Blocked Projects",
                 value=str(blocked_projects),
-                detail="Require immediate review",
-                tone="danger" if blocked_projects else "monitoring",
-                icon="alert",
+                detail="Require immediate review" if blocked_projects else "No blockers recorded",
+                tone="danger" if blocked_projects else "success",
+                icon="octagon-alert" if blocked_projects else "badge-check",
             ),
         ],
         columns=4,
@@ -265,10 +266,10 @@ def render_living_workspace(
     cadivor_meta_row([(health_status, health_tone)])
     cadivor_metric_row(
         [
-            MetricCard(label="Components Changed", value=str(int(_number(changes.get("components"), 0))), tone="info", icon="layers"),
-            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="alert"),
-            MetricCard(label="Stock Changes", value=str(int(_number(changes.get("stock"), 0))), tone="monitoring", icon="factory"),
-            MetricCard(label="Price Changes", value=str(int(_number(changes.get("price"), 0))), tone="confidence", icon="chart"),
+            MetricCard(label="Components Changed", value=str(int(_number(changes.get("components"), 0))), tone="info", icon="git-compare"),
+            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="refresh-cw"),
+            MetricCard(label="Stock Changes", value=str(int(_number(changes.get("stock"), 0))), tone="monitoring", icon="package-search"),
+            MetricCard(label="Price Changes", value=str(int(_number(changes.get("price"), 0))), tone="confidence", icon="dollar-sign"),
         ],
         columns=4,
         compact=True,
@@ -278,7 +279,7 @@ def render_living_workspace(
     render_subsection_header(
         "Engineering recommendations",
         description="Cadivor-ranked actions based on saved evidence and open workflow.",
-        icon="clipboard",
+        icon="lightbulb",
     )
     if recommendations:
         for index, recommendation in enumerate(recommendations[:3]):
@@ -313,7 +314,7 @@ def render_living_workspace(
         render_subsection_header(
             "Project impact",
             description="Saved BOMs ranked by health and release readiness.",
-            icon="layers",
+            icon="chart-no-axes",
         )
         impact_rows = []
         for project in projects[:8]:
@@ -393,7 +394,7 @@ def render_living_workspace(
         render_subsection_header(
             "Engineering Timeline",
             description="The latest lifecycle, inventory, pricing, and supplier changes.",
-            icon="activity",
+            icon="history",
         )
         if timeline:
             timeline_html = ['<div class="cv64-timeline">']
@@ -414,7 +415,7 @@ def render_living_workspace(
         render_subsection_header(
             "Production Readiness",
             description="Projects requiring attention appear first.",
-            icon="shield",
+            icon="badge-check",
         )
         if not projects:
             st.info("No saved projects are available yet.")
@@ -425,25 +426,25 @@ def render_living_workspace(
             health = int(_number(project.get("health"), 0))
             parts_count = int(_number(project.get("parts"), 0))
             high_count = int(_number(project.get("high"), 0))
+            project_health_tone = "success" if health >= 85 else "warning" if health >= 70 else "danger"
             cadivor_panel(
                 title=_text(project.get("name"), "Saved BOM"),
                 subtitle=f"Updated {updated}",
                 tone="soft",
             )
             cadivor_meta_row([(status, badge_tone)])
-            render_kpi_row_safe(
+            render_metric_strip(
                 [
-                    MetricCard(label="Health", value=f"{health}/100", tone=health_tone, icon="shield"),
-                    MetricCard(label="Components", value=str(parts_count), tone="info", icon="layers"),
+                    MetricCard(label="Health", value=f"{health}/100", tone=project_health_tone, icon="gauge"),
+                    MetricCard(label="Components", value=str(parts_count), tone="info", icon="boxes"),
                     MetricCard(
                         label="High-Risk",
                         value=str(high_count),
                         tone="danger" if high_count else "success",
-                        icon="alert",
+                        icon="triangle-alert",
                     ),
                 ],
                 columns=3,
-                compact=True,
             )
             cadivor_panel_end()
             if project.get("id"):
