@@ -14,6 +14,10 @@ from src.ai_advisor import build_engineering_supply_advisor
 from src.engineering_decision_engine import (
     build_engineering_decision_brief,
     render_engineering_decision_brief,
+    get_cached_decision_brief,
+    cache_decision_brief,
+    decision_brief_cache_key,
+    parts_to_results_df,
 )
 from src.services.engineering_context import build_engineering_context
 from src.services.knowledge_graph import build_knowledge_graph
@@ -1004,13 +1008,20 @@ def render_analysis_detail(
 
     with advisor_tab:
         _section_header("Executive Decision Cockpit", "Release readiness, risk drivers, evidence coverage, and next actions.")
-        decision_brief = build_engineering_decision_brief(
-            analysis=analysis,
-            parts=parts,
-            alerts=alerts,
-            alternatives=alternatives,
-            health_score=health,
-        )
+        brief_cache_key = decision_brief_cache_key(analysis_id=analysis_id)
+        decision_brief = get_cached_decision_brief(brief_cache_key)
+        if decision_brief is None:
+            saved_results_df = parts_to_results_df(parts)
+            decision_brief = build_engineering_decision_brief(
+                results_df=saved_results_df if not saved_results_df.empty else None,
+                analysis=analysis,
+                parts=parts,
+                alerts=alerts,
+                alternatives=alternatives,
+                health_score=health,
+                advisor=advisor,
+            )
+            cache_decision_brief(brief_cache_key, decision_brief)
         render_engineering_decision_brief(decision_brief)
         assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
         confidence = _num(advisor.get("confidence"), 0)
