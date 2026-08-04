@@ -97,8 +97,8 @@ div[data-testid="stPopoverBody"] div.stButton > button div{
    destructive intent from button order inside the popover. */
 
 /* Prevent blank controls caused by inherited white button text. */
-section[data-testid="stMain"] .stButton > button[kind="secondary"] p,
-section[data-testid="stMain"] .stButton > button[kind="secondary"] span{
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"] p,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"] span{
   color:inherit!important;
   opacity:1!important;
 }
