@@ -77,6 +77,12 @@ section[data-testid="stMain"] .stTabs [aria-selected="true"] {
   box-shadow: inset 0 -3px 0 #2563eb !important;
 }
 
+section[data-testid="stMain"] .stTabs [data-baseweb="tab"] p,
+section[data-testid="stMain"] .stTabs [data-baseweb="tab"] span {
+  font-size: 14px !important;
+  font-weight: inherit !important;
+}
+
 section[data-testid="stMain"] .stTabs [aria-selected="true"] p,
 section[data-testid="stMain"] .stTabs [aria-selected="true"] span {
   color: #1d4ed8 !important;
