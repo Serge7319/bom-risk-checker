@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, Iterable, List
 import pandas as pd
 import streamlit as st
 
-from src.ui.cadivor_design_system import MetricCard, cadivor_dataframe, cadivor_section_header, render_kpi_row_safe
+from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, cadivor_section_header, render_kpi_row_safe
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -441,7 +441,7 @@ def render_design_impact(
     st.markdown('<div class="cv20-section">Cross-Project Evidence</div>', unsafe_allow_html=True)
     if intelligence["affected_projects"]:
         evidence_df = pd.DataFrame(intelligence["affected_projects"])
-        cadivor_dataframe(
+        cadivor_engineering_dataframe(
             evidence_df[
                 [
                     "Project",
