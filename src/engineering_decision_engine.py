@@ -8,7 +8,8 @@ import pandas as pd
 
 from src.ai_advisor import build_engineering_supply_advisor
 from src.bom_intelligence import analyze_bom_intelligence
-from src.config import ENABLE_DECISION_ENGINE_V2
+from src.config import ENABLE_DECISION_ENGINE_V2, ENABLE_DECISION_WORKSPACE_V71
+from src.ui.cadivor_design_system.icons import lucide
 
 INSUFFICIENT_EVIDENCE = "Insufficient evidence"
 
@@ -823,12 +824,376 @@ def format_decision_brief_for_report(brief: Mapping[str, Any]) -> Dict[str, Any]
     }
 
 
-def render_engineering_decision_brief(brief: Mapping[str, Any]) -> None:
-    """Render the executive decision brief; v2 layout gated by ENABLE_DECISION_ENGINE_V2."""
+def render_engineering_decision_brief(
+    brief: Mapping[str, Any],
+    *,
+    mode: str = "default",
+) -> None:
+    """Render the executive decision brief.
+
+    mode="workspace" — Sprint 67.1 Executive Decision Workspace (Analysis Detail only).
+    mode="default" — Sprint 67 v2 or Sprint 66 v1 for BOM Analyzer and fallback paths.
+    """
+    if mode == "workspace":
+        if ENABLE_DECISION_WORKSPACE_V71 and brief.get("version") == 2:
+            _render_decision_brief_workspace(brief)
+        elif ENABLE_DECISION_ENGINE_V2 and brief.get("version") == 2:
+            _render_engineering_decision_brief_v2(brief)
+        else:
+            _render_engineering_decision_brief_v1(brief)
+        return
     if ENABLE_DECISION_ENGINE_V2 and brief.get("version") == 2:
         _render_engineering_decision_brief_v2(brief)
     else:
         _render_engineering_decision_brief_v1(brief)
+
+
+def render_engineering_decision_workspace(brief: Mapping[str, Any]) -> None:
+    """Sprint 67.1 — Engineering Intelligence tab presentation only."""
+    render_engineering_decision_brief(brief, mode="workspace")
+
+
+def _decision_icon(name: str, size: int = 16) -> str:
+    markup = lucide(name, size)
+    if not markup:
+        return ""
+    return f'<span class="cv671-icon" aria-hidden="true">{markup}</span>'
+
+
+def _finding_component_label(finding: Mapping[str, Any]) -> str:
+    for key in ("part_number", "mpn", "component", "affected_part"):
+        value = _text(finding.get(key))
+        if value and value not in {"—", "Component"}:
+            return value
+    return ""
+
+
+def _finding_action_hint(finding: Mapping[str, Any], actions: Iterable[Mapping[str, Any]]) -> str:
+    component = _finding_component_label(finding)
+    if not component:
+        return "See prioritized actions below."
+    for action in actions:
+        if _text(action.get("part_number")) == component:
+            return _text(action.get("action") or action.get("title"), "See prioritized actions below.")
+    return "See prioritized actions below."
+
+
+def _severity_icon(impact: str) -> str:
+    level = _text(impact, "medium").lower()
+    if level == "high":
+        return _decision_icon("octagon-alert", 16)
+    if level == "low":
+        return _decision_icon("badge-check", 16)
+    return _decision_icon("alert-circle", 16)
+
+
+def _tone_css_class(tone: str) -> str:
+    return {"good": "good", "bad": "bad", "warn": "warn"}.get(_text(tone, "warn"), "warn")
+
+
+def _header_top_action(actions: Iterable[Mapping[str, Any]]) -> tuple[str, str]:
+    rows = list(actions or [])
+    if not rows:
+        return "—", "No prioritized action recorded"
+    action = rows[0]
+    return _text(action.get("part_number"), "—"), _text(action.get("title"), "Review required")
+
+
+def _header_effort_display(brief: Mapping[str, Any]) -> tuple[str, str]:
+    advisor = brief.get("advisor") or {}
+    total = advisor.get("estimated_total_effort")
+    if total is not None and int(_number(total, 0)) > 0:
+        return "Total estimated effort", f"{int(_number(total, 0))} hours"
+    actions = list(brief.get("recommended_actions") or [])
+    if actions:
+        return "Top action effort", _text(actions[0].get("effort"), INSUFFICIENT_EVIDENCE)
+    return "Estimated effort", INSUFFICIENT_EVIDENCE
+
+
+def _confidence_bar_html(score: int) -> str:
+    pct = max(0, min(100, int(score)))
+    return (
+        f'<div class="cv671-confidence-bar" role="progressbar" aria-valuenow="{pct}" '
+        f'aria-valuemin="0" aria-valuemax="100">'
+        f'<i style="width:{pct}%"></i></div>'
+    )
+
+
+def _evidence_checklist_html(metrics: Mapping[str, Any], insufficient: bool) -> str:
+    if insufficient:
+        return f'<p class="cv671-muted">{escape(INSUFFICIENT_EVIDENCE)}</p>'
+    checks = [
+        ("Supplier data", metrics.get("limited_sources") is not None or metrics.get("no_stock") is not None),
+        ("Lifecycle", _number(metrics.get("lifecycle_concerns"), -1) >= 0),
+        ("Inventory", _number(metrics.get("no_stock"), -1) >= 0),
+        ("Alternates", _number(metrics.get("saved_alternatives"), 0) > 0),
+    ]
+    items = []
+    for label, ok in checks:
+        icon = _decision_icon("badge-check" if ok else "circle-x", 14)
+        state = "available" if ok else "missing"
+        items.append(
+            f'<li class="cv671-evidence-check cv671-evidence-check--{state}">'
+            f'{icon}<span>{escape(label)}</span></li>'
+        )
+    return f'<ul class="cv671-evidence-checks">{"".join(items)}</ul>'
+
+
+def _html_readiness_panel(readiness: Mapping[str, Any], *, premium: bool) -> str:
+    tone = _tone_css_class(_text(readiness.get("tone"), "warn"))
+    score = int(_number(readiness.get("score"), 0))
+    label = _text(readiness.get("label"), INSUFFICIENT_EVIDENCE)
+    explanation = _text(readiness.get("explanation"), INSUFFICIENT_EVIDENCE)
+    if not premium:
+        return (
+            f'<article class="cv66-card cv66-card--{escape(tone)}">'
+            f"<span>Production Readiness</span>"
+            f"<strong>{escape(label)}</strong>"
+            f"<small>{score}/100 · {escape(explanation)}</small>"
+            f"</article>"
+        )
+    return (
+        f'<article class="cv671-readiness cv671-readiness--{escape(tone)}">'
+        f'<div class="cv671-readiness-head">'
+        f'{_decision_icon("shield", 18)}'
+        f"<div><span>Production Readiness</span>"
+        f'<span class="cv671-badge cv671-badge--{escape(tone)}">{escape(label)}</span></div>'
+        f"</div>"
+        f'<p class="cv671-readiness-copy">{escape(explanation)}</p>'
+        f'<div class="cv671-readiness-meter" role="progressbar" aria-valuenow="{score}" '
+        f'aria-valuemin="0" aria-valuemax="100"><i style="width:{score}%"></i></div>'
+        f'<small class="cv671-readiness-score">{score}/100 health basis</small>'
+        f"</article>"
+    )
+
+
+def _html_confidence_panel(
+    confidence: Mapping[str, Any],
+    metrics: Mapping[str, Any],
+    *,
+    insufficient: bool,
+    premium: bool,
+) -> str:
+    score = int(_number(confidence.get("score"), 0))
+    label = _text(confidence.get("label"), INSUFFICIENT_EVIDENCE)
+    explanation = _text(confidence.get("explanation"), INSUFFICIENT_EVIDENCE)
+    if not premium:
+        return (
+            f'<article class="cv66-card cv66-card--confidence">'
+            f"<span>Engineering Confidence</span>"
+            f"<strong>{score}%</strong>"
+            f"<small>{escape(explanation)}</small>"
+            f"</article>"
+        )
+    return (
+        f'<article class="cv671-confidence">'
+        f'<div class="cv671-section-label">{_decision_icon("gauge", 16)} Engineering Confidence</div>'
+        f'<div class="cv671-confidence-score">{score}%</div>'
+        f"{_confidence_bar_html(score)}"
+        f'<div class="cv671-confidence-label">{escape(label)} confidence</div>'
+        f'<p class="cv671-muted">{escape(explanation)}</p>'
+        f"<div class=\"cv671-based-on\"><strong>Based on:</strong>{_evidence_checklist_html(metrics, insufficient)}</div>"
+        f"</article>"
+    )
+
+
+def _html_findings_list(findings: Iterable[Mapping[str, Any]], actions: Iterable[Mapping[str, Any]]) -> str:
+    rows = list(findings or [])
+    if not rows:
+        return (
+            '<li class="cv66-finding cv66-finding--low"><strong>No critical blocker</strong>'
+            "<span>No prioritized engineering exception is currently recorded.</span></li>"
+        )
+    return "".join(
+        f'<li class="cv66-finding cv66-finding--{escape(_text(item.get("impact"), "medium"))}">'
+        f'<strong>{escape(_text(item.get("category")))}</strong>'
+        f'<span>{escape(_text(item.get("detail")))}</span>'
+        f'<small class="cv67-evidence-ref">Evidence: {escape(_text(item.get("evidence"), INSUFFICIENT_EVIDENCE))}</small></li>'
+        for item in rows
+    )
+
+
+def _html_findings_cards(findings: Iterable[Mapping[str, Any]], actions: Iterable[Mapping[str, Any]]) -> str:
+    rows = list(findings or [])
+    if not rows:
+        return '<p class="cv671-muted">No critical findings recorded.</p>'
+    cards = []
+    for item in rows:
+        component = _finding_component_label(item)
+        component_html = (
+            f'<div class="cv671-finding-part">{escape(component)}</div>' if component else ""
+        )
+        cards.append(
+            f'<article class="cv671-finding cv671-finding--{escape(_text(item.get("impact"), "medium"))}">'
+            f'<div class="cv671-finding-head">{_severity_icon(_text(item.get("impact"), "medium"))}'
+            f'<div><div class="cv671-finding-title">{escape(_text(item.get("category")))}</div>'
+            f"{component_html}</div></div>"
+            f'<p class="cv671-finding-copy">{escape(_text(item.get("detail")))}</p>'
+            f'<div class="cv671-finding-meta"><strong>Evidence:</strong> '
+            f'{escape(_text(item.get("evidence"), INSUFFICIENT_EVIDENCE))}</div>'
+            f'<div class="cv671-finding-meta"><strong>Action:</strong> '
+            f'{escape(_finding_action_hint(item, actions))}</div>'
+            f"</article>"
+        )
+    return f'<div class="cv671-findings-grid">{"".join(cards)}</div>'
+
+
+def _html_business_impact(
+    business: Mapping[str, Any],
+    *,
+    workspace: bool,
+) -> str:
+    items = [
+        ("Schedule", "calendar-clock", business.get("schedule")),
+        ("Cost", "dollar-sign", business.get("cost")),
+        ("Manufacturing", "factory", business.get("manufacturing")),
+        ("Procurement", "shopping-cart", business.get("procurement")),
+        ("Supply Chain", "package", business.get("supply_chain")),
+    ]
+    if workspace:
+        cards = []
+        for title, icon, copy in items:
+            cards.append(
+                f'<article class="cv671-impact-card">'
+                f'<div class="cv671-impact-head">{_decision_icon(icon, 16)}<span>{escape(title)}</span></div>'
+                f'<div class="cv671-impact-level">Impact summary</div>'
+                f'<p class="cv671-impact-copy">{escape(_text(copy, INSUFFICIENT_EVIDENCE))}</p>'
+                f"</article>"
+            )
+        return f'<div class="cv671-impact-grid">{"".join(cards)}</div>'
+    blocks = []
+    for title, _icon, copy in items:
+        blocks.append(f"<div><h4>{escape(title)}</h4><p>{escape(_text(copy, INSUFFICIENT_EVIDENCE))}</p></div>")
+    return f'<div class="cv66-impact-grid">{"".join(blocks)}</div>'
+
+
+def _html_actions(actions: Iterable[Mapping[str, Any]], *, workspace: bool) -> str:
+    rows = list(actions or [])
+    if not rows:
+        return f'<p class="cv671-muted">{escape(INSUFFICIENT_EVIDENCE)}</p>'
+    if workspace:
+        cards = []
+        for action in rows:
+            cards.append(
+                f'<article class="cv671-action-card">'
+                f'<div class="cv671-action-badges">'
+                f'<span class="cv671-badge cv671-badge--priority">{escape(_text(action.get("priority")))}</span>'
+                f'<span class="cv671-badge cv671-badge--owner">{escape(_text(action.get("owner")))}</span>'
+                f'<span class="cv671-badge cv671-badge--effort">{escape(_text(action.get("effort")))}</span>'
+                f'<span class="cv671-badge cv671-badge--result">Expected: {escape(_text(action.get("expected_result")))}</span>'
+                f"</div>"
+                f'<p class="cv671-action-title">{escape(_text(action.get("action")))}</p>'
+                f'<dl class="cv671-action-body">'
+                f'<div><dt>Reason</dt><dd>{escape(_text(action.get("reason")))}</dd></div>'
+                f'<div><dt>Evidence</dt><dd>{escape(_text(action.get("evidence")))}</dd></div>'
+                f'<div><dt>Confidence</dt><dd>{escape(_text(action.get("confidence")))}</dd></div>'
+                f'<div><dt>Impact</dt><dd>{escape(_text(action.get("impact")))}</dd></div>'
+                f"</dl></article>"
+            )
+        return f'<div class="cv671-actions">{"".join(cards)}</div>'
+    return "".join(
+        f"""
+        <article class="cv67-action-card">
+          <div class="cv67-action-head">
+            <span class="cv67-priority">{escape(_text(action.get("priority")))}</span>
+            <span class="cv67-owner">{escape(_text(action.get("owner")))}</span>
+          </div>
+          <p class="cv67-action-title">{escape(_text(action.get("action")))}</p>
+          <dl class="cv67-action-meta">
+            <div><dt>Reason</dt><dd>{escape(_text(action.get("reason")))}</dd></div>
+            <div><dt>Evidence</dt><dd>{escape(_text(action.get("evidence")))}</dd></div>
+            <div><dt>Confidence</dt><dd>{escape(_text(action.get("confidence")))}</dd></div>
+            <div><dt>Expected result</dt><dd>{escape(_text(action.get("expected_result")))}</dd></div>
+            <div><dt>Effort</dt><dd>{escape(_text(action.get("effort")))}</dd></div>
+            <div><dt>Impact</dt><dd>{escape(_text(action.get("impact")))}</dd></div>
+          </dl>
+        </article>
+        """
+        for action in rows
+    )
+
+
+def _html_evidence_panel(
+    evidence: Iterable[Any],
+    *,
+    insufficient: bool,
+    workspace: bool,
+) -> str:
+    rows = [ _text(item) for item in (evidence or []) if _text(item) ]
+    if insufficient or not rows or (len(rows) == 1 and rows[0] == INSUFFICIENT_EVIDENCE):
+        return f'<div class="cv671-evidence-panel cv671-evidence-panel--empty">{escape(INSUFFICIENT_EVIDENCE)}</div>'
+    if workspace:
+        chips = "".join(f'<span class="cv671-evidence-chip">{escape(item)}</span>' for item in rows)
+        return f'<div class="cv671-evidence-panel">{chips}</div>'
+    return "".join(f"<li>{escape(item)}</li>" for item in rows)
+
+
+def _render_decision_brief_workspace(brief: Mapping[str, Any]) -> None:
+    import streamlit as st
+
+    readiness = brief.get("production_readiness") or {}
+    confidence = brief.get("confidence") or {}
+    findings = brief.get("critical_findings") or []
+    actions = brief.get("recommended_actions") or []
+    evidence = brief.get("supporting_evidence") or []
+    business = brief.get("business_impact") or {}
+    metrics = (brief.get("advisor") or {}).get("metrics") or {}
+    insufficient = bool(brief.get("insufficient_evidence"))
+
+    top_part, top_title = _header_top_action(actions)
+    effort_label, effort_value = _header_effort_display(brief)
+    conf_score = int(_number(confidence.get("score"), 0))
+
+    st.markdown(
+        f"""
+        <section class="cv671-workspace">
+          <header class="cv671-exec-header">
+            <div class="cv671-exec-kicker">{_decision_icon("target", 16)} Executive Engineering Decision</div>
+            <div class="cv671-exec-grid">
+              <div class="cv671-exec-stat">
+                <span>Production Status</span>
+                <strong>{escape(_text(readiness.get("label"), INSUFFICIENT_EVIDENCE))}</strong>
+              </div>
+              <div class="cv671-exec-stat">
+                <span>Engineering Confidence</span>
+                <strong>{conf_score}%</strong>
+              </div>
+              <div class="cv671-exec-stat cv671-exec-stat--action">
+                <span>Top Engineering Action</span>
+                <strong>{escape(top_part)}</strong>
+                <small>{escape(top_title)}</small>
+              </div>
+              <div class="cv671-exec-stat">
+                <span>{escape(effort_label)}</span>
+                <strong>{escape(effort_value)}</strong>
+              </div>
+            </div>
+          </header>
+          <p class="cv671-summary">{escape(_text(brief.get("executive_summary")))}</p>
+          <div class="cv671-status-row">
+            {_html_readiness_panel(readiness, premium=True)}
+            {_html_confidence_panel(confidence, metrics, insufficient=insufficient, premium=True)}
+          </div>
+          <section class="cv671-block">
+            <h3 class="cv671-heading">{_decision_icon("triangle-alert", 16)} Critical Findings</h3>
+            {_html_findings_cards(findings, actions)}
+          </section>
+          <section class="cv671-block">
+            <h3 class="cv671-heading">{_decision_icon("briefcase-business", 16)} Business Impact</h3>
+            {_html_business_impact(business, workspace=True)}
+          </section>
+          <section class="cv671-block">
+            <h3 class="cv671-heading">{_decision_icon("list-checks", 16)} Recommended Actions</h3>
+            {_html_actions(actions, workspace=True)}
+          </section>
+          <section class="cv671-block">
+            <h3 class="cv671-heading">{_decision_icon("clipboard-check", 16)} Supporting Evidence</h3>
+            {_html_evidence_panel(evidence, insufficient=insufficient, workspace=True)}
+          </section>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _render_engineering_decision_brief_v1(brief: Mapping[str, Any]) -> None:
@@ -914,37 +1279,12 @@ def _render_engineering_decision_brief_v2(brief: Mapping[str, Any]) -> None:
     actions = brief.get("recommended_actions") or []
     evidence = brief.get("supporting_evidence") or []
     business = brief.get("business_impact") or {}
+    metrics = (brief.get("advisor") or {}).get("metrics") or {}
+    insufficient = bool(brief.get("insufficient_evidence"))
 
-    findings_html = "".join(
-        f'<li class="cv66-finding cv66-finding--{escape(_text(item.get("impact"), "medium"))}">'
-        f'<strong>{escape(_text(item.get("category")))}</strong>'
-        f'<span>{escape(_text(item.get("detail")))}</span>'
-        f'<small class="cv67-evidence-ref">Evidence: {escape(_text(item.get("evidence"), INSUFFICIENT_EVIDENCE))}</small></li>'
-        for item in findings
-    )
-
-    actions_html = "".join(
-        f"""
-        <article class="cv67-action-card">
-          <div class="cv67-action-head">
-            <span class="cv67-priority">{escape(_text(action.get("priority")))}</span>
-            <span class="cv67-owner">{escape(_text(action.get("owner")))}</span>
-          </div>
-          <p class="cv67-action-title">{escape(_text(action.get("action")))}</p>
-          <dl class="cv67-action-meta">
-            <div><dt>Reason</dt><dd>{escape(_text(action.get("reason")))}</dd></div>
-            <div><dt>Evidence</dt><dd>{escape(_text(action.get("evidence")))}</dd></div>
-            <div><dt>Confidence</dt><dd>{escape(_text(action.get("confidence")))}</dd></div>
-            <div><dt>Expected result</dt><dd>{escape(_text(action.get("expected_result")))}</dd></div>
-            <div><dt>Effort</dt><dd>{escape(_text(action.get("effort")))}</dd></div>
-            <div><dt>Impact</dt><dd>{escape(_text(action.get("impact")))}</dd></div>
-          </dl>
-        </article>
-        """
-        for action in actions
-    ) or f'<p class="cv67-empty">{escape(INSUFFICIENT_EVIDENCE)}</p>'
-
-    evidence_html = "".join(f"<li>{escape(_text(item))}</li>" for item in evidence)
+    findings_html = _html_findings_list(findings, actions)
+    actions_html = _html_actions(actions, workspace=False)
+    evidence_html = _html_evidence_panel(evidence, insufficient=insufficient, workspace=False)
 
     st.markdown(
         f"""
@@ -953,16 +1293,8 @@ def _render_engineering_decision_brief_v2(brief: Mapping[str, Any]) -> None:
           <h2 class="cv66-decision-title">Executive Engineering Summary</h2>
           <p class="cv66-decision-copy">{escape(_text(brief.get("executive_summary")))}</p>
           <div class="cv66-decision-grid">
-            <article class="cv66-card cv66-card--{escape(_text(readiness.get('tone'), 'warn'))}">
-              <span>Production Readiness</span>
-              <strong>{escape(_text(readiness.get('label')))}</strong>
-              <small>{int(_number(readiness.get('score'), 0))}/100 · {escape(_text(readiness.get('explanation')))}</small>
-            </article>
-            <article class="cv66-card cv66-card--confidence">
-              <span>Engineering Confidence</span>
-              <strong>{int(_number(confidence.get('score'), 0))}%</strong>
-              <small>{escape(_text(confidence.get('explanation')))}</small>
-            </article>
+            {_html_readiness_panel(readiness, premium=False)}
+            {_html_confidence_panel(confidence, metrics, insufficient=insufficient, premium=False)}
           </div>
           <div class="cv66-section">
             <h3>Critical Findings</h3>
@@ -970,13 +1302,7 @@ def _render_engineering_decision_brief_v2(brief: Mapping[str, Any]) -> None:
           </div>
           <div class="cv66-section">
             <h3>Business Impact</h3>
-            <div class="cv66-impact-grid">
-              <div><h4>Schedule</h4><p>{escape(_text(business.get("schedule")))}</p></div>
-              <div><h4>Cost</h4><p>{escape(_text(business.get("cost")))}</p></div>
-              <div><h4>Manufacturing</h4><p>{escape(_text(business.get("manufacturing")))}</p></div>
-              <div><h4>Procurement</h4><p>{escape(_text(business.get("procurement")))}</p></div>
-              <div><h4>Supply Chain</h4><p>{escape(_text(business.get("supply_chain")))}</p></div>
-            </div>
+            {_html_business_impact(business, workspace=False)}
           </div>
           <div class="cv66-section">
             <h3>Recommended Actions</h3>
