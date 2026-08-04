@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, Iterable, List
 import pandas as pd
 import streamlit as st
 
-from src.ui.cadivor_design_system import MetricCard, cadivor_dataframe, render_kpi_row_safe
+from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -332,7 +332,7 @@ def render_portfolio_intelligence(
 
         with st.expander("View all shared components", expanded=False):
             if intelligence["shared_components"]:
-                cadivor_dataframe(pd.DataFrame(intelligence["shared_components"]))
+                cadivor_engineering_dataframe(pd.DataFrame(intelligence["shared_components"]))
 
     with right:
         st.markdown('<div class="cv19-section">Portfolio Exposure</div>', unsafe_allow_html=True)
@@ -374,7 +374,7 @@ def render_portfolio_intelligence(
     )
     if intelligence["project_health"]:
         project_df = pd.DataFrame(intelligence["project_health"])
-        cadivor_dataframe(
+        cadivor_engineering_dataframe(
             project_df[["Project", "Health", "High-Risk", "Components"]],
             column_config={
                 "Health": st.column_config.NumberColumn(format="%d"),
@@ -391,7 +391,7 @@ def render_portfolio_intelligence(
     with exposure_tab:
         rows = intelligence["single_source"]
         if rows:
-            cadivor_dataframe(
+            cadivor_engineering_dataframe(
                 pd.DataFrame(rows)[
                     ["Project", "Part Number", "Manufacturer", "Supplier Sources", "Available Stock", "Risk Score"]
                 ],
@@ -402,7 +402,7 @@ def render_portfolio_intelligence(
     with lifecycle_tab:
         rows = intelligence["lifecycle_exposed"]
         if rows:
-            cadivor_dataframe(
+            cadivor_engineering_dataframe(
                 pd.DataFrame(rows)[
                     ["Project", "Part Number", "Manufacturer", "Lifecycle", "Risk Score"]
                 ],
@@ -413,7 +413,7 @@ def render_portfolio_intelligence(
     with alerts_tab:
         rows = intelligence["recurring_alerts"]
         if rows:
-            cadivor_dataframe(pd.DataFrame(rows))
+            cadivor_engineering_dataframe(pd.DataFrame(rows))
         else:
             st.success("No component has multiple recorded monitoring alerts.")
 
