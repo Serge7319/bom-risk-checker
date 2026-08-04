@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import pandas as pd
 import streamlit as st
@@ -317,11 +317,12 @@ def cadivor_empty_state(
 
 
 def cadivor_toolbar_start() -> None:
-    _render_html('<div class="cv64-toolbar">')
+    """Reserved for grouped actions — Streamlit widgets cannot live inside HTML wrappers."""
+    return
 
 
 def cadivor_toolbar_end() -> None:
-    _render_html("</div>")
+    return
 
 
 def _format_cell(value: Any, *, numeric: bool, monospace: bool, badge: bool) -> str:
@@ -432,6 +433,93 @@ def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
         st.dataframe(df, **kwargs)
     except Exception:
         st.dataframe(df, use_container_width=True, hide_index=True)
+    _render_html("</div>")
+
+
+def build_dataframe_column_config(df: pd.DataFrame, overrides: Mapping[str, Any] | None = None) -> dict:
+    """Infer readable column_config for common engineering table fields."""
+    config: dict[str, Any] = {}
+    for col in df.columns:
+        name = str(col)
+        lower = name.lower()
+        if any(token in lower for token in ("unit price", "target price", "extended cost", "shortage value", "run savings", "savings")):
+            config[name] = st.column_config.NumberColumn(format="$%.4f" if "unit" in lower else "$%.2f")
+        elif "price" in lower or "cost" in lower or "value" in lower:
+            config[name] = st.column_config.NumberColumn(format="$%.2f")
+        elif "score" in lower or lower.endswith(" risk"):
+            config[name] = st.column_config.NumberColumn(format="%d")
+        elif any(token in lower for token in ("quantity", "stock", "units", "sources", "hours", "projects", "count", "build")):
+            config[name] = st.column_config.NumberColumn(format="%,d")
+        elif name in {"Part Number", "MPN", "Component", "Manufacturer", "Project"}:
+            config[name] = st.column_config.TextColumn(width="medium")
+    if overrides:
+        config.update(overrides)
+    return config
+
+
+def cadivor_engineering_dataframe(
+    df: pd.DataFrame,
+    *,
+    column_config: Mapping[str, Any] | None = None,
+    **kwargs: Any,
+) -> None:
+    """Render a dataframe with shared engineering column formatting."""
+    cfg = build_dataframe_column_config(df, column_config)
+    cadivor_dataframe(df, column_config=cfg, **kwargs)
+
+
+def render_decision_card_actions(
+    decision: Mapping[str, Any],
+    *,
+    navigate_to: Callable[..., Any],
+    internal_nav_button: Callable[..., Any],
+    key_prefix: str,
+) -> None:
+    """Compact primary/secondary toolbar for a decision card."""
+    _render_html('<div class="cv64-decision-toolbar">')
+    action_cols = st.columns([1.25, 1, 1, 1], gap="small")
+    with action_cols[0]:
+        cadivor_button_wrap("primary")
+        if st.button(
+            "Review Decision",
+            key=f"{key_prefix}_review",
+            type="primary",
+            use_container_width=True,
+        ):
+            navigate_to("Engineering Decisions", decision_id=decision["decision_id"])
+        cadivor_button_wrap_end()
+    with action_cols[1]:
+        cadivor_button_wrap("secondary")
+        internal_nav_button(
+            "View Alternative",
+            "Alternative Finder",
+            key=f"{key_prefix}_alt",
+            use_container_width=True,
+            original_part=decision["part_number"],
+        )
+        cadivor_button_wrap_end()
+    with action_cols[2]:
+        cadivor_button_wrap("secondary")
+        internal_nav_button(
+            "Open Monitoring",
+            "Monitoring",
+            key=f"{key_prefix}_monitor",
+            use_container_width=True,
+        )
+        cadivor_button_wrap_end()
+    with action_cols[3]:
+        cadivor_button_wrap("secondary")
+        if decision.get("analysis_id"):
+            internal_nav_button(
+                "Open Saved BOM",
+                "Analysis Details",
+                key=f"{key_prefix}_analysis",
+                use_container_width=True,
+                analysis_id=decision["analysis_id"],
+            )
+        else:
+            st.caption("No saved BOM linked")
+        cadivor_button_wrap_end()
     _render_html("</div>")
 
 
