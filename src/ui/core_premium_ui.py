@@ -114,6 +114,9 @@ def inject_workspace_geometry_final() -> None:
 def mark_authenticated_surface_ready() -> None:
     """Call once the authenticated shell/stylesheet stack is mounted."""
     st.session_state["_cadivor_authenticated_surface_ready"] = True
+    from src.ui.cadivor_design_system import inject_cadivor_design_system
+
+    inject_cadivor_design_system()
 
 
 def page_shell(title: str, subtitle: str = "", eyebrow: str = "") -> None:
