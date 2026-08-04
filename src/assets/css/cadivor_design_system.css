@@ -537,6 +537,19 @@ section[data-testid="stMain"] .cv64-btn-wrap--danger .stButton > button:not(:dis
   opacity: 1 !important;
 }
 
+section[data-testid="stMain"] .cv64-decision-toolbar {
+  margin: 8px 0 18px !important;
+  padding-top: 4px !important;
+}
+
+section[data-testid="stMain"] .cv64-decision-toolbar [data-testid="column"] {
+  min-width: 0 !important;
+}
+
+section[data-testid="stMain"] .cv64-decision-toolbar .cv64-btn-wrap {
+  width: 100% !important;
+}
+
 section[data-testid="stMain"] .cv64-toolbar .stButton > button:not(:disabled) {
   min-height: 42px !important;
   min-width: 120px !important;
