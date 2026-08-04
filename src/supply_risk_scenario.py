@@ -12,6 +12,8 @@ from typing import Any, Callable, Dict, Iterable, List
 import pandas as pd
 import streamlit as st
 
+from src.ui.cadivor_design_system import cadivor_engineering_dataframe
+
 
 def _text(value: Any, default: str = "") -> str:
     if value is None:
@@ -455,10 +457,8 @@ def render_supply_scenario(
     )
     if intelligence["project_impact"]:
         project_df = pd.DataFrame(intelligence["project_impact"])
-        st.dataframe(
+        cadivor_engineering_dataframe(
             project_df,
-            hide_index=True,
-            use_container_width=True,
             column_config={
                 "Estimated Shortage Value": st.column_config.NumberColumn(format="$%.2f"),
             },
@@ -472,7 +472,7 @@ def render_supply_scenario(
         rows = [row for row in intelligence["rows"] if row["Shortage Units"] > 0]
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(
+            cadivor_engineering_dataframe(
                 df[
                     [
                         "Project",
@@ -485,8 +485,6 @@ def render_supply_scenario(
                         "Scenario Risk",
                     ]
                 ],
-                hide_index=True,
-                use_container_width=True,
                 column_config={
                     "Estimated Shortage Value": st.column_config.NumberColumn(format="$%.2f"),
                 },
@@ -498,7 +496,7 @@ def render_supply_scenario(
         rows = [row for row in intelligence["rows"] if row["Scenario Sources"] <= 1]
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(
+            cadivor_engineering_dataframe(
                 df[
                     [
                         "Project",
@@ -510,8 +508,6 @@ def render_supply_scenario(
                         "Scenario Risk",
                     ]
                 ],
-                hide_index=True,
-                use_container_width=True,
             )
         else:
             st.success("Every recorded component retains more than one source.")
@@ -520,7 +516,7 @@ def render_supply_scenario(
         rows = [row for row in intelligence["rows"] if row["Lifecycle Event"]]
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(
+            cadivor_engineering_dataframe(
                 df[
                     [
                         "Project",
@@ -530,15 +526,13 @@ def render_supply_scenario(
                         "Scenario Risk",
                     ]
                 ],
-                hide_index=True,
-                use_container_width=True,
             )
         else:
             st.success("No lifecycle exposure is modeled in this scenario.")
 
     with all_tab:
         if intelligence["rows"]:
-            st.dataframe(
+            cadivor_engineering_dataframe(
                 pd.DataFrame(intelligence["rows"])[
                     [
                         "Project",
@@ -553,8 +547,6 @@ def render_supply_scenario(
                         "Scenario Risk",
                     ]
                 ],
-                hide_index=True,
-                use_container_width=True,
             )
 
     st.markdown(
