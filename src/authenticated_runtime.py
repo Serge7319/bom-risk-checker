@@ -127,6 +127,10 @@ from src.components.onboarding import (
     render_first_run_dashboard,
 )
 from src.components.first_analysis_brief import render_first_analysis_brief
+from src.engineering_decision_engine import (
+    build_engineering_decision_brief,
+    render_engineering_decision_brief,
+)
 from src.onboarding_service import (
     ensure_onboarding_progress,
     update_onboarding_progress,
@@ -3581,10 +3585,10 @@ def run_authenticated_app() -> None:
             with summary_tab:
                 render_kpi_row_safe(
                     [
-                        MetricCard(label="Component / BOM", value=str(selected_decision["part_number"]), tone="info", icon="layers"),
-                        MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="alert"),
-                        MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="shield"),
-                        MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="activity"),
+                        MetricCard(label="Component / BOM", value=str(selected_decision["part_number"]), tone="info", icon="package"),
+                        MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="triangle-alert"),
+                        MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="gauge"),
+                        MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="clock-3"),
                     ],
                     columns=4,
                 )
@@ -7109,10 +7113,10 @@ def run_authenticated_app() -> None:
                 st.markdown("#### Collaboration snapshot")
                 render_kpi_row_safe(
                     [
-                        MetricCard(label="Online now", value=str(len(online_members)), tone="success", icon="activity"),
-                        MetricCard(label="Active this hour", value=str(len(online_members) + len(idle_members)), tone="info", icon="chart"),
-                        MetricCard(label="Activity events", value=str(len(activity_rows)), tone="monitoring", icon="clipboard"),
-                        MetricCard(label="Audit records", value=str(len(audit_rows)), tone="confidence", icon="file"),
+                        MetricCard(label="Online now", value=str(len(online_members)), tone="success", icon="radar"),
+                        MetricCard(label="Active this hour", value=str(len(online_members) + len(idle_members)), tone="info", icon="clock-3"),
+                        MetricCard(label="Activity events", value=str(len(activity_rows)), tone="monitoring", icon="clipboard-check"),
+                        MetricCard(label="Audit records", value=str(len(audit_rows)), tone="confidence", icon="file-text"),
                     ],
                     columns=4,
                 )
@@ -7676,9 +7680,9 @@ def run_authenticated_app() -> None:
         )
         render_kpi_row_safe(
             [
-                MetricCard(label="Workflow guides", value="3", detail="BOM, alternatives, monitoring", tone="info", icon="file"),
-                MetricCard(label="Response channel", value="Email", detail="support@cadivor.com", tone="info", icon="clipboard"),
-                MetricCard(label="Workspace", value="Secure", detail="Your saved analyses remain private", tone="success", icon="shield"),
+                MetricCard(label="Workflow guides", value="3", detail="BOM, alternatives, monitoring", tone="info", icon="file-text"),
+                MetricCard(label="Response channel", value="Email", detail="support@cadivor.com", tone="info", icon="clipboard-check"),
+                MetricCard(label="Workspace", value="Secure", detail="Your saved analyses remain private", tone="success", icon="badge-check"),
             ],
             columns=3,
         )
@@ -11964,6 +11968,12 @@ def run_authenticated_app() -> None:
                 analysis_id=str(st.session_state.get("analysis_id") or "") or None,
                 project_name=project_name or (uploaded_file.name if uploaded_file else "BOM analysis"),
             )
+
+            decision_brief = build_engineering_decision_brief(
+                results_df=results_df,
+                health_score=int(st.session_state.get("health_score", 0) or 0),
+            )
+            render_engineering_decision_brief(decision_brief)
 
             show_dashboard_summary(results_df)
 
