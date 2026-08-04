@@ -14,14 +14,17 @@ import streamlit as st
 
 from src.ui.cadivor_design_system import (
     MetricCard,
+    cadivor_card,
     cadivor_meta_row,
     cadivor_metric_row,
     cadivor_panel,
     cadivor_panel_end,
-    cadivor_section_header,
     cadivor_table,
     cadivor_toolbar_end,
     cadivor_toolbar_start,
+    render_kpi_row_safe,
+    render_section_header,
+    render_subsection_header,
 )
 
 
@@ -169,72 +172,8 @@ def _workload(actions: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _render_css() -> None:
-    st.markdown(
-        """
-        <style id="cadivor-living-workspace-18">
-          .cv18-brief{
-            border:1px solid #bfdbfe;background:linear-gradient(135deg,#ffffff,#eef5ff);
-            border-radius:24px;padding:24px;margin-bottom:16px;
-            box-shadow:0 16px 42px rgba(37,99,235,.07)
-          }
-          .cv18-eyebrow{font-size:11px;font-weight:900;color:#2563eb;letter-spacing:.12em;text-transform:uppercase}
-          .cv18-title{font-size:30px;font-weight:950;color:#0f172a;letter-spacing:-.045em;margin:7px 0}
-          .cv18-copy{font-size:14px;font-weight:680;color:#52647a;line-height:1.58;max-width:1050px}
-          .cv18-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:17px}
-          .cv18-status{background:#fff;border:1px solid #dbe3ef;border-radius:15px;padding:13px}
-          .cv18-status strong{display:block;font-size:24px;color:#0f172a;letter-spacing:-.035em}
-          .cv18-status span{font-size:11px;font-weight:820;color:#64748b}
-          .cv18-section{font-size:22px;font-weight:950;color:#0f172a;letter-spacing:-.03em;margin:20px 0 4px}
-          .cv18-subtitle{font-size:13px;font-weight:650;color:#64748b;margin-bottom:11px}
-          .cv18-card{
-            border:1px solid #dbe3ef;background:#fff;border-radius:17px;padding:16px;
-            margin-bottom:10px;box-shadow:0 8px 24px rgba(15,23,42,.04)
-          }
-          .cv18-card-title{font-size:16px;font-weight:950;color:#0f172a}
-          .cv18-card-copy{font-size:13px;font-weight:680;color:#475569;line-height:1.5;margin-top:6px}
-          .cv18-meta{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
-          .cv18-meta span{
-            font-size:10px;font-weight:850;color:#1d4ed8;background:#eff6ff;
-            border:1px solid #dbeafe;border-radius:999px;padding:5px 8px
-          }
-          .cv18-timeline{border-left:2px solid #dbeafe;margin-left:7px;padding-left:17px}
-          .cv18-event{position:relative;margin-bottom:15px}
-          .cv18-event:before{
-            content:"";position:absolute;left:-23px;top:5px;width:10px;height:10px;
-            border-radius:50%;background:#2563eb;border:3px solid #eff6ff
-          }
-          .cv18-event-time{font-size:10px;font-weight:850;color:#64748b}
-          .cv18-event-title{font-size:14px;font-weight:920;color:#0f172a;margin-top:2px}
-          .cv18-event-copy{font-size:12px;font-weight:650;color:#52647a;line-height:1.45}
-          .cv18-project{
-            border:1px solid #dbe3ef;background:#fff;border-radius:16px;padding:15px;margin-bottom:10px
-          }
-          .cv18-project-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-          .cv18-project-name{font-size:15px;font-weight:950;color:#0f172a}
-          .cv18-pill{font-size:10px;font-weight:900;border-radius:999px;padding:5px 8px}
-          .cv18-pill.ready{color:#047857;background:#ecfdf5;border:1px solid #a7f3d0}
-          .cv18-pill.review{color:#a16207;background:#fffbeb;border:1px solid #fde68a}
-          .cv18-progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:10px 0}
-          .cv18-progress i{display:block;height:100%;background:#2563eb;border-radius:999px}
-          .cv18-project-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-          .cv18-project-stats div{font-size:11px;font-weight:720;color:#64748b}
-          .cv18-project-stats strong{display:block;font-size:14px;color:#0f172a}
-          .cv18-watch{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid #edf2f7;padding:11px 0}
-          .cv18-watch:last-child{border-bottom:0}
-          .cv18-watch strong{font-size:13px;color:#0f172a}
-          .cv18-watch p{font-size:11px;color:#64748b;margin:3px 0 0}
-          .cv18-score{font-size:11px;font-weight:900;color:#b91c1c;background:#fff1f2;border:1px solid #fecdd3;border-radius:999px;padding:5px 8px;white-space:nowrap}
-          .cv18-workload{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-          .cv18-workload-card{border:1px solid #e2e8f0;border-radius:14px;padding:13px;background:#fff}
-          .cv18-workload-card strong{font-size:14px;color:#0f172a}
-          .cv18-workload-card span{display:block;font-size:11px;color:#64748b;margin-top:4px}
-          @media(max-width:900px){
-            .cv18-status-grid,.cv18-project-stats,.cv18-workload{grid-template-columns:1fr 1fr}
-          }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Legacy page CSS retired — styling comes from cadivor_design_system.css."""
+    return
 
 
 def render_living_workspace(
@@ -245,7 +184,7 @@ def render_living_workspace(
 ) -> None:
     """Render the Living Engineering Workspace using prepared intelligence."""
     _render_css()
-    st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+    st.html('<div class="cv64-page-shell">')
 
     changes = overview.get("recent_change_summary", {})
     projects = overview.get("projects", [])
@@ -253,6 +192,7 @@ def render_living_workspace(
     timeline = [_timeline_event(row) for row in overview.get("recent_alerts", [])]
     supplier_watch = _supplier_watch(parts)
     workload = _workload(actions)
+    recommendations = overview.get("recommendations", [])
 
     blocked_projects = sum(
         1 for project in projects
@@ -269,8 +209,15 @@ def render_living_workspace(
 
     health_tone = "success" if portfolio_health >= 85 else "warning" if portfolio_health >= 70 else "danger"
     health_status = "Excellent" if portfolio_health >= 90 else "Stable" if portfolio_health >= 75 else "Needs attention"
+    release_label = (
+        "Ready for controlled release"
+        if portfolio_health >= 85 and blocked_projects == 0
+        else "Release review required"
+        if blocked_projects
+        else "Controlled review recommended"
+    )
 
-    cadivor_section_header(
+    render_section_header(
         "Your Engineering Brief",
         eyebrow="Engineering Workspace",
         description=(
@@ -280,7 +227,7 @@ def render_living_workspace(
         icon="sparkles",
     )
 
-    cadivor_metric_row(
+    render_kpi_row_safe(
         [
             MetricCard(
                 label="Portfolio Health",
@@ -310,8 +257,39 @@ def render_living_workspace(
                 tone="danger" if blocked_projects else "monitoring",
                 icon="alert",
             ),
-        ]
+        ],
+        columns=4,
     )
+
+    cadivor_panel(title="Release posture", subtitle=release_label, tone="soft")
+    cadivor_meta_row([(health_status, health_tone)])
+    cadivor_metric_row(
+        [
+            MetricCard(label="Components Changed", value=str(int(_number(changes.get("components"), 0))), tone="info", icon="layers"),
+            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="alert"),
+            MetricCard(label="Stock Changes", value=str(int(_number(changes.get("stock"), 0))), tone="monitoring", icon="factory"),
+            MetricCard(label="Price Changes", value=str(int(_number(changes.get("price"), 0))), tone="confidence", icon="chart"),
+        ],
+        columns=4,
+        compact=True,
+    )
+    cadivor_panel_end()
+
+    render_subsection_header(
+        "Engineering recommendations",
+        description="Cadivor-ranked actions based on saved evidence and open workflow.",
+        icon="clipboard",
+    )
+    if recommendations:
+        for index, recommendation in enumerate(recommendations[:3]):
+            cadivor_card(
+                f"Recommendation {index + 1}",
+                _text(recommendation),
+                badge="Priority" if index == 0 else "Review",
+                badge_tone="info" if index == 0 else "neutral",
+            )
+    else:
+        st.info("No urgent recommendation is recorded. Continue routine monitoring.")
 
     cadivor_toolbar_start()
     nav_cols = st.columns(4)
@@ -325,10 +303,34 @@ def render_living_workspace(
         internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
     cadivor_toolbar_end()
 
-    left, right = st.columns([1.28, 1])
+    if projects:
+        render_subsection_header(
+            "Project impact",
+            description="Saved BOMs ranked by health and release readiness.",
+            icon="layers",
+        )
+        impact_rows = []
+        for project in projects[:8]:
+            impact_rows.append(
+                {
+                    "Project": _text(project.get("name"), "Saved BOM"),
+                    "Health": f"{int(_number(project.get('health'), 0))}/100",
+                    "Components": int(_number(project.get("parts"), 0)),
+                    "High-Risk": int(_number(project.get("high"), 0)),
+                    "Status": _text(project.get("status"), "Needs Review"),
+                }
+            )
+        cadivor_table(
+            pd.DataFrame(impact_rows),
+            badge_columns=["Status"],
+            numeric_columns=["Components", "High-Risk"],
+            align={"Components": "right", "High-Risk": "right", "Health": "right"},
+        )
+
+    left, right = st.columns([1.28, 1], gap="medium")
 
     with left:
-        cadivor_section_header(
+        render_subsection_header(
             "Engineering Work Queue",
             description="Work is ranked by release and supply impact.",
             icon="clipboard",
@@ -382,7 +384,7 @@ def render_living_workspace(
                     align={"Priority": "right"},
                 )
 
-        cadivor_section_header(
+        render_subsection_header(
             "Engineering Timeline",
             description="The latest lifecycle, inventory, pricing, and supplier changes.",
             icon="activity",
@@ -398,34 +400,44 @@ def render_living_workspace(
                     '</div>'
                 )
             timeline_html.append('</div>')
-            st.markdown(''.join(timeline_html), unsafe_allow_html=True)
+            st.html(''.join(timeline_html))
         else:
             st.info("No recent engineering changes are available.")
 
     with right:
-        cadivor_section_header(
+        render_subsection_header(
             "Production Readiness",
             description="Projects requiring attention appear first.",
             icon="shield",
         )
+        if not projects:
+            st.info("No saved projects are available yet.")
         for index, project in enumerate(projects[:5]):
             status = _text(project.get("status"), "Needs Review")
             badge_tone = "success" if status == "Ready for Production" else "warning"
             updated = _relative_time(project.get("updated_at") or project.get("created_at"))
+            health = int(_number(project.get("health"), 0))
+            parts_count = int(_number(project.get("parts"), 0))
+            high_count = int(_number(project.get("high"), 0))
             cadivor_panel(
                 title=_text(project.get("name"), "Saved BOM"),
                 subtitle=f"Updated {updated}",
                 tone="soft",
             )
             cadivor_meta_row([(status, badge_tone)])
-            st.markdown(
-                f'<div class="cv64-progress"><i style="width:{int(_number(project.get("health"), 0))}%"></i></div>'
-                f'<div class="cv64-mini-metrics">'
-                f'<div><strong>{int(_number(project.get("health"), 0))}/100</strong><span>Health</span></div>'
-                f'<div><strong>{int(_number(project.get("parts"), 0))}</strong><span>Components</span></div>'
-                f'<div><strong>{int(_number(project.get("high"), 0))}</strong><span>High-Risk</span></div>'
-                f"</div>",
-                unsafe_allow_html=True,
+            render_kpi_row_safe(
+                [
+                    MetricCard(label="Health", value=f"{health}/100", tone=health_tone, icon="shield"),
+                    MetricCard(label="Components", value=str(parts_count), tone="info", icon="layers"),
+                    MetricCard(
+                        label="High-Risk",
+                        value=str(high_count),
+                        tone="danger" if high_count else "success",
+                        icon="alert",
+                    ),
+                ],
+                columns=3,
+                compact=True,
             )
             cadivor_panel_end()
             if project.get("id"):
@@ -437,7 +449,7 @@ def render_living_workspace(
                     analysis_id=project["id"],
                 )
 
-        cadivor_section_header(
+        render_subsection_header(
             "Supplier Watch",
             description="Components with the clearest sourcing exposure.",
             icon="factory",
@@ -462,7 +474,7 @@ def render_living_workspace(
         else:
             st.success("No supplier exception currently requires attention.")
 
-        cadivor_section_header("Team Workload", icon="clipboard")
+        render_subsection_header("Team Workload", icon="clipboard")
         if workload:
             cadivor_table(
                 pd.DataFrame(workload).rename(
@@ -474,19 +486,7 @@ def render_living_workspace(
         else:
             st.info("No assigned workload is currently recorded.")
 
-    cadivor_section_header(
-        "What Changed Since the Last Review",
-        icon="activity",
-    )
-    cadivor_metric_row(
-        [
-            MetricCard(label="Components Changed", value=str(int(_number(changes.get("components"), 0))), tone="info", icon="layers"),
-            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="alert"),
-            MetricCard(label="Stock Changes", value=str(int(_number(changes.get("stock"), 0))), tone="monitoring", icon="factory"),
-            MetricCard(label="Price Changes", value=str(int(_number(changes.get("price"), 0))), tone="confidence", icon="chart"),
-        ],
-        columns=4,
-    )
+    st.html("</div>")
 
     with st.expander("More workspace tools", expanded=False):
         shortcuts = st.columns(5)
@@ -505,5 +505,3 @@ def render_living_workspace(
                     key=f"living_shortcut_{index}",
                     use_container_width=True,
                 )
-
-    st.markdown("</div>", unsafe_allow_html=True)
