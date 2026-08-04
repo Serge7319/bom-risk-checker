@@ -2944,14 +2944,24 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
+        active_queue = monitoring_center.get("active_queue")
+        price_alerts = 0
+        if isinstance(active_queue, pd.DataFrame) and not active_queue.empty:
+            price_alerts = int(
+                active_queue["Alert Type"]
+                .astype(str)
+                .str.contains("price", case=False, regex=True)
+                .sum()
+            )
+
         render_kpi_row_safe(
             [
                 MetricCard(label="Monitored", value=f"{monitored_count:,}", detail="components", tone="info", icon="radar"),
                 MetricCard(label="Critical action", value=str(monitoring_center["immediate_actions"]), detail="priority ≥ 75", tone="danger", icon="octagon-alert"),
-                MetricCard(label="Lifecycle", value=str(monitoring_center["lifecycle_alerts"]), detail="active changes", tone="warning", icon="clock"),
-                MetricCard(label="Inventory", value=str(monitoring_center["inventory_alerts"]), detail="stock alerts", tone="monitoring", icon="package-search"),
-                MetricCard(label="Supplier", value=str(monitoring_center["supplier_alerts"]), detail="coverage changes", tone="info", icon="factory"),
-                MetricCard(label="Needs review", value=str(monitoring_center["needs_review"]), detail="open workflow", tone="warning", icon="clipboard-check"),
+                MetricCard(label="Lifecycle", value=str(monitoring_center["lifecycle_alerts"]), detail="active changes", tone="warning", icon="clock-3"),
+                MetricCard(label="Inventory", value=str(monitoring_center["inventory_alerts"]), detail="stock alerts", tone="monitoring", icon="boxes"),
+                MetricCard(label="Stock", value=f"{monitored_count:,}", detail="tracked components", tone="info", icon="package-search"),
+                MetricCard(label="Pricing", value=str(price_alerts), detail="price change alerts", tone="confidence", icon="dollar-sign"),
             ],
             columns=6,
             compact=True,
@@ -3362,7 +3372,7 @@ def run_authenticated_app() -> None:
                 MetricCard(label="Action Needed", value=str(advisor["urgent_count"]), tone="danger", icon="shopping-cart"),
                 MetricCard(label="Monitor", value=str(advisor["monitor_count"]), tone="monitoring", icon="radar"),
                 MetricCard(label="Need Second Source", value=str(advisor["second_source_count"]), tone="warning", icon="git-branch"),
-                MetricCard(label="Replacement Needed", value=str(advisor["replace_count"]), tone="info", icon="refresh-cw"),
+                MetricCard(label="Replacement Needed", value=str(advisor["replace_count"]), tone="info", icon="arrow-right-left"),
             ],
             columns=4,
         )
@@ -3837,13 +3847,16 @@ def run_authenticated_app() -> None:
                     )
 
         else:
+            rejected_count = sum(
+                1 for decision in all_decisions if str(decision.get("status")) == "Rejected"
+            )
             cadivor_metric_row(
                 [
-                    MetricCard(label="Open Decisions", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
+                    MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
                     MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
-                    MetricCard(label="Manager Approval", value=str(decision_center["awaiting_approval_count"]), tone="warning", icon="clipboard-check"),
-                    MetricCard(label="Production Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
-                    MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock"),
+                    MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
+                    MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
+                    MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
                     MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
                 ],
                 columns=3,
@@ -4533,35 +4546,28 @@ def run_authenticated_app() -> None:
         render_kpi_row_safe(
             [
                 MetricCard(
-                    label="Saved analyses",
+                    label="Reports",
                     value=str(total_reports),
-                    detail="Report-ready BOM engineering records",
+                    detail="Saved analyses ready to export",
                     tone="info",
                     icon="file-text",
                 ),
                 MetricCard(
-                    label="Average health",
-                    value=str(average_health),
-                    detail="Across all saved BOM analyses",
-                    tone="success" if average_health >= 80 else "warning",
-                    icon="gauge",
+                    label="Downloads",
+                    value=str(len(st.session_state.get("reports_session_history", []))),
+                    detail="Generated this session",
+                    tone="success",
+                    icon="download",
                 ),
                 MetricCard(
-                    label="High-risk findings",
-                    value=str(total_high_risk),
-                    detail="Components requiring engineering review",
-                    tone="danger" if total_high_risk else "success",
-                    icon="triangle-alert",
-                ),
-                MetricCard(
-                    label="Tracked components",
-                    value=str(total_parts),
-                    detail="Saved component intelligence records",
-                    tone="info",
-                    icon="boxes",
+                    label="Exports",
+                    value=str(total_reports),
+                    detail="Report packages available",
+                    tone="monitoring",
+                    icon="file-spreadsheet",
                 ),
             ],
-            columns=4,
+            columns=3,
         )
 
         st.markdown(
@@ -10933,7 +10939,7 @@ def run_authenticated_app() -> None:
                 "component availability, and portfolio health. Cadivor converts the file "
                 "into a prioritized engineering review rather than another raw spreadsheet."
             ),
-            icon="folder-archive",
+            icon="cpu",
         )
         cadivor_metric_row(
             [
