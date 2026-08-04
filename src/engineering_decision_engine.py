@@ -1128,72 +1128,180 @@ def _html_evidence_panel(
     return "".join(f"<li>{escape(item)}</li>" for item in rows)
 
 
-def _render_decision_brief_workspace(brief: Mapping[str, Any]) -> None:
+def _html_workspace_strip(brief: Mapping[str, Any]) -> str:
+    readiness = brief.get("production_readiness") or {}
+    confidence = brief.get("confidence") or {}
+    actions = brief.get("recommended_actions") or []
+    top_part, top_title = _header_top_action(actions)
+    effort_label, effort_value = _header_effort_display(brief)
+    conf_score = int(_number(confidence.get("score"), 0))
+    return f"""
+        <header class="cv671-exec-header cv672-exec-strip">
+          <div class="cv671-exec-kicker">{_decision_icon("target", 16)} Executive Engineering Decision</div>
+          <div class="cv671-exec-grid">
+            <div class="cv671-exec-stat">
+              <span>Production Status</span>
+              <strong>{escape(_text(readiness.get("label"), INSUFFICIENT_EVIDENCE))}</strong>
+            </div>
+            <div class="cv671-exec-stat">
+              <span>Engineering Confidence</span>
+              <strong>{conf_score}%</strong>
+            </div>
+            <div class="cv671-exec-stat cv671-exec-stat--action">
+              <span>Top Engineering Action</span>
+              <strong>{escape(top_part)}</strong>
+              <small>{escape(top_title)}</small>
+            </div>
+            <div class="cv671-exec-stat">
+              <span>{escape(effort_label)}</span>
+              <strong>{escape(effort_value)}</strong>
+            </div>
+          </div>
+        </header>
+    """
+
+
+WORKSPACE_CATEGORIES: tuple[str, ...] = (
+    "Decision Overview",
+    "Critical Findings",
+    "Recommended Actions",
+    "Business Impact",
+    "Evidence",
+    "Risk Analytics",
+)
+
+
+def render_engineering_workspace_strip(brief: Mapping[str, Any]) -> None:
+    """Sprint 67.2 — executive summary strip only."""
+    import streamlit as st
+
+    st.markdown(
+        f'<section class="cv671-workspace cv672-workspace-shell">{_html_workspace_strip(brief)}</section>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_engineering_workspace_overview(brief: Mapping[str, Any]) -> None:
     import streamlit as st
 
     readiness = brief.get("production_readiness") or {}
     confidence = brief.get("confidence") or {}
-    findings = brief.get("critical_findings") or []
     actions = brief.get("recommended_actions") or []
-    evidence = brief.get("supporting_evidence") or []
-    business = brief.get("business_impact") or {}
     metrics = (brief.get("advisor") or {}).get("metrics") or {}
     insufficient = bool(brief.get("insufficient_evidence"))
-
     top_part, top_title = _header_top_action(actions)
-    effort_label, effort_value = _header_effort_display(brief)
-    conf_score = int(_number(confidence.get("score"), 0))
+    release_copy = _text(readiness.get("explanation"), INSUFFICIENT_EVIDENCE)
 
     st.markdown(
         f"""
-        <section class="cv671-workspace">
-          <header class="cv671-exec-header">
-            <div class="cv671-exec-kicker">{_decision_icon("target", 16)} Executive Engineering Decision</div>
-            <div class="cv671-exec-grid">
-              <div class="cv671-exec-stat">
-                <span>Production Status</span>
-                <strong>{escape(_text(readiness.get("label"), INSUFFICIENT_EVIDENCE))}</strong>
-              </div>
-              <div class="cv671-exec-stat">
-                <span>Engineering Confidence</span>
-                <strong>{conf_score}%</strong>
-              </div>
-              <div class="cv671-exec-stat cv671-exec-stat--action">
-                <span>Top Engineering Action</span>
-                <strong>{escape(top_part)}</strong>
-                <small>{escape(top_title)}</small>
-              </div>
-              <div class="cv671-exec-stat">
-                <span>{escape(effort_label)}</span>
-                <strong>{escape(effort_value)}</strong>
-              </div>
-            </div>
-          </header>
+        <section class="cv672-category">
           <p class="cv671-summary">{escape(_text(brief.get("executive_summary")))}</p>
           <div class="cv671-status-row">
             {_html_readiness_panel(readiness, premium=True)}
             {_html_confidence_panel(confidence, metrics, insufficient=insufficient, premium=True)}
           </div>
-          <section class="cv671-block">
-            <h3 class="cv671-heading">{_decision_icon("triangle-alert", 16)} Critical Findings</h3>
-            {_html_findings_cards(findings, actions)}
-          </section>
-          <section class="cv671-block">
-            <h3 class="cv671-heading">{_decision_icon("briefcase-business", 16)} Business Impact</h3>
-            {_html_business_impact(business, workspace=True)}
-          </section>
-          <section class="cv671-block">
-            <h3 class="cv671-heading">{_decision_icon("list-checks", 16)} Recommended Actions</h3>
-            {_html_actions(actions, workspace=True)}
-          </section>
-          <section class="cv671-block">
-            <h3 class="cv671-heading">{_decision_icon("clipboard-check", 16)} Supporting Evidence</h3>
-            {_html_evidence_panel(evidence, insufficient=insufficient, workspace=True)}
-          </section>
+          <article class="cv672-overview-action">
+            <div class="cv672-section-label">{_decision_icon("target", 16)} Top action</div>
+            <strong>{escape(top_part)}</strong>
+            <span>{escape(top_title)}</span>
+          </article>
+          <article class="cv672-release-note">
+            <div class="cv672-section-label">{_decision_icon("shield", 16)} Release explanation</div>
+            <p>{escape(release_copy)}</p>
+          </article>
         </section>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_engineering_workspace_findings(brief: Mapping[str, Any]) -> None:
+    import streamlit as st
+
+    findings = brief.get("critical_findings") or []
+    actions = brief.get("recommended_actions") or []
+    st.markdown(
+        f"""
+        <section class="cv672-category">
+          <h3 class="cv671-heading">{_decision_icon("triangle-alert", 16)} Critical Findings</h3>
+          {_html_findings_cards(findings, actions)}
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_engineering_workspace_actions(brief: Mapping[str, Any]) -> None:
+    import streamlit as st
+
+    actions = brief.get("recommended_actions") or []
+    st.markdown(
+        f"""
+        <section class="cv672-category">
+          <h3 class="cv671-heading">{_decision_icon("list-checks", 16)} Recommended Actions</h3>
+          {_html_actions(actions, workspace=True)}
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_engineering_workspace_impact(brief: Mapping[str, Any]) -> None:
+    import streamlit as st
+
+    business = brief.get("business_impact") or {}
+    st.markdown(
+        f"""
+        <section class="cv672-category">
+          <h3 class="cv671-heading">{_decision_icon("briefcase-business", 16)} Business Impact</h3>
+          {_html_business_impact(business, workspace=True)}
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_engineering_workspace_evidence(brief: Mapping[str, Any]) -> None:
+    import streamlit as st
+
+    confidence = brief.get("confidence") or {}
+    evidence = brief.get("supporting_evidence") or []
+    metrics = (brief.get("advisor") or {}).get("metrics") or {}
+    insufficient = bool(brief.get("insufficient_evidence"))
+    st.markdown(
+        f"""
+        <section class="cv672-category">
+          <h3 class="cv671-heading">{_decision_icon("clipboard-check", 16)} Supporting Evidence</h3>
+          {_html_evidence_panel(evidence, insufficient=insufficient, workspace=True)}
+          <div class="cv672-evidence-confidence">
+            <h4 class="cv672-subheading">{_decision_icon("gauge", 14)} Confidence explanation</h4>
+            <p class="cv671-muted">{escape(_text(confidence.get("explanation"), INSUFFICIENT_EVIDENCE))}</p>
+            <div class="cv672-based-on"><strong>Evidence availability</strong>
+            {_evidence_checklist_html(metrics, insufficient)}</div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def workspace_category_counts(brief: Mapping[str, Any]) -> Dict[str, int]:
+    return {
+        "findings": len(brief.get("critical_findings") or []),
+        "actions": len(brief.get("recommended_actions") or []),
+    }
+
+
+def _render_decision_brief_workspace(brief: Mapping[str, Any]) -> None:
+    """Legacy full-page workspace layout — kept for fallback paths."""
+    import streamlit as st
+
+    render_engineering_workspace_strip(brief)
+    render_engineering_workspace_overview(brief)
+    render_engineering_workspace_findings(brief)
+    render_engineering_workspace_impact(brief)
+    render_engineering_workspace_actions(brief)
+    render_engineering_workspace_evidence(brief)
 
 
 def _render_engineering_decision_brief_v1(brief: Mapping[str, Any]) -> None:
