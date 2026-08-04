@@ -76,8 +76,8 @@ def inject_core_premium_ui() -> None:
 
 
 def inject_core_premium_ui_auth() -> None:
-    """Inject shared tokens and auth-shell polish on signed-out routes."""
-    inject_core_premium_ui()
+    """Auth routes use the dedicated auth stylesheet only."""
+    return
 
 
 def stop_authenticated_page() -> None:
