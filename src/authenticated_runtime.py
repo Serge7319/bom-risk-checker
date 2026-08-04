@@ -130,6 +130,10 @@ from src.components.first_analysis_brief import render_first_analysis_brief
 from src.engineering_decision_engine import (
     build_engineering_decision_brief,
     render_engineering_decision_brief,
+    get_cached_decision_brief,
+    cache_decision_brief,
+    decision_brief_cache_key,
+    format_decision_brief_for_report,
 )
 from src.onboarding_service import (
     ensure_onboarding_progress,
@@ -4231,7 +4235,7 @@ def run_authenticated_app() -> None:
                 except Exception:
                     return pd.DataFrame()
 
-        def _build_executive_pdf(analysis_row, parts_df):
+        def _build_executive_pdf(analysis_row, parts_df, decision_brief=None):
             buffer = BytesIO()
             doc = SimpleDocTemplate(
                 buffer,
@@ -4281,16 +4285,40 @@ def run_authenticated_app() -> None:
             story.append(summary_table)
             story.append(Spacer(1, 16))
 
-            if health >= 80:
-                recommendation = "Portfolio health is strong. Continue lifecycle and supplier monitoring."
-            elif health >= 60:
-                recommendation = "Review elevated-risk parts and validate supplier coverage before release."
+            if decision_brief:
+                report_sections = format_decision_brief_for_report(decision_brief)
+                story.append(Paragraph("Executive Engineering Summary", styles["Heading2"]))
+                story.append(Paragraph(report_sections["executive_summary"], styles["BodyText"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Production Readiness", styles["Heading2"]))
+                story.append(Paragraph(report_sections["production_readiness"], styles["BodyText"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Critical Findings", styles["Heading2"]))
+                story.append(Paragraph(report_sections["critical_findings"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Recommended Actions", styles["Heading2"]))
+                story.append(Paragraph(report_sections["recommended_actions"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Business Impact", styles["Heading2"]))
+                story.append(Paragraph(report_sections["business_impact"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Engineering Confidence", styles["Heading2"]))
+                story.append(Paragraph(report_sections["confidence"], styles["BodyText"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Supporting Evidence", styles["Heading2"]))
+                story.append(Paragraph(report_sections["supporting_evidence"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Spacer(1, 16))
             else:
-                recommendation = "Immediate engineering and sourcing review is recommended before production release."
+                if health >= 80:
+                    recommendation = "Portfolio health is strong. Continue lifecycle and supplier monitoring."
+                elif health >= 60:
+                    recommendation = "Review elevated-risk parts and validate supplier coverage before release."
+                else:
+                    recommendation = "Immediate engineering and sourcing review is recommended before production release."
 
-            story.append(Paragraph("Recommended action", styles["Heading2"]))
-            story.append(Paragraph(recommendation, styles["BodyText"]))
-            story.append(Spacer(1, 16))
+                story.append(Paragraph("Recommended action", styles["Heading2"]))
+                story.append(Paragraph(recommendation, styles["BodyText"]))
+                story.append(Spacer(1, 16))
 
             story.append(Paragraph("Priority component review", styles["Heading2"]))
             if parts_df.empty:
@@ -5289,15 +5317,30 @@ def run_authenticated_app() -> None:
                     columns=["_sort_alternative_count", "_sort_risk_score"]
                 )
 
+            report_brief_key = decision_brief_cache_key(
+                analysis_id=_report_value(selected_analysis, "id", "analysis_id", default="")
+            )
+            decision_brief = get_cached_decision_brief(report_brief_key)
+            if decision_brief is None:
+                decision_brief = build_engineering_decision_brief(
+                    results_df=selected_parts_df,
+                    analysis=dict(selected_analysis),
+                    health_score=_report_int(
+                        _report_value(selected_analysis, "health_score", default=0)
+                    ),
+                )
+                cache_decision_brief(report_brief_key, decision_brief)
+
             pdf_bytes = _build_executive_pdf(
                 selected_analysis,
                 selected_parts_df,
+                decision_brief=decision_brief,
             )
             ai_report = build_ai_report_intelligence(
                 selected_analysis,
                 selected_parts_df,
             )
-            ai_executive_pdf = build_ai_executive_pdf(ai_report)
+            ai_executive_pdf = build_ai_executive_pdf(ai_report, decision_brief=decision_brief)
             ai_procurement_pdf = build_ai_procurement_pdf(ai_report)
             risk_report_pdf = build_role_report_pdf(
                 title="Cadivor Engineering Risk Review",
@@ -5362,6 +5405,11 @@ def run_authenticated_app() -> None:
                         "high_risk_parts": high_risk,
                         "medium_risk_parts": medium_risk,
                         "saved_date": created_date,
+                        **(
+                            format_decision_brief_for_report(decision_brief)
+                            if decision_brief
+                            else {}
+                        ),
                     }
                 ]
             ).to_csv(index=False).encode("utf-8")
@@ -11969,10 +12017,16 @@ def run_authenticated_app() -> None:
                 project_name=project_name or (uploaded_file.name if uploaded_file else "BOM analysis"),
             )
 
-            decision_brief = build_engineering_decision_brief(
-                results_df=results_df,
-                health_score=int(st.session_state.get("health_score", 0) or 0),
+            decision_cache_key = decision_brief_cache_key(
+                session_key=str(st.session_state.get("analysis_id") or "live")
             )
+            decision_brief = get_cached_decision_brief(decision_cache_key)
+            if decision_brief is None:
+                decision_brief = build_engineering_decision_brief(
+                    results_df=results_df,
+                    health_score=int(st.session_state.get("health_score", 0) or 0),
+                )
+                cache_decision_brief(decision_cache_key, decision_brief)
             render_engineering_decision_brief(decision_brief)
 
             show_dashboard_summary(results_df)
