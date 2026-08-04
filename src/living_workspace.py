@@ -20,8 +20,6 @@ from src.ui.cadivor_design_system import (
     cadivor_panel,
     cadivor_panel_end,
     cadivor_table,
-    cadivor_toolbar_end,
-    cadivor_toolbar_start,
     render_kpi_row_safe,
     render_section_header,
     render_subsection_header,
@@ -291,17 +289,23 @@ def render_living_workspace(
     else:
         st.info("No urgent recommendation is recorded. Continue routine monitoring.")
 
-    cadivor_toolbar_start()
     nav_cols = st.columns(4)
     with nav_cols[0]:
+        cadivor_button_wrap("secondary")
         internal_nav_button("Engineering Decisions", "Engineering Decisions", key="living_decisions", use_container_width=True)
+        cadivor_button_wrap_end()
     with nav_cols[1]:
+        cadivor_button_wrap("secondary")
         internal_nav_button("Procurement Advisor", "Procurement Advisor", key="living_procurement", use_container_width=True)
+        cadivor_button_wrap_end()
     with nav_cols[2]:
+        cadivor_button_wrap("secondary")
         internal_nav_button("Monitoring", "Monitoring", key="living_monitoring", use_container_width=True)
+        cadivor_button_wrap_end()
     with nav_cols[3]:
+        cadivor_button_wrap("secondary")
         internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
-    cadivor_toolbar_end()
+        cadivor_button_wrap_end()
 
     if projects:
         render_subsection_header(
