@@ -30,6 +30,7 @@ from src.ui.cadivor_design_system.components import (
     render_decision_card_actions,
     render_kpi_card,
     render_kpi_row_safe,
+    render_metric_strip,
     render_section_header,
     render_subsection_header,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "render_decision_card_actions",
     "render_kpi_card",
     "render_kpi_row_safe",
+    "render_metric_strip",
     "render_section_header",
     "render_subsection_header",
 ]
