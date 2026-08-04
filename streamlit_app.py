@@ -108,14 +108,13 @@ from src.ui.cadivor_design_system import (
     MetricCard,
     cadivor_button_wrap,
     cadivor_button_wrap_end,
-    cadivor_dataframe,
+    cadivor_engineering_dataframe,
     cadivor_metric_row,
     cadivor_panel,
     cadivor_panel_end,
     cadivor_section_header,
     cadivor_table,
-    cadivor_toolbar_end,
-    cadivor_toolbar_start,
+    render_decision_card_actions,
     render_kpi_row_safe,
 )
 from src.components.onboarding import (
@@ -1910,7 +1909,7 @@ def show_dashboard_summary(results_df):
         ascending=False
     ).head(5)
 
-    cadivor_dataframe(
+    cadivor_engineering_dataframe(
         top_risks[
             [
                 "MPN",
@@ -3137,7 +3136,7 @@ if app_mode == "Monitoring":
             if component_search.strip():
                 q = component_search.strip().lower()
                 visible = visible[visible.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
-            cadivor_dataframe(visible)
+            cadivor_engineering_dataframe(visible)
             if monitoring_limit is not None and not is_admin and monitored_count >= int(monitoring_limit):
                 st.warning(f"Your {selected_plan_name} workspace has reached its {int(monitoring_limit):,}-part monitoring limit. Existing monitoring remains active; upgrade to Business for unlimited monitoring.")
 
@@ -3485,7 +3484,7 @@ if app_mode == "Procurement Advisor":
         if advisor["recommendation_df"].empty:
             st.info("No component purchasing data is available.")
         else:
-            cadivor_dataframe(
+            cadivor_engineering_dataframe(
                 advisor["recommendation_df"],
                 column_config={
                     "Risk Level": st.column_config.TextColumn(width="small"),
@@ -3827,7 +3826,7 @@ if app_mode == "Engineering Decisions":
                     },
                 ]
             )
-            cadivor_dataframe(context_df)
+            cadivor_engineering_dataframe(context_df)
 
         with notes_tab:
             note = st.text_area(
@@ -3917,9 +3916,9 @@ if app_mode == "Engineering Decisions":
             columns=3,
         )
 
-        cadivor_toolbar_start()
         refresh_decision_col, persistence_scope_col = st.columns([1, 3])
         with refresh_decision_col:
+            cadivor_button_wrap("secondary")
             if st.button(
                 "Refresh Decisions",
                 key="refresh_persistent_decisions",
@@ -3931,11 +3930,11 @@ if app_mode == "Engineering Decisions":
                     None,
                 )
                 st.rerun()
+            cadivor_button_wrap_end()
         with persistence_scope_col:
             st.caption(
                 f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
             )
-        cadivor_toolbar_end()
 
         queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
             [
@@ -4006,44 +4005,12 @@ if app_mode == "Engineering Decisions":
                         decision_card_html(decision),
                         unsafe_allow_html=True,
                     )
-                    card_cols = st.columns(4)
-                    with card_cols[0]:
-                        if st.button(
-                            "Review Decision",
-                            key=f"review_decision_{decision['decision_id']}",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            navigate_to(
-                                "Engineering Decisions",
-                                decision_id=decision["decision_id"],
-                            )
-                    with card_cols[1]:
-                        internal_nav_button(
-                            "Alternative",
-                            "Alternative Finder",
-                            key=f"queue_alt_{decision['decision_id']}",
-                            use_container_width=True,
-                            original_part=decision["part_number"],
-                        )
-                    with card_cols[2]:
-                        internal_nav_button(
-                            "Monitoring",
-                            "Monitoring",
-                            key=f"queue_monitor_{decision['decision_id']}",
-                            use_container_width=True,
-                        )
-                    with card_cols[3]:
-                        if decision.get("analysis_id"):
-                            internal_nav_button(
-                                "Saved BOM",
-                                "Analysis Details",
-                                key=f"queue_analysis_{decision['decision_id']}",
-                                use_container_width=True,
-                                analysis_id=decision["analysis_id"],
-                            )
-                        else:
-                            st.caption("Monitoring decision")
+                    render_decision_card_actions(
+                        decision,
+                        navigate_to=navigate_to,
+                        internal_nav_button=internal_nav_button,
+                        key_prefix=f"queue_{decision['decision_id']}",
+                    )
 
         with workload_tab:
             st.markdown("### Team Workload")
@@ -5513,7 +5480,7 @@ if app_mode == "Reports":
             if engineering_df.empty:
                 st.info("No component-level risk data is available.")
             else:
-                cadivor_dataframe(
+                cadivor_engineering_dataframe(
                     engineering_df,
                     column_config={
                         "MPN": st.column_config.TextColumn(width="medium"),
@@ -5549,7 +5516,7 @@ if app_mode == "Reports":
             if sourcing_df.empty:
                 st.info("No sourcing fields are available for this analysis.")
             else:
-                cadivor_dataframe(
+                cadivor_engineering_dataframe(
                     sourcing_df,
                     column_config={
                         "MPN": st.column_config.TextColumn(width="medium"),
@@ -5585,7 +5552,7 @@ if app_mode == "Reports":
             if lifecycle_df.empty:
                 st.info("No lifecycle fields are available for this analysis.")
             else:
-                cadivor_dataframe(lifecycle_df)
+                cadivor_engineering_dataframe(lifecycle_df)
                 lifecycle_pdf_col, lifecycle_csv_col = st.columns(2)
                 with lifecycle_pdf_col:
                     st.download_button(
@@ -5615,7 +5582,7 @@ if app_mode == "Reports":
             if alternative_df.empty:
                 st.info("No alternative-readiness fields are available for this analysis.")
             else:
-                cadivor_dataframe(alternative_df)
+                cadivor_engineering_dataframe(alternative_df)
                 alt_pdf_col, alt_csv_col = st.columns(2)
                 with alt_pdf_col:
                     st.download_button(
@@ -5808,7 +5775,7 @@ if app_mode == "Reports":
             [],
         )
         if session_history:
-            cadivor_dataframe(pd.DataFrame(session_history))
+            cadivor_engineering_dataframe(pd.DataFrame(session_history))
         else:
             st.markdown(
                 '<div class="cv-r9-empty">No reports have been downloaded during this session yet.</div>',
@@ -5884,7 +5851,7 @@ if app_mode == "Reports":
                         ),
                     }
                 )
-            cadivor_dataframe(pd.DataFrame(display_rows))
+            cadivor_engineering_dataframe(pd.DataFrame(display_rows))
     else:
         st.markdown(
             '<div class="cv-r9-empty">No saved BOM analyses are available. Analyze and save a BOM before generating reports.</div>',
@@ -6520,7 +6487,7 @@ if app_mode == "Settings":
         "Continue Customer Setup",
         "Onboarding",
         key="settings_open_onboarding",
-        type="primary",
+        type="secondary",
     )
 
     migration_required = (
@@ -6594,235 +6561,239 @@ if app_mode == "Settings":
             )
 
         with form_col:
-            st.subheader("Profile information")
+            with st.container(border=True):
+                st.subheader("Profile information")
+                st.caption(
+                    "This information personalizes your account, team presence, "
+                    "workspace records, and future report attribution."
+                )
+
+                full_name_value = st.text_input(
+                    "Full name",
+                    value=_safe_text(
+                        customer_profile.get("full_name"),
+                        profile.get("full_name", ""),
+                    ),
+                    placeholder="Joshua Kashambala",
+                    key="customer_profile_full_name",
+                )
+                company_value = st.text_input(
+                    "Company / organization",
+                    value=_safe_text(
+                        customer_profile.get("company_name"),
+                        profile.get("company", ""),
+                    ),
+                    placeholder="Egres Technologies",
+                    key="customer_profile_company",
+                )
+                job_title_value = st.text_input(
+                    "Job title",
+                    value=_safe_text(
+                        customer_profile.get("job_title"),
+                        profile.get("role_title", ""),
+                    ),
+                    placeholder="Founder, Engineering Lead, Sourcing Manager",
+                    key="customer_profile_job_title",
+                )
+
+                phone_col, country_col = st.columns(2)
+                with phone_col:
+                    phone_value = st.text_input(
+                        "Phone",
+                        value=_safe_text(
+                            customer_profile.get("phone"),
+                            profile.get("phone", ""),
+                        ),
+                        placeholder="+1 555 000 0000",
+                        key="customer_profile_phone",
+                    )
+                with country_col:
+                    country_value = st.text_input(
+                        "Country",
+                        value=_safe_text(
+                            customer_profile.get("country"),
+                            profile.get("country", ""),
+                        ),
+                        placeholder="United States",
+                        key="customer_profile_country",
+                    )
+
+                timezone_value = st.text_input(
+                    "Time zone",
+                    value=_safe_text(
+                        customer_profile.get("timezone"),
+                        profile.get("timezone", ""),
+                    ),
+                    placeholder="America/New_York",
+                    key="customer_profile_timezone",
+                )
+                avatar_value = st.text_input(
+                    "Profile image URL",
+                    value=_safe_text(
+                        customer_profile.get("avatar_url"),
+                        profile.get("avatar_url", ""),
+                    ),
+                    placeholder="https://example.com/profile.jpg",
+                    key="customer_profile_avatar",
+                )
+                bio_value = st.text_area(
+                    "Professional bio",
+                    value=_safe_text(customer_profile.get("bio"), ""),
+                    placeholder=(
+                        "Optional short description shown in future collaboration "
+                        "and approval workflows."
+                    ),
+                    height=110,
+                    key="customer_profile_bio",
+                )
+
+                cadivor_button_wrap("primary")
+                if st.button(
+                    "Save Profile",
+                    type="primary",
+                    disabled=migration_required,
+                    key="save_customer_profile",
+                ):
+                    saved_profile, save_error = update_customer_profile(
+                        supabase,
+                        user_id,
+                        {
+                            "full_name": full_name_value.strip(),
+                            "company_name": company_value.strip(),
+                            "job_title": job_title_value.strip(),
+                            "phone": phone_value.strip(),
+                            "country": country_value.strip(),
+                            "timezone": timezone_value.strip(),
+                            "avatar_url": avatar_value.strip(),
+                            "bio": bio_value.strip(),
+                        },
+                    )
+                    if save_error:
+                        st.error(f"Unable to save profile: {save_error}")
+                    else:
+                        st.success("Customer profile saved.")
+                        st.rerun()
+                cadivor_button_wrap_end()
+
+    with preferences_tab:
+        with st.container(border=True):
+            st.subheader("Application preferences")
             st.caption(
-                "This information personalizes your account, team presence, "
-                "workspace records, and future report attribution."
+                "Set the defaults Cadivor should use when presenting engineering "
+                "information and sending product notifications."
             )
 
-            full_name_value = st.text_input(
-                "Full name",
-                value=_safe_text(
-                    customer_profile.get("full_name"),
-                    profile.get("full_name", ""),
-                ),
-                placeholder="Joshua Kashambala",
-                key="customer_profile_full_name",
-            )
-            company_value = st.text_input(
-                "Company / organization",
-                value=_safe_text(
-                    customer_profile.get("company_name"),
-                    profile.get("company", ""),
-                ),
-                placeholder="Egres Technologies",
-                key="customer_profile_company",
-            )
-            job_title_value = st.text_input(
-                "Job title",
-                value=_safe_text(
-                    customer_profile.get("job_title"),
-                    profile.get("role_title", ""),
-                ),
-                placeholder="Founder, Engineering Lead, Sourcing Manager",
-                key="customer_profile_job_title",
-            )
+            appearance_options = ["System", "Light", "Dark"]
+            saved_appearance = _safe_text(
+                preferences.get("appearance"),
+                "system",
+            ).title()
+            if saved_appearance not in appearance_options:
+                saved_appearance = "System"
 
-            phone_col, country_col = st.columns(2)
-            with phone_col:
-                phone_value = st.text_input(
-                    "Phone",
-                    value=_safe_text(
-                        customer_profile.get("phone"),
-                        profile.get("phone", ""),
-                    ),
-                    placeholder="+1 555 000 0000",
-                    key="customer_profile_phone",
+            density_options = ["Comfortable", "Compact"]
+            saved_density = _safe_text(
+                preferences.get("density"),
+                "comfortable",
+            ).title()
+            if saved_density not in density_options:
+                saved_density = "Comfortable"
+
+            units_options = ["Metric", "Imperial"]
+            saved_units = _safe_text(
+                preferences.get("default_units"),
+                "metric",
+            ).title()
+            if saved_units not in units_options:
+                saved_units = "Metric"
+
+            currency_options = ["USD", "EUR", "GBP", "CAD"]
+            saved_currency = _safe_text(
+                preferences.get("default_currency"),
+                "USD",
+            ).upper()
+            if saved_currency not in currency_options:
+                saved_currency = "USD"
+
+            display_col, default_col = st.columns(2, gap="large")
+            with display_col:
+                appearance_value = st.selectbox(
+                    "Appearance",
+                    appearance_options,
+                    index=appearance_options.index(saved_appearance),
+                    key="customer_preference_appearance",
+                    help="Theme selection is stored now; full dark-theme support arrives in a later UI milestone.",
                 )
-            with country_col:
-                country_value = st.text_input(
-                    "Country",
-                    value=_safe_text(
-                        customer_profile.get("country"),
-                        profile.get("country", ""),
-                    ),
-                    placeholder="United States",
-                    key="customer_profile_country",
+                density_value = st.selectbox(
+                    "Interface density",
+                    density_options,
+                    index=density_options.index(saved_density),
+                    key="customer_preference_density",
                 )
 
-            timezone_value = st.text_input(
-                "Time zone",
-                value=_safe_text(
-                    customer_profile.get("timezone"),
-                    profile.get("timezone", ""),
-                ),
-                placeholder="America/New_York",
-                key="customer_profile_timezone",
+            with default_col:
+                units_value = st.selectbox(
+                    "Default units",
+                    units_options,
+                    index=units_options.index(saved_units),
+                    key="customer_preference_units",
+                )
+                currency_value = st.selectbox(
+                    "Default currency",
+                    currency_options,
+                    index=currency_options.index(saved_currency),
+                    key="customer_preference_currency",
+                )
+
+            st.subheader("Notification preferences")
+            email_notifications = st.toggle(
+                "Account and product email",
+                value=bool(preferences.get("email_notifications", True)),
+                key="customer_pref_email",
             )
-            avatar_value = st.text_input(
-                "Profile image URL",
-                value=_safe_text(
-                    customer_profile.get("avatar_url"),
-                    profile.get("avatar_url", ""),
-                ),
-                placeholder="https://example.com/profile.jpg",
-                key="customer_profile_avatar",
+            workspace_notifications = st.toggle(
+                "Workspace collaboration updates",
+                value=bool(preferences.get("workspace_notifications", True)),
+                key="customer_pref_workspace",
             )
-            bio_value = st.text_area(
-                "Professional bio",
-                value=_safe_text(customer_profile.get("bio"), ""),
-                placeholder=(
-                    "Optional short description shown in future collaboration "
-                    "and approval workflows."
-                ),
-                height=110,
-                key="customer_profile_bio",
+            monitoring_notifications = st.toggle(
+                "Monitoring and lifecycle alerts",
+                value=bool(preferences.get("monitoring_notifications", True)),
+                key="customer_pref_monitoring",
+            )
+            report_notifications = st.toggle(
+                "Report generation updates",
+                value=bool(preferences.get("report_notifications", True)),
+                key="customer_pref_reports",
             )
 
+            cadivor_button_wrap("primary")
             if st.button(
-                "Save Profile",
+                "Save Preferences",
                 type="primary",
-                use_container_width=True,
                 disabled=migration_required,
-                key="save_customer_profile",
+                key="save_customer_preferences",
             ):
-                saved_profile, save_error = update_customer_profile(
+                saved_preferences, save_error = update_user_preferences(
                     supabase,
                     user_id,
                     {
-                        "full_name": full_name_value.strip(),
-                        "company_name": company_value.strip(),
-                        "job_title": job_title_value.strip(),
-                        "phone": phone_value.strip(),
-                        "country": country_value.strip(),
-                        "timezone": timezone_value.strip(),
-                        "avatar_url": avatar_value.strip(),
-                        "bio": bio_value.strip(),
+                        "appearance": appearance_value.lower(),
+                        "density": density_value.lower(),
+                        "default_units": units_value.lower(),
+                        "default_currency": currency_value,
+                        "email_notifications": email_notifications,
+                        "workspace_notifications": workspace_notifications,
+                        "monitoring_notifications": monitoring_notifications,
+                        "report_notifications": report_notifications,
                     },
                 )
                 if save_error:
-                    st.error(f"Unable to save profile: {save_error}")
+                    st.error(f"Unable to save preferences: {save_error}")
                 else:
-                    st.success("Customer profile saved.")
+                    st.success("Preferences saved.")
                     st.rerun()
-
-    with preferences_tab:
-        st.subheader("Application preferences")
-        st.caption(
-            "Set the defaults Cadivor should use when presenting engineering "
-            "information and sending product notifications."
-        )
-
-        appearance_options = ["System", "Light", "Dark"]
-        saved_appearance = _safe_text(
-            preferences.get("appearance"),
-            "system",
-        ).title()
-        if saved_appearance not in appearance_options:
-            saved_appearance = "System"
-
-        density_options = ["Comfortable", "Compact"]
-        saved_density = _safe_text(
-            preferences.get("density"),
-            "comfortable",
-        ).title()
-        if saved_density not in density_options:
-            saved_density = "Comfortable"
-
-        units_options = ["Metric", "Imperial"]
-        saved_units = _safe_text(
-            preferences.get("default_units"),
-            "metric",
-        ).title()
-        if saved_units not in units_options:
-            saved_units = "Metric"
-
-        currency_options = ["USD", "EUR", "GBP", "CAD"]
-        saved_currency = _safe_text(
-            preferences.get("default_currency"),
-            "USD",
-        ).upper()
-        if saved_currency not in currency_options:
-            saved_currency = "USD"
-
-        display_col, default_col = st.columns(2, gap="large")
-        with display_col:
-            appearance_value = st.selectbox(
-                "Appearance",
-                appearance_options,
-                index=appearance_options.index(saved_appearance),
-                key="customer_preference_appearance",
-                help="Theme selection is stored now; full dark-theme support arrives in a later UI milestone.",
-            )
-            density_value = st.selectbox(
-                "Interface density",
-                density_options,
-                index=density_options.index(saved_density),
-                key="customer_preference_density",
-            )
-
-        with default_col:
-            units_value = st.selectbox(
-                "Default units",
-                units_options,
-                index=units_options.index(saved_units),
-                key="customer_preference_units",
-            )
-            currency_value = st.selectbox(
-                "Default currency",
-                currency_options,
-                index=currency_options.index(saved_currency),
-                key="customer_preference_currency",
-            )
-
-        st.subheader("Notification preferences")
-        email_notifications = st.toggle(
-            "Account and product email",
-            value=bool(preferences.get("email_notifications", True)),
-            key="customer_pref_email",
-        )
-        workspace_notifications = st.toggle(
-            "Workspace collaboration updates",
-            value=bool(preferences.get("workspace_notifications", True)),
-            key="customer_pref_workspace",
-        )
-        monitoring_notifications = st.toggle(
-            "Monitoring and lifecycle alerts",
-            value=bool(preferences.get("monitoring_notifications", True)),
-            key="customer_pref_monitoring",
-        )
-        report_notifications = st.toggle(
-            "Report generation updates",
-            value=bool(preferences.get("report_notifications", True)),
-            key="customer_pref_reports",
-        )
-
-        if st.button(
-            "Save Preferences",
-            type="primary",
-            use_container_width=True,
-            disabled=migration_required,
-            key="save_customer_preferences",
-        ):
-            saved_preferences, save_error = update_user_preferences(
-                supabase,
-                user_id,
-                {
-                    "appearance": appearance_value.lower(),
-                    "density": density_value.lower(),
-                    "default_units": units_value.lower(),
-                    "default_currency": currency_value,
-                    "email_notifications": email_notifications,
-                    "workspace_notifications": workspace_notifications,
-                    "monitoring_notifications": monitoring_notifications,
-                    "report_notifications": report_notifications,
-                },
-            )
-            if save_error:
-                st.error(f"Unable to save preferences: {save_error}")
-            else:
-                st.success("Preferences saved.")
-                st.rerun()
+            cadivor_button_wrap_end()
 
         st.markdown(
             """
@@ -7429,7 +7400,7 @@ if app_mode == "Workspace":
                     for row in pending_invites
                 ]
             )
-            cadivor_dataframe(
+            cadivor_engineering_dataframe(
                 invite_df,
                 column_config={
                     "Email": st.column_config.TextColumn(width="medium"),
@@ -7513,7 +7484,7 @@ if app_mode == "Workspace":
             if not filtered_history:
                 st.info("No workspace events match the current filters.")
             else:
-                cadivor_dataframe(
+                cadivor_engineering_dataframe(
                     pd.DataFrame(filtered_history[:history_limit]),
                     height=min(520, 75 + 36 * min(len(filtered_history), history_limit)),
                 )
@@ -7601,7 +7572,7 @@ if app_mode == "Workspace":
                 st.info("No audit records match the current filters.")
             else:
                 display_columns = ["Time", "Actor", "Category", "Action", "Details"]
-                cadivor_dataframe(
+                cadivor_engineering_dataframe(
                     pd.DataFrame(friendly_audit[:audit_limit])[display_columns],
                     height=min(560, 75 + 36 * min(len(friendly_audit), audit_limit)),
                 )
@@ -7995,27 +7966,12 @@ if app_mode == "Admin":
             "Created At",
         ]
 
-        activity_display_df = activity_df[display_cols].rename(
-            columns={
-                "project_name": "Project Name",
-                "health_score": "Health Score",
-                "high_risk_count": "High Risk Parts",
-                "medium_risk_count": "Medium Risk Parts",
-                "low_risk_count": "Low Risk Parts",
-                "created_at": "Created At",
-            }
-        )
+        activity_display_df = activity_df[display_cols]
 
-        st.dataframe(
-            activity_display_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+        cadivor_engineering_dataframe(activity_display_df)
 
     else:
         st.info("No users found.")
-
-    st.dataframe(activity_df, use_container_width=True, hide_index=True)
 
     stop_authenticated_page()
 
@@ -9963,11 +9919,7 @@ if app_mode == "Alternative Finder":
         )
 
         with st.container(key="af62b_compact_table"):
-            st.dataframe(
-                comparison_df,
-                use_container_width=True,
-                hide_index=True,
-            )
+            cadivor_engineering_dataframe(comparison_df)
 
         st.markdown(
             """
@@ -10394,11 +10346,7 @@ if app_mode == "Alternative Finder":
                         }
                     )
 
-                st.dataframe(
-                    pd.DataFrame(history_rows),
-                    use_container_width=True,
-                    hide_index=True,
-                )
+                cadivor_engineering_dataframe(pd.DataFrame(history_rows))
 
                 decision_options = {
                     (
@@ -10440,11 +10388,7 @@ if app_mode == "Alternative Finder":
             f"View all {len(alternatives_df)} ranked alternatives",
             expanded=False,
         ):
-            st.dataframe(
-                alternatives_df,
-                use_container_width=True,
-                hide_index=True,
-            )
+            cadivor_engineering_dataframe(alternatives_df)
 
         with st.expander("Advanced multi-part comparison", expanded=False):
             st.markdown(
@@ -10539,12 +10483,13 @@ if app_mode == "Alternative Finder":
                             if column in advanced_df.columns
                         ]
 
-                        st.dataframe(
+                        cadivor_engineering_dataframe(
                             advanced_df[display_columns]
                             if display_columns
                             else advanced_df,
-                            use_container_width=True,
-                            hide_index=True,
+                            column_config={
+                                "Risk Score": st.column_config.NumberColumn(format="%d"),
+                            },
                         )
 
                         csv = advanced_df.to_csv(index=False).encode("utf-8")
@@ -12128,19 +12073,17 @@ Unlock more power:
             }
         )
 
-        st.dataframe(
+        cadivor_engineering_dataframe(
             filtered_df[display_columns],
-            use_container_width=True,
-            hide_index=True,
             column_config={
                 "MPN": st.column_config.TextColumn(width="medium"),
                 "Manufacturer": st.column_config.TextColumn(width="medium"),
                 "Best Source": st.column_config.TextColumn(width="small"),
-                "Supplier Count": st.column_config.NumberColumn(width="small"),
-                "Stock Available": st.column_config.NumberColumn(width="small"),
+                "Supplier Count": st.column_config.NumberColumn(width="small", format="%,d"),
+                "Stock Available": st.column_config.NumberColumn(width="small", format="%,d"),
                 "Lifecycle Status": st.column_config.TextColumn(width="medium"),
                 "Has Alternates": st.column_config.CheckboxColumn(width="small"),
-                "Risk Score": st.column_config.NumberColumn(width="small"),
+                "Risk Score": st.column_config.NumberColumn(width="small", format="%d"),
                 "Risk Level Display": st.column_config.TextColumn(width="small"),
                 "Risk Reasons": st.column_config.TextColumn(
                     "Risk Reasons",
