@@ -35,12 +35,12 @@ Configure these optional globals before `app.js` loads:
 </script>
 ```
 
-If unset, Sign In and trial links default to the verified Streamlit Cloud deployment. The marketing origin defaults to the current site origin when served locally.
+If unset, Sign In and trial links default to `https://app.cadivor.com`. The marketing origin defaults to `https://www.cadivor.com`.
 
 The Python app uses the same concepts via environment variables:
 
 - `CADIVOR_MARKETING_ORIGIN` (default `https://www.cadivor.com`)
-- `CADIVOR_APP_ORIGIN` (default Streamlit Cloud production URL)
+- `CADIVOR_APP_ORIGIN` (default `https://app.cadivor.com`)
 
 ## Deployment
 
