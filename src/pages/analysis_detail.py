@@ -11,6 +11,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ai_advisor import build_engineering_supply_advisor
+from src.ui.performance_cache import (
+    cached_engineering_advisor,
+    cached_engineering_context,
+    cached_knowledge_graph,
+)
 from src.engineering_decision_engine import (
     build_engineering_decision_brief,
     render_engineering_workspace_strip,
@@ -797,30 +802,44 @@ def render_analysis_detail(
     created = analysis.get("created_at")
     risk_status = "Review Recommended" if health < 80 or high else "Healthy"
     health_cls = _health_class(health)
-    advisor = build_engineering_supply_advisor(
+    advisor = cached_engineering_advisor(
+        analysis_id,
         analysis=analysis,
         parts=parts,
         alerts=alerts,
         alternatives=alternatives,
+        builder=build_engineering_supply_advisor,
     )
-    engineering_context = build_engineering_context(
-        supabase=supabase,
-        analysis=analysis,
-        user_id=user_id,
-        workspace_id=workspace_id or "",
-        parts=parts,
-        alerts=alerts,
-        alternatives=alternatives,
-        comments=comments,
-        followers=followers,
+    context_fingerprint = (
+        f"{len(parts)}:{len(alerts)}:{len(alternatives)}:"
+        f"{len(comments)}:{len(followers)}:{health}"
+    )
+    engineering_context = cached_engineering_context(
+        analysis_id,
+        fingerprint=context_fingerprint,
+        builder=lambda: build_engineering_context(
+            supabase=supabase,
+            analysis=analysis,
+            user_id=user_id,
+            workspace_id=workspace_id or "",
+            parts=parts,
+            alerts=alerts,
+            alternatives=alternatives,
+            comments=comments,
+            followers=followers,
+        ),
     )
     context_summary = engineering_context.summary
     context_coverage = engineering_context.coverage
-    knowledge_graph = build_knowledge_graph(
-        supabase=supabase,
-        context=engineering_context,
-        user_id=user_id,
-        workspace_id=workspace_id or "",
+    knowledge_graph = cached_knowledge_graph(
+        analysis_id,
+        fingerprint=f"{context_fingerprint}:{context_summary.get('generated_at', '')}",
+        builder=lambda: build_knowledge_graph(
+            supabase=supabase,
+            context=engineering_context,
+            user_id=user_id,
+            workspace_id=workspace_id or "",
+        ),
     )
     graph_summary = knowledge_graph.summary
     graph_counts = graph_summary.get("counts") or {}
@@ -1963,7 +1982,9 @@ def render_analysis_detail(
                 table_col, detail_col = st.columns([1.25, 0.75], gap="medium")
                 with table_col:
                     rows = []
-                    for part in filtered_parts:
+                    max_component_rows = 100
+                    visible_parts = filtered_parts[:max_component_rows]
+                    for part in visible_parts:
                         mpn_value = _safe(
                             _part_value(part, "mpn", "MPN"),
                             "Unknown MPN",
@@ -2036,6 +2057,12 @@ def render_analysis_detail(
                         f'<span>{len(filtered_parts)} records</span>'
                         '</div>'
                         + "".join(rows)
+                        + (
+                            f'<p class="cv71-table-note">Showing first {max_component_rows} of '
+                            f"{len(filtered_parts)} components. Refine filters to narrow the list.</p>"
+                            if len(filtered_parts) > max_component_rows
+                            else ""
+                        )
                         + '</div>'
                     )
                     st.markdown(
