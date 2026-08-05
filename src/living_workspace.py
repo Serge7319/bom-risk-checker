@@ -8,20 +8,18 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import html
 from typing import Any, Callable, Dict, Iterable, List, Optional
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
 
 from src.ui.cadivor_design_system import (
     MetricCard,
-    cadivor_button_wrap,
-    cadivor_button_wrap_end,
     cadivor_table,
     render_kpi_row_safe,
     render_section_header,
     render_subsection_header,
 )
-from src.ui.navigation import internal_nav_button
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -80,6 +78,52 @@ def _action_button_label(action: Dict[str, Any]) -> str:
     if "stock" in action_text or "source" in action_text:
         return "Find Source"
     return "Review Purchase"
+
+
+def _work_queue_action_href(action: Dict[str, Any]) -> str:
+    destination = _text(action.get("page"), "Engineering Decisions")
+    params = [f"page={quote(destination)}"]
+    if destination == "Engineering Decisions" and action.get("decision_id"):
+        params.append(f"decision_id={quote(str(action['decision_id']))}")
+    return "?" + "&".join(params)
+
+
+def _full_work_queue_table_html(actions: Iterable[Dict[str, Any]]) -> str:
+    rows = list(actions or [])
+    if not rows:
+        return (
+            '<section class="cv6723-compact-panel cv6723-empty-note">'
+            "<strong>No urgent work recorded</strong>"
+            "<p>The prioritized queue is clear.</p></section>"
+        )
+    table_html = [
+        '<div class="cv6723-compact-table-wrap">',
+        '<table class="cv6723-compact-table">',
+        "<thead><tr>",
+        "<th>Component or Project</th>",
+        "<th>Recommended Work</th>",
+        "<th>Owner</th>",
+        "<th>Due</th>",
+        "<th>Priority</th>",
+        "<th>Action</th>",
+        "</tr></thead><tbody>",
+    ]
+    for action in rows:
+        priority = int(_number(action.get("priority"), 0))
+        label = _action_button_label(action)
+        href = _work_queue_action_href(action)
+        table_html.append(
+            "<tr>"
+            f"<td>{html.escape(_text(action.get('item'), 'BOM'))}</td>"
+            f"<td>{html.escape(_text(action.get('title'), 'Review engineering action'))}</td>"
+            f"<td>{html.escape(_text(action.get('owner'), 'Engineering'))}</td>"
+            f"<td>{html.escape(_text(action.get('due'), '—'))}</td>"
+            f'<td><span class="cv6723-status-chip cv6723-status-chip--info">P{priority}</span></td>'
+            f'<td><a class="cv6723-inline-link" href="{href}" target="_self">{html.escape(label)} →</a></td>'
+            "</tr>"
+        )
+    table_html.append("</tbody></table></div>")
+    return "".join(table_html)
 
 
 def timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
@@ -197,6 +241,8 @@ def _compact_work_queue_html(actions: Iterable[Dict[str, Any]], *, limit: int = 
     body = ['<div class="cv6723-queue-list">']
     for action in rows:
         priority = int(_number(action.get("priority"), 0))
+        label = _action_button_label(action)
+        href = _work_queue_action_href(action)
         body.append(
             '<article class="cv6723-queue-row">'
             f'<div class="cv6723-queue-main">'
@@ -206,6 +252,7 @@ def _compact_work_queue_html(actions: Iterable[Dict[str, Any]], *, limit: int = 
             f'<div class="cv6723-queue-meta">'
             f'<span class="cv6723-status-chip cv6723-status-chip--info">P{priority}</span>'
             f'<span>{html.escape(_text(action.get("owner"), "Engineering"))}</span>'
+            f'<a class="cv6723-inline-link" href="{href}" target="_self">{html.escape(label)} →</a>'
             f"</div></article>"
         )
     body.append("</div>")
@@ -419,60 +466,23 @@ def render_engineering_overview_workspace(
     )
     if len(actions) > 3:
         with st.expander(f"View complete work queue ({len(actions)})", expanded=False):
-            queue_df = pd.DataFrame(actions)
-            visible = [column for column in ("item", "title", "owner", "due", "priority") if column in queue_df.columns]
-            cadivor_table(
-                queue_df[visible].rename(
-                    columns={
-                        "item": "Component or Project",
-                        "title": "Recommended Work",
-                        "owner": "Owner",
-                        "due": "Due",
-                        "priority": "Priority",
-                    }
-                ),
-                caption="Complete prioritized engineering queue",
-                monospace_columns=["Component or Project"],
-                numeric_columns=["Priority"],
-                align={"Priority": "right"},
-            )
-            for index, action in enumerate(actions[:8]):
-                destination = _text(action.get("page"), "Engineering Decisions")
-                kwargs: Dict[str, Any] = {}
-                if destination == "Engineering Decisions" and action.get("decision_id"):
-                    kwargs["decision_id"] = action["decision_id"]
-                internal_nav_button(
-                    _action_button_label(action),
-                    destination,
-                    key=f"living_queue_action_{index}",
-                    use_container_width=True,
-                    **kwargs,
-                )
+            st.html(_full_work_queue_table_html(actions))
 
     render_subsection_header(
         "Quick engineering actions",
         description="Jump to the most common engineering workflows.",
         icon="zap",
     )
-    st.markdown('<div class="cv6723-action-toolbar">', unsafe_allow_html=True)
-    nav_cols = st.columns(4)
-    with nav_cols[0]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Engineering Decisions", "Engineering Decisions", key="living_decisions", use_container_width=True)
-        cadivor_button_wrap_end()
-    with nav_cols[1]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="living_procurement", use_container_width=True)
-        cadivor_button_wrap_end()
-    with nav_cols[2]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Monitoring", "Monitoring", key="living_monitoring", use_container_width=True)
-        cadivor_button_wrap_end()
-    with nav_cols[3]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
-        cadivor_button_wrap_end()
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.html(
+        """
+        <nav class="cv6723-action-toolbar cv6723-quick-actions" aria-label="Quick engineering actions">
+          <a class="cv6723-quick-action" href="?page=Engineering%20Decisions" target="_self">Engineering Decisions</a>
+          <a class="cv6723-quick-action" href="?page=Procurement%20Advisor" target="_self">Procurement Advisor</a>
+          <a class="cv6723-quick-action" href="?page=Monitoring" target="_self">Monitoring</a>
+          <a class="cv6723-quick-action" href="?page=Reports" target="_self">Reports</a>
+        </nav>
+        """
+    )
 
     if activation_hook:
         activation_hook()
@@ -583,24 +593,19 @@ def render_dashboard_monitoring_workspace(
     timeline = [timeline_event(row) for row in alert_rows]
     supplier_rows = supplier_watch_rows(parts)
 
-    header_col, action_col = st.columns([4, 1])
-    with header_col:
-        st.markdown(
-            """
-            <header class="cv672-dashboard-workspace-header">
-              <h2>Monitoring</h2>
-              <p>Lifecycle, inventory, pricing, and supplier change summaries from your workspace.</p>
-            </header>
-            """,
-            unsafe_allow_html=True,
-        )
-    with action_col:
-        internal_nav_button(
-            "Open Monitoring Center",
-            "Monitoring",
-            key="dashboard_monitoring_center_header",
-            use_container_width=True,
-        )
+    st.html(
+        """
+        <header class="cv672-dashboard-workspace-header cv6723-monitoring-header">
+          <div>
+            <h2>Monitoring</h2>
+            <p>Lifecycle, inventory, pricing, and supplier change summaries from your workspace.</p>
+          </div>
+          <a class="cv6723-quick-action cv6723-monitoring-header-link" href="?page=Monitoring" target="_self">
+            Open Monitoring Center →
+          </a>
+        </header>
+        """
+    )
 
     render_kpi_row_safe(
         [
