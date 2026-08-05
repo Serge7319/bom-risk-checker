@@ -24,9 +24,9 @@ CADIVOR_MARKETING_ORIGIN = _normalize_origin(
 CADIVOR_APP_ORIGIN = _normalize_origin(
     os.getenv(
         "CADIVOR_APP_ORIGIN",
-        "https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app",
+        "https://app.cadivor.com",
     ),
-    "https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app",
+    "https://app.cadivor.com",
 )
 
 # Backward-compatible alias used by older modules.
