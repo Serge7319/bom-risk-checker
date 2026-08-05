@@ -22,6 +22,7 @@ from src.auth_state import (
     AUTH_AUTHENTICATED,
     AUTH_SIGNED_OUT,
     begin_logout,
+    render_external_logout_redirect,
     resolve_auth_state,
 )
 
@@ -144,6 +145,11 @@ def ensure_authenticated_or_stop() -> None:
 
     if st.session_state.pop("cadivor_logout_requested", False):
         begin_logout(supabase, cookie_manager)
+
+    if st.session_state.pop("cadivor_signing_out", False):
+        log_startup_phase("logout_redirect")
+        render_external_logout_redirect()
+        st.stop()
 
     log_startup_phase("resolve_auth_state")
     auth_status = resolve_auth_state(supabase, cookie_manager)
