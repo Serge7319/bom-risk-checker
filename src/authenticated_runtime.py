@@ -32,7 +32,19 @@ from src.decision_repository import (
 from src.procurement_advisor import build_procurement_advisor
 from src.engineering_overview import build_engineering_overview
 from src.readability_system import readability_css
-from src.living_workspace import render_living_workspace
+from src.living_workspace import (
+    compute_dashboard_summary_metrics,
+    render_dashboard_monitoring_workspace,
+    render_dashboard_summary_strip,
+    render_engineering_overview_workspace,
+)
+from src.pages.dashboard_workspaces import (
+    DASHBOARD_WORKSPACES,
+    inject_dashboard_workspace_styles,
+    load_portfolio_dashboard_context,
+    render_dashboard_analytics_workspace,
+    render_portfolio_intelligence_workspace,
+)
 from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
 from src.design_impact_analyzer import build_design_impact, render_design_impact
 from src.cost_optimization import build_cost_optimization, render_cost_optimization
@@ -88,7 +100,6 @@ from src.ui.framework import (
     dashboard_command_center,
     dashboard_insight_card,
 )
-from src.pages.dashboard import render_dashboard
 from src.pages.analysis_detail import render_analysis_detail
 from src.ui.navigation import navigate_to, internal_nav_button
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
@@ -125,7 +136,9 @@ from src.components.onboarding import (
     render_analysis_success,
     render_upload_detected,
     render_first_run_dashboard,
+    render_activation_strip,
 )
+from src.components.upgrade_prompt import render_upgrade_prompt
 from src.components.first_analysis_brief import render_first_analysis_brief
 from src.engineering_decision_engine import (
     build_engineering_decision_brief,
@@ -2773,31 +2786,88 @@ def run_authenticated_app() -> None:
                 st.session_state["preview_onboarding"] = "1"
                 navigate_to("Dashboard")
 
-        overview_tab, portfolio_tab = st.tabs(
-            ["Engineering Overview", "Portfolio Dashboard"]
-        )
+        dashboard_metrics = compute_dashboard_summary_metrics(overview)
+        render_dashboard_summary_strip(overview=overview, metrics=dashboard_metrics)
 
-        with overview_tab:
-            render_living_workspace(
-                overview=overview,
-                parts=overview_parts,
-                internal_nav_button=internal_nav_button,
+        dashboard_nav_key = "cv672_dashboard_workspace_radio"
+        if "dashboard_workspace_initialized" not in st.session_state:
+            st.session_state["dashboard_workspace_initialized"] = True
+            st.session_state["dashboard_workspace_tab"] = "Engineering Overview"
+            st.session_state[dashboard_nav_key] = "Engineering Overview"
+
+        pending_workspace = st.session_state.get("dashboard_workspace_tab", "Engineering Overview")
+        if pending_workspace not in DASHBOARD_WORKSPACES:
+            pending_workspace = "Engineering Overview"
+            st.session_state[dashboard_nav_key] = pending_workspace
+
+        if pending_workspace == "Engineering Overview":
+            profile = get_user_profile(current_user)
+            render_activation_strip(
+                analyses_count=len(real_overview_analyses),
+                has_review=False,
+                has_report=False,
+            )
+            render_upgrade_prompt(
+                plan_name=str(profile.get("plan") or current_user.get("plan") or "Starter"),
+                monthly_used=len(real_overview_analyses),
+                monthly_limit=5,
             )
 
-        with portfolio_tab:
-            render_dashboard(
-                current_user=current_user,
-                supabase=supabase,
-                load_analysis_history=load_analysis_history,
-                load_alternative_history=load_alternative_history,
-                render_global_search_panel=render_global_search_panel,
+        st.markdown('<div class="cv672-dashboard-workspace-root"></div>', unsafe_allow_html=True)
+        workspace_category = st.radio(
+            "Dashboard workspace",
+            DASHBOARD_WORKSPACES,
+            horizontal=True,
+            key=dashboard_nav_key,
+            label_visibility="collapsed",
+        )
+        st.session_state["dashboard_workspace_tab"] = workspace_category
+
+        portfolio_cache_key = f"dashboard_portfolio_ctx_{current_user['id']}_{active_workspace_id or 'none'}"
+
+        if workspace_category == "Engineering Overview":
+            render_engineering_overview_workspace(
+                overview=overview,
+                metrics=dashboard_metrics,
+                internal_nav_button=internal_nav_button,
+            )
+        elif workspace_category == "Portfolio Intelligence":
+            inject_dashboard_workspace_styles()
+            if portfolio_cache_key not in st.session_state:
+                st.session_state[portfolio_cache_key] = load_portfolio_dashboard_context(
+                    current_user=current_user,
+                    load_alternative_history=load_alternative_history,
+                    get_user_profile=get_user_profile,
+                    preloaded_analyses=overview_analyses,
+                    preloaded_alerts=overview_alerts,
+                    fallback_analyses=real_overview_analyses,
+                )
+            render_portfolio_intelligence_workspace(
+                ctx=st.session_state[portfolio_cache_key],
+                overview=overview,
+                internal_nav_button=internal_nav_button,
+            )
+        elif workspace_category == "Analytics":
+            inject_dashboard_workspace_styles()
+            if portfolio_cache_key not in st.session_state:
+                st.session_state[portfolio_cache_key] = load_portfolio_dashboard_context(
+                    current_user=current_user,
+                    load_alternative_history=load_alternative_history,
+                    get_user_profile=get_user_profile,
+                    preloaded_analyses=overview_analyses,
+                    preloaded_alerts=overview_alerts,
+                    fallback_analyses=real_overview_analyses,
+                )
+            render_dashboard_analytics_workspace(
+                ctx=st.session_state[portfolio_cache_key],
                 light_plotly_layout=light_plotly_layout,
-                empty_state=empty_state,
-                get_user_profile=get_user_profile,
-                _qp_value=_qp_value,
-                workspace_id=active_workspace_id,
-                workspace_name=active_workspace_name,
-                fallback_analyses=real_overview_analyses,
+            )
+        elif workspace_category == "Monitoring":
+            render_dashboard_monitoring_workspace(
+                overview=overview,
+                parts=overview_parts,
+                alerts=overview_alerts,
+                internal_nav_button=internal_nav_button,
             )
         inject_workspace_consistency_css()
         st.session_state.pop("cadivor_route_transition", None)
