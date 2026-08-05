@@ -1661,16 +1661,7 @@ div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRa
 
 /* Sprint 67.2 — Dashboard workspace navigation (scoped) */
 .cv672-dashboard-heading {
-  margin: 0 0 18px;
-}
-
-.cv672-dashboard-kicker {
-  margin: 0 0 7px;
-  color: var(--cv64-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin: 20px 0 20px;
 }
 
 .cv672-dashboard-title {
@@ -1683,7 +1674,7 @@ div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRa
 }
 
 .cv672-dashboard-shell {
-  margin: 0 0 28px;
+  margin: 0 0 24px;
 }
 
 .cv672-dashboard-workspace-header {
@@ -2337,6 +2328,52 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
 
 .cv6723-action-toolbar {
   padding: 12px;
+}
+
+.cv6723-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.cv6723-quick-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #94a3b8;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--cv64-navy);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.cv6723-quick-action:hover {
+  background: #eff6ff;
+  border-color: var(--cv64-blue);
+  color: #1d4ed8;
+}
+
+.cv6723-monitoring-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cv6723-monitoring-header-link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cv6723-activity-list {
+  display: grid;
+  gap: 10px;
 }
 
 .cv6723-compact-table-wrap,
