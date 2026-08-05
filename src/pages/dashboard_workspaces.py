@@ -12,6 +12,7 @@ import streamlit as st
 
 from src.living_workspace import (
     render_portfolio_project_summaries,
+    render_subsection_header,
     render_team_workload_section,
 )
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
@@ -65,12 +66,88 @@ def render_dashboard_workspace_navigation(*, radio_key: str) -> str:
 def render_workspace_section_header(title: str, description: str) -> None:
     st.markdown(
         f"""
-        <header class="cv672-dashboard-workspace-header">
+        <header class="cv672-dashboard-workspace-header cv6723-workspace-header">
           <h2>{html.escape(title)}</h2>
           <p>{html.escape(description)}</p>
         </header>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def _alert_trend_frame(alert_data: List[Dict[str, Any]], *, keyword: str) -> pd.DataFrame:
+    rows = []
+    for item in alert_data:
+        blob = " ".join(
+            str(item.get(key) or "")
+            for key in ("alert_type", "alert_message", "change_type", "message")
+        ).lower()
+        if keyword != "alert" and keyword not in blob:
+            continue
+        created_at = pd.to_datetime(
+            item.get("created_at") or item.get("detected_at"),
+            errors="coerce",
+            utc=True,
+        )
+        if pd.isna(created_at):
+            continue
+        rows.append({"created_at": created_at})
+    if not rows:
+        return pd.DataFrame(columns=["Date", "Events"])
+    frame = pd.DataFrame(rows)
+    frame["Date"] = frame["created_at"].dt.floor("D")
+    daily = frame.groupby("Date", as_index=False).size().rename(columns={"size": "Events"})
+    return daily.sort_values("Date").tail(7).reset_index(drop=True)
+
+
+def _render_trend_chart_panel(
+    *,
+    title: str,
+    description: str,
+    frame: pd.DataFrame,
+    light_plotly_layout: Callable[..., Any],
+    line_color: str,
+    fill_rgba: str,
+    empty_copy: str,
+) -> None:
+    st.markdown(
+        f"""
+        <div class="cv6723-chart-panel-head">
+          <strong>{html.escape(title)}</strong>
+          <span>{html.escape(description)}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if frame.empty:
+        st.markdown(
+            f'<section class="cv6723-chart-empty">{html.escape(empty_copy)}</section>',
+            unsafe_allow_html=True,
+        )
+        return
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=frame["Date"],
+            y=frame["Events"],
+            mode="lines+markers",
+            line={"color": line_color, "width": 2.2},
+            marker={"size": 4, "color": "#FFFFFF", "line": {"color": line_color, "width": 1.5}},
+            fill="tozeroy",
+            fillcolor=fill_rgba,
+        )
+    )
+    fig.update_layout(
+        margin={"l": 2, "r": 4, "t": 8, "b": 2},
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_xaxes(showgrid=False, showline=False)
+    fig.update_yaxes(gridcolor="rgba(148,163,184,0.12)", zeroline=False, rangemode="tozero")
+    st.plotly_chart(
+        light_plotly_layout(fig, height=140),
+        use_container_width=True,
+        config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
     )
 
 
@@ -531,19 +608,15 @@ def render_portfolio_intelligence_workspace(
     )
 
     declining_projects = ctx.get("declining_projects") or []
-    st.markdown(
-        """
-        <div class="cv-v4-section-head">
-          <div>
-            <div class="cv-v4-section-title">Projects requiring attention</div>
-            <div class="cv-v4-section-meta">Projects moving in the wrong direction.</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+
+    render_subsection_header(
+        "Projects requiring attention",
+        description="Projects moving in the wrong direction.",
+        icon="triangle-alert",
     )
     if declining_projects:
-        for project in declining_projects[:3]:
+        attention_rows = []
+        for project in declining_projects[:4]:
             project_name = html.escape(str(project.get("project") or "Saved BOM"))
             health_change = int(project.get("health_change", 0) or 0)
             risk_change = int(project.get("risk_change", 0) or 0)
@@ -553,31 +626,48 @@ def render_portfolio_intelligence_workspace(
             if risk_change > 0:
                 explanation_parts.append(f"high-risk {risk_change:+d}")
             explanation = " • ".join(explanation_parts) or "Recorded risk increased"
-            st.markdown(
-                f"""
-                <div class="cv231-activity-card" style="padding:12px 14px;">
-                  <div class="cv231-activity-type">Needs Attention</div>
-                  <div class="cv231-activity-title">{project_name}</div>
-                  <div class="cv231-activity-copy">{html.escape(explanation)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+            attention_rows.append(
+                f"<tr><td>{project_name}</td>"
+                f"<td>{health_change:+d}</td>"
+                f"<td>{risk_change:+d}</td>"
+                f"<td>{html.escape(explanation)}</td></tr>"
             )
+        st.markdown(
+            """
+            <div class="cv6723-section">
+              <div class="cv6723-compact-table-wrap">
+                <table class="cv6723-compact-table">
+                  <thead>
+                    <tr><th>Project</th><th>Health Δ</th><th>Risk Δ</th><th>Signal</th></tr>
+                  </thead>
+                  <tbody>
+            """
+            + "".join(attention_rows)
+            + """
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     else:
         st.markdown(
             """
-            <section class="cv672-attention-stable">
-              <div class="cv672-attention-stable-icon" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                  <path d="m9 11 3 3L22 4"/>
-                </svg>
-              </div>
-              <div>
-                <strong>No projects currently trending downward</strong>
-                <p>Portfolio health is stable across saved projects.</p>
-              </div>
-            </section>
+            <div class="cv6723-section">
+              <section class="cv672-attention-stable">
+                <div class="cv672-attention-stable-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <path d="m9 11 3 3L22 4"/>
+                  </svg>
+                </div>
+                <div>
+                  <strong>No projects currently trending downward</strong>
+                  <p>Portfolio health is stable across saved projects.</p>
+                </div>
+              </section>
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -586,123 +676,104 @@ def render_portfolio_intelligence_workspace(
         projects=overview.get("projects", []),
     )
 
-    project_col_left, project_col_right = st.columns([1.35, 0.78], gap="small")
-    with project_col_left:
-        latest_analysis_id = ""
-        analysis_data = ctx.get("analysis_data") or []
-        if analysis_data:
-            latest_analysis_id = str(analysis_data[0].get("id") or "")
-        project_href = (
-            f"?page=Analysis%20Details&analysis_id={html.escape(latest_analysis_id, quote=True)}"
-            if latest_analysis_id
-            else "?page=BOM%20Analyzer"
-        )
-        st.markdown(
-            """
-            <div class="cv-v4-section-head cv-6b-column-heading">
-              <div>
-                <div class="cv-v4-section-title">Current Working BOM</div>
-                <div class="cv-v4-section-meta">Continue the most recently saved engineering review.</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <div class="cv-6b-panel cv-6b-project-panel">
-              <div class="cv-6b-project-head">
-                <div>
-                  <div class="cv-v4-label">Active Analysis</div>
-                  <div class="cv-6b-project-title">{html.escape(str(ctx.get('latest_project')))}</div>
-                </div>
-                <div class="cv-v4-icon">{_lucide_icon('file',18)}</div>
-              </div>
-              <div class="cv241-project-grid">
-                <div class="cv241-project-stat"><span>Health</span><strong>{ctx.get('latest_health')}</strong></div>
-                <div class="cv241-project-stat"><span>Components</span><strong>{ctx.get('latest_parts')}</strong></div>
-                <div class="cv241-project-stat"><span>High Risk</span><strong>{ctx.get('latest_high_risk')}</strong></div>
-                <div class="cv241-project-stat"><span>Medium Risk</span><strong>{ctx.get('latest_medium_risk')}</strong></div>
-              </div>
-              <a class="cv-6b-project-link" href="{project_href}" target="_self">
-                <span>Continue analysis</span><span>→</span>
-              </a>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with project_col_right:
-        st.markdown(
-            """
-            <div class="cv-v4-section-head cv-6b-column-heading">
-              <div>
-                <div class="cv-v4-section-title">Readiness distribution</div>
-                <div class="cv-v4-section-meta">Healthy, medium-risk, and critical component exposure.</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""
-            <section class="cv26-card">
-              <div class="cv26-riskdist">
-                <i class="healthy" style="width:{ctx.get('healthy_pct')}%"></i>
-                <i class="medium" style="width:{ctx.get('medium_pct')}%"></i>
-                <i class="critical" style="width:{ctx.get('critical_pct')}%"></i>
-              </div>
-              <div class="cv26-legend">
-                <span>Healthy {ctx.get('healthy_count')}</span>
-                <span>Medium {ctx.get('total_medium_risk')}</span>
-                <span>Critical {ctx.get('total_high_risk')}</span>
-              </div>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    recent_activity = ctx.get("recent_activity") or []
+    latest_analysis_id = ""
+    analysis_data = ctx.get("analysis_data") or []
+    if analysis_data:
+        latest_analysis_id = str(analysis_data[0].get("id") or "")
+    project_href = (
+        f"?page=Analysis%20Details&analysis_id={html.escape(latest_analysis_id, quote=True)}"
+        if latest_analysis_id
+        else "?page=BOM%20Analyzer"
+    )
+    render_subsection_header(
+        "Current working BOM",
+        description="Continue the most recently saved engineering review.",
+        icon="file",
+    )
     st.markdown(
-        """
-        <div class="cv-v4-section-head cv-6b-column-heading">
-          <div>
-            <div class="cv-v4-section-title">Recent engineering activity</div>
-            <div class="cv-v4-section-meta">Analyses, monitoring, and replacement events.</div>
+        f"""
+        <section class="cv6723-section cv6723-bom-strip">
+          <div class="cv6723-bom-main">
+            <span class="cv6723-bom-label">Active analysis</span>
+            <strong>{html.escape(str(ctx.get('latest_project')))}</strong>
+            <span>Updated {html.escape(str(ctx.get('latest_date')))}</span>
           </div>
-        </div>
+          <div class="cv6723-bom-stats">
+            <div><span>Health</span><strong>{ctx.get('latest_health')}</strong></div>
+            <div><span>Components</span><strong>{ctx.get('latest_parts')}</strong></div>
+            <div><span>High risk</span><strong>{ctx.get('latest_high_risk')}</strong></div>
+            <div><span>Medium risk</span><strong>{ctx.get('latest_medium_risk')}</strong></div>
+          </div>
+          <div class="cv6723-bom-side">
+            <div class="cv6723-readiness-inline">
+              <span>Healthy {ctx.get('healthy_count')}</span>
+              <span>Medium {ctx.get('total_medium_risk')}</span>
+              <span>Critical {ctx.get('total_high_risk')}</span>
+            </div>
+            <a class="cv6723-inline-link" href="{project_href}" target="_self">Continue analysis →</a>
+          </div>
+        </section>
         """,
         unsafe_allow_html=True,
     )
-    visible_activity = recent_activity[:4]
-    if visible_activity:
-        for event in visible_activity:
+
+    recent_activity = ctx.get("recent_activity") or []
+    activity_col, workload_col = st.columns([1.2, 0.8], gap="small")
+    with activity_col:
+        render_subsection_header(
+            "Recent engineering activity",
+            description="Analyses, monitoring, and replacement events.",
+            icon="history",
+        )
+        visible_activity = recent_activity[:3]
+        if visible_activity:
+            cards = []
+            for event in visible_activity:
+                cards.append(
+                    f"""
+                    <section class="cv6723-activity-card">
+                      <div class="cv6723-activity-top">
+                        <span>{html.escape(str(event['type']))}</span>
+                        <span>{html.escape(_activity_relative(event.get('created_at')))}</span>
+                      </div>
+                      <strong>{html.escape(str(event['title']))}</strong>
+                      <p>{html.escape(str(event['copy']))}</p>
+                      <a class="cv6723-inline-link" href="{event['href']}" target="_self">
+                        {html.escape(str(event['action']))} →
+                      </a>
+                    </section>
+                    """
+                )
+            st.markdown(f'<div class="cv6723-section">{"".join(cards)}</div>', unsafe_allow_html=True)
+            if len(recent_activity) > 3:
+                with st.expander(f"View all activity ({len(recent_activity)})", expanded=False):
+                    for event in recent_activity[3:8]:
+                        st.markdown(
+                            f"""
+                            <section class="cv6723-activity-card">
+                              <div class="cv6723-activity-top">
+                                <span>{html.escape(str(event['type']))}</span>
+                                <span>{html.escape(_activity_relative(event.get('created_at')))}</span>
+                              </div>
+                              <strong>{html.escape(str(event['title']))}</strong>
+                              <p>{html.escape(str(event['copy']))}</p>
+                            </section>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+        else:
             st.markdown(
-                f"""
-                <section class="cv231-activity-card" style="padding:12px 14px;margin-bottom:9px;">
-                  <div class="cv231-activity-top">
-                    <div class="cv231-activity-type">{html.escape(str(event['type']))}</div>
-                    <div class="cv231-activity-time">{html.escape(_activity_relative(event.get('created_at')))}</div>
-                  </div>
-                  <div class="cv231-activity-title">
-                    {html.escape(str(event['title']))}
-                    {f'<span class="cv242-repeat-badge">{event.get("repeat_count", 1)} repeated</span>' if event.get("repeat_count", 1) > 1 else ''}
-                  </div>
-                  <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
-                  <a class="cv231-activity-link" href="{event['href']}" target="_self">
-                    {html.escape(str(event['action']))} →
-                  </a>
+                """
+                <section class="cv6723-compact-panel cv6723-empty-note">
+                  <strong>No engineering activity yet</strong>
+                  <p>Analyze a BOM to begin portfolio activity tracking.</p>
                 </section>
                 """,
                 unsafe_allow_html=True,
             )
-    else:
-        st.markdown(
-            '<div class="cv231-empty"><strong>No engineering activity yet.</strong><br>Analyze a BOM to begin portfolio activity tracking.</div>',
-            unsafe_allow_html=True,
-        )
 
-    render_team_workload_section(overview=overview)
+    with workload_col:
+        render_team_workload_section(overview=overview)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -733,15 +804,19 @@ def render_dashboard_analytics_workspace(
         "How is engineering risk changing over time?",
     )
 
-    chart_left, chart_right = st.columns(2, gap="medium")
-    with chart_left:
+    alert_data = list(ctx.get("alert_data") or [])
+    lifecycle_trend = _alert_trend_frame(alert_data, keyword="lifecycle")
+    alert_trend = _alert_trend_frame(alert_data, keyword="alert")
+
+    st.markdown('<div class="cv6723-chart-grid">', unsafe_allow_html=True)
+    chart_row_1 = st.columns(2, gap="small")
+    with chart_row_1[0]:
+        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
         st.markdown(
             f"""
-            <div class="cv-v4-section-head cv-6b-column-heading">
-              <div>
-                <div class="cv-v4-section-title">Portfolio health trend</div>
-                <div class="cv-v4-section-meta">Latest 7 recorded days · {ctx.get('health_delta_label')} vs previous</div>
-              </div>
+            <div class="cv6723-chart-panel-head">
+              <strong>Portfolio health trend</strong>
+              <span>Latest 7 recorded days · {html.escape(str(ctx.get('health_delta_label')))} vs previous</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -800,19 +875,19 @@ def render_dashboard_analytics_workspace(
             paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(
-            light_plotly_layout(fig, height=165),
+            light_plotly_layout(fig, height=140),
             use_container_width=True,
             config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
         )
+        st.markdown("</section>", unsafe_allow_html=True)
 
-    with chart_right:
+    with chart_row_1[1]:
+        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
         st.markdown(
             """
-            <div class="cv-v4-section-head cv-6b-column-heading">
-              <div>
-                <div class="cv-v4-section-title">Risk movement</div>
-                <div class="cv-v4-section-meta">High- and medium-risk movement over recorded days.</div>
-              </div>
+            <div class="cv6723-chart-panel-head">
+              <strong>Risk movement</strong>
+              <span>High- and medium-risk movement over recorded days.</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -866,12 +941,43 @@ def render_dashboard_analytics_workspace(
                 paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(
-                light_plotly_layout(risk_fig, height=165),
+                light_plotly_layout(risk_fig, height=140),
                 use_container_width=True,
                 config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
             )
         else:
-            st.info("Save at least two BOM analyses to display risk movement.")
+            st.markdown(
+                '<section class="cv6723-chart-empty">Save at least two BOM analyses to display risk movement.</section>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("</section>", unsafe_allow_html=True)
+
+    chart_row_2 = st.columns(2, gap="small")
+    with chart_row_2[0]:
+        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
+        _render_trend_chart_panel(
+            title="Lifecycle trend",
+            description="Lifecycle-related monitoring events over recorded days.",
+            frame=lifecycle_trend,
+            light_plotly_layout=light_plotly_layout,
+            line_color="#D97706",
+            fill_rgba="rgba(217, 119, 6, 0.08)",
+            empty_copy="No lifecycle monitoring events recorded yet.",
+        )
+        st.markdown("</section>", unsafe_allow_html=True)
+    with chart_row_2[1]:
+        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
+        _render_trend_chart_panel(
+            title="Alert trend",
+            description="Recorded monitoring events over the last seven days.",
+            frame=alert_trend,
+            light_plotly_layout=light_plotly_layout,
+            line_color="#2563EB",
+            fill_rgba="rgba(37, 99, 235, 0.08)",
+            empty_copy="No monitoring alerts recorded yet.",
+        )
+        st.markdown("</section>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     health_change = int(ctx.get("trend_health_change", 0) or 0)
     high_risk_change = int(ctx.get("trend_high_risk_change", 0) or 0)
