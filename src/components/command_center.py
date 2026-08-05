@@ -134,7 +134,18 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
             link.click();
             setTimeout(() => link.remove(), 250);
           }};
-          const itemHtml = (command, index) => `<button class="cvcc-item ${{index === activeIndex ? 'active' : ''}}" data-index="${{index}}"><span class="cvcc-icon">${{command.icon}}</span><span><div class="cvcc-title">${{command.title}}</div><div class="cvcc-subtitle">${{command.subtitle}}</div></span><span class="cvcc-shortcut">${{command.shortcut || command.category}}</span></button>`;
+          const highlight = (text, query) => {{
+            if (!query) return text;
+            const safe = query.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
+            return text.replace(new RegExp(`(${{safe}})`, 'ig'), '<span class="cvcc-highlight">$1</span>');
+          }};
+          const itemHtml = (command, index) => `<button class="cvcc-item ${{index === activeIndex ? 'active' : ''}}" data-index="${{index}}"><span class="cvcc-icon">${{command.icon}}</span><span><div class="cvcc-title">${{highlight(command.title, input.value.trim())}}</div><div class="cvcc-subtitle">${{highlight(command.subtitle, input.value.trim())}}</div></span><span class="cvcc-shortcut">${{command.shortcut || command.category}}</span></button>`;
+
+          let renderTimer = null;
+          const scheduleRender = () => {{
+            if (renderTimer) clearTimeout(renderTimer);
+            renderTimer = setTimeout(() => {{ activeIndex = 0; render(); }}, 120);
+          }};
 
           const render = () => {{
             const query = input.value.trim();
@@ -159,7 +170,7 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
           const close = () => {{ root.classList.remove('open'); }};
 
           root.querySelector('.cvcc-backdrop').addEventListener('click', close);
-          input.addEventListener('input', () => {{ activeIndex=0; render(); }});
+          input.addEventListener('input', scheduleRender);
           root.addEventListener('keydown', event => {{
             if (event.key === 'Escape') {{ event.preventDefault(); close(); }}
             if (event.key === 'ArrowDown') {{ event.preventDefault(); activeIndex = visible.length ? (activeIndex+1)%visible.length : 0; render(); }}
