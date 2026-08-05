@@ -16,6 +16,7 @@ from src.living_workspace import (
     render_team_workload_section,
 )
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
+from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button, navigate_to
 
 DASHBOARD_WORKSPACES: tuple[str, ...] = (
     "Engineering Overview",
@@ -207,7 +208,14 @@ def _activity_relative(value: Any) -> str:
     return parsed.strftime("%b %d, %Y")
 
 
-def _activity_card_html(event: Mapping[str, Any]) -> str:
+def _activity_card_html(event: Mapping[str, Any], *, include_link: bool = True) -> str:
+    link_html = ""
+    if include_link and not event.get("nav_page"):
+        link_html = (
+            f'<a class="cv6723-inline-link" href="{html.escape(str(event.get("href") or "?page=Dashboard"), quote=True)}" target="_self">'
+            f"{html.escape(str(event.get('action') or 'Review'))} →"
+            f"</a>"
+        )
     return (
         f'<section class="cv6723-activity-card">'
         f'<div class="cv6723-activity-top">'
@@ -216,16 +224,22 @@ def _activity_card_html(event: Mapping[str, Any]) -> str:
         f"</div>"
         f"<strong>{html.escape(str(event.get('title') or ''))}</strong>"
         f"<p>{html.escape(str(event.get('copy') or ''))}</p>"
-        f'<a class="cv6723-inline-link" href="{html.escape(str(event.get("href") or "?page=Dashboard"), quote=True)}" target="_self">'
-        f"{html.escape(str(event.get('action') or 'Review'))} →"
-        f"</a>"
+        f"{link_html}"
         f"</section>"
     )
 
 
 def _render_activity_cards(events: Iterable[Mapping[str, Any]]) -> None:
-    for event in events:
-        st.html(_activity_card_html(event))
+    for index, event in enumerate(events):
+        nav_page = str(event.get("nav_page") or "").strip()
+        st.html(_activity_card_html(event, include_link=not bool(nav_page)))
+        if nav_page:
+            internal_nav_button(
+                f"{event.get('action') or 'Review'} →",
+                nav_page,
+                key=f"dashboard_ws_activity_{index}_{nav_page.replace(' ', '_')}",
+                **dict(event.get("nav_params") or {}),
+            )
 
 
 def build_portfolio_dashboard_context(
@@ -422,7 +436,11 @@ def build_portfolio_dashboard_context(
                 "title": str(original),
                 "copy": f"Replacement candidate {candidate} was recorded for engineering review.",
                 "created_at": item.get("created_at") or item.get("updated_at"),
-                "href": "?page=Alternative%20Finder",
+                "nav_page": ALTERNATIVE_FINDER_PAGE,
+                "nav_params": {
+                    "original_part": str(original),
+                    "source_page": "dashboard_workspace_activity",
+                },
                 "action": "Open replacement",
             }
         )
