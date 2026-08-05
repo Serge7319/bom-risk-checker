@@ -1660,8 +1660,49 @@ div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRa
 }
 
 /* Sprint 67.2 — Dashboard workspace navigation (scoped) */
+.cv672-dashboard-heading {
+  margin: 0 0 10px;
+}
+
+.cv672-dashboard-kicker {
+  margin: 0 0 4px;
+  color: var(--cv64-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cv672-dashboard-title {
+  margin: 0;
+  color: var(--cv64-navy);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.cv672-dashboard-workspace-header {
+  margin: 0 0 12px;
+}
+
+.cv672-dashboard-workspace-header h2 {
+  margin: 0 0 4px;
+  color: var(--cv64-navy);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.cv672-dashboard-workspace-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .cv672-dashboard-workspace {
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .cv672-dashboard-empty {
@@ -1733,27 +1774,67 @@ div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRa
 div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] > div {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
-  row-gap: 8px;
+  gap: 0;
+  row-gap: 0;
+  border-bottom: 1px solid var(--cv64-border);
+  margin-bottom: 12px;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] [data-testid="stWidgetLabel"] {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label {
-  min-height: 34px;
-  padding: 6px 12px;
-  border: 1px solid var(--cv64-border);
-  border-radius: 999px;
-  background: #fff;
+  min-height: 38px;
+  padding: 8px 14px 10px;
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
   margin-right: 0 !important;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:hover {
+  color: #334155;
+  background: #f8fafc;
 }
 
 div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:focus-within {
   outline: 2px solid #2563eb;
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
-  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 800;
   background: #eff6ff;
+  border-bottom-color: #2563eb;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label > div:first-child {
+  display: none;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label p,
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label span {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 @media (max-width: 1023px) {
