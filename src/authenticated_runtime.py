@@ -103,11 +103,13 @@ from src.ui.framework import (
 from src.urls import app_checkout_url
 from src.pages.analysis_detail import render_analysis_detail
 from src.ui.navigation import (
+    ALTERNATIVE_FINDER_PAGE,
     apply_alternative_finder_prefill,
     consume_alternative_finder_context,
     internal_nav_button,
     navigate_to,
     navigate_to_alternative_finder,
+    render_command_nav_triggers,
     reset_alternative_finder_prefill,
 )
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
@@ -2392,6 +2394,7 @@ def run_authenticated_app() -> None:
         )
     except Exception:
         _workspace_command_records = []
+    render_command_nav_triggers(_workspace_command_records)
     render_command_center(
         current_page=app_mode,
         user_name=shell_name.split()[0] if shell_name else "Engineer",
@@ -5825,10 +5828,12 @@ def run_authenticated_app() -> None:
             with action_cols[2]:
                 internal_nav_button(
                     "Open Alternative Finder",
-                    "Alternative Finder",
+                    ALTERNATIVE_FINDER_PAGE,
                     key="reports_open_alternative_finder",
                     use_container_width=True,
                     analysis_id=selected_analysis_id,
+                    return_analysis_id=selected_analysis_id,
+                    source_page="reports_center",
                 )
 
             st.markdown(
