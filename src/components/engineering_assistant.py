@@ -4,9 +4,8 @@ from __future__ import annotations
 import html
 import re
 from typing import Any, Iterable
-from urllib.parse import urlencode, quote
-
-import streamlit as st
+from src.urls import internal_app_href
+from src.ui.navigation import alternative_finder_href
 import streamlit.components.v1 as components
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
@@ -225,9 +224,7 @@ def _confidence_data(confidence: str, context: dict[str, Any]) -> tuple[str, int
 
 
 def _href(page: str, **params: Any) -> str:
-    payload = {"page": page}
-    payload.update({key: value for key, value in params.items() if value not in (None, "")})
-    return "?" + urlencode(payload, quote_via=quote)
+    return internal_app_href(page, **params)
 
 
 def _split_evidence_detail(detail: str) -> list[tuple[str, str]]:
@@ -491,7 +488,11 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
     st.markdown('<div class="cv35-section-label">Continue the workflow</div>', unsafe_allow_html=True)
     part_label = priority_part or "component"
     component_url = _href("Analysis Details", analysis_id=analysis_id, tab="components", component=priority_part, focus="component-risk")
-    alternative_url = _href("Alternative Finder", original_part=priority_part, analysis_id=analysis_id)
+    alternative_url = alternative_finder_href(
+        mpn=priority_part,
+        analysis_id=analysis_id,
+        source_page="engineering_intelligence",
+    )
     monitoring_url = _href("Monitoring", mpn=priority_part, analysis_id=analysis_id)
     decision_url = _href("Engineering Decisions", analysis_id=analysis_id, part_number=priority_part)
     procurement_url = _href("Procurement Advisor", analysis_id=analysis_id, part_number=priority_part)
