@@ -198,11 +198,18 @@ def explicit_logout_pending() -> bool:
 
 
 def render_external_logout_redirect() -> None:
-    """Redirect the browser to the external marketing homepage after sign-out."""
+    """Redirect the browser to the external marketing homepage after sign-out.
+
+    Streamlit renders ``components.html`` inside a sandboxed iframe. Navigation
+    must therefore target ``window.top`` (or ``window.parent``) so the address bar
+    leaves the Streamlit app origin. The visible fallback link is rendered in the
+    main Streamlit document and remains available if script navigation is blocked.
+    """
     from src.urls import marketing_url
 
     target = marketing_url("/")
-    safe_target = html.escape(target, quote=True)
+    target_json = json.dumps(target)
+    safe_href = html.escape(target, quote=True)
     log_logout_phase("redirect_rendered")
     st.markdown(
         f"""
@@ -211,39 +218,39 @@ def render_external_logout_redirect() -> None:
         section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{display:none!important}}
         html,body,.stApp,[data-testid="stAppViewContainer"]{{background:#F5F7FB!important}}
         .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
-        .cv-logout-redirect{{min-height:100vh;display:grid;place-items:center;font-family:Inter,system-ui,sans-serif;color:#64748B}}
+        .cv-logout-redirect{{min-height:100vh;display:grid;place-items:center;padding:32px;font-family:Inter,system-ui,sans-serif;text-align:center;color:#64748B}}
+        .cv-logout-redirect a{{color:#2563EB;font-weight:700;text-decoration:none}}
+        .cv-logout-redirect a:hover{{text-decoration:underline}}
         </style>
-        <meta http-equiv="refresh" content="0; url={safe_target}">
         <div class="cv-logout-redirect" role="status" aria-live="polite">
           <p>Signing you out…</p>
+          <p><a href="{safe_href}" target="_self">Return to Cadivor</a></p>
         </div>
-        <script>
-        (() => {{
-          const target = {json.dumps(target)};
-          try {{
-            window.location.replace(target);
-          }} catch (error) {{
-            try {{ window.top.location.replace(target); }} catch (ignored) {{}}
-          }}
-        }})();
-        </script>
-        <noscript>
-          <p><a href="{safe_target}">Continue to Cadivor</a></p>
-        </noscript>
         """,
         unsafe_allow_html=True,
     )
     components.html(
         f"""<script>
         (() => {{
-          const target = {json.dumps(target)};
+          const target = {target_json};
+          const replaceLocation = (view) => {{
+            if (!view || !view.location) {{
+              return false;
+            }}
+            view.location.replace(target);
+            return true;
+          }};
           try {{
-            if (window.parent && window.parent.location) {{
-              window.parent.location.replace(target);
+            if (replaceLocation(window.top)) {{
               return;
             }}
           }} catch (error) {{}}
-          window.location.replace(target);
+          try {{
+            if (replaceLocation(window.parent)) {{
+              return;
+            }}
+          }} catch (error) {{}}
+          replaceLocation(window);
         }})();
         </script>""",
         height=0,
