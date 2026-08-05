@@ -1,6 +1,9 @@
 (() => {
   /** Verified Streamlit Cloud production app; override via window.CADIVOR_APP_ORIGIN when app.cadivor.com is live. */
   const STREAMLIT_PRODUCTION_FALLBACK = 'https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app';
+  const MARKETING_ORIGIN = String(
+    window.CADIVOR_MARKETING_ORIGIN || window.location.origin || 'https://www.cadivor.com'
+  ).replace(/\/$/, '');
   const APP_ORIGIN = String(
     window.CADIVOR_APP_ORIGIN || window.CADIVOR_APP_URL || STREAMLIT_PRODUCTION_FALLBACK
   ).replace(/\/$/, '');
@@ -17,6 +20,7 @@
 
   const CADIVOR_LINKS = {
     app: APP_ORIGIN,
+    marketing: MARKETING_ORIGIN,
     signIn: buildAppUrl({ auth: 'login' }),
     signUp: buildAppUrl({ auth: 'signup', intent: 'trial' }),
     workspace: buildAppUrl({ source: 'marketing' }),
