@@ -129,6 +129,8 @@ def render_unified_shell(
                 # Streamlit runs on_click callbacks before the widget rerun.  By
                 # committing logout here, the first click cannot be consumed by
                 # the popover closing before authentication state changes.
+                if st.session_state.get("cadivor_logout_started"):
+                    return
                 st.session_state["cadivor_profile_menu_open"] = False
                 st.session_state["cadivor_signing_out"] = True
                 request_logout()
@@ -138,6 +140,7 @@ def render_unified_shell(
                 key="cv_foundation_signout",
                 type="secondary",
                 use_container_width=True,
+                disabled=bool(st.session_state.get("cadivor_logout_started")),
                 on_click=_commit_signout,
             )
 
