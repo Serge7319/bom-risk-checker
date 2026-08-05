@@ -100,8 +100,16 @@ from src.ui.framework import (
     dashboard_command_center,
     dashboard_insight_card,
 )
+from src.urls import app_checkout_url
 from src.pages.analysis_detail import render_analysis_detail
-from src.ui.navigation import navigate_to, internal_nav_button
+from src.ui.navigation import (
+    apply_alternative_finder_prefill,
+    consume_alternative_finder_context,
+    internal_nav_button,
+    navigate_to,
+    navigate_to_alternative_finder,
+    reset_alternative_finder_prefill,
+)
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
 from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.ui.premium_interaction_repair import inject_premium_interaction_css
@@ -3130,7 +3138,12 @@ def run_authenticated_app() -> None:
                             except Exception as exc:
                                 st.error(f"Could not save workflow. Run the Sprint 32.0 migration first. Details: {exc}")
                         if a2.button("Find alternative", use_container_width=True, key=f"m32_alt_{alert_id}_{idx}"):
-                            navigate_to("Alternative Finder", original_part=str(row["Part Number"]), return_analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""))
+                            navigate_to_alternative_finder(
+                                mpn=str(row["Part Number"]),
+                                analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""),
+                                return_analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""),
+                                source_page="monitoring",
+                            )
                         if a3.button("Open decisions", use_container_width=True, key=f"m32_decision_{alert_id}_{idx}"):
                             navigate_to("Engineering Decisions", focus_part=str(row["Part Number"]))
                         a4.download_button("Export evidence", data=pd.DataFrame([row]).to_csv(index=False).encode("utf-8"), file_name=f"{str(row['Part Number']).replace('/', '_')}_monitoring_evidence.csv", mime="text/csv", use_container_width=True, key=f"m32_export_{alert_id}_{idx}")
@@ -3479,6 +3492,7 @@ def run_authenticated_app() -> None:
                         key=f"pa_alt_{index}",
                         use_container_width=True,
                         original_part=row["Part Number"],
+                        source_page="procurement_advisor",
                     )
                 with cols[1]:
                     internal_nav_button(
@@ -3783,6 +3797,8 @@ def run_authenticated_app() -> None:
                         key=f"decision_find_alt_{decision_id}",
                         use_container_width=True,
                         original_part=selected_decision["part_number"],
+                        analysis_id=str(selected_decision.get("analysis_id") or ""),
+                        source_page="engineering_decisions",
                     )
                 with navigation_cols[1]:
                     internal_nav_button(
@@ -6053,8 +6069,8 @@ def run_authenticated_app() -> None:
                         price_id,
                         current_user["email"],
                         current_user["id"],
-                        success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?page=Pricing&checkout=success&session_id={CHECKOUT_SESSION_ID}",
-                        cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?page=Pricing&checkout=cancel",
+                        success_url=app_checkout_url(page="Pricing", checkout="success"),
+                        cancel_url=app_checkout_url(page="Pricing", checkout="cancel"),
                     )
                 except KeyError:
                     st.error(f"{plan_name} checkout is not configured in Streamlit secrets.")
@@ -9056,33 +9072,12 @@ def run_authenticated_app() -> None:
         if "alternative_search_attempted" not in st.session_state:
             st.session_state["alternative_search_attempted"] = False
 
-        incoming_original_part = str(
-            st.query_params.get("original_part", "") or ""
-        ).strip()
-        incoming_analysis_id = str(
-            st.query_params.get("analysis_id", "") or ""
-        ).strip()
-        incoming_prefill_token = (
-            f"{incoming_analysis_id}::{incoming_original_part.upper()}"
-            if incoming_original_part
-            else ""
-        )
-
         if "alternative_original_part" not in st.session_state:
             st.session_state["alternative_original_part"] = ""
 
-        if (
-            incoming_original_part
-            and st.session_state.get("alternative_prefill_token") != incoming_prefill_token
-        ):
-            st.session_state["alternative_original_part"] = incoming_original_part
-            st.session_state["alternative_prefill_token"] = incoming_prefill_token
-            st.session_state["alternative_search_attempted"] = False
-            st.session_state["suggested_alternatives"] = []
-            st.session_state["alternative_original_data"] = {}
-            st.session_state["alternative_original_risk"] = {}
-            st.session_state["alternative_original_lookup_part"] = ""
-            st.session_state["alternative_original_lookup_error"] = ""
+        alt_nav_context = consume_alternative_finder_context(_qp_value)
+        if alt_nav_context:
+            apply_alternative_finder_prefill(alt_nav_context)
 
         if "alternative_original_data" not in st.session_state:
             st.session_state["alternative_original_data"] = {}
@@ -10561,6 +10556,7 @@ def run_authenticated_app() -> None:
                 st.session_state["alternative_original_lookup_error"] = ""
                 st.session_state["alternative_search_error"] = ""
                 st.session_state["alternative_original_part"] = ""
+                reset_alternative_finder_prefill()
                 st.session_state["alternative_engineering_decisions"] = {}
                 st.session_state["alternative_decision_notes"] = {}
 
@@ -11836,8 +11832,8 @@ def run_authenticated_app() -> None:
                             st.secrets["STRIPE_PRO_PRICE_ID"],
                             current_user["email"],
                             current_user["id"],
-                            success_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
-                            cancel_url="https://bom-risk-checker-j9co3yumwgvqjumut24fxm.streamlit.app/?checkout=cancel",
+                            success_url=app_checkout_url(checkout="success"),
+                            cancel_url=app_checkout_url(checkout="cancel"),
                         )
 
                         st.session_state["checkout_url"] = checkout_url
