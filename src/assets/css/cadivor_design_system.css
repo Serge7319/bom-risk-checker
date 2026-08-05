@@ -2195,7 +2195,6 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
 }
 
 .cv6723-compact-panel,
-.cv6723-chart-panel,
 .cv6723-monitor-panel,
 .cv6723-action-toolbar {
   border: 1px solid var(--cv64-border);
@@ -2513,9 +2512,21 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
   margin-bottom: 24px;
 }
 
-.cv6723-chart-panel {
+.cv6723-chart-grid div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
+  border: 1px solid var(--cv64-border);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 16px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
   margin-bottom: 12px;
-  min-height: 210px;
+}
+
+.cv672-dashboard-preview-wrap {
+  margin: 16px 0 0;
+}
+
+.cv672-dashboard-preview-link {
+  display: inline-flex;
 }
 
 .cv6723-chart-panel-head {
