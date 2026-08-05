@@ -703,7 +703,14 @@ def build_engineering_decision_brief(
 
     if results_df is not None and not results_df.empty:
         if not intelligence_data:
-            intelligence_data = analyze_bom_intelligence(results_df)
+            from src.ui.performance_cache import cached_bom_intelligence
+
+            analysis_key = (analysis or {}).get("id") or (analysis or {}).get("analysis_id") or "live"
+            intelligence_data = cached_bom_intelligence(
+                analysis_key,
+                results_df,
+                analyzer=analyze_bom_intelligence,
+            )
         if not part_rows:
             part_rows = _results_to_parts(results_df)
         if analysis is None:
