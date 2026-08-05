@@ -120,6 +120,9 @@ def inject_workspace_geometry_final() -> None:
         )
     inject_cadivor_design_system()
     inject_navigation_recovery_css()
+    from src.ui.sprint71_polish import inject_sprint71_polish
+
+    inject_sprint71_polish()
 
 
 def mark_authenticated_surface_ready() -> None:
@@ -129,6 +132,9 @@ def mark_authenticated_surface_ready() -> None:
 
     inject_cadivor_design_system()
     inject_navigation_recovery_css()
+    from src.ui.sprint71_polish import inject_sprint71_polish
+
+    inject_sprint71_polish()
 
 
 def page_shell(title: str, subtitle: str = "", eyebrow: str = "") -> None:
