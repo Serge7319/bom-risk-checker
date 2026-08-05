@@ -394,7 +394,6 @@ def dashboard_command_center(greeting, user_name, subtitle, health_score, health
                 <p class="cv-subtitle">{subtitle}</p>
                 <div class="cv-hero-actions">
                     <a class="cv-hero-primary" href="{action_href}" target="_self">Run new BOM analysis</a>
-                    <a class="cv-hero-secondary" href="?page=Alternative%20Finder" target="_self">Find alternatives</a>
                 </div>
             </div>
             <div class="cv-hero-score-card">
