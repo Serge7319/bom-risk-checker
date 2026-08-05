@@ -16,14 +16,8 @@ from src.ui.cadivor_design_system import (
     MetricCard,
     cadivor_button_wrap,
     cadivor_button_wrap_end,
-    cadivor_card,
-    cadivor_meta_row,
-    cadivor_metric_row,
-    cadivor_panel,
-    cadivor_panel_end,
     cadivor_table,
     render_kpi_row_safe,
-    render_metric_strip,
     render_section_header,
     render_subsection_header,
 )
@@ -124,23 +118,116 @@ def _timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
     return timeline_event(alert)
 
 
-def _monitoring_events_html(events: List[Dict[str, str]], *, empty_copy: str) -> str:
+def _monitoring_events_html(
+    events: List[Dict[str, str]],
+    *,
+    empty_copy: str,
+    limit: int = 5,
+    compact: bool = False,
+) -> str:
     if not events:
+        panel_class = "cv6723-monitor-empty" if compact else "cv672-dashboard-empty"
         return (
-            f'<section class="cv672-dashboard-empty"><strong>No changes recorded</strong>'
+            f'<section class="{panel_class}"><strong>No changes recorded</strong>'
             f"<p>{html.escape(empty_copy)}</p></section>"
         )
-    rows = ['<div class="cv64-timeline">']
-    for event in events[:6]:
+    timeline_class = "cv6723-timeline" if compact else "cv64-timeline"
+    rows = [f'<div class="{timeline_class}">']
+    for event in events[:limit]:
         rows.append(
-            '<div class="cv64-timeline-item">'
-            f'<div class="cv64-timeline-time">{html.escape(event["time"])}</div>'
-            f'<div class="cv64-timeline-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
-            f'<div class="cv64-timeline-copy">{html.escape(event["change"])}</div>'
+            '<div class="cv6723-timeline-item">'
+            f'<div class="cv6723-timeline-time">{html.escape(event["time"])}</div>'
+            f'<div class="cv6723-timeline-title">{html.escape(event["part"])}</div>'
+            f'<div class="cv6723-timeline-copy">{html.escape(event["change"])}</div>'
             "</div>"
         )
     rows.append("</div>")
     return "".join(rows)
+
+
+def _compact_release_posture_html(metrics: Dict[str, Any]) -> str:
+    tone = metrics.get("health_tone", "info")
+    return (
+        f'<section class="cv6723-compact-panel cv6723-release-posture cv6723-release-posture--{html.escape(tone)}">'
+        f'<div class="cv6723-compact-panel-head">'
+        f'<strong>Release posture</strong>'
+        f'<span class="cv6723-status-chip cv6723-status-chip--{html.escape(tone)}">'
+        f'{html.escape(metrics.get("health_status", "Review"))}</span></div>'
+        f'<p>{html.escape(metrics.get("release_label", "Controlled review recommended"))}</p>'
+        f"</section>"
+    )
+
+
+def _compact_recommendations_html(recommendations: Iterable[Any]) -> str:
+    items = list(recommendations or [])[:4]
+    if not items:
+        return (
+            '<section class="cv6723-compact-panel cv6723-empty-note">'
+            "<strong>No urgent recommendations</strong>"
+            "<p>Continue routine monitoring.</p></section>"
+        )
+    cards = []
+    for index, recommendation in enumerate(items):
+        badge = "Priority" if index == 0 else "Review"
+        badge_class = "info" if index == 0 else "neutral"
+        text = _text(recommendation)
+        action_line = text.split(".")[0] if "." in text else text
+        if len(action_line) > 92:
+            action_line = f"{action_line[:89].rstrip()}..."
+        cards.append(
+            f'<article class="cv6723-rec-card">'
+            f'<div class="cv6723-rec-top">'
+            f'<strong>Recommendation {index + 1}</strong>'
+            f'<span class="cv6723-status-chip cv6723-status-chip--{badge_class}">{badge}</span>'
+            f"</div>"
+            f'<p class="cv6723-rec-copy">{html.escape(action_line)}</p>'
+            f"</article>"
+        )
+    return f'<section class="cv6723-rec-grid">{"".join(cards)}</section>'
+
+
+def _compact_work_queue_html(actions: Iterable[Dict[str, Any]], *, limit: int = 3) -> str:
+    rows = list(actions or [])[:limit]
+    if not rows:
+        return (
+            '<section class="cv6723-compact-panel cv6723-empty-note">'
+            "<strong>No urgent work recorded</strong>"
+            "<p>The prioritized queue is clear.</p></section>"
+        )
+    body = ['<div class="cv6723-queue-list">']
+    for action in rows:
+        priority = int(_number(action.get("priority"), 0))
+        body.append(
+            '<article class="cv6723-queue-row">'
+            f'<div class="cv6723-queue-main">'
+            f'<strong>{html.escape(_text(action.get("item"), "BOM"))}</strong>'
+            f'<span>{html.escape(_text(action.get("title"), "Review engineering action"))}</span>'
+            f"</div>"
+            f'<div class="cv6723-queue-meta">'
+            f'<span class="cv6723-status-chip cv6723-status-chip--info">P{priority}</span>'
+            f'<span>{html.escape(_text(action.get("owner"), "Engineering"))}</span>'
+            f"</div></article>"
+        )
+    body.append("</div>")
+    return "".join(body)
+
+
+def _monitoring_category_panel_html(
+    *,
+    title: str,
+    count: int,
+    body_html: str,
+) -> str:
+    return (
+        f'<section class="cv6723-monitor-panel">'
+        f'<header class="cv6723-monitor-panel-head">'
+        f"<div><strong>{html.escape(title)}</strong>"
+        f"<span>{count} recorded</span></div>"
+        f'<div class="cv6723-monitor-count">{count}</div>'
+        f"</header>"
+        f'<div class="cv6723-monitor-panel-body">{body_html}</div>'
+        f"</section>"
+    )
 
 
 def supplier_watch_rows(parts: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -304,61 +391,33 @@ def render_engineering_overview_workspace(
 
     actions = overview.get("all_actions", [])
     recommendations = overview.get("recommendations", [])
+    top_actions = list(overview.get("top_actions", []))
 
-    cadivor_panel(title="Release posture", subtitle=metrics["release_label"], tone="soft")
-    cadivor_meta_row([(metrics["health_status"], metrics["health_tone"])])
-    cadivor_panel_end()
+    st.markdown(
+        f'<section class="cv6723-section">{_compact_release_posture_html(metrics)}</section>',
+        unsafe_allow_html=True,
+    )
 
     render_subsection_header(
         "Engineering recommendations",
         description="Cadivor-ranked actions based on saved evidence and open workflow.",
         icon="sparkles",
     )
-    if recommendations:
-        for index, recommendation in enumerate(recommendations[:3]):
-            cadivor_card(
-                f"Recommendation {index + 1}",
-                _text(recommendation),
-                badge="Priority" if index == 0 else "Review",
-                badge_tone="info" if index == 0 else "neutral",
-            )
-    else:
-        st.info("No urgent recommendation is recorded. Continue routine monitoring.")
+    st.markdown(
+        f'<div class="cv6723-section">{_compact_recommendations_html(recommendations)}</div>',
+        unsafe_allow_html=True,
+    )
 
     render_subsection_header(
         "Engineering Work Queue",
-        description="Work is ranked by release and supply impact.",
+        description="Top priority tasks ranked by release and supply impact.",
         icon="clipboard",
     )
-    if not overview.get("top_actions"):
-        st.success("No urgent work is currently recorded.")
-    for index, action in enumerate(overview.get("top_actions", [])):
-        priority = int(_number(action.get("priority"), 0))
-        effort = "10 min" if priority >= 85 else "20 min" if priority >= 60 else "30 min"
-        due_label = _text(action.get("due"), "This week")
-        cadivor_panel(title=_text(action.get("item"), "BOM"), subtitle=_text(action.get("title"), "Review engineering action"))
-        cadivor_meta_row(
-            [
-                (f"Priority {priority}/100", "info"),
-                (_text(action.get("owner"), "Engineering"), "neutral"),
-                (f"Estimated {effort}", "monitoring"),
-                (f"Due {due_label}", "warning"),
-            ]
-        )
-        cadivor_panel_end()
-        destination = _text(action.get("page"), "Engineering Decisions")
-        kwargs: Dict[str, Any] = {}
-        if destination == "Engineering Decisions" and action.get("decision_id"):
-            kwargs["decision_id"] = action["decision_id"]
-        internal_nav_button(
-            _action_button_label(action),
-            destination,
-            key=f"living_action_{index}",
-            use_container_width=True,
-            **kwargs,
-        )
-
-    if len(actions) > 5:
+    st.markdown(
+        f'<div class="cv6723-section">{_compact_work_queue_html(top_actions, limit=3)}</div>',
+        unsafe_allow_html=True,
+    )
+    if len(actions) > 3:
         with st.expander(f"View complete work queue ({len(actions)})", expanded=False):
             queue_df = pd.DataFrame(actions)
             visible = [column for column in ("item", "title", "owner", "due", "priority") if column in queue_df.columns]
@@ -377,8 +436,25 @@ def render_engineering_overview_workspace(
                 numeric_columns=["Priority"],
                 align={"Priority": "right"},
             )
+            for index, action in enumerate(actions[:8]):
+                destination = _text(action.get("page"), "Engineering Decisions")
+                kwargs: Dict[str, Any] = {}
+                if destination == "Engineering Decisions" and action.get("decision_id"):
+                    kwargs["decision_id"] = action["decision_id"]
+                internal_nav_button(
+                    _action_button_label(action),
+                    destination,
+                    key=f"living_queue_action_{index}",
+                    use_container_width=True,
+                    **kwargs,
+                )
 
-    render_subsection_header("Quick engineering actions", icon="zap")
+    render_subsection_header(
+        "Quick engineering actions",
+        description="Jump to the most common engineering workflows.",
+        icon="zap",
+    )
+    st.markdown('<div class="cv6723-action-toolbar">', unsafe_allow_html=True)
     nav_cols = st.columns(4)
     with nav_cols[0]:
         cadivor_button_wrap("secondary")
@@ -396,6 +472,7 @@ def render_engineering_overview_workspace(
         cadivor_button_wrap("secondary")
         internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
         cadivor_button_wrap_end()
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if activation_hook:
         activation_hook()
@@ -416,7 +493,7 @@ def render_portfolio_project_summaries(
     if not project_list:
         st.markdown(
             """
-            <section class="cv672-dashboard-empty">
+            <section class="cv6723-compact-panel cv6723-empty-note">
               <strong>No portfolio projects yet</strong>
               <p>Analyze or save a BOM to begin building portfolio intelligence.</p>
             </section>
@@ -425,70 +502,54 @@ def render_portfolio_project_summaries(
         )
         return
 
-    impact_rows = []
+    summary_rows = []
     for project in project_list[:8]:
-        impact_rows.append(
+        project_id = str(project.get("id") or "")
+        href = (
+            f"?page=Analysis%20Details&analysis_id={html.escape(project_id, quote=True)}"
+            if project_id
+            else "?page=BOM%20Analyzer"
+        )
+        summary_rows.append(
             {
                 "Project": _text(project.get("name"), "Saved BOM"),
                 "Health": f"{int(_number(project.get('health'), 0))}/100",
                 "Components": int(_number(project.get("parts"), 0)),
                 "High-Risk": int(_number(project.get("high"), 0)),
                 "Status": _text(project.get("status"), "Needs Review"),
+                "Open": href,
             }
         )
-    cadivor_table(
-        pd.DataFrame(impact_rows),
-        badge_columns=["Status"],
-        numeric_columns=["Components", "High-Risk"],
-        align={"Components": "right", "High-Risk": "right", "Health": "right"},
-    )
 
-    render_subsection_header(
-        "Production readiness",
-        description="Projects requiring attention appear first.",
-        icon="badge-check",
+    table_html = ['<div class="cv6723-project-table-wrap"><table class="cv6723-compact-table">']
+    table_html.append(
+        "<thead><tr>"
+        "<th>Project</th><th>Health</th><th>Components</th>"
+        "<th>High-Risk</th><th>Status</th><th>Open</th>"
+        "</tr></thead><tbody>"
     )
-    for index, project in enumerate(project_list[:5]):
-        status = _text(project.get("status"), "Needs Review")
-        badge_tone = "success" if status == "Ready for Production" else "warning"
-        updated = _relative_time(project.get("updated_at") or project.get("created_at"))
-        health = int(_number(project.get("health"), 0))
-        parts_count = int(_number(project.get("parts"), 0))
-        high_count = int(_number(project.get("high"), 0))
-        project_health_tone = "success" if health >= 85 else "warning" if health >= 70 else "danger"
-        cadivor_panel(
-            title=_text(project.get("name"), "Saved BOM"),
-            subtitle=f"Updated {updated}",
-            tone="soft",
+    for row in summary_rows:
+        table_html.append(
+            "<tr>"
+            f"<td>{html.escape(str(row['Project']))}</td>"
+            f"<td>{html.escape(str(row['Health']))}</td>"
+            f"<td>{row['Components']}</td>"
+            f"<td>{row['High-Risk']}</td>"
+            f'<td><span class="cv6723-status-chip cv6723-status-chip--neutral">{html.escape(str(row["Status"]))}</span></td>'
+            f'<td><a class="cv6723-inline-link" href="{row["Open"]}" target="_self">Open Project</a></td>'
+            "</tr>"
         )
-        cadivor_meta_row([(status, badge_tone)])
-        render_metric_strip(
-            [
-                MetricCard(label="Health", value=f"{health}/100", tone=project_health_tone, icon="gauge"),
-                MetricCard(label="Components", value=str(parts_count), tone="info", icon="boxes"),
-                MetricCard(
-                    label="High-Risk",
-                    value=str(high_count),
-                    tone="danger" if high_count else "success",
-                    icon="triangle-alert",
-                ),
-            ],
-            columns=3,
-        )
-        cadivor_panel_end()
-        if project.get("id"):
-            internal_nav_button(
-                "Open Project",
-                "Analysis Details",
-                key=f"living_project_{index}",
-                use_container_width=True,
-                analysis_id=project["id"],
-            )
+    table_html.append("</tbody></table></div>")
+    st.markdown("".join(table_html), unsafe_allow_html=True)
 
 
 def render_team_workload_section(*, overview: Dict[str, Any]) -> None:
     workload = workload_rows(overview.get("all_actions", []))
-    render_subsection_header("Team Workload", icon="clipboard")
+    render_subsection_header(
+        "Team workload",
+        description="Open actions and estimated effort by team.",
+        icon="clipboard",
+    )
     if workload:
         cadivor_table(
             pd.DataFrame(workload).rename(
@@ -498,7 +559,15 @@ def render_team_workload_section(*, overview: Dict[str, Any]) -> None:
             align={"Open Actions": "right", "Estimated Hours": "right"},
         )
     else:
-        st.info("No assigned workload is currently recorded.")
+        st.markdown(
+            """
+            <section class="cv6723-compact-panel cv6723-empty-note">
+              <strong>No assigned workload recorded</strong>
+              <p>Team workload will appear when actions are assigned.</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def render_dashboard_monitoring_workspace(
@@ -514,15 +583,24 @@ def render_dashboard_monitoring_workspace(
     timeline = [timeline_event(row) for row in alert_rows]
     supplier_rows = supplier_watch_rows(parts)
 
-    st.markdown(
-        """
-        <header class="cv672-dashboard-workspace-header">
-          <h2>Monitoring</h2>
-          <p>Lifecycle, inventory, pricing, and supplier change summaries from your workspace.</p>
-        </header>
-        """,
-        unsafe_allow_html=True,
-    )
+    header_col, action_col = st.columns([4, 1])
+    with header_col:
+        st.markdown(
+            """
+            <header class="cv672-dashboard-workspace-header">
+              <h2>Monitoring</h2>
+              <p>Lifecycle, inventory, pricing, and supplier change summaries from your workspace.</p>
+            </header>
+            """,
+            unsafe_allow_html=True,
+        )
+    with action_col:
+        internal_nav_button(
+            "Open Monitoring Center",
+            "Monitoring",
+            key="dashboard_monitoring_center_header",
+            use_container_width=True,
+        )
 
     render_kpi_row_safe(
         [
@@ -563,36 +641,79 @@ def render_dashboard_monitoring_workspace(
     price_events = [event for event in timeline if event["category"] == "Price"]
     supplier_events = [event for event in timeline if event["category"] == "Supplier"]
 
-    render_subsection_header("Lifecycle changes", icon="clock-3")
-    st.html(_monitoring_events_html(lifecycle_events, empty_copy="No lifecycle monitoring events are recorded yet."))
-
-    render_subsection_header("Stock changes", icon="package-search")
-    st.html(_monitoring_events_html(stock_events, empty_copy="No stock monitoring events are recorded yet."))
-
-    render_subsection_header("Price changes", icon="dollar-sign")
-    st.html(_monitoring_events_html(price_events, empty_copy="No price monitoring events are recorded yet."))
-
-    render_subsection_header("Supplier changes", icon="factory")
     if supplier_events:
-        st.html(_monitoring_events_html(supplier_events, empty_copy="No supplier monitoring events are recorded yet."))
+        supplier_body = _monitoring_events_html(
+            supplier_events,
+            empty_copy="No supplier monitoring events are recorded yet.",
+            limit=4,
+            compact=True,
+        )
     elif supplier_rows:
         watch_rows = [
             {
                 "Component": f'{item["part"]} · {item["manufacturer"]}',
                 "Signal": item["signal"],
                 "Detail": item["detail"],
-                "Priority": item["priority"],
             }
-            for item in supplier_rows
+            for item in supplier_rows[:4]
         ]
-        cadivor_table(
-            pd.DataFrame(watch_rows),
-            monospace_columns=["Component"],
-            numeric_columns=["Priority"],
-            align={"Priority": "right"},
+        supplier_body = (
+            '<div class="cv6723-compact-table-wrap"><table class="cv6723-compact-table">'
+            "<thead><tr><th>Component</th><th>Signal</th><th>Detail</th></tr></thead><tbody>"
+            + "".join(
+                f"<tr><td>{html.escape(row['Component'])}</td>"
+                f"<td>{html.escape(row['Signal'])}</td>"
+                f"<td>{html.escape(row['Detail'])}</td></tr>"
+                for row in watch_rows
+            )
+            + "</tbody></table></div>"
         )
     else:
-        st.html(_monitoring_events_html([], empty_copy="No supplier monitoring events are recorded yet."))
+        supplier_body = _monitoring_events_html(
+            [],
+            empty_copy="No supplier monitoring events are recorded yet.",
+            limit=4,
+            compact=True,
+        )
+
+    category_panels = [
+        ("Lifecycle changes", len(lifecycle_events), lifecycle_events, "No lifecycle monitoring events are recorded yet."),
+        ("Stock changes", len(stock_events), stock_events, "No stock monitoring events are recorded yet."),
+        ("Price changes", len(price_events), price_events, "No price monitoring events are recorded yet."),
+        ("Supplier changes", len(supplier_events) or len(supplier_rows), None, "No supplier monitoring events are recorded yet."),
+    ]
+
+    st.markdown('<div class="cv6723-monitor-grid">', unsafe_allow_html=True)
+    grid_row_1 = st.columns(2, gap="small")
+    grid_row_2 = st.columns(2, gap="small")
+    grid_slots = [grid_row_1[0], grid_row_1[1], grid_row_2[0], grid_row_2[1]]
+
+    for slot, (title, count, events, empty_copy) in zip(grid_slots, category_panels):
+        with slot:
+            if title == "Supplier changes":
+                body_html = supplier_body
+            else:
+                body_html = _monitoring_events_html(
+                    events or [],
+                    empty_copy=empty_copy,
+                    limit=4,
+                    compact=True,
+                )
+            st.markdown(
+                _monitoring_category_panel_html(title=title, count=count, body_html=body_html),
+                unsafe_allow_html=True,
+            )
+            if events and len(events) > 4:
+                with st.expander(f"View all {title.lower()}", expanded=False):
+                    st.html(
+                        _monitoring_events_html(
+                            events,
+                            empty_copy=empty_copy,
+                            limit=12,
+                            compact=True,
+                        )
+                    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     render_subsection_header(
         "Recent monitoring events",
@@ -600,11 +721,28 @@ def render_dashboard_monitoring_workspace(
         icon="history",
     )
     if timeline:
-        st.html(_monitoring_events_html(timeline, empty_copy="No monitoring activity yet."))
+        st.html(
+            _monitoring_events_html(
+                timeline,
+                empty_copy="No monitoring activity yet.",
+                limit=5,
+                compact=True,
+            )
+        )
+        if len(timeline) > 5:
+            with st.expander(f"View all monitoring events ({len(timeline)})", expanded=False):
+                st.html(
+                    _monitoring_events_html(
+                        timeline,
+                        empty_copy="No monitoring activity yet.",
+                        limit=20,
+                        compact=True,
+                    )
+                )
     else:
         st.markdown(
             """
-            <section class="cv672-dashboard-empty">
+            <section class="cv6723-compact-panel cv6723-empty-note">
               <strong>No monitoring activity yet</strong>
               <p>Add monitored components to track lifecycle, stock, price, and supplier changes.</p>
             </section>
@@ -612,12 +750,6 @@ def render_dashboard_monitoring_workspace(
             unsafe_allow_html=True,
         )
 
-    internal_nav_button(
-        "Open Monitoring Center",
-        "Monitoring",
-        key="dashboard_monitoring_center",
-        use_container_width=True,
-    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
