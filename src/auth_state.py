@@ -99,32 +99,50 @@ def mark_signed_out(reason: str = "signed_out") -> None:
 
 
 def begin_logout(supabase: Any, cookie_manager: Any) -> None:
-    """Commit logout in one local state change.
+    """End the Supabase session and hand off to the external marketing redirect."""
+    try:
+        supabase.auth.sign_out()
+    except Exception as exc:
+        _log("logout_sign_out_failed", error=type(exc).__name__)
 
-    The widget rerun caused by the Sign out button is the only rerun used. No
-    browser navigation, query parameter, cookie component, or second rerun is
-    allowed to participate.
-    """
     records = list(st.session_state.get("cadivor_auth_debug_log") or [])[-50:]
     for key in list(st.session_state.keys()):
         if key != "cadivor_auth_debug_log":
             st.session_state.pop(key, None)
     st.session_state["cadivor_auth_debug_log"] = records
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-    st.session_state["cadivor_root_state"] = APP_PUBLIC
     st.session_state["cadivor_signing_out"] = True
-    st.session_state["cadivor_public_route"] = "home"
-    st.session_state["cadivor_profile_menu_open"] = False
+    st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_resolved"] = True
-    # Remove stale login/public destinations before the signed-out surface is
-    # selected. This prevents logout from reopening Login or retaining a lower
-    # marketing route on the next run.
     try:
         st.query_params.clear()
-        st.query_params["public"] = "home"
     except Exception:
         pass
     _log("logout_committed")
+
+
+def render_external_logout_redirect() -> None:
+    """Redirect the browser to the external marketing homepage after sign-out."""
+    from src.urls import marketing_url
+
+    target = marketing_url("/")
+    render_auth_transition("Signing you out securely…")
+    components.html(
+        f"""<script>
+        (() => {{
+          const target = {json.dumps(target)};
+          try {{
+            if (window.top && window.top.location) {{
+              window.top.location.replace(target);
+              return;
+            }}
+          }} catch (error) {{}}
+          window.location.replace(target);
+        }})();
+        </script>""",
+        height=0,
+        width=0,
+    )
 
 def finalize_logout_cookie(cookie_manager: Any) -> None:
     """Compatibility no-op.
