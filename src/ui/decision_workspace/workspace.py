@@ -297,6 +297,18 @@ def recommendation_workspace_init_script() -> str:
       };
 
       doc.querySelectorAll('.cv70-decision-workspace').forEach(bindWorkspace);
+
+      const deferBlocks = doc.querySelectorAll('.cv71-defer');
+      if (deferBlocks.length && 'IntersectionObserver' in win) {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) entry.target.classList.add('is-visible');
+          });
+        }, { root: null, threshold: 0.12 });
+        deferBlocks.forEach((node) => observer.observe(node));
+      } else {
+        deferBlocks.forEach((node) => node.classList.add('is-visible'));
+      }
     })();
     </script>
     """
