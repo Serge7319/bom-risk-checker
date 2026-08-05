@@ -35,14 +35,14 @@ from src.readability_system import readability_css
 from src.living_workspace import (
     compute_dashboard_summary_metrics,
     render_dashboard_monitoring_workspace,
-    render_dashboard_summary_strip,
     render_engineering_overview_workspace,
 )
 from src.pages.dashboard_workspaces import (
-    DASHBOARD_WORKSPACES,
     inject_dashboard_workspace_styles,
     load_portfolio_dashboard_context,
     render_dashboard_analytics_workspace,
+    render_dashboard_page_heading,
+    render_dashboard_workspace_navigation,
     render_portfolio_intelligence_workspace,
 )
 from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
@@ -2786,8 +2786,7 @@ def run_authenticated_app() -> None:
                 st.session_state["preview_onboarding"] = "1"
                 navigate_to("Dashboard")
 
-        dashboard_metrics = compute_dashboard_summary_metrics(overview)
-        render_dashboard_summary_strip(overview=overview, metrics=dashboard_metrics)
+        render_dashboard_page_heading()
 
         dashboard_nav_key = "cv672_dashboard_workspace_radio"
         if "dashboard_workspace_initialized" not in st.session_state:
@@ -2795,41 +2794,32 @@ def run_authenticated_app() -> None:
             st.session_state["dashboard_workspace_tab"] = "Engineering Overview"
             st.session_state[dashboard_nav_key] = "Engineering Overview"
 
-        pending_workspace = st.session_state.get("dashboard_workspace_tab", "Engineering Overview")
-        if pending_workspace not in DASHBOARD_WORKSPACES:
-            pending_workspace = "Engineering Overview"
-            st.session_state[dashboard_nav_key] = pending_workspace
-
-        if pending_workspace == "Engineering Overview":
-            profile = get_user_profile(current_user)
-            render_activation_strip(
-                analyses_count=len(real_overview_analyses),
-                has_review=False,
-                has_report=False,
-            )
-            render_upgrade_prompt(
-                plan_name=str(profile.get("plan") or current_user.get("plan") or "Starter"),
-                monthly_used=len(real_overview_analyses),
-                monthly_limit=5,
-            )
-
-        st.markdown('<div class="cv672-dashboard-workspace-root"></div>', unsafe_allow_html=True)
-        workspace_category = st.radio(
-            "Dashboard workspace",
-            DASHBOARD_WORKSPACES,
-            horizontal=True,
-            key=dashboard_nav_key,
-            label_visibility="collapsed",
-        )
+        workspace_category = render_dashboard_workspace_navigation(radio_key=dashboard_nav_key)
         st.session_state["dashboard_workspace_tab"] = workspace_category
 
         portfolio_cache_key = f"dashboard_portfolio_ctx_{current_user['id']}_{active_workspace_id or 'none'}"
 
         if workspace_category == "Engineering Overview":
+            dashboard_metrics = compute_dashboard_summary_metrics(overview)
+            profile = get_user_profile(current_user)
+
+            def _render_engineering_activation() -> None:
+                render_activation_strip(
+                    analyses_count=len(real_overview_analyses),
+                    has_review=False,
+                    has_report=False,
+                )
+                render_upgrade_prompt(
+                    plan_name=str(profile.get("plan") or current_user.get("plan") or "Starter"),
+                    monthly_used=len(real_overview_analyses),
+                    monthly_limit=5,
+                )
+
             render_engineering_overview_workspace(
                 overview=overview,
                 metrics=dashboard_metrics,
                 internal_nav_button=internal_nav_button,
+                activation_hook=_render_engineering_activation,
             )
         elif workspace_category == "Portfolio Intelligence":
             inject_dashboard_workspace_styles()
