@@ -575,6 +575,13 @@ def _render_landing_page():
 
 def show_auth_ui(supabase, cookie_manager=None):
     """Render exactly one signed-out/authentication surface per run."""
+    from src.auth_state import explicit_logout_pending, handle_explicit_logout_if_pending
+
+    if explicit_logout_pending():
+        if handle_explicit_logout_if_pending():
+            st.stop()
+        st.stop()
+
     _auth_css()
     inject_core_premium_ui_auth()
     state = str(st.session_state.get("cadivor_root_state") or APP_PUBLIC)
