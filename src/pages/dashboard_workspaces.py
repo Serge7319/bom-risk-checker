@@ -23,6 +23,53 @@ DASHBOARD_WORKSPACES: tuple[str, ...] = (
     "Monitoring",
 )
 
+WORKSPACE_HEADERS: Dict[str, tuple[str, str]] = {
+    "Engineering Overview": ("Engineering Overview", "What should engineering do today?"),
+    "Portfolio Intelligence": (
+        "Portfolio Intelligence",
+        "Review portfolio health, readiness, and recent engineering activity.",
+    ),
+    "Analytics": ("Analytics", "How is engineering risk changing over time?"),
+    "Monitoring": ("Monitoring", "Recent lifecycle, inventory, pricing, and supplier change summaries."),
+}
+
+
+def render_dashboard_page_heading() -> None:
+    st.markdown(
+        """
+        <header class="cv672-dashboard-heading">
+          <p class="cv672-dashboard-kicker">Cadivor Command Center</p>
+          <h1 class="cv672-dashboard-title">Dashboard</h1>
+        </header>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_dashboard_workspace_navigation(*, radio_key: str) -> str:
+    """Segmented workspace navigation — must render before workspace content."""
+    st.markdown('<div class="cv672-dashboard-workspace-root"></div>', unsafe_allow_html=True)
+    workspace = st.radio(
+        "Dashboard workspace",
+        DASHBOARD_WORKSPACES,
+        horizontal=True,
+        key=radio_key,
+        label_visibility="collapsed",
+    )
+    return workspace
+
+
+def render_workspace_section_header(title: str, description: str) -> None:
+    st.markdown(
+        f"""
+        <header class="cv672-dashboard-workspace-header">
+          <h2>{html.escape(title)}</h2>
+          <p>{html.escape(description)}</p>
+        </header>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 def inject_dashboard_workspace_styles() -> None:
     """Inject dashboard page styles once per Dashboard visit."""
@@ -441,42 +488,37 @@ def render_portfolio_intelligence_workspace(
         st.markdown("</div>", unsafe_allow_html=True)
         return
 
-    st.html(
-        f"""
-        <section class="cv57-command">
-          <div class="cv57-kicker">Portfolio Intelligence</div>
-          <h1>{html.escape(str(ctx.get('greeting_prefix')))}, {html.escape(str(ctx.get('user_name')))}.</h1>
-          <p class="cv57-lead">Review portfolio health, project readiness, and recent engineering activity.</p>
-        </section>
-        """
+    render_workspace_section_header(
+        "Portfolio Intelligence",
+        "Review portfolio health, readiness, and recent engineering activity.",
     )
 
     portfolio_tone = ctx.get("health_kind") if ctx.get("health_kind") in {"success", "warning", "danger"} else "info"
     render_kpi_row_safe(
         [
             MetricCard(
-                label="Portfolio health",
+                label="Portfolio Health",
                 value=str(ctx.get("avg_health_score")),
                 detail=f"{ctx.get('health_badge')} · {ctx.get('health_delta_label')} vs previous",
                 tone=portfolio_tone,
                 icon="gauge",
             ),
             MetricCard(
-                label="Saved projects",
+                label="Saved Projects",
                 value=str(ctx.get("total_analyses")),
                 detail="Saved engineering analyses",
                 tone="info",
                 icon="folder-archive",
             ),
             MetricCard(
-                label="Critical components",
+                label="Critical Components",
                 value=str(ctx.get("total_high_risk")),
                 detail="Require engineering review",
                 tone="danger" if ctx.get("total_high_risk") else "success",
                 icon="triangle-alert",
             ),
             MetricCard(
-                label="Portfolio alerts",
+                label="Portfolio Alerts",
                 value=str(ctx.get("alert_count")),
                 detail=f"{ctx.get('high_alert_count')} high severity",
                 tone="warning" if ctx.get("alert_count") else "neutral",
@@ -485,6 +527,45 @@ def render_portfolio_intelligence_workspace(
         ],
         columns=4,
     )
+
+    declining_projects = ctx.get("declining_projects") or []
+    st.markdown(
+        """
+        <div class="cv-v4-section-head">
+          <div>
+            <div class="cv-v4-section-title">Projects requiring attention</div>
+            <div class="cv-v4-section-meta">Projects moving in the wrong direction.</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if declining_projects:
+        for project in declining_projects[:3]:
+            project_name = html.escape(str(project.get("project") or "Saved BOM"))
+            health_change = int(project.get("health_change", 0) or 0)
+            risk_change = int(project.get("risk_change", 0) or 0)
+            explanation_parts = []
+            if health_change < 0:
+                explanation_parts.append(f"health {health_change:+d}")
+            if risk_change > 0:
+                explanation_parts.append(f"high-risk {risk_change:+d}")
+            explanation = " • ".join(explanation_parts) or "Recorded risk increased"
+            st.markdown(
+                f"""
+                <div class="cv231-activity-card" style="padding:12px 14px;">
+                  <div class="cv231-activity-type">Needs Attention</div>
+                  <div class="cv231-activity-title">{project_name}</div>
+                  <div class="cv231-activity-copy">{html.escape(explanation)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            '<div class="cv242-status-note">No saved projects are currently trending downward.</div>',
+            unsafe_allow_html=True,
+        )
 
     render_portfolio_project_summaries(
         projects=overview.get("projects", []),
@@ -567,45 +648,6 @@ def render_portfolio_intelligence_workspace(
             unsafe_allow_html=True,
         )
 
-    declining_projects = ctx.get("declining_projects") or []
-    st.markdown(
-        """
-        <div class="cv-v4-section-head" style="margin-top:8px;">
-          <div>
-            <div class="cv-v4-section-title">Projects requiring attention</div>
-            <div class="cv-v4-section-meta">Projects moving in the wrong direction.</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if declining_projects:
-        for project in declining_projects[:3]:
-            project_name = html.escape(str(project.get("project") or "Saved BOM"))
-            health_change = int(project.get("health_change", 0) or 0)
-            risk_change = int(project.get("risk_change", 0) or 0)
-            explanation_parts = []
-            if health_change < 0:
-                explanation_parts.append(f"health {health_change:+d}")
-            if risk_change > 0:
-                explanation_parts.append(f"high-risk {risk_change:+d}")
-            explanation = " • ".join(explanation_parts) or "Recorded risk increased"
-            st.markdown(
-                f"""
-                <div class="cv231-activity-card" style="padding:12px 14px;">
-                  <div class="cv231-activity-type">Needs Attention</div>
-                  <div class="cv231-activity-title">{project_name}</div>
-                  <div class="cv231-activity-copy">{html.escape(explanation)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    else:
-        st.markdown(
-            '<div class="cv242-status-note">No saved projects are currently trending downward.</div>',
-            unsafe_allow_html=True,
-        )
-
     recent_activity = ctx.get("recent_activity") or []
     st.markdown(
         """
@@ -672,44 +714,9 @@ def render_dashboard_analytics_workspace(
         st.markdown("</div>", unsafe_allow_html=True)
         return
 
-    st.markdown(
-        """
-        <div class="cv-v4-section-head">
-          <div>
-            <div class="cv-v4-section-title">Engineering Analytics</div>
-            <div class="cv-v4-section-meta">Trend and distribution views derived from saved analyses.</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"""
-        <div class="cv232-trend-summary">{html.escape(str(ctx.get('trend_summary')))}</div>
-        <section class="cv232-trend-grid">
-          <div class="cv232-trend-card {'good' if ctx.get('trend_health_change', 0) > 0 else 'bad' if ctx.get('trend_health_change', 0) < 0 else ''}">
-            <div class="cv232-trend-label">Health Change</div>
-            <div class="cv232-trend-value">{ctx.get('trend_health_change', 0):+d}</div>
-            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
-          </div>
-          <div class="cv232-trend-card {'good' if ctx.get('trend_high_risk_change', 0) < 0 else 'bad' if ctx.get('trend_high_risk_change', 0) > 0 else ''}">
-            <div class="cv232-trend-label">High-Risk Change</div>
-            <div class="cv232-trend-value">{ctx.get('trend_high_risk_change', 0):+d}</div>
-            <div class="cv232-trend-note">Fewer high-risk records is better</div>
-          </div>
-          <div class="cv232-trend-card {'warn' if ctx.get('recent_alerts_7d') else ''}">
-            <div class="cv232-trend-label">Alert Trend (7d)</div>
-            <div class="cv232-trend-value">{ctx.get('recent_alerts_7d', 0)}</div>
-            <div class="cv232-trend-note">Recorded in the last seven days</div>
-          </div>
-          <div class="cv232-trend-card">
-            <div class="cv232-trend-label">Lifecycle Signals</div>
-            <div class="cv232-trend-value">{ctx.get('lifecycle_alert_count', 0)}</div>
-            <div class="cv232-trend-note">Lifecycle-related monitoring events</div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    render_workspace_section_header(
+        "Analytics",
+        "How is engineering risk changing over time?",
     )
 
     chart_left, chart_right = st.columns(2, gap="medium")
@@ -851,6 +858,35 @@ def render_dashboard_analytics_workspace(
             )
         else:
             st.info("Save at least two BOM analyses to display risk movement.")
+
+    st.markdown(
+        f"""
+        <div class="cv232-trend-summary">{html.escape(str(ctx.get('trend_summary')))}</div>
+        <section class="cv232-trend-grid">
+          <div class="cv232-trend-card {'good' if ctx.get('trend_health_change', 0) > 0 else 'bad' if ctx.get('trend_health_change', 0) < 0 else ''}">
+            <div class="cv232-trend-label">Health Change</div>
+            <div class="cv232-trend-value">{ctx.get('trend_health_change', 0):+d}</div>
+            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
+          </div>
+          <div class="cv232-trend-card {'good' if ctx.get('trend_high_risk_change', 0) < 0 else 'bad' if ctx.get('trend_high_risk_change', 0) > 0 else ''}">
+            <div class="cv232-trend-label">High-Risk Change</div>
+            <div class="cv232-trend-value">{ctx.get('trend_high_risk_change', 0):+d}</div>
+            <div class="cv232-trend-note">Fewer high-risk records is better</div>
+          </div>
+          <div class="cv232-trend-card {'warn' if ctx.get('recent_alerts_7d') else ''}">
+            <div class="cv232-trend-label">Alert trend (7d)</div>
+            <div class="cv232-trend-value">{ctx.get('recent_alerts_7d', 0)}</div>
+            <div class="cv232-trend-note">Recorded in the last seven days</div>
+          </div>
+          <div class="cv232-trend-card">
+            <div class="cv232-trend-label">Lifecycle trend</div>
+            <div class="cv232-trend-value">{ctx.get('lifecycle_alert_count', 0)}</div>
+            <div class="cv232-trend-note">Lifecycle-related monitoring events</div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         f"""
