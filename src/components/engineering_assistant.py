@@ -4,9 +4,12 @@ from __future__ import annotations
 import html
 import re
 from typing import Any, Iterable
+
+import streamlit as st
+import streamlit.components.v1 as components
+
 from src.urls import internal_app_href
 from src.ui.navigation import alternative_finder_href
-import streamlit.components.v1 as components
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
 from src.services.engineering_ai import EngineeringAI, EngineeringAIError
@@ -26,6 +29,54 @@ SUGGESTIONS = [
     "Summarize the supplier and lifecycle exposure.",
 ]
 
+
+_AUTH_SNAPSHOT_KEYS = (
+    "user",
+    "access_token",
+    "refresh_token",
+    "app_mode",
+    "pending_app_mode",
+    "analysis_id",
+    "selected_analysis",
+    "current_analysis",
+    "active_analysis_id",
+    "cadivor_route",
+    "cadivor_auth_status",
+)
+
+
+def _capture_auth_snapshot() -> dict[str, Any]:
+    """Capture the minimum auth/route state needed for a safe copilot rerun."""
+    snapshot: dict[str, Any] = {}
+    try:
+        for key in _AUTH_SNAPSHOT_KEYS:
+            value = st.session_state.get(key)
+            if value is not None:
+                snapshot[key] = value
+    except Exception:
+        return {}
+    return snapshot
+
+
+def _restore_auth_snapshot(snapshot: Any) -> None:
+    """Restore auth/route state without assuming the snapshot is fully initialized."""
+    if not isinstance(snapshot, dict):
+        return
+    try:
+        for key, value in snapshot.items():
+            if not key or value is None:
+                continue
+            if st.session_state.get(key) is None:
+                st.session_state[key] = value
+    except Exception:
+        return
+
+
+def _clear_auth_snapshot() -> None:
+    try:
+        st.session_state.pop("cv48_auth_snapshot", None)
+    except Exception:
+        pass
 
 
 def _clear_review_state() -> None:
@@ -554,13 +605,7 @@ def _queue_follow_up(question: str) -> None:
         route_snapshot = {key: value for key, value in st.query_params.items()}
     except Exception:
         route_snapshot = {}
-    st.session_state["cv48_auth_snapshot"] = {
-        key: st.session_state.get(key) for key in (
-            "user", "access_token", "refresh_token", "app_mode",
-            "pending_app_mode", "analysis_id", "selected_analysis",
-            "current_analysis", "active_analysis_id",
-        ) if st.session_state.get(key) is not None
-    }
+    st.session_state["cv48_auth_snapshot"] = _capture_auth_snapshot()
     st.session_state["cv4801_route_snapshot"] = route_snapshot
     st.session_state["cv4801_followup_inflight"] = True
     st.session_state["cv4801_auth_retry_count"] = 0
@@ -1025,13 +1070,16 @@ def render_engineering_assistant(
     engineering_context: Any,
     selected_component: str = "",
 ) -> None:
-    snapshot = st.session_state.get("cv48_auth_snapshot")
-    if isinstance(snapshot, dict):
-        for key, value in snapshot.items():
-            if value is not None and st.session_state.get(key) is None:
-                st.session_state[key] = value
-    context = engineering_context.compact(max_components=15) if hasattr(engineering_context, "compact") else dict(engineering_context or {})
-    status = get_ai_usage_status(st.session_state, current_user)
+    _restore_auth_snapshot(st.session_state.get("cv48_auth_snapshot"))
+    try:
+        context = (
+            engineering_context.compact(max_components=15)
+            if hasattr(engineering_context, "compact")
+            else dict(engineering_context or {})
+        )
+    except Exception:
+        context = {}
+    status = get_ai_usage_status(st.session_state, current_user or {})
 
     st.markdown(
         """
@@ -1202,7 +1250,7 @@ def render_engineering_assistant(
                 # active route are safely stored.
                 st.session_state.pop("cv4801_followup_inflight", None)
                 st.session_state.pop("cv4801_auth_retry_count", None)
-                st.session_state.pop("cv48_auth_snapshot", None)
+                _clear_auth_snapshot()
                 st.session_state.pop("cv4801_route_snapshot", None)
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
