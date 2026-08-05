@@ -119,7 +119,7 @@ def _render_trend_chart_panel(
     )
     if frame.empty:
         st.markdown(
-            f'<section class="cv6723-chart-empty">{html.escape(empty_copy)}</section>',
+            f'<div class="cv6723-chart-empty">{html.escape(empty_copy)}</div>',
             unsafe_allow_html=True,
         )
         return
@@ -802,7 +802,6 @@ def render_dashboard_analytics_workspace(
     st.markdown('<div class="cv6723-chart-grid">', unsafe_allow_html=True)
     chart_row_1 = st.columns(2, gap="small")
     with chart_row_1[0]:
-        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
         st.markdown(
             f"""
             <div class="cv6723-chart-panel-head">
@@ -870,10 +869,8 @@ def render_dashboard_analytics_workspace(
             use_container_width=True,
             config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
         )
-        st.markdown("</section>", unsafe_allow_html=True)
 
     with chart_row_1[1]:
-        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
         st.markdown(
             """
             <div class="cv6723-chart-panel-head">
@@ -938,14 +935,12 @@ def render_dashboard_analytics_workspace(
             )
         else:
             st.markdown(
-                '<section class="cv6723-chart-empty">Save at least two BOM analyses to display risk movement.</section>',
+                '<div class="cv6723-chart-empty">Save at least two BOM analyses to display risk movement.</div>',
                 unsafe_allow_html=True,
             )
-        st.markdown("</section>", unsafe_allow_html=True)
 
     chart_row_2 = st.columns(2, gap="small")
     with chart_row_2[0]:
-        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
         _render_trend_chart_panel(
             title="Lifecycle trend",
             description="Lifecycle-related monitoring events over recorded days.",
@@ -955,9 +950,7 @@ def render_dashboard_analytics_workspace(
             fill_rgba="rgba(217, 119, 6, 0.08)",
             empty_copy="No lifecycle monitoring events recorded yet.",
         )
-        st.markdown("</section>", unsafe_allow_html=True)
     with chart_row_2[1]:
-        st.markdown('<section class="cv6723-chart-panel">', unsafe_allow_html=True)
         _render_trend_chart_panel(
             title="Alert trend",
             description="Recorded monitoring events over the last seven days.",
@@ -967,7 +960,6 @@ def render_dashboard_analytics_workspace(
             fill_rgba="rgba(37, 99, 235, 0.08)",
             empty_copy="No monitoring alerts recorded yet.",
         )
-        st.markdown("</section>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     health_change = int(ctx.get("trend_health_change", 0) or 0)
