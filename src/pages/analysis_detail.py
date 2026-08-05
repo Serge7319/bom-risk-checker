@@ -19,7 +19,6 @@ from src.engineering_decision_engine import (
     render_engineering_workspace_actions,
     render_engineering_workspace_impact,
     render_engineering_workspace_evidence,
-    workspace_category_counts,
     WORKSPACE_CATEGORIES,
     get_cached_decision_brief,
     cache_decision_brief,
@@ -1031,27 +1030,8 @@ def render_analysis_detail(
 
         st.markdown('<div class="cv672-workspace-root"></div>', unsafe_allow_html=True)
         render_engineering_workspace_strip(decision_brief)
-        category_counts = workspace_category_counts(decision_brief)
         workspace_radio_key = f"cv672_workspace_radio_{analysis_id}"
         ws_state_key = f"engineering_workspace_tab_{analysis_id}"
-
-        shortcut_cols = st.columns(4)
-        shortcut_map = (
-            ("Production Status", "Decision Overview"),
-            (f"Confidence · {int(decision_brief.get('confidence', {}).get('score') or 0)}%", "Evidence"),
-            (f"Findings · {category_counts['findings']}", "Critical Findings"),
-            (f"Actions · {category_counts['actions']}", "Recommended Actions"),
-        )
-        for col, (label, target) in zip(shortcut_cols, shortcut_map):
-            with col:
-                if st.button(
-                    label,
-                    key=f"cv672_shortcut_{target.replace(' ', '_').lower()}_{analysis_id}",
-                    use_container_width=True,
-                ):
-                    st.session_state[workspace_radio_key] = target
-                    st.session_state[ws_state_key] = target
-                    st.rerun()
 
         workspace_category = st.radio(
             "Engineering workspace category",
