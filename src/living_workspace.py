@@ -27,6 +27,7 @@ from src.ui.cadivor_design_system import (
     render_section_header,
     render_subsection_header,
 )
+from src.ui.navigation import internal_nav_button
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -121,6 +122,25 @@ def timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
 
 def _timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
     return timeline_event(alert)
+
+
+def _monitoring_events_html(events: List[Dict[str, str]], *, empty_copy: str) -> str:
+    if not events:
+        return (
+            f'<section class="cv672-dashboard-empty"><strong>No changes recorded</strong>'
+            f"<p>{html.escape(empty_copy)}</p></section>"
+        )
+    rows = ['<div class="cv64-timeline">']
+    for event in events[:6]:
+        rows.append(
+            '<div class="cv64-timeline-item">'
+            f'<div class="cv64-timeline-time">{html.escape(event["time"])}</div>'
+            f'<div class="cv64-timeline-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
+            f'<div class="cv64-timeline-copy">{html.escape(event["change"])}</div>'
+            "</div>"
+        )
+    rows.append("</div>")
+    return "".join(rows)
 
 
 def supplier_watch_rows(parts: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -273,7 +293,6 @@ def render_engineering_overview_workspace(
     *,
     overview: Dict[str, Any],
     metrics: Dict[str, Any],
-    internal_nav_button: Callable[..., Any],
     after_brief_hook: Optional[Callable[[], None]] = None,
     activation_hook: Optional[Callable[[], None]] = None,
 ) -> None:
@@ -387,7 +406,6 @@ def render_engineering_overview_workspace(
 def render_portfolio_project_summaries(
     *,
     projects: Iterable[Dict[str, Any]],
-    internal_nav_button: Callable[..., Any],
 ) -> None:
     project_list = list(projects or [])
     render_subsection_header(
@@ -488,7 +506,6 @@ def render_dashboard_monitoring_workspace(
     overview: Dict[str, Any],
     parts: Iterable[Dict[str, Any]],
     alerts: Iterable[Dict[str, Any]],
-    internal_nav_button: Callable[..., Any],
 ) -> None:
     """Workspace 4 — monitoring summaries with link to full Monitoring page."""
     st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
@@ -608,7 +625,6 @@ def render_living_workspace(
     *,
     overview: Dict[str, Any],
     parts: Iterable[Dict[str, Any]],
-    internal_nav_button: Callable[..., Any],
 ) -> None:
     """Legacy full-page Engineering Overview — kept for fallback paths."""
     metrics = compute_dashboard_summary_metrics(overview)
@@ -616,5 +632,4 @@ def render_living_workspace(
     render_engineering_overview_workspace(
         overview=overview,
         metrics=metrics,
-        internal_nav_button=internal_nav_button,
     )
