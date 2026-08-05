@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import html
 import re
-from typing import Any
+from typing import Any, Iterable
 from urllib.parse import urlencode, quote
 
 import streamlit as st
@@ -228,7 +228,6 @@ def _href(page: str, **params: Any) -> str:
     payload = {"page": page}
     payload.update({key: value for key, value in params.items() if value not in (None, "")})
     return "?" + urlencode(payload, quote_via=quote)
-
 
 
 def _split_evidence_detail(detail: str) -> list[tuple[str, str]]:
@@ -568,19 +567,85 @@ def _queue_follow_up(question: str) -> None:
     st.rerun()
 
 
+def _analysis_id_from_context(context: dict[str, Any]) -> str:
+    analysis = context.get("analysis") or {}
+    return str(context.get("analysis_id") or analysis.get("analysis_id") or "")
+
+
+def _apply_copilot_query_picks(*, prompt_key: str) -> None:
+    try:
+        query_params = st.query_params
+    except Exception:
+        return
+
+    pick = str(query_params.get("cv35_pick", "") or "").strip()
+    if pick.isdigit():
+        idx = int(pick)
+        if 0 <= idx < len(SUGGESTIONS):
+            st.session_state[prompt_key] = SUGGESTIONS[idx]
+            _clear_review_state()
+            try:
+                del query_params["cv35_pick"]
+            except Exception:
+                pass
+            st.rerun()
+        return
+
+    follow_pick = str(query_params.get("cv36_pick", "") or "").strip()
+    if not follow_pick.isdigit():
+        return
+    options = st.session_state.get("cv36_followup_options") or []
+    idx = int(follow_pick)
+    if 0 <= idx < len(options):
+        question = str(options[idx] or "").strip()
+        if question:
+            try:
+                del query_params["cv36_pick"]
+            except Exception:
+                pass
+            _queue_follow_up(question)
+
+
+def _render_prompt_chip_grid(
+    items: Iterable[str],
+    *,
+    param_key: str,
+    analysis_id: str,
+    grid_class: str = "cv35-suggestion-grid",
+) -> None:
+    chips: list[str] = []
+    for index, raw in enumerate(items):
+        label = str(raw or "").strip()
+        if not label:
+            continue
+        href = _href(
+            "Analysis Details",
+            analysis_id=analysis_id,
+            analysis_tab="Ask Cadivor",
+            **{param_key: str(index)},
+        )
+        chips.append(
+            f'<a class="cv35-suggestion-chip" href="{html.escape(href, quote=True)}" target="_self">'
+            f"{html.escape(label)}</a>"
+        )
+    if chips:
+        st.html(f'<div class="{grid_class}">{"".join(chips)}</div>')
+
+
 def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -> None:
     suggestions = follow_up_suggestions(question, answer, context)
-    if suggestions:
+    valid_suggestions = [str(item or "").strip() for item in suggestions]
+    valid_suggestions = [item for item in valid_suggestions if item]
+    analysis_id = _analysis_id_from_context(context)
+    if valid_suggestions and analysis_id:
+        st.session_state["cv36_followup_options"] = valid_suggestions
         st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
-        cols = st.columns(2)
-        for index, suggestion in enumerate(suggestions):
-            button_label = f"↳  {suggestion}"
-            if cols[index % 2].button(
-                button_label,
-                key=f"cv36_followup_{index}_{abs(hash(suggestion))}",
-                use_container_width=True,
-            ):
-                _queue_follow_up(suggestion)
+        _render_prompt_chip_grid(
+            valid_suggestions,
+            param_key="cv36_pick",
+            analysis_id=analysis_id,
+            grid_class="cv35-suggestion-grid cv35-suggestion-grid--duo",
+        )
 
     st.markdown('<div class="cv35-section-label">Ask a different follow-up</div>', unsafe_allow_html=True)
     st.caption("Ask any new engineering question about this assessment or the BOM. You are not limited to the suggested questions.")
@@ -1034,6 +1099,12 @@ def render_engineering_assistant(
         .cv47-ranking-board{display:grid;gap:8px;margin-bottom:10px}.cv47-ranking-row{display:flex;gap:10px;align-items:flex-start;border:1px solid #dbeafe;background:#fff;border-radius:13px;padding:10px 12px}.cv47-ranking-row>b{display:grid;place-items:center;width:23px;height:23px;border-radius:7px;background:#2563eb;color:#fff;font-size:10px;flex:0 0 auto}.cv47-ranking-row strong{display:block;font-size:13px;color:#0f172a}.cv47-ranking-row span{display:block;font-size:11px;color:#64748b;margin-top:2px}.cv47-question-banner{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 14px;margin:12px 0 10px}.cv47-question-banner span{display:block;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}.cv47-question-banner strong{display:block;margin-top:3px;font-size:clamp(13px,.9vw,16px);line-height:1.4;color:#0f172a}.cv46-confidence-drivers>div strong:first-of-type{font-weight:900}.cv46-confidence-drivers>div:has(strong:first-of-type){border-radius:8px}
         @media(max-width:1180px){.cv46-evidence-board{grid-template-columns:repeat(2,minmax(0,1fr))}.cv46-why{grid-template-columns:1fr}.cv46-why ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:760px){.cv46-evidence-board,.cv46-why ol,.cv46-confidence-drivers{grid-template-columns:1fr}.cv46-evidence-metrics{grid-template-columns:1fr 1fr}.cv46-why{padding:15px}.cv39-decision-grid{grid-template-columns:1fr!important}.cv39-decision-card{border-radius:18px;padding:16px!important}.cv35-hero{padding:17px;border-radius:19px}.cv35-hero h2{font-size:clamp(23px,7vw,30px)!important}.cv39-decision-top h2{font-size:clamp(23px,7vw,30px)!important}}
+        .cv35-suggestion-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 12px}
+        .cv35-suggestion-grid--duo{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .cv35-suggestion-chip{display:flex;align-items:flex-start;min-height:44px;padding:10px 12px;border:1px solid #94a3b8;border-radius:10px;background:#fff;color:#0f172a;font-size:12px;font-weight:650;line-height:1.45;text-decoration:none;box-shadow:0 4px 12px rgba(15,23,42,.04);white-space:normal;overflow-wrap:anywhere}
+        .cv35-suggestion-chip:hover{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
+        section[data-testid="stMain"] .st-key-cv36_new_conversation .stButton>button,section[data-testid="stMain"] .st-key-cv36_new_conversation .stButton>button p,section[data-testid="stMain"] .st-key-cv36_new_conversation .stButton>button span{background:#fff!important;border:1px solid #94a3b8!important;color:#0f172a!important;opacity:1!important}
+        @media(max-width:900px){.cv35-suggestion-grid,.cv35-suggestion-grid--duo{grid-template-columns:1fr}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
         """,
@@ -1052,6 +1123,7 @@ def render_engineering_assistant(
         utility_right.caption(f"{len(thread)} review{'s' if len(thread) != 1 else ''} in this BOM conversation")
 
     prompt_key = "cv35_question"
+    _apply_copilot_query_picks(prompt_key=prompt_key)
     auto_execute_followup = False
     pending_manual = st.session_state.pop("cv41_pending_manual", None)
     pending_followup = st.session_state.pop("cv36_pending_followup", None)
@@ -1064,12 +1136,9 @@ def render_engineering_assistant(
         auto_execute_followup = True
     elif prompt_key not in st.session_state:
         st.session_state[prompt_key] = ""
-    suggestion_cols = st.columns(3)
-    for idx, suggestion in enumerate(SUGGESTIONS):
-        if suggestion_cols[idx % 3].button(suggestion, key=f"cv35_suggestion_{idx}", use_container_width=True):
-            st.session_state[prompt_key] = suggestion
-            _clear_review_state()
-            st.rerun()
+    analysis_id = _analysis_id_from_context(context)
+    if analysis_id:
+        _render_prompt_chip_grid(SUGGESTIONS, param_key="cv35_pick", analysis_id=analysis_id)
 
     # A form submits the browser's current text-area value and the button click
     # in one transaction. This prevents pasted text from requiring a first click
