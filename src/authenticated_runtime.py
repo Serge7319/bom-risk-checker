@@ -2773,19 +2773,7 @@ def run_authenticated_app() -> None:
             )
             stop_authenticated_page()
 
-        # Existing customers can revisit the first-time experience without creating
-        # a disposable account. This is a preview only and never changes saved data.
-        preview_controls = st.columns([1, 4])
-        with preview_controls[0]:
-            if st.button(
-                "Preview onboarding",
-                key="dashboard_preview_onboarding",
-                type="secondary",
-                use_container_width=True,
-            ):
-                st.session_state["preview_onboarding"] = "1"
-                navigate_to("Dashboard")
-
+        inject_dashboard_workspace_styles()
         render_dashboard_page_heading()
 
         dashboard_nav_key = "cv672_dashboard_workspace_radio"
@@ -2818,11 +2806,9 @@ def run_authenticated_app() -> None:
             render_engineering_overview_workspace(
                 overview=overview,
                 metrics=dashboard_metrics,
-                internal_nav_button=internal_nav_button,
                 activation_hook=_render_engineering_activation,
             )
         elif workspace_category == "Portfolio Intelligence":
-            inject_dashboard_workspace_styles()
             if portfolio_cache_key not in st.session_state:
                 st.session_state[portfolio_cache_key] = load_portfolio_dashboard_context(
                     current_user=current_user,
@@ -2835,10 +2821,8 @@ def run_authenticated_app() -> None:
             render_portfolio_intelligence_workspace(
                 ctx=st.session_state[portfolio_cache_key],
                 overview=overview,
-                internal_nav_button=internal_nav_button,
             )
         elif workspace_category == "Analytics":
-            inject_dashboard_workspace_styles()
             if portfolio_cache_key not in st.session_state:
                 st.session_state[portfolio_cache_key] = load_portfolio_dashboard_context(
                     current_user=current_user,
@@ -2857,8 +2841,18 @@ def run_authenticated_app() -> None:
                 overview=overview,
                 parts=overview_parts,
                 alerts=overview_alerts,
-                internal_nav_button=internal_nav_button,
             )
+
+        # Existing customers can revisit the first-time experience without creating
+        # a disposable account. This is a preview only and never changes saved data.
+        if st.button(
+            "Preview onboarding",
+            key="dashboard_preview_onboarding",
+            type="secondary",
+        ):
+            st.session_state["preview_onboarding"] = "1"
+            navigate_to("Dashboard")
+
         inject_workspace_consistency_css()
         st.session_state.pop("cadivor_route_transition", None)
         stop_authenticated_page()
