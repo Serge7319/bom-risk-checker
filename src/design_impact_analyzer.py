@@ -471,6 +471,7 @@ def render_design_impact(
             key="impact_find_replacement",
             use_container_width=True,
             original_part=current,
+            source_page="design_impact",
         )
     with actions[1]:
         internal_nav_button(
