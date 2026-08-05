@@ -361,7 +361,7 @@ def render_cost_optimization(
         st.markdown(f"""<section class="cv21-card"><div class="cv21-card-title">{html.escape(row['Part Number'])}</div><div class="cv21-card-copy">{html.escape(row['Reason'])}</div><div class="cv21-meta"><span>{html.escape(row['Category'])}</span><span>{row['Projects']} project(s)</span><span>{row['Units per Build']} unit(s)/build</span><span>Current ${row['Current Unit Price']:,.4f}</span><span>Target ${row['Estimated Target Price']:,.4f}</span><span>Est. savings ${row['Estimated Run Savings']:,.2f}</span></div></section>""", unsafe_allow_html=True)
         cols=st.columns(2)
         with cols[0]: internal_nav_button("Review Sourcing","Procurement Advisor",key=f"cost_procurement_{index}",use_container_width=True)
-        with cols[1]: internal_nav_button("Find Alternatives","Alternative Finder",key=f"cost_alternative_{index}",use_container_width=True,original_part=row["Part Number"])
+        with cols[1]: internal_nav_button("Find Alternatives","Alternative Finder",key=f"cost_alternative_{index}",use_container_width=True,original_part=row["Part Number"],source_page="cost_optimization")
     st.markdown('<div class="cv21-section">Cost Data Quality</div>', unsafe_allow_html=True)
     q=st.columns(2)
     with q[0]:
