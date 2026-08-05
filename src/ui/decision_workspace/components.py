@@ -412,7 +412,7 @@ def recommendation_details(
       {decision_health_meter(action)}
       <div class="cv70-decision-layout">
         <div class="cv70-decision-main cv70-s69-intelligence">{intelligence}</div>
-        <aside class="cv70-decision-sidebar">
+        <aside class="cv70-decision-sidebar cv71-defer">
           {engineering_notes(index=index)}
           {activity_feed(index=index, action=action)}
           {discussion_panel(index=index)}
