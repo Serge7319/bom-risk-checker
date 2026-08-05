@@ -36,8 +36,11 @@ def internal_nav_button(
     **params: Any,
 ) -> bool:
     """Render a button that keeps navigation inside the current Cadivor tab."""
+    clean_label = str(label or "").strip()
+    if not clean_label:
+        return False
     clicked = st.button(
-        label,
+        clean_label,
         key=key,
         use_container_width=use_container_width,
         type=type,
