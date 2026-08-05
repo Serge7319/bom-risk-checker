@@ -9,7 +9,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.urls import internal_app_href
-from src.ui.navigation import alternative_finder_href
+from src.ui.navigation import alternative_finder_href, internal_nav_button, ALTERNATIVE_FINDER_PAGE
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
 from src.services.engineering_ai import EngineeringAI, EngineeringAIError
@@ -562,7 +562,20 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
     actions = action_sets.get(intent, [(f"Open {part_label}", component_url), (f"Find {part_label} alternative", alternative_url), (f"Monitor {part_label}", monitoring_url), ("Create engineering record", decision_url)])
     cols = st.columns(4)
     for col, (label, url) in zip(cols, actions):
-        col.link_button(label, url, use_container_width=True)
+        with col:
+            if url == alternative_url:
+                internal_nav_button(
+                    label,
+                    ALTERNATIVE_FINDER_PAGE,
+                    key=f"ea_quick_alt_{intent}_{label}",
+                    use_container_width=True,
+                    original_part=priority_part,
+                    analysis_id=analysis_id,
+                    return_analysis_id=analysis_id,
+                    source_page="engineering_intelligence",
+                )
+            else:
+                col.link_button(label, url, use_container_width=True)
 
 
 
