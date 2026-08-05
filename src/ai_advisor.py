@@ -1,7 +1,9 @@
 """Cadivor Milestone 12.0B — Engineering Copilot Intelligence."""
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Mapping, Optional
+
+from src.bom_intelligence import infer_cross_component_relationships
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -145,7 +147,312 @@ def _impact_level(score: int, modifier: int = 0) -> int:
     return max(1, min(5, round((score + modifier) / 20)))
 
 
-def _action(part: Dict[str, Any], current_health: int) -> Dict[str, Any]:
+def _priority_bucket(schedule: str, score: int) -> str:
+    schedule_lower = schedule.lower()
+    if score >= 80 or schedule_lower in {"today", "immediate"}:
+        return "Do Now"
+    if "week" in schedule_lower or score >= 60:
+        return "Do This Week"
+    if "production" in schedule_lower or "purchase" in schedule_lower or score >= 45:
+        return "Do Before Production"
+    return "Can Wait"
+
+
+def _lifecycle_risk_label(lifecycle: str, lifecycle_problem: bool) -> str:
+    lifecycle_lower = lifecycle.lower()
+    if any(term in lifecycle_lower for term in ("obsolete", "eol", "end of life")):
+        return "Critical"
+    if lifecycle_problem:
+        return "High"
+    if lifecycle_lower not in {"", "unknown", "active"}:
+        return "Medium"
+    return "Low"
+
+
+def _schedule_improvement_weeks(score: int, lead_problem: bool, stock_problem: bool) -> int:
+    if score >= 80:
+        return 3 if lead_problem else 2
+    if score >= 60:
+        return 2 if stock_problem else 1
+    return 1
+
+
+def _build_decision_impact(
+    *,
+    current_health: int,
+    improvement: Mapping[str, Any],
+    score: int,
+    lifecycle: str,
+    lifecycle_problem: bool,
+    suppliers: int,
+    source_problem: bool,
+    effort_hours: int,
+    lead_problem: bool,
+    stock_problem: bool,
+) -> Dict[str, Any]:
+    health_after = int(improvement.get("health_after", current_health))
+    supply_after = max(0, score - int(improvement.get("supply_risk_reduction", 0)))
+    lifecycle_label = _lifecycle_risk_label(lifecycle, lifecycle_problem)
+    lifecycle_after = (
+        "Medium"
+        if lifecycle_label in {"Critical", "High"} and lifecycle_problem
+        else "Low"
+        if lifecycle_problem
+        else lifecycle_label
+    )
+    single_source_after = max(0, (suppliers or 1) - (1 if source_problem else 0))
+    schedule_weeks = _schedule_improvement_weeks(score, lead_problem, stock_problem)
+    manufacturing = (
+        "Improves release continuity"
+        if lifecycle_problem or stock_problem
+        else "Maintains current readiness"
+    )
+    return {
+        "health": {"before": current_health, "after": health_after},
+        "supply_risk": {"before": score, "after": supply_after},
+        "lifecycle_risk": {"before": lifecycle_label, "after": lifecycle_after},
+        "single_source_exposure": {
+            "before": suppliers or 1,
+            "after": max(1, single_source_after) if source_problem else suppliers or 1,
+        },
+        "manufacturing_readiness": manufacturing,
+        "schedule_improvement_weeks": schedule_weeks,
+        "procurement_effort_hours": effort_hours,
+        "schedule_confidence": (
+            "High" if score >= 70 and not stock_problem else "Moderate" if score >= 50 else "Limited"
+        ),
+    }
+
+
+def _build_inaction_consequences(
+    *,
+    lifecycle_problem: bool,
+    stock_problem: bool,
+    source_problem: bool,
+    lead_problem: bool,
+    score: int,
+    lifecycle: str,
+    mpn: str,
+) -> List[str]:
+    consequences: List[str] = []
+    if lifecycle_problem:
+        consequences.append(
+            f"Replacement options for {mpn} may shrink as {lifecycle.lower()} status persists."
+        )
+        consequences.append("Production delay risk probability increases without a qualified successor.")
+    if stock_problem:
+        consequences.append("Next build may stall even if other components are available.")
+        consequences.append("Supplier availability may worsen before procurement reacts.")
+    if source_problem:
+        consequences.append("Single-source disruption can halt purchasing with no approved fallback.")
+    if lead_problem:
+        consequences.append("Procurement may miss the required delivery window for near-term builds.")
+    if score >= 60:
+        consequences.append("Future redesign cost is likely to increase if validation moves closer to release.")
+    if not consequences:
+        consequences.append("An unresolved component concern may remain hidden until release review.")
+    return consequences[:5]
+
+
+def _build_confidence_breakdown(
+    signals: List[Dict[str, Any]],
+    *,
+    alternative_count: int,
+    alert_count: int,
+    cross_bom: bool,
+) -> List[Dict[str, Any]]:
+    breakdown = [
+        {
+            "label": "Lifecycle data",
+            "available": any(s["name"] == "Lifecycle status" and s["available"] for s in signals),
+        },
+        {
+            "label": "Supplier data",
+            "available": any(s["name"] == "Supplier coverage" and s["available"] for s in signals),
+        },
+        {
+            "label": "Inventory data",
+            "available": any(s["name"] == "Stock availability" and s["available"] for s in signals),
+        },
+        {
+            "label": "Lead-time data",
+            "available": any(s["name"] == "Lead time" and s["available"] for s in signals),
+        },
+        {
+            "label": "Cross-BOM history",
+            "available": cross_bom,
+        },
+        {
+            "label": "Saved alternative evidence",
+            "available": alternative_count > 0,
+        },
+        {
+            "label": "Monitoring alerts",
+            "available": alert_count > 0,
+        },
+        {
+            "label": "Customer usage history",
+            "available": False,
+        },
+    ]
+    return breakdown
+
+
+def _build_tradeoffs(
+    *,
+    mpn: str,
+    action_route: str,
+    lifecycle_problem: bool,
+    source_problem: bool,
+    score: int,
+) -> List[Dict[str, str]]:
+    if action_route != "alternative":
+        return [
+            {
+                "option": "Option A — Monitor",
+                "summary": "Lowest immediate effort",
+                "detail": "Continue monitoring while evidence develops.",
+            },
+            {
+                "option": "Option B — Validate",
+                "summary": "Balanced engineering effort",
+                "detail": "Confirm lifecycle and sourcing evidence before the next build.",
+            },
+            {
+                "option": "Option C — Escalate",
+                "summary": "Highest schedule protection",
+                "detail": "Treat as a release gate if evidence deteriorates further.",
+            },
+        ]
+    return [
+        {
+            "option": "Option A — Keep current part",
+            "summary": "Lowest cost · highest lifecycle risk",
+            "detail": f"Retain {mpn} for bridge builds only if inventory remains available.",
+        },
+        {
+            "option": "Option B — Qualify successor",
+            "summary": "Balanced reliability · moderate validation effort",
+            "detail": "Approve a compatible alternate with documented test evidence.",
+        },
+        {
+            "option": "Option C — Premium alternate",
+            "summary": "Highest reliability · higher procurement cost",
+            "detail": "Select a long-availability successor with stronger supplier coverage.",
+        },
+    ]
+
+
+def _build_engineering_reasoning(
+    *,
+    mpn: str,
+    lifecycle: str,
+    lifecycle_problem: bool,
+    stock: float,
+    suppliers: int,
+    source_problem: bool,
+    score: int,
+    cross_component: List[Mapping[str, str]],
+    product_usage_count: int,
+) -> List[str]:
+    reasons: List[str] = []
+    if product_usage_count > 1:
+        reasons.append(f"{mpn} appears in {product_usage_count} active product record(s).")
+    elif product_usage_count == 1:
+        reasons.append(f"{mpn} is a recorded component in this saved BOM.")
+    if lifecycle_problem:
+        reasons.append(f"Lifecycle entered {lifecycle}.")
+    if stock <= 0:
+        reasons.append("Supplier inventory has fallen to zero recorded units.")
+    elif stock < 100:
+        reasons.append(f"Recorded inventory is approximately {int(stock)} units.")
+    if source_problem:
+        reasons.append(f"Only {suppliers or 1} supplier source is currently represented.")
+    if not any(s for s in cross_component if "alternate" in s.get("relationship", "").lower()):
+        if lifecycle_problem or source_problem:
+            reasons.append("No approved alternate exists in saved evidence.")
+    if cross_component:
+        affected = ", ".join(item["component"] for item in cross_component[:3])
+        reasons.append(f"Change may affect related components: {affected}.")
+    if lifecycle_problem or source_problem or stock <= 0:
+        reasons.append("Acting now reduces the chance of a production interruption.")
+    if score >= 55 and not reasons:
+        reasons.append(f"The component contributes a {score}/100 risk score to this BOM review.")
+    return reasons[:6]
+
+
+def _build_dependencies(*, action_route: str, category: str) -> List[str]:
+    if action_route == "alternative":
+        return [
+            "Qualify alternate",
+            "Approve alternate",
+            "Update BOM",
+            "Release production",
+        ]
+    if category in {"Procurement", "Sourcing", "Supply Chain"}:
+        return [
+            "Confirm supplier evidence",
+            "Approve sourcing plan",
+            "Update BOM",
+            "Release production",
+        ]
+    if category == "Monitoring":
+        return [
+            "Configure monitoring",
+            "Review alert thresholds",
+            "Document response plan",
+        ]
+    return [
+        "Complete engineering review",
+        "Document decision",
+        "Update BOM",
+        "Release production",
+    ]
+
+
+def _build_decision_timeline(
+    *,
+    schedule: str,
+    owner: str,
+    support_owner: str,
+    effort_hours: int,
+) -> List[Dict[str, str]]:
+    schedule_lower = schedule.lower()
+    engineering_window = "Today" if "today" in schedule_lower else "This week"
+    procurement_window = (
+        "This week"
+        if "week" in schedule_lower or effort_hours <= 2
+        else "Before production"
+    )
+    return [
+        {"phase": "Today", "owner": owner, "detail": "Assign owner and confirm evidence."},
+        {"phase": "Engineering", "owner": owner, "detail": f"Complete review within {engineering_window.lower()}."},
+        {"phase": "Procurement", "owner": support_owner, "detail": f"Support sourcing within {procurement_window.lower()}."},
+        {"phase": "Validation", "owner": owner, "detail": f"Estimated effort: {effort_hours} hour(s)."},
+        {"phase": "Production Release", "owner": "Release Manager", "detail": "Close before final production approval."},
+    ]
+
+
+def _product_usage_count(mpn: str, all_parts: Iterable[Dict[str, Any]]) -> int:
+    normalized = mpn.strip().upper()
+    if not normalized or normalized == "COMPONENT":
+        return 0
+    count = 0
+    for row in all_parts or []:
+        candidate = _mpn(row).upper()
+        if candidate == normalized:
+            count += 1
+    return max(1, count)
+
+
+def _action(
+    part: Dict[str, Any],
+    current_health: int,
+    *,
+    all_parts: Optional[Iterable[Dict[str, Any]]] = None,
+    alternative_rows: Optional[Iterable[Dict[str, Any]]] = None,
+    alert_count: int = 0,
+) -> Dict[str, Any]:
     mpn = _mpn(part)
     lifecycle = _lifecycle(part)
     lifecycle_lower = lifecycle.lower()
@@ -306,6 +613,36 @@ def _action(part: Dict[str, Any], current_health: int) -> Dict[str, Any]:
     projected_health = min(100, current_health + health_gain)
     supply_reduction = max(2, min(18, round(score / 7)))
 
+    part_list = list(all_parts or [])
+    cross_component = infer_cross_component_relationships(part, part_list)
+    usage_count = _product_usage_count(mpn, part_list)
+    alt_for_part = [
+        row
+        for row in (alternative_rows or [])
+        if _text(row.get("original_part") or row.get("original_mpn") or row.get("part_number")).upper()
+        == mpn.upper()
+    ]
+    improvement = {
+        "health_before": current_health,
+        "health_after": projected_health,
+        "health_gain": health_gain,
+        "supply_risk_reduction": supply_reduction,
+        "lifecycle_issues_removed": 1 if lifecycle_problem else 0,
+        "sourcing_issues_removed": 1 if source_problem or stock_problem else 0,
+    }
+    decision_impact = _build_decision_impact(
+        current_health=current_health,
+        improvement=improvement,
+        score=score,
+        lifecycle=lifecycle,
+        lifecycle_problem=lifecycle_problem,
+        suppliers=suppliers,
+        source_problem=source_problem,
+        effort_hours=effort_hours,
+        lead_problem=lead_problem,
+        stock_problem=stock_problem,
+    )
+
     return {
         "part_number": mpn,
         "title": title,
@@ -321,10 +658,17 @@ def _action(part: Dict[str, Any], current_health: int) -> Dict[str, Any]:
             "Critical" if score >= 80 else "High" if score >= 60 else "Moderate"
         ),
         "schedule": schedule,
+        "priority_bucket": _priority_bucket(schedule, score),
         "score": score,
         "confidence": confidence,
         "signals": confidence_inputs,
         "signal_count": available_signals,
+        "confidence_breakdown": _build_confidence_breakdown(
+            confidence_inputs,
+            alternative_count=len(alt_for_part),
+            alert_count=alert_count,
+            cross_bom=usage_count > 1,
+        ),
         "action_route": action_route,
         "impacts": {
             "engineering": _impact_level(score, 5 if lifecycle_problem else -8),
@@ -333,14 +677,43 @@ def _action(part: Dict[str, Any], current_health: int) -> Dict[str, Any]:
             "schedule": _impact_level(score, 8 if lead_problem or stock_problem else -8),
             "cost": _impact_level(score, 2 if source_problem or lifecycle_problem else -12),
         },
-        "improvement": {
-            "health_before": current_health,
-            "health_after": projected_health,
-            "health_gain": health_gain,
-            "supply_risk_reduction": supply_reduction,
-            "lifecycle_issues_removed": 1 if lifecycle_problem else 0,
-            "sourcing_issues_removed": 1 if source_problem or stock_problem else 0,
-        },
+        "improvement": improvement,
+        "decision_impact": decision_impact,
+        "inaction_consequences": _build_inaction_consequences(
+            lifecycle_problem=lifecycle_problem,
+            stock_problem=stock_problem,
+            source_problem=source_problem,
+            lead_problem=lead_problem,
+            score=score,
+            lifecycle=lifecycle,
+            mpn=mpn,
+        ),
+        "tradeoffs": _build_tradeoffs(
+            mpn=mpn,
+            action_route=action_route,
+            lifecycle_problem=lifecycle_problem,
+            source_problem=source_problem,
+            score=score,
+        ),
+        "engineering_reasoning": _build_engineering_reasoning(
+            mpn=mpn,
+            lifecycle=lifecycle,
+            lifecycle_problem=lifecycle_problem,
+            stock=stock,
+            suppliers=suppliers,
+            source_problem=source_problem,
+            score=score,
+            cross_component=cross_component,
+            product_usage_count=usage_count,
+        ),
+        "dependencies": _build_dependencies(action_route=action_route, category=category),
+        "cross_component_impact": cross_component,
+        "decision_timeline": _build_decision_timeline(
+            schedule=schedule,
+            owner=owner,
+            support_owner=support_owner,
+            effort_hours=effort_hours,
+        ),
     }
 
 
@@ -372,7 +745,17 @@ def build_engineering_supply_advisor(
     long_lead = [part for part in part_rows if _lead_time(part) >= 12]
 
     ranked = sorted(part_rows, key=_risk_score, reverse=True)
-    actions = [_action(part, health) for part in ranked if _risk_score(part) > 0][:5]
+    actions = [
+        _action(
+            part,
+            health,
+            all_parts=part_rows,
+            alternative_rows=alternative_rows,
+            alert_count=len(alert_rows),
+        )
+        for part in ranked
+        if _risk_score(part) > 0
+    ][:5]
 
     if not actions:
         actions = [
@@ -409,6 +792,15 @@ def build_engineering_supply_advisor(
                     "lifecycle_issues_removed": 0,
                     "sourcing_issues_removed": 0,
                 },
+                "priority_bucket": "Can Wait",
+                "decision_impact": {},
+                "inaction_consequences": [],
+                "confidence_breakdown": [],
+                "tradeoffs": [],
+                "engineering_reasoning": [],
+                "dependencies": [],
+                "cross_component_impact": [],
+                "decision_timeline": [],
             }
         ]
 
@@ -474,6 +866,47 @@ def build_engineering_supply_advisor(
         f"from {supply_exposure} to approximately {projected_supply}."
     )
 
+    documentation_score = min(
+        100,
+        55
+        + (15 if alternative_rows else 0)
+        + (10 if alert_rows else 0)
+        + (10 if len(part_rows) >= 5 else 5)
+        + (10 if confidence >= 80 else 0),
+    )
+    engineering_score = max(0, min(100, 100 - engineering_exposure))
+    supply_chain_score = max(0, min(100, 100 - supply_exposure))
+    manufacturing_score = max(
+        0,
+        min(
+            100,
+            health
+            - len(no_stock) * 4
+            - len(lifecycle_concerns) * 3
+            + (8 if not blocking_actions else -len(blocking_actions) * 5),
+        ),
+    )
+    procurement_score = max(
+        0,
+        min(
+            100,
+            100
+            - len(limited_sources) * 5
+            - len(no_stock) * 4
+            - len(long_lead) * 3,
+        ),
+    )
+    overall_readiness = round(
+        (
+            engineering_score
+            + supply_chain_score
+            + manufacturing_score
+            + procurement_score
+            + documentation_score
+        )
+        / 5
+    )
+
     return {
         "production_readiness": readiness,
         "readiness_tone": readiness_tone,
@@ -481,6 +914,14 @@ def build_engineering_supply_advisor(
         "confidence": confidence,
         "engineering_exposure_score": engineering_exposure,
         "supply_exposure_score": supply_exposure,
+        "executive_readiness": {
+            "overall": overall_readiness,
+            "engineering": engineering_score,
+            "supply_chain": supply_chain_score,
+            "manufacturing": manufacturing_score,
+            "procurement": procurement_score,
+            "documentation": documentation_score,
+        },
         "priority_actions": actions,
         "estimated_total_effort": total_effort,
         "projected_health": projected_health,
