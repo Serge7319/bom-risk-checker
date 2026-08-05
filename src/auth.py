@@ -654,6 +654,11 @@ def show_auth_ui(supabase, cookie_manager=None):
         )
         return
 
-    from src.marketing_site import render_marketing_site
-    st.session_state["cadivor_root_state"] = APP_PUBLIC
-    render_marketing_site()
+    # Production routing: www.cadivor.com owns marketing; the app shows auth only.
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    _render_back_to_marketing_link()
+    _render_auth_page(
+        supabase=supabase,
+        cookie_manager=cookie_manager,
+        initial_mode="Login",
+    )
