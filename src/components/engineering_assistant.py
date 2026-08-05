@@ -1103,7 +1103,6 @@ def render_engineering_assistant(
         .cv35-suggestion-grid--duo{grid-template-columns:repeat(2,minmax(0,1fr))}
         .cv35-suggestion-chip{display:flex;align-items:flex-start;min-height:44px;padding:10px 12px;border:1px solid #94a3b8;border-radius:10px;background:#fff;color:#0f172a;font-size:12px;font-weight:650;line-height:1.45;text-decoration:none;box-shadow:0 4px 12px rgba(15,23,42,.04);white-space:normal;overflow-wrap:anywhere}
         .cv35-suggestion-chip:hover{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
-        section[data-testid="stMain"] .st-key-cv36_new_conversation .stButton>button,section[data-testid="stMain"] .st-key-cv36_new_conversation .stButton>button p,section[data-testid="stMain"] .st-key-cv36_new_conversation .stButton>button span{background:#fff!important;border:1px solid #94a3b8!important;color:#0f172a!important;opacity:1!important}
         @media(max-width:900px){.cv35-suggestion-grid,.cv35-suggestion-grid--duo{grid-template-columns:1fr}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
