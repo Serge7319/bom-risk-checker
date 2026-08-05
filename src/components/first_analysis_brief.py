@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from src.ui.navigation import navigate_to
+from src.ui.navigation import navigate_to_alternative_finder
 from src.ui.cadivor_design_system import cadivor_button_wrap, cadivor_button_wrap_end
 
 
@@ -217,5 +217,5 @@ def render_first_analysis_brief(
     with action_mid:
         cadivor_button_wrap("secondary")
         if st.button("Open Alternative Finder", use_container_width=True, key="first_brief_alternatives"):
-            navigate_to("Alternative Finder")
+            navigate_to_alternative_finder(source_page="first_analysis_brief")
         cadivor_button_wrap_end()
