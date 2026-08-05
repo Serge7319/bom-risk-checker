@@ -443,7 +443,7 @@ def render_supply_scenario(
               </div></section>""", unsafe_allow_html=True)
         actions=st.columns(2)
         with actions[0]:
-            internal_nav_button("Find Alternative","Alternative Finder",key=f"scenario_alt_{index}",use_container_width=True,original_part=row["Part Number"])
+            internal_nav_button("Find Alternative","Alternative Finder",key=f"scenario_alt_{index}",use_container_width=True,original_part=row["Part Number"],source_page="supply_risk_scenario")
         with actions[1]:
             internal_nav_button("Open Monitoring","Monitoring",key=f"scenario_monitor_{index}",use_container_width=True)
 
