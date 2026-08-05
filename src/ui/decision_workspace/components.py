@@ -1,9 +1,21 @@
 """Reusable HTML components for the Sprint 69 recommendation workspace."""
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Mapping, Sequence
+from typing import Any, Iterable, List, Mapping, Optional, Sequence
 
 from src.ui.decision_workspace._utils import INSUFFICIENT_EVIDENCE, esc, number, text
+from src.ui.decision_workspace.workflow_components import (
+    activity_feed,
+    card_filter_attributes,
+    decision_header,
+    decision_health_meter,
+    discussion_panel,
+    engineering_notes,
+    impact_summary,
+    infer_status_badge,
+    status_badge_class,
+    workflow_tracker,
+)
 
 
 def timing_badge_label(bucket: str) -> str:
@@ -146,18 +158,23 @@ def recommendation_card(action: Mapping[str, Any], *, index: int) -> str:
     health_gain = int(number(health.get("gain"), 0))
     effort = esc(dep.get("estimated_effort") or action.get("effort"), "—")
     confidence = esc(action.get("confidence"))
+    status = infer_status_badge(action)
+    filters = card_filter_attributes(action, index=index)
 
     return f"""
     <button
       type="button"
       class="cv69-recommendation-card"
-      data-cv69-index="{index}"
+      {filters}
       aria-selected="false"
       aria-controls="cv69-detail-panel"
     >
       <div class="cv69-card-topline">
         <span class="cv69-component">{esc(action.get("part_number"), "Component")}</span>
         <span class="{timing_badge_class(bucket)}">{esc(timing_badge_label(bucket))}</span>
+      </div>
+      <div class="cv70-card-status-row">
+        <span class="{status_badge_class(status)}">{esc(status)}</span>
       </div>
       <p class="cv69-card-title">{esc(action.get("action"), INSUFFICIENT_EVIDENCE)}</p>
       <div class="cv69-card-metrics">
@@ -270,7 +287,7 @@ def dependency_chain(action: Mapping[str, Any]) -> str:
     )
 
 
-def recommendation_details(action: Mapping[str, Any]) -> str:
+def recommendation_intelligence_details(action: Mapping[str, Any]) -> str:
     dep = action.get("dependency") or {}
     roi = dep.get("engineering_roi") or {}
     health = dep.get("projected_bom_health") or {}
@@ -374,5 +391,32 @@ def recommendation_details(action: Mapping[str, Any]) -> str:
       {outcome_section}
       {support_section}
       {confidence_section}
+    </div>
+    """
+
+
+def recommendation_details(
+    action: Mapping[str, Any],
+    *,
+    index: int = 0,
+    brief: Optional[Mapping[str, Any]] = None,
+) -> str:
+    """Sprint 70 decision workspace shell wrapping Sprint 69 intelligence."""
+    brief = brief or {}
+    intelligence = recommendation_intelligence_details(action)
+    return f"""
+    <div class="cv70-decision-shell cv70-view-engineering" data-cv70-detail-index="{index}">
+      {decision_header(action, index=index)}
+      {workflow_tracker(index=index)}
+      {impact_summary(action, brief)}
+      {decision_health_meter(action)}
+      <div class="cv70-decision-layout">
+        <div class="cv70-decision-main cv70-s69-intelligence">{intelligence}</div>
+        <aside class="cv70-decision-sidebar">
+          {engineering_notes(index=index)}
+          {activity_feed(index=index, action=action)}
+          {discussion_panel(index=index)}
+        </aside>
+      </div>
     </div>
     """
