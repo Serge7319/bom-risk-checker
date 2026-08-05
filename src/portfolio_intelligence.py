@@ -328,6 +328,7 @@ def render_portfolio_intelligence(
                     key=f"portfolio_alt_{index}",
                     use_container_width=True,
                     original_part=row["Part Number"],
+                    source_page="portfolio_intelligence",
                 )
 
         with st.expander("View all shared components", expanded=False):
