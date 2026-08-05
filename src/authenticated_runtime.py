@@ -1560,6 +1560,14 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 def run_authenticated_app() -> None:
     global current_user, is_admin, analysis_history, app_mode, saved_bom_count
     global active_workspace_id, active_workspace_name, active_workspace_role
+
+    from src.auth_state import explicit_logout_pending, handle_explicit_logout_if_pending
+
+    if explicit_logout_pending() or st.session_state.get("cadivor_logout_in_progress"):
+        if handle_explicit_logout_if_pending():
+            st.stop()
+        st.stop()
+
     st.markdown(
         """
         <style id="cadivor-root-surface">
