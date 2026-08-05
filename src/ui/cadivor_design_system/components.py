@@ -541,6 +541,8 @@ def render_decision_card_actions(
             key=f"{key_prefix}_alt",
             use_container_width=True,
             original_part=decision["part_number"],
+            analysis_id=str(decision.get("analysis_id") or ""),
+            source_page="engineering_decisions",
         )
         cadivor_button_wrap_end()
     with action_cols[2]:
