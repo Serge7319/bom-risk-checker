@@ -137,11 +137,16 @@ def ensure_authenticated_or_stop() -> None:
 
     apply_auth_intent_from_query()
 
-    followup_snapshot = st.session_state.get("cv48_auth_snapshot")
+    followup_snapshot = st.session_state.get("cv48_auth_snapshot") or {}
     if st.session_state.get("cv4801_followup_inflight") and isinstance(followup_snapshot, dict):
-        for key, value in followup_snapshot.items():
-            if value is not None and st.session_state.get(key) is None:
-                st.session_state[key] = value
+        try:
+            for key, value in followup_snapshot.items():
+                if not key or value is None:
+                    continue
+                if st.session_state.get(key) is None:
+                    st.session_state[key] = value
+        except Exception:
+            pass
 
     if st.session_state.pop("cadivor_logout_requested", False):
         begin_logout(supabase, cookie_manager)
