@@ -39,8 +39,12 @@ from src.auth_bootstrap import (
     log_startup_phase,
     render_startup_loading_shell,
 )
+from src.auth_state import handle_explicit_logout_if_pending
 
 log_startup_phase("entrypoint_ready")
+if handle_explicit_logout_if_pending():
+    st.stop()
+
 ensure_authenticated_or_stop()
 
 render_startup_loading_shell("Opening your engineering workspace…")
