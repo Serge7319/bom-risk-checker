@@ -8,6 +8,10 @@ import pandas as pd
 
 from src.ai_advisor import build_engineering_supply_advisor
 from src.bom_intelligence import analyze_bom_intelligence
+from src.engineering_dependency_engine import (
+    attach_dependency_to_actions,
+    build_engineering_dependency_report,
+)
 from src.config import ENABLE_DECISION_ENGINE_V2, ENABLE_DECISION_WORKSPACE_V71
 from src.ui.cadivor_design_system.icons import lucide
 
@@ -757,6 +761,17 @@ def build_engineering_decision_brief(
     recommended_actions = [
         _format_recommended_action(action, insufficient=insufficient) for action in ranked_raw[:8]
     ]
+    dependency_report = build_engineering_dependency_report(
+        raw_actions=ranked_raw[:8],
+        parts=part_rows,
+        intelligence=intelligence_data,
+        advisor=advisor,
+    )
+    recommended_actions = attach_dependency_to_actions(
+        recommended_actions,
+        dependency_report,
+        raw_actions=ranked_raw[:8],
+    )
 
     confidence = int(_number(advisor.get("confidence"), 70))
     business_impact = _build_business_impact(
@@ -863,6 +878,7 @@ def build_engineering_decision_brief(
         "supporting_evidence": evidence[:8] or [INSUFFICIENT_EVIDENCE],
         "intelligence": intelligence_data,
         "advisor": advisor,
+        "engineering_dependency_report": dependency_report,
     }
     return brief
 
@@ -888,6 +904,27 @@ def format_decision_brief_for_report(brief: Mapping[str, Any]) -> Dict[str, Any]
                 f"  Expected result: {_text(action.get('expected_result'))}\n"
                 f"  Effort: {_text(action.get('effort'))} | Impact: {_text(action.get('impact'))}"
             )
+            dep = action.get("dependency") or {}
+            if dep:
+                domains = ", ".join(
+                    _text(item.get("domain"))
+                    for item in (dep.get("engineering_impact") or [])
+                )
+                validation = ", ".join(
+                    _text(item.get("step"))
+                    for item in (dep.get("validation_required") or [])
+                )
+                health = dep.get("projected_bom_health") or {}
+                roi = dep.get("engineering_roi") or {}
+                action_lines.append(
+                    f"  Engineering impact: {domains or '—'}\n"
+                    f"  Validation required: {validation or '—'}\n"
+                    f"  Change difficulty: {_text(dep.get('change_difficulty'))}\n"
+                    f"  Schedule impact: {_text(dep.get('schedule_impact'))}\n"
+                    f"  Engineering ROI: {_text(roi.get('label'))} ({_number(roi.get('score'), 0):g})\n"
+                    f"  Projected BOM health: {int(_number(health.get('before'), 0))} → "
+                    f"{int(_number(health.get('after'), 0))} (+{int(_number(health.get('gain'), 0))})"
+                )
         else:
             action_lines.append(
                 f"• {_text(action.get('part_number'))}: "
@@ -1320,6 +1357,42 @@ def _html_action_intelligence(action: Mapping[str, Any]) -> str:
     return f'<div class="cv68-action-intelligence">{"".join(blocks)}</div>'
 
 
+def _html_action_dependency_fields(action: Mapping[str, Any]) -> str:
+    dep = action.get("dependency") or {}
+    if not dep:
+        return ""
+
+    impact_items = dep.get("engineering_impact") or []
+    impact_html = "".join(
+        f'<li><strong>{escape(_text(item.get("domain")))}</strong> — '
+        f'{escape(_text(item.get("explanation")))}</li>'
+        for item in impact_items
+    )
+    validation_items = dep.get("validation_required") or []
+    validation_html = ", ".join(
+        escape(_text(item.get("step"))) for item in validation_items
+    ) or "—"
+    roi = dep.get("engineering_roi") or {}
+    health = dep.get("projected_bom_health") or {}
+    health_html = (
+        f"{int(_number(health.get('before'), 0))} → "
+        f"{int(_number(health.get('after'), 0))} "
+        f"(+{int(_number(health.get('gain'), 0))})"
+    )
+    roi_html = f"{escape(_text(roi.get('label')))} ({_number(roi.get('score'), 0):g})"
+
+    return (
+        f'<div><dt>Engineering impact</dt>'
+        f'<dd><ul class="cv68-dep-domains">{impact_html}</ul></dd></div>'
+        f'<div><dt>Validation required</dt><dd>{validation_html}</dd></div>'
+        f'<div><dt>Change difficulty</dt><dd>{escape(_text(dep.get("change_difficulty")))}</dd></div>'
+        f'<div><dt>Schedule impact</dt><dd>{escape(_text(dep.get("schedule_impact")))}</dd></div>'
+        f'<div><dt>Estimated engineering effort</dt><dd>{escape(_text(dep.get("estimated_effort")))}</dd></div>'
+        f'<div><dt>Engineering ROI</dt><dd>{roi_html}</dd></div>'
+        f'<div><dt>Projected BOM health</dt><dd>{health_html}</dd></div>'
+    )
+
+
 def _html_actions(actions: Iterable[Mapping[str, Any]], *, workspace: bool) -> str:
     rows = list(actions or [])
     if not rows:
@@ -1342,6 +1415,7 @@ def _html_actions(actions: Iterable[Mapping[str, Any]], *, workspace: bool) -> s
                 f'<div><dt>Confidence</dt><dd>{escape(_text(action.get("confidence")))}</dd></div>'
                 f'<div><dt>Expected result</dt><dd>{escape(_text(action.get("expected_result")))}</dd></div>'
                 f'<div><dt>Impact</dt><dd>{escape(_text(action.get("impact")))}</dd></div>'
+                f"{_html_action_dependency_fields(action)}"
                 f"</dl>"
                 f'{_html_action_intelligence(action)}'
                 f"</article>"
@@ -1362,6 +1436,7 @@ def _html_actions(actions: Iterable[Mapping[str, Any]], *, workspace: bool) -> s
             <div><dt>Expected result</dt><dd>{escape(_text(action.get("expected_result")))}</dd></div>
             <div><dt>Effort</dt><dd>{escape(_text(action.get("effort")))}</dd></div>
             <div><dt>Impact</dt><dd>{escape(_text(action.get("impact")))}</dd></div>
+            {_html_action_dependency_fields(action)}
           </dl>
         </article>
         """
