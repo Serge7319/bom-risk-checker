@@ -5,7 +5,8 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from src.ui.cadivor_design_system import MetricCard, cadivor_metric_row, cadivor_button_wrap, cadivor_button_wrap_end, render_kpi_row_safe
+from src.ui.cadivor_design_system import MetricCard, cadivor_button_wrap, cadivor_button_wrap_end, render_kpi_row_safe
+from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button
 
 
 def _safe_text(value, fallback="—"):
@@ -164,10 +165,16 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         <div class="cv-report-card-grid">
           <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar"></div><div class="chart"></div><div class="bar short"></div></div><div class="cv-report-icon">📄</div><div class="cv-report-card-title">Executive BOM Report</div><div class="cv-report-card-copy">Portfolio health, high-risk components, lifecycle signals, cost exposure, and recommended next actions for leadership review.</div><a class="cv-report-link" href="?page=BOM%20Analyzer" target="_self">Create executive report →</a></div>
           <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar short"></div><div class="bar"></div><div class="chart"></div></div><div class="cv-report-icon">🧪</div><div class="cv-report-card-title">Engineering Risk Review</div><div class="cv-report-card-copy">Component-level risk, lifecycle status, supplier coverage, confidence, and BOM readiness details for engineers.</div><a class="cv-report-link" href="?page=Dashboard" target="_self">Review saved analyses →</a></div>
-          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="chart"></div><div class="bar"></div><div class="bar short"></div></div><div class="cv-report-icon">📦</div><div class="cv-report-card-title">Sourcing Summary</div><div class="cv-report-card-copy">Procurement-oriented stock, supplier concentration, replacement readiness, lead-time, and sourcing risk package.</div><a class="cv-report-link" href="?page=Alternative%20Finder" target="_self">Validate alternatives →</a></div>
+          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="chart"></div><div class="bar"></div><div class="bar short"></div></div><div class="cv-report-icon">📦</div><div class="cv-report-card-title">Sourcing Summary</div><div class="cv-report-card-copy">Procurement-oriented stock, supplier concentration, replacement readiness, lead-time, and sourcing risk package.</div><span class="cv-report-link">Validate alternatives below →</span></div>
         </div>
         """,
         unsafe_allow_html=True,
+    )
+    internal_nav_button(
+        "Validate alternatives →",
+        ALTERNATIVE_FINDER_PAGE,
+        key="reports_template_alternative_finder",
+        source_page="reports_center",
     )
 
     st.markdown(
