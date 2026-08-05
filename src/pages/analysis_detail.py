@@ -9,7 +9,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from src.ui.navigation import navigate_to, internal_nav_button
+from src.ui.navigation import navigate_to, internal_nav_button, alternative_finder_href
+from src.urls import internal_app_href
 from src.ai_advisor import build_engineering_supply_advisor
 from src.ui.performance_cache import (
     cached_engineering_advisor,
@@ -235,11 +236,12 @@ def _monitor_url(mpn: str, analysis_id: str) -> str:
     )
 
 
-def _alternative_url(mpn: str, analysis_id: str) -> str:
-    return (
-        "?page=Alternative%20Finder"
-        f"&original_part={str(mpn).replace(' ', '%20')}"
-        f"&analysis_id={str(analysis_id).replace(' ', '%20')}"
+def _alternative_url(mpn: str, analysis_id: str, manufacturer: str = "") -> str:
+    return alternative_finder_href(
+        mpn=mpn,
+        analysis_id=analysis_id,
+        manufacturer=manufacturer,
+        source_page="analysis_detail",
     )
 
 
@@ -844,9 +846,9 @@ def render_analysis_detail(
     graph_summary = knowledge_graph.summary
     graph_counts = graph_summary.get("counts") or {}
 
-    st.markdown('<a class="cv-analysis-back" href="?page=BOM%20Analyzer&new_analysis=1" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
+    st.markdown('<a class="cv-analysis-back" href="' + html.escape(internal_app_href("BOM Analyzer", new_analysis="1"), quote=True) + '" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
     st.markdown(
-        f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p><div class="cv-analysis-actions"><a class="cv-analysis-btn primary" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open in BOM Analyzer →</a><a class="cv-analysis-btn" href="?page=Alternative%20Finder&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Find Alternatives</a><a class="cv-analysis-btn" href="?page=Monitoring&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Monitor Components</a><a class="cv-analysis-btn" href="?page=Reports&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Reports Center</a></div></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
+        f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p><div class="cv-analysis-actions"><a class="cv-analysis-btn primary" href="{html.escape(internal_app_href('BOM Analyzer', analysis_id=analysis_id), quote=True)}" target="_self">Open in BOM Analyzer →</a><a class="cv-analysis-btn" href="{html.escape(internal_app_href('Alternative Finder', analysis_id=analysis_id), quote=True)}" target="_self">Find Alternatives</a><a class="cv-analysis-btn" href="{html.escape(internal_app_href('Monitoring', analysis_id=analysis_id), quote=True)}" target="_self">Monitor Components</a><a class="cv-analysis-btn" href="{html.escape(internal_app_href('Reports', analysis_id=analysis_id), quote=True)}" target="_self">Reports Center</a></div></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
         unsafe_allow_html=True,
     )
 
@@ -2182,7 +2184,9 @@ def render_analysis_detail(
                         key=f"analysis_find_alternative_{analysis_id}_{selected_mpn}",
                         use_container_width=True,
                         original_part=selected_mpn,
+                        manufacturer=selected_mfg,
                         analysis_id=analysis_id,
+                        source_page="analysis_detail",
                     )
                     internal_nav_button(
                         "Monitor Component",
