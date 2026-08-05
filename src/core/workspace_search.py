@@ -7,7 +7,9 @@ Command Center navigation remains available.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote, urlencode
+
+from src.urls import internal_app_href
+from src.ui.navigation import alternative_finder_href
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -16,9 +18,14 @@ def _text(value: Any, default: str = "") -> str:
 
 
 def _href(page: str, **params: Any) -> str:
-    payload = {"page": page}
-    payload.update({key: value for key, value in params.items() if value not in (None, "")})
-    return "?" + urlencode(payload, quote_via=quote)
+    if page == "Alternative Finder" and params.get("original_part"):
+        return alternative_finder_href(
+            mpn=str(params.get("original_part")),
+            analysis_id=str(params.get("analysis_id", "") or ""),
+            return_analysis_id=str(params.get("return_analysis_id", "") or ""),
+            source_page="workspace_search",
+        )
+    return internal_app_href(page, **params)
 
 
 def _rows(query) -> list[dict]:
