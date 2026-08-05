@@ -1,8 +1,13 @@
 import os
 
-CADIVOR_MARKETING_URL = os.getenv(
-    "CADIVOR_MARKETING_URL",
-    "https://www.cadivor.com/",
+from src.urls import (
+    CADIVOR_APP_ORIGIN,
+    CADIVOR_MARKETING_ORIGIN,
+    CADIVOR_MARKETING_URL,
+    app_auth_url,
+    app_checkout_url,
+    app_url,
+    marketing_url,
 )
 
 # Sprint 67 — structured Engineering Decision Engine v2 renderer and report sections.
