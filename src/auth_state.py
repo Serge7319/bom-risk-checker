@@ -7,7 +7,9 @@ never cause the marketing site to flash inside an authenticated workflow.
 """
 from __future__ import annotations
 
+import html
 import json
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
@@ -32,6 +34,20 @@ _AUTH_KEYS = ("user", "access_token", "refresh_token")
 _MAX_RESTORE_ATTEMPTS = 1
 _RESTORE_DELAY_SECONDS = 0.0
 
+_LOGOUT_SURVIVOR_KEYS = frozenset(
+    {
+        "cadivor_auth_debug_log",
+        "cadivor_logout_in_progress",
+        "cadivor_explicit_logout",
+        "cadivor_logout_committed",
+        "cadivor_force_signed_out",
+        "cadivor_auth_status",
+        "cadivor_auth_resolved",
+    }
+)
+
+_LOGOUT_T0: float | None = None
+
 
 def _log(event: str, **details: Any) -> None:
     """Keep a small in-session transition log for beta diagnostics."""
@@ -43,6 +59,27 @@ def _log(event: str, **details: Any) -> None:
     records = list(st.session_state.get("cadivor_auth_debug_log") or [])
     records.append(record)
     st.session_state["cadivor_auth_debug_log"] = records[-50:]
+
+
+def _logout_timing_enabled() -> bool:
+    env_flag = os.getenv("CADIVOR_LOGOUT_TIMING", "").strip().lower()
+    if env_flag in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        return bool(st.secrets.get("CADIVOR_LOGOUT_TIMING", False))
+    except Exception:
+        return False
+
+
+def log_logout_phase(label: str) -> None:
+    """Record monotonic logout phase timing without exposing session contents."""
+    global _LOGOUT_T0
+    if _LOGOUT_T0 is None:
+        _LOGOUT_T0 = time.perf_counter()
+    elapsed_ms = int((time.perf_counter() - _LOGOUT_T0) * 1000)
+    _log("logout_phase", phase=label, elapsed_ms=elapsed_ms)
+    if _logout_timing_enabled():
+        print(f"[cadivor-logout] {label}: {elapsed_ms}ms", flush=True)
 
 
 def coerce_cookie(raw_cookie: Any) -> dict[str, Any] | None:
@@ -69,6 +106,22 @@ def clear_auth_session(*, keep_status: bool = False) -> None:
         st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
 
 
+def _clear_user_session_for_logout() -> None:
+    """Remove auth tokens and user workspace state without a blind full wipe."""
+    debug_log = list(st.session_state.get("cadivor_auth_debug_log") or [])[-50:]
+    for key in list(st.session_state.keys()):
+        if key in _LOGOUT_SURVIVOR_KEYS:
+            continue
+        st.session_state.pop(key, None)
+    clear_auth_session(keep_status=True)
+    st.session_state["cadivor_auth_debug_log"] = debug_log
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_auth_resolved"] = True
+    st.session_state["cadivor_logout_in_progress"] = True
+    st.session_state["cadivor_explicit_logout"] = True
+
+
 def mark_authenticated(user: Any, session: Any) -> None:
     """Commit a successful Supabase login as one atomic session-state change."""
     st.session_state["user"] = user
@@ -80,6 +133,9 @@ def mark_authenticated(user: Any, session: Any) -> None:
     st.session_state.pop("cadivor_force_signed_out", None)
     st.session_state.pop("cadivor_auth_restore_attempts", None)
     st.session_state.pop("cadivor_auth_ui_was_shown", None)
+    st.session_state.pop("cadivor_logout_in_progress", None)
+    st.session_state.pop("cadivor_explicit_logout", None)
+    st.session_state.pop("cadivor_logout_committed", None)
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
     route = requested or "Dashboard"
@@ -97,47 +153,48 @@ def mark_signed_out(reason: str = "signed_out") -> None:
     _log("signed_out", reason=reason)
 
 
-
-_LOGOUT_REMOTE_TIMEOUT_SECONDS = 2.0
-
-
 def _remote_sign_out(supabase: Any) -> None:
+    log_logout_phase("remote_supabase_signout_started")
     try:
         supabase.auth.sign_out()
+        log_logout_phase("remote_supabase_signout_completed")
     except Exception as exc:
+        log_logout_phase("remote_supabase_signout_failed")
         _log("logout_sign_out_failed", error=type(exc).__name__)
 
 
 def begin_logout(supabase: Any, cookie_manager: Any) -> None:
-    """Clear local auth immediately and redirect without rebuilding the workspace."""
-    if st.session_state.get("cadivor_logout_started"):
+    """Mark explicit logout, clear local auth, and defer redirect to bootstrap."""
+    if st.session_state.get("cadivor_logout_committed"):
         return
-    st.session_state["cadivor_logout_started"] = True
+
+    global _LOGOUT_T0
+    _LOGOUT_T0 = time.perf_counter()
+    log_logout_phase("signout_click_received")
+
+    st.session_state["cadivor_logout_in_progress"] = True
+    st.session_state["cadivor_explicit_logout"] = True
+
+    log_logout_phase("local_session_clear_started")
+    _clear_user_session_for_logout()
+    log_logout_phase("local_session_clear_completed")
 
     try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_remote_sign_out, supabase)
-            try:
-                future.result(timeout=_LOGOUT_REMOTE_TIMEOUT_SECONDS)
-            except FuturesTimeoutError:
-                _log("logout_sign_out_failed", error="timeout")
+        ThreadPoolExecutor(max_workers=1).submit(_remote_sign_out, supabase)
     except Exception:
+        log_logout_phase("remote_supabase_signout_failed")
         _log("logout_sign_out_failed", error="executor")
 
-    records = list(st.session_state.get("cadivor_auth_debug_log") or [])[-50:]
-    for key in list(st.session_state.keys()):
-        if key != "cadivor_auth_debug_log":
-            st.session_state.pop(key, None)
-    st.session_state["cadivor_auth_debug_log"] = records
-    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-    st.session_state["cadivor_signing_out"] = True
-    st.session_state["cadivor_force_signed_out"] = True
-    st.session_state["cadivor_auth_resolved"] = True
     try:
         st.query_params.clear()
     except Exception:
         pass
+    st.session_state["cadivor_logout_committed"] = True
     _log("logout_committed")
+
+
+def explicit_logout_pending() -> bool:
+    return bool(st.session_state.get("cadivor_explicit_logout"))
 
 
 def render_external_logout_redirect() -> None:
@@ -145,14 +202,34 @@ def render_external_logout_redirect() -> None:
     from src.urls import marketing_url
 
     target = marketing_url("/")
+    safe_target = html.escape(target, quote=True)
+    log_logout_phase("redirect_rendered")
     st.markdown(
-        """
+        f"""
         <style id="cadivor-logout-redirect-css">
         header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
-        section[data-testid="stSidebar"],[data-testid="collapsedControl"]{display:none!important}
-        html,body,.stApp,[data-testid="stAppViewContainer"]{background:#F5F7FB!important}
-        .main .block-container{max-width:none!important;padding:0!important;margin:0!important}
+        section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{display:none!important}}
+        html,body,.stApp,[data-testid="stAppViewContainer"]{{background:#F5F7FB!important}}
+        .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
+        .cv-logout-redirect{{min-height:100vh;display:grid;place-items:center;font-family:Inter,system-ui,sans-serif;color:#64748B}}
         </style>
+        <meta http-equiv="refresh" content="0; url={safe_target}">
+        <div class="cv-logout-redirect" role="status" aria-live="polite">
+          <p>Signing you out…</p>
+        </div>
+        <script>
+        (() => {{
+          const target = {json.dumps(target)};
+          try {{
+            window.location.replace(target);
+          }} catch (error) {{
+            try {{ window.top.location.replace(target); }} catch (ignored) {{}}
+          }}
+        }})();
+        </script>
+        <noscript>
+          <p><a href="{safe_target}">Continue to Cadivor</a></p>
+        </noscript>
         """,
         unsafe_allow_html=True,
     )
@@ -161,8 +238,8 @@ def render_external_logout_redirect() -> None:
         (() => {{
           const target = {json.dumps(target)};
           try {{
-            if (window.top && window.top.location) {{
-              window.top.location.replace(target);
+            if (window.parent && window.parent.location) {{
+              window.parent.location.replace(target);
               return;
             }}
           }} catch (error) {{}}
@@ -173,6 +250,15 @@ def render_external_logout_redirect() -> None:
         width=0,
     )
 
+
+def handle_explicit_logout_if_pending() -> bool:
+    """Render the external redirect and return True when logout is in progress."""
+    if not explicit_logout_pending():
+        return False
+    render_external_logout_redirect()
+    return True
+
+
 def finalize_logout_cookie(cookie_manager: Any) -> None:
     """Compatibility no-op.
 
@@ -180,6 +266,7 @@ def finalize_logout_cookie(cookie_manager: Any) -> None:
     force-signed-out guard is authoritative for the active Streamlit session.
     """
     st.session_state.pop("cadivor_cookie_clear_pending", None)
+
 
 def render_auth_transition(message: str = "Preparing Cadivor") -> None:
     """Render one light branded transition surface for auth changes."""
@@ -211,6 +298,7 @@ def render_auth_transition(message: str = "Preparing Cadivor") -> None:
         """,
         unsafe_allow_html=True,
     )
+
 
 def render_auth_boot() -> None:
     """Use the same neutral branded surface while a saved session is restored."""
@@ -256,6 +344,9 @@ def _validate_tokens(supabase: Any, access_token: str, refresh_token: str) -> bo
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
     """Resolve UNKNOWN -> SIGNED_OUT/AUTHENTICATED before either shell renders."""
+    if explicit_logout_pending():
+        return AUTH_SIGNED_OUT
+
     status = str(st.session_state.get("cadivor_auth_status") or AUTH_UNKNOWN)
 
     if st.session_state.get("cadivor_force_signed_out"):
@@ -276,9 +367,6 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
             return AUTH_AUTHENTICATED
         clear_auth_session(keep_status=True)
 
-    # No asynchronous cookie component participates in auth resolution.
-    # A fresh browser connection resolves to signed out immediately; the active
-    # Supabase session remains available through Streamlit session state.
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state.pop("cadivor_auth_restore_attempts", None)
