@@ -121,6 +121,9 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
             const shellButton = [...parentDoc.querySelectorAll('.st-key-cv_foundation_navigation .stButton > button')]
               .find(button => button.innerText.trim() === wanted);
             if (shellButton) {{ shellButton.click(); return; }}
+            const safeId = String(command.id || '').replace(/-/g, '_');
+            const trigger = parentDoc.querySelector(`.st-key-cvcc_nav_${{safeId}} button`);
+            if (trigger) {{ trigger.click(); return; }}
             if (!command.href) return;
 
             // Use a real link inside Streamlit's parent document. This follows the
