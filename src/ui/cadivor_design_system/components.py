@@ -345,7 +345,7 @@ def cadivor_empty_state(
         else ""
     )
     _render_html(
-        f'<div class="cv64-empty">'
+        f'<div class="cv64-empty cv71-empty-state">'
         f'<div class="cv64-empty__icon">{icon_or_empty(icon, 24)}</div>'
         f'<h3 class="cv64-empty__title">{escape(title)}</h3>'
         f'<p class="cv64-empty__body">{escape(body)}</p>'
@@ -466,11 +466,18 @@ def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
         return
     kwargs.setdefault("use_container_width", True)
     kwargs.setdefault("hide_index", True)
+    row_count = len(df)
+    if "height" not in kwargs and row_count > 24:
+        kwargs["height"] = min(520, 46 + min(row_count, 30) * 34)
     _render_html('<div class="cv64-table-host">')
     try:
         st.dataframe(df, **kwargs)
     except Exception:
         st.dataframe(df, use_container_width=True, hide_index=True)
+    if row_count > 24 and "height" in kwargs:
+        _render_html(
+            f'<p class="cv71-table-note">Showing a scrollable view of {row_count:,} rows.</p>'
+        )
     _render_html("</div>")
 
 
