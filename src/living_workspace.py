@@ -217,11 +217,11 @@ def compute_dashboard_summary_metrics(overview: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
-    """Shared Dashboard header: Engineering Brief + primary KPI row."""
+def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
+    """Engineering Overview — daily brief and primary KPI row."""
     render_section_header(
         "Your Engineering Brief",
-        eyebrow="Engineering Workspace",
+        eyebrow="Engineering Overview",
         description=(
             f"{_text(overview.get('summary'))} "
             f"The most important next step is to {metrics['brief_action'].lower()} "
@@ -264,15 +264,25 @@ def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[st
     )
 
 
+def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
+    """Backward-compatible alias — Engineering Overview only."""
+    render_engineering_overview_brief_and_kpis(overview=overview, metrics=metrics)
+
+
 def render_engineering_overview_workspace(
     *,
     overview: Dict[str, Any],
     metrics: Dict[str, Any],
     internal_nav_button: Callable[..., Any],
+    after_brief_hook: Optional[Callable[[], None]] = None,
+    activation_hook: Optional[Callable[[], None]] = None,
 ) -> None:
-    """Workspace 1 — release posture, recommendations, work queue, quick actions."""
-    st.html('<div class="cv64-page-shell cv672-dashboard-workspace">')
-    changes = overview.get("recent_change_summary", {})
+    """Workspace 1 — brief, KPIs, release posture, recommendations, work queue, quick actions."""
+    st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
+    render_engineering_overview_brief_and_kpis(overview=overview, metrics=metrics)
+    if after_brief_hook:
+        after_brief_hook()
+
     actions = overview.get("all_actions", [])
     recommendations = overview.get("recommendations", [])
 
@@ -295,24 +305,6 @@ def render_engineering_overview_workspace(
             )
     else:
         st.info("No urgent recommendation is recorded. Continue routine monitoring.")
-
-    nav_cols = st.columns(4)
-    with nav_cols[0]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Engineering Decisions", "Engineering Decisions", key="living_decisions", use_container_width=True)
-        cadivor_button_wrap_end()
-    with nav_cols[1]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="living_procurement", use_container_width=True)
-        cadivor_button_wrap_end()
-    with nav_cols[2]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Monitoring", "Monitoring", key="living_monitoring", use_container_width=True)
-        cadivor_button_wrap_end()
-    with nav_cols[3]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
-        cadivor_button_wrap_end()
 
     render_subsection_header(
         "Engineering Work Queue",
@@ -367,7 +359,29 @@ def render_engineering_overview_workspace(
                 align={"Priority": "right"},
             )
 
-    st.html("</div>")
+    render_subsection_header("Quick engineering actions", icon="zap")
+    nav_cols = st.columns(4)
+    with nav_cols[0]:
+        cadivor_button_wrap("secondary")
+        internal_nav_button("Engineering Decisions", "Engineering Decisions", key="living_decisions", use_container_width=True)
+        cadivor_button_wrap_end()
+    with nav_cols[1]:
+        cadivor_button_wrap("secondary")
+        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="living_procurement", use_container_width=True)
+        cadivor_button_wrap_end()
+    with nav_cols[2]:
+        cadivor_button_wrap("secondary")
+        internal_nav_button("Monitoring", "Monitoring", key="living_monitoring", use_container_width=True)
+        cadivor_button_wrap_end()
+    with nav_cols[3]:
+        cadivor_button_wrap("secondary")
+        internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
+        cadivor_button_wrap_end()
+
+    if activation_hook:
+        activation_hook()
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_portfolio_project_summaries(
@@ -477,108 +491,74 @@ def render_dashboard_monitoring_workspace(
     internal_nav_button: Callable[..., Any],
 ) -> None:
     """Workspace 4 — monitoring summaries with link to full Monitoring page."""
-    st.html('<div class="cv64-page-shell cv672-dashboard-workspace">')
+    st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
     changes = overview.get("recent_change_summary", {})
     alert_rows = list(alerts or [])
     timeline = [timeline_event(row) for row in alert_rows]
     supplier_rows = supplier_watch_rows(parts)
 
-    high_alert_count = sum(1 for item in alert_rows if "high" in str(item.get("severity", "")).lower())
-    render_subsection_header(
-        "Monitoring summary",
-        description="Dashboard-level lifecycle, inventory, pricing, and supplier signals.",
-        icon="bell-ring",
+    st.markdown(
+        """
+        <header class="cv672-dashboard-workspace-header">
+          <h2>Monitoring</h2>
+          <p>Lifecycle, inventory, pricing, and supplier change summaries from your workspace.</p>
+        </header>
+        """,
+        unsafe_allow_html=True,
     )
+
     render_kpi_row_safe(
         [
             MetricCard(
-                label="Active alerts",
-                value=str(len(alert_rows)),
-                detail=f"{high_alert_count} high severity",
-                tone="warning" if alert_rows else "neutral",
-                icon="calendar-clock",
-            ),
-            MetricCard(
-                label="Lifecycle updates",
+                label="Lifecycle Changes",
                 value=str(int(_number(changes.get("lifecycle"), 0))),
-                detail="Recent lifecycle changes",
+                detail="Recent lifecycle updates",
                 tone="warning",
                 icon="clock-3",
             ),
             MetricCard(
-                label="Stock changes",
+                label="Stock Changes",
                 value=str(int(_number(changes.get("stock"), 0))),
                 detail="Inventory movement recorded",
                 tone="monitoring",
                 icon="package-search",
             ),
             MetricCard(
-                label="Price changes",
+                label="Price Changes",
                 value=str(int(_number(changes.get("price"), 0))),
                 detail="Pricing movement recorded",
                 tone="confidence",
                 icon="dollar-sign",
             ),
-        ],
-        columns=4,
-    )
-
-    cadivor_panel(title="Supplier changes", subtitle="Components with sourcing exposure", tone="soft")
-    cadivor_metric_row(
-        [
             MetricCard(
-                label="Components changed",
-                value=str(int(_number(changes.get("components"), 0))),
-                tone="info",
-                icon="git-compare",
-            ),
-            MetricCard(
-                label="Supplier signals",
+                label="Supplier Changes",
                 value=str(len(supplier_rows)),
-                detail="Watchlist candidates on this dashboard",
+                detail="Sourcing signals on this dashboard",
                 tone="warning" if supplier_rows else "success",
                 icon="factory",
             ),
         ],
-        columns=2,
-        compact=True,
+        columns=4,
     )
-    cadivor_panel_end()
 
-    render_subsection_header(
-        "Recent monitoring events",
-        description="Latest lifecycle, inventory, pricing, and supplier changes.",
-        icon="history",
-    )
-    if timeline:
-        timeline_html = ['<div class="cv64-timeline">']
-        for event in timeline[:8]:
-            timeline_html.append(
-                '<div class="cv64-timeline-item">'
-                f'<div class="cv64-timeline-time">{html.escape(event["time"])}</div>'
-                f'<div class="cv64-timeline-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
-                f'<div class="cv64-timeline-copy">{html.escape(event["change"])}</div>'
-                '</div>'
-            )
-        timeline_html.append('</div>')
-        st.html(''.join(timeline_html))
-    else:
-        st.markdown(
-            """
-            <section class="cv672-dashboard-empty">
-              <strong>No monitoring activity yet</strong>
-              <p>Add monitored components to track lifecycle, stock, price, and supplier changes.</p>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
+    lifecycle_events = [event for event in timeline if event["category"] == "Lifecycle"]
+    stock_events = [event for event in timeline if event["category"] == "Stock"]
+    price_events = [event for event in timeline if event["category"] == "Price"]
+    supplier_events = [event for event in timeline if event["category"] == "Supplier"]
 
-    render_subsection_header(
-        "Supplier watch",
-        description="Summary exposure signals — open Monitoring Center for full watchlists.",
-        icon="factory",
-    )
-    if supplier_rows:
+    render_subsection_header("Lifecycle changes", icon="clock-3")
+    st.html(_monitoring_events_html(lifecycle_events, empty_copy="No lifecycle monitoring events are recorded yet."))
+
+    render_subsection_header("Stock changes", icon="package-search")
+    st.html(_monitoring_events_html(stock_events, empty_copy="No stock monitoring events are recorded yet."))
+
+    render_subsection_header("Price changes", icon="dollar-sign")
+    st.html(_monitoring_events_html(price_events, empty_copy="No price monitoring events are recorded yet."))
+
+    render_subsection_header("Supplier changes", icon="factory")
+    if supplier_events:
+        st.html(_monitoring_events_html(supplier_events, empty_copy="No supplier monitoring events are recorded yet."))
+    elif supplier_rows:
         watch_rows = [
             {
                 "Component": f'{item["part"]} · {item["manufacturer"]}',
@@ -595,7 +575,25 @@ def render_dashboard_monitoring_workspace(
             align={"Priority": "right"},
         )
     else:
-        st.success("No supplier exception currently requires attention.")
+        st.html(_monitoring_events_html([], empty_copy="No supplier monitoring events are recorded yet."))
+
+    render_subsection_header(
+        "Recent monitoring events",
+        description="Latest recorded monitoring activity.",
+        icon="history",
+    )
+    if timeline:
+        st.html(_monitoring_events_html(timeline, empty_copy="No monitoring activity yet."))
+    else:
+        st.markdown(
+            """
+            <section class="cv672-dashboard-empty">
+              <strong>No monitoring activity yet</strong>
+              <p>Add monitored components to track lifecycle, stock, price, and supplier changes.</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
 
     internal_nav_button(
         "Open Monitoring Center",
@@ -603,7 +601,7 @@ def render_dashboard_monitoring_workspace(
         key="dashboard_monitoring_center",
         use_container_width=True,
     )
-    st.html("</div>")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_living_workspace(
