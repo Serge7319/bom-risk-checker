@@ -1957,3 +1957,239 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
     max-width: 100%;
   }
 }
+
+/* Sprint 68 — Engineering Decision Intelligence presentation */
+.cv68-section {
+  margin: 12px 0 14px;
+}
+
+.cv68-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cv68-readiness-card {
+  border: 1px solid var(--cv64-border);
+  border-radius: 12px;
+  background: #fff;
+  padding: 11px 12px;
+}
+
+.cv68-readiness-label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.cv68-readiness-value {
+  color: var(--cv64-navy);
+  font-size: 22px;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.cv68-readiness-meter {
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.cv68-readiness-meter i {
+  display: block;
+  height: 100%;
+  background: #2563eb;
+  border-radius: inherit;
+}
+
+.cv68-priority-matrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cv68-priority-bucket {
+  border: 1px solid var(--cv64-border);
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.cv68-priority-bucket h4 {
+  margin: 0 0 8px;
+  color: var(--cv64-navy);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cv68-priority-bucket ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cv68-priority-bucket li span {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.cv68-action-intelligence {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.cv68-action-block {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.cv68-action-block h4 {
+  margin: 0 0 6px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cv68-action-block ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cv68-impact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cv68-impact-grid div {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 9px;
+  background: #fff;
+}
+
+.cv68-impact-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.cv68-impact-grid strong {
+  display: block;
+  color: var(--cv64-navy);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.cv68-tradeoff-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.cv68-tradeoff-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #fff;
+}
+
+.cv68-tradeoff-card strong {
+  display: block;
+  color: var(--cv64-navy);
+  font-size: 12px;
+}
+
+.cv68-tradeoff-card span {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+  margin-top: 3px;
+}
+
+.cv68-tradeoff-card p {
+  margin: 5px 0 0;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cv68-dependency-chain {
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.cv68-timeline {
+  display: grid;
+  gap: 6px;
+}
+
+.cv68-timeline-step {
+  border-left: 2px solid #bfdbfe;
+  padding-left: 10px;
+}
+
+.cv68-timeline-step span {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cv68-timeline-step strong {
+  display: block;
+  color: var(--cv64-navy);
+  font-size: 11px;
+}
+
+.cv68-timeline-step small {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.cv68-confidence-breakdown {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.cv68-confidence-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #475569;
+}
+
+.cv68-confidence-item--available .cv68-confidence-icon {
+  color: #15803d;
+}
+
+.cv68-confidence-item--missing .cv68-confidence-icon {
+  color: #b45309;
+}
+
+@media (max-width: 900px) {
+  .cv68-readiness-grid,
+  .cv68-priority-matrix,
+  .cv68-impact-grid {
+    grid-template-columns: 1fr;
+  }
+}
