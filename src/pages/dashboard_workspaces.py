@@ -15,6 +15,7 @@ from src.living_workspace import (
     render_team_workload_section,
 )
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
+from src.ui.navigation import internal_nav_button
 
 DASHBOARD_WORKSPACES: tuple[str, ...] = (
     "Engineering Overview",
@@ -48,14 +49,16 @@ def render_dashboard_page_heading() -> None:
 
 def render_dashboard_workspace_navigation(*, radio_key: str) -> str:
     """Segmented workspace navigation — must render before workspace content."""
+    st.markdown('<div class="cv672-dashboard-shell">', unsafe_allow_html=True)
     st.markdown('<div class="cv672-dashboard-workspace-root"></div>', unsafe_allow_html=True)
     workspace = st.radio(
-        "Dashboard workspace",
+        "Workspace navigation",
         DASHBOARD_WORKSPACES,
         horizontal=True,
         key=radio_key,
-        label_visibility="collapsed",
+        label_visibility="visible",
     )
+    st.markdown("</div>", unsafe_allow_html=True)
     return workspace
 
 
@@ -472,7 +475,6 @@ def render_portfolio_intelligence_workspace(
     *,
     ctx: Mapping[str, Any],
     overview: Mapping[str, Any],
-    internal_nav_button: Callable[..., Any],
 ) -> None:
     st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
     if not ctx.get("analysis_data"):
@@ -563,13 +565,25 @@ def render_portfolio_intelligence_workspace(
             )
     else:
         st.markdown(
-            '<div class="cv242-status-note">No saved projects are currently trending downward.</div>',
+            """
+            <section class="cv672-attention-stable">
+              <div class="cv672-attention-stable-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <path d="m9 11 3 3L22 4"/>
+                </svg>
+              </div>
+              <div>
+                <strong>No projects currently trending downward</strong>
+                <p>Portfolio health is stable across saved projects.</p>
+              </div>
+            </section>
+            """,
             unsafe_allow_html=True,
         )
 
     render_portfolio_project_summaries(
         projects=overview.get("projects", []),
-        internal_nav_button=internal_nav_button,
     )
 
     project_col_left, project_col_right = st.columns([1.35, 0.78], gap="small")
@@ -859,29 +873,34 @@ def render_dashboard_analytics_workspace(
         else:
             st.info("Save at least two BOM analyses to display risk movement.")
 
+    health_change = int(ctx.get("trend_health_change", 0) or 0)
+    high_risk_change = int(ctx.get("trend_high_risk_change", 0) or 0)
+    health_card_tone = "good" if health_change > 0 else "bad" if health_change < 0 else ""
+    risk_card_tone = "good" if high_risk_change < 0 else "bad" if high_risk_change > 0 else ""
+    alert_card_tone = "warn" if ctx.get("recent_alerts_7d") else ""
+
     st.markdown(
         f"""
-        <div class="cv232-trend-summary">{html.escape(str(ctx.get('trend_summary')))}</div>
-        <section class="cv232-trend-grid">
-          <div class="cv232-trend-card {'good' if ctx.get('trend_health_change', 0) > 0 else 'bad' if ctx.get('trend_health_change', 0) < 0 else ''}">
-            <div class="cv232-trend-label">Health Change</div>
-            <div class="cv232-trend-value">{ctx.get('trend_health_change', 0):+d}</div>
-            <div class="cv232-trend-note">Latest saved analysis versus previous</div>
+        <section class="cv672-analytics-metric-grid">
+          <div class="cv672-analytics-metric-card {health_card_tone}">
+            <div class="cv672-analytics-metric-label">Portfolio Health Change</div>
+            <div class="cv672-analytics-metric-value">{health_change:+d}</div>
+            <div class="cv672-analytics-metric-note">latest saved analysis versus previous</div>
           </div>
-          <div class="cv232-trend-card {'good' if ctx.get('trend_high_risk_change', 0) < 0 else 'bad' if ctx.get('trend_high_risk_change', 0) > 0 else ''}">
-            <div class="cv232-trend-label">High-Risk Change</div>
-            <div class="cv232-trend-value">{ctx.get('trend_high_risk_change', 0):+d}</div>
-            <div class="cv232-trend-note">Fewer high-risk records is better</div>
+          <div class="cv672-analytics-metric-card {risk_card_tone}">
+            <div class="cv672-analytics-metric-label">High-Risk Change</div>
+            <div class="cv672-analytics-metric-value">{high_risk_change}</div>
+            <div class="cv672-analytics-metric-note">fewer high-risk records is better</div>
           </div>
-          <div class="cv232-trend-card {'warn' if ctx.get('recent_alerts_7d') else ''}">
-            <div class="cv232-trend-label">Alert trend (7d)</div>
-            <div class="cv232-trend-value">{ctx.get('recent_alerts_7d', 0)}</div>
-            <div class="cv232-trend-note">Recorded in the last seven days</div>
+          <div class="cv672-analytics-metric-card {alert_card_tone}">
+            <div class="cv672-analytics-metric-label">Alerts — Last 7 Days</div>
+            <div class="cv672-analytics-metric-value">{ctx.get('recent_alerts_7d', 0)}</div>
+            <div class="cv672-analytics-metric-note">recorded monitoring events</div>
           </div>
-          <div class="cv232-trend-card">
-            <div class="cv232-trend-label">Lifecycle trend</div>
-            <div class="cv232-trend-value">{ctx.get('lifecycle_alert_count', 0)}</div>
-            <div class="cv232-trend-note">Lifecycle-related monitoring events</div>
+          <div class="cv672-analytics-metric-card">
+            <div class="cv672-analytics-metric-label">Lifecycle Events</div>
+            <div class="cv672-analytics-metric-value">{ctx.get('lifecycle_alert_count', 0)}</div>
+            <div class="cv672-analytics-metric-note">lifecycle-related monitoring events</div>
           </div>
         </section>
         """,
