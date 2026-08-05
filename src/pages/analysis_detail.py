@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from src.ui.navigation import navigate_to, internal_nav_button, alternative_finder_href
+from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button, navigate_to, alternative_finder_href
 from src.urls import internal_app_href
 from src.ai_advisor import build_engineering_supply_advisor
 from src.ui.performance_cache import (
@@ -848,9 +848,44 @@ def render_analysis_detail(
 
     st.markdown('<a class="cv-analysis-back" href="' + html.escape(internal_app_href("BOM Analyzer", new_analysis="1"), quote=True) + '" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
     st.markdown(
-        f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p><div class="cv-analysis-actions"><a class="cv-analysis-btn primary" href="{html.escape(internal_app_href('BOM Analyzer', analysis_id=analysis_id), quote=True)}" target="_self">Open in BOM Analyzer →</a><a class="cv-analysis-btn" href="{html.escape(internal_app_href('Alternative Finder', analysis_id=analysis_id), quote=True)}" target="_self">Find Alternatives</a><a class="cv-analysis-btn" href="{html.escape(internal_app_href('Monitoring', analysis_id=analysis_id), quote=True)}" target="_self">Monitor Components</a><a class="cv-analysis-btn" href="{html.escape(internal_app_href('Reports', analysis_id=analysis_id), quote=True)}" target="_self">Reports Center</a></div></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
+        f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
         unsafe_allow_html=True,
     )
+    hero_actions = st.columns(4, gap="small")
+    with hero_actions[0]:
+        internal_nav_button(
+            "Open in BOM Analyzer →",
+            "BOM Analyzer",
+            key="analysis_hero_bom_analyzer",
+            use_container_width=True,
+            analysis_id=analysis_id,
+        )
+    with hero_actions[1]:
+        internal_nav_button(
+            "Find Alternatives",
+            ALTERNATIVE_FINDER_PAGE,
+            key="analysis_hero_alternative_finder",
+            use_container_width=True,
+            analysis_id=analysis_id,
+            return_analysis_id=analysis_id,
+            source_page="analysis_detail",
+        )
+    with hero_actions[2]:
+        internal_nav_button(
+            "Monitor Components",
+            "Monitoring",
+            key="analysis_hero_monitoring",
+            use_container_width=True,
+            analysis_id=analysis_id,
+        )
+    with hero_actions[3]:
+        internal_nav_button(
+            "Reports Center",
+            "Reports",
+            key="analysis_hero_reports",
+            use_container_width=True,
+            analysis_id=analysis_id,
+        )
 
     (
         advisor_tab,
@@ -1732,8 +1767,7 @@ def render_analysis_detail(
             st.markdown(f'''<div class="cv-risk-compact"><div class="cv-readiness-list"><div class="cv-readiness-row"><div><strong>Lifecycle Coverage</strong><span>{active_count} active components · {active_pct}% of BOM</span></div><div class="cv-readiness-bar"><i style="width:{active_pct}%"></i></div></div><div class="cv-readiness-row"><div><strong>Stock Health</strong><span>{stock_health} parts with available stock · {no_stock} no-stock risk</span></div><div class="cv-readiness-bar"><i style="width:{stock_pct}%"></i></div></div><div class="cv-readiness-metrics"><div><span>Supplier Alerts</span><strong>{len(alerts)}</strong><small>attached to analysis</small></div><div><span>Validated Alternatives</span><strong>{len(alternatives)}</strong><small>linked to analysis</small></div><div><span>High-Risk Parts</span><strong>{high}</strong><small>need review</small></div></div></div></div>''', unsafe_allow_html=True)
         with alerts_col:
             if alerts:
-                rows = []
-                for alert in alerts[:8]:
+                for alert_index, alert in enumerate(alerts[:8]):
                     raw_part = _safe(
                         alert.get("part_number") or alert.get("mpn"),
                         "Component",
@@ -1749,7 +1783,7 @@ def render_analysis_detail(
                     alert_type = html.escape(
                         _safe(alert.get("alert_type") or alert.get("type"), "Lifecycle Alert")
                     )
-                    rows.append(
+                    st.markdown(
                         f"""
                         <div class="cv-alert-card">
                           <div class="cv-alert-top">
@@ -1760,14 +1794,29 @@ def render_analysis_detail(
                             <span class="cv-analysis-pill bad">{severity}</span>
                           </div>
                           <div class="cv-alert-message">{msg}</div>
-                          <div class="cv-alert-actions">
-                            <a class="cv-alert-action" href="{_monitor_url(raw_part, analysis_id)}" target="_self">Review in Monitoring</a>
-                            <a class="cv-alert-action" href="{_alternative_url(raw_part, analysis_id)}" target="_self">Find Replacement</a>
-                          </div>
                         </div>
-                        """
+                        """,
+                        unsafe_allow_html=True,
                     )
-                st.markdown("".join(rows), unsafe_allow_html=True)
+                    alert_actions = st.columns(2, gap="small")
+                    with alert_actions[0]:
+                        if st.button(
+                            "Review in Monitoring",
+                            key=f"analysis_alert_monitor_{alert_index}",
+                            use_container_width=True,
+                        ):
+                            navigate_to("Monitoring", analysis_id=analysis_id, mpn=raw_part)
+                    with alert_actions[1]:
+                        internal_nav_button(
+                            "Find Replacement",
+                            ALTERNATIVE_FINDER_PAGE,
+                            key=f"analysis_alert_alt_{alert_index}",
+                            use_container_width=True,
+                            original_part=raw_part,
+                            analysis_id=analysis_id,
+                            return_analysis_id=analysis_id,
+                            source_page="analysis_detail",
+                        )
             else:
                 st.markdown('<div class="cv-analysis-empty">No saved supplier or lifecycle alerts are attached to this analysis.</div>', unsafe_allow_html=True)
 
