@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.urls import internal_app_href
-from src.ui.navigation import alternative_finder_href
+from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, alternative_finder_href
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -18,7 +18,7 @@ def _text(value: Any, default: str = "") -> str:
 
 
 def _href(page: str, **params: Any) -> str:
-    if page == "Alternative Finder" and params.get("original_part"):
+    if page == ALTERNATIVE_FINDER_PAGE and params.get("original_part"):
         return alternative_finder_href(
             mpn=str(params.get("original_part")),
             analysis_id=str(params.get("analysis_id", "") or ""),
@@ -46,8 +46,11 @@ def _command(
     keywords: list[str] | tuple[str, ...] = (),
     badge: str = "",
     entity_type: str = "record",
+    *,
+    page: str = "",
+    nav_params: dict[str, str] | None = None,
 ) -> dict:
-    return {
+    payload = {
         "id": command_id,
         "title": title,
         "subtitle": subtitle,
@@ -58,6 +61,12 @@ def _command(
         "shortcut": badge,
         "entityType": entity_type,
     }
+    if page:
+        payload["page"] = page
+        payload["nav_page"] = page
+    if nav_params:
+        payload["nav_params"] = nav_params
+    return payload
 
 
 def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 80) -> list[dict]:
@@ -259,12 +268,17 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
                 f"alternative-{_text(row.get('id'), str(index))}",
                 f"{original or 'Part'} → {alternative or 'Candidate'}",
                 f"{supplier} · Recommendation score {score}",
-                _href("Alternative Finder", original_part=original),
+                "",
                 "Alternatives",
                 "⇄",
                 [original, alternative, supplier, "replacement", "cross reference"],
                 "Alternative",
                 "alternative",
+                page=ALTERNATIVE_FINDER_PAGE,
+                nav_params={
+                    "original_part": original,
+                    "source_page": "workspace_search",
+                },
             )
         )
 
