@@ -98,12 +98,31 @@ def mark_signed_out(reason: str = "signed_out") -> None:
 
 
 
-def begin_logout(supabase: Any, cookie_manager: Any) -> None:
-    """End the Supabase session and hand off to the external marketing redirect."""
+_LOGOUT_REMOTE_TIMEOUT_SECONDS = 2.0
+
+
+def _remote_sign_out(supabase: Any) -> None:
     try:
         supabase.auth.sign_out()
     except Exception as exc:
         _log("logout_sign_out_failed", error=type(exc).__name__)
+
+
+def begin_logout(supabase: Any, cookie_manager: Any) -> None:
+    """Clear local auth immediately and redirect without rebuilding the workspace."""
+    if st.session_state.get("cadivor_logout_started"):
+        return
+    st.session_state["cadivor_logout_started"] = True
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_remote_sign_out, supabase)
+            try:
+                future.result(timeout=_LOGOUT_REMOTE_TIMEOUT_SECONDS)
+            except FuturesTimeoutError:
+                _log("logout_sign_out_failed", error="timeout")
+    except Exception:
+        _log("logout_sign_out_failed", error="executor")
 
     records = list(st.session_state.get("cadivor_auth_debug_log") or [])[-50:]
     for key in list(st.session_state.keys()):
@@ -126,7 +145,17 @@ def render_external_logout_redirect() -> None:
     from src.urls import marketing_url
 
     target = marketing_url("/")
-    render_auth_transition("Signing you out securely…")
+    st.markdown(
+        """
+        <style id="cadivor-logout-redirect-css">
+        header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
+        section[data-testid="stSidebar"],[data-testid="collapsedControl"]{display:none!important}
+        html,body,.stApp,[data-testid="stAppViewContainer"]{background:#F5F7FB!important}
+        .main .block-container{max-width:none!important;padding:0!important;margin:0!important}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     components.html(
         f"""<script>
         (() => {{
