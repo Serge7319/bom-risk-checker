@@ -2845,13 +2845,17 @@ def run_authenticated_app() -> None:
 
         # Existing customers can revisit the first-time experience without creating
         # a disposable account. This is a preview only and never changes saved data.
-        if st.button(
-            "Preview onboarding",
-            key="dashboard_preview_onboarding",
-            type="secondary",
-        ):
-            st.session_state["preview_onboarding"] = "1"
-            navigate_to("Dashboard")
+        st.html(
+            """
+            <p class="cv672-dashboard-preview-wrap">
+              <a class="cv6723-quick-action cv672-dashboard-preview-link"
+                 href="?page=Dashboard&amp;preview_onboarding=1"
+                 target="_self">
+                Preview onboarding
+              </a>
+            </p>
+            """
+        )
 
         inject_workspace_consistency_css()
         st.session_state.pop("cadivor_route_transition", None)
