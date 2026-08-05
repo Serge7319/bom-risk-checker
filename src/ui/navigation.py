@@ -255,9 +255,9 @@ def internal_nav_button(
         disabled=disabled,
     )
     if clicked:
-        if page == ALTERNATIVE_FINDER_PAGE and params.get("original_part"):
+        if page == ALTERNATIVE_FINDER_PAGE:
             navigate_to_alternative_finder(
-                mpn=str(params.pop("original_part")),
+                mpn=str(params.pop("original_part", "") or ""),
                 manufacturer=str(params.pop("manufacturer", "") or ""),
                 description=str(params.pop("description", "") or ""),
                 analysis_id=str(params.pop("analysis_id", "") or ""),
@@ -268,3 +268,38 @@ def internal_nav_button(
         else:
             navigate_to(page, **params)
     return clicked
+
+
+def render_command_nav_triggers(commands: list[dict]) -> None:
+    """Mount hidden session-state navigation buttons for the command palette."""
+    triggers = [command for command in commands if command.get("nav_page")]
+    if not triggers:
+        return
+
+    st.markdown(
+        """
+        <style id="cadivor-command-nav-triggers">
+        .cvcc-nav-triggers {
+          position: absolute !important;
+          left: -10000px !important;
+          width: 1px !important;
+          height: 1px !important;
+          overflow: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+        </style>
+        <div class="cvcc-nav-triggers" aria-hidden="true"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+    for command in triggers[:60]:
+        safe_key = str(command.get("id") or "").replace("-", "_")
+        page = str(command.get("nav_page") or "")
+        params = dict(command.get("nav_params") or {})
+        internal_nav_button(
+            "Open",
+            page,
+            key=f"cvcc_nav_{safe_key}",
+            **params,
+        )
