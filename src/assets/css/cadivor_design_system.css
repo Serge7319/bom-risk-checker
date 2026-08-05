@@ -1658,3 +1658,106 @@ div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRa
     grid-template-columns: 1fr;
   }
 }
+
+/* Sprint 67.2 — Dashboard workspace navigation (scoped) */
+.cv672-dashboard-workspace {
+  margin-top: 6px;
+}
+
+.cv672-dashboard-empty {
+  border: 1px dashed var(--cv64-border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cv672-dashboard-empty strong {
+  display: block;
+  color: var(--cv64-navy);
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.cv672-dashboard-analytics-summary {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--cv64-border);
+  border-radius: 12px;
+  background: #fff;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cv672-dashboard-analytics-summary strong {
+  display: block;
+  color: var(--cv64-navy);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.cv672-dashboard-analytics-summary ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.cv672-dashboard-workspace .cv26-riskdist {
+  display: flex;
+  height: 13px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e2e8f0;
+  margin: 11px 0;
+}
+
+.cv672-dashboard-workspace .cv26-riskdist i {
+  display: block;
+  height: 100%;
+}
+
+.cv672-dashboard-workspace .cv26-riskdist .healthy { background: #22c55e; }
+.cv672-dashboard-workspace .cv26-riskdist .medium { background: #f59e0b; }
+.cv672-dashboard-workspace .cv26-riskdist .critical { background: #ef4444; }
+
+.cv672-dashboard-workspace .cv26-legend {
+  display: flex;
+  gap: 14px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 820;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  row-gap: 8px;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--cv64-border);
+  border-radius: 999px;
+  background: #fff;
+  margin-right: 0 !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:focus-within {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+@media (max-width: 1023px) {
+  div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] > div {
+    max-width: 100%;
+  }
+}
