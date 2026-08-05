@@ -1583,6 +1583,31 @@ def render_analysis_detail(
             with c2: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Component Health Distribution</div><div class="cv26-card-meta">Healthy, medium-risk, and critical components.</div><div class="cv26-riskdist"><i class="healthy" style="width:{healthy_pct}%"></i><i class="medium" style="width:{medium_pct}%"></i><i class="critical" style="width:{critical_pct}%"></i></div><div class="cv26-legend"><span>Healthy {healthy_count}</span><span>Medium {medium}</span><span>Critical {high}</span></div></section>''', unsafe_allow_html=True)
 
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+            s68_readiness = decision_brief.get("executive_readiness") or {}
+            if s68_readiness:
+                readiness_rows = [
+                    ("Production Readiness", s68_readiness.get("overall")),
+                    ("Engineering", s68_readiness.get("engineering")),
+                    ("Supply Chain", s68_readiness.get("supply_chain")),
+                    ("Manufacturing", s68_readiness.get("manufacturing")),
+                    ("Procurement", s68_readiness.get("procurement")),
+                    ("Documentation", s68_readiness.get("documentation")),
+                ]
+                readiness_html = "".join(
+                    f'<div class="cv68-readiness-card"><div class="cv68-readiness-label">{html.escape(label)}</div>'
+                    f'<div class="cv68-readiness-value">{int(_num(score, 0))}%</div>'
+                    f'<div class="cv68-readiness-meter"><i style="width:{int(_num(score, 0))}%"></i></div></div>'
+                    for label, score in readiness_rows
+                    if score is not None
+                )
+                st.markdown(
+                    f'<section class="cv26-card"><div class="cv26-card-title">Executive Readiness Score</div>'
+                    f'<div class="cv26-card-meta">Cross-functional readiness inferred from engineering evidence.</div>'
+                    f'<div class="cv68-readiness-grid">{readiness_html}</div></section>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
             phases=[]
             for period,idx,copy in [("Immediate",0,"Resolve the highest-priority risk."),("This Week",1,"Validate supplier and lifecycle evidence."),("Next Sprint",2,"Complete replacement or second-source qualification.")]:
                 if len(ranked_parts)>idx: phases.append((period,_safe(ranked_parts[idx].get("mpn")),copy))
@@ -1593,9 +1618,12 @@ def render_analysis_detail(
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
             action_html=[]
             for index,action in enumerate((advisor.get("priority_actions") or [])[:6],1):
-                urgency=_safe(action.get("urgency"),"Medium"); pc="high" if urgency.lower() in ("immediate","high") or index<=2 else "medium" if index<=4 else "low"
-                action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{pc.upper()}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(_safe(action.get("reason"),"Risk signal detected."))}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
+                bucket = _safe(action.get("priority_bucket"), _safe(action.get("schedule"), "Can Wait"))
+                pc = "high" if bucket == "Do Now" or index <= 2 else "medium" if bucket in ("Do This Week", "Do Before Production") else "low"
+                reason = _safe(action.get("why"), _safe((action.get("engineering_reasoning") or [""])[0], "Risk signal detected."))
+                action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{html.escape(bucket.upper())}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(reason)}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
             if not action_html: action_html.append('<div class="cv-analysis-empty">No priority actions are currently available.</div>')
+            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Cadivor-ranked recommendations with decision priority buckets.</div>{"".join(action_html)}</section>''', unsafe_allow_html=True)
     with overview_tab:
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
         context_score = context_coverage.score
