@@ -16,7 +16,6 @@ from src.living_workspace import (
     render_team_workload_section,
 )
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
-from src.ui.navigation import internal_nav_button
 
 DASHBOARD_WORKSPACES: tuple[str, ...] = (
     "Engineering Overview",
@@ -40,7 +39,6 @@ def render_dashboard_page_heading() -> None:
     st.markdown(
         """
         <header class="cv672-dashboard-heading">
-          <p class="cv672-dashboard-kicker">Cadivor Command Center</p>
           <h1 class="cv672-dashboard-title">Dashboard</h1>
         </header>
         """,
@@ -207,6 +205,27 @@ def _activity_relative(value: Any) -> str:
     if days < 7:
         return f"{days} days ago"
     return parsed.strftime("%b %d, %Y")
+
+
+def _activity_card_html(event: Mapping[str, Any]) -> str:
+    return (
+        f'<section class="cv6723-activity-card">'
+        f'<div class="cv6723-activity-top">'
+        f"<span>{html.escape(str(event.get('type') or ''))}</span>"
+        f"<span>{html.escape(_activity_relative(event.get('created_at')))}</span>"
+        f"</div>"
+        f"<strong>{html.escape(str(event.get('title') or ''))}</strong>"
+        f"<p>{html.escape(str(event.get('copy') or ''))}</p>"
+        f'<a class="cv6723-inline-link" href="{html.escape(str(event.get("href") or "?page=Dashboard"), quote=True)}" target="_self">'
+        f"{html.escape(str(event.get('action') or 'Review'))} →"
+        f"</a>"
+        f"</section>"
+    )
+
+
+def _render_activity_cards(events: Iterable[Mapping[str, Any]]) -> None:
+    for event in events:
+        st.html(_activity_card_html(event))
 
 
 def build_portfolio_dashboard_context(
@@ -727,40 +746,12 @@ def render_portfolio_intelligence_workspace(
         )
         visible_activity = recent_activity[:3]
         if visible_activity:
-            cards = []
-            for event in visible_activity:
-                cards.append(
-                    f"""
-                    <section class="cv6723-activity-card">
-                      <div class="cv6723-activity-top">
-                        <span>{html.escape(str(event['type']))}</span>
-                        <span>{html.escape(_activity_relative(event.get('created_at')))}</span>
-                      </div>
-                      <strong>{html.escape(str(event['title']))}</strong>
-                      <p>{html.escape(str(event['copy']))}</p>
-                      <a class="cv6723-inline-link" href="{event['href']}" target="_self">
-                        {html.escape(str(event['action']))} →
-                      </a>
-                    </section>
-                    """
-                )
-            st.markdown(f'<div class="cv6723-section">{"".join(cards)}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="cv6723-section cv6723-activity-list">', unsafe_allow_html=True)
+            _render_activity_cards(visible_activity)
+            st.markdown("</div>", unsafe_allow_html=True)
             if len(recent_activity) > 3:
                 with st.expander(f"View all activity ({len(recent_activity)})", expanded=False):
-                    for event in recent_activity[3:8]:
-                        st.markdown(
-                            f"""
-                            <section class="cv6723-activity-card">
-                              <div class="cv6723-activity-top">
-                                <span>{html.escape(str(event['type']))}</span>
-                                <span>{html.escape(_activity_relative(event.get('created_at')))}</span>
-                              </div>
-                              <strong>{html.escape(str(event['title']))}</strong>
-                              <p>{html.escape(str(event['copy']))}</p>
-                            </section>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                    _render_activity_cards(recent_activity[3:8])
         else:
             st.markdown(
                 """
