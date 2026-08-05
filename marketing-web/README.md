@@ -24,13 +24,23 @@ Open `http://localhost:3000/#/home`.
 - `#/privacy`
 - `#/terms`
 
-## Application URL
+## Application and marketing URLs
 
-The frontend defaults Sign In and trial links to `https://app.cadivor.com`. To override it before `app.js` loads, set:
+Configure these optional globals before `app.js` loads:
 
 ```html
-<script>window.CADIVOR_APP_URL = 'https://your-streamlit-url.example';</script>
+<script>
+  window.CADIVOR_APP_ORIGIN = 'https://app.cadivor.com';
+  window.CADIVOR_MARKETING_ORIGIN = 'https://www.cadivor.com';
+</script>
 ```
+
+If unset, Sign In and trial links default to the verified Streamlit Cloud deployment. The marketing origin defaults to the current site origin when served locally.
+
+The Python app uses the same concepts via environment variables:
+
+- `CADIVOR_MARKETING_ORIGIN` (default `https://www.cadivor.com`)
+- `CADIVOR_APP_ORIGIN` (default Streamlit Cloud production URL)
 
 ## Deployment
 
