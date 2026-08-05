@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from html import escape
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 import pandas as pd
 
@@ -12,6 +12,7 @@ from src.engineering_dependency_engine import (
     attach_dependency_to_actions,
     build_engineering_dependency_report,
 )
+from src.ui.decision_workspace import render_recommendation_workspace
 from src.config import ENABLE_DECISION_ENGINE_V2, ENABLE_DECISION_WORKSPACE_V71
 from src.ui.cadivor_design_system.icons import lucide
 
@@ -1359,328 +1360,6 @@ def _action_projected_improvement_rows(action: Mapping[str, Any]) -> List[tuple[
     ]
 
 
-def _html_projected_improvements(action: Mapping[str, Any]) -> str:
-    rows = _action_projected_improvement_rows(action)
-    if not rows:
-        return ""
-    impact_html = "".join(
-        f"<div><span>{escape(label)}</span><strong>{escape(value)}</strong></div>"
-        for label, value in rows
-    )
-    return (
-        f'<section class="cv69-detail-block">'
-        f'<h4>Projected improvements</h4>'
-        f'<div class="cv68-impact-grid">{impact_html}</div>'
-        f"</section>"
-    )
-
-
-def _timing_badge_label(bucket: str) -> str:
-    normalized = _text(bucket, "Can Wait")
-    if normalized == "Do Before Production":
-        return "Before Production"
-    if normalized == "Do Now":
-        return "Do This Week"
-    return normalized
-
-
-def _timing_badge_class(bucket: str) -> str:
-    normalized = _text(bucket, "Can Wait")
-    if normalized in {"Do Now", "Do This Week"}:
-        return "cv69-timing cv69-timing--week"
-    if normalized == "Do Before Production":
-        return "cv69-timing cv69-timing--production"
-    return "cv69-timing cv69-timing--wait"
-
-
-def _action_collapsed_metrics(action: Mapping[str, Any]) -> tuple[str, str, str]:
-    dep = action.get("dependency") or {}
-    roi = dep.get("engineering_roi") or {}
-    health = dep.get("projected_bom_health") or {}
-    roi_html = f"{escape(_text(roi.get('label')))} ({_number(roi.get('score'), 0):g})"
-    gain = int(_number(health.get("gain"), 0))
-    if gain:
-        health_html = (
-            f"+{gain} "
-            f"<span class='cv69-health-range'>"
-            f"({int(_number(health.get('before'), 0))}→{int(_number(health.get('after'), 0))})"
-            f"</span>"
-        )
-    else:
-        health_html = escape(INSUFFICIENT_EVIDENCE)
-    effort = escape(_text(dep.get("estimated_effort") or action.get("effort"), "—"))
-    return roi_html, health_html, effort
-
-
-def _html_action_workflow_chain(dependencies: Sequence[str]) -> str:
-    steps = [_text(step) for step in dependencies if _text(step)]
-    if not steps:
-        return ""
-    nodes = []
-    for index, step in enumerate(steps, start=1):
-        nodes.append(
-            f'<div class="cv69-workflow-node">'
-            f'<span class="cv69-workflow-index">{index}</span>'
-            f'<strong>{escape(step)}</strong>'
-            f"</div>"
-        )
-        if index < len(steps):
-            nodes.append('<div class="cv69-workflow-connector" aria-hidden="true"></div>')
-    return f'<div class="cv69-workflow-track">{"".join(nodes)}</div>'
-
-
-def _html_action_expanded_detail(action: Mapping[str, Any]) -> str:
-    dep = action.get("dependency") or {}
-    sections: List[str] = []
-
-    sections.append(
-        f'<section class="cv69-detail-block">'
-        f"<h4>Reason</h4><p>{escape(_text(action.get('reason'), INSUFFICIENT_EVIDENCE))}</p>"
-        f"</section>"
-    )
-    sections.append(
-        f'<section class="cv69-detail-block">'
-        f"<h4>Evidence</h4><p>{escape(_text(action.get('evidence'), INSUFFICIENT_EVIDENCE))}</p>"
-        f"</section>"
-    )
-
-    impact_items = dep.get("engineering_impact") or []
-    if impact_items:
-        impact_html = "".join(
-            f'<li><strong>{escape(_text(item.get("domain")))}</strong> — '
-            f'{escape(_text(item.get("explanation")))}</li>'
-            for item in impact_items
-        )
-        sections.append(
-            f'<section class="cv69-detail-block">'
-            f"<h4>Engineering impact</h4>"
-            f'<ul class="cv69-detail-list">{impact_html}</ul>'
-            f"</section>"
-        )
-
-    validation_items = dep.get("validation_required") or []
-    if validation_items:
-        validation_html = "".join(
-            f'<li><strong>{escape(_text(item.get("step")))}</strong> — '
-            f'{escape(_text(item.get("explanation")))}</li>'
-            for item in validation_items
-        )
-        sections.append(
-            f'<section class="cv69-detail-block">'
-            f"<h4>Validation required</h4>"
-            f'<ul class="cv69-detail-list">{validation_html}</ul>'
-            f"</section>"
-        )
-
-    sections.append(
-        f'<section class="cv69-detail-block">'
-        f"<h4>Expected result</h4>"
-        f"<p>{escape(_text(action.get('expected_result'), INSUFFICIENT_EVIDENCE))}</p>"
-        f"</section>"
-    )
-
-    projected = _html_projected_improvements(action)
-    if projected:
-        sections.append(projected)
-
-    tradeoffs = list(action.get("tradeoffs") or [])
-    if tradeoffs:
-        tradeoff_html = "".join(
-            f'<article class="cv68-tradeoff-card"><strong>{escape(_text(item.get("option")))}</strong>'
-            f'<span>{escape(_text(item.get("summary")))}</span>'
-            f'<p>{escape(_text(item.get("detail")))}</p></article>'
-            for item in tradeoffs[:3]
-        )
-        sections.append(
-            f'<section class="cv69-detail-block">'
-            f"<h4>Trade-off analysis</h4>"
-            f'<div class="cv68-tradeoff-grid">{tradeoff_html}</div>'
-            f"</section>"
-        )
-
-    dependencies = list(action.get("dependencies") or [])
-    workflow = _html_action_workflow_chain(dependencies)
-    if workflow:
-        sections.append(
-            f'<section class="cv69-detail-block">'
-            f"<h4>Dependency chain</h4>{workflow}"
-            f"</section>"
-        )
-
-    timeline = list(action.get("decision_timeline") or [])
-    if timeline:
-        timeline_html = "".join(
-            f'<div class="cv68-timeline-step"><span>{escape(_text(item.get("phase")))}</span>'
-            f'<strong>{escape(_text(item.get("owner")))}</strong>'
-            f'<small>{escape(_text(item.get("detail")))}</small></div>'
-            for item in timeline
-        )
-        sections.append(
-            f'<section class="cv69-detail-block">'
-            f"<h4>Decision timeline</h4>"
-            f'<div class="cv68-timeline">{timeline_html}</div>'
-            f"</section>"
-        )
-
-    confidence_breakdown = _confidence_breakdown_html(action.get("confidence_breakdown") or [])
-    if confidence_breakdown:
-        sections.append(
-            f'<section class="cv69-detail-block">'
-            f"<h4>Confidence basis</h4>{confidence_breakdown}"
-            f"</section>"
-        )
-
-    return f'<div class="cv69-action-detail">{"".join(sections)}</div>'
-
-
-def _html_action_workspace_summary_bar(
-    actions: Sequence[Mapping[str, Any]],
-    report: Mapping[str, Any],
-) -> str:
-    rows = list(actions or [])
-    summary = report.get("summary") or {}
-    count = len(rows)
-    total_effort = int(_number(summary.get("total_effort_hours"), 0))
-    if not total_effort:
-        total_effort = sum(
-            int(_number((row.get("dependency") or {}).get("effort_hours"), 0)) for row in rows
-        )
-    health_gain = int(_number(summary.get("combined_health_gain"), 0))
-    if not health_gain:
-        health_gain = sum(
-            int(_number((row.get("dependency") or {}).get("projected_bom_health", {}).get("gain"), 0))
-            for row in rows
-        )
-
-    top = rows[0] if rows else {}
-    top_part = escape(_text(top.get("part_number"), "—"))
-    top_action = escape(_text(top.get("action"), INSUFFICIENT_EVIDENCE))
-
-    return f"""
-    <div class="cv69-action-summary">
-      <article class="cv69-summary-stat">
-        <span>Total recommendations</span>
-        <strong>{count}</strong>
-      </article>
-      <article class="cv69-summary-stat">
-        <span>Estimated engineering effort</span>
-        <strong>{total_effort} hour{"s" if total_effort != 1 else ""}</strong>
-      </article>
-      <article class="cv69-summary-stat cv69-summary-stat--wide">
-        <span>Highest-priority action</span>
-        <strong>{top_part}</strong>
-        <small>{top_action}</small>
-      </article>
-      <article class="cv69-summary-stat">
-        <span>Overall projected BOM health</span>
-        <strong>+{health_gain}</strong>
-      </article>
-    </div>
-    """
-
-
-def _html_action_workspace_accordion_card(action: Mapping[str, Any], index: int) -> str:
-    bucket = _text(action.get("priority_bucket"), "Can Wait")
-    roi_html, health_html, effort_html = _action_collapsed_metrics(action)
-    panel_id = f"cv69-action-panel-{index}"
-    return f"""
-    <article class="cv69-action-card" data-cv69-index="{index}">
-      <button
-        type="button"
-        class="cv69-action-toggle"
-        aria-expanded="false"
-        aria-controls="{panel_id}"
-      >
-        <div class="cv69-action-head">
-          <div class="cv69-action-head-main">
-            <div class="cv69-action-topline">
-              <span class="cv69-component">{escape(_text(action.get("part_number"), "Component"))}</span>
-              <span class="{_timing_badge_class(bucket)}">{escape(_timing_badge_label(bucket))}</span>
-            </div>
-            <p class="cv69-action-title">{escape(_text(action.get("action"), INSUFFICIENT_EVIDENCE))}</p>
-          </div>
-          <span class="cv69-action-chevron" aria-hidden="true"></span>
-        </div>
-        <div class="cv69-action-metrics">
-          <div class="cv69-metric"><span>Priority</span><strong>{escape(_text(action.get("priority")))}</strong></div>
-          <div class="cv69-metric"><span>Owner</span><strong>{escape(_text(action.get("owner")))}</strong></div>
-          <div class="cv69-metric"><span>Estimated effort</span><strong>{effort_html}</strong></div>
-          <div class="cv69-metric"><span>Confidence</span><strong>{escape(_text(action.get("confidence")))}</strong></div>
-          <div class="cv69-metric"><span>Engineering ROI</span><strong>{roi_html}</strong></div>
-          <div class="cv69-metric"><span>Projected BOM health</span><strong>{health_html}</strong></div>
-        </div>
-      </button>
-      <div class="cv69-action-panel" id="{panel_id}">
-        {_html_action_expanded_detail(action)}
-      </div>
-    </article>
-    """
-
-
-def _html_action_workspace_accordion(
-    actions: Sequence[Mapping[str, Any]],
-    brief: Mapping[str, Any],
-) -> str:
-    rows = list(actions or [])
-    if not rows:
-        return f'<p class="cv671-muted">{escape(INSUFFICIENT_EVIDENCE)}</p>'
-    report = brief.get("engineering_dependency_report") or {}
-    cards = "".join(_html_action_workspace_accordion_card(action, index) for index, action in enumerate(rows))
-    return (
-        f'{_html_action_workspace_summary_bar(rows, report)}'
-        f'<div class="cv69-action-accordion">{cards}</div>'
-    )
-
-
-def _cv69_accordion_init_script() -> str:
-    return """
-    <script>
-    (function () {
-      const doc = window.parent.document;
-      const roots = doc.querySelectorAll('.cv69-action-workspace');
-      roots.forEach((root) => {
-        if (root.dataset.cv69Bound === '1') return;
-        root.dataset.cv69Bound = '1';
-
-        const cards = Array.from(root.querySelectorAll('.cv69-action-card'));
-        const closeCard = (card) => {
-          const panel = card.querySelector('.cv69-action-panel');
-          const toggle = card.querySelector('.cv69-action-toggle');
-          if (!panel || !toggle) return;
-          card.classList.remove('is-open');
-          toggle.setAttribute('aria-expanded', 'false');
-          panel.style.maxHeight = '0px';
-        };
-        const openCard = (card) => {
-          const panel = card.querySelector('.cv69-action-panel');
-          const toggle = card.querySelector('.cv69-action-toggle');
-          if (!panel || !toggle) return;
-          cards.forEach((other) => {
-            if (other !== card) closeCard(other);
-          });
-          card.classList.add('is-open');
-          toggle.setAttribute('aria-expanded', 'true');
-          panel.style.maxHeight = panel.scrollHeight + 'px';
-        };
-
-        cards.forEach((card) => {
-          const toggle = card.querySelector('.cv69-action-toggle');
-          if (!toggle || toggle.dataset.cv69Bound === '1') return;
-          toggle.dataset.cv69Bound = '1';
-          toggle.addEventListener('click', () => {
-            if (card.classList.contains('is-open')) {
-              closeCard(card);
-              return;
-            }
-            openCard(card);
-          });
-        });
-      });
-    })();
-    </script>
-    """
-
-
 def _html_action_dependency_fields(action: Mapping[str, Any]) -> str:
     dep = action.get("dependency") or {}
     if not dep:
@@ -1893,23 +1572,21 @@ def render_engineering_workspace_findings(brief: Mapping[str, Any]) -> None:
 
 def render_engineering_workspace_actions(brief: Mapping[str, Any]) -> None:
     import streamlit as st
-    import streamlit.components.v1 as components
 
     actions = brief.get("recommended_actions") or []
     priority_matrix = brief.get("priority_matrix") or {}
     st.html(
         f"""
-        <section class="cv672-category cv69-action-workspace">
+        <section class="cv672-category">
           <h3 class="cv671-heading">{_decision_icon("list-checks", 16)} Recommended Actions</h3>
           <div class="cv68-section cv69-matrix-section">
             <h4 class="cv672-subheading">{_decision_icon("target", 14)} Decision priority matrix</h4>
             {_html_priority_matrix(priority_matrix)}
           </div>
-          {_html_action_workspace_accordion(actions, brief)}
         </section>
         """
     )
-    components.html(_cv69_accordion_init_script(), height=0)
+    render_recommendation_workspace(actions, brief)
 
 
 def render_engineering_workspace_impact(brief: Mapping[str, Any]) -> None:
