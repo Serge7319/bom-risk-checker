@@ -87,7 +87,7 @@ def _action_button_label(action: Dict[str, Any]) -> str:
     return "Review Purchase"
 
 
-def _timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
+def timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
     part = _text(alert.get("part_number") or alert.get("mpn"), "Component")
     alert_type = _text(alert.get("alert_type"), "Component update")
     message = _text(alert.get("alert_message"), "Component intelligence changed.")
@@ -119,7 +119,11 @@ def _timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def _supplier_watch(parts: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _timeline_event(alert: Dict[str, Any]) -> Dict[str, str]:
+    return timeline_event(alert)
+
+
+def supplier_watch_rows(parts: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     watch: List[Dict[str, Any]] = []
     seen = set()
     for row in parts or []:
@@ -161,7 +165,11 @@ def _supplier_watch(parts: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return watch[:5]
 
 
-def _workload(actions: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _supplier_watch(parts: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return supplier_watch_rows(parts)
+
+
+def workload_rows(actions: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     totals: Dict[str, Dict[str, Any]] = {}
     for action in actions or []:
         owner = _text(action.get("owner"), "Engineering")
@@ -172,29 +180,12 @@ def _workload(actions: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(totals.values(), key=lambda row: (-row["actions"], row["team"]))[:4]
 
 
-def _render_css() -> None:
-    """Legacy page CSS retired — styling comes from cadivor_design_system.css."""
-    return
+def _workload(actions: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return workload_rows(actions)
 
 
-def render_living_workspace(
-    *,
-    overview: Dict[str, Any],
-    parts: Iterable[Dict[str, Any]],
-    internal_nav_button: Callable[..., Any],
-) -> None:
-    """Render the Living Engineering Workspace using prepared intelligence."""
-    _render_css()
-    st.html('<div class="cv64-page-shell">')
-
-    changes = overview.get("recent_change_summary", {})
+def compute_dashboard_summary_metrics(overview: Dict[str, Any]) -> Dict[str, Any]:
     projects = overview.get("projects", [])
-    actions = overview.get("all_actions", [])
-    timeline = [_timeline_event(row) for row in overview.get("recent_alerts", [])]
-    supplier_watch = _supplier_watch(parts)
-    workload = _workload(actions)
-    recommendations = overview.get("recommendations", [])
-
     blocked_projects = sum(
         1 for project in projects
         if int(_number(project.get("health"), 0)) < 70 or int(_number(project.get("high"), 0)) >= 3
@@ -203,11 +194,7 @@ def render_living_workspace(
         round(sum(int(_number(project.get("health"), 0)) for project in projects) / len(projects))
         if projects else 0
     )
-
     top_action = overview.get("top_actions", [{}])[0] if overview.get("top_actions") else {}
-    brief_action = _text(top_action.get("title"), "Continue routine monitoring.")
-    brief_item = _text(top_action.get("item"), "your component portfolio")
-
     health_tone = "success" if portfolio_health >= 85 else "warning" if portfolio_health >= 70 else "danger"
     health_status = "Excellent" if portfolio_health >= 90 else "Stable" if portfolio_health >= 75 else "Needs attention"
     release_label = (
@@ -217,24 +204,38 @@ def render_living_workspace(
         if blocked_projects
         else "Controlled review recommended"
     )
+    return {
+        "projects": projects,
+        "blocked_projects": blocked_projects,
+        "portfolio_health": portfolio_health,
+        "top_action": top_action,
+        "brief_action": _text(top_action.get("title"), "Continue routine monitoring."),
+        "brief_item": _text(top_action.get("item"), "your component portfolio"),
+        "health_tone": health_tone,
+        "health_status": health_status,
+        "release_label": release_label,
+    }
 
+
+def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
+    """Shared Dashboard header: Engineering Brief + primary KPI row."""
     render_section_header(
         "Your Engineering Brief",
         eyebrow="Engineering Workspace",
         description=(
             f"{_text(overview.get('summary'))} "
-            f"The most important next step is to {brief_action.lower()} for {brief_item}."
+            f"The most important next step is to {metrics['brief_action'].lower()} "
+            f"for {metrics['brief_item']}."
         ),
         icon="briefcase-business",
     )
-
     render_kpi_row_safe(
         [
             MetricCard(
                 label="Portfolio Health",
-                value=f"{portfolio_health}%",
-                status=health_status,
-                tone=health_tone,
+                value=f"{metrics['portfolio_health']}%",
+                status=metrics["health_status"],
+                tone=metrics["health_tone"],
                 icon="gauge",
             ),
             MetricCard(
@@ -253,27 +254,30 @@ def render_living_workspace(
             ),
             MetricCard(
                 label="Blocked Projects",
-                value=str(blocked_projects),
-                detail="Require immediate review" if blocked_projects else "No blockers recorded",
-                tone="danger" if blocked_projects else "success",
+                value=str(metrics["blocked_projects"]),
+                detail="Require immediate review" if metrics["blocked_projects"] else "No blockers recorded",
+                tone="danger" if metrics["blocked_projects"] else "success",
                 icon="octagon-alert",
             ),
         ],
         columns=4,
     )
 
-    cadivor_panel(title="Release posture", subtitle=release_label, tone="soft")
-    cadivor_meta_row([(health_status, health_tone)])
-    cadivor_metric_row(
-        [
-            MetricCard(label="Components Changed", value=str(int(_number(changes.get("components"), 0))), tone="info", icon="git-compare"),
-            MetricCard(label="Lifecycle Updates", value=str(int(_number(changes.get("lifecycle"), 0))), tone="warning", icon="clock-3"),
-            MetricCard(label="Stock Changes", value=str(int(_number(changes.get("stock"), 0))), tone="monitoring", icon="package-search"),
-            MetricCard(label="Price Changes", value=str(int(_number(changes.get("price"), 0))), tone="confidence", icon="dollar-sign"),
-        ],
-        columns=4,
-        compact=True,
-    )
+
+def render_engineering_overview_workspace(
+    *,
+    overview: Dict[str, Any],
+    metrics: Dict[str, Any],
+    internal_nav_button: Callable[..., Any],
+) -> None:
+    """Workspace 1 — release posture, recommendations, work queue, quick actions."""
+    st.html('<div class="cv64-page-shell cv672-dashboard-workspace">')
+    changes = overview.get("recent_change_summary", {})
+    actions = overview.get("all_actions", [])
+    recommendations = overview.get("recommendations", [])
+
+    cadivor_panel(title="Release posture", subtitle=metrics["release_label"], tone="soft")
+    cadivor_meta_row([(metrics["health_status"], metrics["health_tone"])])
     cadivor_panel_end()
 
     render_subsection_header(
@@ -310,205 +314,309 @@ def render_living_workspace(
         internal_nav_button("Reports", "Reports", key="living_reports", use_container_width=True)
         cadivor_button_wrap_end()
 
-    if projects:
-        render_subsection_header(
-            "Project impact",
-            description="Saved BOMs ranked by health and release readiness.",
-            icon="chart-no-axes-combined",
+    render_subsection_header(
+        "Engineering Work Queue",
+        description="Work is ranked by release and supply impact.",
+        icon="clipboard",
+    )
+    if not overview.get("top_actions"):
+        st.success("No urgent work is currently recorded.")
+    for index, action in enumerate(overview.get("top_actions", [])):
+        priority = int(_number(action.get("priority"), 0))
+        effort = "10 min" if priority >= 85 else "20 min" if priority >= 60 else "30 min"
+        due_label = _text(action.get("due"), "This week")
+        cadivor_panel(title=_text(action.get("item"), "BOM"), subtitle=_text(action.get("title"), "Review engineering action"))
+        cadivor_meta_row(
+            [
+                (f"Priority {priority}/100", "info"),
+                (_text(action.get("owner"), "Engineering"), "neutral"),
+                (f"Estimated {effort}", "monitoring"),
+                (f"Due {due_label}", "warning"),
+            ]
         )
-        impact_rows = []
-        for project in projects[:8]:
-            impact_rows.append(
-                {
-                    "Project": _text(project.get("name"), "Saved BOM"),
-                    "Health": f"{int(_number(project.get('health'), 0))}/100",
-                    "Components": int(_number(project.get("parts"), 0)),
-                    "High-Risk": int(_number(project.get("high"), 0)),
-                    "Status": _text(project.get("status"), "Needs Review"),
-                }
-            )
-        cadivor_table(
-            pd.DataFrame(impact_rows),
-            badge_columns=["Status"],
-            numeric_columns=["Components", "High-Risk"],
-            align={"Components": "right", "High-Risk": "right", "Health": "right"},
+        cadivor_panel_end()
+        destination = _text(action.get("page"), "Engineering Decisions")
+        kwargs: Dict[str, Any] = {}
+        if destination == "Engineering Decisions" and action.get("decision_id"):
+            kwargs["decision_id"] = action["decision_id"]
+        internal_nav_button(
+            _action_button_label(action),
+            destination,
+            key=f"living_action_{index}",
+            use_container_width=True,
+            **kwargs,
         )
 
-    left, right = st.columns([1.28, 1], gap="medium")
-
-    with left:
-        render_subsection_header(
-            "Engineering Work Queue",
-            description="Work is ranked by release and supply impact.",
-            icon="clipboard",
-        )
-
-        if not overview.get("top_actions"):
-            st.success("No urgent work is currently recorded.")
-        for index, action in enumerate(overview.get("top_actions", [])):
-            priority = int(_number(action.get("priority"), 0))
-            effort = "10 min" if priority >= 85 else "20 min" if priority >= 60 else "30 min"
-            due_label = _text(action.get("due"), "This week")
-            cadivor_panel(title=_text(action.get("item"), "BOM"), subtitle=_text(action.get("title"), "Review engineering action"))
-            cadivor_meta_row(
-                [
-                    (f"Priority {priority}/100", "info"),
-                    (_text(action.get("owner"), "Engineering"), "neutral"),
-                    (f"Estimated {effort}", "monitoring"),
-                    (f"Due {due_label}", "warning"),
-                ]
-            )
-            cadivor_panel_end()
-            destination = _text(action.get("page"), "Engineering Decisions")
-            kwargs: Dict[str, Any] = {}
-            if destination == "Engineering Decisions" and action.get("decision_id"):
-                kwargs["decision_id"] = action["decision_id"]
-            internal_nav_button(
-                _action_button_label(action),
-                destination,
-                key=f"living_action_{index}",
-                use_container_width=True,
-                **kwargs,
-            )
-
-        if len(actions) > 5:
-            with st.expander(f"View complete work queue ({len(actions)})", expanded=False):
-                queue_df = pd.DataFrame(actions)
-                visible = [column for column in ("item", "title", "owner", "due", "priority") if column in queue_df.columns]
-                cadivor_table(
-                    queue_df[visible].rename(
-                        columns={
-                            "item": "Component or Project",
-                            "title": "Recommended Work",
-                            "owner": "Owner",
-                            "due": "Due",
-                            "priority": "Priority",
-                        }
-                    ),
-                    caption="Complete prioritized engineering queue",
-                    monospace_columns=["Component or Project"],
-                    numeric_columns=["Priority"],
-                    align={"Priority": "right"},
-                )
-
-        render_subsection_header(
-            "Engineering Timeline",
-            description="The latest lifecycle, inventory, pricing, and supplier changes.",
-            icon="history",
-        )
-        if timeline:
-            timeline_html = ['<div class="cv64-timeline">']
-            for event in timeline[:6]:
-                timeline_html.append(
-                    '<div class="cv64-timeline-item">'
-                    f'<div class="cv64-timeline-time">{html.escape(event["time"])}</div>'
-                    f'<div class="cv64-timeline-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
-                    f'<div class="cv64-timeline-copy">{html.escape(event["change"])}</div>'
-                    '</div>'
-                )
-            timeline_html.append('</div>')
-            st.html(''.join(timeline_html))
-        else:
-            st.info("No recent engineering changes are available.")
-
-    with right:
-        render_subsection_header(
-            "Production Readiness",
-            description="Projects requiring attention appear first.",
-            icon="badge-check",
-        )
-        if not projects:
-            st.info("No saved projects are available yet.")
-        for index, project in enumerate(projects[:5]):
-            status = _text(project.get("status"), "Needs Review")
-            badge_tone = "success" if status == "Ready for Production" else "warning"
-            updated = _relative_time(project.get("updated_at") or project.get("created_at"))
-            health = int(_number(project.get("health"), 0))
-            parts_count = int(_number(project.get("parts"), 0))
-            high_count = int(_number(project.get("high"), 0))
-            project_health_tone = "success" if health >= 85 else "warning" if health >= 70 else "danger"
-            cadivor_panel(
-                title=_text(project.get("name"), "Saved BOM"),
-                subtitle=f"Updated {updated}",
-                tone="soft",
-            )
-            cadivor_meta_row([(status, badge_tone)])
-            render_metric_strip(
-                [
-                    MetricCard(label="Health", value=f"{health}/100", tone=project_health_tone, icon="gauge"),
-                    MetricCard(label="Components", value=str(parts_count), tone="info", icon="boxes"),
-                    MetricCard(
-                        label="High-Risk",
-                        value=str(high_count),
-                        tone="danger" if high_count else "success",
-                        icon="triangle-alert",
-                    ),
-                ],
-                columns=3,
-            )
-            cadivor_panel_end()
-            if project.get("id"):
-                internal_nav_button(
-                    "Open Project",
-                    "Analysis Details",
-                    key=f"living_project_{index}",
-                    use_container_width=True,
-                    analysis_id=project["id"],
-                )
-
-        render_subsection_header(
-            "Supplier Watch",
-            description="Components with the clearest sourcing exposure.",
-            icon="factory",
-        )
-        if supplier_watch:
-            watch_rows = []
-            for item in supplier_watch:
-                watch_rows.append(
-                    {
-                        "Component": f'{item["part"]} · {item["manufacturer"]}',
-                        "Signal": item["signal"],
-                        "Detail": item["detail"],
-                        "Priority": item["priority"],
-                    }
-                )
+    if len(actions) > 5:
+        with st.expander(f"View complete work queue ({len(actions)})", expanded=False):
+            queue_df = pd.DataFrame(actions)
+            visible = [column for column in ("item", "title", "owner", "due", "priority") if column in queue_df.columns]
             cadivor_table(
-                pd.DataFrame(watch_rows),
-                monospace_columns=["Component"],
+                queue_df[visible].rename(
+                    columns={
+                        "item": "Component or Project",
+                        "title": "Recommended Work",
+                        "owner": "Owner",
+                        "due": "Due",
+                        "priority": "Priority",
+                    }
+                ),
+                caption="Complete prioritized engineering queue",
+                monospace_columns=["Component or Project"],
                 numeric_columns=["Priority"],
                 align={"Priority": "right"},
             )
-        else:
-            st.success("No supplier exception currently requires attention.")
-
-        render_subsection_header("Team Workload", icon="clipboard")
-        if workload:
-            cadivor_table(
-                pd.DataFrame(workload).rename(
-                    columns={"team": "Team", "actions": "Open Actions", "hours": "Estimated Hours"}
-                ),
-                numeric_columns=["Open Actions", "Estimated Hours"],
-                align={"Open Actions": "right", "Estimated Hours": "right"},
-            )
-        else:
-            st.info("No assigned workload is currently recorded.")
 
     st.html("</div>")
 
-    with st.expander("More workspace tools", expanded=False):
-        shortcuts = st.columns(5)
-        items = [
-            ("Analyze BOM", "BOM Analyzer"),
-            ("Find Alternatives", "Alternative Finder"),
-            ("Portfolio Intelligence", "Portfolio Intelligence"),
-            ("Engineering Decisions", "Engineering Decisions"),
-            ("Reports", "Reports"),
+
+def render_portfolio_project_summaries(
+    *,
+    projects: Iterable[Dict[str, Any]],
+    internal_nav_button: Callable[..., Any],
+) -> None:
+    project_list = list(projects or [])
+    render_subsection_header(
+        "Project summaries",
+        description="Saved BOMs ranked by health and release readiness.",
+        icon="chart-no-axes-combined",
+    )
+    if not project_list:
+        st.markdown(
+            """
+            <section class="cv672-dashboard-empty">
+              <strong>No portfolio projects yet</strong>
+              <p>Analyze or save a BOM to begin building portfolio intelligence.</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    impact_rows = []
+    for project in project_list[:8]:
+        impact_rows.append(
+            {
+                "Project": _text(project.get("name"), "Saved BOM"),
+                "Health": f"{int(_number(project.get('health'), 0))}/100",
+                "Components": int(_number(project.get("parts"), 0)),
+                "High-Risk": int(_number(project.get("high"), 0)),
+                "Status": _text(project.get("status"), "Needs Review"),
+            }
+        )
+    cadivor_table(
+        pd.DataFrame(impact_rows),
+        badge_columns=["Status"],
+        numeric_columns=["Components", "High-Risk"],
+        align={"Components": "right", "High-Risk": "right", "Health": "right"},
+    )
+
+    render_subsection_header(
+        "Production readiness",
+        description="Projects requiring attention appear first.",
+        icon="badge-check",
+    )
+    for index, project in enumerate(project_list[:5]):
+        status = _text(project.get("status"), "Needs Review")
+        badge_tone = "success" if status == "Ready for Production" else "warning"
+        updated = _relative_time(project.get("updated_at") or project.get("created_at"))
+        health = int(_number(project.get("health"), 0))
+        parts_count = int(_number(project.get("parts"), 0))
+        high_count = int(_number(project.get("high"), 0))
+        project_health_tone = "success" if health >= 85 else "warning" if health >= 70 else "danger"
+        cadivor_panel(
+            title=_text(project.get("name"), "Saved BOM"),
+            subtitle=f"Updated {updated}",
+            tone="soft",
+        )
+        cadivor_meta_row([(status, badge_tone)])
+        render_metric_strip(
+            [
+                MetricCard(label="Health", value=f"{health}/100", tone=project_health_tone, icon="gauge"),
+                MetricCard(label="Components", value=str(parts_count), tone="info", icon="boxes"),
+                MetricCard(
+                    label="High-Risk",
+                    value=str(high_count),
+                    tone="danger" if high_count else "success",
+                    icon="triangle-alert",
+                ),
+            ],
+            columns=3,
+        )
+        cadivor_panel_end()
+        if project.get("id"):
+            internal_nav_button(
+                "Open Project",
+                "Analysis Details",
+                key=f"living_project_{index}",
+                use_container_width=True,
+                analysis_id=project["id"],
+            )
+
+
+def render_team_workload_section(*, overview: Dict[str, Any]) -> None:
+    workload = workload_rows(overview.get("all_actions", []))
+    render_subsection_header("Team Workload", icon="clipboard")
+    if workload:
+        cadivor_table(
+            pd.DataFrame(workload).rename(
+                columns={"team": "Team", "actions": "Open Actions", "hours": "Estimated Hours"}
+            ),
+            numeric_columns=["Open Actions", "Estimated Hours"],
+            align={"Open Actions": "right", "Estimated Hours": "right"},
+        )
+    else:
+        st.info("No assigned workload is currently recorded.")
+
+
+def render_dashboard_monitoring_workspace(
+    *,
+    overview: Dict[str, Any],
+    parts: Iterable[Dict[str, Any]],
+    alerts: Iterable[Dict[str, Any]],
+    internal_nav_button: Callable[..., Any],
+) -> None:
+    """Workspace 4 — monitoring summaries with link to full Monitoring page."""
+    st.html('<div class="cv64-page-shell cv672-dashboard-workspace">')
+    changes = overview.get("recent_change_summary", {})
+    alert_rows = list(alerts or [])
+    timeline = [timeline_event(row) for row in alert_rows]
+    supplier_rows = supplier_watch_rows(parts)
+
+    high_alert_count = sum(1 for item in alert_rows if "high" in str(item.get("severity", "")).lower())
+    render_subsection_header(
+        "Monitoring summary",
+        description="Dashboard-level lifecycle, inventory, pricing, and supplier signals.",
+        icon="bell-ring",
+    )
+    render_kpi_row_safe(
+        [
+            MetricCard(
+                label="Active alerts",
+                value=str(len(alert_rows)),
+                detail=f"{high_alert_count} high severity",
+                tone="warning" if alert_rows else "neutral",
+                icon="calendar-clock",
+            ),
+            MetricCard(
+                label="Lifecycle updates",
+                value=str(int(_number(changes.get("lifecycle"), 0))),
+                detail="Recent lifecycle changes",
+                tone="warning",
+                icon="clock-3",
+            ),
+            MetricCard(
+                label="Stock changes",
+                value=str(int(_number(changes.get("stock"), 0))),
+                detail="Inventory movement recorded",
+                tone="monitoring",
+                icon="package-search",
+            ),
+            MetricCard(
+                label="Price changes",
+                value=str(int(_number(changes.get("price"), 0))),
+                detail="Pricing movement recorded",
+                tone="confidence",
+                icon="dollar-sign",
+            ),
+        ],
+        columns=4,
+    )
+
+    cadivor_panel(title="Supplier changes", subtitle="Components with sourcing exposure", tone="soft")
+    cadivor_metric_row(
+        [
+            MetricCard(
+                label="Components changed",
+                value=str(int(_number(changes.get("components"), 0))),
+                tone="info",
+                icon="git-compare",
+            ),
+            MetricCard(
+                label="Supplier signals",
+                value=str(len(supplier_rows)),
+                detail="Watchlist candidates on this dashboard",
+                tone="warning" if supplier_rows else "success",
+                icon="factory",
+            ),
+        ],
+        columns=2,
+        compact=True,
+    )
+    cadivor_panel_end()
+
+    render_subsection_header(
+        "Recent monitoring events",
+        description="Latest lifecycle, inventory, pricing, and supplier changes.",
+        icon="history",
+    )
+    if timeline:
+        timeline_html = ['<div class="cv64-timeline">']
+        for event in timeline[:8]:
+            timeline_html.append(
+                '<div class="cv64-timeline-item">'
+                f'<div class="cv64-timeline-time">{html.escape(event["time"])}</div>'
+                f'<div class="cv64-timeline-title">{html.escape(event["part"])} · {html.escape(event["category"])}</div>'
+                f'<div class="cv64-timeline-copy">{html.escape(event["change"])}</div>'
+                '</div>'
+            )
+        timeline_html.append('</div>')
+        st.html(''.join(timeline_html))
+    else:
+        st.markdown(
+            """
+            <section class="cv672-dashboard-empty">
+              <strong>No monitoring activity yet</strong>
+              <p>Add monitored components to track lifecycle, stock, price, and supplier changes.</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    render_subsection_header(
+        "Supplier watch",
+        description="Summary exposure signals — open Monitoring Center for full watchlists.",
+        icon="factory",
+    )
+    if supplier_rows:
+        watch_rows = [
+            {
+                "Component": f'{item["part"]} · {item["manufacturer"]}',
+                "Signal": item["signal"],
+                "Detail": item["detail"],
+                "Priority": item["priority"],
+            }
+            for item in supplier_rows
         ]
-        for index, (label, destination) in enumerate(items):
-            with shortcuts[index]:
-                internal_nav_button(
-                    label,
-                    destination,
-                    key=f"living_shortcut_{index}",
-                    use_container_width=True,
-                )
+        cadivor_table(
+            pd.DataFrame(watch_rows),
+            monospace_columns=["Component"],
+            numeric_columns=["Priority"],
+            align={"Priority": "right"},
+        )
+    else:
+        st.success("No supplier exception currently requires attention.")
+
+    internal_nav_button(
+        "Open Monitoring Center",
+        "Monitoring",
+        key="dashboard_monitoring_center",
+        use_container_width=True,
+    )
+    st.html("</div>")
+
+
+def render_living_workspace(
+    *,
+    overview: Dict[str, Any],
+    parts: Iterable[Dict[str, Any]],
+    internal_nav_button: Callable[..., Any],
+) -> None:
+    """Legacy full-page Engineering Overview — kept for fallback paths."""
+    metrics = compute_dashboard_summary_metrics(overview)
+    render_dashboard_summary_strip(overview=overview, metrics=metrics)
+    render_engineering_overview_workspace(
+        overview=overview,
+        metrics=metrics,
+        internal_nav_button=internal_nav_button,
+    )
