@@ -639,22 +639,6 @@ section[data-testid="stMain"] .cv64-btn-wrap--secondary .stButton > button:not(:
   border-color: var(--cv64-blue) !important;
 }
 
-/* Engineering Decisions — Refresh control (secondary label contrast) */
-section[data-testid="stMain"] .st-key-refresh_persistent_decisions .stButton > button:not(:disabled) {
-  background: #fff !important;
-  border: 1px solid #94a3b8 !important;
-  color: var(--cv64-navy) !important;
-  font-size: 14px !important;
-  font-weight: 650 !important;
-  opacity: 1 !important;
-}
-
-section[data-testid="stMain"] .st-key-refresh_persistent_decisions .stButton > button:not(:disabled) p,
-section[data-testid="stMain"] .st-key-refresh_persistent_decisions .stButton > button:not(:disabled) span {
-  color: var(--cv64-navy) !important;
-  opacity: 1 !important;
-}
-
 section[data-testid="stMain"] .cv64-btn-wrap--danger .stButton > button:not(:disabled) {
   min-height: 46px !important;
   background: #fef2f2 !important;
@@ -850,6 +834,27 @@ section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .st
   background: #fff !important;
   border: 1px solid #94a3b8 !important;
   color: var(--cv64-navy) !important;
+}
+
+/* Sprint 67.2.2 — Global button label visibility (Streamlit renders labels in p/span) */
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not(:disabled) p,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not(:disabled) span,
+section[data-testid="stMain"] .stDownloadButton > button:not(:disabled) p,
+section[data-testid="stMain"] .stDownloadButton > button:not(:disabled) span,
+section[data-testid="stMain"] .stFormSubmitButton > button:not(:disabled) p,
+section[data-testid="stMain"] .stFormSubmitButton > button:not(:disabled) span {
+  color: inherit !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled) p,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled) span,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-primary"]:not(:disabled) p,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-primary"]:not(:disabled) span,
+section[data-testid="stMain"] .stDownloadButton > button:not(:disabled) p,
+section[data-testid="stMain"] .stDownloadButton > button:not(:disabled) span {
+  color: #fff !important;
 }
 
 section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:disabled,
