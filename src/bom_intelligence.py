@@ -23,7 +23,7 @@ unknown fields, and the current BOM analyzer dataframe format.
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 import math
 import re
 
@@ -785,6 +785,81 @@ def generate_intelligence_executive_summary(
         summary += "No major sourcing or lifecycle issues were detected from the available data."
 
     return summary
+
+
+# -----------------------------------------------------------------------------
+# Sprint 68 — Cross-component relationship inference
+# -----------------------------------------------------------------------------
+
+_RELATED_COMPONENT_HINTS: Dict[str, tuple[str, ...]] = {
+    "mcu": ("clock", "crystal", "oscillator", "regulator", "ldo", "bootloader", "programming"),
+    "microcontroller": ("clock", "crystal", "oscillator", "regulator", "ldo", "bootloader", "programming"),
+    "processor": ("clock", "crystal", "regulator", "memory", "flash"),
+    "fpga": ("clock", "regulator", "configuration", "programming"),
+    "regulator": ("capacitor", "inductor", "filter", "ferrite"),
+    "power": ("capacitor", "inductor", "regulator", "mosfet"),
+    "connector": ("cable", "harness", "mating", "contact"),
+    "sensor": ("adc", "amplifier", "filter", "connector"),
+}
+
+
+def _part_descriptor(row: Mapping[str, Any]) -> str:
+    blob = " ".join(
+        str(row.get(key) or "")
+        for key in ("mpn", "MPN", "part_number", "description", "Component Type", "component_type")
+    ).lower()
+    return blob
+
+
+def infer_cross_component_relationships(
+    part: Mapping[str, Any],
+    all_parts: Iterable[Mapping[str, Any]],
+) -> List[Dict[str, str]]:
+    """Infer downstream design relationships for a component within the same BOM."""
+    source_mpn = str(
+        _get(part, "mpn", "MPN", "part_number", default="Component")
+    ).strip() or "Component"
+    source_blob = _part_descriptor(part)
+    related: List[Dict[str, str]] = []
+    seen = set()
+
+    hint_terms: List[str] = []
+    for keyword, terms in _RELATED_COMPONENT_HINTS.items():
+        if keyword in source_blob:
+            hint_terms.extend(terms)
+
+    if not hint_terms:
+        if any(term in source_blob for term in ("obsolete", "nrnd", "eol", "lifecycle")):
+            hint_terms = ("validation", "test", "fixture", "firmware")
+
+    for row in all_parts or []:
+        target_mpn = str(
+            _get(row, "mpn", "MPN", "part_number", default="")
+        ).strip()
+        if not target_mpn or target_mpn == source_mpn or target_mpn in seen:
+            continue
+        target_blob = _part_descriptor(row)
+        if not hint_terms:
+            continue
+        if any(term in target_blob for term in hint_terms):
+            seen.add(target_mpn)
+            relationship = "May require revalidation"
+            if any(t in target_blob for t in ("clock", "crystal", "oscillator")):
+                relationship = "Timing chain affected"
+            elif any(t in target_blob for t in ("regulator", "ldo", "power")):
+                relationship = "Power architecture affected"
+            elif any(t in target_blob for t in ("programming", "bootloader", "flash")):
+                relationship = "Firmware or programming affected"
+            related.append(
+                {
+                    "component": target_mpn,
+                    "relationship": relationship,
+                }
+            )
+        if len(related) >= 5:
+            break
+
+    return related
 
 
 # -----------------------------------------------------------------------------
