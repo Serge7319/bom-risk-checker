@@ -16,6 +16,7 @@ import streamlit as st
 from src.components.onboarding import render_activation_strip, render_first_run_dashboard
 from src.components.upgrade_prompt import render_upgrade_prompt
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
+from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button, navigate_to
 
 
 def inject_dashboard_page_styles() -> None:
@@ -1384,7 +1385,11 @@ def render_dashboard(
                 "title": str(original),
                 "copy": f"Replacement candidate {candidate} was recorded for engineering review.",
                 "created_at": item.get("created_at") or item.get("updated_at"),
-                "href": "?page=Alternative%20Finder",
+                "nav_page": ALTERNATIVE_FINDER_PAGE,
+                "nav_params": {
+                    "original_part": str(original),
+                    "source_page": "dashboard_activity",
+                },
                 "action": "Open replacement",
             }
         )
@@ -1965,7 +1970,7 @@ def render_dashboard(
 
         visible_activity = recent_activity[:4]
         if visible_activity:
-            for event in visible_activity:
+            for index, event in enumerate(visible_activity):
                 st.markdown(
                     f"""
                     <section class="cv231-activity-card" style="padding:12px 14px;margin-bottom:9px;">
@@ -1978,13 +1983,30 @@ def render_dashboard(
                         {f'<span class="cv242-repeat-badge">{event.get("repeat_count", 1)} repeated</span>' if event.get("repeat_count", 1) > 1 else ''}
                       </div>
                       <div class="cv231-activity-copy">{html.escape(str(event['copy']))}</div>
-                      <a class="cv231-activity-link" href="{event['href']}" target="_self">
-                        {html.escape(str(event['action']))} →
-                      </a>
                     </section>
                     """,
                     unsafe_allow_html=True,
                 )
+                nav_page = str(event.get("nav_page") or "").strip()
+                nav_params = dict(event.get("nav_params") or {})
+                href = str(event.get("href") or "").strip()
+                if nav_page:
+                    internal_nav_button(
+                        f"{event['action']} →",
+                        nav_page,
+                        key=f"dashboard_activity_nav_{index}",
+                        **nav_params,
+                    )
+                elif href.startswith("?page="):
+                    page_name = href.split("?page=", 1)[1].split("&", 1)[0].replace("%20", " ")
+                    if st.button(
+                        f"{event['action']} →",
+                        key=f"dashboard_activity_href_{index}",
+                        use_container_width=False,
+                    ):
+                        navigate_to(page_name)
+                elif href:
+                    st.link_button(f"{event['action']} →", href, use_container_width=False)
         else:
             st.markdown(
                 '<div class="cv231-empty"><strong>No engineering activity yet.</strong><br>Analyze a BOM to create a timeline of risks, alternatives, decisions, reports, and monitoring changes.</div>',
@@ -2028,33 +2050,40 @@ def render_dashboard(
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        f"""
-        <div class="cv-6b-shortcuts">
-          <a class="cv-6b-shortcut" href="?page=Monitoring" target="_self">
-            <div class="cv-6b-shortcut-icon green">{_lucide_icon('chart',20)}</div>
-            <div><strong>Monitoring</strong><span>{alert_count} active supplier and lifecycle alerts</span></div>
-            <div class="cv-6b-arrow">→</div>
-          </a>
-          <a class="cv-6b-shortcut" href="?page=Reports" target="_self">
-            <div class="cv-6b-shortcut-icon">{_lucide_icon('file',20)}</div>
-            <div><strong>Reports</strong><span>Saved analyses, PDFs, and engineering exports</span></div>
-            <div class="cv-6b-arrow">→</div>
-          </a>
-          <a class="cv-6b-shortcut" href="?page=Alternative%20Finder" target="_self">
-            <div class="cv-6b-shortcut-icon purple">{_lucide_icon('replace',20)}</div>
-            <div><strong>Alternative Finder</strong><span>{alternatives_found} saved replacement candidates</span></div>
-            <div class="cv-6b-arrow">→</div>
-          </a>
-          <a class="cv-6b-shortcut" href="?page=Workspace" target="_self">
-            <div class="cv-6b-shortcut-icon amber">{_lucide_icon('folder',20)}</div>
-            <div><strong>Workspace</strong><span>Usage, plan, and workspace management</span></div>
-            <div class="cv-6b-arrow">→</div>
-          </a>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    shortcut_cols = st.columns(4, gap="medium")
+    with shortcut_cols[0]:
+        internal_nav_button(
+            "Monitoring",
+            "Monitoring",
+            key="dashboard_shortcut_monitoring",
+            use_container_width=True,
+            type="secondary",
+        )
+    with shortcut_cols[1]:
+        internal_nav_button(
+            "Reports",
+            "Reports",
+            key="dashboard_shortcut_reports",
+            use_container_width=True,
+            type="secondary",
+        )
+    with shortcut_cols[2]:
+        internal_nav_button(
+            "Alternative Finder",
+            ALTERNATIVE_FINDER_PAGE,
+            key="dashboard_shortcut_alternative_finder",
+            use_container_width=True,
+            type="secondary",
+            source_page="dashboard_shortcuts",
+        )
+    with shortcut_cols[3]:
+        internal_nav_button(
+            "Workspace",
+            "Workspace",
+            key="dashboard_shortcut_workspace",
+            use_container_width=True,
+            type="secondary",
+        )
 
     st.stop()
 
