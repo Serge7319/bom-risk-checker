@@ -271,6 +271,68 @@ def _impact_summary(impacts: Mapping[str, Any] | None) -> str:
     return f"{label.title()} impact level {int(_number(level, 1))}/5"
 
 
+def _format_decision_impact_summary(impact: Mapping[str, Any]) -> str:
+    if not impact:
+        return INSUFFICIENT_EVIDENCE
+    health = impact.get("health") or {}
+    supply = impact.get("supply_risk") or {}
+    lifecycle = impact.get("lifecycle_risk") or {}
+    single = impact.get("single_source_exposure") or {}
+    lines = [
+        f"Health {int(_number(health.get('before'), 0))} → {int(_number(health.get('after'), 0))}",
+        f"Supply risk {int(_number(supply.get('before'), 0))} → {int(_number(supply.get('after'), 0))}",
+        f"Lifecycle risk { _text(lifecycle.get('before')) } → { _text(lifecycle.get('after')) }",
+        f"Single-source exposure {int(_number(single.get('before'), 0))} → {int(_number(single.get('after'), 0))}",
+        f"Schedule improvement ~{int(_number(impact.get('schedule_improvement_weeks'), 0))} week(s)",
+        f"Procurement effort ~{int(_number(impact.get('procurement_effort_hours'), 0))} hour(s)",
+    ]
+    return " · ".join(lines)
+
+
+def _build_priority_matrix(actions: Iterable[Mapping[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    matrix: Dict[str, List[Dict[str, Any]]] = {
+        "Do Now": [],
+        "Do This Week": [],
+        "Do Before Production": [],
+        "Can Wait": [],
+    }
+    for action in actions or []:
+        bucket = _text(action.get("priority_bucket"), "Can Wait")
+        if bucket not in matrix:
+            bucket = "Can Wait"
+        matrix[bucket].append(
+            {
+                "part_number": _text(action.get("part_number")),
+                "title": _text(action.get("title")),
+                "owner": _text(action.get("owner")),
+                "effort": _text(action.get("effort")),
+                "score": int(_number(action.get("score"), 0)),
+            }
+        )
+    return matrix
+
+
+def _build_brief_confidence_breakdown(
+    *,
+    advisor: Mapping[str, Any],
+    metrics: Mapping[str, Any],
+    actions: Iterable[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    top_action = next(iter(actions or []), {})
+    action_breakdown = list(top_action.get("confidence_breakdown") or [])
+    if action_breakdown:
+        return action_breakdown
+    return [
+        {"label": "Lifecycle data", "available": _number(metrics.get("lifecycle_concerns"), -1) >= 0},
+        {"label": "Supplier data", "available": metrics.get("limited_sources") is not None},
+        {"label": "Inventory data", "available": metrics.get("no_stock") is not None},
+        {"label": "Cross-BOM history", "available": len(advisor.get("priority_actions") or []) > 0},
+        {"label": "Saved alternative evidence", "available": _number(metrics.get("saved_alternatives"), 0) > 0},
+        {"label": "Monitoring alerts", "available": _number(metrics.get("active_alerts"), 0) > 0},
+        {"label": "Customer usage history", "available": False},
+    ]
+
+
 def _build_executive_summary_v2(
     *,
     readiness_label: str,
@@ -482,8 +544,11 @@ def _format_recommended_action(action: Mapping[str, Any], *, insufficient: bool)
     improvement = action.get("improvement") or {}
     health_gain = _number(improvement.get("health_gain"), 0)
     supply_reduction = _number(improvement.get("supply_risk_reduction"), 0)
+    decision_impact = action.get("decision_impact") or {}
     if insufficient or not evidence_parts:
         expected = INSUFFICIENT_EVIDENCE
+    elif decision_impact:
+        expected = _format_decision_impact_summary(decision_impact)
     elif health_gain or supply_reduction:
         expected = (
             f"Projected BOM health +{int(health_gain)} and supply exposure reduction of "
@@ -495,6 +560,7 @@ def _format_recommended_action(action: Mapping[str, Any], *, insufficient: bool)
     confidence_score = int(_number(action.get("confidence"), 0))
     return {
         "priority": _text(action.get("business_priority"), "Moderate"),
+        "priority_bucket": _text(action.get("priority_bucket"), "Can Wait"),
         "action": _text(action.get("recommendation") or action.get("title"), INSUFFICIENT_EVIDENCE),
         "effort": _text(action.get("effort"), "—"),
         "impact": _impact_summary(action.get("impacts")),
@@ -507,6 +573,15 @@ def _format_recommended_action(action: Mapping[str, Any], *, insufficient: bool)
         "title": _text(action.get("title"), "Engineering action"),
         "category": _text(action.get("category"), "Engineering Review"),
         "score": int(_number(action.get("score"), 0)),
+        "decision_impact": decision_impact,
+        "inaction_consequences": list(action.get("inaction_consequences") or []),
+        "confidence_breakdown": list(action.get("confidence_breakdown") or []),
+        "tradeoffs": list(action.get("tradeoffs") or []),
+        "engineering_reasoning": list(action.get("engineering_reasoning") or []),
+        "dependencies": list(action.get("dependencies") or []),
+        "cross_component_impact": list(action.get("cross_component_impact") or []),
+        "decision_timeline": list(action.get("decision_timeline") or []),
+        "if_ignored": _text(action.get("if_ignored"), INSUFFICIENT_EVIDENCE),
     }
 
 
@@ -727,16 +802,35 @@ def build_engineering_decision_brief(
         f"{_text(intelligence_data.get('executive_summary') or advisor.get('engineering_summary'))}"
     ).strip()
     cost_impact = business_impact["cost"]
+    executive_readiness = dict(advisor.get("executive_readiness") or {})
+    if not executive_readiness:
+        executive_readiness = {
+            "overall": health,
+            "engineering": max(0, min(100, health - high * 3)),
+            "supply_chain": max(0, min(100, 100 - int(_number(metrics.get("limited_sources"), 0)) * 5)),
+            "manufacturing": max(0, min(100, health - int(_number(metrics.get("no_stock"), 0)) * 4)),
+            "procurement": max(0, min(100, 100 - int(_number(metrics.get("long_lead"), 0)) * 4)),
+            "documentation": max(0, min(100, 60 + int(_number(metrics.get("saved_alternatives"), 0)) * 8)),
+        }
+    confidence_breakdown = _build_brief_confidence_breakdown(
+        advisor=advisor,
+        metrics=metrics,
+        actions=ranked_raw,
+    )
+    priority_matrix = _build_priority_matrix(ranked_raw)
 
     brief: Dict[str, Any] = {
         "version": 2 if ENABLE_DECISION_ENGINE_V2 else 1,
         "insufficient_evidence": insufficient,
         "executive_summary": executive_summary,
+        "executive_readiness": executive_readiness,
+        "priority_matrix": priority_matrix,
         "production_readiness": {
             "label": production_label,
-            "score": health,
+            "score": int(_number(executive_readiness.get("overall"), health)),
             "explanation": production_explanation,
             "tone": production_tone,
+            "domains": executive_readiness,
         },
         "critical_findings": critical_findings,
         "primary_recommendation": _primary_recommendation(advisor, recommended_actions or ranked_raw),
@@ -764,6 +858,7 @@ def build_engineering_decision_brief(
                 intelligence=intelligence_data,
                 insufficient=insufficient,
             ),
+            "breakdown": confidence_breakdown,
         },
         "supporting_evidence": evidence[:8] or [INSUFFICIENT_EVIDENCE],
         "intelligence": intelligence_data,
@@ -992,8 +1087,9 @@ def _html_confidence_panel(
         f"{_confidence_bar_html(score)}"
         f'<div class="cv671-confidence-label">{escape(label)} confidence</div>'
         f'<p class="cv671-muted">{escape(explanation)}</p>'
-        f"<div class=\"cv671-based-on\"><strong>Based on:</strong>{_evidence_checklist_html(metrics, insufficient)}</div>"
-        f"</article>"
+        f"<div class=\"cv671-based-on\"><strong>Based on:</strong>"
+        f"{_confidence_breakdown_html(confidence.get('breakdown') or []) or _evidence_checklist_html(metrics, insufficient)}"
+        f"</div></article>"
     )
 
 
@@ -1067,6 +1163,163 @@ def _html_business_impact(
     return f'<div class="cv66-impact-grid">{"".join(blocks)}</div>'
 
 
+def _confidence_breakdown_html(breakdown: Iterable[Mapping[str, Any]]) -> str:
+    rows = list(breakdown or [])
+    if not rows:
+        return ""
+    items = []
+    for row in rows:
+        available = bool(row.get("available"))
+        icon = "✔" if available else "✖"
+        state = "available" if available else "missing"
+        items.append(
+            f'<li class="cv68-confidence-item cv68-confidence-item--{state}">'
+            f'<span class="cv68-confidence-icon">{icon}</span>'
+            f'<span>{escape(_text(row.get("label")))}</span></li>'
+        )
+    return f'<ul class="cv68-confidence-breakdown">{"".join(items)}</ul>'
+
+
+def _html_executive_readiness(readiness: Mapping[str, Any]) -> str:
+    domains = [
+        ("Production Readiness", "overall"),
+        ("Engineering", "engineering"),
+        ("Supply Chain", "supply_chain"),
+        ("Manufacturing", "manufacturing"),
+        ("Procurement", "procurement"),
+        ("Documentation", "documentation"),
+    ]
+    cards = []
+    for label, key in domains:
+        score = int(_number(readiness.get(key), 0))
+        cards.append(
+            f'<article class="cv68-readiness-card">'
+            f'<div class="cv68-readiness-label">{escape(label)}</div>'
+            f'<div class="cv68-readiness-value">{score}%</div>'
+            f'<div class="cv68-readiness-meter"><i style="width:{score}%"></i></div>'
+            f"</article>"
+        )
+    return f'<div class="cv68-readiness-grid">{"".join(cards)}</div>'
+
+
+def _html_priority_matrix(matrix: Mapping[str, Any]) -> str:
+    if not matrix:
+        return ""
+    sections = []
+    for bucket in ("Do Now", "Do This Week", "Do Before Production", "Can Wait"):
+        rows = list(matrix.get(bucket) or [])
+        if not rows:
+            continue
+        items = "".join(
+            f'<li><strong>{escape(_text(row.get("part_number")))}</strong> '
+            f'{escape(_text(row.get("title")))} '
+            f'<span>{escape(_text(row.get("owner")))} · {escape(_text(row.get("effort")))}</span></li>'
+            for row in rows[:4]
+        )
+        sections.append(
+            f'<section class="cv68-priority-bucket">'
+            f'<h4>{escape(bucket)}</h4><ul>{items}</ul></section>'
+        )
+    if not sections:
+        return f'<p class="cv671-muted">{escape(INSUFFICIENT_EVIDENCE)}</p>'
+    return f'<div class="cv68-priority-matrix">{"".join(sections)}</div>'
+
+
+def _html_action_intelligence(action: Mapping[str, Any]) -> str:
+    impact = action.get("decision_impact") or {}
+    impact_rows = []
+    if impact:
+        health = impact.get("health") or {}
+        supply = impact.get("supply_risk") or {}
+        lifecycle = impact.get("lifecycle_risk") or {}
+        single = impact.get("single_source_exposure") or {}
+        impact_rows.extend(
+            [
+                ("Health", f"{int(_number(health.get('before'), 0))} → {int(_number(health.get('after'), 0))}"),
+                ("Supply risk", f"{int(_number(supply.get('before'), 0))} → {int(_number(supply.get('after'), 0))}"),
+                ("Lifecycle risk", f"{_text(lifecycle.get('before'))} → {_text(lifecycle.get('after'))}"),
+                (
+                    "Single-source exposure",
+                    f"{int(_number(single.get('before'), 0))} → {int(_number(single.get('after'), 0))}",
+                ),
+                ("Schedule improvement", f"~{int(_number(impact.get('schedule_improvement_weeks'), 0))} week(s)"),
+                ("Procurement effort", f"~{int(_number(impact.get('procurement_effort_hours'), 0))} hour(s)"),
+            ]
+        )
+    impact_html = "".join(
+        f"<div><span>{escape(label)}</span><strong>{escape(value)}</strong></div>"
+        for label, value in impact_rows
+    )
+    inaction = list(action.get("inaction_consequences") or [])
+    inaction_html = "".join(f"<li>{escape(_text(item))}</li>" for item in inaction[:4])
+    reasoning = list(action.get("engineering_reasoning") or [])
+    reasoning_html = "".join(f"<li>{escape(_text(item))}</li>" for item in reasoning[:5])
+    tradeoffs = list(action.get("tradeoffs") or [])
+    tradeoff_html = "".join(
+        f'<article class="cv68-tradeoff-card"><strong>{escape(_text(item.get("option")))}</strong>'
+        f'<span>{escape(_text(item.get("summary")))}</span>'
+        f'<p>{escape(_text(item.get("detail")))}</p></article>'
+        for item in tradeoffs[:3]
+    )
+    dependencies = list(action.get("dependencies") or [])
+    dependency_html = ""
+    if dependencies:
+        chain = " ↓ ".join(escape(_text(step)) for step in dependencies)
+        dependency_html = f'<div class="cv68-dependency-chain">{chain}</div>'
+    cross = list(action.get("cross_component_impact") or [])
+    cross_html = "".join(
+        f'<li><strong>{escape(_text(item.get("component")))}</strong> '
+        f'{escape(_text(item.get("relationship")))}</li>'
+        for item in cross[:4]
+    )
+    timeline = list(action.get("decision_timeline") or [])
+    timeline_html = "".join(
+        f'<div class="cv68-timeline-step"><span>{escape(_text(item.get("phase")))}</span>'
+        f'<strong>{escape(_text(item.get("owner")))}</strong>'
+        f'<small>{escape(_text(item.get("detail")))}</small></div>'
+        for item in timeline
+    )
+    confidence_breakdown = _confidence_breakdown_html(action.get("confidence_breakdown") or [])
+
+    blocks = []
+    if impact_html:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>Expected result if completed</h4>'
+            f'<div class="cv68-impact-grid">{impact_html}</div></div>'
+        )
+    if inaction_html:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>If no action is taken</h4><ul>{inaction_html}</ul></div>'
+        )
+    if reasoning_html:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>Why this recommendation</h4><ul>{reasoning_html}</ul></div>'
+        )
+    if tradeoff_html:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>Trade-off analysis</h4><div class="cv68-tradeoff-grid">{tradeoff_html}</div></div>'
+        )
+    if dependency_html:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>Dependency chain</h4>{dependency_html}</div>'
+        )
+    if cross_html:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>Cross-component impact</h4><ul>{cross_html}</ul></div>'
+        )
+    if timeline_html:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>Decision timeline</h4><div class="cv68-timeline">{timeline_html}</div></div>'
+        )
+    if confidence_breakdown:
+        blocks.append(
+            f'<div class="cv68-action-block"><h4>Confidence basis</h4>{confidence_breakdown}</div>'
+        )
+    if not blocks:
+        return ""
+    return f'<div class="cv68-action-intelligence">{"".join(blocks)}</div>'
+
+
 def _html_actions(actions: Iterable[Mapping[str, Any]], *, workspace: bool) -> str:
     rows = list(actions or [])
     if not rows:
@@ -1080,15 +1333,18 @@ def _html_actions(actions: Iterable[Mapping[str, Any]], *, workspace: bool) -> s
                 f'<span class="cv671-badge cv671-badge--priority">{escape(_text(action.get("priority")))}</span>'
                 f'<span class="cv671-badge cv671-badge--owner">{escape(_text(action.get("owner")))}</span>'
                 f'<span class="cv671-badge cv671-badge--effort">{escape(_text(action.get("effort")))}</span>'
-                f'<span class="cv671-badge cv671-badge--result">Expected: {escape(_text(action.get("expected_result")))}</span>'
+                f'<span class="cv671-badge cv671-badge--result">{escape(_text(action.get("priority_bucket")))}</span>'
                 f"</div>"
                 f'<p class="cv671-action-title">{escape(_text(action.get("action")))}</p>'
                 f'<dl class="cv671-action-body">'
                 f'<div><dt>Reason</dt><dd>{escape(_text(action.get("reason")))}</dd></div>'
                 f'<div><dt>Evidence</dt><dd>{escape(_text(action.get("evidence")))}</dd></div>'
                 f'<div><dt>Confidence</dt><dd>{escape(_text(action.get("confidence")))}</dd></div>'
+                f'<div><dt>Expected result</dt><dd>{escape(_text(action.get("expected_result")))}</dd></div>'
                 f'<div><dt>Impact</dt><dd>{escape(_text(action.get("impact")))}</dd></div>'
-                f"</dl></article>"
+                f"</dl>"
+                f'{_html_action_intelligence(action)}'
+                f"</article>"
             )
         return f'<div class="cv671-actions">{"".join(cards)}</div>'
     return "".join(
@@ -1191,6 +1447,7 @@ def render_engineering_workspace_overview(brief: Mapping[str, Any]) -> None:
     insufficient = bool(brief.get("insufficient_evidence"))
     top_part, top_title = _header_top_action(actions)
     release_copy = _text(readiness.get("explanation"), INSUFFICIENT_EVIDENCE)
+    executive_readiness = brief.get("executive_readiness") or readiness.get("domains") or {}
 
     st.markdown(
         f"""
@@ -1199,6 +1456,10 @@ def render_engineering_workspace_overview(brief: Mapping[str, Any]) -> None:
           <div class="cv671-status-row">
             {_html_readiness_panel(readiness, premium=True)}
             {_html_confidence_panel(confidence, metrics, insufficient=insufficient, premium=True)}
+          </div>
+          <div class="cv68-section">
+            <h4 class="cv672-subheading">{_decision_icon("shield", 14)} Executive readiness score</h4>
+            {_html_executive_readiness(executive_readiness)}
           </div>
           <article class="cv672-overview-action">
             <div class="cv672-section-label">{_decision_icon("target", 16)} Top action</div>
@@ -1235,10 +1496,15 @@ def render_engineering_workspace_actions(brief: Mapping[str, Any]) -> None:
     import streamlit as st
 
     actions = brief.get("recommended_actions") or []
+    priority_matrix = brief.get("priority_matrix") or {}
     st.markdown(
         f"""
         <section class="cv672-category">
           <h3 class="cv671-heading">{_decision_icon("list-checks", 16)} Recommended Actions</h3>
+          <div class="cv68-section">
+            <h4 class="cv672-subheading">{_decision_icon("target", 14)} Decision priority matrix</h4>
+            {_html_priority_matrix(priority_matrix)}
+          </div>
           {_html_actions(actions, workspace=True)}
         </section>
         """,
