@@ -22,7 +22,9 @@ from src.auth_state import (
     AUTH_AUTHENTICATED,
     AUTH_SIGNED_OUT,
     begin_logout,
-    render_external_logout_redirect,
+    explicit_logout_pending,
+    handle_explicit_logout_if_pending,
+    log_logout_phase,
     resolve_auth_state,
 )
 
@@ -127,6 +129,11 @@ def ensure_authenticated_or_stop() -> None:
     """Resolve auth and render login/signup immediately for signed-out visitors."""
     log_startup_phase("bootstrap_begin")
 
+    if handle_explicit_logout_if_pending():
+        log_startup_phase("logout_redirect")
+        log_logout_phase("auth_bootstrap_redirect")
+        st.stop()
+
     log_startup_phase("supabase_client")
     supabase = get_supabase_client()
     cookie_manager = None
@@ -150,11 +157,9 @@ def ensure_authenticated_or_stop() -> None:
 
     if st.session_state.pop("cadivor_logout_requested", False):
         begin_logout(supabase, cookie_manager)
-
-    if st.session_state.pop("cadivor_signing_out", False):
-        log_startup_phase("logout_redirect")
-        render_external_logout_redirect()
-        st.stop()
+        if handle_explicit_logout_if_pending():
+            log_startup_phase("logout_redirect")
+            st.stop()
 
     log_startup_phase("resolve_auth_state")
     auth_status = resolve_auth_state(supabase, cookie_manager)
@@ -162,6 +167,11 @@ def ensure_authenticated_or_stop() -> None:
         st.session_state.get("cadivor_root_state")
         or (APP_AUTHENTICATED if auth_status == AUTH_AUTHENTICATED else APP_PUBLIC)
     )
+
+    if explicit_logout_pending():
+        if handle_explicit_logout_if_pending():
+            log_startup_phase("logout_redirect")
+            st.stop()
 
     if auth_status == AUTH_SIGNED_OUT or root_state != APP_AUTHENTICATED:
         log_startup_phase("render_auth_ui")
