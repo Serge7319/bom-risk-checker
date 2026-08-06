@@ -1,10 +1,16 @@
 import stripe
-import streamlit as st
 
-stripe.api_key = st.secrets["STRIPE_SECRET_KEY"]
+from src.secrets import get_secret
+
+
+def _ensure_stripe_api_key() -> None:
+    if stripe.api_key:
+        return
+    stripe.api_key = get_secret("STRIPE_SECRET_KEY", required=True)
 
 
 def create_checkout_session(price_id, user_email, user_id, success_url, cancel_url):
+    _ensure_stripe_api_key()
     session = stripe.checkout.Session.create(
         mode="subscription",
         payment_method_types=["card"],
