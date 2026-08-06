@@ -108,10 +108,10 @@ def _normalize_submitted_question(value: Any) -> str:
 
 
 def _secret(name: str, default: str = "") -> str:
-    try:
-        return str(st.secrets.get(name, default) or default)
-    except Exception:
-        return default
+    from src.secrets import get_secret
+
+    value = get_secret(name, default=default)
+    return str(value or default)
 
 
 def _usage_banner(status) -> None:
