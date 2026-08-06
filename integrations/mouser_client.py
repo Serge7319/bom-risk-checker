@@ -1,15 +1,12 @@
 import re
 
 import requests
-import streamlit as st
+
+from src.secrets import get_secret
 
 
 def search_mouser_by_part_number(part_number: str) -> dict:
-    
-    api_key = st.secrets.get("MOUSER_API_KEY")
-
-    if not api_key:
-        raise ValueError("Missing MOUSER_API_KEY in Streamlit secrets")
+    api_key = get_secret("MOUSER_API_KEY", required=True)
 
     url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
 
