@@ -1,5 +1,6 @@
 import os
 import re
+
 from src.parsing.electrical_extractors import (
     extract_frequency_mhz,
     extract_current_na,
@@ -8,21 +9,13 @@ from src.parsing.electrical_extractors import (
 import requests
 from dotenv import load_dotenv
 
+from src.secrets import get_secret
+
 load_dotenv()
 
 
 def search_newark_by_part_number(part_number: str) -> dict:
-    api_key = os.getenv("NEWARK_API_KEY")
-
-    try:
-        import streamlit as st
-
-        api_key = api_key or st.secrets.get("NEWARK_API_KEY")
-    except Exception:
-        pass
-
-    if not api_key:
-        raise ValueError("Missing NEWARK_API_KEY in .env file or Streamlit secrets")
+    api_key = get_secret("NEWARK_API_KEY", required=True)
 
     url = "https://api.element14.com/catalog/products"
 
