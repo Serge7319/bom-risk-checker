@@ -1262,9 +1262,13 @@ class EngineeringAI:
     """One stable interface for current and future AI providers."""
 
     def __init__(self, *, api_key: str = "", model: str = "", base_url: str = ""):
-        self.api_key = str(api_key or os.getenv("OPENAI_API_KEY", "")).strip()
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-        self.base_url = (base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
+        from src.secrets import get_secret
+
+        self.api_key = str(api_key or get_secret("OPENAI_API_KEY", default="")).strip()
+        self.model = model or get_secret("OPENAI_MODEL", default="gpt-4.1-mini")
+        self.base_url = (
+            base_url or get_secret("OPENAI_BASE_URL", default="https://api.openai.com/v1")
+        ).rstrip("/")
 
     @property
     def configured(self) -> bool:
