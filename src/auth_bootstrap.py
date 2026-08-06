@@ -6,7 +6,6 @@ renders the login/signup shell before the heavy application runtime loads.
 """
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
 
@@ -14,6 +13,7 @@ import streamlit as st
 from supabase import create_client
 
 from src.auth import show_auth_ui
+from src.secrets import get_secret, get_secret_bool
 from src.auth_state import (
     APP_AUTHENTICATED,
     APP_LOGIN,
@@ -33,13 +33,7 @@ _STARTUP_PHASES: list[tuple[str, float]] = []
 
 
 def _timing_enabled() -> bool:
-    env_flag = os.getenv("CADIVOR_STARTUP_TIMING", "").strip().lower()
-    if env_flag in {"1", "true", "yes", "on"}:
-        return True
-    try:
-        return bool(st.secrets.get("CADIVOR_STARTUP_TIMING", False))
-    except Exception:
-        return False
+    return get_secret_bool("CADIVOR_STARTUP_TIMING", default=False)
 
 
 def log_startup_phase(label: str) -> None:
@@ -55,8 +49,8 @@ def startup_phase_summary() -> str:
 
 @st.cache_resource(show_spinner=False)
 def get_supabase_client() -> Any:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
+    url = get_secret("SUPABASE_URL", required=True)
+    key = get_secret("SUPABASE_KEY", required=True)
     return create_client(url, key)
 
 
