@@ -1,6 +1,7 @@
 import requests
-import streamlit as st
 from urllib.parse import quote
+
+from src.secrets import get_secret
 from src.parsing.electrical_extractors import (
     extract_frequency_mhz,
     extract_slew_rate_v_us,
@@ -11,13 +12,8 @@ from src.parsing.electrical_extractors import (
 
 
 def get_digikey_access_token() -> str:
-    client_id = st.secrets.get("DIGIKEY_CLIENT_ID")
-    client_secret = st.secrets.get("DIGIKEY_CLIENT_SECRET")
-
-    if not client_id or not client_secret:
-        raise ValueError(
-            "Missing DIGIKEY_CLIENT_ID or DIGIKEY_CLIENT_SECRET in Streamlit secrets"
-        )
+    client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
+    client_secret = get_secret("DIGIKEY_CLIENT_SECRET", required=True)
 
     url = "https://api.digikey.com/v1/oauth2/token"
 
@@ -34,10 +30,7 @@ def get_digikey_access_token() -> str:
 
 
 def search_digikey_by_part_number(part_number: str) -> dict:
-    client_id = st.secrets.get("DIGIKEY_CLIENT_ID")
-
-    if not client_id:
-        raise ValueError("Missing DIGIKEY_CLIENT_ID in Streamlit secrets")
+    client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
 
     access_token = get_digikey_access_token()
 
