@@ -101,6 +101,7 @@ from src.ui.framework import (
     dashboard_insight_card,
 )
 from src.urls import app_checkout_url
+from src.secrets import get_secret
 from src.pages.analysis_detail import render_analysis_detail
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
@@ -1643,14 +1644,14 @@ def run_authenticated_app() -> None:
         return part_data
 
     def send_monitor_alert_email(to_email: str, subject: str, message: str):
-        resend.api_key = st.secrets.get("RESEND_API_KEY")
-        from_email = st.secrets.get(
+        resend.api_key = get_secret("RESEND_API_KEY", required=True)
+        from_email = get_secret(
             "ALERT_FROM_EMAIL",
-            "Cadivor <onboarding@resend.dev>",
+            default="Cadivor <onboarding@resend.dev>",
         )
 
         if not resend.api_key:
-            raise ValueError("Missing RESEND_API_KEY in Streamlit secrets")
+            raise ValueError("Missing RESEND_API_KEY in configuration")
 
         return resend.Emails.send(
             {
@@ -6077,7 +6078,7 @@ def run_authenticated_app() -> None:
                 use_container_width=True,
             ):
                 try:
-                    price_id = st.secrets[secret_key]
+                    price_id = get_secret(secret_key, required=True)
                     st.session_state[state_key] = create_checkout_session(
                         price_id,
                         current_user["email"],
@@ -11842,7 +11843,7 @@ def run_authenticated_app() -> None:
                 if st.button(f"🚀 Upgrade to {upgrade_plan}", key="upgrade_button_main"):
                     try:
                         checkout_url = create_checkout_session(
-                            st.secrets["STRIPE_PRO_PRICE_ID"],
+                            get_secret("STRIPE_PRO_PRICE_ID", required=True),
                             current_user["email"],
                             current_user["id"],
                             success_url=app_checkout_url(checkout="success"),
