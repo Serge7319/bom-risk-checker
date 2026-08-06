@@ -18,6 +18,8 @@ from typing import Any
 import streamlit as st
 import streamlit.components.v1 as components
 
+from src.secrets import get_secret_bool
+
 AUTH_UNKNOWN = "unknown"
 AUTH_SIGNED_OUT = "signed_out"
 AUTH_AUTHENTICATED = "authenticated"
@@ -62,13 +64,7 @@ def _log(event: str, **details: Any) -> None:
 
 
 def _logout_timing_enabled() -> bool:
-    env_flag = os.getenv("CADIVOR_LOGOUT_TIMING", "").strip().lower()
-    if env_flag in {"1", "true", "yes", "on"}:
-        return True
-    try:
-        return bool(st.secrets.get("CADIVOR_LOGOUT_TIMING", False))
-    except Exception:
-        return False
+    return get_secret_bool("CADIVOR_LOGOUT_TIMING", default=False)
 
 
 def log_logout_phase(label: str) -> None:
