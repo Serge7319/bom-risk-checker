@@ -9,3 +9,10 @@ font = "sans serif"
 [client]
 showSidebarNavigation = false
 toolbarMode = "minimal"
+
+[server]
+headless = true
+address = "0.0.0.0"
+
+[browser]
+gatherUsageStats = false
