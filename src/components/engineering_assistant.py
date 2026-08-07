@@ -30,39 +30,30 @@ SUGGESTIONS = [
 ]
 
 
-_AUTH_SNAPSHOT_KEYS = (
-    "user",
-    "access_token",
-    "refresh_token",
-    "app_mode",
-    "pending_app_mode",
-    "analysis_id",
-    "selected_analysis",
-    "current_analysis",
-    "active_analysis_id",
+_COPILOT_WORKFLOW_KEYS = (
+    "cv41_pending_manual",
+    "cv36_pending_followup",
+    "cv47_followup_question",
+    "cv47_scroll_pending",
     "cadivor_route",
-    "cadivor_auth_status",
-    "cadivor_root_state",
+    "app_mode",
+    "analysis_id",
+    "active_analysis_id",
+    "cadivor_active_analysis_id",
 )
 
 
-def _log_copilot_auth(event: str, **details: Any) -> None:
+def _log_copilot_workflow(event: str, **details: Any) -> None:
     from src.auth_state import log_auth_diagnostic
 
     log_auth_diagnostic(event, **details)
 
 
-def _log_copilot_runtime(phase: str, **details: Any) -> None:
-    from src.auth_diagnostics import log_copilot_diagnostic
-
-    log_copilot_diagnostic(phase=phase, **details)
-
-
-def _capture_auth_snapshot() -> dict[str, Any]:
-    """Capture the minimum auth/route state needed for a safe copilot rerun."""
+def _capture_copilot_workflow_snapshot() -> dict[str, Any]:
+    """Capture pending copilot workflow keys for reruns within one Streamlit session."""
     snapshot: dict[str, Any] = {}
     try:
-        for key in _AUTH_SNAPSHOT_KEYS:
+        for key in _COPILOT_WORKFLOW_KEYS:
             value = st.session_state.get(key)
             if value is not None:
                 snapshot[key] = value
@@ -71,8 +62,7 @@ def _capture_auth_snapshot() -> dict[str, Any]:
     return snapshot
 
 
-def _restore_auth_snapshot(snapshot: Any) -> None:
-    """Restore auth/route state without assuming the snapshot is fully initialized."""
+def _restore_copilot_workflow_snapshot(snapshot: Any) -> None:
     if not isinstance(snapshot, dict):
         return
     try:
@@ -85,57 +75,34 @@ def _restore_auth_snapshot(snapshot: Any) -> None:
         return
 
 
-def _clear_auth_snapshot() -> None:
+def _clear_copilot_workflow_snapshot() -> None:
     try:
-        st.session_state.pop("cv48_auth_snapshot", None)
+        st.session_state.pop("cv48_copilot_snapshot", None)
     except Exception:
         pass
 
 
-def _clear_copilot_auth_protection() -> None:
-    """Drop copilot auth recovery state after a protected submission completes."""
+def _clear_copilot_workflow_protection() -> None:
+    """Drop copilot workflow recovery state after a submission completes."""
     st.session_state.pop("cv4801_followup_inflight", None)
-    st.session_state.pop("cv4801_auth_retry_count", None)
     st.session_state.pop("cv4801_route_snapshot", None)
-    _clear_auth_snapshot()
+    _clear_copilot_workflow_snapshot()
 
 
-def _arm_auth_snapshot_for_copilot(*, reason: str) -> None:
-    """Persist the minimum auth/route state before a copilot rerun or blocking ask."""
+def _arm_copilot_workflow_snapshot(*, reason: str) -> None:
+    """Persist pending copilot workflow before a rerun in the same Streamlit session."""
     try:
         route_snapshot = {key: value for key, value in st.query_params.items()}
     except Exception:
         route_snapshot = {}
-    snapshot = _capture_auth_snapshot()
-    st.session_state["cv48_auth_snapshot"] = snapshot
+    snapshot = _capture_copilot_workflow_snapshot()
+    st.session_state["cv48_copilot_snapshot"] = snapshot
     st.session_state["cv4801_route_snapshot"] = route_snapshot
     st.session_state["cv4801_followup_inflight"] = True
-    st.session_state.setdefault("cv4801_auth_retry_count", 0)
-    _log_copilot_auth(
-        "copilot_auth_snapshot_created",
+    _log_copilot_workflow(
+        "copilot_workflow_snapshot_created",
         reason=reason,
         key_count=len(snapshot),
-        has_user=bool(snapshot.get("user")),
-        has_access_token=bool(snapshot.get("access_token")),
-        has_refresh_token=bool(snapshot.get("refresh_token")),
-    )
-
-
-def _refresh_auth_snapshot_before_ask(*, reason: str) -> None:
-    """Refresh the copilot snapshot immediately before the blocking provider call."""
-    snapshot = _capture_auth_snapshot()
-    if not snapshot:
-        _log_copilot_auth("copilot_auth_snapshot_refresh_skipped", reason=reason)
-        return
-    st.session_state["cv48_auth_snapshot"] = snapshot
-    st.session_state["cv4801_followup_inflight"] = True
-    _log_copilot_auth(
-        "copilot_auth_snapshot_refreshed",
-        reason=reason,
-        key_count=len(snapshot),
-        has_user=bool(snapshot.get("user")),
-        has_access_token=bool(snapshot.get("access_token")),
-        has_refresh_token=bool(snapshot.get("refresh_token")),
     )
 
 
@@ -666,7 +633,7 @@ def _queue_copilot_submission(question: str, *, submission_kind: str) -> None:
     if not clean:
         return
 
-    _log_copilot_auth(
+    _log_copilot_workflow(
         "copilot_submission_queued",
         kind=submission_kind,
         question_len=len(clean),
@@ -679,9 +646,8 @@ def _queue_copilot_submission(question: str, *, submission_kind: str) -> None:
         st.session_state["cv47_followup_question"] = clean
 
     st.session_state["cv47_scroll_pending"] = True
-    _arm_auth_snapshot_for_copilot(reason=f"queue_{submission_kind}")
+    _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
     _clear_review_state()
-    _log_copilot_runtime("queued", submission_kind=submission_kind, question_len=len(clean))
     st.rerun()
 
 
@@ -1146,7 +1112,7 @@ def render_engineering_assistant(
     engineering_context: Any,
     selected_component: str = "",
 ) -> None:
-    _restore_auth_snapshot(st.session_state.get("cv48_auth_snapshot"))
+    _restore_copilot_workflow_snapshot(st.session_state.get("cv48_copilot_snapshot"))
     try:
         context = (
             engineering_context.compact(max_components=15)
@@ -1288,8 +1254,7 @@ def render_engineering_assistant(
     if manual_submit and not cleaned_question:
         st.warning("Enter an engineering question before submitting.")
     if manual_submit_requested:
-        _log_copilot_auth("manual_copilot_submission_received", question_len=len(cleaned_question))
-        _log_copilot_runtime("manual_submit_received", question_len=len(cleaned_question))
+        _log_copilot_workflow("manual_copilot_submission_received", question_len=len(cleaned_question))
         _queue_copilot_submission(cleaned_question, submission_kind="manual")
 
     can_submit = status.can_use and bool(cleaned_question)
@@ -1299,8 +1264,7 @@ def render_engineering_assistant(
     )
     submitted_question = cleaned_question
     if submit_requested:
-        _refresh_auth_snapshot_before_ask(reason="execute_copilot_question")
-        _log_copilot_runtime("execute_start", question_len=len(submitted_question))
+        _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
             model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
@@ -1330,25 +1294,19 @@ def render_engineering_assistant(
                 # Copilot submission completed inside the authenticated workspace.
                 # The recovery snapshot is no longer needed after the answer and
                 # active route are safely stored.
-                _clear_copilot_auth_protection()
+                _clear_copilot_workflow_protection()
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
                 st.session_state[prompt_key] = ""
                 progress.update(label="Engineering review complete", state="complete")
-                _log_copilot_runtime("execute_complete", question_len=len(submitted_question))
             except EngineeringAIError as exc:
                 st.session_state["cv35_last_error"] = exc
-                _clear_copilot_auth_protection()
+                _clear_copilot_workflow_protection()
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
                 progress.update(label="Cadivor could not complete the review", state="error")
-                _log_copilot_runtime(
-                    "execute_failed",
-                    question_len=len(submitted_question),
-                    error_code=getattr(exc, "code", "unknown"),
-                )
             except Exception as exc:
                 # A response may already have been generated and saved before a
                 # secondary operation (history persistence, cleanup, etc.) fails.
@@ -1361,24 +1319,18 @@ def render_engineering_assistant(
                     st.session_state.pop("cv35_last_error", None)
                     st.session_state["cv49_nonfatal_warning"] = repr(exc)
                     st.session_state["cv47_scroll_to_assessment"] = True
-                    _clear_copilot_auth_protection()
+                    _clear_copilot_workflow_protection()
                     st.session_state.pop("cv36_pending_followup", None)
                     st.session_state.pop("cv47_followup_question", None)
                     st.session_state.pop("cv41_pending_manual", None)
                     progress.update(label="Engineering review complete", state="complete")
-                    _log_copilot_runtime("execute_complete", question_len=len(submitted_question))
                 else:
                     st.session_state["cv35_last_error"] = EngineeringAIError(
                         "Cadivor could not complete this assessment from the saved evidence. "
                         "The previous assessment remains available; refresh the BOM evidence and try again."
                     )
                     progress.update(label="Cadivor safely stopped the review", state="error")
-                    _log_copilot_runtime(
-                        "execute_failed",
-                        question_len=len(submitted_question),
-                        error_type=type(exc).__name__,
-                    )
-                _clear_copilot_auth_protection()
+                _clear_copilot_workflow_protection()
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
