@@ -14,6 +14,7 @@ from supabase import create_client
 
 from src.auth import show_auth_ui
 from src.secrets import get_secret, get_secret_bool
+from src.auth_diagnostics import log_bootstrap_diagnostic
 from src.auth_state import (
     APP_AUTHENTICATED,
     APP_LOGIN,
@@ -123,8 +124,10 @@ def render_startup_loading_shell(message: str = "Preparing your workspace…") -
 def ensure_authenticated_or_stop() -> None:
     """Resolve auth and render login/signup immediately for signed-out visitors."""
     log_startup_phase("bootstrap_begin")
+    log_bootstrap_diagnostic(stage="bootstrap_begin")
 
     if handle_explicit_logout_if_pending():
+        log_bootstrap_diagnostic(stage="explicit_logout_redirect")
         log_startup_phase("logout_redirect")
         log_logout_phase("auth_bootstrap_redirect")
         st.stop()
@@ -172,10 +175,12 @@ def ensure_authenticated_or_stop() -> None:
     if st.session_state.pop("cadivor_logout_requested", False):
         begin_logout(supabase, cookie_manager)
         if handle_explicit_logout_if_pending():
+            log_bootstrap_diagnostic(stage="explicit_logout_redirect")
             log_startup_phase("logout_redirect")
             st.stop()
 
     log_startup_phase("resolve_auth_state")
+    log_bootstrap_diagnostic(stage="before_resolve_auth_state")
     auth_status = resolve_auth_state(supabase, cookie_manager)
     root_state = str(
         st.session_state.get("cadivor_root_state")
@@ -184,19 +189,17 @@ def ensure_authenticated_or_stop() -> None:
 
     if explicit_logout_pending():
         if handle_explicit_logout_if_pending():
+            log_bootstrap_diagnostic(stage="explicit_logout_redirect")
             log_startup_phase("logout_redirect")
             st.stop()
 
     if auth_status == AUTH_SIGNED_OUT or root_state != APP_AUTHENTICATED:
-        if copilot_inflight:
-            log_auth_diagnostic(
-                "copilot_auth_resolution_failed",
-                auth_status=auth_status,
-                root_state=root_state,
-                has_user=bool(st.session_state.get("user")),
-                has_access_token=bool(st.session_state.get("access_token")),
-                has_refresh_token=bool(st.session_state.get("refresh_token")),
-            )
+        log_bootstrap_diagnostic(
+            stage="auth_resolution_failed",
+            auth_status=auth_status,
+            root_state=root_state,
+            copilot_inflight=copilot_inflight,
+        )
         log_startup_phase("render_auth_ui")
         show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():
@@ -210,3 +213,4 @@ def ensure_authenticated_or_stop() -> None:
         st.stop()
 
     log_startup_phase("auth_boundary_passed")
+    log_bootstrap_diagnostic(stage="auth_boundary_passed", auth_status=auth_status)
