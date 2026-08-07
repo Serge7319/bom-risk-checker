@@ -39,9 +39,11 @@ from src.auth_bootstrap import (
     log_startup_phase,
     render_startup_loading_shell,
 )
+from src.auth_diagnostics import log_bootstrap_diagnostic
 from src.auth_state import handle_explicit_logout_if_pending
 
 log_startup_phase("entrypoint_ready")
+log_bootstrap_diagnostic(stage="entrypoint_ready")
 if handle_explicit_logout_if_pending():
     st.stop()
 
