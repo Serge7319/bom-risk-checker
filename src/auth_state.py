@@ -344,6 +344,17 @@ def _validate_tokens(supabase: Any, access_token: str, refresh_token: str) -> bo
             return True
         except Exception as exc:
             _log("restore_failed", error=type(exc).__name__)
+            try:
+                from src.auth_diagnostics import log_bootstrap_diagnostic
+
+                log_bootstrap_diagnostic(
+                    stage="token_validation_failed",
+                    auth_status=AUTH_SIGNED_OUT,
+                    token_validation_failed=True,
+                    error=type(exc).__name__,
+                )
+            except Exception:
+                pass
             return False
 
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -352,12 +363,29 @@ def _validate_tokens(supabase: Any, access_token: str, refresh_token: str) -> bo
             return bool(future.result(timeout=_RESTORE_TIMEOUT_SECONDS))
         except FuturesTimeoutError:
             _log("restore_failed", error="timeout")
+            try:
+                from src.auth_diagnostics import log_bootstrap_diagnostic
+
+                log_bootstrap_diagnostic(
+                    stage="token_validation_failed",
+                    auth_status=AUTH_SIGNED_OUT,
+                    token_validation_failed=True,
+                    error="timeout",
+                )
+            except Exception:
+                pass
             return False
 
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
     """Resolve UNKNOWN -> SIGNED_OUT/AUTHENTICATED before either shell renders."""
     if explicit_logout_pending():
+        try:
+            from src.auth_diagnostics import log_bootstrap_diagnostic
+
+            log_bootstrap_diagnostic(stage="resolve_explicit_logout_pending", auth_status=AUTH_SIGNED_OUT)
+        except Exception:
+            pass
         return AUTH_SIGNED_OUT
 
     status = str(st.session_state.get("cadivor_auth_status") or AUTH_UNKNOWN)
@@ -365,6 +393,12 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
     if st.session_state.get("cadivor_force_signed_out"):
         clear_auth_session(keep_status=True)
         st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+        try:
+            from src.auth_diagnostics import log_bootstrap_diagnostic
+
+            log_bootstrap_diagnostic(stage="resolve_force_signed_out", auth_status=AUTH_SIGNED_OUT)
+        except Exception:
+            pass
         return AUTH_SIGNED_OUT
 
     if st.session_state.get("user") is not None:
@@ -384,4 +418,10 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state.pop("cadivor_auth_restore_attempts", None)
     _log("resolved_signed_out")
+    try:
+        from src.auth_diagnostics import log_bootstrap_diagnostic
+
+        log_bootstrap_diagnostic(stage="resolve_signed_out", auth_status=AUTH_SIGNED_OUT)
+    except Exception:
+        pass
     return AUTH_SIGNED_OUT
