@@ -14,9 +14,12 @@ from supabase import create_client
 
 from src.auth import show_auth_ui
 from src.auth_cookies import (
+    _MAX_HYDRATION_ATTEMPTS,
     auth_cookie_hydration_pending,
+    finalize_auth_cookie_hydration_timeout,
     get_auth_cookie_manager,
     hydrate_session_from_auth_cookie,
+    log_auth_restore,
     persist_session_auth_cookie,
     record_auth_hydration_attempt,
 )
@@ -162,15 +165,21 @@ def _restore_copilot_workflow_snapshot() -> None:
 def ensure_authenticated_or_stop() -> None:
     """Resolve auth and render login/signup immediately for signed-out visitors."""
     log_startup_phase("bootstrap_begin")
+    log_auth_restore("bootstrap_started")
 
     if handle_explicit_logout_if_pending():
         log_startup_phase("logout_redirect")
         log_logout_phase("auth_bootstrap_redirect")
+        log_auth_restore("fallback_signed_out", reason="explicit_logout_pending")
         st.stop()
 
     log_startup_phase("supabase_client")
     supabase = get_supabase_client()
     cookie_manager = get_auth_cookie_manager()
+    log_auth_restore(
+        "cookie_component_initialized",
+        cookie_manager_ready=cookie_manager is not None,
+    )
 
     requested_page = str(qp_value("page", "") or "").strip()
     if requested_page:
@@ -179,7 +188,12 @@ def ensure_authenticated_or_stop() -> None:
     apply_auth_intent_from_query()
 
     if not explicit_logout_pending() and not st.session_state.get("cadivor_force_signed_out"):
-        hydrate_session_from_auth_cookie(cookie_manager)
+        hydrated = hydrate_session_from_auth_cookie(cookie_manager)
+        log_auth_restore(
+            "cookie_read_ready",
+            credential_present=hydrated,
+            cookie_absent=bool(st.session_state.get("cadivor_auth_cookie_absent")),
+        )
 
     _restore_copilot_workflow_snapshot()
 
@@ -190,14 +204,27 @@ def ensure_authenticated_or_stop() -> None:
             st.stop()
 
     if auth_cookie_hydration_pending(cookie_manager):
-        record_auth_hydration_attempt()
-        render_auth_boot()
-        if _timing_enabled():
-            st.caption(f"Startup timing: {startup_phase_summary()}")
-        st.stop()
+        attempts = record_auth_hydration_attempt()
+        log_auth_restore(
+            "hydration_pending",
+            attempt=attempts,
+            max_attempts=_MAX_HYDRATION_ATTEMPTS,
+        )
+        if attempts >= _MAX_HYDRATION_ATTEMPTS:
+            finalize_auth_cookie_hydration_timeout(cookie_manager)
+        else:
+            render_auth_boot()
+            log_auth_restore("hydration_wait_rerun", attempt=attempts)
+            st.rerun()
 
     log_startup_phase("resolve_auth_state")
+    log_auth_restore("validation_started")
     auth_status = resolve_auth_state(supabase, cookie_manager)
+    log_auth_restore(
+        "validation_complete",
+        auth_status=auth_status,
+        has_user=bool(st.session_state.get("user")),
+    )
     root_state = str(
         st.session_state.get("cadivor_root_state")
         or (APP_AUTHENTICATED if auth_status == AUTH_AUTHENTICATED else APP_PUBLIC)
@@ -209,17 +236,13 @@ def ensure_authenticated_or_stop() -> None:
             st.stop()
 
     if auth_status == AUTH_SIGNED_OUT or root_state != APP_AUTHENTICATED:
+        log_auth_restore("fallback_signed_out", reason="auth_resolution_signed_out")
         log_startup_phase("render_auth_ui")
         show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():
             st.caption(f"Startup timing: {startup_phase_summary()}")
         st.stop()
 
-    if auth_status != AUTH_AUTHENTICATED:
-        render_startup_loading_shell("Restoring your secure workspace…")
-        if _timing_enabled():
-            st.caption(f"Startup timing: {startup_phase_summary()}")
-        st.stop()
-
     persist_session_auth_cookie(cookie_manager)
     log_startup_phase("auth_boundary_passed")
+    log_auth_restore("restoration_complete", auth_status=auth_status)
