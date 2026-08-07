@@ -10,6 +10,7 @@ Secure on HTTPS hosts, and clearing on logout.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -31,6 +32,16 @@ def log_auth_restore(event: str, **details: Any) -> None:
     safe = {str(key): str(value) for key, value in details.items()}
     parts = " ".join(f"{key}={value}" for key, value in sorted(safe.items()))
     line = f"AUTH_RESTORE {event}"
+    if parts:
+        line = f"{line} {parts}"
+    print(line, flush=True)
+
+
+def log_auth_cookie(event: str, **details: Any) -> None:
+    """Emit safe auth-cookie diagnostics to stdout (never secrets)."""
+    safe = {str(key): str(value) for key, value in details.items()}
+    parts = " ".join(f"{key}={value}" for key, value in sorted(safe.items()))
+    line = f"AUTH_COOKIE {event}"
     if parts:
         line = f"{line} {parts}"
     print(line, flush=True)
@@ -67,15 +78,27 @@ def get_auth_cookie_manager() -> Any | None:
 
 def _read_raw_auth_cookie(cookie_manager: Any) -> Any:
     if cookie_manager is None:
+        log_auth_cookie("read_present", present=False)
         return None
     for name in (AUTH_COOKIE_NAME, AUTH_COOKIE_LEGACY_NAME):
         try:
             raw = cookie_manager.get(cookie=name)
             if raw is not None:
+                log_auth_cookie("read_present", present=True, cookie_name=name)
                 return raw
         except Exception:
             continue
+    log_auth_cookie("read_present", present=False)
     return None
+
+
+def _serialize_auth_cookie_payload(access_token: str, refresh_token: str) -> str:
+    """Serialize the minimum Supabase restore payload for CookieManager.set()."""
+    payload = {
+        "access_token": str(access_token),
+        "refresh_token": str(refresh_token),
+    }
+    return json.dumps(payload, separators=(",", ":"))
 
 
 def _logout_marker_active(cookie_manager: Any) -> bool:
@@ -165,9 +188,11 @@ def hydrate_session_from_auth_cookie(cookie_manager: Any) -> bool:
 
     raw = _read_raw_auth_cookie(cookie_manager)
     if raw is None:
+        log_auth_cookie("parse_valid", valid=False)
         return False
 
     tokens = parse_auth_cookie(raw)
+    log_auth_cookie("parse_valid", valid=tokens is not None)
     if tokens is None:
         st.session_state["cadivor_auth_cookie_absent"] = True
         return False
@@ -234,40 +259,40 @@ def persist_session_auth_cookie(cookie_manager: Any) -> None:
     if not st.session_state.get("user"):
         return
 
-    payload = {
-        "access_token": str(access_token),
-        "refresh_token": str(refresh_token),
-    }
+    serialized = _serialize_auth_cookie_payload(
+        str(access_token),
+        str(refresh_token),
+    )
     expires_at = datetime.now(timezone.utc) + timedelta(days=_COOKIE_TTL_DAYS)
     set_kwargs: dict[str, Any] = {
         "cookie": AUTH_COOKIE_NAME,
-        "val": payload,
+        "val": serialized,
         "key": "cadivor_persist_auth_cookie",
         "path": "/",
         "expires_at": expires_at,
+        "same_site": "lax",
     }
     if cookie_secure_flag():
         set_kwargs["secure"] = True
-    try:
-        set_kwargs["same_site"] = "Lax"
-    except Exception:
-        pass
 
+    log_auth_cookie("write_requested", cookie_name=AUTH_COOKIE_NAME)
     try:
         cookie_manager.set(**set_kwargs)
     except TypeError:
-        # Older extra-streamlit-components builds omit path/secure/same_site.
         try:
             cookie_manager.set(
                 cookie=AUTH_COOKIE_NAME,
-                val=payload,
+                val=serialized,
                 expires_at=expires_at,
                 key="cadivor_persist_auth_cookie",
             )
-        except Exception:
-            pass
-    except Exception:
-        pass
+        except Exception as fallback_exc:
+            log_auth_cookie("write_failed", exception_type=type(fallback_exc).__name__)
+            return
+    except Exception as exc:
+        log_auth_cookie("write_failed", exception_type=type(exc).__name__)
+        return
+    log_auth_cookie("write_succeeded", cookie_name=AUTH_COOKIE_NAME)
     _clear_logout_marker(cookie_manager)
 
 
