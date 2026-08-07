@@ -12,8 +12,17 @@ from src.ui.core_premium_ui import inject_core_premium_ui_auth
 
 
 def _set_auth_cookie(cookie_manager, session, key: str):
-    """Compatibility no-op; auth persistence is session scoped."""
-    return
+    """Persist Supabase session tokens to the browser auth cookie."""
+    if cookie_manager is None or session is None:
+        return
+    st.session_state["access_token"] = session.access_token
+    st.session_state["refresh_token"] = session.refresh_token
+    try:
+        from src.auth_cookies import persist_session_auth_cookie
+
+        persist_session_auth_cookie(cookie_manager)
+    except Exception:
+        pass
 
 
 
@@ -317,7 +326,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 })
                 st.session_state.pop("cadivor_auth_submission", None)
                 if getattr(response, "session", None):
-                    mark_authenticated(response.user, response.session)
+                    mark_authenticated(response.user, response.session, cookie_manager)
                     st.rerun()
                 st.session_state["cadivor_auth_status"] = "signed_out"
                 st.session_state["cadivor_root_state"] = APP_LOGIN
@@ -333,7 +342,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.error("Login failed: no session was returned. Please confirm your email and try again.")
                 return
-            mark_authenticated(response.user, response.session)
+            mark_authenticated(response.user, response.session, cookie_manager)
             st.rerun()
         except Exception as error:
             st.session_state.pop("cadivor_auth_submission", None)
@@ -621,7 +630,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                 })
                 st.session_state.pop("cadivor_auth_submission", None)
                 if getattr(response, "session", None):
-                    mark_authenticated(response.user, response.session)
+                    mark_authenticated(response.user, response.session, cookie_manager)
                     st.rerun()
                 st.session_state["cadivor_auth_status"] = "signed_out"
                 st.session_state["cadivor_root_state"] = APP_LOGIN
@@ -637,7 +646,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                 st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.session_state["cadivor_auth_error"] = "Login failed: no session was returned."
                 st.rerun()
-            mark_authenticated(response.user, response.session)
+            mark_authenticated(response.user, response.session, cookie_manager)
             st.rerun()
         except Exception as error:
             st.session_state.pop("cadivor_auth_submission", None)
