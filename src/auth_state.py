@@ -63,6 +63,16 @@ def _log(event: str, **details: Any) -> None:
     st.session_state["cadivor_auth_debug_log"] = records[-50:]
 
 
+def log_auth_diagnostic(event: str, **details: Any) -> None:
+    """Record auth/copilot diagnostics without logging secrets or token values."""
+    safe_details = {
+        key: value
+        for key, value in details.items()
+        if key not in {"access_token", "refresh_token", "password", "api_key"}
+    }
+    _log(event, **safe_details)
+
+
 def _logout_timing_enabled() -> bool:
     return get_secret_bool("CADIVOR_LOGOUT_TIMING", default=False)
 
