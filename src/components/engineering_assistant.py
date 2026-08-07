@@ -52,6 +52,12 @@ def _log_copilot_auth(event: str, **details: Any) -> None:
     log_auth_diagnostic(event, **details)
 
 
+def _log_copilot_runtime(phase: str, **details: Any) -> None:
+    from src.auth_diagnostics import log_copilot_diagnostic
+
+    log_copilot_diagnostic(phase=phase, **details)
+
+
 def _capture_auth_snapshot() -> dict[str, Any]:
     """Capture the minimum auth/route state needed for a safe copilot rerun."""
     snapshot: dict[str, Any] = {}
@@ -675,6 +681,7 @@ def _queue_copilot_submission(question: str, *, submission_kind: str) -> None:
     st.session_state["cv47_scroll_pending"] = True
     _arm_auth_snapshot_for_copilot(reason=f"queue_{submission_kind}")
     _clear_review_state()
+    _log_copilot_runtime("queued", submission_kind=submission_kind, question_len=len(clean))
     st.rerun()
 
 
@@ -1282,6 +1289,7 @@ def render_engineering_assistant(
         st.warning("Enter an engineering question before submitting.")
     if manual_submit_requested:
         _log_copilot_auth("manual_copilot_submission_received", question_len=len(cleaned_question))
+        _log_copilot_runtime("manual_submit_received", question_len=len(cleaned_question))
         _queue_copilot_submission(cleaned_question, submission_kind="manual")
 
     can_submit = status.can_use and bool(cleaned_question)
@@ -1292,6 +1300,7 @@ def render_engineering_assistant(
     submitted_question = cleaned_question
     if submit_requested:
         _refresh_auth_snapshot_before_ask(reason="execute_copilot_question")
+        _log_copilot_runtime("execute_start", question_len=len(submitted_question))
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
             model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
@@ -1327,6 +1336,7 @@ def render_engineering_assistant(
                 st.session_state.pop("cv41_pending_manual", None)
                 st.session_state[prompt_key] = ""
                 progress.update(label="Engineering review complete", state="complete")
+                _log_copilot_runtime("execute_complete", question_len=len(submitted_question))
             except EngineeringAIError as exc:
                 st.session_state["cv35_last_error"] = exc
                 _clear_copilot_auth_protection()
@@ -1334,6 +1344,11 @@ def render_engineering_assistant(
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
                 progress.update(label="Cadivor could not complete the review", state="error")
+                _log_copilot_runtime(
+                    "execute_failed",
+                    question_len=len(submitted_question),
+                    error_code=getattr(exc, "code", "unknown"),
+                )
             except Exception as exc:
                 # A response may already have been generated and saved before a
                 # secondary operation (history persistence, cleanup, etc.) fails.
@@ -1351,12 +1366,18 @@ def render_engineering_assistant(
                     st.session_state.pop("cv47_followup_question", None)
                     st.session_state.pop("cv41_pending_manual", None)
                     progress.update(label="Engineering review complete", state="complete")
+                    _log_copilot_runtime("execute_complete", question_len=len(submitted_question))
                 else:
                     st.session_state["cv35_last_error"] = EngineeringAIError(
                         "Cadivor could not complete this assessment from the saved evidence. "
                         "The previous assessment remains available; refresh the BOM evidence and try again."
                     )
                     progress.update(label="Cadivor safely stopped the review", state="error")
+                    _log_copilot_runtime(
+                        "execute_failed",
+                        question_len=len(submitted_question),
+                        error_type=type(exc).__name__,
+                    )
                 _clear_copilot_auth_protection()
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
