@@ -114,14 +114,23 @@ def _format_diag_cookie(browser_id: str, streamlit_session_id: str, process_id: 
     return f"{browser_id}|{streamlit_session_id}|{process_id}"
 
 
-@st.cache_resource(show_spinner=False)
 def get_diagnostic_cookie_manager() -> Any | None:
+    """Return one diagnostic CookieManager instance for this Streamlit session.
+
+    Must not be created inside st.cache_resource/st.cache_data. The browser
+    diagnostic cookie persists in the browser; the manager widget is recreated
+    per Streamlit server session while reusing that cookie value.
+    """
     if stx is None:
         return None
-    try:
-        return stx.CookieManager(key="cadivor_diag_cookie_manager")
-    except Exception:
-        return None
+    manager_key = "_cadivor_diag_cookie_manager_widget"
+    if manager_key not in st.session_state:
+        try:
+            st.session_state[manager_key] = stx.CookieManager(key="cadivor_diag_cookie_manager")
+        except Exception:
+            st.session_state[manager_key] = None
+    manager = st.session_state.get(manager_key)
+    return manager
 
 
 def sync_browser_diagnostic_state(
