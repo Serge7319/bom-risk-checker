@@ -207,7 +207,9 @@ except Exception:
     stx = None
 
 log_startup_phase("authenticated_runtime_imports_complete")
-cookie_manager = None
+from src.auth_cookies import get_auth_cookie_manager
+
+cookie_manager = get_auth_cookie_manager()
 supabase = get_supabase_client()
 
 
