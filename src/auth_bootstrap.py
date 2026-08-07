@@ -24,6 +24,7 @@ from src.auth_state import (
     begin_logout,
     explicit_logout_pending,
     handle_explicit_logout_if_pending,
+    log_auth_diagnostic,
     log_logout_phase,
     resolve_auth_state,
 )
@@ -138,16 +139,35 @@ def ensure_authenticated_or_stop() -> None:
 
     apply_auth_intent_from_query()
 
-    followup_snapshot = st.session_state.get("cv48_auth_snapshot") or {}
-    if st.session_state.get("cv4801_followup_inflight") and isinstance(followup_snapshot, dict):
+    copilot_snapshot = st.session_state.get("cv48_auth_snapshot") or {}
+    copilot_inflight = bool(st.session_state.get("cv4801_followup_inflight"))
+    if (
+        copilot_inflight
+        and isinstance(copilot_snapshot, dict)
+        and copilot_snapshot
+        and not explicit_logout_pending()
+        and not st.session_state.get("cadivor_force_signed_out")
+    ):
+        restored_keys: list[str] = []
         try:
-            for key, value in followup_snapshot.items():
+            for key, value in copilot_snapshot.items():
                 if not key or value is None:
                     continue
                 if st.session_state.get(key) is None:
                     st.session_state[key] = value
-        except Exception:
-            pass
+                    restored_keys.append(str(key))
+        except Exception as exc:
+            log_auth_diagnostic(
+                "copilot_auth_snapshot_restore_failed",
+                error=type(exc).__name__,
+            )
+        else:
+            if restored_keys:
+                log_auth_diagnostic(
+                    "copilot_auth_snapshot_restored",
+                    keys=",".join(restored_keys),
+                    key_count=len(restored_keys),
+                )
 
     if st.session_state.pop("cadivor_logout_requested", False):
         begin_logout(supabase, cookie_manager)
@@ -168,6 +188,15 @@ def ensure_authenticated_or_stop() -> None:
             st.stop()
 
     if auth_status == AUTH_SIGNED_OUT or root_state != APP_AUTHENTICATED:
+        if copilot_inflight:
+            log_auth_diagnostic(
+                "copilot_auth_resolution_failed",
+                auth_status=auth_status,
+                root_state=root_state,
+                has_user=bool(st.session_state.get("user")),
+                has_access_token=bool(st.session_state.get("access_token")),
+                has_refresh_token=bool(st.session_state.get("refresh_token")),
+            )
         log_startup_phase("render_auth_ui")
         show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():
