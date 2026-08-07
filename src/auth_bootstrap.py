@@ -215,6 +215,7 @@ def ensure_authenticated_or_stop() -> None:
         else:
             render_auth_boot()
             log_auth_restore("hydration_wait_rerun", attempt=attempts)
+            time.sleep(0.25)
             st.rerun()
 
     log_startup_phase("resolve_auth_state")

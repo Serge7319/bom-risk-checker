@@ -22,7 +22,9 @@ from src.secrets import get_secret_bool
 AUTH_COOKIE_NAME = "cadivor_auth"
 AUTH_LOGOUT_COOKIE_NAME = "cadivor_auth_logout"
 AUTH_COOKIE_LEGACY_NAME = "bom_auth"
-_AUTH_COOKIE_MANAGER_KEY = "_cadivor_auth_cookie_manager_widget"
+_AUTH_COOKIE_MANAGER_COMPONENT_KEY = "cadivor_auth_cookie_manager"
+_AUTH_COOKIE_MANAGER_RUN_ID_KEY = "_cadivor_auth_cookie_manager_run_id"
+_AUTH_COOKIE_MANAGER_INSTANCE_KEY = "_cadivor_auth_cookie_manager_instance"
 _MAX_HYDRATION_ATTEMPTS = 6
 _COOKIE_TTL_DAYS = 7
 
@@ -62,18 +64,45 @@ def cookie_secure_flag() -> bool:
     return get_secret_bool("CADIVOR_COOKIE_SECURE", default=True)
 
 
+def _script_run_id() -> str | None:
+    """Stable identifier for the current Streamlit script execution."""
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            return None
+        run_id = getattr(ctx, "script_run_id", None)
+        return str(run_id) if run_id is not None else str(id(ctx))
+    except Exception:
+        return None
+
+
 def get_auth_cookie_manager() -> Any | None:
-    """Return one auth CookieManager widget for this Streamlit session (not cached)."""
+    """Return the auth CookieManager for this script run.
+
+    A fresh manager is created on each Streamlit rerun so the browser component
+    is mounted and ``self.cookies`` reflects the latest frontend ``getAll`` result.
+    Within one script run, the same instance is reused to avoid duplicate widgets
+    with the same component key (bootstrap + authenticated runtime import).
+    """
     if not auth_cookies_enabled() or stx is None:
         return None
-    if _AUTH_COOKIE_MANAGER_KEY not in st.session_state:
-        try:
-            st.session_state[_AUTH_COOKIE_MANAGER_KEY] = stx.CookieManager(
-                key="cadivor_auth_cookie_manager",
-            )
-        except Exception:
-            st.session_state[_AUTH_COOKIE_MANAGER_KEY] = None
-    return st.session_state.get(_AUTH_COOKIE_MANAGER_KEY)
+
+    run_id = _script_run_id()
+    if run_id is not None and st.session_state.get(_AUTH_COOKIE_MANAGER_RUN_ID_KEY) == run_id:
+        return st.session_state.get(_AUTH_COOKIE_MANAGER_INSTANCE_KEY)
+
+    try:
+        manager = stx.CookieManager(key=_AUTH_COOKIE_MANAGER_COMPONENT_KEY)
+    except Exception:
+        manager = None
+
+    if run_id is not None:
+        st.session_state[_AUTH_COOKIE_MANAGER_RUN_ID_KEY] = run_id
+        st.session_state[_AUTH_COOKIE_MANAGER_INSTANCE_KEY] = manager
+
+    return manager
 
 
 def _read_raw_auth_cookie(cookie_manager: Any) -> Any:

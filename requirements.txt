@@ -10,5 +10,5 @@ reportlab
 resend
 plotly
 stripe
-extra-streamlit-components
+extra-streamlit-components==0.1.81
 pypdf>=5.0,<7
