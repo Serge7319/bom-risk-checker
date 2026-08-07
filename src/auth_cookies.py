@@ -25,6 +25,16 @@ _AUTH_COOKIE_MANAGER_KEY = "_cadivor_auth_cookie_manager_widget"
 _MAX_HYDRATION_ATTEMPTS = 6
 _COOKIE_TTL_DAYS = 7
 
+
+def log_auth_restore(event: str, **details: Any) -> None:
+    """Emit safe restoration state names to stdout (never secrets)."""
+    safe = {str(key): str(value) for key, value in details.items()}
+    parts = " ".join(f"{key}={value}" for key, value in sorted(safe.items()))
+    line = f"AUTH_RESTORE {event}"
+    if parts:
+        line = f"{line} {parts}"
+    print(line, flush=True)
+
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -194,6 +204,17 @@ def auth_cookie_hydration_pending(cookie_manager: Any) -> bool:
     if raw is not None and parse_auth_cookie(raw) is None:
         return False
     return raw is None
+
+
+def finalize_auth_cookie_hydration_timeout(cookie_manager: Any) -> None:
+    """Mark cookie hydration complete with no credential (fail-closed)."""
+    st.session_state["cadivor_auth_cookie_absent"] = True
+    st.session_state["cadivor_auth_restore_attempts"] = _MAX_HYDRATION_ATTEMPTS
+    log_auth_restore(
+        "fallback_signed_out",
+        reason="hydration_timeout",
+        cookie_manager_ready=cookie_manager is not None,
+    )
 
 
 def record_auth_hydration_attempt() -> int:
