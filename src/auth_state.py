@@ -365,14 +365,21 @@ def _validate_tokens(
             st.session_state.pop("cadivor_auth_cookie_absent", None)
             _log("restored")
             try:
-                from src.auth_cookies import persist_session_auth_cookie
+                from src.auth_cookies import log_auth_restore, persist_session_auth_cookie
 
+                log_auth_restore("validation_success")
                 persist_session_auth_cookie(cookie_manager)
             except Exception:
                 pass
             return True
         except Exception as exc:
             _log("restore_failed", error=type(exc).__name__)
+            try:
+                from src.auth_cookies import log_auth_restore
+
+                log_auth_restore("validation_failed", error=type(exc).__name__)
+            except Exception:
+                pass
             return False
 
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -381,6 +388,12 @@ def _validate_tokens(
             return bool(future.result(timeout=_RESTORE_TIMEOUT_SECONDS))
         except FuturesTimeoutError:
             _log("restore_failed", error="timeout")
+            try:
+                from src.auth_cookies import log_auth_restore
+
+                log_auth_restore("validation_failed", error="timeout")
+            except Exception:
+                pass
             return False
 
 
@@ -425,8 +438,9 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
             return AUTH_AUTHENTICATED
         clear_auth_session(keep_status=True)
         try:
-            from src.auth_cookies import invalidate_corrupt_auth_cookie
+            from src.auth_cookies import invalidate_corrupt_auth_cookie, log_auth_restore
 
+            log_auth_restore("validation_failed", reason="token_validation_failed")
             invalidate_corrupt_auth_cookie(cookie_manager, reason="token_validation_failed")
         except Exception:
             pass
