@@ -13,7 +13,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import unquote
 
 import streamlit as st
@@ -161,17 +161,57 @@ def _clear_user_session_for_logout() -> None:
     st.session_state["cadivor_explicit_logout"] = True
 
 
-def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> None:
-    """Commit a successful Supabase login as one atomic session-state change."""
+class _ValidatedAuthResult(NamedTuple):
+    user: Any
+    access_token: str
+    refresh_token: str
+
+
+def _commit_authenticated_session(
+    user: Any,
+    access_token: str,
+    refresh_token: str,
+) -> None:
+    """Write authenticated credentials onto the main Streamlit script thread."""
     st.session_state["user"] = user
-    st.session_state["access_token"] = session.access_token
-    st.session_state["refresh_token"] = session.refresh_token
+    st.session_state["access_token"] = access_token
+    st.session_state["refresh_token"] = refresh_token
     st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
-    st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
     st.session_state["cadivor_auth_resolved"] = True
-    st.session_state.pop("cadivor_force_signed_out", None)
     st.session_state.pop("cadivor_auth_restore_attempts", None)
     st.session_state.pop("cadivor_auth_cookie_absent", None)
+
+
+def _fetch_validated_auth(
+    supabase: Any,
+    access_token: str,
+    refresh_token: str,
+) -> _ValidatedAuthResult | None:
+    """Validate Supabase tokens without touching Streamlit session_state."""
+    session_response = supabase.auth.set_session(access_token, refresh_token)
+    user_response = supabase.auth.get_user()
+    user = getattr(user_response, "user", None)
+    if user is None:
+        return None
+    fresh_session = getattr(session_response, "session", None)
+    if fresh_session:
+        return _ValidatedAuthResult(
+            user,
+            str(fresh_session.access_token),
+            str(fresh_session.refresh_token),
+        )
+    return _ValidatedAuthResult(user, str(access_token), str(refresh_token))
+
+
+def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> None:
+    """Commit a successful Supabase login as one atomic session-state change."""
+    _commit_authenticated_session(
+        user,
+        str(session.access_token),
+        str(session.refresh_token),
+    )
+    st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
+    st.session_state.pop("cadivor_force_signed_out", None)
     st.session_state.pop("cadivor_auth_ui_was_shown", None)
     st.session_state.pop("cadivor_logout_in_progress", None)
     st.session_state.pop("cadivor_explicit_logout", None)
@@ -377,34 +417,24 @@ def _validate_tokens(
     refresh_token: str,
     cookie_manager: Any = None,
 ) -> bool:
-    def _restore() -> bool:
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            _fetch_validated_auth,
+            supabase,
+            access_token,
+            refresh_token,
+        )
         try:
-            session_response = supabase.auth.set_session(access_token, refresh_token)
-            user_response = supabase.auth.get_user()
-            user = getattr(user_response, "user", None)
-            if user is None:
-                return False
-            st.session_state["user"] = user
-            fresh_session = getattr(session_response, "session", None)
-            if fresh_session:
-                st.session_state["access_token"] = fresh_session.access_token
-                st.session_state["refresh_token"] = fresh_session.refresh_token
-            else:
-                st.session_state["access_token"] = access_token
-                st.session_state["refresh_token"] = refresh_token
-            st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
-            st.session_state["cadivor_auth_resolved"] = True
-            st.session_state.pop("cadivor_auth_restore_attempts", None)
-            st.session_state.pop("cadivor_auth_cookie_absent", None)
-            _log("restored")
+            validated = future.result(timeout=_RESTORE_TIMEOUT_SECONDS)
+        except FuturesTimeoutError:
+            _log("restore_failed", error="timeout")
             try:
-                from src.auth_cookies import log_auth_restore, persist_session_auth_cookie
+                from src.auth_cookies import log_auth_restore
 
-                log_auth_restore("validation_success")
-                persist_session_auth_cookie(cookie_manager)
+                log_auth_restore("validation_failed", error="timeout")
             except Exception:
                 pass
-            return True
+            return False
         except Exception as exc:
             _log("restore_failed", error=type(exc).__name__)
             try:
@@ -415,19 +445,30 @@ def _validate_tokens(
                 pass
             return False
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_restore)
+    if validated is None:
+        _log("restore_failed", error="token_validation_failed")
         try:
-            return bool(future.result(timeout=_RESTORE_TIMEOUT_SECONDS))
-        except FuturesTimeoutError:
-            _log("restore_failed", error="timeout")
-            try:
-                from src.auth_cookies import log_auth_restore
+            from src.auth_cookies import log_auth_restore
 
-                log_auth_restore("validation_failed", error="timeout")
-            except Exception:
-                pass
-            return False
+            log_auth_restore("validation_failed", error="token_validation_failed")
+        except Exception:
+            pass
+        return False
+
+    _commit_authenticated_session(
+        validated.user,
+        validated.access_token,
+        validated.refresh_token,
+    )
+    _log("restored")
+    try:
+        from src.auth_cookies import log_auth_restore, persist_session_auth_cookie
+
+        log_auth_restore("validation_success")
+        persist_session_auth_cookie(cookie_manager)
+    except Exception:
+        pass
+    return True
 
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
