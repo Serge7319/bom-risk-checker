@@ -207,12 +207,20 @@ except Exception:
     stx = None
 
 log_startup_phase("authenticated_runtime_imports_complete")
-from src.auth_cookies import get_auth_cookie_manager
 
-cookie_manager = get_auth_cookie_manager()
-supabase = get_supabase_client()
+cookie_manager = None
+supabase = None
 
 
+def _init_runtime_clients() -> None:
+    """Bind Supabase and CookieManager on the main thread after import completes."""
+    global cookie_manager, supabase
+    if cookie_manager is None:
+        from src.auth_cookies import get_auth_cookie_manager
+
+        cookie_manager = get_auth_cookie_manager()
+    if supabase is None:
+        supabase = get_supabase_client()
 
 
 def load_user_data():
@@ -1570,6 +1578,8 @@ def run_authenticated_app() -> None:
         if handle_explicit_logout_if_pending():
             st.stop()
         st.stop()
+
+    _init_runtime_clients()
 
     st.markdown(
         """
