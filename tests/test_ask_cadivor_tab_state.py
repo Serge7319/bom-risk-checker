@@ -17,7 +17,10 @@ def _install_streamlit_stub(session_state: dict | None = None, query_params: dic
     st.text_area = lambda label, key, **kwargs: st.session_state.get(key, "")
     st.form_submit_button = MagicMock(return_value=False)
     st.status = lambda *args, **kwargs: _NullContext()
-    st.markdown = MagicMock()
+    st.markdown = lambda *args, **kwargs: None
+    st.radio = lambda label, options, horizontal=False, key=None, label_visibility=None: st.session_state.get(
+        key, options[0]
+    )
     st.warning = MagicMock()
     st.html = MagicMock()
     st.columns = MagicMock(return_value=(MagicMock(), MagicMock()))
@@ -202,27 +205,38 @@ class AskCadivorTabStateTests(unittest.TestCase):
         self.assertNotIn("cv35-suggestion-chip", source)
         self.assertIn("st.button", source)
 
-    def test_analysis_detail_syncs_url_tab_to_session(self):
-        st = _install_streamlit_stub(
-            session_state={"cadivor_active_analysis_tab": "Engineering Intelligence"},
+    def _load_detail(self, session_state=None, query_params=None):
+        from tests.test_analysis_section_navigation import _install_analysis_detail_import_stubs
+
+        st = _install_streamlit_stub(session_state, query_params)
+        _install_analysis_detail_import_stubs()
+        sys.modules.pop("src.pages.analysis_detail", None)
+        import importlib
+
+        detail = importlib.import_module("src.pages.analysis_detail")
+        return st, detail
+
+    def test_analysis_detail_syncs_url_tab_to_session_on_entry(self):
+        st, detail = self._load_detail(
+            session_state={},
             query_params={"analysis_tab": "Ask+Cadivor"},
         )
-
-        def _normalize_analysis_tab(value):
-            return str(value or "").strip().replace("+", " ")
-
-        def _sync_cadivor_active_analysis_tab():
-            try:
-                incoming = _normalize_analysis_tab(st.query_params.get("analysis_tab", ""))
-            except Exception:
-                incoming = ""
-            if incoming:
-                st.session_state["cadivor_active_analysis_tab"] = incoming
-            elif "cadivor_active_analysis_tab" not in st.session_state:
-                st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
-
-        _sync_cadivor_active_analysis_tab()
+        detail._sync_cadivor_active_analysis_tab(analysis_id="a-entry")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+
+    def test_analysis_detail_preserves_widget_over_url(self):
+        st, detail = self._load_detail(
+            session_state={
+                "cadivor_active_analysis_tab": "Engineering Intelligence",
+                "cadivor_analysis_section_a-preserve": "Overview",
+            },
+            query_params={"analysis_tab": "Engineering Intelligence"},
+        )
+        detail._sync_cadivor_active_analysis_tab(analysis_id="a-preserve")
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Engineering Intelligence")
+        active = detail._render_analysis_section_navigation(analysis_id="a-preserve")
+        self.assertEqual(active, "Overview")
+        self.assertEqual(st.query_params["analysis_tab"], "Overview")
 
     def test_analysis_detail_uses_deterministic_section_render(self):
         from pathlib import Path

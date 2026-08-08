@@ -93,28 +93,65 @@ ANALYSIS_SECTIONS = (
 )
 
 
-def _sync_cadivor_active_analysis_tab() -> None:
-    """Treat cadivor_active_analysis_tab as authoritative after ingesting URL input once per run."""
+def _analysis_section_nav_key(analysis_id: str) -> str:
+    return f"cadivor_analysis_section_{analysis_id or 'default'}"
+
+
+def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
+    """Hydrate section state from URL only on entry/deep-link — never clobber widget selection."""
     try:
         incoming = _normalize_analysis_tab(st.query_params.get("analysis_tab", ""))
     except Exception:
         incoming = ""
-    if incoming:
-        st.session_state["cadivor_active_analysis_tab"] = incoming
-    elif "cadivor_active_analysis_tab" not in st.session_state:
-        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+
+    nav_key = _analysis_section_nav_key(analysis_id)
+    context_key = "cadivor_analysis_section_sync_id"
+    prior_analysis = st.session_state.get(context_key)
+    widget_bound = nav_key in st.session_state
+
+    if analysis_id and prior_analysis is not None and prior_analysis != analysis_id:
+        st.session_state.pop(nav_key, None)
+        widget_bound = False
+        if incoming and incoming in ANALYSIS_SECTIONS:
+            st.session_state["cadivor_active_analysis_tab"] = incoming
+        else:
+            st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+
+    if analysis_id:
+        st.session_state[context_key] = analysis_id
+
+    if not widget_bound:
+        if incoming and incoming in ANALYSIS_SECTIONS:
+            st.session_state["cadivor_active_analysis_tab"] = incoming
+        elif "cadivor_active_analysis_tab" not in st.session_state:
+            st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
 
     active = _safe(st.session_state.get("cadivor_active_analysis_tab"), "Engineering Intelligence")
     if active not in ANALYSIS_SECTIONS:
         st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
 
 
+def _commit_analysis_section_selection(*, analysis_id: str, selected: str) -> str:
+    """Persist the authoritative section after the navigation widget resolves."""
+    clean = _safe(selected, "Engineering Intelligence")
+    if clean not in ANALYSIS_SECTIONS:
+        clean = "Engineering Intelligence"
+    st.session_state["cadivor_active_analysis_tab"] = clean
+    try:
+        st.query_params["analysis_tab"] = clean
+    except Exception:
+        pass
+    return clean
+
+
 def _render_analysis_section_navigation(*, analysis_id: str) -> str:
     """Deterministic server-side section selection (replaces st.tabs + delayed JS restore)."""
-    active = _safe(st.session_state.get("cadivor_active_analysis_tab"), "Engineering Intelligence")
-    nav_key = f"cadivor_analysis_section_{analysis_id or 'default'}"
-    if st.session_state.get(nav_key) != active:
-        st.session_state[nav_key] = active
+    nav_key = _analysis_section_nav_key(analysis_id)
+    if nav_key not in st.session_state:
+        st.session_state[nav_key] = _safe(
+            st.session_state.get("cadivor_active_analysis_tab"),
+            "Engineering Intelligence",
+        )
 
     st.markdown('<div class="cv719-analysis-section-nav"></div>', unsafe_allow_html=True)
     selected = st.radio(
@@ -124,12 +161,7 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
         key=nav_key,
         label_visibility="collapsed",
     )
-    st.session_state["cadivor_active_analysis_tab"] = selected
-    try:
-        st.query_params["analysis_tab"] = selected
-    except Exception:
-        pass
-    return selected
+    return _commit_analysis_section_selection(analysis_id=analysis_id, selected=selected)
 
 
 def _num(value: Any, default: int = 0) -> int:
@@ -389,10 +421,12 @@ def render_analysis_detail(
         button[data-baseweb="tab"][aria-selected="true"]{background:#eff6ff!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:inset 0 -3px 0 #2563eb!important}
         button[data-baseweb="tab"][aria-selected="true"] p{color:#1d4ed8!important}
         div[data-baseweb="tab-highlight"]{display:none!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:8px;border-bottom:1px solid #dbe3ef;padding:0 0 8px;margin:0 0 12px}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:1px solid transparent;border-radius:10px 10px 0 0;padding:10px 16px 12px;font-weight:650;color:#334155;background:transparent;margin:0}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:#f8fbff;color:#0b1220}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){background:#eff6ff;color:#1d4ed8;box-shadow:inset 0 -3px 0 #2563eb}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:6px;border:1px solid #dbe3ef;background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);border-radius:14px;padding:6px;margin:0 0 14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.85)}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:1px solid transparent;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;color:#475569;background:transparent;margin:0;transition:background .15s ease,color .15s ease,box-shadow .15s ease,border-color .15s ease;cursor:pointer}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){background:#2563eb;color:#fff!important;border-color:#2563eb;box-shadow:0 6px 16px rgba(37,99,235,.28)}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) span{color:#fff!important}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] input{display:none}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
         .cv-status-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}
         .cv-status-card span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
@@ -951,7 +985,7 @@ def render_analysis_detail(
             analysis_id=analysis_id,
         )
 
-    _sync_cadivor_active_analysis_tab()
+    _sync_cadivor_active_analysis_tab(analysis_id=analysis_id)
     active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
 
     lifecycle_exposed_parts = []
