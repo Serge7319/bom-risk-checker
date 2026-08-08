@@ -16,7 +16,10 @@ Tone = Literal["info", "success", "warning", "danger", "neutral", "purple"]
 
 
 def inject_design_system_v1() -> None:
-    """Load the authoritative Cadivor Design System v1 stylesheet last."""
+    """Load legacy DS v1 stylesheet after the v2 token foundation."""
+    from src.ui.design_system_v2 import inject_cadivor_design_system_v2
+
+    inject_cadivor_design_system_v2()
     css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "design_system_v1.css"
     try:
         css = css_path.read_text(encoding="utf-8")
