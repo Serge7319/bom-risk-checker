@@ -183,6 +183,119 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
         self.assertIn("user", st.session_state)
 
+    def test_stale_logout_marker_does_not_clear_authenticated_session(self):
+        """Production regression: stale native context marker after manual login."""
+        manager = _FakeCookieManager()
+        context = _FakeContextCookies({AUTH_LOGOUT_COOKIE_NAME: "1"})
+        st, auth_cookies, auth_state = self._load(
+            {"cadivor_force_signed_out": True},
+            context_cookies=context,
+        )
+        user = _FakeUser()
+        session = types.SimpleNamespace(access_token="new-a", refresh_token="new-r")
+        supabase = self._mock_supabase()
+
+        auth_state.begin_manual_login(cookie_manager=manager)
+        auth_state.mark_authenticated(user, session, cookie_manager=manager)
+        self.assertFalse(st.session_state.get("cadivor_manual_login_in_progress"))
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=manager)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertIs(st.session_state["user"], user)
+        self.assertEqual(st.session_state["access_token"], "new-a")
+        self.assertEqual(st.session_state["refresh_token"], "new-r")
+        self.assertTrue(auth_cookies.logout_blocks_auth_restore(manager))
+
+    def test_stale_logout_marker_without_user_remains_signed_out(self):
+        context = _FakeContextCookies({AUTH_LOGOUT_COOKIE_NAME: "1"})
+        st, _auth_cookies, auth_state = self._load({}, context_cookies=context)
+        supabase = self._mock_supabase()
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_SIGNED_OUT)
+        self.assertNotIn("user", st.session_state)
+        self.assertTrue(st.session_state.get("cadivor_force_signed_out"))
+
+    def test_explicit_logout_clears_authenticated_session(self):
+        st, auth_cookies, auth_state = self._load(
+            {
+                "user": _FakeUser(),
+                "access_token": "live-a",
+                "refresh_token": "live-r",
+                "cadivor_auth_status": "authenticated",
+            }
+        )
+        supabase = self._mock_supabase()
+        manager = _FakeCookieManager()
+
+        auth_state.begin_logout(supabase, cookie_manager=manager)
+
+        self.assertNotIn("user", st.session_state)
+        self.assertNotIn("access_token", st.session_state)
+        self.assertNotIn("refresh_token", st.session_state)
+        self.assertTrue(st.session_state.get("cadivor_force_signed_out"))
+
+    def test_logout_manual_login_subsequent_rerun_stays_authenticated(self):
+        manager = _FakeCookieManager()
+        context = _FakeContextCookies({AUTH_LOGOUT_COOKIE_NAME: "1"})
+        st, _auth_cookies, auth_state = self._load(
+            {"cadivor_force_signed_out": True},
+            context_cookies=context,
+        )
+        user = _FakeUser()
+        session = types.SimpleNamespace(access_token="post-a", refresh_token="post-r")
+        supabase = self._mock_supabase()
+
+        auth_state.begin_manual_login(cookie_manager=manager)
+        auth_state.mark_authenticated(user, session, cookie_manager=manager)
+
+        for _ in range(2):
+            status = auth_state.resolve_auth_state(supabase, cookie_manager=manager)
+            self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+
+        self.assertIs(st.session_state["user"], user)
+        self.assertEqual(st.session_state["access_token"], "post-a")
+
+    def test_logout_manual_login_f5_restores_authenticated_session(self):
+        payload = _valid_payload("f5-a", "f5-r")
+        context = _FakeContextCookies({"cadivor_auth": payload})
+        st, _auth_cookies, auth_state = self._load({}, context_cookies=context)
+        supabase = self._mock_supabase()
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertIn("user", st.session_state)
+        self.assertEqual(st.session_state["access_token"], "fresh-access")
+
+    def test_stale_logout_marker_ignored_emits_diagnostic(self):
+        manager = _FakeCookieManager()
+        context = _FakeContextCookies({AUTH_LOGOUT_COOKIE_NAME: "1"})
+        st, _auth_cookies, auth_state = self._load(
+            {
+                "user": _FakeUser(),
+                "access_token": "diag-a",
+                "refresh_token": "diag-r",
+                "cadivor_auth_status": "authenticated",
+            },
+            context_cookies=context,
+        )
+        supabase = self._mock_supabase()
+
+        auth_diagnostics = types.ModuleType("src.auth_diagnostics")
+        correlation_calls = []
+        auth_diagnostics.log_auth_correlation = lambda checkpoint, **kwargs: correlation_calls.append(
+            (checkpoint, kwargs.get("transition_reason"))
+        )
+        sys.modules["src.auth_diagnostics"] = auth_diagnostics
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=manager)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertIn(("stale_logout_marker_ignored", "authenticated_session"), correlation_calls)
+
     def test_auth_submit_uses_atomic_login_helpers(self):
         source = (
             __import__("pathlib").Path(__file__).resolve().parents[1] / "src" / "auth.py"

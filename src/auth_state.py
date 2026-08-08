@@ -609,6 +609,43 @@ def _validate_tokens(
     return True
 
 
+def _established_authenticated_session() -> bool:
+    """True when the current session already holds a complete authenticated login."""
+    return (
+        st.session_state.get("user") is not None
+        and bool(st.session_state.get("access_token"))
+        and bool(st.session_state.get("refresh_token"))
+        and st.session_state.get("cadivor_auth_status") == AUTH_AUTHENTICATED
+    )
+
+
+def _resolve_established_authenticated(cookie_manager: Any) -> str | None:
+    """Honor an in-session login over a stale native-context logout marker."""
+    if not _established_authenticated_session():
+        return None
+    try:
+        from src.auth_cookies import logout_blocks_auth_restore
+
+        if logout_blocks_auth_restore(cookie_manager):
+            try:
+                from src.auth_diagnostics import log_auth_correlation
+
+                log_auth_correlation(
+                    "stale_logout_marker_ignored",
+                    cookie_manager=cookie_manager,
+                    transition_reason="authenticated_session",
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
+    st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
+    st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
+    st.session_state["cadivor_auth_resolved"] = True
+    _persist_auth_cookie(cookie_manager)
+    return AUTH_AUTHENTICATED
+
+
 def _resolve_pending_credentials(
     supabase: Any,
     cookie_manager: Any = None,
@@ -642,6 +679,10 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
         if explicit_logout_pending():
             return AUTH_SIGNED_OUT
 
+        established = _resolve_established_authenticated(cookie_manager)
+        if established is not None:
+            return established
+
         try:
             from src.auth_cookies import logout_blocks_auth_restore
 
@@ -657,13 +698,6 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
             clear_auth_session(keep_status=True, transition_reason="force_signed_out_flag")
             st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
             return AUTH_SIGNED_OUT
-
-    if st.session_state.get("user") is not None:
-        st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
-        st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
-        st.session_state["cadivor_auth_resolved"] = True
-        _persist_auth_cookie(cookie_manager)
-        return AUTH_AUTHENTICATED
 
     pending_credentials = _resolve_pending_credentials(supabase, cookie_manager)
     if pending_credentials:
