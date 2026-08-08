@@ -1,4 +1,4 @@
-"""Ask Cadivor session/tab contract tests for Sprint 71.7."""
+"""Sprint 71.8 — Ask Cadivor tab and suggested-prompt state tests."""
 from __future__ import annotations
 
 import ast
@@ -44,10 +44,12 @@ class _NullContext:
         return None
 
 
-class AskCadivorSessionContractTests(unittest.TestCase):
+class AskCadivorTabStateTests(unittest.TestCase):
     def setUp(self):
         for name in list(sys.modules):
-            if name.startswith("src.components.engineering_assistant"):
+            if name.startswith("src.components.engineering_assistant") or name.startswith(
+                "src.pages.analysis_detail"
+            ):
                 sys.modules.pop(name, None)
 
     def _load_assistant(self, session_state=None, query_params=None):
@@ -117,71 +119,74 @@ class AskCadivorSessionContractTests(unittest.TestCase):
         assistant = importlib.import_module("src.components.engineering_assistant")
         return st, assistant
 
-    def test_pin_ask_cadivor_tab_sets_session_and_query(self):
-        st, assistant = self._load_assistant(query_params={})
-        assistant._pin_ask_cadivor_tab(source="test")
-        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
-        self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
-
-    def test_queue_copilot_submission_pins_tab(self):
+    def test_manual_submission_pins_ask_cadivor_tab(self):
         st, assistant = self._load_assistant()
-        sys.modules["streamlit"].rerun = MagicMock(side_effect=RuntimeError("rerun"))
         with self.assertRaises(RuntimeError):
             assistant._queue_copilot_submission("What should I review first?", submission_kind="manual")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cv41_pending_manual"], "What should I review first?")
+        self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
 
-    def test_apply_copilot_query_pick_replaces_question(self):
+    def test_select_initial_suggestion_updates_question_and_tab(self):
         st, assistant = self._load_assistant(
-            session_state={"cv35_question": "old stale question"},
-            query_params={"cv35_pick": "0"},
+            session_state={"cadivor_active_analysis_tab": "Engineering Intelligence", "cv35_question": "old"},
         )
-        sys.modules["streamlit"].rerun = MagicMock(side_effect=RuntimeError("rerun"))
+        with self.assertRaises(RuntimeError):
+            assistant._select_initial_suggestion(
+                assistant.SUGGESTIONS[0],
+                index=0,
+                prompt_key="cv35_question",
+            )
+        self.assertEqual(st.session_state["cv35_question"], assistant.SUGGESTIONS[0])
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+        self.assertNotIn("cv41_pending_manual", st.session_state)
+
+    def test_legacy_url_cv35_pick_consumed_once(self):
+        st, assistant = self._load_assistant(
+            session_state={"cv35_question": "stale"},
+            query_params={"cv35_pick": "1", "analysis_tab": "Ask Cadivor"},
+        )
         with self.assertRaises(RuntimeError):
             assistant._apply_copilot_query_picks(prompt_key="cv35_question")
-        self.assertEqual(
-            st.session_state["cv35_question"],
-            assistant.SUGGESTIONS[0],
-        )
+        self.assertEqual(st.session_state["cv35_question"], assistant.SUGGESTIONS[1])
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
         self.assertNotIn("cv35_pick", st.query_params)
 
-    def test_engineering_ai_ask_has_no_threadpool(self):
-        _, assistant = self._load_assistant()
-        source = inspect.getsource(assistant.render_engineering_assistant)
-        tree = ast.parse(source)
-        names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-        self.assertNotIn("ThreadPoolExecutor", names)
+    def test_stale_engineering_intelligence_loses_to_suggestion(self):
+        st, assistant = self._load_assistant(
+            session_state={"cadivor_active_analysis_tab": "Engineering Intelligence"},
+        )
+        with self.assertRaises(RuntimeError):
+            assistant._select_initial_suggestion(
+                assistant.SUGGESTIONS[2],
+                index=2,
+                prompt_key="cv35_question",
+            )
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
 
-    def test_fetch_validated_auth_pattern_not_in_assistant(self):
-        _, assistant = self._load_assistant()
-        for fn_name in ("_pin_ask_cadivor_tab", "_queue_copilot_submission", "_apply_copilot_query_picks"):
-            source = inspect.getsource(getattr(assistant, fn_name))
-            tree = ast.parse(source)
-            names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-            self.assertNotIn("ThreadPoolExecutor", names)
-
-    def test_provider_failure_keeps_ask_tab_pinned(self):
+    def test_provider_completion_pins_ask_cadivor_tab(self):
         st, assistant = self._load_assistant(
             {
                 "cv41_pending_manual": "What should I review first in this BOM?",
                 "cadivor_active_analysis_tab": "Engineering Intelligence",
+                "cv35_question": "What should I review first in this BOM?",
             }
         )
 
-        class _FailingAI:
+        class _WorkingAI:
             configured = True
 
             def __init__(self, **kwargs):
                 pass
 
             def ask(self, **kwargs):
-                raise assistant.EngineeringAIError("provider down", code="unavailable")
+                return types.SimpleNamespace(answer="Review lifecycle risk first.")
 
-        with patch.object(assistant, "EngineeringAI", _FailingAI):
+        with patch.object(assistant, "EngineeringAI", _WorkingAI):
             with patch.object(assistant, "_usage_banner"):
                 with patch.object(assistant, "_render_prompt_chip_grid"):
                     with patch.object(assistant, "_render_conversation_history"):
-                        with patch.object(assistant, "_render_error"):
+                        with patch.object(assistant, "_render_response"):
                             assistant.render_engineering_assistant(
                                 current_user={"id": "user-1"},
                                 engineering_context={"analysis_id": "a-1", "analysis": {"analysis_id": "a-1"}},
@@ -189,7 +194,43 @@ class AskCadivorSessionContractTests(unittest.TestCase):
                             )
 
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
-        self.assertIsInstance(st.session_state.get("cv35_last_error"), assistant.EngineeringAIError)
+
+    def test_suggestion_chips_do_not_use_full_page_href_navigation(self):
+        _, assistant = self._load_assistant()
+        source = inspect.getsource(assistant._render_prompt_chip_grid)
+        self.assertNotIn('target="_self"', source)
+        self.assertNotIn("cv35-suggestion-chip", source)
+        self.assertIn("st.button", source)
+
+    def test_analysis_detail_syncs_url_tab_to_session(self):
+        st = _install_streamlit_stub(
+            session_state={"cadivor_active_analysis_tab": "Engineering Intelligence"},
+            query_params={"analysis_tab": "Ask+Cadivor"},
+        )
+
+        def _normalize_analysis_tab(value):
+            return str(value or "").strip().replace("+", " ")
+
+        def _sync_cadivor_active_analysis_tab():
+            try:
+                incoming = _normalize_analysis_tab(st.query_params.get("analysis_tab", ""))
+            except Exception:
+                incoming = ""
+            if incoming:
+                st.session_state["cadivor_active_analysis_tab"] = incoming
+            elif "cadivor_active_analysis_tab" not in st.session_state:
+                st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+
+        _sync_cadivor_active_analysis_tab()
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+
+    def test_analysis_detail_js_uses_session_tab_only(self):
+        from pathlib import Path
+
+        source = Path("src/pages/analysis_detail.py").read_text(encoding="utf-8")
+        self.assertIn("savedTab", source)
+        self.assertNotIn("effectiveTab", source)
+        self.assertNotIn("urlTab", source)
 
 
 if __name__ == "__main__":

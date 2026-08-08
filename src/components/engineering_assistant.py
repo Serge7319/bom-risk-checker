@@ -54,13 +54,14 @@ def _log_ask_cadivor(event: str, **details: Any) -> None:
     print(" ".join(parts), flush=True)
 
 
-def _pin_ask_cadivor_tab() -> None:
+def _pin_ask_cadivor_tab(*, source: str = "unknown") -> None:
     """Keep session, query, and tab-restore state on Ask Cadivor during copilot work."""
     st.session_state["cadivor_active_analysis_tab"] = ASK_CADIVOR_TAB
     try:
         st.query_params["analysis_tab"] = ASK_CADIVOR_TAB
     except Exception:
         pass
+    _log_ask_cadivor("tab_pinned", source=source)
 
 
 def _log_copilot_workflow(event: str, **details: Any) -> None:
@@ -666,8 +667,8 @@ def _queue_copilot_submission(question: str, *, submission_kind: str) -> None:
         st.session_state["cv47_followup_question"] = clean
 
     st.session_state["cv47_scroll_pending"] = True
-    _pin_ask_cadivor_tab()
-    _log_ask_cadivor("submission_received", kind=submission_kind, question_len=len(clean))
+    _pin_ask_cadivor_tab(source=f"queue_{submission_kind}")
+    _log_ask_cadivor("question_queued", kind=submission_kind, question_len=len(clean))
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
     _clear_review_state()
     st.rerun()
@@ -682,7 +683,19 @@ def _analysis_id_from_context(context: dict[str, Any]) -> str:
     return str(context.get("analysis_id") or analysis.get("analysis_id") or "")
 
 
+def _select_initial_suggestion(question: str, *, index: int, prompt_key: str) -> None:
+    """Populate the question field from a suggested prompt without auto-submitting."""
+    st.session_state[prompt_key] = question
+    st.session_state.pop("cv41_pending_manual", None)
+    st.session_state.pop("cv36_pending_followup", None)
+    _clear_review_state()
+    _pin_ask_cadivor_tab(source="suggestion_cv35")
+    _log_ask_cadivor("suggestion_selected", kind="cv35", index=index)
+    st.rerun()
+
+
 def _apply_copilot_query_picks(*, prompt_key: str) -> None:
+    """Consume legacy URL pick params once (backward compatibility for bookmarked links)."""
     try:
         query_params = st.query_params
     except Exception:
@@ -695,8 +708,9 @@ def _apply_copilot_query_picks(*, prompt_key: str) -> None:
             st.session_state[prompt_key] = SUGGESTIONS[idx]
             st.session_state.pop("cv41_pending_manual", None)
             st.session_state.pop("cv36_pending_followup", None)
-            _pin_ask_cadivor_tab()
             _clear_review_state()
+            _pin_ask_cadivor_tab(source="url_cv35_pick")
+            _log_ask_cadivor("suggestion_selected", kind="cv35", index=idx, source="url")
             try:
                 del query_params["cv35_pick"]
             except Exception:
@@ -716,6 +730,7 @@ def _apply_copilot_query_picks(*, prompt_key: str) -> None:
                 del query_params["cv36_pick"]
             except Exception:
                 pass
+            _log_ask_cadivor("suggestion_selected", kind="cv36", index=idx, source="url")
             _queue_follow_up(question)
 
 
@@ -723,26 +738,30 @@ def _render_prompt_chip_grid(
     items: Iterable[str],
     *,
     param_key: str,
-    analysis_id: str,
+    analysis_id: str = "",
     grid_class: str = "cv35-suggestion-grid",
+    prompt_key: str = "cv35_question",
 ) -> None:
-    chips: list[str] = []
-    for index, raw in enumerate(items):
-        label = str(raw or "").strip()
-        if not label:
-            continue
-        href = _href(
-            "Analysis Details",
-            analysis_id=analysis_id,
-            analysis_tab="Ask Cadivor",
-            **{param_key: str(index)},
-        )
-        chips.append(
-            f'<a class="cv35-suggestion-chip" href="{html.escape(href, quote=True)}" target="_self">'
-            f"{html.escape(label)}</a>"
-        )
-    if chips:
-        st.html(f'<div class="{grid_class}">{"".join(chips)}</div>')
+    """Render suggested questions as in-app Streamlit buttons (no full-page navigation)."""
+    labels = [str(raw or "").strip() for raw in items]
+    labels = [label for label in labels if label]
+    if not labels:
+        return
+
+    cols_per_row = 2 if "duo" in grid_class else 3
+    for row_start in range(0, len(labels), cols_per_row):
+        row_labels = labels[row_start : row_start + cols_per_row]
+        cols = st.columns(len(row_labels))
+        for col_idx, label in enumerate(row_labels):
+            index = row_start + col_idx
+            with cols[col_idx]:
+                button_key = f"{param_key}_btn_{index}"
+                if st.button(label, key=button_key, use_container_width=True):
+                    if param_key == "cv36_pick":
+                        _log_ask_cadivor("suggestion_selected", kind="cv36", index=index)
+                        _queue_follow_up(label)
+                    else:
+                        _select_initial_suggestion(label, index=index, prompt_key=prompt_key)
 
 
 def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -> None:
@@ -1219,6 +1238,8 @@ def render_engineering_assistant(
         .cv35-suggestion-grid--duo{grid-template-columns:repeat(2,minmax(0,1fr))}
         .cv35-suggestion-chip{display:flex;align-items:flex-start;min-height:44px;padding:10px 12px;border:1px solid #94a3b8;border-radius:10px;background:#fff;color:#0f172a;font-size:12px;font-weight:650;line-height:1.45;text-decoration:none;box-shadow:0 4px 12px rgba(15,23,42,.04);white-space:normal;overflow-wrap:anywhere}
         .cv35-suggestion-chip:hover{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
+        div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"]>button[kind="secondary"],div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"]>button{border:1px solid #94a3b8!important;border-radius:10px!important;background:#fff!important;color:#0f172a!important;font-size:12px!important;font-weight:650!important;line-height:1.45!important;min-height:44px!important;white-space:normal!important;text-align:left!important;padding:10px 12px!important;box-shadow:0 4px 12px rgba(15,23,42,.04)!important}
+        div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"]>button:hover{border-color:#2563eb!important;background:#eff6ff!important;color:#1d4ed8!important}
         @media(max-width:900px){.cv35-suggestion-grid,.cv35-suggestion-grid--duo{grid-template-columns:1fr}}
         </style>
         <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
@@ -1289,7 +1310,7 @@ def render_engineering_assistant(
     )
     submitted_question = cleaned_question
     if submit_requested:
-        _pin_ask_cadivor_tab()
+        _pin_ask_cadivor_tab(source="execute_copilot_question")
         _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
         _log_ask_cadivor(
             "submission_received",
@@ -1333,7 +1354,7 @@ def render_engineering_assistant(
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
                 st.session_state[prompt_key] = ""
-                _pin_ask_cadivor_tab()
+                _pin_ask_cadivor_tab(source="provider_complete")
                 _log_ask_cadivor(
                     "response_committed",
                     active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
@@ -1342,7 +1363,7 @@ def render_engineering_assistant(
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:
                 _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
-                _pin_ask_cadivor_tab()
+                _pin_ask_cadivor_tab(source="provider_failed")
                 st.session_state["cv35_last_error"] = exc
                 _clear_copilot_workflow_protection()
                 st.session_state.pop("cv36_pending_followup", None)
@@ -1351,7 +1372,7 @@ def render_engineering_assistant(
                 progress.update(label="Cadivor could not complete the review", state="error")
             except Exception as exc:
                 _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
-                _pin_ask_cadivor_tab()
+                _pin_ask_cadivor_tab(source="provider_failed")
                 # A response may already have been generated and saved before a
                 # secondary operation (history persistence, cleanup, etc.) fails.
                 # Do not show a false red failure banner when the visible answer

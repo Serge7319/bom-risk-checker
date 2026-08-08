@@ -75,6 +75,23 @@ def _safe(value: Any, fallback: str = "—") -> str:
     return text if text else fallback
 
 
+def _normalize_analysis_tab(value: Any) -> str:
+    """Normalize analysis_tab query values (including plus-encoded spaces)."""
+    return str(value or "").strip().replace("+", " ")
+
+
+def _sync_cadivor_active_analysis_tab() -> None:
+    """Treat cadivor_active_analysis_tab as authoritative after ingesting URL input once per run."""
+    try:
+        incoming = _normalize_analysis_tab(st.query_params.get("analysis_tab", ""))
+    except Exception:
+        incoming = ""
+    if incoming:
+        st.session_state["cadivor_active_analysis_tab"] = incoming
+    elif "cadivor_active_analysis_tab" not in st.session_state:
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+
+
 def _num(value: Any, default: int = 0) -> int:
     try:
         if value is None or value == "":
@@ -887,6 +904,8 @@ def render_analysis_detail(
             analysis_id=analysis_id,
         )
 
+    _sync_cadivor_active_analysis_tab()
+
     (
         advisor_tab,
         overview_tab,
@@ -909,10 +928,8 @@ def render_analysis_detail(
         "Ask Cadivor",
     ])
 
-    # Sprint 50.1.2 — preserve the selected analysis tab while navigating away.
-    # The tab name is copied into session_state on the next Streamlit rerun; the
-    # client hook only carries that value through internal navigation and does
-    # not alter any scrolling behavior.
+    # Sprint 50.1.2 / 71.8 — session state is the authoritative active-tab value.
+    # URL analysis_tab is ingested above; JavaScript only restores the baked savedTab.
     saved_analysis_tab = _safe(
         st.session_state.get("cadivor_active_analysis_tab"),
         "Engineering Intelligence",
@@ -925,14 +942,6 @@ def render_analysis_detail(
           const doc = parentWindow.document;
           const savedTab = {saved_analysis_tab!r};
           const analysisId = {str(analysis_id)!r};
-          const urlTab = (() => {{
-            try {{
-              return new URL(parentWindow.location.href).searchParams.get('analysis_tab') || '';
-            }} catch (error) {{
-              return '';
-            }}
-          }})();
-          const effectiveTab = urlTab || savedTab;
 
           const tabs = () => Array.from(doc.querySelectorAll('button[data-baseweb="tab"]'));
           const tabName = (tab) => (tab.innerText || tab.textContent || '').trim();
@@ -948,9 +957,9 @@ def render_analysis_detail(
           }};
           const restoreTab = () => {{
             const available = tabs();
-            const target = available.find((tab) => tabName(tab) === effectiveTab);
+            const target = available.find((tab) => tabName(tab) === savedTab);
             if (target && target.getAttribute('aria-selected') !== 'true') target.click();
-            decorateLinks(target ? tabName(target) : effectiveTab);
+            decorateLinks(target ? tabName(target) : savedTab);
             available.forEach((tab) => {{
               if (tab.dataset.cv5012Bound === '1') return;
               tab.dataset.cv5012Bound = '1';

@@ -2262,7 +2262,7 @@ def run_authenticated_app() -> None:
     # Query values are treated only as navigation inputs; the durable browser-session
     # context lives in st.session_state and is never written to the database.
     _incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
-    _incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "")
+    _incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "").replace("+", " ")
     if _incoming_analysis_id:
         st.session_state["cadivor_active_analysis_id"] = _incoming_analysis_id
         st.session_state["analysis_id"] = _incoming_analysis_id
