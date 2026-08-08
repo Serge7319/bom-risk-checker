@@ -54,6 +54,7 @@ from src.health_score import calculate_bom_health_score, generate_executive_summ
 from src.plans import PLANS, get_plan, validate_bom_against_plan, resolve_effective_plan, format_limit
 from src.alternative_engine import compare_parts, suggest_alternatives_v2, rank_alternatives
 from src.auth_bootstrap import get_supabase_client, log_startup_phase, qp_value as _qp_value
+from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
 from src.auth_state import (
     AUTH_AUTHENTICATED,
     AUTH_SIGNED_OUT,
@@ -227,12 +228,19 @@ def load_user_data():
     user = st.session_state["user"]
     user_id = user.id
 
-    response = (
-        supabase.table("users")
-        .select("*")
-        .eq("id", user_id)
-        .execute()
-    )
+    try:
+        response = execute_supabase_read(
+            supabase.table("users")
+            .select("*")
+            .eq("id", user_id),
+            operation="load_user_data",
+        )
+    except SupabaseReadTransportError:
+        st.warning(
+            "Cadivor could not reach the database right now. "
+            "Please wait a moment and use **Rerun** or refresh the page."
+        )
+        stop_authenticated_page()
 
     if response.data:
         return response.data[0]
@@ -1569,7 +1577,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
 
 def run_authenticated_app() -> None:
-    global current_user, is_admin, analysis_history, app_mode, saved_bom_count
+    global current_user, is_admin, app_mode, saved_bom_count
     global active_workspace_id, active_workspace_name, active_workspace_role
 
     try:
@@ -1616,16 +1624,6 @@ def run_authenticated_app() -> None:
         except Exception:
             pass
         st.info("Your 14-day Cadivor trial has ended. Your workspace is now on Starter; saved analyses remain available.")
-
-
-    analysis_history = (
-        supabase.table("analyses")
-        .select("*")
-        .eq("user_id", current_user["id"])
-        .order("created_at", desc=True)
-        .limit(10)
-        .execute()
-    )
 
 
     @st.cache_data(ttl=3600, show_spinner=False)
@@ -2234,15 +2232,18 @@ def run_authenticated_app() -> None:
         st.session_state["active_workspace_name"] = active_workspace_name
         st.session_state["active_workspace_role"] = active_workspace_role
 
-    saved_bom_count_response = (
-        _workspace_query(
-            supabase.table("analyses")
-            .select("id", count="exact")
+    try:
+        saved_bom_count_response = execute_supabase_read(
+            _workspace_query(
+                supabase.table("analyses")
+                .select("id", count="exact")
+            )
+            .eq("user_id", current_user["id"]),
+            operation="saved_bom_count",
         )
-        .eq("user_id", current_user["id"])
-        .execute()
-    )
-    saved_bom_count = saved_bom_count_response.count or 0
+        saved_bom_count = saved_bom_count_response.count or 0
+    except SupabaseReadTransportError:
+        saved_bom_count = 0
 
     # Single-route authority. Query parameters are consumed only as an initial deep
     # link; internal navigation writes cadivor_route directly. Every shell and page
