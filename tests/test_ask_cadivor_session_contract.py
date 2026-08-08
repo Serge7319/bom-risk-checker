@@ -6,6 +6,7 @@ import inspect
 import sys
 import types
 import unittest
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 
@@ -24,6 +25,12 @@ def _install_streamlit_stub(session_state: dict | None = None, query_params: dic
     st.button = MagicMock(return_value=False)
     st.caption = MagicMock()
     st.rerun = MagicMock(side_effect=RuntimeError("rerun"))
+
+    @contextmanager
+    def _container(**kwargs):
+        yield None
+
+    st.container = _container
 
     components = types.ModuleType("streamlit.components.v1")
     components.html = MagicMock()

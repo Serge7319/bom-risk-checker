@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import re
+from pathlib import Path
 from typing import Any, Iterable
 
 import streamlit as st
@@ -188,15 +189,77 @@ def _secret(name: str, default: str = "") -> str:
     return str(value or default)
 
 
+def _current_script_run_id() -> str:
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            return "__no_ctx__"
+        run_id = getattr(ctx, "script_run_id", None)
+        return str(run_id) if run_id is not None else str(id(ctx))
+    except Exception:
+        return "__unknown__"
+
+
+def _inject_ask_cadivor_v2_styles(*, force: bool = False) -> bool:
+    """Inject Ask Cadivor v2 CSS once per script run (reinject every rerun)."""
+    run_id = _current_script_run_id()
+    run_key = "_cadivor_ask_cadivor_v2_run_id"
+    if not force and st.session_state.get(run_key) == run_id:
+        return False
+
+    css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "ask_cadivor_v2.css"
+    try:
+        css = css_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not css.strip():
+        return False
+
+    st.markdown(
+        f"<style id='cadivor-ask-cadivor-v2-css'>{css}</style>",
+        unsafe_allow_html=True,
+    )
+    st.session_state[run_key] = run_id
+    return True
+
+
+def _render_context_header(context: dict[str, Any]) -> None:
+    summary = context.get("summary") or {}
+    project = html.escape(str(context.get("project_name") or "Saved BOM"))
+    health = html.escape(str(summary.get("health_score") or "—"))
+    parts = html.escape(str(summary.get("total_parts") or "—"))
+    posture = html.escape(str(summary.get("release_posture") or "Engineering review"))
+    st.markdown(
+        f"""
+        <header class="cv-assistant-context-header">
+          <div class="cv-assistant-context-main">
+            <div class="cv-assistant-eyebrow">Ask Cadivor</div>
+            <h2 class="cv-assistant-context-title">Engineering copilot for this saved BOM</h2>
+            <p class="cv-assistant-context-copy">Cadivor interprets saved evidence and recommends next engineering actions for this analysis.</p>
+          </div>
+          <div class="cv-assistant-context-meta">
+            <span class="cv-badge cv-badge-neutral">{project}</span>
+            <span class="cv-assistant-meta-item">Health {health}</span>
+            <span class="cv-assistant-meta-item">{parts} parts</span>
+            <span class="cv-assistant-meta-item">{posture}</span>
+          </div>
+        </header>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _usage_banner(status) -> None:
     if status.is_admin:
-        text = "Admin access · AI usage limits are bypassed"
+        text = "Admin access · AI usage limits bypassed"
         cls = "normal"
     else:
         text = f"{status.remaining:,} of {status.allowance:,} AI credits remaining this month"
         cls = status.warning_level
     st.markdown(
-        f'<div class="cv35-usage {cls}"><strong>AI usage</strong><span>{html.escape(text)}</span></div>',
+        f'<div class="cv35-usage cv-assistant-usage {cls}"><strong>AI usage</strong><span>{html.escape(text)}</span></div>',
         unsafe_allow_html=True,
     )
     if status.warning_level in {"notice", "high", "critical"}:
@@ -826,14 +889,19 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     st.session_state["cv36_followup_ready_for"] = ready_for
     button_generation = _followup_button_generation(valid_suggestions)
 
-    st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
-    _render_prompt_chip_grid(
-        valid_suggestions,
-        param_key="cv36_pick",
-        analysis_id=analysis_id,
-        grid_class="cv35-suggestion-grid cv35-suggestion-grid--duo",
-        button_generation=button_generation,
+    st.markdown(
+        '<div class="cv-assistant-section-label cv35-section-label">Continue the review</div>',
+        unsafe_allow_html=True,
     )
+    with st.container(key="cv_assistant_followups"):
+        st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
+        _render_prompt_chip_grid(
+            valid_suggestions,
+            param_key="cv36_pick",
+            analysis_id=analysis_id,
+            grid_class="cv35-suggestion-grid cv35-suggestion-grid--duo",
+            button_generation=button_generation,
+        )
 
     st.markdown('<div class="cv35-section-label">Ask a different follow-up</div>', unsafe_allow_html=True)
     st.caption("Ask any new engineering question about this assessment or the BOM. You are not limited to the suggested questions.")
@@ -1212,6 +1280,7 @@ def render_engineering_assistant(
     engineering_context: Any,
     selected_component: str = "",
 ) -> None:
+    _inject_ask_cadivor_v2_styles()
     _restore_copilot_workflow_snapshot(st.session_state.get("cv48_copilot_snapshot"))
     try:
         context = (
@@ -1223,85 +1292,8 @@ def render_engineering_assistant(
         context = {}
     status = get_ai_usage_status(st.session_state, current_user or {})
 
-    st.markdown(
-        """
-        <style id="cadivor-engineering-assistant-43">
-        .cv35-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f6f9ff 62%,#eaf2ff);border-radius:24px;padding:22px;margin:2px 0 14px;box-shadow:0 18px 50px rgba(37,99,235,.08)}
-        .cv35-kicker,.cv35-answer-label,.cv35-section-label,.cv35-card-kicker{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important}.cv35-hero h2{font-size:27px;line-height:1.1;letter-spacing:-.035em;color:#0f172a!important;margin:0 0 8px}.cv35-hero p{font-size:13px;line-height:1.6;color:#52647a!important;font-weight:700;margin:0;max-width:900px}
-        .cv35-usage{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin:0 0 12px}.cv35-usage strong{font-size:11px;color:#0f172a!important}.cv35-usage span{font-size:10px;color:#52647a!important;font-weight:800}.cv35-usage.high,.cv35-usage.critical{border-color:#fde68a;background:#fffbeb}.cv35-usage.reached{border-color:#fecaca;background:#fef2f2}
-        .cv35-message{display:flex;align-items:flex-start;gap:12px;border-radius:16px;padding:14px 15px;margin-top:14px}.cv35-message-error{border:1px solid #fecaca;background:#fff7f7}.cv35-message-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-weight:950;flex:0 0 auto}.cv35-message strong{display:block;color:#7f1d1d!important;font-size:13px;margin-bottom:3px}.cv35-message p{margin:0;color:#7f1d1d!important;font-size:12px;line-height:1.5}
-        .cv35-review-shell{border:1px solid #bfdbfe;background:linear-gradient(145deg,#fff,#f8fbff);border-radius:22px;padding:20px 21px;margin:18px 0 16px;box-shadow:0 16px 42px rgba(15,23,42,.06)}
-        .cv35-question{border-left:4px solid #60a5fa;background:#f3f8ff;border-radius:12px;padding:12px 14px;margin-bottom:18px;color:#0f172a;font-size:13px;font-weight:800}.cv35-question small{display:block;color:#64748b;font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}.cv35-review-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.cv35-review-heading h2{font-size:24px;letter-spacing:-.035em;color:#0f172a!important;margin:7px 0 8px}.cv35-review-status{border:1px solid #bbf7d0;background:#ecfdf5;color:#047857;border-radius:999px;padding:7px 10px;font-size:10px;font-weight:900;white-space:nowrap}.cv35-assessment-copy{font-size:14px;line-height:1.7;color:#334155;font-weight:650;max-width:1100px}
-        .cv35-section-label{margin:18px 0 9px}.cv35-evidence-card{min-height:150px;border:1px solid #dbeafe;background:#fff;border-radius:17px;padding:15px 16px;margin-bottom:10px;box-shadow:0 9px 24px rgba(15,23,42,.04)}.cv35-evidence-card:hover{border-color:#93c5fd;transform:translateY(-1px)}.cv35-evidence-part{font-size:14px;font-weight:950;color:#0f172a;margin-bottom:7px}.cv35-evidence-detail{font-size:12px;line-height:1.58;color:#52647a;font-weight:650}
-        .cv35-action-card,.cv35-confidence-card{height:100%;min-height:165px;border:1px solid #dbeafe;background:#fff;border-radius:19px;padding:17px 18px;margin-top:10px}.cv35-action-copy{font-size:13px;line-height:1.65;color:#334155;font-weight:680;margin-top:10px}.cv35-confidence-top{display:flex;align-items:center;justify-content:space-between;color:#475569;font-size:11px;font-weight:900}.cv35-confidence-top strong{font-size:24px;color:#0f172a}.cv35-confidence-track{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:13px 0 10px}.cv35-confidence-track div{height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa)}.cv35-confidence-card.high .cv35-confidence-track div{background:linear-gradient(90deg,#059669,#34d399)}.cv35-confidence-card.low .cv35-confidence-track div{background:linear-gradient(90deg,#d97706,#fbbf24)}.cv35-confidence-label{font-size:15px;font-weight:950;color:#0f172a;margin-bottom:6px}.cv35-confidence-detail{font-size:11px;line-height:1.5;color:#64748b;font-weight:650}
-        .cv35-mode-note{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px 13px;margin-top:12px;color:#52647a;font-size:11px;font-weight:700}
-        .cv36-history-turn{display:flex;gap:12px;border-bottom:1px solid #e2e8f0;padding:13px 2px}.cv36-history-turn:last-child{border-bottom:0}.cv36-history-number{display:grid;place-items:center;width:25px;height:25px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:950;flex:0 0 auto}.cv36-history-turn small{display:block;color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:.08em}.cv36-history-turn strong{display:block;color:#0f172a;font-size:12px;margin:3px 0 5px}.cv36-history-turn p{color:#52647a;font-size:11px;line-height:1.5;margin:0}.cv36-followup-note{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 13px;margin:10px 0;color:#1e40af;font-size:11px;font-weight:800}
-
-        .cv38-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:18px}.cv38-kpi{border:1px solid #dbeafe;background:#fff;border-radius:14px;padding:12px 13px}.cv38-kpi span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:900}.cv38-kpi strong{display:block;font-size:17px;color:#0f172a;margin:5px 0 2px}.cv38-kpi small{font-size:10px;color:#64748b;font-weight:650}
-        .cv35-evidence-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px}.cv35-evidence-head span{font-size:9px;font-weight:900;color:#2563eb;background:#eff6ff;border-radius:999px;padding:5px 8px}.cv38-evidence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cv38-evidence-metric{border-top:1px solid #eef2f7;padding-top:7px}.cv38-evidence-metric span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:850}.cv38-evidence-metric strong{display:block;font-size:11px;color:#334155;margin-top:3px;line-height:1.35}
-        .cv38-action-panel{margin-top:18px!important}.cv38-action-list{margin-top:12px}.cv38-action-step{display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #eef2f7;padding:10px 0}.cv38-action-step:last-child{border-bottom:0}.cv38-action-step span{display:grid;place-items:center;width:23px;height:23px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:950;flex:0 0 auto}.cv38-action-step p{margin:1px 0 0;font-size:12px;line-height:1.5;color:#334155;font-weight:700}
-
-        .cv39-decision-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#f5f9ff);border-radius:22px;padding:20px 21px;margin:16px 0 10px;box-shadow:0 16px 42px rgba(15,23,42,.06)}.cv39-decision-card.ready{border-color:#86efac;background:linear-gradient(135deg,#fff,#ecfdf5)}.cv39-decision-card.critical{border-color:#fca5a5;background:linear-gradient(135deg,#fff,#fff1f2)}.cv39-decision-top{display:flex;align-items:flex-start;justify-content:space-between;gap:15px}.cv39-decision-top h2{font-size:26px;color:#0f172a!important;letter-spacing:-.035em;margin:6px 0 12px}.cv39-status-badge{border:1px solid #fbbf24;background:#fef3c7;color:#78350f;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:950;box-shadow:0 2px 8px rgba(146,64,14,.08)}.cv39-decision-card.ready .cv39-status-badge{border-color:#34d399;background:#d1fae5;color:#065f46}.cv39-decision-card.critical .cv39-status-badge{border-color:#f87171;background:#fee2e2;color:#991b1b}.cv39-decision-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 14px}.cv39-decision-grid div{border:1px solid #dbeafe;background:rgba(255,255,255,.9);border-radius:13px;padding:11px 12px}.cv39-decision-grid span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:#64748b;font-weight:900}.cv39-decision-grid strong{display:block;color:#0f172a;font-size:14px;margin-top:5px}.cv39-decision-card>p{margin:0;color:#334155;font-size:13px;line-height:1.6;font-weight:650}.cv39-progress-wrap{border:1px solid #dbeafe;background:#fff;border-radius:14px;padding:10px 14px;margin-bottom:8px}.cv39-progress-wrap>div:first-child{display:flex;justify-content:space-between;font-size:11px;color:#334155}.cv39-progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:7px}.cv39-progress i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv39-impact-card{border:1px solid #dbeafe;background:#fff;border-radius:18px;padding:13px 16px;margin-bottom:8px}.cv39-impact-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;border-bottom:1px solid #eef2f7;padding:9px 0}.cv39-impact-row:last-of-type{border-bottom:0}.cv39-impact-row span{font-size:11px;color:#64748b;font-weight:850}.cv39-impact-row strong{font-size:12px;color:#0f172a}.cv39-impact-row small{grid-column:1/-1;color:#64748b;font-size:9px}.cv39-impact-card>p{font-size:9px;color:#64748b;margin:9px 0 0}.cv39-timeline-step{min-height:118px;border:1px solid #dbeafe;background:#fff;border-radius:15px;padding:11px 11px;position:relative;box-shadow:0 5px 16px rgba(15,23,42,.025)}.cv39-timeline-step b{display:grid;place-items:center;width:22px;height:22px;border-radius:999px;background:#2563eb;color:#fff;font-size:9px;margin-bottom:8px}.cv39-timeline-step strong{display:block;color:#0f172a;font-size:11px}.cv39-timeline-step p{font-size:10px;line-height:1.38;color:#64748b;margin:6px 0 0}
-        .cv35-evidence-head span{border:1px solid #93c5fd!important;background:#dbeafe!important;color:#1d4ed8!important;padding:5px 9px!important}.cv35-evidence-card{min-height:138px!important;margin-bottom:8px!important}.cv35-section-label{margin:14px 0 8px!important}
-        div[data-testid="stForm"] button[kind="primary"],div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]{background:#2563eb!important;border:1px solid #2563eb!important;color:#fff!important;font-weight:800!important;box-shadow:0 8px 20px rgba(37,99,235,.22)!important;opacity:1!important}div[data-testid="stForm"] button[kind="primary"] p,div[data-testid="stForm"] button[kind="primary"] span,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"] p,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"] span{color:#fff!important;opacity:1!important}div[data-testid="stForm"] button[kind="primary"]:hover,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:hover{background:#1d4ed8!important;border-color:#1d4ed8!important;color:#fff!important}div[data-testid="stForm"] button[kind="primary"]:focus,div[data-testid="stForm"] button[kind="primary"]:active,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:focus,div[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:active{background:#1e40af!important;border-color:#1e40af!important;color:#fff!important;box-shadow:0 0 0 3px rgba(96,165,250,.35)!important}div[data-testid="stForm"] button:disabled{background:#93c5fd!important;border-color:#93c5fd!important;color:#fff!important;opacity:.9!important}div[data-testid="stForm"] button:disabled p,div[data-testid="stForm"] button:disabled span{color:#fff!important;opacity:1!important}
-        /* Sprint 43 final polish */
-        .cv39-progress-wrap{margin-bottom:4px!important}.cv35-section-label{margin:11px 0 7px!important}
-        .cv39-impact-card,.cv35-confidence-card{min-height:160px;height:100%;margin-top:0!important}
-        .cv35-evidence-card{min-height:126px!important;padding:13px 14px!important;transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}.cv35-evidence-card:hover{box-shadow:0 12px 28px rgba(37,99,235,.08)}
-        .cv38-evidence-metric span{display:flex!important;align-items:center;gap:5px}.cv38-evidence-metric span i{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:5px;background:#eff6ff;color:#2563eb;font-size:9px;font-style:normal;font-weight:950;flex:0 0 auto}.cv38-evidence-metric strong{font-size:11px!important}
-        .cv39-timeline-step{min-height:102px!important;padding:10px!important}.cv39-timeline-step b{width:20px!important;height:20px!important;margin-bottom:6px!important}.cv39-timeline-step p{font-size:9.5px!important;line-height:1.34!important;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-        div[data-testid="stFormSubmitButton"] button,div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button,.stFormSubmitButton button{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important;-webkit-text-fill-color:#fff!important;font-weight:850!important}
-        div[data-testid="stFormSubmitButton"] button *,div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button *,.stFormSubmitButton button *{color:#fff!important;-webkit-text-fill-color:#fff!important;fill:#fff!important;stroke:#fff!important;opacity:1!important}
-        div[data-testid="stFormSubmitButton"] button:hover,div[data-testid="stFormSubmitButton"] button:focus,div[data-testid="stFormSubmitButton"] button:active{background:#1d4ed8!important;border-color:#1d4ed8!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
-        div[data-testid="stFormSubmitButton"] button:disabled,div[data-testid="stFormSubmitButton"] button[disabled]{background:#60a5fa!important;border-color:#60a5fa!important;color:#fff!important;-webkit-text-fill-color:#fff!important;opacity:1!important}
-        div[data-testid="stFormSubmitButton"] button:disabled *,div[data-testid="stFormSubmitButton"] button[disabled] *{color:#fff!important;-webkit-text-fill-color:#fff!important;opacity:1!important}
-        div[data-testid="stForm"]{border-color:#dbeafe!important;background:#fbfdff!important}
-        /* Sprint 45 readability: responsive type scale for laptop and small-screen use. */
-        .cv35-kicker,.cv35-answer-label,.cv35-section-label,.cv35-card-kicker{font-size:clamp(10px,.72vw,12px)!important}
-        .cv39-decision-top h2{font-size:clamp(27px,2vw,34px)!important}.cv39-decision-card>p{font-size:clamp(14px,.95vw,16px)!important;line-height:1.65!important}
-        .cv39-decision-grid span,.cv38-evidence-metric span{font-size:clamp(10px,.68vw,11px)!important}.cv39-decision-grid strong{font-size:clamp(14px,.95vw,16px)!important}
-        .cv38-evidence-metric strong{font-size:clamp(12px,.82vw,14px)!important;line-height:1.45!important}.cv35-evidence-part{font-size:clamp(14px,.95vw,16px)!important}
-        .cv39-impact-row span{font-size:clamp(11px,.75vw,13px)!important}.cv39-impact-row strong{font-size:clamp(12px,.82vw,14px)!important}.cv39-impact-row small{font-size:clamp(10px,.68vw,11px)!important}
-        .cv39-timeline-step strong{font-size:clamp(11px,.75vw,13px)!important}.cv39-timeline-step p{font-size:clamp(10px,.68vw,12px)!important;line-height:1.45!important}
-        .cv35-confidence-top{font-size:clamp(11px,.75vw,13px)!important}.cv35-confidence-label{font-size:clamp(15px,1vw,17px)!important}.cv35-confidence-detail{font-size:clamp(11px,.75vw,13px)!important}
-        div[data-testid="stForm"] label,div[data-testid="stTextArea"] label{font-size:14px!important} div[data-testid="stTextArea"] textarea{font-size:15px!important;line-height:1.5!important}
-        @media(max-width:1100px){.cv35-evidence-card{padding:14px!important}.cv39-decision-card{padding:18px!important}.cv39-timeline-step{min-height:auto!important}}
-        @media(max-width:900px){.cv38-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv38-evidence-grid{grid-template-columns:1fr}.cv39-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv39-decision-top{display:block}.cv39-status-badge{display:inline-block;margin-bottom:8px}.cv39-timeline-step{min-height:auto}.cv35-review-heading{display:block}.cv35-review-status{display:inline-block;margin-top:6px}.cv35-evidence-card{min-height:auto!important}}
-
-        /* Sprint 49 — conversational answer-first experience */
-        .cv50-exchange{scroll-margin-top:76px;margin:12px 0 10px;border:1px solid #bfdbfe;border-radius:17px;background:linear-gradient(135deg,#eff6ff 0%,#f8fbff 100%);padding:14px 17px;box-shadow:0 8px 24px rgba(37,99,235,.055)}
-        .cv50-exchange-top{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.cv50-you-asked{min-width:0}.cv50-you-asked span{display:block;font-size:9px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb;margin-bottom:4px}.cv50-you-asked strong{display:block;font-size:clamp(14px,1vw,17px);line-height:1.42;color:#0f172a;overflow-wrap:anywhere}.cv50-exchange-badges{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.cv50-type,.cv50-saved{display:inline-flex;align-items:center;min-height:26px;border-radius:999px;padding:5px 10px;font-size:10px;font-weight:850;white-space:nowrap}.cv50-type{border:1px solid #bfdbfe;background:#fff;color:#1d4ed8}.cv50-saved{border:1px solid #d1fae5;background:#ecfdf5;color:#047857}.cv50-type-release{border-color:#ddd6fe;color:#6d28d9;background:#f5f3ff}.cv50-type-evidence{border-color:#bae6fd;color:#0369a1;background:#f0f9ff}.cv50-type-supplier{border-color:#fed7aa;color:#c2410c;background:#fff7ed}.cv50-type-procurement{border-color:#fde68a;color:#a16207;background:#fffbeb}.cv50-type-schedule{border-color:#c7d2fe;color:#4338ca;background:#eef2ff}.cv50-type-lifecycle{border-color:#fecdd3;color:#be123c;background:#fff1f2}.cv50-type-inventory{border-color:#bbf7d0;color:#15803d;background:#f0fdf4}.cv50-type-explanation{border-color:#e2e8f0;color:#475569;background:#f8fafc}
-        .cv50-supporting-divider{display:flex;align-items:center;gap:12px;margin:18px 2px 12px}.cv50-supporting-divider span{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#64748b;white-space:nowrap}.cv50-supporting-divider i{display:block;height:1px;background:#dbeafe;flex:1}
-        @media(max-width:760px){.cv50-exchange-top{flex-direction:column}.cv50-exchange-badges{justify-content:flex-start}.cv50-saved{display:none}}
-        .cv49-answer-card{margin:12px 0 16px;border:1px solid #93c5fd;border-radius:22px;background:linear-gradient(135deg,#eff6ff 0%,#ffffff 58%,#f8fafc 100%);padding:22px 24px;box-shadow:0 12px 34px rgba(37,99,235,.08)}
-        .cv49-answer-kicker{font-size:clamp(10px,.72vw,12px);font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb;margin-bottom:10px}
-        .cv49-answer-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.45fr);gap:26px;align-items:start}
-        .cv49-answer-main h2{margin:0 0 8px;font-size:clamp(25px,1.8vw,34px);line-height:1.12;letter-spacing:-.035em;color:#0f172a}
-        .cv49-answer-main>p{margin:0 0 13px;font-size:clamp(14px,.96vw,16px);line-height:1.62;color:#334155;font-weight:610}
-        .cv49-answer-main ul{list-style:none;margin:0;padding:0;display:grid;gap:7px}.cv49-answer-main li{display:flex;gap:9px;align-items:flex-start}.cv49-answer-main li span{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:950;flex:0 0 auto}.cv49-answer-main li p{margin:0;font-size:clamp(12px,.82vw,14px);line-height:1.48;color:#475569;font-weight:650}
-        .cv49-answer-side{border-left:1px solid #bfdbfe;padding-left:22px;display:grid;gap:6px}.cv49-answer-side span{font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#64748b}.cv49-answer-side strong{font-size:clamp(28px,2vw,38px);line-height:1;color:#0f172a}.cv49-answer-side>p{margin:1px 0 0;font-size:clamp(12px,.82vw,14px);line-height:1.48;color:#334155;font-weight:700}.cv49-answer-track{height:7px;border-radius:999px;background:#dbeafe;overflow:hidden;margin:2px 0 12px}.cv49-answer-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2563eb,#60a5fa)}
-        @media(max-width:900px){.cv49-answer-grid{grid-template-columns:1fr}.cv49-answer-side{border-left:0;border-top:1px solid #bfdbfe;padding-left:0;padding-top:15px}}
-
-        /* Sprint 46 — explainability, compact evidence, responsive readability */
-        .cv46-why{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:18px;border:1px solid #c7d2fe;background:linear-gradient(135deg,#f8faff,#eef4ff);border-radius:20px;padding:18px 20px;margin:10px 0 14px}.cv46-why>div>span{font-size:clamp(10px,.7vw,12px);font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb}.cv46-why h3{font-size:clamp(18px,1.35vw,24px);line-height:1.2;letter-spacing:-.025em;color:#0f172a;margin:5px 0 7px}.cv46-why>div>p{font-size:clamp(13px,.88vw,15px);line-height:1.62;color:#475569;margin:0}.cv46-why ol{list-style:none;padding:0;margin:0;display:grid;gap:7px}.cv46-why li{display:flex;gap:9px;align-items:flex-start;border:1px solid #dbeafe;background:rgba(255,255,255,.86);border-radius:11px;padding:8px 10px}.cv46-why li span{display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:#2563eb;color:#fff;font-size:10px;font-weight:950;flex:0 0 auto}.cv46-why li p{margin:1px 0 0;font-size:clamp(11px,.76vw,13px);line-height:1.42;color:#334155;font-weight:720}
-        .cv46-confidence-drivers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}.cv46-confidence-drivers>div{border-top:1px solid #e2e8f0;padding-top:7px;min-width:0}.cv46-confidence-drivers span{display:block;font-size:clamp(9px,.62vw,10px);font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:#64748b}.cv46-confidence-drivers strong{display:block;font-size:clamp(12px,.84vw,14px);color:#0f172a;margin:2px 0}.cv46-confidence-drivers small{display:block;font-size:clamp(9px,.62vw,11px);line-height:1.35;color:#64748b}
-        .cv46-evidence-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:8px}.cv46-evidence-card{border:1px solid #dbeafe;background:#fff;border-radius:15px;padding:12px;min-width:0;box-shadow:0 6px 18px rgba(15,23,42,.035);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}.cv46-evidence-card:hover{transform:translateY(-1px);border-color:#93c5fd;box-shadow:0 10px 24px rgba(37,99,235,.075)}.cv46-evidence-card header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding-bottom:8px;border-bottom:1px solid #eef2f7}.cv46-evidence-card header strong{font-size:clamp(12px,.85vw,15px);line-height:1.28;color:#0f172a;overflow-wrap:anywhere}.cv46-evidence-card header em{font-style:normal;font-size:9px;font-weight:900;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:4px 7px;white-space:nowrap}.cv46-evidence-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}.cv46-evidence-metric{min-width:0}.cv46-evidence-metric span{display:flex;align-items:center;gap:4px;font-size:clamp(9px,.62vw,10px);font-weight:850;color:#64748b;text-transform:uppercase;letter-spacing:.04em}.cv46-evidence-metric i{display:grid;place-items:center;width:15px;height:15px;border-radius:4px;background:#eff6ff;color:#2563eb;font-style:normal;font-size:8px;flex:0 0 auto}.cv46-evidence-metric strong{display:block;font-size:clamp(11px,.76vw,13px);line-height:1.35;color:#334155;margin-top:3px;overflow-wrap:anywhere}.cv46-empty-evidence{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:14px;padding:14px;color:#475569;font-size:13px;line-height:1.55}
-        .cv35-confidence-card{min-height:0!important}.cv39-impact-card{min-height:0!important}.cv39-decision-card>p{max-width:1100px}.cv39-timeline-step p{-webkit-line-clamp:unset!important;overflow:visible!important}
-        .cv47-ranking-board{display:grid;gap:8px;margin-bottom:10px}.cv47-ranking-row{display:flex;gap:10px;align-items:flex-start;border:1px solid #dbeafe;background:#fff;border-radius:13px;padding:10px 12px}.cv47-ranking-row>b{display:grid;place-items:center;width:23px;height:23px;border-radius:7px;background:#2563eb;color:#fff;font-size:10px;flex:0 0 auto}.cv47-ranking-row strong{display:block;font-size:13px;color:#0f172a}.cv47-ranking-row span{display:block;font-size:11px;color:#64748b;margin-top:2px}.cv47-question-banner{border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:11px 14px;margin:12px 0 10px}.cv47-question-banner span{display:block;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}.cv47-question-banner strong{display:block;margin-top:3px;font-size:clamp(13px,.9vw,16px);line-height:1.4;color:#0f172a}.cv46-confidence-drivers>div strong:first-of-type{font-weight:900}.cv46-confidence-drivers>div:has(strong:first-of-type){border-radius:8px}
-        @media(max-width:1180px){.cv46-evidence-board{grid-template-columns:repeat(2,minmax(0,1fr))}.cv46-why{grid-template-columns:1fr}.cv46-why ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
-        @media(max-width:760px){.cv46-evidence-board,.cv46-why ol,.cv46-confidence-drivers{grid-template-columns:1fr}.cv46-evidence-metrics{grid-template-columns:1fr 1fr}.cv46-why{padding:15px}.cv39-decision-grid{grid-template-columns:1fr!important}.cv39-decision-card{border-radius:18px;padding:16px!important}.cv35-hero{padding:17px;border-radius:19px}.cv35-hero h2{font-size:clamp(23px,7vw,30px)!important}.cv39-decision-top h2{font-size:clamp(23px,7vw,30px)!important}}
-        .cv35-suggestion-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 12px}
-        .cv35-suggestion-grid--duo{grid-template-columns:repeat(2,minmax(0,1fr))}
-        .cv35-suggestion-chip{display:flex;align-items:flex-start;min-height:44px;padding:10px 12px;border:1px solid #94a3b8;border-radius:10px;background:#fff;color:#0f172a;font-size:12px;font-weight:650;line-height:1.45;text-decoration:none;box-shadow:0 4px 12px rgba(15,23,42,.04);white-space:normal;overflow-wrap:anywhere}
-        .cv35-suggestion-chip:hover{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
-        div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"]>button[kind="secondary"],div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"]>button{border:1px solid #94a3b8!important;border-radius:10px!important;background:#fff!important;color:#0f172a!important;font-size:12px!important;font-weight:650!important;line-height:1.45!important;min-height:44px!important;white-space:normal!important;text-align:left!important;padding:10px 12px!important;box-shadow:0 4px 12px rgba(15,23,42,.04)!important}
-        div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"]>button:hover{border-color:#2563eb!important;background:#eff6ff!important;color:#1d4ed8!important}
-        @media(max-width:900px){.cv35-suggestion-grid,.cv35-suggestion-grid--duo{grid-template-columns:1fr}}
-        </style>
-        <div class="cv35-hero"><div class="cv35-kicker">Engineering Copilot</div><h2>Ask Cadivor about this BOM</h2><p>Type any engineering question about this BOM. Cadivor interprets the request, evaluates the saved evidence, and recommends the next engineering action.</p></div>
-        """,
-        unsafe_allow_html=True,
-    )
+    _render_context_header(context)
+    st.markdown('<div class="cv-assistant-shell">', unsafe_allow_html=True)
     _usage_banner(status)
     thread = get_thread(st.session_state, context)
     if thread:
@@ -1330,26 +1322,35 @@ def render_engineering_assistant(
         st.session_state[prompt_key] = ""
     analysis_id = _analysis_id_from_context(context)
     if analysis_id:
-        _render_prompt_chip_grid(SUGGESTIONS, param_key="cv35_pick", analysis_id=analysis_id)
+        st.markdown(
+            '<div class="cv-assistant-section-label cv35-section-label">Suggested engineering workflows</div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(key="cv_assistant_suggestions"):
+            _render_prompt_chip_grid(SUGGESTIONS, param_key="cv35_pick", analysis_id=analysis_id)
 
     # A form submits the browser's current text-area value and the button click
     # in one transaction. This prevents pasted text from requiring a first click
     # merely to synchronize the widget before the button becomes enabled.
-    with st.form("cv41_engineering_question_form", clear_on_submit=False):
-        question = st.text_area(
-            "Engineering question",
-            key=prompt_key,
-            height=88,
-            placeholder="Ask your own question, for example: What evidence is missing before release approval?",
-        )
-        component_note = f" Current component focus: {selected_component}." if selected_component else ""
-        st.caption("Ask in your own words. Cadivor uses the saved evidence in this analysis and identifies uncertainty when supporting data is incomplete." + component_note)
-        manual_submit = st.form_submit_button(
-            "Ask Engineering Copilot",
-            type="primary",
-            disabled=not status.can_use,
-            use_container_width=False,
-        )
+    with st.container(key="cv_assistant_composer"):
+        with st.form("cv41_engineering_question_form", clear_on_submit=False):
+            question = st.text_area(
+                "Your engineering question",
+                key=prompt_key,
+                height=88,
+                placeholder="Ask Cadivor about this BOM, for example: What evidence is missing before release approval?",
+            )
+            component_note = f" Current component focus: {selected_component}." if selected_component else ""
+            st.caption(
+                "Cadivor reviews saved BOM evidence and flags uncertainty when supporting data is incomplete."
+                + component_note
+            )
+            manual_submit = st.form_submit_button(
+                "Ask Cadivor",
+                type="primary",
+                disabled=not status.can_use,
+                use_container_width=False,
+            )
 
     cleaned_question = _normalize_submitted_question(question)
     manual_submit_requested = bool(manual_submit and status.can_use and cleaned_question)
@@ -1485,3 +1486,4 @@ def render_engineering_assistant(
                 '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
                 unsafe_allow_html=True,
             )
+    st.markdown('</div>', unsafe_allow_html=True)
