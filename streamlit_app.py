@@ -36,9 +36,11 @@ st.markdown(
 )
 
 from src.auth_bootstrap import (
+    AUTHENTICATED_STARTUP_SHELL_MESSAGE,
     ensure_authenticated_or_stop,
     log_startup_phase,
     render_startup_loading_shell,
+    should_render_authenticated_startup_shell,
 )
 
 log_startup_phase("entrypoint_ready")
@@ -62,7 +64,8 @@ if st.session_state.pop("cadivor_logout_reload_pending", False):
 
 ensure_authenticated_or_stop()
 
-render_startup_loading_shell("Opening your engineering workspace…")
+if should_render_authenticated_startup_shell():
+    render_startup_loading_shell(AUTHENTICATED_STARTUP_SHELL_MESSAGE)
 log_startup_phase("load_authenticated_runtime")
 from src.authenticated_runtime import run_authenticated_app
 

@@ -125,6 +125,11 @@ def inject_workspace_geometry_final() -> None:
     inject_sprint71_polish()
 
 
+def authenticated_surface_ready() -> bool:
+    """True after the authenticated workspace shell has initialized this session."""
+    return bool(st.session_state.get("_cadivor_authenticated_surface_ready"))
+
+
 def mark_authenticated_surface_ready() -> None:
     """Call once the authenticated shell/stylesheet stack is mounted."""
     st.session_state["_cadivor_authenticated_surface_ready"] = True

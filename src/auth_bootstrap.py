@@ -25,12 +25,9 @@ from src.auth_cookies import (
 )
 from src.secrets import get_secret, get_secret_bool
 from src.auth_state import (
-    APP_AUTHENTICATED,
     APP_LOGIN,
-    APP_PUBLIC,
     APP_SIGNUP,
     AUTH_AUTHENTICATED,
-    AUTH_SIGNED_OUT,
     begin_logout,
     explicit_logout_pending,
     handle_explicit_logout_if_pending,
@@ -101,6 +98,16 @@ def apply_auth_intent_from_query() -> None:
     elif requested_auth == "signup":
         st.session_state["cadivor_root_state"] = APP_SIGNUP
         st.session_state["cadivor_auth_intent_applied"] = True
+
+
+AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Loading your workspace…"
+
+
+def should_render_authenticated_startup_shell() -> bool:
+    """Render the full-screen startup shell only before the workspace first mounts."""
+    from src.ui.core_premium_ui import authenticated_surface_ready
+
+    return not authenticated_surface_ready()
 
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
@@ -262,13 +269,8 @@ def ensure_authenticated_or_stop() -> None:
         auth_status=auth_status,
         has_user=bool(st.session_state.get("user")),
     )
-    root_state = str(
-        st.session_state.get("cadivor_root_state")
-        or (APP_AUTHENTICATED if auth_status == AUTH_AUTHENTICATED else APP_PUBLIC)
-    )
-
-    if auth_status == AUTH_SIGNED_OUT or root_state != APP_AUTHENTICATED:
-        log_auth_restore("fallback_signed_out", reason="auth_resolution_signed_out")
+    if auth_status != AUTH_AUTHENTICATED:
+        log_auth_restore("auth_boundary_failed", reason=f"resolved_{auth_status}")
         log_startup_phase("render_auth_ui")
         log_auth_correlation(
             "before_show_auth_ui",
