@@ -1682,14 +1682,14 @@ div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRa
 
 /* Sprint 67.2 — Dashboard workspace navigation (scoped) */
 .cv672-dashboard-heading {
-  margin: 20px 0 20px;
+  margin: 0 0 var(--cv-space-4, 16px);
 }
 
 .cv672-dashboard-title {
-  margin: 0;
-  color: var(--cv64-navy);
-  font-size: 24px;
-  font-weight: 800;
+  margin: 0 0 var(--cv-space-2, 8px);
+  color: var(--cv-text, var(--cv64-navy));
+  font-size: var(--cv-font-2xl, 24px);
+  font-weight: var(--cv-weight-bold, 800);
   letter-spacing: -0.03em;
   line-height: 1.15;
 }

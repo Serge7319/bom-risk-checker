@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional
 
 import pandas as pd
@@ -39,9 +40,16 @@ WORKSPACE_HEADERS: Dict[str, tuple[str, str]] = {
 def render_dashboard_page_heading() -> None:
     st.markdown(
         """
-        <header class="cv672-dashboard-heading">
-          <h1 class="cv672-dashboard-title">Dashboard</h1>
-        </header>
+        <div class="cv-page cv-dashboard-page">
+          <header class="cv-page-header cv672-dashboard-heading">
+            <div>
+              <h1 class="cv-page-title cv672-dashboard-title">Dashboard</h1>
+              <p class="cv-page-subtitle cv672-dashboard-subtitle">
+                Monitor portfolio health, prioritize engineering work, and continue active analyses.
+              </p>
+            </div>
+          </header>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -65,9 +73,9 @@ def render_dashboard_workspace_navigation(*, radio_key: str) -> str:
 def render_workspace_section_header(title: str, description: str) -> None:
     st.markdown(
         f"""
-        <header class="cv672-dashboard-workspace-header cv6723-workspace-header">
-          <h2>{html.escape(title)}</h2>
-          <p>{html.escape(description)}</p>
+        <header class="cv-section-header cv672-dashboard-workspace-header cv6723-workspace-header">
+          <h2 class="cv-section-title">{html.escape(title)}</h2>
+          <p class="cv-section-subtitle">{html.escape(description)}</p>
         </header>
         """,
         unsafe_allow_html=True,
@@ -155,6 +163,23 @@ def inject_dashboard_workspace_styles() -> None:
     from src.pages.dashboard import inject_dashboard_page_styles
 
     inject_dashboard_page_styles()
+    _inject_dashboard_v2_styles()
+
+
+def _inject_dashboard_v2_styles() -> None:
+    if st.session_state.get("_cadivor_dashboard_v2_styles"):
+        return
+    st.session_state["_cadivor_dashboard_v2_styles"] = True
+    css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "dashboard_v2.css"
+    try:
+        css = css_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if css.strip():
+        st.markdown(
+            f"<style id='cadivor-dashboard-v2-css'>{css}</style>",
+            unsafe_allow_html=True,
+        )
 
 
 def _lucide_icon(name: str, size: int = 18) -> str:
@@ -217,7 +242,7 @@ def _activity_card_html(event: Mapping[str, Any], *, include_link: bool = True) 
             f"</a>"
         )
     return (
-        f'<section class="cv6723-activity-card">'
+        f'<section class="cv6723-activity-card cv-card cv-card-interactive cv-dashboard-activity-card">'
         f'<div class="cv6723-activity-top">'
         f"<span>{html.escape(str(event.get('type') or ''))}</span>"
         f"<span>{html.escape(_activity_relative(event.get('created_at')))}</span>"
@@ -590,7 +615,7 @@ def render_portfolio_intelligence_workspace(
     ctx: Mapping[str, Any],
     overview: Mapping[str, Any],
 ) -> None:
-    st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
+    st.markdown('<div class="cv-page cv672-dashboard-workspace cv-dashboard-workspace">', unsafe_allow_html=True)
     if not ctx.get("analysis_data"):
         st.markdown(
             """
@@ -729,7 +754,7 @@ def render_portfolio_intelligence_workspace(
     )
     st.markdown(
         f"""
-        <section class="cv6723-section cv6723-bom-strip">
+        <section class="cv6723-section cv6723-bom-strip cv-card cv-card-interactive cv-dashboard-bom-card">
           <div class="cv6723-bom-main">
             <span class="cv6723-bom-label">Active analysis</span>
             <strong>{html.escape(str(ctx.get('latest_project')))}</strong>
@@ -791,7 +816,7 @@ def render_dashboard_analytics_workspace(
     ctx: Mapping[str, Any],
     light_plotly_layout: Callable[..., Any],
 ) -> None:
-    st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
+    st.markdown('<div class="cv-page cv672-dashboard-workspace cv-dashboard-workspace">', unsafe_allow_html=True)
     analysis_data = ctx.get("analysis_data") or []
     trend_records = ctx.get("trend_records") or []
 

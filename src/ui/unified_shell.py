@@ -102,7 +102,7 @@ def render_unified_shell(
           </div>
           <div class="cv-foundation-page-context">
             <strong>{_escape(current_page)}</strong>
-            <span class="cv-foundation-search" role="button" tabindex="0" aria-label="Open Search Cadivor command center">Search Cadivor <kbd>⌘K</kbd></span>
+            <span class="cv-foundation-search cadivor-search-pill" role="button" tabindex="0" aria-label="Open Search Cadivor command center">Search Cadivor <kbd>⌘K</kbd></span>
           </div>
           <div class="cv-foundation-profile-copy">
             <small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em>
@@ -148,7 +148,7 @@ def render_unified_shell(
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
             f"""
-            <div class="cv-foundation-workspace" role="button" tabindex="0" aria-label="Current workspace">
+            <div class="cv-foundation-workspace" aria-label="Current workspace">
               <span class="cv-foundation-workspace-mark">{_escape((workspace_name or 'C')[:1].upper())}</span>
               <span class="cv-foundation-workspace-copy">
                 <small>Workspace</small>

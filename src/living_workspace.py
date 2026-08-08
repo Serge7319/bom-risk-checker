@@ -192,7 +192,7 @@ def _monitoring_events_html(
 def _compact_release_posture_html(metrics: Dict[str, Any]) -> str:
     tone = metrics.get("health_tone", "info")
     return (
-        f'<section class="cv6723-compact-panel cv6723-release-posture cv6723-release-posture--{html.escape(tone)}">'
+        f'<section class="cv6723-compact-panel cv-card cv6723-release-posture cv6723-release-posture--{html.escape(tone)}">'
         f'<div class="cv6723-compact-panel-head">'
         f'<strong>Release posture</strong>'
         f'<span class="cv6723-status-chip cv6723-status-chip--{html.escape(tone)}">'
@@ -219,7 +219,7 @@ def _compact_recommendations_html(recommendations: Iterable[Any]) -> str:
         if len(action_line) > 92:
             action_line = f"{action_line[:89].rstrip()}..."
         cards.append(
-            f'<article class="cv6723-rec-card">'
+            f'<article class="cv6723-rec-card cv-card">'
             f'<div class="cv6723-rec-top">'
             f'<strong>Recommendation {index + 1}</strong>'
             f'<span class="cv6723-status-chip cv6723-status-chip--{badge_class}">{badge}</span>'
@@ -431,7 +431,7 @@ def render_engineering_overview_workspace(
     activation_hook: Optional[Callable[[], None]] = None,
 ) -> None:
     """Workspace 1 — brief, KPIs, release posture, recommendations, work queue, quick actions."""
-    st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
+    st.markdown('<div class="cv-page cv672-dashboard-workspace cv-dashboard-workspace">', unsafe_allow_html=True)
     render_engineering_overview_brief_and_kpis(overview=overview, metrics=metrics)
     if after_brief_hook:
         after_brief_hook()
@@ -475,11 +475,11 @@ def render_engineering_overview_workspace(
     )
     st.html(
         """
-        <nav class="cv6723-action-toolbar cv6723-quick-actions" aria-label="Quick engineering actions">
-          <a class="cv6723-quick-action" href="?page=Engineering%20Decisions" target="_self">Engineering Decisions</a>
-          <a class="cv6723-quick-action" href="?page=Procurement%20Advisor" target="_self">Procurement Advisor</a>
-          <a class="cv6723-quick-action" href="?page=Monitoring" target="_self">Monitoring</a>
-          <a class="cv6723-quick-action" href="?page=Reports" target="_self">Reports</a>
+        <nav class="cv6723-action-toolbar cv6723-quick-actions cv-dashboard-quick-actions" aria-label="Quick engineering actions">
+          <a class="cv6723-quick-action cv-card-interactive" href="?page=Engineering%20Decisions" target="_self">Engineering Decisions</a>
+          <a class="cv6723-quick-action cv-card-interactive" href="?page=Procurement%20Advisor" target="_self">Procurement Advisor</a>
+          <a class="cv6723-quick-action cv-card-interactive" href="?page=Monitoring" target="_self">Monitoring</a>
+          <a class="cv6723-quick-action cv-card-interactive" href="?page=Reports" target="_self">Reports</a>
         </nav>
         """
     )
@@ -587,7 +587,7 @@ def render_dashboard_monitoring_workspace(
     alerts: Iterable[Dict[str, Any]],
 ) -> None:
     """Workspace 4 — monitoring summaries with link to full Monitoring page."""
-    st.markdown('<div class="cv672-dashboard-workspace">', unsafe_allow_html=True)
+    st.markdown('<div class="cv-page cv672-dashboard-workspace cv-dashboard-workspace">', unsafe_allow_html=True)
     changes = overview.get("recent_change_summary", {})
     alert_rows = list(alerts or [])
     timeline = [timeline_event(row) for row in alert_rows]

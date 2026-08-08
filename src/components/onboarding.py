@@ -213,11 +213,11 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
     st.markdown(
         """
         <style id="cadivor-ftue-native-30a">
-        .cv30-eyebrow{display:inline-flex;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:7px 11px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
-        .cv30-hero [data-testid="stVerticalBlockBorderWrapper"]{border:1px solid #bfdbfe!important;border-radius:24px!important;background:linear-gradient(135deg,#fff 0%,#f8fbff 58%,#eaf3ff 100%)!important;box-shadow:0 20px 50px rgba(15,23,42,.07)!important;padding:18px!important}
-        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]{min-height:146px;border-radius:17px!important;border:1px solid #e2e8f0!important;background:#fff!important;transition:transform .16s ease,box-shadow .16s ease}
-        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(15,23,42,.07)}
-        .cv30-number{width:30px;height:30px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;margin-bottom:10px}
+        .cv30-eyebrow{display:inline-flex;border:1px solid color-mix(in srgb,var(--cv-primary,#2563eb) 24%, var(--cv-border,#e2e8f0));background:var(--cv-primary-subtle,#eff6ff);color:var(--cv-primary-hover,#1d4ed8)!important;border-radius:var(--cv-radius-pill,999px);padding:7px 11px;font-size:var(--cv-font-xs,11px);font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+        .cv30-hero [data-testid="stVerticalBlockBorderWrapper"]{border:1px solid var(--cv-border,#e2e8f0)!important;border-radius:var(--cv-radius-xl,24px)!important;background:linear-gradient(135deg,var(--cv-surface,#fff) 0%,var(--cv-bg-subtle,#f8fbff) 58%,var(--cv-primary-subtle,#eaf3ff) 100%)!important;box-shadow:var(--cv-shadow-sm,0 20px 50px rgba(15,23,42,.07))!important;padding:18px!important}
+        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]{min-height:146px;border-radius:var(--cv-radius-lg,17px)!important;border:1px solid var(--cv-border,#e2e8f0)!important;background:var(--cv-surface,#fff)!important;transition:transform .16s ease,box-shadow .16s ease}
+        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]:hover{transform:translateY(-2px);box-shadow:var(--cv-shadow-sm,0 12px 28px rgba(15,23,42,.07))}
+        .cv30-number{width:30px;height:30px;border-radius:var(--cv-radius-md,10px);background:var(--cv-primary-subtle,#eff6ff);border:1px solid color-mix(in srgb,var(--cv-primary,#2563eb) 24%, var(--cv-border,#e2e8f0));color:var(--cv-primary-hover,#1d4ed8)!important;display:flex;align-items:center;justify-content:center;font-size:var(--cv-font-sm,12px);font-weight:950;margin-bottom:10px}
         [data-testid="stHeaderActionElements"], a.header-anchor, .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a{display:none!important}
         </style>
         """,
