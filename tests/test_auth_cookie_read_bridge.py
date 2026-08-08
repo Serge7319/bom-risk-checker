@@ -468,5 +468,293 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertNotIn(encoded, output)
 
 
+class _DeferredHydrationCookieManager(_FakeCookieManager):
+    """Return None until session marks browser cookie hydration complete."""
+
+    session_state: dict | None = None
+
+    def get(self, cookie: str):
+        if cookie != _AUTH_COOKIE_NAME:
+            return self.cookies.get(cookie)
+        session = type(self).session_state
+        if session is None or not session.get("_manager_hydration_complete"):
+            return None
+        return self.cookies.get(cookie)
+
+
+class UnifiedAuthCookieReadTests(unittest.TestCase):
+    """Sprint 71.10.2 — unified native context → CookieManager read authority."""
+
+    def setUp(self):
+        _FakeCookieManager.instances.clear()
+        for name in list(sys.modules):
+            if name.startswith("src.auth_cookies") or name == "src.auth_state":
+                sys.modules.pop(name, None)
+
+    def _load(self, session_state=None, **kwargs):
+        st = _install_streamlit_stub(session_state, **kwargs)
+        auth_cookies, auth_state = _install_auth_modules(st)
+        return st, auth_cookies, auth_state
+
+    def test_context_present_valid_cookie_skips_manager_mount(self):
+        payload = _valid_payload("ctx-only-a", "ctx-only-r")
+        context = _FakeContextCookies({_AUTH_COOKIE_NAME: payload})
+        _st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
+
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        self.assertEqual(tokens["access_token"], "ctx-only-a")
+        self.assertEqual(source, "context")
+        self.assertEqual(len(_FakeCookieManager.instances), 0)
+
+    def test_context_absent_manager_valid_uses_manager_fallback(self):
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies = {_AUTH_COOKIE_NAME: _valid_payload("mgr-a", "mgr-r")}
+
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        self.assertEqual(tokens["access_token"], "mgr-a")
+        self.assertEqual(source, "manager_fallback")
+        self.assertEqual(len(_FakeCookieManager.instances), 1)
+        self.assertNotIn("access_token", st.session_state)
+
+    def test_context_absent_manager_absent_returns_none(self):
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies = {}
+
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        self.assertIsNone(tokens)
+        self.assertEqual(source, "none")
+        self.assertNotIn("access_token", st.session_state)
+
+    def test_context_malformed_manager_valid_uses_manager_fallback(self):
+        context = _FakeContextCookies({_AUTH_COOKIE_NAME: "not-json"})
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies = {_AUTH_COOKIE_NAME: _valid_payload("mgr-a", "mgr-r")}
+
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        self.assertEqual(tokens["access_token"], "mgr-a")
+        self.assertEqual(source, "manager_fallback")
+        self.assertNotIn("access_token", st.session_state)
+
+    def test_context_invalid_manager_absent_fails_closed(self):
+        context = _FakeContextCookies({_AUTH_COOKIE_NAME: "not-json"})
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies = {}
+
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        self.assertIsNone(tokens)
+        self.assertEqual(source, "none")
+
+    def test_cookie_source_diagnostics_never_log_secrets(self):
+        context = _FakeContextCookies({_AUTH_COOKIE_NAME: _valid_payload("diag-a", "diag-r")})
+        _st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        output = buffer.getvalue()
+        self.assertIn("AUTH_COOKIE cookie_source cookie_source=context", output)
+        self.assertNotIn("diag-a", output)
+        self.assertNotIn("diag-r", output)
+
+    def test_native_cookie_api_available_does_not_imply_cookie_present(self):
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies = {}
+
+        self.assertTrue(auth_cookies.native_cookie_api_available())
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+        self.assertIsNone(tokens)
+        self.assertEqual(source, "none")
+
+
+class ManagerFallbackHydrationTests(unittest.TestCase):
+    """Sprint 71.10.2B — bounded manager fallback hydration."""
+
+    def setUp(self):
+        _FakeCookieManager.instances.clear()
+        _DeferredHydrationCookieManager.instances.clear()
+        _DeferredHydrationCookieManager.session_state = None
+        for name in list(sys.modules):
+            if name.startswith("src.auth_cookies") or name == "src.auth_state":
+                sys.modules.pop(name, None)
+
+    def _load(self, session_state=None, *, manager_cls=_DeferredHydrationCookieManager, **kwargs):
+        session = session_state if session_state is not None else {}
+        st = _install_streamlit_stub(session, **kwargs)
+        manager_cls.session_state = st.session_state
+        auth_cookies, auth_state = _install_auth_modules(st, cookie_manager_cls=manager_cls)
+        return st, auth_cookies, auth_state
+
+    def _mock_supabase(self):
+        supabase = types.ModuleType("supabase")
+        user = types.SimpleNamespace(id="user-123")
+        fresh_session = types.SimpleNamespace(
+            access_token="fresh-access",
+            refresh_token="fresh-refresh",
+        )
+
+        class _Auth:
+            @staticmethod
+            def set_session(access_token, refresh_token):
+                return types.SimpleNamespace(session=fresh_session)
+
+            @staticmethod
+            def get_user():
+                return types.SimpleNamespace(user=user)
+
+        supabase.auth = _Auth()
+        return supabase
+
+    def test_first_manager_miss_marks_fallback_hydration_pending(self):
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies[_AUTH_COOKIE_NAME] = _valid_payload("delayed-a", "delayed-r")
+
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        self.assertIsNone(tokens)
+        self.assertEqual(source, "none")
+        self.assertTrue(st.session_state.get("cadivor_manager_fallback_attempted"))
+        self.assertTrue(auth_cookies.manager_fallback_hydration_pending(None))
+
+    def test_second_run_manager_hydration_restores(self):
+        st, auth_cookies, auth_state = self._load(
+            {
+                "cadivor_manager_fallback_attempted": True,
+                "cadivor_auth_restore_attempts": 1,
+            },
+            context_cookies=_FakeContextCookies(),
+        )
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        get_script_run_ctx().script_run_id = "run-b"
+        st.session_state["_manager_hydration_complete"] = True
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies[_AUTH_COOKIE_NAME] = _valid_payload("delayed-a", "delayed-r")
+        supabase = self._mock_supabase()
+
+        tokens, source = auth_cookies.read_auth_cookie_tokens_with_source(None)
+        self.assertEqual(source, "manager_fallback")
+        self.assertFalse(auth_cookies.manager_fallback_hydration_pending(None))
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertIn("user", st.session_state)
+        self.assertFalse(st.session_state.get("cadivor_manager_fallback_attempted"))
+
+    def test_malformed_context_second_run_manager_restore(self):
+        context = _FakeContextCookies({_AUTH_COOKIE_NAME: "not-json"})
+        st, auth_cookies, auth_state = self._load(
+            {
+                "cadivor_manager_fallback_attempted": True,
+                "cadivor_auth_restore_attempts": 1,
+            },
+            context_cookies=context,
+        )
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        get_script_run_ctx().script_run_id = "run-b"
+        st.session_state["_manager_hydration_complete"] = True
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies[_AUTH_COOKIE_NAME] = _valid_payload("fallback-a", "fallback-r")
+        supabase = self._mock_supabase()
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertNotIn("fallback-a", st.session_state.get("access_token", ""))
+
+    def test_max_attempts_fail_closed(self):
+        st, auth_cookies, _auth_state = self._load(
+            {
+                "cadivor_manager_fallback_attempted": True,
+                "cadivor_auth_restore_attempts": 6,
+            },
+            context_cookies=_FakeContextCookies(),
+        )
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies = {}
+
+        self.assertFalse(auth_cookies.manager_fallback_hydration_pending(None))
+
+    def test_logout_marker_blocks_fallback_hydration(self):
+        st, auth_cookies, _auth_state = self._load(
+            {"cadivor_manager_fallback_attempted": True},
+            context_cookies=_FakeContextCookies(),
+        )
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies[auth_cookies.AUTH_LOGOUT_COOKIE_NAME] = "1"
+
+        self.assertFalse(auth_cookies.manager_fallback_hydration_pending(None))
+
+    def test_force_signed_out_blocks_fallback_hydration(self):
+        st, auth_cookies, _auth_state = self._load(
+            {
+                "cadivor_manager_fallback_attempted": True,
+                "cadivor_force_signed_out": True,
+            },
+            context_cookies=_FakeContextCookies(),
+        )
+
+        self.assertFalse(auth_cookies.manager_fallback_hydration_pending(None))
+
+    def test_manual_login_blocks_fallback_hydration(self):
+        st, auth_cookies, _auth_state = self._load(
+            {
+                "cadivor_manager_fallback_attempted": True,
+                "cadivor_manual_login_in_progress": True,
+            },
+            context_cookies=_FakeContextCookies(),
+        )
+
+        self.assertFalse(auth_cookies.manager_fallback_hydration_pending(None))
+
+    def test_finalize_timeout_clears_fallback_flag(self):
+        st, auth_cookies, _auth_state = self._load(
+            {"cadivor_manager_fallback_attempted": True},
+            context_cookies=_FakeContextCookies(),
+        )
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+
+        auth_cookies.finalize_manager_fallback_hydration_timeout(manager)
+
+        self.assertFalse(st.session_state.get("cadivor_manager_fallback_attempted"))
+        self.assertTrue(st.session_state.get("cadivor_auth_cookie_absent"))
+
+    def test_hydration_success_emits_safe_log(self):
+        st, auth_cookies, _auth_state = self._load(
+            {
+                "cadivor_manager_fallback_attempted": True,
+                "cadivor_auth_restore_attempts": 1,
+            },
+            context_cookies=_FakeContextCookies(),
+        )
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        get_script_run_ctx().script_run_id = "run-b"
+        st.session_state["_manager_hydration_complete"] = True
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies[_AUTH_COOKIE_NAME] = _valid_payload("log-a", "log-r")
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            auth_cookies.read_auth_cookie_tokens_with_source(None)
+
+        output = buffer.getvalue()
+        self.assertIn("AUTH_RESTORE manager_fallback_hydration_success", output)
+        self.assertNotIn("log-a", output)
+        self.assertNotIn("log-r", output)
+
+
 if __name__ == "__main__":
     unittest.main()

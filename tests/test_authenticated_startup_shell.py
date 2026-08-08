@@ -55,15 +55,20 @@ def _install_auth_state(st):
     auth_cookies.persist_session_auth_cookie = _noop
     auth_cookies.clear_auth_cookie = _noop
     auth_cookies.native_context_cookies_available = lambda: True
+    auth_cookies.native_cookie_api_available = lambda: True
     auth_cookies.read_auth_cookie_tokens = lambda cookie_manager=None: None
+    auth_cookies.read_auth_cookie_tokens_with_source = lambda cookie_manager=None: (None, "none")
     auth_cookies.get_auth_cookie_manager = lambda mount=True: MagicMock()
     auth_cookies.logout_blocks_auth_restore = lambda cookie_manager=None: False
     auth_cookies.invalidate_corrupt_auth_cookie = _noop
     auth_cookies.auth_cookie_hydration_pending = lambda cookie_manager=None: False
+    auth_cookies.manager_fallback_hydration_pending = lambda cookie_manager=None: False
     auth_cookies.finalize_auth_cookie_hydration_timeout = _noop
+    auth_cookies.finalize_manager_fallback_hydration_timeout = _noop
     auth_cookies.hydrate_session_from_auth_cookie = lambda cookie_manager=None: False
     auth_cookies.record_auth_hydration_attempt = lambda: 0
     auth_cookies._MAX_HYDRATION_ATTEMPTS = 3
+    auth_cookies._MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS = 0.25
     sys.modules["src.auth_cookies"] = auth_cookies
 
     sys.modules.pop("src.auth_state", None)
@@ -83,14 +88,19 @@ def _install_bootstrap_deps(st):
         auth_cookies = types.ModuleType("src.auth_cookies")
     auth_cookies._MAX_HYDRATION_ATTEMPTS = 3
     auth_cookies.auth_cookie_hydration_pending = lambda cookie_manager=None: False
+    auth_cookies.manager_fallback_hydration_pending = lambda cookie_manager=None: False
     auth_cookies.finalize_auth_cookie_hydration_timeout = MagicMock()
+    auth_cookies.finalize_manager_fallback_hydration_timeout = MagicMock()
     auth_cookies.get_auth_cookie_manager = lambda mount=True: MagicMock()
     auth_cookies.hydrate_session_from_auth_cookie = lambda cookie_manager=None: False
     auth_cookies.log_auth_restore = MagicMock()
     auth_cookies.native_context_cookies_available = lambda: True
+    auth_cookies.native_cookie_api_available = lambda: True
     auth_cookies.persist_session_auth_cookie = MagicMock()
     auth_cookies.read_auth_cookie_tokens = lambda cookie_manager=None: None
+    auth_cookies.read_auth_cookie_tokens_with_source = lambda cookie_manager=None: (None, "none")
     auth_cookies.record_auth_hydration_attempt = lambda: 0
+    auth_cookies._MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS = 0.25
     sys.modules["src.auth_cookies"] = auth_cookies
 
     auth_diagnostics = types.ModuleType("src.auth_diagnostics")

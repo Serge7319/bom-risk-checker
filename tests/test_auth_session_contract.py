@@ -35,7 +35,9 @@ def _install_auth_state(st):
     auth_cookies.persist_session_auth_cookie = _noop
     auth_cookies.clear_auth_cookie = _noop
     auth_cookies.native_context_cookies_available = lambda: False
+    auth_cookies.native_cookie_api_available = lambda: False
     auth_cookies.read_auth_cookie_tokens = lambda cookie_manager=None: None
+    auth_cookies.read_auth_cookie_tokens_with_source = lambda cookie_manager=None: (None, "none")
     auth_cookies.get_auth_cookie_manager = lambda mount=True: None
     auth_cookies.logout_blocks_auth_restore = lambda cookie_manager=None: False
     auth_cookies.invalidate_corrupt_auth_cookie = _noop

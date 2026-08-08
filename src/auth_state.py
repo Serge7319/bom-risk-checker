@@ -615,21 +615,14 @@ def _resolve_pending_credentials(
 ) -> tuple[str, str] | None:
     """Return access/refresh tokens from cookie or orphaned session state."""
     try:
-        from src.auth_cookies import (
-            log_auth_restore,
-            native_context_cookies_available,
-            read_auth_cookie_tokens,
-        )
+        from src.auth_cookies import log_auth_restore, read_auth_cookie_tokens_with_source
 
-        manager_for_read = cookie_manager
-        if manager_for_read is None and not native_context_cookies_available():
-            from src.auth_cookies import get_auth_cookie_manager
-
-            manager_for_read = get_auth_cookie_manager(mount=True)
-
-        pending = read_auth_cookie_tokens(manager_for_read)
+        pending, source = read_auth_cookie_tokens_with_source(cookie_manager)
         if pending:
-            log_auth_restore("native_context_restore_started")
+            if source == "manager_fallback":
+                log_auth_restore("manager_fallback_restore_started")
+            else:
+                log_auth_restore("native_context_restore_started")
             return pending["access_token"], pending["refresh_token"]
 
         access_token = st.session_state.get("access_token")

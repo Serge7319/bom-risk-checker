@@ -3,12 +3,14 @@
 Persists the minimum credentials required to restore authentication across new
 Streamlit server sessions. Never logs token values or passwords.
 
-Read priority (Sprint 71.6.6):
-  A. ``st.context.cookies["cadivor_auth"]`` — native Streamlit request cookies
-  B. CookieManager ``cadivor_auth`` — component iframe fallback read
+Read priority (Sprint 71.10.2):
+  A. ``st.context.cookies["cadivor_auth"]`` — initial HTTP/WebSocket request snapshot
+  B. CookieManager ``cadivor_auth`` — lazy fallback when A is absent or invalid
   C. CookieManager ``bom_auth`` — legacy fallback
 
 CookieManager remains the sole write/delete path for durable auth cookies.
+CookieManager is mounted lazily for reads only when native context does not yield
+valid credentials.
 
 Limitation: extra-streamlit-components CookieManager sets cookies via a Streamlit
 component iframe (document.cookie). These are NOT HttpOnly and are readable by
@@ -32,7 +34,9 @@ AUTH_COOKIE_LEGACY_NAME = "bom_auth"
 _AUTH_COOKIE_MANAGER_COMPONENT_KEY = "cadivor_auth_cookie_manager"
 _AUTH_COOKIE_MANAGER_RUN_ID_KEY = "_cadivor_auth_cookie_manager_run_id"
 _AUTH_COOKIE_MANAGER_INSTANCE_KEY = "_cadivor_auth_cookie_manager_instance"
+_MANAGER_FALLBACK_ATTEMPTED_KEY = "cadivor_manager_fallback_attempted"
 _MAX_HYDRATION_ATTEMPTS = 6
+_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS = 0.25
 _COOKIE_TTL_DAYS = 7
 
 
@@ -89,11 +93,10 @@ def get_auth_cookie_manager(*, mount: bool = True) -> Any | None:
     """Return the auth CookieManager for this script run.
 
     When ``mount=False``, return a cached manager for this run if one exists
-    but do not instantiate the browser component. Use this during bootstrap
-    auth resolution when ``st.context.cookies`` is the primary read path.
+    but do not instantiate the browser component.
 
     When ``mount=True``, create or reuse the CookieManager component for
-    cookie writes, deletes, and legacy read fallback.
+    cookie writes, deletes, and lazy read fallback after native context misses.
     """
     if not auth_cookies_enabled() or stx is None:
         return None
@@ -117,9 +120,19 @@ def get_auth_cookie_manager(*, mount: bool = True) -> Any | None:
     return manager
 
 
-def native_context_cookies_available() -> bool:
-    """True when Streamlit native request cookies can be read without CookieManager."""
+def native_cookie_api_available() -> bool:
+    """True when Streamlit exposes ``st.context.cookies``.
+
+    This only means the native read API exists. The snapshot reflects cookies
+    sent in the initial request for the current connection and is not updated
+    when CookieManager writes during the same script run.
+    """
     return _get_context_cookies() is not None
+
+
+def native_context_cookies_available() -> bool:
+    """Backward-compatible alias for :func:`native_cookie_api_available`."""
+    return native_cookie_api_available()
 
 
 def _get_context_cookies() -> Any | None:
@@ -162,12 +175,23 @@ def _read_manager_auth_cookie(cookie_manager: Any, cookie_name: str) -> Any:
     return text or None
 
 
+def _read_manager_auth_cookies(cookie_manager: Any) -> Any:
+    """Read the first available auth cookie payload via CookieManager."""
+    for name in (AUTH_COOKIE_NAME, AUTH_COOKIE_LEGACY_NAME):
+        raw = _read_manager_auth_cookie(cookie_manager, name)
+        if raw is not None:
+            log_auth_cookie("manager_read_present", present=True, cookie_name=name)
+            return raw
+    log_auth_cookie("manager_read_present", present=False)
+    return None
+
+
 def _read_raw_auth_cookie(
     cookie_manager: Any = None,
     *,
     allow_manager_fallback: bool = True,
 ) -> Any:
-    """Read durable auth cookie with native context first, CookieManager fallback."""
+    """Read durable auth cookie raw payload: native context, then CookieManager."""
     context_cookies = _get_context_cookies()
     log_auth_cookie("context_available", available=context_cookies is not None)
 
@@ -178,18 +202,81 @@ def _read_raw_auth_cookie(
             return raw
         log_auth_cookie("context_read_present", present=False)
 
-    if not allow_manager_fallback or cookie_manager is None:
+    if not allow_manager_fallback:
         log_auth_cookie("manager_read_present", present=False)
         return None
 
-    for name in (AUTH_COOKIE_NAME, AUTH_COOKIE_LEGACY_NAME):
-        raw = _read_manager_auth_cookie(cookie_manager, name)
-        if raw is not None:
-            log_auth_cookie("manager_read_present", present=True, cookie_name=name)
-            return raw
+    manager = cookie_manager or get_auth_cookie_manager(mount=True)
+    if manager is None:
+        log_auth_cookie("manager_read_present", present=False)
+        return None
 
-    log_auth_cookie("manager_read_present", present=False)
-    return None
+    return _read_manager_auth_cookies(manager)
+
+
+def _mark_manager_fallback_hydration_candidate() -> None:
+    st.session_state[_MANAGER_FALLBACK_ATTEMPTED_KEY] = True
+
+
+def _clear_manager_fallback_hydration_state() -> None:
+    st.session_state.pop(_MANAGER_FALLBACK_ATTEMPTED_KEY, None)
+
+
+def _read_valid_auth_cookie_tokens(
+    cookie_manager: Any = None,
+    *,
+    track_manager_fallback_hydration: bool = True,
+) -> tuple[dict[str, str] | None, str]:
+    """Return parsed credentials and read source without writing session_state."""
+    context_cookies = _get_context_cookies()
+    context_attempted = context_cookies is not None
+    log_auth_cookie("context_available", available=context_attempted)
+
+    if context_attempted:
+        raw = _read_context_auth_cookie(context_cookies)
+        if raw is not None:
+            log_auth_cookie("context_read_present", present=True)
+            tokens = parse_auth_cookie(raw)
+            if tokens is not None:
+                _clear_manager_fallback_hydration_state()
+                st.session_state["cadivor_auth_restore_attempts"] = 0
+                log_auth_cookie("cookie_source", cookie_source="context")
+                log_auth_cookie("parse_valid", valid=True)
+                return tokens, "context"
+        else:
+            log_auth_cookie("context_read_present", present=False)
+
+    manager = cookie_manager or get_auth_cookie_manager(mount=True)
+    manager_fallback_attempted = manager is not None
+    if manager is not None:
+        raw = _read_manager_auth_cookies(manager)
+        if raw is not None:
+            tokens = parse_auth_cookie(raw)
+            if tokens is not None:
+                if track_manager_fallback_hydration:
+                    prior_attempts = int(st.session_state.get("cadivor_auth_restore_attempts") or 0)
+                    if prior_attempts > 0 or st.session_state.get(_MANAGER_FALLBACK_ATTEMPTED_KEY):
+                        log_auth_restore(
+                            "manager_fallback_hydration_success",
+                            attempt=prior_attempts,
+                        )
+                    _clear_manager_fallback_hydration_state()
+                    st.session_state["cadivor_auth_restore_attempts"] = 0
+                log_auth_cookie("cookie_source", cookie_source="manager_fallback")
+                log_auth_cookie("parse_valid", valid=True)
+                return tokens, "manager_fallback"
+
+    if (
+        track_manager_fallback_hydration
+        and context_attempted
+        and native_cookie_api_available()
+        and manager_fallback_attempted
+    ):
+        _mark_manager_fallback_hydration_candidate()
+
+    log_auth_cookie("cookie_source", cookie_source="none")
+    log_auth_cookie("parse_valid", valid=False)
+    return None, "none"
 
 
 def _serialize_auth_cookie_payload(access_token: str, refresh_token: str) -> str:
@@ -310,18 +397,26 @@ def read_auth_cookie_tokens(cookie_manager: Any = None) -> dict[str, str] | None
     if _logout_marker_active(cookie_manager):
         return None
 
-    allow_manager = cookie_manager is not None
-    raw = _read_raw_auth_cookie(
-        cookie_manager,
-        allow_manager_fallback=allow_manager,
-    )
-    if raw is None:
-        log_auth_cookie("parse_valid", valid=False)
-        return None
-
-    tokens = parse_auth_cookie(raw)
-    log_auth_cookie("parse_valid", valid=tokens is not None)
+    tokens, _source = _read_valid_auth_cookie_tokens(cookie_manager)
     return tokens
+
+
+def read_auth_cookie_tokens_with_source(
+    cookie_manager: Any = None,
+) -> tuple[dict[str, str] | None, str]:
+    """Like :func:`read_auth_cookie_tokens` but also returns the read source."""
+    if not auth_cookies_enabled():
+        return None, "none"
+    if st.session_state.get("cadivor_manual_login_in_progress"):
+        return None, "none"
+    if st.session_state.get("cadivor_force_signed_out") or st.session_state.get(
+        "cadivor_explicit_logout"
+    ):
+        return None, "none"
+    if _logout_marker_active(cookie_manager):
+        return None, "none"
+
+    return _read_valid_auth_cookie_tokens(cookie_manager)
 
 
 def hydrate_session_from_auth_cookie(cookie_manager: Any = None) -> bool:
@@ -348,37 +443,57 @@ def hydrate_session_from_auth_cookie(cookie_manager: Any = None) -> bool:
 
     tokens = read_auth_cookie_tokens(cookie_manager)
     if tokens is None:
-        allow_manager = cookie_manager is not None or not native_context_cookies_available()
-        raw = _read_raw_auth_cookie(
-            cookie_manager,
-            allow_manager_fallback=allow_manager and cookie_manager is not None,
-        )
+        raw = _read_raw_auth_cookie(cookie_manager, allow_manager_fallback=True)
         if raw is not None and parse_auth_cookie(raw) is None:
             st.session_state["cadivor_auth_cookie_absent"] = True
         return False
 
     st.session_state.pop("cadivor_auth_cookie_absent", None)
     st.session_state["cadivor_auth_restore_attempts"] = 0
+    _clear_manager_fallback_hydration_state()
     return True
+
+
+def _manager_fallback_hydration_blocked() -> bool:
+    if not auth_cookies_enabled():
+        return True
+    if st.session_state.get("cadivor_manual_login_in_progress"):
+        return True
+    if st.session_state.get("cadivor_force_signed_out") or st.session_state.get(
+        "cadivor_explicit_logout"
+    ):
+        return True
+    if st.session_state.get("user") is not None:
+        return True
+    if st.session_state.get("access_token") and st.session_state.get("refresh_token"):
+        return True
+    if st.session_state.get("cadivor_auth_cookie_absent"):
+        return True
+    return False
+
+
+def manager_fallback_hydration_pending(cookie_manager: Any = None) -> bool:
+    """True while a lazy manager fallback read may hydrate on a later script run."""
+    if _manager_fallback_hydration_blocked():
+        return False
+    if not native_cookie_api_available():
+        return False
+    if not st.session_state.get(_MANAGER_FALLBACK_ATTEMPTED_KEY):
+        return False
+    manager = cookie_manager or get_auth_cookie_manager(mount=False)
+    if _logout_marker_active(manager):
+        return False
+    attempts = int(st.session_state.get("cadivor_auth_restore_attempts") or 0)
+    return attempts < _MAX_HYDRATION_ATTEMPTS
 
 
 def auth_cookie_hydration_pending(cookie_manager: Any = None) -> bool:
     """True while CookieManager may still be loading the auth cookie (legacy path only)."""
-    if not auth_cookies_enabled():
-        return False
-    if st.session_state.get("cadivor_force_signed_out") or st.session_state.get(
-        "cadivor_explicit_logout"
-    ):
+    if _manager_fallback_hydration_blocked():
         return False
     if _logout_marker_active(cookie_manager):
         return False
-    if st.session_state.get("user") is not None:
-        return False
-    if st.session_state.get("access_token") and st.session_state.get("refresh_token"):
-        return False
-    if st.session_state.get("cadivor_auth_cookie_absent"):
-        return False
-    if native_context_cookies_available():
+    if native_cookie_api_available():
         return False
 
     attempts = int(st.session_state.get("cadivor_auth_restore_attempts") or 0)
@@ -392,6 +507,18 @@ def auth_cookie_hydration_pending(cookie_manager: Any = None) -> bool:
     if raw is not None and parse_auth_cookie(raw) is None:
         return False
     return raw is None
+
+
+def finalize_manager_fallback_hydration_timeout(cookie_manager: Any) -> None:
+    """Mark bounded manager fallback hydration complete with no credential."""
+    st.session_state["cadivor_auth_cookie_absent"] = True
+    st.session_state["cadivor_auth_restore_attempts"] = _MAX_HYDRATION_ATTEMPTS
+    _clear_manager_fallback_hydration_state()
+    log_auth_restore(
+        "manager_fallback_hydration_timeout",
+        reason="hydration_timeout",
+        cookie_manager_ready=cookie_manager is not None,
+    )
 
 
 def finalize_auth_cookie_hydration_timeout(cookie_manager: Any) -> None:

@@ -63,24 +63,23 @@ def current_script_run_id() -> str | None:
 
 def _cookie_present(cookie_manager: Any) -> bool:
     try:
-        from src.auth_cookies import _read_raw_auth_cookie, native_context_cookies_available
+        from src.auth_cookies import read_auth_cookie_tokens
 
-        allow_manager = cookie_manager is not None
-        if not allow_manager and not native_context_cookies_available():
-            return False
-        return _read_raw_auth_cookie(
-            cookie_manager,
-            allow_manager_fallback=allow_manager,
-        ) is not None
+        return read_auth_cookie_tokens(cookie_manager) is not None
     except Exception:
         return False
 
 
 def _hydration_pending(cookie_manager: Any) -> bool:
     try:
-        from src.auth_cookies import auth_cookie_hydration_pending
+        from src.auth_cookies import (
+            auth_cookie_hydration_pending,
+            manager_fallback_hydration_pending,
+        )
 
-        return bool(auth_cookie_hydration_pending(cookie_manager))
+        return bool(auth_cookie_hydration_pending(cookie_manager)) or bool(
+            manager_fallback_hydration_pending(cookie_manager)
+        )
     except Exception:
         return False
 

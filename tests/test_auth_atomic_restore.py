@@ -168,6 +168,67 @@ class AuthAtomicRestoreTests(unittest.TestCase):
         self.assertEqual(status, auth_state.AUTH_SIGNED_OUT)
         self.assertNotIn("user", st.session_state)
 
+    def test_context_absent_manager_valid_restores_authenticated(self):
+        st, auth_cookies, auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies["cadivor_auth"] = _valid_payload("mgr-restore-a", "mgr-restore-r")
+        supabase = self._mock_supabase()
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertIn("user", st.session_state)
+        self.assertEqual(st.session_state["access_token"], "fresh-access")
+        self.assertNotIn("mgr-restore-a", st.session_state["access_token"])
+
+    def test_context_absent_manager_absent_remains_signed_out(self):
+        st, auth_cookies, auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies = {}
+        supabase = self._mock_supabase()
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_SIGNED_OUT)
+        self.assertNotIn("user", st.session_state)
+
+    def test_context_malformed_manager_valid_restores_via_fallback(self):
+        context = _FakeContextCookies({"cadivor_auth": "not-json"})
+        st, auth_cookies, auth_state = self._load({}, context_cookies=context)
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies["cadivor_auth"] = _valid_payload("fallback-a", "fallback-r")
+        supabase = self._mock_supabase()
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertIn("user", st.session_state)
+
+    def test_manager_invalid_credentials_fail_closed(self):
+        st, auth_cookies, auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
+        manager.cookies["cadivor_auth"] = _valid_payload("bad-a", "bad-r")
+        supabase = self._mock_supabase(user=None)
+
+        with patch.object(auth_cookies, "invalidate_corrupt_auth_cookie") as invalidate_mock:
+            status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_SIGNED_OUT)
+        self.assertNotIn("user", st.session_state)
+        invalidate_mock.assert_called_once()
+
+    def test_f5_restore_via_context_simulates_new_connection(self):
+        payload = _valid_payload("cold-f5-a", "cold-f5-r")
+        context = _FakeContextCookies({"cadivor_auth": payload})
+        st, auth_cookies, auth_state = self._load({}, context_cookies=context)
+        supabase = self._mock_supabase()
+
+        self.assertEqual(len(_FakeCookieManager.instances), 0)
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
+        self.assertEqual(len(_FakeCookieManager.instances), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

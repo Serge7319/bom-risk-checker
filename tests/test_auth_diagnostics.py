@@ -37,13 +37,13 @@ class AuthDiagnosticsTests(unittest.TestCase):
 
         auth_cookies = types.ModuleType("src.auth_cookies")
 
-        def _read_raw_auth_cookie(_manager):
+        def _read_auth_cookie_tokens(_manager):
             return None
 
         def _hydration_pending(_manager):
             return False
 
-        auth_cookies._read_raw_auth_cookie = _read_raw_auth_cookie
+        auth_cookies.read_auth_cookie_tokens = _read_auth_cookie_tokens
         auth_cookies.auth_cookie_hydration_pending = _hydration_pending
         sys.modules["src.auth_cookies"] = auth_cookies
 
@@ -92,9 +92,9 @@ class AuthDiagnosticsTests(unittest.TestCase):
         ctx = self._ctx("session-for-log-test", "run-log-1")
 
         def _read_with_cookie(_manager):
-            return '{"access_token":"cookie-access","refresh_token":"cookie-refresh"}'
+            return {"access_token": "cookie-access", "refresh_token": "cookie-refresh"}
 
-        sys.modules["src.auth_cookies"]._read_raw_auth_cookie = _read_with_cookie
+        sys.modules["src.auth_cookies"].read_auth_cookie_tokens = _read_with_cookie
 
         with patch.object(diagnostics, "_raw_session_id", return_value=ctx.session_id):
             with patch.object(diagnostics, "current_script_run_id", return_value=ctx.script_run_id):
