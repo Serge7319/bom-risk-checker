@@ -97,6 +97,30 @@ def _analysis_section_nav_key(analysis_id: str) -> str:
     return f"cadivor_analysis_section_{analysis_id or 'default'}"
 
 
+PENDING_ANALYSIS_SECTION_KEY = "cadivor_pending_analysis_section"
+PENDING_ANALYSIS_SECTION_ID_KEY = "cadivor_pending_analysis_section_id"
+
+
+def _consume_pending_analysis_section(*, analysis_id: str) -> None:
+    """Apply a queued section transition before the navigation widget is instantiated."""
+    pending = _normalize_analysis_tab(st.session_state.get(PENDING_ANALYSIS_SECTION_KEY))
+    if pending not in ANALYSIS_SECTIONS:
+        return
+    pending_id = _safe(st.session_state.get(PENDING_ANALYSIS_SECTION_ID_KEY), "")
+    if pending_id and pending_id != analysis_id:
+        return
+
+    nav_key = _analysis_section_nav_key(analysis_id)
+    st.session_state["cadivor_active_analysis_tab"] = pending
+    st.session_state[nav_key] = pending
+    try:
+        st.query_params["analysis_tab"] = pending
+    except Exception:
+        pass
+    st.session_state.pop(PENDING_ANALYSIS_SECTION_KEY, None)
+    st.session_state.pop(PENDING_ANALYSIS_SECTION_ID_KEY, None)
+
+
 def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
     """Hydrate section state from URL only on entry/deep-link — never clobber widget selection."""
     try:
@@ -151,6 +175,7 @@ def _commit_analysis_section_selection(*, analysis_id: str, selected: str) -> st
 
 def _render_analysis_section_navigation(*, analysis_id: str) -> str:
     """Deterministic server-side section selection (replaces st.tabs + delayed JS restore)."""
+    _consume_pending_analysis_section(analysis_id=analysis_id)
     nav_key = _analysis_section_nav_key(analysis_id)
     if nav_key not in st.session_state:
         st.session_state[nav_key] = _safe(

@@ -31,6 +31,9 @@ SUGGESTIONS = [
 
 ASK_CADIVOR_TAB = "Ask Cadivor"
 
+PENDING_ANALYSIS_SECTION_KEY = "cadivor_pending_analysis_section"
+PENDING_ANALYSIS_SECTION_ID_KEY = "cadivor_pending_analysis_section_id"
+
 
 _COPILOT_WORKFLOW_KEYS = (
     "cv41_pending_manual",
@@ -54,28 +57,26 @@ def _log_ask_cadivor(event: str, **details: Any) -> None:
     print(" ".join(parts), flush=True)
 
 
-def _analysis_section_nav_key(analysis_id: str) -> str:
-    return f"cadivor_analysis_section_{analysis_id or 'default'}"
-
-
 def _pin_ask_cadivor_tab(*, source: str = "unknown", analysis_id: str = "") -> None:
-    """Keep session, query, nav widget, and tab-restore state on Ask Cadivor during copilot work."""
+    """Keep authoritative section/query on Ask Cadivor without mutating bound nav widgets."""
     st.session_state["cadivor_active_analysis_tab"] = ASK_CADIVOR_TAB
     try:
         st.query_params["analysis_tab"] = ASK_CADIVOR_TAB
     except Exception:
         pass
-    if analysis_id:
-        st.session_state[_analysis_section_nav_key(analysis_id)] = ASK_CADIVOR_TAB
-    else:
-        active_analysis_id = str(st.session_state.get("cadivor_active_analysis_id") or st.session_state.get("analysis_id") or "")
-        if active_analysis_id:
-            st.session_state[_analysis_section_nav_key(active_analysis_id)] = ASK_CADIVOR_TAB
-        else:
-            for key in list(st.session_state.keys()):
-                if str(key).startswith("cadivor_analysis_section_"):
-                    st.session_state[key] = ASK_CADIVOR_TAB
-    _log_ask_cadivor("tab_pinned", source=source, analysis_id=analysis_id or "active")
+    target_analysis_id = analysis_id or str(
+        st.session_state.get("cadivor_active_analysis_id")
+        or st.session_state.get("analysis_id")
+        or ""
+    )
+    st.session_state[PENDING_ANALYSIS_SECTION_KEY] = ASK_CADIVOR_TAB
+    if target_analysis_id:
+        st.session_state[PENDING_ANALYSIS_SECTION_ID_KEY] = target_analysis_id
+    _log_ask_cadivor(
+        "tab_pinned",
+        source=source,
+        analysis_id=target_analysis_id or analysis_id or "active",
+    )
 
 
 def _log_copilot_workflow(event: str, **details: Any) -> None:

@@ -117,12 +117,14 @@ class AskCadivorSessionContractTests(unittest.TestCase):
         assistant = importlib.import_module("src.components.engineering_assistant")
         return st, assistant
 
-    def test_pin_ask_cadivor_tab_sets_session_and_query(self):
+    def test_pin_ask_cadivor_tab_queues_pending_without_nav_mutation(self):
         st, assistant = self._load_assistant(query_params={})
         assistant._pin_ask_cadivor_tab(source="test", analysis_id="a-1")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
         self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
-        self.assertEqual(st.session_state["cadivor_analysis_section_a-1"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_pending_analysis_section_id"], "a-1")
+        self.assertNotIn("cadivor_analysis_section_a-1", st.session_state)
 
     def test_queue_copilot_submission_pins_tab(self):
         st, assistant = self._load_assistant()

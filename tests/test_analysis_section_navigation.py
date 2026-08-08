@@ -134,6 +134,32 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         for section in detail.ANALYSIS_SECTIONS:
             self.assertIn(f'if active_tab == "{section}":', source)
 
+    def test_pending_section_consumed_before_widget_render(self):
+        st, detail = self._load(
+            session_state={
+                "cadivor_analysis_section_a-pending": "Overview",
+                "cadivor_pending_analysis_section": "Ask Cadivor",
+                "cadivor_pending_analysis_section_id": "a-pending",
+                "cadivor_active_analysis_tab": "Ask Cadivor",
+            },
+        )
+        active = detail._render_analysis_section_navigation(analysis_id="a-pending")
+        self.assertEqual(active, "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_analysis_section_a-pending"], "Ask Cadivor")
+        self.assertNotIn("cadivor_pending_analysis_section", st.session_state)
+
+    def test_pending_section_ignored_for_other_analysis(self):
+        st, detail = self._load(
+            session_state={
+                "cadivor_analysis_section_a-other": "Timeline",
+                "cadivor_pending_analysis_section": "Ask Cadivor",
+                "cadivor_pending_analysis_section_id": "a-target",
+            },
+        )
+        active = detail._render_analysis_section_navigation(analysis_id="a-other")
+        self.assertEqual(active, "Timeline")
+        self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
+
     def test_pinned_ask_cadivor_overrides_stale_url_when_widget_unbound(self):
         st, detail = self._load(
             session_state={"cadivor_active_analysis_tab": "Ask Cadivor"},

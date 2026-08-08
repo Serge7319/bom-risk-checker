@@ -122,7 +122,7 @@ class AskCadivorTabStateTests(unittest.TestCase):
         assistant = importlib.import_module("src.components.engineering_assistant")
         return st, assistant
 
-    def test_pin_ask_cadivor_tab_sets_session_query_and_nav_widget(self):
+    def test_pin_ask_cadivor_tab_queues_pending_without_nav_mutation(self):
         st, assistant = self._load_assistant(
             session_state={"cadivor_analysis_section_a-1": "Engineering Intelligence"},
             query_params={},
@@ -130,9 +130,14 @@ class AskCadivorTabStateTests(unittest.TestCase):
         assistant._pin_ask_cadivor_tab(source="test", analysis_id="a-1")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
         self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
-        self.assertEqual(st.session_state["cadivor_analysis_section_a-1"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_pending_analysis_section_id"], "a-1")
+        self.assertEqual(
+            st.session_state["cadivor_analysis_section_a-1"],
+            "Engineering Intelligence",
+        )
 
-    def test_manual_submission_pins_nav_widget_before_rerun(self):
+    def test_manual_submission_queues_pending_before_rerun(self):
         st, assistant = self._load_assistant(
             session_state={"cadivor_analysis_section_a-1": "Engineering Intelligence"},
         )
@@ -142,7 +147,11 @@ class AskCadivorTabStateTests(unittest.TestCase):
                 submission_kind="manual",
                 analysis_id="a-1",
             )
-        self.assertEqual(st.session_state["cadivor_analysis_section_a-1"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
+        self.assertEqual(
+            st.session_state["cadivor_analysis_section_a-1"],
+            "Engineering Intelligence",
+        )
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
 
     def test_follow_up_buttons_require_non_empty_labels(self):
@@ -264,6 +273,37 @@ class AskCadivorTabStateTests(unittest.TestCase):
         )
         detail._sync_cadivor_active_analysis_tab(analysis_id="a-entry")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+
+    def test_suggestion_click_pending_then_next_run_shows_ask_cadivor(self):
+        st, assistant = self._load_assistant(
+            session_state={
+                "cadivor_analysis_section_a-1": "Engineering Intelligence",
+                "cadivor_active_analysis_tab": "Engineering Intelligence",
+            },
+        )
+        with self.assertRaises(RuntimeError):
+            assistant._select_initial_suggestion(
+                assistant.SUGGESTIONS[0],
+                index=0,
+                prompt_key="cv35_question",
+                analysis_id="a-1",
+            )
+        self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
+        self.assertEqual(
+            st.session_state["cadivor_analysis_section_a-1"],
+            "Engineering Intelligence",
+        )
+
+        st_detail, detail = self._load_detail(session_state=dict(st.session_state))
+        active = detail._render_analysis_section_navigation(analysis_id="a-1")
+        self.assertEqual(active, "Ask Cadivor")
+        self.assertNotIn("cadivor_pending_analysis_section", st_detail.session_state)
+
+    def test_pin_ask_cadivor_tab_does_not_assign_nav_widget_key(self):
+        _, assistant = self._load_assistant()
+        source = inspect.getsource(assistant._pin_ask_cadivor_tab)
+        self.assertNotIn("cadivor_analysis_section_", source)
+        self.assertIn("PENDING_ANALYSIS_SECTION_KEY", source)
 
     def test_analysis_detail_preserves_widget_over_url(self):
         st, detail = self._load_detail(
