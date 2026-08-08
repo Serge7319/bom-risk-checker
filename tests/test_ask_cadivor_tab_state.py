@@ -224,13 +224,15 @@ class AskCadivorTabStateTests(unittest.TestCase):
         _sync_cadivor_active_analysis_tab()
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
 
-    def test_analysis_detail_js_uses_session_tab_only(self):
+    def test_analysis_detail_uses_deterministic_section_render(self):
         from pathlib import Path
 
         source = Path("src/pages/analysis_detail.py").read_text(encoding="utf-8")
-        self.assertIn("savedTab", source)
-        self.assertNotIn("effectiveTab", source)
-        self.assertNotIn("urlTab", source)
+        self.assertIn("ANALYSIS_SECTIONS", source)
+        self.assertIn("_render_analysis_section_navigation", source)
+        self.assertIn('if active_tab == "Ask Cadivor"', source)
+        self.assertNotIn("st.tabs(", source)
+        self.assertNotIn("restoreTab", source)
 
 
 if __name__ == "__main__":

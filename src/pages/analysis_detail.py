@@ -80,6 +80,19 @@ def _normalize_analysis_tab(value: Any) -> str:
     return str(value or "").strip().replace("+", " ")
 
 
+ANALYSIS_SECTIONS = (
+    "Engineering Intelligence",
+    "Overview",
+    "Intelligence",
+    "Components",
+    "Alternatives",
+    "Discussions",
+    "Timeline",
+    "Reports",
+    "Ask Cadivor",
+)
+
+
 def _sync_cadivor_active_analysis_tab() -> None:
     """Treat cadivor_active_analysis_tab as authoritative after ingesting URL input once per run."""
     try:
@@ -90,6 +103,33 @@ def _sync_cadivor_active_analysis_tab() -> None:
         st.session_state["cadivor_active_analysis_tab"] = incoming
     elif "cadivor_active_analysis_tab" not in st.session_state:
         st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+
+    active = _safe(st.session_state.get("cadivor_active_analysis_tab"), "Engineering Intelligence")
+    if active not in ANALYSIS_SECTIONS:
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+
+
+def _render_analysis_section_navigation(*, analysis_id: str) -> str:
+    """Deterministic server-side section selection (replaces st.tabs + delayed JS restore)."""
+    active = _safe(st.session_state.get("cadivor_active_analysis_tab"), "Engineering Intelligence")
+    nav_key = f"cadivor_analysis_section_{analysis_id or 'default'}"
+    if st.session_state.get(nav_key) != active:
+        st.session_state[nav_key] = active
+
+    st.markdown('<div class="cv719-analysis-section-nav"></div>', unsafe_allow_html=True)
+    selected = st.radio(
+        "Analysis section",
+        ANALYSIS_SECTIONS,
+        horizontal=True,
+        key=nav_key,
+        label_visibility="collapsed",
+    )
+    st.session_state["cadivor_active_analysis_tab"] = selected
+    try:
+        st.query_params["analysis_tab"] = selected
+    except Exception:
+        pass
+    return selected
 
 
 def _num(value: Any, default: int = 0) -> int:
@@ -302,6 +342,9 @@ def render_analysis_detail(
         or requested_focus == "component-risk"
     )
 
+    if requested_tab == "components":
+        st.session_state["cadivor_active_analysis_tab"] = "Components"
+
     # Sprint 34.2.6 — defer saved-BOM scroll restoration until the complete
     # Analysis Details page has rendered. Streamlit/browser scroll restoration
     # can run after an early script, which was returning users to the old lower
@@ -346,6 +389,10 @@ def render_analysis_detail(
         button[data-baseweb="tab"][aria-selected="true"]{background:#eff6ff!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:inset 0 -3px 0 #2563eb!important}
         button[data-baseweb="tab"][aria-selected="true"] p{color:#1d4ed8!important}
         div[data-baseweb="tab-highlight"]{display:none!important}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:8px;border-bottom:1px solid #dbe3ef;padding:0 0 8px;margin:0 0 12px}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:1px solid transparent;border-radius:10px 10px 0 0;padding:10px 16px 12px;font-weight:650;color:#334155;background:transparent;margin:0}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:#f8fbff;color:#0b1220}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){background:#eff6ff;color:#1d4ed8;box-shadow:inset 0 -3px 0 #2563eb}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
         .cv-status-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}
         .cv-status-card span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
@@ -905,84 +952,7 @@ def render_analysis_detail(
         )
 
     _sync_cadivor_active_analysis_tab()
-
-    (
-        advisor_tab,
-        overview_tab,
-        intelligence_tab,
-        components_tab,
-        alternatives_tab,
-        discussions_tab,
-        timeline_tab,
-        reports_tab,
-        assistant_tab,
-    ) = st.tabs([
-        "Engineering Intelligence",
-        "Overview",
-        "Intelligence",
-        "Components",
-        "Alternatives",
-        "Discussions",
-        "Timeline",
-        "Reports",
-        "Ask Cadivor",
-    ])
-
-    # Sprint 50.1.2 / 71.8 — session state is the authoritative active-tab value.
-    # URL analysis_tab is ingested above; JavaScript only restores the baked savedTab.
-    saved_analysis_tab = _safe(
-        st.session_state.get("cadivor_active_analysis_tab"),
-        "Engineering Intelligence",
-    )
-    components.html(
-        f"""
-        <script>
-        (function() {{
-          const parentWindow = window.parent;
-          const doc = parentWindow.document;
-          const savedTab = {saved_analysis_tab!r};
-          const analysisId = {str(analysis_id)!r};
-
-          const tabs = () => Array.from(doc.querySelectorAll('button[data-baseweb="tab"]'));
-          const tabName = (tab) => (tab.innerText || tab.textContent || '').trim();
-          const decorateLinks = (name) => {{
-            doc.querySelectorAll('a[target="_self"]').forEach((link) => {{
-              try {{
-                const url = new URL(link.href, parentWindow.location.href);
-                url.searchParams.set('analysis_id', analysisId);
-                url.searchParams.set('analysis_tab', name);
-                link.href = url.toString();
-              }} catch (error) {{}}
-            }});
-          }};
-          const restoreTab = () => {{
-            const available = tabs();
-            const target = available.find((tab) => tabName(tab) === savedTab);
-            if (target && target.getAttribute('aria-selected') !== 'true') target.click();
-            decorateLinks(target ? tabName(target) : savedTab);
-            available.forEach((tab) => {{
-              if (tab.dataset.cv5012Bound === '1') return;
-              tab.dataset.cv5012Bound = '1';
-              tab.addEventListener('click', () => {{
-                const name = tabName(tab);
-                try {{
-                  const url = new URL(parentWindow.location.href);
-                  url.searchParams.set('analysis_id', analysisId);
-                  url.searchParams.set('analysis_tab', name);
-                  parentWindow.history.replaceState({{}}, '', url.toString());
-                }} catch (error) {{}}
-                decorateLinks(name);
-              }});
-            }});
-          }};
-          parentWindow.setTimeout(restoreTab, 80);
-          parentWindow.setTimeout(restoreTab, 320);
-        }})();
-        </script>
-        """,
-        height=0,
-        width=0,
-    )
+    active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
 
     lifecycle_exposed_parts = []
     no_stock_parts = []
@@ -1085,7 +1055,7 @@ def render_analysis_detail(
     )
     top_ranked_part = ranked_parts[0] if ranked_parts else None
 
-    with advisor_tab:
+    if active_tab == "Engineering Intelligence":
         brief_cache_key = decision_brief_cache_key(analysis_id=analysis_id)
         decision_brief = get_cached_decision_brief(brief_cache_key)
         if decision_brief is None:
@@ -1677,7 +1647,7 @@ def render_analysis_detail(
                 action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{html.escape(bucket.upper())}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(reason)}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
             if not action_html: action_html.append('<div class="cv-analysis-empty">No priority actions are currently available.</div>')
             st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Cadivor-ranked recommendations with decision priority buckets.</div>{"".join(action_html)}</section>''', unsafe_allow_html=True)
-    with overview_tab:
+    if active_tab == "Overview":
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
         context_score = context_coverage.score
         context_badge_class = "" if context_score >= 65 else " warn"
@@ -1771,7 +1741,7 @@ def render_analysis_detail(
             risk_html = "".join(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{label}</div><div class="cv-analysis-row-meta">Component count in this analysis</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {cls}">{value}</span></div></div>' for label,value,cls in [("High Risk",high,"bad" if high else "good"),("Medium Risk",medium,"warn" if medium else "good"),("Low Risk",low,"good")])
             st.markdown(f'<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Risk Breakdown</span><div class="cv-analysis-icon">{_lucide("alert",18)}</div></div><div class="cv-analysis-row-list">{risk_html}</div></div>', unsafe_allow_html=True)
 
-    with intelligence_tab:
+    if active_tab == "Intelligence":
         _section_header("Lifecycle & Replacement Intelligence", "Operational readiness, stock health, supplier alerts, and replacement signals.")
         total = max(1, total_parts)
         active_count = sum(1 for p in parts if "active" in str(p.get("lifecycle_status") or p.get("Lifecycle Status") or "").lower())
@@ -1837,7 +1807,7 @@ def render_analysis_detail(
             else:
                 st.markdown('<div class="cv-analysis-empty">No saved supplier or lifecycle alerts are attached to this analysis.</div>', unsafe_allow_html=True)
 
-    with components_tab:
+    if active_tab == "Components":
         st.markdown('<div id="component-risk-report"></div>', unsafe_allow_html=True)
         _section_header(
             "Component Risk Report",
@@ -1872,32 +1842,23 @@ def render_analysis_detail(
                 <script>
                 (function(){
                   const doc = window.parent.document;
-                  const activateAndScroll = () => {
-                    const tabs = Array.from(doc.querySelectorAll('button[data-baseweb="tab"]'));
-                    const componentTab = tabs.find((tab) =>
-                      (tab.innerText || tab.textContent || '').trim().toLowerCase() === 'components'
-                    );
-                    if (componentTab && componentTab.getAttribute('aria-selected') !== 'true') {
-                      componentTab.click();
+                  const scrollToComponent = () => {
+                    const target = doc.getElementById('component-risk-report');
+                    const root = doc.querySelector('[data-testid="stAppViewContainer"]');
+                    if (target) {
+                      target.scrollIntoView({behavior:'smooth', block:'start'});
+                      window.setTimeout(() => {
+                        const selectedRow = doc.querySelector('.cv-analysis-component.is-selected');
+                        const intelligence = doc.querySelector('.cv-component-detail');
+                        if (selectedRow) selectedRow.scrollIntoView({behavior:'smooth', block:'center'});
+                        if (intelligence) intelligence.setAttribute('tabindex', '-1');
+                      }, 260);
+                    } else if (root) {
+                      root.scrollTo({top:0, left:0, behavior:'smooth'});
                     }
-                    window.setTimeout(() => {
-                      const target = doc.getElementById('component-risk-report');
-                      const root = doc.querySelector('[data-testid="stAppViewContainer"]');
-                      if (target) {
-                        target.scrollIntoView({behavior:'smooth', block:'start'});
-                        window.setTimeout(() => {
-                          const selectedRow = doc.querySelector('.cv-analysis-component.is-selected');
-                          const intelligence = doc.querySelector('.cv-component-detail');
-                          if (selectedRow) selectedRow.scrollIntoView({behavior:'smooth', block:'center'});
-                          if (intelligence) intelligence.setAttribute('tabindex', '-1');
-                        }, 260);
-                      } else if (root) {
-                        root.scrollTo({top:0, left:0, behavior:'smooth'});
-                      }
-                    }, 180);
                   };
-                  window.setTimeout(activateAndScroll, 120);
-                  window.setTimeout(activateAndScroll, 520);
+                  window.setTimeout(scrollToComponent, 120);
+                  window.setTimeout(scrollToComponent, 520);
                 })();
                 </script>
                 """,
@@ -2276,7 +2237,7 @@ def render_analysis_detail(
                 unsafe_allow_html=True,
             )
 
-    with alternatives_tab:
+    if active_tab == "Alternatives":
         _section_header(
             "Replacement Readiness",
             "Review linked alternatives, pending validation, and components that still need replacement work.",
@@ -2414,7 +2375,7 @@ def render_analysis_detail(
                 analysis_id=analysis_id,
             )
 
-    with discussions_tab:
+    if active_tab == "Discussions":
         _section_header(
             "Engineering Discussions",
             "Keep review notes, mentions, and permanent engineering context attached to this saved BOM.",
@@ -2788,7 +2749,7 @@ def render_analysis_detail(
                             )
                             st.rerun()
 
-    with timeline_tab:
+    if active_tab == "Timeline":
         _section_header(
             "Engineering Timeline",
             "Review the chronological engineering history of this saved BOM without leaving the analysis workspace.",
@@ -2966,7 +2927,7 @@ def render_analysis_detail(
             timeline_markup = '<div class="cv-timeline">' + "".join(timeline_items) + '</div>'
             st.markdown(timeline_markup, unsafe_allow_html=True)
 
-    with reports_tab:
+    if active_tab == "Reports":
         _section_header(
             "Report Library",
             "Generate focused deliverables for engineering, sourcing, management, and audit workflows.",
@@ -3022,7 +2983,7 @@ def render_analysis_detail(
     # initial Streamlit DOM is mounted. Only saved-BOM navigation receives this
     # top reset; component-focused navigation keeps its targeted section jump.
 
-    with assistant_tab:
+    if active_tab == "Ask Cadivor":
         render_engineering_assistant(
             current_user=current_user,
             engineering_context=engineering_context,

@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
@@ -139,6 +140,8 @@ def clear_auth_session(*, keep_status: bool = False) -> None:
     for key in _AUTH_KEYS:
         st.session_state.pop(key, None)
     st.session_state.pop("cadivor_cookie_write_pending", None)
+    st.session_state.pop(_AUTH_VALIDATED_RUN_KEY, None)
+    st.session_state.pop("cadivor_auth_cookie_persisted_run_id", None)
     st.session_state.pop("cadivor_auth_transition", None)
     st.session_state.pop("cadivor_auth_restore_attempts", None)
     if not keep_status:
@@ -188,8 +191,9 @@ def _fetch_validated_auth(
     refresh_token: str,
 ) -> _ValidatedAuthResult | None:
     """Validate Supabase tokens without touching Streamlit session_state."""
-    session_response = supabase.auth.set_session(access_token, refresh_token)
-    user_response = supabase.auth.get_user()
+    with _SUPABASE_AUTH_LOCK:
+        session_response = supabase.auth.set_session(access_token, refresh_token)
+        user_response = supabase.auth.get_user()
     user = getattr(user_response, "user", None)
     if user is None:
         return None
@@ -405,6 +409,21 @@ def render_auth_boot() -> None:
 
 
 _RESTORE_TIMEOUT_SECONDS = 5.0
+_SUPABASE_AUTH_LOCK = threading.Lock()
+_AUTH_VALIDATED_RUN_KEY = "cadivor_auth_validated_run_id"
+
+
+def _current_script_run_id() -> str | None:
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            return None
+        run_id = getattr(ctx, "script_run_id", None)
+        return str(run_id) if run_id is not None else str(id(ctx))
+    except Exception:
+        return None
 
 
 def _validate_tokens(
@@ -413,6 +432,16 @@ def _validate_tokens(
     refresh_token: str,
     cookie_manager: Any = None,
 ) -> bool:
+    run_id = _current_script_run_id()
+    if run_id and st.session_state.get(_AUTH_VALIDATED_RUN_KEY) == run_id:
+        try:
+            from src.auth_cookies import log_auth_restore
+
+            log_auth_restore("validation_skipped", reason="already_validated_this_run")
+        except Exception:
+            pass
+        return st.session_state.get("user") is not None
+
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(
             _fetch_validated_auth,
@@ -456,6 +485,8 @@ def _validate_tokens(
         validated.access_token,
         validated.refresh_token,
     )
+    if run_id:
+        st.session_state[_AUTH_VALIDATED_RUN_KEY] = run_id
     _log("restored")
     try:
         from src.auth_cookies import log_auth_restore, persist_session_auth_cookie

@@ -352,6 +352,10 @@ def record_auth_hydration_attempt() -> int:
 
 def persist_session_auth_cookie(cookie_manager: Any) -> None:
     """Write current Supabase tokens to the browser auth cookie."""
+    run_id = _script_run_id()
+    if run_id and st.session_state.get("cadivor_auth_cookie_persisted_run_id") == run_id:
+        log_auth_cookie("write_skipped", reason="already_persisted_this_run")
+        return
     if cookie_manager is None or not auth_cookies_enabled():
         return
     access_token = st.session_state.get("access_token")
@@ -395,6 +399,8 @@ def persist_session_auth_cookie(cookie_manager: Any) -> None:
         log_auth_cookie("write_failed", exception_type=type(exc).__name__)
         return
     log_auth_cookie("write_succeeded", cookie_name=AUTH_COOKIE_NAME)
+    if run_id:
+        st.session_state["cadivor_auth_cookie_persisted_run_id"] = run_id
     _clear_logout_marker(cookie_manager)
 
 
