@@ -1023,12 +1023,12 @@ def render_analysis_detail(
     badge_tone = {"good": "success", "warn": "warning", "bad": "danger"}.get(health_cls, "neutral")
     st.markdown(
         f"""
-        <div class="cv-page cv-analysis-detail-page">
-          <header class="cv-page-header cv-analysis-header">
+        <div class="cv-analysis-detail-page">
+          <header class="cv-analysis-header">
             <div class="cv-analysis-header-main">
               <div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis</div>
-              <h1 class="cv-page-title cv-analysis-title">{html.escape(project)}</h1>
-              <p class="cv-page-subtitle cv-analysis-sub">
+              <h1 class="cv-analysis-title">{html.escape(project)}</h1>
+              <p class="cv-analysis-sub">
                 <span>{html.escape(filename)}</span>
                 <span class="cv-analysis-meta-sep">·</span>
                 <span>Updated {_relative_date(created)}</span>

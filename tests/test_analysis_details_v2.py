@@ -41,7 +41,7 @@ DS_V2_TOKENS = (
     "--cv-warning-bg",
     "--cv-danger",
     "--cv-danger-bg",
-    "--cv-page-max",
+    "--cv-content-max",
     "--cv-space-2",
     "--cv-space-3",
     "--cv-space-4",
@@ -183,9 +183,23 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
     def test_no_competing_root_namespace(self) -> None:
         self.assertNotRegex(self.v2_css, r":root\s*\{")
 
-    def test_page_header_uses_ds_v2_primitives(self) -> None:
-        for cls in ("cv-page", "cv-page-header", "cv-page-title", "cv-page-subtitle", "cv-badge"):
-            self.assertIn(cls, self.detail_source)
+    def test_analysis_header_structure_restored(self) -> None:
+        self.assertIn("cv-analysis-detail-page", self.detail_source)
+        self.assertIn("cv-analysis-header", self.detail_source)
+        self.assertIn("cv-analysis-header-kpis", self.detail_source)
+        self.assertIn("cv-analysis-mini", self.detail_source)
+        self.assertIn("cv-badge", self.detail_source)
+        self.assertNotIn("cv-page-header cv-analysis-header", self.detail_source)
+        self.assertNotIn("cv-page-title", self.detail_source)
+
+    def test_header_card_layout_in_v2_css(self) -> None:
+        self.assertIn(".cv-analysis-detail-page .cv-analysis-header", self.v2_css)
+        header_block = self.v2_css.split(".cv-analysis-detail-page .cv-analysis-header", 1)[1][:520]
+        self.assertIn("display: grid", header_block)
+        self.assertIn("border:", header_block)
+        self.assertIn("box-shadow:", header_block)
+        self.assertIn(".cv-analysis-detail-page .cv-analysis-mini", self.v2_css)
+        self.assertIn("stHorizontalBlock", self.v2_css)
 
     def test_section_header_uses_ds_v2_classes(self) -> None:
         self.assertIn("cv-section-header", self.detail_source)
