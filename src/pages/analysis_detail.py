@@ -925,6 +925,14 @@ def render_analysis_detail(
           const doc = parentWindow.document;
           const savedTab = {saved_analysis_tab!r};
           const analysisId = {str(analysis_id)!r};
+          const urlTab = (() => {{
+            try {{
+              return new URL(parentWindow.location.href).searchParams.get('analysis_tab') || '';
+            }} catch (error) {{
+              return '';
+            }}
+          }})();
+          const effectiveTab = urlTab || savedTab;
 
           const tabs = () => Array.from(doc.querySelectorAll('button[data-baseweb="tab"]'));
           const tabName = (tab) => (tab.innerText || tab.textContent || '').trim();
@@ -940,9 +948,9 @@ def render_analysis_detail(
           }};
           const restoreTab = () => {{
             const available = tabs();
-            const target = available.find((tab) => tabName(tab) === savedTab);
+            const target = available.find((tab) => tabName(tab) === effectiveTab);
             if (target && target.getAttribute('aria-selected') !== 'true') target.click();
-            decorateLinks(target ? tabName(target) : savedTab);
+            decorateLinks(target ? tabName(target) : effectiveTab);
             available.forEach((tab) => {{
               if (tab.dataset.cv5012Bound === '1') return;
               tab.dataset.cv5012Bound = '1';

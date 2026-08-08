@@ -167,12 +167,6 @@ def ensure_authenticated_or_stop() -> None:
     log_startup_phase("bootstrap_begin")
     log_auth_restore("bootstrap_started")
 
-    if handle_explicit_logout_if_pending():
-        log_startup_phase("logout_redirect")
-        log_logout_phase("auth_bootstrap_redirect")
-        log_auth_restore("fallback_signed_out", reason="explicit_logout_pending")
-        st.stop()
-
     log_startup_phase("supabase_client")
     supabase = get_supabase_client()
     cookie_manager = get_auth_cookie_manager()
@@ -230,11 +224,6 @@ def ensure_authenticated_or_stop() -> None:
         st.session_state.get("cadivor_root_state")
         or (APP_AUTHENTICATED if auth_status == AUTH_AUTHENTICATED else APP_PUBLIC)
     )
-
-    if explicit_logout_pending():
-        if handle_explicit_logout_if_pending():
-            log_startup_phase("logout_redirect")
-            st.stop()
 
     if auth_status == AUTH_SIGNED_OUT or root_state != APP_AUTHENTICATED:
         log_auth_restore("fallback_signed_out", reason="auth_resolution_signed_out")

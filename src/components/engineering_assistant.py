@@ -29,6 +29,8 @@ SUGGESTIONS = [
     "Summarize the supplier and lifecycle exposure.",
 ]
 
+ASK_CADIVOR_TAB = "Ask Cadivor"
+
 
 _COPILOT_WORKFLOW_KEYS = (
     "cv41_pending_manual",
@@ -40,7 +42,25 @@ _COPILOT_WORKFLOW_KEYS = (
     "analysis_id",
     "active_analysis_id",
     "cadivor_active_analysis_id",
+    "cadivor_active_analysis_tab",
 )
+
+
+def _log_ask_cadivor(event: str, **details: Any) -> None:
+    """Safe stdout diagnostics for Ask Cadivor execution (metadata only)."""
+    parts = [f"ASK_CADIVOR {event}"]
+    for key, value in details.items():
+        parts.append(f"{key}={value}")
+    print(" ".join(parts), flush=True)
+
+
+def _pin_ask_cadivor_tab() -> None:
+    """Keep session, query, and tab-restore state on Ask Cadivor during copilot work."""
+    st.session_state["cadivor_active_analysis_tab"] = ASK_CADIVOR_TAB
+    try:
+        st.query_params["analysis_tab"] = ASK_CADIVOR_TAB
+    except Exception:
+        pass
 
 
 def _log_copilot_workflow(event: str, **details: Any) -> None:
@@ -646,6 +666,8 @@ def _queue_copilot_submission(question: str, *, submission_kind: str) -> None:
         st.session_state["cv47_followup_question"] = clean
 
     st.session_state["cv47_scroll_pending"] = True
+    _pin_ask_cadivor_tab()
+    _log_ask_cadivor("submission_received", kind=submission_kind, question_len=len(clean))
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
     _clear_review_state()
     st.rerun()
@@ -671,6 +693,9 @@ def _apply_copilot_query_picks(*, prompt_key: str) -> None:
         idx = int(pick)
         if 0 <= idx < len(SUGGESTIONS):
             st.session_state[prompt_key] = SUGGESTIONS[idx]
+            st.session_state.pop("cv41_pending_manual", None)
+            st.session_state.pop("cv36_pending_followup", None)
+            _pin_ask_cadivor_tab()
             _clear_review_state()
             try:
                 del query_params["cv35_pick"]
@@ -1264,7 +1289,14 @@ def render_engineering_assistant(
     )
     submitted_question = cleaned_question
     if submit_requested:
+        _pin_ask_cadivor_tab()
         _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
+        _log_ask_cadivor(
+            "submission_received",
+            kind="execute",
+            question_len=len(submitted_question),
+            active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
+        )
         api = EngineeringAI(
             api_key=_secret("OPENAI_API_KEY"),
             model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
@@ -1276,7 +1308,9 @@ def render_engineering_assistant(
             components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
         with st.status("Cadivor is reviewing the saved engineering evidence...", expanded=True) as progress:
             try:
+                _log_ask_cadivor("provider_started", configured=api.configured)
                 response = api.ask(question=submitted_question, context=context, history=compact_history(thread))
+                _log_ask_cadivor("provider_completed", configured=api.configured)
                 consume_ai_credits(st.session_state, current_user, action="question")
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = submitted_question
@@ -1299,8 +1333,16 @@ def render_engineering_assistant(
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
                 st.session_state[prompt_key] = ""
+                _pin_ask_cadivor_tab()
+                _log_ask_cadivor(
+                    "response_committed",
+                    active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
+                    thread_len=len(thread),
+                )
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:
+                _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
+                _pin_ask_cadivor_tab()
                 st.session_state["cv35_last_error"] = exc
                 _clear_copilot_workflow_protection()
                 st.session_state.pop("cv36_pending_followup", None)
@@ -1308,6 +1350,8 @@ def render_engineering_assistant(
                 st.session_state.pop("cv41_pending_manual", None)
                 progress.update(label="Cadivor could not complete the review", state="error")
             except Exception as exc:
+                _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
+                _pin_ask_cadivor_tab()
                 # A response may already have been generated and saved before a
                 # secondary operation (history persistence, cleanup, etc.) fails.
                 # Do not show a false red failure banner when the visible answer

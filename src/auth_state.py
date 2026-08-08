@@ -240,13 +240,8 @@ def mark_signed_out(reason: str = "signed_out") -> None:
 
 
 def _remote_sign_out(supabase: Any) -> None:
-    log_logout_phase("remote_supabase_signout_started")
-    try:
-        supabase.auth.sign_out()
-        log_logout_phase("remote_supabase_signout_completed")
-    except Exception as exc:
-        log_logout_phase("remote_supabase_signout_failed")
-        _log("logout_sign_out_failed", error=type(exc).__name__)
+    """Remote Supabase sign-out only — no Streamlit session access from worker thread."""
+    supabase.auth.sign_out()
 
 
 def begin_logout(supabase: Any, cookie_manager: Any) -> None:
@@ -284,6 +279,7 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
     except Exception:
         pass
     st.session_state["cadivor_logout_committed"] = True
+    st.session_state["cadivor_logout_reload_pending"] = True
     _log("logout_committed")
 
 

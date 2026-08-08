@@ -8,6 +8,7 @@ Startup order:
 from __future__ import annotations
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Cadivor",
@@ -39,10 +40,24 @@ from src.auth_bootstrap import (
     log_startup_phase,
     render_startup_loading_shell,
 )
-from src.auth_state import handle_explicit_logout_if_pending
 
 log_startup_phase("entrypoint_ready")
-if handle_explicit_logout_if_pending():
+if st.session_state.pop("cadivor_logout_reload_pending", False):
+    st.session_state.pop("cadivor_explicit_logout", None)
+    st.session_state.pop("cadivor_logout_in_progress", None)
+    components.html(
+        """<script>
+        (function () {
+          const view = window.top || window.parent || window;
+          if (!view || !view.location) {
+            return;
+          }
+          view.location.replace(view.location.pathname + view.location.search);
+        })();
+        </script>""",
+        height=0,
+        width=0,
+    )
     st.stop()
 
 ensure_authenticated_or_stop()
