@@ -164,6 +164,7 @@ def _restore_copilot_workflow_snapshot() -> None:
 
 def ensure_authenticated_or_stop() -> None:
     """Resolve auth and render login/signup immediately for signed-out visitors."""
+    from src.auth_cookies import native_context_cookies_available, read_auth_cookie_tokens
     from src.auth_diagnostics import log_auth_correlation
 
     auth_status_in = str(st.session_state.get("cadivor_auth_status") or "unknown")
@@ -172,16 +173,17 @@ def ensure_authenticated_or_stop() -> None:
 
     log_startup_phase("supabase_client")
     supabase = get_supabase_client()
-    cookie_manager = get_auth_cookie_manager()
+    cookie_manager = None
     log_auth_correlation(
         "bootstrap_entry",
-        cookie_manager=cookie_manager,
+        cookie_manager=None,
         auth_status_in=auth_status_in,
         transition_reason="bootstrap_entry",
     )
     log_auth_restore(
         "cookie_component_initialized",
-        cookie_manager_ready=cookie_manager is not None,
+        cookie_manager_ready=False,
+        cookie_manager_deferred=native_context_cookies_available(),
     )
 
     requested_page = str(qp_value("page", "") or "").strip()
@@ -191,12 +193,25 @@ def ensure_authenticated_or_stop() -> None:
     apply_auth_intent_from_query()
 
     if not explicit_logout_pending() and not st.session_state.get("cadivor_force_signed_out"):
+        if native_context_cookies_available():
+            cookie_readable = read_auth_cookie_tokens(cookie_manager=None) is not None
+            log_auth_correlation(
+                "after_cookie_hydration",
+                cookie_manager=None,
+                transition_reason=(
+                    "native_context_restore_started"
+                    if cookie_readable
+                    else "native_context_cookie_absent"
+                ),
+            )
+        else:
+            cookie_manager = get_auth_cookie_manager(mount=True)
+            log_auth_correlation(
+                "after_cookie_hydration",
+                cookie_manager=cookie_manager,
+                transition_reason="cookie_manager_fallback_read",
+            )
         hydrated = hydrate_session_from_auth_cookie(cookie_manager)
-        log_auth_correlation(
-            "after_cookie_hydration",
-            cookie_manager=cookie_manager,
-            transition_reason="hydration_applied" if hydrated else "hydration_not_applied",
-        )
         log_auth_restore(
             "cookie_read_ready",
             credential_present=hydrated,
@@ -206,25 +221,28 @@ def ensure_authenticated_or_stop() -> None:
     _restore_copilot_workflow_snapshot()
 
     if st.session_state.pop("cadivor_logout_requested", False):
-        begin_logout(supabase, cookie_manager)
+        begin_logout(supabase, get_auth_cookie_manager(mount=True))
         if handle_explicit_logout_if_pending():
             log_startup_phase("logout_redirect")
             st.stop()
 
-    if auth_cookie_hydration_pending(cookie_manager):
-        attempts = record_auth_hydration_attempt()
-        log_auth_restore(
-            "hydration_pending",
-            attempt=attempts,
-            max_attempts=_MAX_HYDRATION_ATTEMPTS,
-        )
-        if attempts >= _MAX_HYDRATION_ATTEMPTS:
-            finalize_auth_cookie_hydration_timeout(cookie_manager)
-        else:
-            render_auth_boot()
-            log_auth_restore("hydration_wait_rerun", attempt=attempts)
-            time.sleep(0.25)
-            st.rerun()
+    if not native_context_cookies_available():
+        if cookie_manager is None:
+            cookie_manager = get_auth_cookie_manager(mount=True)
+        if auth_cookie_hydration_pending(cookie_manager):
+            attempts = record_auth_hydration_attempt()
+            log_auth_restore(
+                "hydration_pending",
+                attempt=attempts,
+                max_attempts=_MAX_HYDRATION_ATTEMPTS,
+            )
+            if attempts >= _MAX_HYDRATION_ATTEMPTS:
+                finalize_auth_cookie_hydration_timeout(cookie_manager)
+            else:
+                render_auth_boot()
+                log_auth_restore("hydration_wait_rerun", attempt=attempts)
+                time.sleep(0.25)
+                st.rerun()
 
     log_startup_phase("resolve_auth_state")
     log_auth_restore("validation_started")
@@ -262,6 +280,8 @@ def ensure_authenticated_or_stop() -> None:
             st.caption(f"Startup timing: {startup_phase_summary()}")
         st.stop()
 
+    if cookie_manager is None:
+        cookie_manager = get_auth_cookie_manager(mount=True)
     persist_session_auth_cookie(cookie_manager)
     log_startup_phase("auth_boundary_passed")
     log_auth_restore("restoration_complete", auth_status=auth_status)

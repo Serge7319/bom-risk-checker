@@ -47,10 +47,9 @@ class AuthDedupTests(unittest.TestCase):
         cookie_manager = MagicMock()
 
         with patch.object(auth_state, "_current_script_run_id", return_value="run-1"):
-            with patch.object(auth_state, "ThreadPoolExecutor", _InlineExecutor):
-                with patch("src.auth_cookies.persist_session_auth_cookie") as persist_mock:
-                    first = auth_state._validate_tokens(supabase, "a", "r", cookie_manager)
-                    second = auth_state._validate_tokens(supabase, "a", "r", cookie_manager)
+            with patch("src.auth_cookies.persist_session_auth_cookie") as persist_mock:
+                first = auth_state._validate_tokens(supabase, "a", "r", cookie_manager)
+                second = auth_state._validate_tokens(supabase, "a", "r", cookie_manager)
 
         self.assertTrue(first)
         self.assertTrue(second)
@@ -90,8 +89,7 @@ class AuthDedupTests(unittest.TestCase):
         supabase = self._mock_supabase(user=None)
 
         with patch.object(auth_state, "_current_script_run_id", return_value="run-2"):
-            with patch.object(auth_state, "ThreadPoolExecutor", _InlineExecutor):
-                ok = auth_state._validate_tokens(supabase, "a", "r", cookie_manager=None)
+            ok = auth_state._validate_tokens(supabase, "a", "r", cookie_manager=None)
 
         self.assertFalse(ok)
         self.assertNotIn("user", st.session_state)

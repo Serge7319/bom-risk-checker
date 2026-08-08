@@ -12,7 +12,7 @@ import json
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, NamedTuple
 from urllib.parse import unquote
@@ -192,6 +192,15 @@ def _commit_authenticated_session(
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state.pop("cadivor_auth_restore_attempts", None)
     st.session_state.pop("cadivor_auth_cookie_absent", None)
+    try:
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            "atomic_session_commit",
+            transition_reason="atomic_session_commit",
+        )
+    except Exception:
+        pass
 
 
 def _fetch_validated_auth(
@@ -236,9 +245,11 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     st.session_state["app_mode"] = route
     _log("authenticated", page=st.session_state["app_mode"])
     try:
-        from src.auth_cookies import persist_session_auth_cookie
+        from src.auth_cookies import get_auth_cookie_manager, persist_session_auth_cookie
 
-        persist_session_auth_cookie(cookie_manager)
+        persist_session_auth_cookie(
+            cookie_manager or get_auth_cookie_manager(mount=True)
+        )
     except Exception:
         pass
     try:
@@ -284,9 +295,9 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
     log_logout_phase("local_session_clear_completed")
 
     try:
-        from src.auth_cookies import clear_auth_cookie
+        from src.auth_cookies import clear_auth_cookie, get_auth_cookie_manager
 
-        clear_auth_cookie(cookie_manager)
+        clear_auth_cookie(cookie_manager or get_auth_cookie_manager(mount=True))
         log_logout_phase("auth_cookie_cleared")
     except Exception:
         log_logout_phase("auth_cookie_clear_failed")
@@ -427,7 +438,6 @@ def render_auth_boot() -> None:
     render_auth_transition("Restoring your secure workspace…")
 
 
-_RESTORE_TIMEOUT_SECONDS = 5.0
 _SUPABASE_AUTH_LOCK = threading.Lock()
 _AUTH_VALIDATED_RUN_KEY = "cadivor_auth_validated_run_id"
 
@@ -443,6 +453,18 @@ def _current_script_run_id() -> str | None:
         return str(run_id) if run_id is not None else str(id(ctx))
     except Exception:
         return None
+
+
+def _persist_auth_cookie(cookie_manager: Any = None) -> None:
+    """Persist browser auth cookie when a manager is already available."""
+    if cookie_manager is None:
+        return
+    try:
+        from src.auth_cookies import persist_session_auth_cookie
+
+        persist_session_auth_cookie(cookie_manager)
+    except Exception:
+        pass
 
 
 def _validate_tokens(
@@ -461,33 +483,17 @@ def _validate_tokens(
             pass
         return st.session_state.get("user") is not None
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(
-            _fetch_validated_auth,
-            supabase,
-            access_token,
-            refresh_token,
-        )
+    try:
+        validated = _fetch_validated_auth(supabase, access_token, refresh_token)
+    except Exception as exc:
+        _log("restore_failed", error=type(exc).__name__)
         try:
-            validated = future.result(timeout=_RESTORE_TIMEOUT_SECONDS)
-        except FuturesTimeoutError:
-            _log("restore_failed", error="timeout")
-            try:
-                from src.auth_cookies import log_auth_restore
+            from src.auth_cookies import log_auth_restore
 
-                log_auth_restore("validation_failed", error="timeout")
-            except Exception:
-                pass
-            return False
-        except Exception as exc:
-            _log("restore_failed", error=type(exc).__name__)
-            try:
-                from src.auth_cookies import log_auth_restore
-
-                log_auth_restore("validation_failed", error=type(exc).__name__)
-            except Exception:
-                pass
-            return False
+            log_auth_restore("validation_failed", error=type(exc).__name__)
+        except Exception:
+            pass
+        return False
 
     if validated is None:
         _log("restore_failed", error="token_validation_failed")
@@ -508,13 +514,45 @@ def _validate_tokens(
         st.session_state[_AUTH_VALIDATED_RUN_KEY] = run_id
     _log("restored")
     try:
-        from src.auth_cookies import log_auth_restore, persist_session_auth_cookie
+        from src.auth_cookies import log_auth_restore
 
         log_auth_restore("validation_success")
-        persist_session_auth_cookie(cookie_manager)
+        _persist_auth_cookie(cookie_manager)
     except Exception:
         pass
     return True
+
+
+def _resolve_pending_credentials(
+    supabase: Any,
+    cookie_manager: Any = None,
+) -> tuple[str, str] | None:
+    """Return access/refresh tokens from cookie or orphaned session state."""
+    try:
+        from src.auth_cookies import (
+            log_auth_restore,
+            native_context_cookies_available,
+            read_auth_cookie_tokens,
+        )
+
+        manager_for_read = cookie_manager
+        if manager_for_read is None and not native_context_cookies_available():
+            from src.auth_cookies import get_auth_cookie_manager
+
+            manager_for_read = get_auth_cookie_manager(mount=True)
+
+        pending = read_auth_cookie_tokens(manager_for_read)
+        if pending:
+            log_auth_restore("native_context_restore_started")
+            return pending["access_token"], pending["refresh_token"]
+
+        access_token = st.session_state.get("access_token")
+        refresh_token = st.session_state.get("refresh_token")
+        if access_token and refresh_token:
+            return str(access_token), str(refresh_token)
+    except Exception:
+        pass
+    return None
 
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
@@ -542,26 +580,30 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
         st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
         st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
         st.session_state["cadivor_auth_resolved"] = True
-        try:
-            from src.auth_cookies import persist_session_auth_cookie
-
-            persist_session_auth_cookie(cookie_manager)
-        except Exception:
-            pass
+        _persist_auth_cookie(cookie_manager)
         return AUTH_AUTHENTICATED
 
-    access_token = st.session_state.get("access_token")
-    refresh_token = st.session_state.get("refresh_token")
-    if access_token and refresh_token:
+    pending_credentials = _resolve_pending_credentials(supabase, cookie_manager)
+    if pending_credentials:
+        access_token, refresh_token = pending_credentials
         if _validate_tokens(supabase, access_token, refresh_token, cookie_manager):
             st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
+            try:
+                from src.auth_cookies import log_auth_restore
+
+                log_auth_restore("native_context_restore_validated")
+            except Exception:
+                pass
             return AUTH_AUTHENTICATED
         clear_auth_session(keep_status=True, transition_reason="token_validation_failed")
         try:
             from src.auth_cookies import invalidate_corrupt_auth_cookie, log_auth_restore
 
             log_auth_restore("validation_failed", reason="token_validation_failed")
-            invalidate_corrupt_auth_cookie(cookie_manager, reason="token_validation_failed")
+            invalidate_corrupt_auth_cookie(
+                cookie_manager,
+                reason="token_validation_failed",
+            )
         except Exception:
             pass
 

@@ -205,15 +205,16 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertFalse(auth_cookies.hydrate_session_from_auth_cookie(manager))
         self.assertTrue(st.session_state.get("cadivor_auth_cookie_absent"))
 
-    def test_valid_context_cookie_hydrates_session_state(self):
+    def test_valid_context_cookie_readable_without_session_write(self):
         payload = _valid_payload("hydrate-access", "hydrate-refresh")
         context = _FakeContextCookies({_AUTH_COOKIE_NAME: payload})
         st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
-        manager = auth_cookies.get_auth_cookie_manager()
 
-        self.assertTrue(auth_cookies.hydrate_session_from_auth_cookie(manager))
-        self.assertEqual(st.session_state["access_token"], "hydrate-access")
-        self.assertEqual(st.session_state["refresh_token"], "hydrate-refresh")
+        self.assertTrue(auth_cookies.hydrate_session_from_auth_cookie(None))
+        tokens = auth_cookies.read_auth_cookie_tokens(None)
+        self.assertEqual(tokens["access_token"], "hydrate-access")
+        self.assertNotIn("access_token", st.session_state)
+        self.assertNotIn("refresh_token", st.session_state)
         self.assertNotIn("cadivor_auth_cookie_absent", st.session_state)
 
     def test_context_cookie_on_run_one_bypasses_hydration_pending(self):
@@ -270,10 +271,18 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertFalse(auth_cookies.auth_cookie_hydration_pending(manager))
         self.assertTrue(session.get("cadivor_auth_cookie_absent"))
 
-    def test_missing_cookie_eventually_not_hydration_pending_after_timeout(self):
+    def test_missing_cookie_not_hydration_pending_with_native_context(self):
         session = {}
         st, auth_cookies, _auth_state = self._load(session, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
+        manager.cookies = {}
+
+        self.assertFalse(auth_cookies.auth_cookie_hydration_pending(manager))
+
+    def test_missing_cookie_eventually_not_hydration_pending_after_timeout(self):
+        session = {}
+        st, auth_cookies, _auth_state = self._load(session, context_cookies=None)
+        manager = auth_cookies.get_auth_cookie_manager(mount=True)
         manager.cookies = {}
 
         for _ in range(auth_cookies._MAX_HYDRATION_ATTEMPTS):
@@ -420,16 +429,16 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertFalse(metadata["json_parse_after_url_decode"])
         self.assertIsNone(auth_cookies.parse_auth_cookie(double))
 
-    def test_context_percent_encoded_cookie_hydrates_session(self):
+    def test_context_percent_encoded_cookie_readable_without_session_write(self):
         payload = _valid_payload("ctx-enc-access", "ctx-enc-refresh")
         encoded = quote(payload, safe="")
         context = _FakeContextCookies({_AUTH_COOKIE_NAME: encoded})
         st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
-        manager = auth_cookies.get_auth_cookie_manager()
 
-        self.assertTrue(auth_cookies.hydrate_session_from_auth_cookie(manager))
-        self.assertEqual(st.session_state["access_token"], "ctx-enc-access")
-        self.assertEqual(st.session_state["refresh_token"], "ctx-enc-refresh")
+        self.assertTrue(auth_cookies.hydrate_session_from_auth_cookie(None))
+        tokens = auth_cookies.read_auth_cookie_tokens(None)
+        self.assertEqual(tokens["access_token"], "ctx-enc-access")
+        self.assertNotIn("access_token", st.session_state)
 
     def test_no_cookie_path_fails_closed(self):
         st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())

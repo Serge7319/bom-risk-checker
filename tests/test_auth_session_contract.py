@@ -34,6 +34,11 @@ def _install_auth_state(st):
     auth_cookies.log_auth_restore = _noop
     auth_cookies.persist_session_auth_cookie = _noop
     auth_cookies.clear_auth_cookie = _noop
+    auth_cookies.native_context_cookies_available = lambda: False
+    auth_cookies.read_auth_cookie_tokens = lambda cookie_manager=None: None
+    auth_cookies.get_auth_cookie_manager = lambda mount=True: None
+    auth_cookies.logout_blocks_auth_restore = lambda cookie_manager=None: False
+    auth_cookies.invalidate_corrupt_auth_cookie = _noop
     sys.modules["src.auth_cookies"] = auth_cookies
 
     sys.modules.pop("src.auth_state", None)
@@ -104,21 +109,16 @@ class AuthSessionContractTests(unittest.TestCase):
         self.assertNotIn("session_state", names)
 
     def test_validate_tokens_commits_user_on_main_thread(self):
-        session = {
-            "access_token": "cookie-access",
-            "refresh_token": "cookie-refresh",
-        }
-        st, auth_state = self._load(session)
+        st, auth_state = self._load({})
         user = _FakeUser()
         supabase = self._mock_supabase(user=user)
 
-        with patch.object(auth_state, "ThreadPoolExecutor", _InlineExecutor):
-            ok = auth_state._validate_tokens(
-                supabase,
-                "cookie-access",
-                "cookie-refresh",
-                cookie_manager=None,
-            )
+        ok = auth_state._validate_tokens(
+            supabase,
+            "cookie-access",
+            "cookie-refresh",
+            cookie_manager=None,
+        )
 
         self.assertTrue(ok)
         self.assertIn("user", st.session_state)
@@ -129,20 +129,15 @@ class AuthSessionContractTests(unittest.TestCase):
         self.assertTrue(st.session_state["cadivor_auth_resolved"])
 
     def test_validate_tokens_failure_leaves_no_user(self):
-        session = {
-            "access_token": "cookie-access",
-            "refresh_token": "cookie-refresh",
-        }
-        st, auth_state = self._load(session)
+        st, auth_state = self._load({})
         supabase = self._mock_supabase(user=None)
 
-        with patch.object(auth_state, "ThreadPoolExecutor", _InlineExecutor):
-            ok = auth_state._validate_tokens(
-                supabase,
-                "cookie-access",
-                "cookie-refresh",
-                cookie_manager=None,
-            )
+        ok = auth_state._validate_tokens(
+            supabase,
+            "cookie-access",
+            "cookie-refresh",
+            cookie_manager=None,
+        )
 
         self.assertFalse(ok)
         self.assertNotIn("user", st.session_state)
@@ -155,8 +150,7 @@ class AuthSessionContractTests(unittest.TestCase):
         st, auth_state = self._load(session)
         supabase = self._mock_supabase()
 
-        with patch.object(auth_state, "ThreadPoolExecutor", _InlineExecutor):
-            status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
 
         self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
         self.assertIn("user", st.session_state)
