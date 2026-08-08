@@ -240,6 +240,7 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     st.session_state.pop("cadivor_explicit_logout", None)
     st.session_state.pop("cadivor_logout_committed", None)
     st.session_state.pop("cadivor_manual_login_in_progress", None)
+    st.session_state.pop("cadivor_auth_submission", None)
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
     route = requested or "Dashboard"
@@ -299,6 +300,7 @@ def begin_manual_login(cookie_manager: Any = None) -> None:
     st.session_state.pop("cadivor_logout_in_progress", None)
     st.session_state.pop("cadivor_logout_committed", None)
     st.session_state.pop("cadivor_logout_reload_pending", None)
+    st.session_state.pop("cadivor_auth_submission", None)
     st.session_state["cadivor_manual_login_in_progress"] = True
 
     try:
@@ -353,11 +355,8 @@ def finish_manual_login_failed(cookie_manager: Any = None) -> None:
 
 
 def manual_login_in_flight() -> bool:
-    """True when a deliberate credential login is pending Supabase execution."""
-    if not st.session_state.get("cadivor_manual_login_in_progress"):
-        return False
-    pending = st.session_state.get("cadivor_auth_submission")
-    return isinstance(pending, dict)
+    """True while a same-run manual credential transaction is executing."""
+    return bool(st.session_state.get("cadivor_manual_login_in_progress"))
 
 
 def _remote_sign_out(supabase: Any) -> None:

@@ -5,6 +5,7 @@ from textwrap import dedent
 
 from src.auth_state import (
     APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
+    AUTH_SIGNING_IN,
     begin_manual_login,
     finish_manual_login_failed,
     mark_authenticated,
@@ -248,6 +249,89 @@ def _install_auth_submit_feedback() -> None:
     return
 
 
+def _log_manual_login_event(event: str, cookie_manager=None) -> None:
+    try:
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            event,
+            cookie_manager=cookie_manager,
+            transition_reason=event,
+        )
+    except Exception:
+        pass
+
+
+def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
+    """Authenticate credentials in the same script run as the Login submit."""
+    begin_manual_login(cookie_manager)
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
+    st.session_state["cadivor_root_state"] = APP_SIGNING_IN
+    render_auth_transition("Opening your engineering workspace…")
+
+    _log_manual_login_event("manual_login_provider_started", cookie_manager)
+    try:
+        response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+    except Exception as error:
+        finish_manual_login_failed(cookie_manager)
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        message = f"Authentication failed: {error}"
+        st.session_state["cadivor_auth_error"] = message
+        st.error(message)
+        return
+
+    _log_manual_login_event("manual_login_provider_completed", cookie_manager)
+    if not getattr(response, "session", None):
+        finish_manual_login_failed(cookie_manager)
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        message = "Login failed: no session was returned. Please confirm your email and try again."
+        st.session_state["cadivor_auth_error"] = message
+        st.error(message)
+        return
+
+    mark_authenticated(response.user, response.session, cookie_manager)
+    st.rerun()
+
+
+def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -> None:
+    """Create an account in the same script run as the Create Account submit."""
+    begin_manual_login(cookie_manager)
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
+    st.session_state["cadivor_root_state"] = APP_SIGNING_IN
+    render_auth_transition("Creating your secure workspace…")
+
+    _log_manual_login_event("manual_login_provider_started", cookie_manager)
+    try:
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+        })
+    except Exception as error:
+        finish_manual_login_failed(cookie_manager)
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        message = f"Account creation failed: {error}"
+        st.session_state["cadivor_auth_error"] = message
+        st.error(message)
+        return
+
+    _log_manual_login_event("manual_login_provider_completed", cookie_manager)
+    session = getattr(response, "session", None)
+    if session is not None:
+        mark_authenticated(response.user, session, cookie_manager)
+        st.rerun()
+        return
+
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
+    st.session_state["cadivor_auth_status"] = "signed_out"
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    message = "Account created. Please check your email to confirm your account, then return here to log in."
+    st.session_state["cadivor_auth_notice"] = message
+    st.success(message)
+
+
 def _render_back_to_marketing_link() -> None:
     _html(
         f'<a href="{CADIVOR_MARKETING_URL}" target="_self" class="cadivor-back-home">← Back to Cadivor</a>'
@@ -295,9 +379,6 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             use_container_width=True,
         )
 
-    # Authentication uses a deliberate two-run sequence. The submit run only
-    # commits the request; the following run paints the transition surface
-    # before any synchronous Supabase network call begins.
     if submit:
         if not email or not password:
             st.warning("Please enter your email and password.")
@@ -305,58 +386,11 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         if auth_mode == "Create Account" and not accepted_terms:
             st.warning("Please accept the Terms of Service and Privacy Policy to create an account.")
             return
-        begin_manual_login(cookie_manager)
-        st.session_state["cadivor_auth_submission"] = {
-            "mode": auth_mode,
-            "email": email,
-            "password": password,
-        }
-        st.session_state["cadivor_auth_status"] = "signing_in"
-        st.session_state["cadivor_root_state"] = APP_SIGNING_IN
-        st.rerun()
-
-    pending = st.session_state.get("cadivor_auth_submission")
-    if isinstance(pending, dict):
-        render_auth_transition(
-            "Creating your secure workspace…"
-            if pending.get("mode") == "Create Account"
-            else "Opening your engineering workspace…"
-        )
-        try:
-            if pending.get("mode") == "Create Account":
-                response = supabase.auth.sign_up({
-                    "email": pending.get("email", ""),
-                    "password": pending.get("password", ""),
-                })
-                st.session_state.pop("cadivor_auth_submission", None)
-                if getattr(response, "session", None):
-                    mark_authenticated(response.user, response.session, cookie_manager)
-                    st.rerun()
-                finish_manual_login_failed(cookie_manager)
-                st.session_state["cadivor_auth_status"] = "signed_out"
-                st.session_state["cadivor_root_state"] = APP_LOGIN
-                st.success("Account created. Please check your email to confirm your account, then return here to log in.")
-                return
-            response = supabase.auth.sign_in_with_password({
-                "email": pending.get("email", ""),
-                "password": pending.get("password", ""),
-            })
-            st.session_state.pop("cadivor_auth_submission", None)
-            if not getattr(response, "session", None):
-                finish_manual_login_failed(cookie_manager)
-                st.session_state["cadivor_auth_status"] = "signed_out"
-                st.session_state["cadivor_root_state"] = APP_LOGIN
-                st.error("Login failed: no session was returned. Please confirm your email and try again.")
-                return
-            mark_authenticated(response.user, response.session, cookie_manager)
-            st.rerun()
-        except Exception as error:
-            st.session_state.pop("cadivor_auth_submission", None)
-            finish_manual_login_failed(cookie_manager)
-            st.session_state["cadivor_auth_status"] = "signed_out"
-            st.session_state["cadivor_root_state"] = APP_LOGIN
-            st.error(f"Authentication failed: {error}")
-            return
+        if auth_mode == "Create Account":
+            _submit_manual_signup(supabase, cookie_manager, email, password)
+        else:
+            _submit_manual_login(supabase, cookie_manager, email, password)
+        return
 
     _render_back_to_marketing_link()
 
@@ -619,55 +653,11 @@ def show_auth_ui(supabase, cookie_manager=None):
         state = APP_SIGNUP if requested_auth == "signup" else APP_LOGIN
         st.session_state["cadivor_root_state"] = state
         st.session_state["cadivor_auth_intent_applied"] = True
-        st.session_state.pop("cadivor_auth_submission", None)
 
     if state == APP_SIGNING_IN:
-        pending = st.session_state.get("cadivor_auth_submission")
-        if not isinstance(pending, dict):
-            st.session_state["cadivor_root_state"] = APP_LOGIN
-            st.rerun()
-        # The transition is the only visible surface in this state.
-        render_auth_transition(
-            "Creating your secure workspace…"
-            if pending.get("mode") == "Create Account"
-            else "Opening your engineering workspace…"
-        )
-        try:
-            if pending.get("mode") == "Create Account":
-                response = supabase.auth.sign_up({
-                    "email": pending.get("email", ""),
-                    "password": pending.get("password", ""),
-                })
-                st.session_state.pop("cadivor_auth_submission", None)
-                if getattr(response, "session", None):
-                    mark_authenticated(response.user, response.session, cookie_manager)
-                    st.rerun()
-                finish_manual_login_failed(cookie_manager)
-                st.session_state["cadivor_auth_status"] = "signed_out"
-                st.session_state["cadivor_root_state"] = APP_LOGIN
-                st.session_state["cadivor_auth_notice"] = "Account created. Check your email to confirm the account, then sign in."
-                st.rerun()
-            response = supabase.auth.sign_in_with_password({
-                "email": pending.get("email", ""),
-                "password": pending.get("password", ""),
-            })
-            st.session_state.pop("cadivor_auth_submission", None)
-            if not getattr(response, "session", None):
-                finish_manual_login_failed(cookie_manager)
-                st.session_state["cadivor_auth_status"] = "signed_out"
-                st.session_state["cadivor_root_state"] = APP_LOGIN
-                st.session_state["cadivor_auth_error"] = "Login failed: no session was returned."
-                st.rerun()
-            mark_authenticated(response.user, response.session, cookie_manager)
-            st.rerun()
-        except Exception as error:
-            st.session_state.pop("cadivor_auth_submission", None)
-            finish_manual_login_failed(cookie_manager)
-            st.session_state["cadivor_auth_status"] = "signed_out"
-            st.session_state["cadivor_root_state"] = APP_LOGIN
-            st.session_state["cadivor_auth_error"] = f"Authentication failed: {error}"
-            st.rerun()
-        st.stop()
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        st.session_state.pop("cadivor_manual_login_in_progress", None)
+        state = APP_LOGIN
 
     if state in (APP_LOGIN, APP_SIGNUP):
         notice = st.session_state.pop("cadivor_auth_notice", None)

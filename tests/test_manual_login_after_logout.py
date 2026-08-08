@@ -100,13 +100,11 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         self.assertFalse(st.session_state.get("cadivor_force_signed_out"))
         self.assertTrue(st.session_state.get("cadivor_manual_login_in_progress"))
 
-    def test_resolve_during_manual_login_preserves_signing_in_with_pending_submission(self):
+    def test_resolve_during_manual_login_preserves_signing_in(self):
         context = _FakeContextCookies({AUTH_LOGOUT_COOKIE_NAME: "1"})
-        pending = {"mode": "Login", "email": "user@example.com", "password": "secret"}
         st, _auth_cookies, auth_state = self._load(
             {
                 "cadivor_manual_login_in_progress": True,
-                "cadivor_auth_submission": pending,
                 "cadivor_root_state": "signing_in",
             },
             context_cookies=context,
@@ -117,12 +115,11 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
 
         self.assertEqual(status, auth_state.AUTH_SIGNING_IN)
         self.assertEqual(st.session_state["cadivor_auth_status"], auth_state.AUTH_SIGNING_IN)
-        self.assertEqual(st.session_state["cadivor_auth_submission"], pending)
         self.assertNotIn("user", st.session_state)
         self.assertFalse(st.session_state.get("cadivor_auth_resolved"))
 
-    def test_resolve_without_pending_submission_still_returns_signed_out(self):
-        st, _auth_cookies, auth_state = self._load({"cadivor_manual_login_in_progress": True})
+    def test_resolve_without_manual_login_flag_returns_signed_out(self):
+        st, _auth_cookies, auth_state = self._load({})
         supabase = self._mock_supabase()
 
         status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
@@ -186,26 +183,20 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         self.assertEqual(status, auth_state.AUTH_AUTHENTICATED)
         self.assertIn("user", st.session_state)
 
-    def test_auth_submit_calls_begin_manual_login(self):
-        source = open(
-            __import__("pathlib").Path(__file__).resolve().parents[1] / "src" / "auth.py",
-            encoding="utf-8",
-        ).read()
-        self.assertIn("begin_manual_login(cookie_manager)", source)
-        self.assertLess(
-            source.index("begin_manual_login(cookie_manager)"),
-            source.index('st.session_state["cadivor_auth_status"] = "signing_in"'),
-        )
+    def test_auth_submit_uses_atomic_login_helpers(self):
+        source = (
+            __import__("pathlib").Path(__file__).resolve().parents[1] / "src" / "auth.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("_submit_manual_login(", source)
+        self.assertIn("_submit_manual_signup(", source)
+        self.assertNotIn("cadivor_auth_submission", source)
 
     def test_manual_login_in_flight_helper(self):
         st, _auth_cookies, auth_state = self._load(
-            {
-                "cadivor_manual_login_in_progress": True,
-                "cadivor_auth_submission": {"mode": "Login", "email": "a", "password": "b"},
-            }
+            {"cadivor_manual_login_in_progress": True}
         )
         self.assertTrue(auth_state.manual_login_in_flight())
-        st.session_state.pop("cadivor_auth_submission")
+        st.session_state.pop("cadivor_manual_login_in_progress")
         self.assertFalse(auth_state.manual_login_in_flight())
 
     def test_bootstrap_routes_signing_in_without_auth_boundary_failed(self):
@@ -231,11 +222,6 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         st = _install_streamlit_stub(
             {
                 "cadivor_manual_login_in_progress": True,
-                "cadivor_auth_submission": {
-                    "mode": "Login",
-                    "email": "user@example.com",
-                    "password": "secret",
-                },
                 "cadivor_root_state": "signing_in",
             }
         )
