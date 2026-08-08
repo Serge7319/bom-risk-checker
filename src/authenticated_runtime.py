@@ -1572,6 +1572,18 @@ def run_authenticated_app() -> None:
     global current_user, is_admin, analysis_history, app_mode, saved_bom_count
     global active_workspace_id, active_workspace_name, active_workspace_role
 
+    try:
+        from src.auth_cookies import get_auth_cookie_manager
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            "authenticated_runtime_entry",
+            cookie_manager=get_auth_cookie_manager(),
+            transition_reason="runtime_entry",
+        )
+    except Exception:
+        pass
+
     from src.auth_state import explicit_logout_pending, handle_explicit_logout_if_pending
 
     if explicit_logout_pending() or st.session_state.get("cadivor_logout_in_progress"):

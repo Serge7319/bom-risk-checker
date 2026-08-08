@@ -136,7 +136,16 @@ def coerce_cookie(raw_cookie: Any) -> dict[str, Any] | None:
     return None
 
 
-def clear_auth_session(*, keep_status: bool = False) -> None:
+def clear_auth_session(*, keep_status: bool = False, transition_reason: str = "clear_auth_session") -> None:
+    try:
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            "before_clear_auth_session",
+            transition_reason=transition_reason,
+        )
+    except Exception:
+        pass
     for key in _AUTH_KEYS:
         st.session_state.pop(key, None)
     st.session_state.pop("cadivor_cookie_write_pending", None)
@@ -155,7 +164,7 @@ def _clear_user_session_for_logout() -> None:
         if key in _LOGOUT_SURVIVOR_KEYS:
             continue
         st.session_state.pop(key, None)
-    clear_auth_session(keep_status=True)
+    clear_auth_session(keep_status=True, transition_reason="explicit_logout_clear")
     st.session_state["cadivor_auth_debug_log"] = debug_log
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_force_signed_out"] = True
@@ -232,10 +241,20 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
         persist_session_auth_cookie(cookie_manager)
     except Exception:
         pass
+    try:
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            "after_mark_authenticated",
+            cookie_manager=cookie_manager,
+            transition_reason="mark_authenticated_success",
+        )
+    except Exception:
+        pass
 
 
 def mark_signed_out(reason: str = "signed_out") -> None:
-    clear_auth_session(keep_status=True)
+    clear_auth_session(keep_status=True, transition_reason=f"mark_signed_out:{reason}")
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state.setdefault("cadivor_root_state", APP_PUBLIC)
     st.session_state["cadivor_auth_resolved"] = True
@@ -507,7 +526,7 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
         from src.auth_cookies import logout_blocks_auth_restore
 
         if logout_blocks_auth_restore(cookie_manager):
-            clear_auth_session(keep_status=True)
+            clear_auth_session(keep_status=True, transition_reason="logout_marker_active")
             st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
             st.session_state["cadivor_force_signed_out"] = True
             return AUTH_SIGNED_OUT
@@ -515,7 +534,7 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
         pass
 
     if st.session_state.get("cadivor_force_signed_out"):
-        clear_auth_session(keep_status=True)
+        clear_auth_session(keep_status=True, transition_reason="force_signed_out_flag")
         st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
         return AUTH_SIGNED_OUT
 
@@ -537,7 +556,7 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
         if _validate_tokens(supabase, access_token, refresh_token, cookie_manager):
             st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
             return AUTH_AUTHENTICATED
-        clear_auth_session(keep_status=True)
+        clear_auth_session(keep_status=True, transition_reason="token_validation_failed")
         try:
             from src.auth_cookies import invalidate_corrupt_auth_cookie, log_auth_restore
 

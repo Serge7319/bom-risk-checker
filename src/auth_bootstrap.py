@@ -164,12 +164,21 @@ def _restore_copilot_workflow_snapshot() -> None:
 
 def ensure_authenticated_or_stop() -> None:
     """Resolve auth and render login/signup immediately for signed-out visitors."""
+    from src.auth_diagnostics import log_auth_correlation
+
+    auth_status_in = str(st.session_state.get("cadivor_auth_status") or "unknown")
     log_startup_phase("bootstrap_begin")
     log_auth_restore("bootstrap_started")
 
     log_startup_phase("supabase_client")
     supabase = get_supabase_client()
     cookie_manager = get_auth_cookie_manager()
+    log_auth_correlation(
+        "bootstrap_entry",
+        cookie_manager=cookie_manager,
+        auth_status_in=auth_status_in,
+        transition_reason="bootstrap_entry",
+    )
     log_auth_restore(
         "cookie_component_initialized",
         cookie_manager_ready=cookie_manager is not None,
@@ -183,6 +192,11 @@ def ensure_authenticated_or_stop() -> None:
 
     if not explicit_logout_pending() and not st.session_state.get("cadivor_force_signed_out"):
         hydrated = hydrate_session_from_auth_cookie(cookie_manager)
+        log_auth_correlation(
+            "after_cookie_hydration",
+            cookie_manager=cookie_manager,
+            transition_reason="hydration_applied" if hydrated else "hydration_not_applied",
+        )
         log_auth_restore(
             "cookie_read_ready",
             credential_present=hydrated,
@@ -214,7 +228,17 @@ def ensure_authenticated_or_stop() -> None:
 
     log_startup_phase("resolve_auth_state")
     log_auth_restore("validation_started")
+    log_auth_correlation(
+        "before_resolve_auth_state",
+        cookie_manager=cookie_manager,
+        transition_reason="pre_resolve",
+    )
     auth_status = resolve_auth_state(supabase, cookie_manager)
+    log_auth_correlation(
+        "after_resolve_auth_state",
+        cookie_manager=cookie_manager,
+        transition_reason=f"resolved_{auth_status}",
+    )
     log_auth_restore(
         "validation_complete",
         auth_status=auth_status,
@@ -228,6 +252,11 @@ def ensure_authenticated_or_stop() -> None:
     if auth_status == AUTH_SIGNED_OUT or root_state != APP_AUTHENTICATED:
         log_auth_restore("fallback_signed_out", reason="auth_resolution_signed_out")
         log_startup_phase("render_auth_ui")
+        log_auth_correlation(
+            "before_show_auth_ui",
+            cookie_manager=cookie_manager,
+            transition_reason="auth_boundary_failed",
+        )
         show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():
             st.caption(f"Startup timing: {startup_phase_summary()}")
