@@ -301,6 +301,8 @@ def read_auth_cookie_tokens(cookie_manager: Any = None) -> dict[str, str] | None
     """Parse durable auth cookie credentials without writing session_state."""
     if not auth_cookies_enabled():
         return None
+    if st.session_state.get("cadivor_manual_login_in_progress"):
+        return None
     if st.session_state.get("cadivor_force_signed_out") or st.session_state.get(
         "cadivor_explicit_logout"
     ):
@@ -333,6 +335,8 @@ def hydrate_session_from_auth_cookie(cookie_manager: Any = None) -> bool:
     if st.session_state.get("user") is not None:
         return False
     if st.session_state.get("access_token") and st.session_state.get("refresh_token"):
+        return False
+    if st.session_state.get("cadivor_manual_login_in_progress"):
         return False
     if st.session_state.get("cadivor_force_signed_out") or st.session_state.get(
         "cadivor_explicit_logout"
@@ -485,7 +489,19 @@ def clear_auth_cookie(cookie_manager: Any) -> None:
 
 def logout_blocks_auth_restore(cookie_manager: Any) -> bool:
     """True when an explicit browser logout marker prevents session restoration."""
+    if st.session_state.get("cadivor_manual_login_in_progress"):
+        return False
     return _logout_marker_active(cookie_manager)
+
+
+def clear_logout_suppression_marker(cookie_manager: Any = None) -> None:
+    """Remove the browser logout marker so a deliberate new login may proceed."""
+    _clear_logout_marker(cookie_manager)
+
+
+def arm_logout_suppression_marker(cookie_manager: Any = None) -> None:
+    """Re-arm the browser logout marker after a failed deliberate login attempt."""
+    _set_logout_marker(cookie_manager)
 
 
 def invalidate_corrupt_auth_cookie(cookie_manager: Any = None, *, reason: str) -> None:

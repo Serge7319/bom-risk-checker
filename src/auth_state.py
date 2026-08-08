@@ -233,11 +233,13 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
         str(session.refresh_token),
     )
     st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
+    manual_login_success = bool(st.session_state.get("cadivor_manual_login_in_progress"))
     st.session_state.pop("cadivor_force_signed_out", None)
     st.session_state.pop("cadivor_auth_ui_was_shown", None)
     st.session_state.pop("cadivor_logout_in_progress", None)
     st.session_state.pop("cadivor_explicit_logout", None)
     st.session_state.pop("cadivor_logout_committed", None)
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
     route = requested or "Dashboard"
@@ -260,6 +262,12 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
             cookie_manager=cookie_manager,
             transition_reason="mark_authenticated_success",
         )
+        if manual_login_success:
+            log_auth_correlation(
+                "manual_login_authenticated",
+                cookie_manager=cookie_manager,
+                transition_reason="manual_login_authenticated",
+            )
     except Exception:
         pass
 
@@ -271,6 +279,77 @@ def mark_signed_out(reason: str = "signed_out") -> None:
     st.session_state["cadivor_auth_resolved"] = True
     st.session_state["cadivor_force_signed_out"] = True
     _log("signed_out", reason=reason)
+
+
+def begin_manual_login(cookie_manager: Any = None) -> None:
+    """Consume explicit-logout suppression for a deliberate credential login."""
+    try:
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            "manual_login_started",
+            cookie_manager=cookie_manager,
+            transition_reason="manual_login_started",
+        )
+    except Exception:
+        pass
+
+    st.session_state.pop("cadivor_force_signed_out", None)
+    st.session_state.pop("cadivor_explicit_logout", None)
+    st.session_state.pop("cadivor_logout_in_progress", None)
+    st.session_state.pop("cadivor_logout_committed", None)
+    st.session_state.pop("cadivor_logout_reload_pending", None)
+    st.session_state["cadivor_manual_login_in_progress"] = True
+
+    try:
+        from src.auth_cookies import (
+            clear_logout_suppression_marker,
+            get_auth_cookie_manager,
+        )
+
+        clear_logout_suppression_marker(
+            cookie_manager or get_auth_cookie_manager(mount=True)
+        )
+    except Exception:
+        pass
+
+    try:
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            "logout_suppression_consumed",
+            cookie_manager=cookie_manager,
+            transition_reason="logout_suppression_consumed",
+        )
+    except Exception:
+        pass
+
+
+def finish_manual_login_failed(cookie_manager: Any = None) -> None:
+    """Re-arm signed-out protection after a failed deliberate login attempt."""
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+
+    try:
+        from src.auth_cookies import arm_logout_suppression_marker, get_auth_cookie_manager
+
+        arm_logout_suppression_marker(
+            cookie_manager or get_auth_cookie_manager(mount=True)
+        )
+    except Exception:
+        pass
+
+    try:
+        from src.auth_diagnostics import log_auth_correlation
+
+        log_auth_correlation(
+            "manual_login_failed",
+            cookie_manager=cookie_manager,
+            transition_reason="manual_login_failed",
+        )
+    except Exception:
+        pass
 
 
 def _remote_sign_out(supabase: Any) -> None:
@@ -557,24 +636,27 @@ def _resolve_pending_credentials(
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
     """Resolve UNKNOWN -> SIGNED_OUT/AUTHENTICATED before either shell renders."""
-    if explicit_logout_pending():
-        return AUTH_SIGNED_OUT
+    manual_login = bool(st.session_state.get("cadivor_manual_login_in_progress"))
 
-    try:
-        from src.auth_cookies import logout_blocks_auth_restore
-
-        if logout_blocks_auth_restore(cookie_manager):
-            clear_auth_session(keep_status=True, transition_reason="logout_marker_active")
-            st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-            st.session_state["cadivor_force_signed_out"] = True
+    if not manual_login:
+        if explicit_logout_pending():
             return AUTH_SIGNED_OUT
-    except Exception:
-        pass
 
-    if st.session_state.get("cadivor_force_signed_out"):
-        clear_auth_session(keep_status=True, transition_reason="force_signed_out_flag")
-        st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-        return AUTH_SIGNED_OUT
+        try:
+            from src.auth_cookies import logout_blocks_auth_restore
+
+            if logout_blocks_auth_restore(cookie_manager):
+                clear_auth_session(keep_status=True, transition_reason="logout_marker_active")
+                st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+                st.session_state["cadivor_force_signed_out"] = True
+                return AUTH_SIGNED_OUT
+        except Exception:
+            pass
+
+        if st.session_state.get("cadivor_force_signed_out"):
+            clear_auth_session(keep_status=True, transition_reason="force_signed_out_flag")
+            st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+            return AUTH_SIGNED_OUT
 
     if st.session_state.get("user") is not None:
         st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED

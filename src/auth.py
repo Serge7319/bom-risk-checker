@@ -5,7 +5,10 @@ from textwrap import dedent
 
 from src.auth_state import (
     APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
-    mark_authenticated, render_auth_transition,
+    begin_manual_login,
+    finish_manual_login_failed,
+    mark_authenticated,
+    render_auth_transition,
 )
 from src.config import CADIVOR_MARKETING_URL
 from src.ui.core_premium_ui import inject_core_premium_ui_auth
@@ -302,6 +305,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         if auth_mode == "Create Account" and not accepted_terms:
             st.warning("Please accept the Terms of Service and Privacy Policy to create an account.")
             return
+        begin_manual_login(cookie_manager)
         st.session_state["cadivor_auth_submission"] = {
             "mode": auth_mode,
             "email": email,
@@ -328,6 +332,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 if getattr(response, "session", None):
                     mark_authenticated(response.user, response.session, cookie_manager)
                     st.rerun()
+                finish_manual_login_failed(cookie_manager)
                 st.session_state["cadivor_auth_status"] = "signed_out"
                 st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.success("Account created. Please check your email to confirm your account, then return here to log in.")
@@ -338,6 +343,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             })
             st.session_state.pop("cadivor_auth_submission", None)
             if not getattr(response, "session", None):
+                finish_manual_login_failed(cookie_manager)
                 st.session_state["cadivor_auth_status"] = "signed_out"
                 st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.error("Login failed: no session was returned. Please confirm your email and try again.")
@@ -346,6 +352,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             st.rerun()
         except Exception as error:
             st.session_state.pop("cadivor_auth_submission", None)
+            finish_manual_login_failed(cookie_manager)
             st.session_state["cadivor_auth_status"] = "signed_out"
             st.session_state["cadivor_root_state"] = APP_LOGIN
             st.error(f"Authentication failed: {error}")
@@ -635,6 +642,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                 if getattr(response, "session", None):
                     mark_authenticated(response.user, response.session, cookie_manager)
                     st.rerun()
+                finish_manual_login_failed(cookie_manager)
                 st.session_state["cadivor_auth_status"] = "signed_out"
                 st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.session_state["cadivor_auth_notice"] = "Account created. Check your email to confirm the account, then sign in."
@@ -645,6 +653,7 @@ def show_auth_ui(supabase, cookie_manager=None):
             })
             st.session_state.pop("cadivor_auth_submission", None)
             if not getattr(response, "session", None):
+                finish_manual_login_failed(cookie_manager)
                 st.session_state["cadivor_auth_status"] = "signed_out"
                 st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.session_state["cadivor_auth_error"] = "Login failed: no session was returned."
@@ -653,6 +662,7 @@ def show_auth_ui(supabase, cookie_manager=None):
             st.rerun()
         except Exception as error:
             st.session_state.pop("cadivor_auth_submission", None)
+            finish_manual_login_failed(cookie_manager)
             st.session_state["cadivor_auth_status"] = "signed_out"
             st.session_state["cadivor_root_state"] = APP_LOGIN
             st.session_state["cadivor_auth_error"] = f"Authentication failed: {error}"
