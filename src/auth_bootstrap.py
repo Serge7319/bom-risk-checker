@@ -28,11 +28,13 @@ from src.auth_state import (
     APP_LOGIN,
     APP_SIGNUP,
     AUTH_AUTHENTICATED,
+    AUTH_SIGNING_IN,
     begin_logout,
     explicit_logout_pending,
     handle_explicit_logout_if_pending,
     log_auth_diagnostic,
     log_logout_phase,
+    manual_login_in_flight,
     render_auth_boot,
     resolve_auth_state,
 )
@@ -199,7 +201,11 @@ def ensure_authenticated_or_stop() -> None:
 
     apply_auth_intent_from_query()
 
-    if not explicit_logout_pending() and not st.session_state.get("cadivor_force_signed_out"):
+    if (
+        not manual_login_in_flight()
+        and not explicit_logout_pending()
+        and not st.session_state.get("cadivor_force_signed_out")
+    ):
         if native_context_cookies_available():
             cookie_readable = read_auth_cookie_tokens(cookie_manager=None) is not None
             log_auth_correlation(
@@ -233,7 +239,7 @@ def ensure_authenticated_or_stop() -> None:
             log_startup_phase("logout_redirect")
             st.stop()
 
-    if not native_context_cookies_available():
+    if not native_context_cookies_available() and not manual_login_in_flight():
         if cookie_manager is None:
             cookie_manager = get_auth_cookie_manager(mount=True)
         if auth_cookie_hydration_pending(cookie_manager):
@@ -270,12 +276,16 @@ def ensure_authenticated_or_stop() -> None:
         has_user=bool(st.session_state.get("user")),
     )
     if auth_status != AUTH_AUTHENTICATED:
-        log_auth_restore("auth_boundary_failed", reason=f"resolved_{auth_status}")
+        if auth_status == AUTH_SIGNING_IN:
+            auth_ui_reason = "manual_login_in_flight"
+        else:
+            log_auth_restore("auth_boundary_failed", reason=f"resolved_{auth_status}")
+            auth_ui_reason = "auth_boundary_failed"
         log_startup_phase("render_auth_ui")
         log_auth_correlation(
             "before_show_auth_ui",
             cookie_manager=cookie_manager,
-            transition_reason="auth_boundary_failed",
+            transition_reason=auth_ui_reason,
         )
         show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():

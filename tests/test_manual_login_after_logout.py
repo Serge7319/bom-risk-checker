@@ -100,19 +100,35 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         self.assertFalse(st.session_state.get("cadivor_force_signed_out"))
         self.assertTrue(st.session_state.get("cadivor_manual_login_in_progress"))
 
-    def test_resolve_during_manual_login_does_not_apply_logout_marker(self):
+    def test_resolve_during_manual_login_preserves_signing_in_with_pending_submission(self):
         context = _FakeContextCookies({AUTH_LOGOUT_COOKIE_NAME: "1"})
+        pending = {"mode": "Login", "email": "user@example.com", "password": "secret"}
         st, _auth_cookies, auth_state = self._load(
-            {"cadivor_manual_login_in_progress": True},
+            {
+                "cadivor_manual_login_in_progress": True,
+                "cadivor_auth_submission": pending,
+                "cadivor_root_state": "signing_in",
+            },
             context_cookies=context,
         )
         supabase = self._mock_supabase()
 
         status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
 
-        self.assertEqual(status, auth_state.AUTH_SIGNED_OUT)
+        self.assertEqual(status, auth_state.AUTH_SIGNING_IN)
+        self.assertEqual(st.session_state["cadivor_auth_status"], auth_state.AUTH_SIGNING_IN)
+        self.assertEqual(st.session_state["cadivor_auth_submission"], pending)
         self.assertNotIn("user", st.session_state)
-        self.assertTrue(st.session_state.get("cadivor_manual_login_in_progress"))
+        self.assertFalse(st.session_state.get("cadivor_auth_resolved"))
+
+    def test_resolve_without_pending_submission_still_returns_signed_out(self):
+        st, _auth_cookies, auth_state = self._load({"cadivor_manual_login_in_progress": True})
+        supabase = self._mock_supabase()
+
+        status = auth_state.resolve_auth_state(supabase, cookie_manager=None)
+
+        self.assertEqual(status, auth_state.AUTH_SIGNED_OUT)
+        self.assertEqual(st.session_state["cadivor_auth_status"], auth_state.AUTH_SIGNED_OUT)
 
     def test_valid_manual_login_commits_authenticated_session(self):
         manager = _FakeCookieManager()
@@ -179,6 +195,111 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         self.assertLess(
             source.index("begin_manual_login(cookie_manager)"),
             source.index('st.session_state["cadivor_auth_status"] = "signing_in"'),
+        )
+
+    def test_manual_login_in_flight_helper(self):
+        st, _auth_cookies, auth_state = self._load(
+            {
+                "cadivor_manual_login_in_progress": True,
+                "cadivor_auth_submission": {"mode": "Login", "email": "a", "password": "b"},
+            }
+        )
+        self.assertTrue(auth_state.manual_login_in_flight())
+        st.session_state.pop("cadivor_auth_submission")
+        self.assertFalse(auth_state.manual_login_in_flight())
+
+    def test_bootstrap_routes_signing_in_without_auth_boundary_failed(self):
+        bootstrap_source = (
+            __import__("pathlib").Path(__file__).resolve().parents[1]
+            / "src"
+            / "auth_bootstrap.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("manual_login_in_flight", bootstrap_source)
+        self.assertIn('auth_ui_reason = "manual_login_in_flight"', bootstrap_source)
+        self.assertIn("if auth_status == AUTH_SIGNING_IN:", bootstrap_source)
+
+    def test_bootstrap_skips_hydration_rerun_during_manual_login(self):
+        bootstrap_source = (
+            __import__("pathlib").Path(__file__).resolve().parents[1]
+            / "src"
+            / "auth_bootstrap.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("not manual_login_in_flight()", bootstrap_source)
+        self.assertIn("hydration_wait_rerun", bootstrap_source)
+
+    def test_bootstrap_routes_signing_in_to_show_auth_ui_without_boundary_failed(self):
+        st = _install_streamlit_stub(
+            {
+                "cadivor_manual_login_in_progress": True,
+                "cadivor_auth_submission": {
+                    "mode": "Login",
+                    "email": "user@example.com",
+                    "password": "secret",
+                },
+                "cadivor_root_state": "signing_in",
+            }
+        )
+
+        def cache_resource(**kwargs):
+            def decorator(fn):
+                return fn
+            return decorator
+
+        st.cache_resource = cache_resource
+        st.stop = MagicMock()
+        st.caption = MagicMock()
+        auth_cookies, auth_state = _install_auth_modules(st)
+
+        secrets = types.ModuleType("src.secrets")
+        secrets.get_secret = lambda key, required=False, default=None: "test-secret"
+        secrets.get_secret_bool = lambda key, default=False: default
+        sys.modules["src.secrets"] = secrets
+
+        auth_diagnostics = types.ModuleType("src.auth_diagnostics")
+        correlation_calls = []
+        auth_diagnostics.log_auth_correlation = lambda checkpoint, **kwargs: correlation_calls.append(
+            (checkpoint, kwargs.get("transition_reason"))
+        )
+        sys.modules["src.auth_diagnostics"] = auth_diagnostics
+
+        auth = types.ModuleType("src.auth")
+        auth.show_auth_ui = MagicMock()
+        sys.modules["src.auth"] = auth
+
+        supabase_mod = types.ModuleType("supabase")
+        supabase_mod.create_client = MagicMock(return_value=MagicMock(name="supabase"))
+        sys.modules["supabase"] = supabase_mod
+
+        auth_cookies.native_context_cookies_available = lambda: False
+        auth_cookies.auth_cookie_hydration_pending = lambda cookie_manager=None: True
+        auth_cookies.get_auth_cookie_manager = lambda mount=True: _FakeCookieManager()
+        auth_cookies.hydrate_session_from_auth_cookie = lambda cookie_manager=None: False
+        auth_cookies.log_auth_restore = MagicMock()
+        auth_cookies.read_auth_cookie_tokens = lambda cookie_manager=None: None
+        auth_cookies.record_auth_hydration_attempt = lambda: 1
+        sys.modules["src.auth_cookies"] = auth_cookies
+
+        sys.modules.pop("src.auth_bootstrap", None)
+        import importlib
+
+        bootstrap = importlib.import_module("src.auth_bootstrap")
+
+        with patch.object(st, "stop", side_effect=RuntimeError("stop")):
+            try:
+                bootstrap.ensure_authenticated_or_stop()
+            except RuntimeError:
+                pass
+
+        auth.show_auth_ui.assert_called_once()
+        boundary_failed = [
+            call
+            for call in auth_cookies.log_auth_restore.call_args_list
+            if call.args and call.args[0] == "auth_boundary_failed"
+        ]
+        self.assertEqual(boundary_failed, [])
+        self.assertIn(
+            ("before_show_auth_ui", "manual_login_in_flight"),
+            correlation_calls,
         )
 
 

@@ -352,6 +352,14 @@ def finish_manual_login_failed(cookie_manager: Any = None) -> None:
         pass
 
 
+def manual_login_in_flight() -> bool:
+    """True when a deliberate credential login is pending Supabase execution."""
+    if not st.session_state.get("cadivor_manual_login_in_progress"):
+        return False
+    pending = st.session_state.get("cadivor_auth_submission")
+    return isinstance(pending, dict)
+
+
 def _remote_sign_out(supabase: Any) -> None:
     """Remote Supabase sign-out only — no Streamlit session access from worker thread."""
     supabase.auth.sign_out()
@@ -688,6 +696,10 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
             )
         except Exception:
             pass
+
+    if manual_login_in_flight():
+        st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
+        return AUTH_SIGNING_IN
 
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_auth_resolved"] = True
