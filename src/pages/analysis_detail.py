@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 import html
 import re
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -183,7 +184,10 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
             "Engineering Intelligence",
         )
 
-    st.markdown('<div class="cv719-analysis-section-nav"></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="cv719-analysis-section-nav cv-analysis-section-nav-shell"></div>',
+        unsafe_allow_html=True,
+    )
     selected = st.radio(
         "Analysis section",
         ANALYSIS_SECTIONS,
@@ -326,10 +330,50 @@ def _query_table(
 
 def _section_header(title: str, subtitle: str) -> None:
     st.markdown(
-        f'<div class="cv-analysis-section"><div><div class="cv-analysis-section-title">{html.escape(title)}</div>'
-        f'<div class="cv-analysis-section-meta">{html.escape(subtitle)}</div></div></div>',
+        f"""
+        <header class="cv-section-header cv-analysis-section">
+          <h2 class="cv-section-title cv-analysis-section-title">{html.escape(title)}</h2>
+          <p class="cv-section-subtitle cv-analysis-section-meta">{html.escape(subtitle)}</p>
+        </header>
+        """,
         unsafe_allow_html=True,
     )
+
+
+def _inject_analysis_detail_v2_styles(*, force: bool = False) -> bool:
+    """Inject Analysis Details v2 CSS once per script run (reinject every rerun)."""
+    run_id = _current_script_run_id()
+    run_key = "_cadivor_analysis_detail_v2_run_id"
+    if not force and st.session_state.get(run_key) == run_id:
+        return False
+
+    css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "analysis_detail_v2.css"
+    try:
+        css = css_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not css.strip():
+        return False
+
+    st.markdown(
+        f"<style id='cadivor-analysis-detail-v2-css'>{css}</style>",
+        unsafe_allow_html=True,
+    )
+    st.session_state[run_key] = run_id
+    return True
+
+
+def _current_script_run_id() -> str:
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            return "__no_ctx__"
+        run_id = getattr(ctx, "script_run_id", None)
+        return str(run_id) if run_id is not None else str(id(ctx))
+    except Exception:
+        return "__unknown__"
 
 
 def _part_value(part: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
@@ -850,6 +894,7 @@ def render_analysis_detail(
         """,
         unsafe_allow_html=True,
     )
+    _inject_analysis_detail_v2_styles()
 
     if not analysis_id:
         st.error("No analysis was selected. Open one saved analysis from the Saved BOM Manager.")
@@ -975,8 +1020,31 @@ def render_analysis_detail(
     graph_counts = graph_summary.get("counts") or {}
 
     st.markdown('<a class="cv-analysis-back" href="' + html.escape(internal_app_href("BOM Analyzer", new_analysis="1"), quote=True) + '" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
+    badge_tone = {"good": "success", "warn": "warning", "bad": "danger"}.get(health_cls, "neutral")
     st.markdown(
-        f'''<div class="cv-analysis-hero"><div><div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis Workspace</div><h1 class="cv-analysis-title">{html.escape(project)}</h1><p class="cv-analysis-sub">A permanent engineering record for this saved BOM analysis. Use the tabs below to review one focused area at a time without losing your place.</p></div><div class="cv-analysis-summary"><div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{risk_status}</small></div><div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div><div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div><div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div></div></div>''',
+        f"""
+        <div class="cv-page cv-analysis-detail-page">
+          <header class="cv-page-header cv-analysis-header">
+            <div class="cv-analysis-header-main">
+              <div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis</div>
+              <h1 class="cv-page-title cv-analysis-title">{html.escape(project)}</h1>
+              <p class="cv-page-subtitle cv-analysis-sub">
+                <span>{html.escape(filename)}</span>
+                <span class="cv-analysis-meta-sep">·</span>
+                <span>Updated {_relative_date(created)}</span>
+                <span class="cv-analysis-meta-sep">·</span>
+                <span class="cv-badge cv-badge-{badge_tone}">{html.escape(risk_status)}</span>
+              </p>
+            </div>
+            <div class="cv-analysis-summary cv-analysis-header-kpis">
+              <div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{html.escape(risk_status)}</small></div>
+              <div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div>
+              <div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div>
+              <div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div>
+            </div>
+          </header>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
     hero_actions = st.columns(4, gap="small")
