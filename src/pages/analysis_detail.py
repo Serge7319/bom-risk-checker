@@ -121,8 +121,13 @@ def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
         st.session_state[context_key] = analysis_id
 
     if not widget_bound:
-        if incoming and incoming in ANALYSIS_SECTIONS:
+        pinned = _safe(st.session_state.get("cadivor_active_analysis_tab"), "")
+        if pinned in ANALYSIS_SECTIONS:
+            st.session_state["cadivor_active_analysis_tab"] = pinned
+            st.session_state[nav_key] = pinned
+        elif incoming and incoming in ANALYSIS_SECTIONS:
             st.session_state["cadivor_active_analysis_tab"] = incoming
+            st.session_state[nav_key] = incoming
         elif "cadivor_active_analysis_tab" not in st.session_state:
             st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
 

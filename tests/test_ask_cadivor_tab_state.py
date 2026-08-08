@@ -122,6 +122,47 @@ class AskCadivorTabStateTests(unittest.TestCase):
         assistant = importlib.import_module("src.components.engineering_assistant")
         return st, assistant
 
+    def test_pin_ask_cadivor_tab_sets_session_query_and_nav_widget(self):
+        st, assistant = self._load_assistant(
+            session_state={"cadivor_analysis_section_a-1": "Engineering Intelligence"},
+            query_params={},
+        )
+        assistant._pin_ask_cadivor_tab(source="test", analysis_id="a-1")
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+        self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_analysis_section_a-1"], "Ask Cadivor")
+
+    def test_manual_submission_pins_nav_widget_before_rerun(self):
+        st, assistant = self._load_assistant(
+            session_state={"cadivor_analysis_section_a-1": "Engineering Intelligence"},
+        )
+        with self.assertRaises(RuntimeError):
+            assistant._queue_copilot_submission(
+                "What should I review first?",
+                submission_kind="manual",
+                analysis_id="a-1",
+            )
+        self.assertEqual(st.session_state["cadivor_analysis_section_a-1"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+
+    def test_follow_up_buttons_require_non_empty_labels(self):
+        _, assistant = self._load_assistant()
+        source = inspect.getsource(assistant._render_follow_ups)
+        self.assertIn("if not valid_suggestions or not analysis_id", source)
+        self.assertIn("_clear_followup_ui_state()", source)
+        self.assertIn("_followup_button_generation", source)
+
+    def test_clear_review_state_clears_followup_widget_keys(self):
+        st, assistant = self._load_assistant(
+            session_state={
+                "cv36_followup_options": ["Why is this ranked first?"],
+                "cv36_pick_btn_old_0": True,
+            }
+        )
+        assistant._clear_review_state()
+        self.assertNotIn("cv36_followup_options", st.session_state)
+        self.assertNotIn("cv36_pick_btn_old_0", st.session_state)
+
     def test_manual_submission_pins_ask_cadivor_tab(self):
         st, assistant = self._load_assistant()
         with self.assertRaises(RuntimeError):

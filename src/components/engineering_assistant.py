@@ -54,14 +54,28 @@ def _log_ask_cadivor(event: str, **details: Any) -> None:
     print(" ".join(parts), flush=True)
 
 
-def _pin_ask_cadivor_tab(*, source: str = "unknown") -> None:
-    """Keep session, query, and tab-restore state on Ask Cadivor during copilot work."""
+def _analysis_section_nav_key(analysis_id: str) -> str:
+    return f"cadivor_analysis_section_{analysis_id or 'default'}"
+
+
+def _pin_ask_cadivor_tab(*, source: str = "unknown", analysis_id: str = "") -> None:
+    """Keep session, query, nav widget, and tab-restore state on Ask Cadivor during copilot work."""
     st.session_state["cadivor_active_analysis_tab"] = ASK_CADIVOR_TAB
     try:
         st.query_params["analysis_tab"] = ASK_CADIVOR_TAB
     except Exception:
         pass
-    _log_ask_cadivor("tab_pinned", source=source)
+    if analysis_id:
+        st.session_state[_analysis_section_nav_key(analysis_id)] = ASK_CADIVOR_TAB
+    else:
+        active_analysis_id = str(st.session_state.get("cadivor_active_analysis_id") or st.session_state.get("analysis_id") or "")
+        if active_analysis_id:
+            st.session_state[_analysis_section_nav_key(active_analysis_id)] = ASK_CADIVOR_TAB
+        else:
+            for key in list(st.session_state.keys()):
+                if str(key).startswith("cadivor_analysis_section_"):
+                    st.session_state[key] = ASK_CADIVOR_TAB
+    _log_ask_cadivor("tab_pinned", source=source, analysis_id=analysis_id or "active")
 
 
 def _log_copilot_workflow(event: str, **details: Any) -> None:
@@ -136,6 +150,17 @@ def _clear_review_state() -> None:
         "cv35_provider_connected",
     ):
         st.session_state.pop(key, None)
+    _clear_followup_ui_state()
+
+
+def _clear_followup_ui_state() -> None:
+    """Drop cached follow-up labels and button widget keys to avoid blank controls."""
+    st.session_state.pop("cv36_followup_options", None)
+    st.session_state.pop("cv36_followup_ready_for", None)
+    st.session_state.pop("cv36_followup_analysis_id", None)
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("cv36_pick_btn_"):
+            st.session_state.pop(key, None)
 
 
 
@@ -648,7 +673,7 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
             )
 
 
-def _queue_copilot_submission(question: str, *, submission_kind: str) -> None:
+def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_id: str = "") -> None:
     """Queue a copilot question behind auth snapshot protection and rerun."""
     clean = _normalize_submitted_question(question)
     if not clean:
@@ -667,15 +692,15 @@ def _queue_copilot_submission(question: str, *, submission_kind: str) -> None:
         st.session_state["cv47_followup_question"] = clean
 
     st.session_state["cv47_scroll_pending"] = True
-    _pin_ask_cadivor_tab(source=f"queue_{submission_kind}")
+    _pin_ask_cadivor_tab(source=f"queue_{submission_kind}", analysis_id=analysis_id)
     _log_ask_cadivor("question_queued", kind=submission_kind, question_len=len(clean))
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
     _clear_review_state()
     st.rerun()
 
 
-def _queue_follow_up(question: str) -> None:
-    _queue_copilot_submission(question, submission_kind="followup")
+def _queue_follow_up(question: str, *, analysis_id: str = "") -> None:
+    _queue_copilot_submission(question, submission_kind="followup", analysis_id=analysis_id)
 
 
 def _analysis_id_from_context(context: dict[str, Any]) -> str:
@@ -683,13 +708,13 @@ def _analysis_id_from_context(context: dict[str, Any]) -> str:
     return str(context.get("analysis_id") or analysis.get("analysis_id") or "")
 
 
-def _select_initial_suggestion(question: str, *, index: int, prompt_key: str) -> None:
+def _select_initial_suggestion(question: str, *, index: int, prompt_key: str, analysis_id: str = "") -> None:
     """Populate the question field from a suggested prompt without auto-submitting."""
     st.session_state[prompt_key] = question
     st.session_state.pop("cv41_pending_manual", None)
     st.session_state.pop("cv36_pending_followup", None)
     _clear_review_state()
-    _pin_ask_cadivor_tab(source="suggestion_cv35")
+    _pin_ask_cadivor_tab(source="suggestion_cv35", analysis_id=analysis_id)
     _log_ask_cadivor("suggestion_selected", kind="cv35", index=index)
     st.rerun()
 
@@ -731,7 +756,17 @@ def _apply_copilot_query_picks(*, prompt_key: str) -> None:
             except Exception:
                 pass
             _log_ask_cadivor("suggestion_selected", kind="cv36", index=idx, source="url")
-            _queue_follow_up(question)
+            _queue_follow_up(
+                question,
+                analysis_id=str(st.session_state.get("cv36_followup_analysis_id") or ""),
+            )
+
+
+def _followup_button_generation(labels: list[str]) -> str:
+    import hashlib
+
+    payload = "|".join(labels).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:10]
 
 
 def _render_prompt_chip_grid(
@@ -741,6 +776,7 @@ def _render_prompt_chip_grid(
     analysis_id: str = "",
     grid_class: str = "cv35-suggestion-grid",
     prompt_key: str = "cv35_question",
+    button_generation: str = "",
 ) -> None:
     """Render suggested questions as in-app Streamlit buttons (no full-page navigation)."""
     labels = [str(raw or "").strip() for raw in items]
@@ -755,29 +791,48 @@ def _render_prompt_chip_grid(
         for col_idx, label in enumerate(row_labels):
             index = row_start + col_idx
             with cols[col_idx]:
-                button_key = f"{param_key}_btn_{index}"
+                key_suffix = f"{button_generation}_{index}" if button_generation else str(index)
+                button_key = f"{param_key}_btn_{key_suffix}"
                 if st.button(label, key=button_key, use_container_width=True):
                     if param_key == "cv36_pick":
                         _log_ask_cadivor("suggestion_selected", kind="cv36", index=index)
-                        _queue_follow_up(label)
+                        _queue_follow_up(label, analysis_id=analysis_id)
                     else:
-                        _select_initial_suggestion(label, index=index, prompt_key=prompt_key)
+                        _select_initial_suggestion(
+                            label,
+                            index=index,
+                            prompt_key=prompt_key,
+                            analysis_id=analysis_id,
+                        )
 
 
 def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -> None:
+    if not str(answer or "").strip():
+        return
     suggestions = follow_up_suggestions(question, answer, context)
     valid_suggestions = [str(item or "").strip() for item in suggestions]
     valid_suggestions = [item for item in valid_suggestions if item]
     analysis_id = _analysis_id_from_context(context)
-    if valid_suggestions and analysis_id:
-        st.session_state["cv36_followup_options"] = valid_suggestions
-        st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
-        _render_prompt_chip_grid(
-            valid_suggestions,
-            param_key="cv36_pick",
-            analysis_id=analysis_id,
-            grid_class="cv35-suggestion-grid cv35-suggestion-grid--duo",
-        )
+    if not valid_suggestions or not analysis_id:
+        _clear_followup_ui_state()
+        return
+
+    ready_for = f"{question}|{answer[:120]}"
+    if st.session_state.get("cv36_followup_ready_for") != ready_for:
+        _clear_followup_ui_state()
+    st.session_state["cv36_followup_options"] = valid_suggestions
+    st.session_state["cv36_followup_analysis_id"] = analysis_id
+    st.session_state["cv36_followup_ready_for"] = ready_for
+    button_generation = _followup_button_generation(valid_suggestions)
+
+    st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
+    _render_prompt_chip_grid(
+        valid_suggestions,
+        param_key="cv36_pick",
+        analysis_id=analysis_id,
+        grid_class="cv35-suggestion-grid cv35-suggestion-grid--duo",
+        button_generation=button_generation,
+    )
 
     st.markdown('<div class="cv35-section-label">Ask a different follow-up</div>', unsafe_allow_html=True)
     st.caption("Ask any new engineering question about this assessment or the BOM. You are not limited to the suggested questions.")
@@ -792,7 +847,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
         submit_custom = st.form_submit_button("Ask follow-up", type="primary")
     if submit_custom:
         if str(custom or "").strip():
-            _queue_follow_up(custom)
+            _queue_follow_up(custom, analysis_id=analysis_id)
         else:
             st.warning("Enter a follow-up question before submitting.")
 
@@ -1301,7 +1356,7 @@ def render_engineering_assistant(
         st.warning("Enter an engineering question before submitting.")
     if manual_submit_requested:
         _log_copilot_workflow("manual_copilot_submission_received", question_len=len(cleaned_question))
-        _queue_copilot_submission(cleaned_question, submission_kind="manual")
+        _queue_copilot_submission(cleaned_question, submission_kind="manual", analysis_id=analysis_id)
 
     can_submit = status.can_use and bool(cleaned_question)
     submit_requested = bool(
@@ -1310,7 +1365,7 @@ def render_engineering_assistant(
     )
     submitted_question = cleaned_question
     if submit_requested:
-        _pin_ask_cadivor_tab(source="execute_copilot_question")
+        _pin_ask_cadivor_tab(source="execute_copilot_question", analysis_id=analysis_id)
         _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
         _log_ask_cadivor(
             "submission_received",
@@ -1354,7 +1409,7 @@ def render_engineering_assistant(
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
                 st.session_state[prompt_key] = ""
-                _pin_ask_cadivor_tab(source="provider_complete")
+                _pin_ask_cadivor_tab(source="provider_complete", analysis_id=analysis_id)
                 _log_ask_cadivor(
                     "response_committed",
                     active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
@@ -1363,7 +1418,7 @@ def render_engineering_assistant(
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:
                 _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
-                _pin_ask_cadivor_tab(source="provider_failed")
+                _pin_ask_cadivor_tab(source="provider_failed", analysis_id=analysis_id)
                 st.session_state["cv35_last_error"] = exc
                 _clear_copilot_workflow_protection()
                 st.session_state.pop("cv36_pending_followup", None)
@@ -1372,7 +1427,7 @@ def render_engineering_assistant(
                 progress.update(label="Cadivor could not complete the review", state="error")
             except Exception as exc:
                 _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
-                _pin_ask_cadivor_tab(source="provider_failed")
+                _pin_ask_cadivor_tab(source="provider_failed", analysis_id=analysis_id)
                 # A response may already have been generated and saved before a
                 # secondary operation (history persistence, cleanup, etc.) fails.
                 # Do not show a false red failure banner when the visible answer

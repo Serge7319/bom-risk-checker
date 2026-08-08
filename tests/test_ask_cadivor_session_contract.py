@@ -119,9 +119,10 @@ class AskCadivorSessionContractTests(unittest.TestCase):
 
     def test_pin_ask_cadivor_tab_sets_session_and_query(self):
         st, assistant = self._load_assistant(query_params={})
-        assistant._pin_ask_cadivor_tab(source="test")
+        assistant._pin_ask_cadivor_tab(source="test", analysis_id="a-1")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
         self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_analysis_section_a-1"], "Ask Cadivor")
 
     def test_queue_copilot_submission_pins_tab(self):
         st, assistant = self._load_assistant()

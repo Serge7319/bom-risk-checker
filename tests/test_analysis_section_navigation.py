@@ -134,6 +134,15 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         for section in detail.ANALYSIS_SECTIONS:
             self.assertIn(f'if active_tab == "{section}":', source)
 
+    def test_pinned_ask_cadivor_overrides_stale_url_when_widget_unbound(self):
+        st, detail = self._load(
+            session_state={"cadivor_active_analysis_tab": "Ask Cadivor"},
+            query_params={"analysis_tab": "Engineering Intelligence"},
+        )
+        detail._sync_cadivor_active_analysis_tab(analysis_id="a-copilot")
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
+        self.assertEqual(st.session_state["cadivor_analysis_section_a-copilot"], "Ask Cadivor")
+
     def test_analysis_change_resets_widget_and_hydrates_from_url(self):
         st, detail = self._load(
             session_state={
@@ -145,7 +154,7 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         )
         detail._sync_cadivor_active_analysis_tab(analysis_id="new-id")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Reports")
-        self.assertNotIn("cadivor_analysis_section_new-id", st.session_state)
+        self.assertEqual(st.session_state["cadivor_analysis_section_new-id"], "Reports")
         self.assertEqual(st.session_state["cadivor_analysis_section_sync_id"], "new-id")
 
 
