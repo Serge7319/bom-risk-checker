@@ -1,10 +1,17 @@
 /* Sprint 72.4 — Analysis Details premium experience (DS v2 scoped)
    Loaded on Analysis Details route only. Uses --cv-* tokens; no :root namespace. */
 
+.cv-analysis-workspace {
+  width: 100%;
+  max-width: var(--cv-page-max, none);
+  margin: 0 0 var(--cv-space-3, 12px);
+  box-sizing: border-box;
+}
+
 .cv-analysis-detail-page {
   width: 100%;
-  max-width: var(--cv-content-max, 1200px);
-  margin: 0 0 var(--cv-space-3, 12px);
+  max-width: 100%;
+  margin: 0;
   color: var(--cv-text);
 }
 
@@ -28,9 +35,10 @@
 
 .cv-analysis-detail-page .cv-analysis-header {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
-  gap: var(--cv-space-4, 16px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  gap: clamp(24px, 5vw, 64px);
   align-items: start;
+  width: 100%;
   margin: 0;
   padding: var(--cv-space-5, 20px);
   border: 1px solid var(--cv-border);
@@ -46,6 +54,7 @@
 
 .cv-analysis-header-main {
   min-width: 0;
+  max-width: 720px;
 }
 
 .cv-analysis-eyebrow {
@@ -93,6 +102,9 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--cv-space-2, 8px);
+  justify-self: end;
+  width: min(380px, 100%);
+  max-width: 380px;
 }
 
 .cv-analysis-detail-page .cv-analysis-mini {
@@ -129,27 +141,39 @@
   margin-top: var(--cv-space-1, 4px);
 }
 
-/* Compact hero action row — grouped within content width */
-section[data-testid="stMain"]
-  div[data-testid="stElementContainer"]:has(.cv-analysis-detail-page)
-  + div[data-testid="stElementContainer"]
-  div[data-testid="stHorizontalBlock"] {
-  max-width: var(--cv-content-max, 1200px);
+/* Hero action row + section nav share the Analysis workspace geometry */
+section[data-testid="stMain"] .st-key-cv_analysis_hero_actions,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav {
   width: 100%;
-  margin: var(--cv-space-3, 12px) 0;
-  gap: var(--cv-space-2, 8px);
+  max-width: var(--cv-page-max, none);
+  box-sizing: border-box;
 }
 
-section[data-testid="stMain"]
-  div[data-testid="stElementContainer"]:has(.cv-analysis-detail-page)
-  + div[data-testid="stElementContainer"]
-  div[data-testid="stHorizontalBlock"]
-  div[data-testid="column"]
-  .stButton
-  > button {
+section[data-testid="stMain"] .st-key-cv_analysis_hero_actions {
+  margin: var(--cv-space-3, 12px) 0;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_hero_actions [data-testid="stHorizontalBlock"] {
+  width: 100%;
+  max-width: 100%;
+  gap: var(--cv-space-2, 8px);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_hero_actions [data-testid="column"] .stButton > button {
   width: 100%;
   min-height: var(--cv-control-sm, 36px);
   white-space: nowrap;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav {
+  margin: 0 0 var(--cv-space-4, 16px);
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"] {
+  width: 100%;
+  max-width: 100%;
 }
 
 /* ------------------------------------------------------------------ */
@@ -655,6 +679,14 @@ div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="
 @media (max-width: 1280px) {
   .cv-analysis-detail-page .cv-analysis-header {
     grid-template-columns: 1fr;
+    gap: var(--cv-space-4, 16px);
+  }
+
+  .cv-analysis-header-kpis,
+  .cv-analysis-detail-page .cv-analysis-summary {
+    justify-self: stretch;
+    width: 100%;
+    max-width: 480px;
   }
 
   .cv-kpi-grid,
@@ -672,6 +704,10 @@ div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="
 @media (max-width: 1024px) {
   .cv-analysis-component {
     grid-template-columns: 1fr;
+  }
+
+  section[data-testid="stMain"] .st-key-cv_analysis_hero_actions [data-testid="stHorizontalBlock"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cv-report-grid,
@@ -695,6 +731,11 @@ div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="
   .cv-advisor-score-grid,
   .cv26-kpis,
   .cv-report-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+  }
+
+  section[data-testid="stMain"] .st-key-cv_analysis_hero_actions [data-testid="stHorizontalBlock"] {
     grid-template-columns: 1fr;
   }
 

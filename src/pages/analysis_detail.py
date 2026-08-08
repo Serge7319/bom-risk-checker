@@ -184,17 +184,18 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
             "Engineering Intelligence",
         )
 
-    st.markdown(
-        '<div class="cv719-analysis-section-nav cv-analysis-section-nav-shell"></div>',
-        unsafe_allow_html=True,
-    )
-    selected = st.radio(
-        "Analysis section",
-        ANALYSIS_SECTIONS,
-        horizontal=True,
-        key=nav_key,
-        label_visibility="collapsed",
-    )
+    with st.container(key="cv_analysis_section_nav"):
+        st.markdown(
+            '<div class="cv719-analysis-section-nav cv-analysis-section-nav-shell"></div>',
+            unsafe_allow_html=True,
+        )
+        selected = st.radio(
+            "Analysis section",
+            ANALYSIS_SECTIONS,
+            horizontal=True,
+            key=nav_key,
+            label_visibility="collapsed",
+        )
     return _commit_analysis_section_selection(analysis_id=analysis_id, selected=selected)
 
 
@@ -1019,69 +1020,72 @@ def render_analysis_detail(
     graph_summary = knowledge_graph.summary
     graph_counts = graph_summary.get("counts") or {}
 
-    st.markdown('<a class="cv-analysis-back" href="' + html.escape(internal_app_href("BOM Analyzer", new_analysis="1"), quote=True) + '" target="_self">' + _lucide("arrow-left",16) + ' Back to BOM Analyzer</a>', unsafe_allow_html=True)
     badge_tone = {"good": "success", "warn": "warning", "bad": "danger"}.get(health_cls, "neutral")
     st.markdown(
         f"""
-        <div class="cv-analysis-detail-page">
-          <header class="cv-analysis-header">
-            <div class="cv-analysis-header-main">
-              <div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis</div>
-              <h1 class="cv-analysis-title">{html.escape(project)}</h1>
-              <p class="cv-analysis-sub">
-                <span>{html.escape(filename)}</span>
-                <span class="cv-analysis-meta-sep">·</span>
-                <span>Updated {_relative_date(created)}</span>
-                <span class="cv-analysis-meta-sep">·</span>
-                <span class="cv-badge cv-badge-{badge_tone}">{html.escape(risk_status)}</span>
-              </p>
-            </div>
-            <div class="cv-analysis-summary cv-analysis-header-kpis">
-              <div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{html.escape(risk_status)}</small></div>
-              <div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div>
-              <div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div>
-              <div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div>
-            </div>
-          </header>
+        <div class="cv-analysis-workspace">
+          <a class="cv-analysis-back" href="{html.escape(internal_app_href('BOM Analyzer', new_analysis='1'), quote=True)}" target="_self">{_lucide('arrow-left',16)} Back to BOM Analyzer</a>
+          <div class="cv-analysis-detail-page">
+            <header class="cv-analysis-header">
+              <div class="cv-analysis-header-main">
+                <div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis</div>
+                <h1 class="cv-analysis-title">{html.escape(project)}</h1>
+                <p class="cv-analysis-sub">
+                  <span>{html.escape(filename)}</span>
+                  <span class="cv-analysis-meta-sep">·</span>
+                  <span>Updated {_relative_date(created)}</span>
+                  <span class="cv-analysis-meta-sep">·</span>
+                  <span class="cv-badge cv-badge-{badge_tone}">{html.escape(risk_status)}</span>
+                </p>
+              </div>
+              <div class="cv-analysis-summary cv-analysis-header-kpis">
+                <div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{html.escape(risk_status)}</small></div>
+                <div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div>
+                <div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div>
+                <div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div>
+              </div>
+            </header>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    hero_actions = st.columns(4, gap="small")
-    with hero_actions[0]:
-        internal_nav_button(
-            "Open in BOM Analyzer →",
-            "BOM Analyzer",
-            key="analysis_hero_bom_analyzer",
-            use_container_width=True,
-            analysis_id=analysis_id,
-        )
-    with hero_actions[1]:
-        internal_nav_button(
-            "Find Alternatives",
-            ALTERNATIVE_FINDER_PAGE,
-            key="analysis_hero_alternative_finder",
-            use_container_width=True,
-            analysis_id=analysis_id,
-            return_analysis_id=analysis_id,
-            source_page="analysis_detail",
-        )
-    with hero_actions[2]:
-        internal_nav_button(
-            "Monitor Components",
-            "Monitoring",
-            key="analysis_hero_monitoring",
-            use_container_width=True,
-            analysis_id=analysis_id,
-        )
-    with hero_actions[3]:
-        internal_nav_button(
-            "Reports Center",
-            "Reports",
-            key="analysis_hero_reports",
-            use_container_width=True,
-            analysis_id=analysis_id,
-        )
+    with st.container(key="cv_analysis_hero_actions"):
+        hero_actions = st.columns(4, gap="small")
+        with hero_actions[0]:
+            internal_nav_button(
+                "Open in BOM Analyzer →",
+                "BOM Analyzer",
+                key="analysis_hero_bom_analyzer",
+                use_container_width=True,
+                analysis_id=analysis_id,
+            )
+        with hero_actions[1]:
+            internal_nav_button(
+                "Find Alternatives",
+                ALTERNATIVE_FINDER_PAGE,
+                key="analysis_hero_alternative_finder",
+                use_container_width=True,
+                analysis_id=analysis_id,
+                return_analysis_id=analysis_id,
+                source_page="analysis_detail",
+            )
+        with hero_actions[2]:
+            internal_nav_button(
+                "Monitor Components",
+                "Monitoring",
+                key="analysis_hero_monitoring",
+                use_container_width=True,
+                analysis_id=analysis_id,
+            )
+        with hero_actions[3]:
+            internal_nav_button(
+                "Reports Center",
+                "Reports",
+                key="analysis_hero_reports",
+                use_container_width=True,
+                analysis_id=analysis_id,
+            )
 
     _sync_cadivor_active_analysis_tab(analysis_id=analysis_id)
     active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)

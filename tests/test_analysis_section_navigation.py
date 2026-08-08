@@ -5,6 +5,7 @@ import importlib
 import sys
 import types
 import unittest
+from contextlib import contextmanager
 
 
 def _install_streamlit_stub(session_state: dict | None = None, query_params: dict | None = None):
@@ -12,6 +13,12 @@ def _install_streamlit_stub(session_state: dict | None = None, query_params: dic
     st.session_state = session_state if session_state is not None else {}
     st.query_params = query_params if query_params is not None else {}
     st.markdown = lambda *args, **kwargs: None
+
+    @contextmanager
+    def _container(**kwargs):
+        yield None
+
+    st.container = _container
     st.radio = lambda label, options, horizontal=False, key=None, label_visibility=None: st.session_state.get(
         key, options[0]
     )

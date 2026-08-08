@@ -6,6 +6,7 @@ import inspect
 import sys
 import types
 import unittest
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 
@@ -15,6 +16,12 @@ def _install_streamlit_stub(session_state: dict | None = None, query_params: dic
     st.query_params = query_params if query_params is not None else {}
     st.form = lambda *args, **kwargs: _NullContext()
     st.text_area = lambda label, key, **kwargs: st.session_state.get(key, "")
+
+    @contextmanager
+    def _container(**kwargs):
+        yield None
+
+    st.container = _container
     st.form_submit_button = MagicMock(return_value=False)
     st.status = lambda *args, **kwargs: _NullContext()
     st.markdown = lambda *args, **kwargs: None

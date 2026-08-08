@@ -7,6 +7,7 @@ import re
 import sys
 import types
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +42,7 @@ DS_V2_TOKENS = (
     "--cv-warning-bg",
     "--cv-danger",
     "--cv-danger-bg",
-    "--cv-content-max",
+    "--cv-page-max",
     "--cv-space-2",
     "--cv-space-3",
     "--cv-space-4",
@@ -61,6 +62,12 @@ def _install_streamlit_stub(session_state: dict | None = None, *, script_run_id:
     st.session_state = session_state if session_state is not None else {}
     markdown_calls = []
     st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
+
+    @contextmanager
+    def _container(**kwargs):
+        yield None
+
+    st.container = _container
 
     class _Ctx:
         def __init__(self, run_id: str):
@@ -184,6 +191,7 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
         self.assertNotRegex(self.v2_css, r":root\s*\{")
 
     def test_analysis_header_structure_restored(self) -> None:
+        self.assertIn("cv-analysis-workspace", self.detail_source)
         self.assertIn("cv-analysis-detail-page", self.detail_source)
         self.assertIn("cv-analysis-header", self.detail_source)
         self.assertIn("cv-analysis-header-kpis", self.detail_source)
@@ -192,14 +200,26 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
         self.assertNotIn("cv-page-header cv-analysis-header", self.detail_source)
         self.assertNotIn("cv-page-title", self.detail_source)
 
+    def test_workspace_geometry_markers_present(self) -> None:
+        self.assertIn('st.container(key="cv_analysis_hero_actions")', self.detail_source)
+        self.assertIn('st.container(key="cv_analysis_section_nav")', self.detail_source)
+        self.assertIn("cv-analysis-workspace", self.v2_css)
+        self.assertIn("var(--cv-page-max", self.v2_css)
+        self.assertIn("st-key-cv_analysis_hero_actions", self.v2_css)
+        self.assertIn("st-key-cv_analysis_section_nav", self.v2_css)
+        self.assertNotIn("stElementContainer]:has(.cv-analysis-detail-page)", self.v2_css)
+
     def test_header_card_layout_in_v2_css(self) -> None:
         self.assertIn(".cv-analysis-detail-page .cv-analysis-header", self.v2_css)
-        header_block = self.v2_css.split(".cv-analysis-detail-page .cv-analysis-header", 1)[1][:520]
+        header_block = self.v2_css.split(".cv-analysis-detail-page .cv-analysis-header", 1)[1][:620]
         self.assertIn("display: grid", header_block)
         self.assertIn("border:", header_block)
         self.assertIn("box-shadow:", header_block)
+        self.assertIn("minmax(280px, 380px)", header_block)
+        self.assertIn("justify-self: end", self.v2_css)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", self.v2_css)
         self.assertIn(".cv-analysis-detail-page .cv-analysis-mini", self.v2_css)
-        self.assertIn("stHorizontalBlock", self.v2_css)
+        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr))", self.v2_css)
 
     def test_section_header_uses_ds_v2_classes(self) -> None:
         self.assertIn("cv-section-header", self.detail_source)
