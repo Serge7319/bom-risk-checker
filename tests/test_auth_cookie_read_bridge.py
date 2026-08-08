@@ -1,4 +1,4 @@
-"""Static/logic tests for Sprint 71.6.6 native context auth cookie read bridge."""
+"""Static/logic tests for native context auth cookie read bridge and normalization."""
 from __future__ import annotations
 
 import io
@@ -7,6 +7,7 @@ import sys
 import types
 import unittest
 from contextlib import redirect_stdout
+from urllib.parse import quote, unquote_plus
 
 
 class _FakeCookieManager:
@@ -73,6 +74,9 @@ def _install_streamlit_stub(
     sys.modules["streamlit"] = st
     sys.modules["streamlit.runtime"] = runtime
     sys.modules["streamlit.runtime.scriptrunner"] = scriptrunner
+    components = types.ModuleType("streamlit.components.v1")
+    sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
+    sys.modules["streamlit.components.v1"] = components
     return st
 
 
@@ -81,33 +85,20 @@ def _install_auth_modules(st, cookie_manager_cls=_FakeCookieManager):
     secrets.get_secret_bool = lambda key, default=False: default
     sys.modules["src.secrets"] = secrets
 
-    auth_state = types.ModuleType("src.auth_state")
+    for name in list(sys.modules):
+        if name in {"src.auth_state", "src.auth_cookies"}:
+            sys.modules.pop(name, None)
 
-    def coerce_cookie(raw):
-        if not raw:
-            return None
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, str):
-            try:
-                parsed = json.loads(raw)
-                return parsed if isinstance(parsed, dict) else None
-            except Exception:
-                return None
-        return None
+    import importlib
 
-    auth_state.coerce_cookie = coerce_cookie
-    auth_state.log_auth_diagnostic = lambda *args, **kwargs: None
-    sys.modules["src.auth_state"] = auth_state
+    auth_state = importlib.import_module("src.auth_state")
 
     stx = types.ModuleType("extra_streamlit_components")
     stx.CookieManager = cookie_manager_cls
     sys.modules["extra_streamlit_components"] = stx
 
-    sys.modules.pop("src.auth_cookies", None)
-    import importlib
-
-    return importlib.import_module("src.auth_cookies")
+    auth_cookies = importlib.import_module("src.auth_cookies")
+    return auth_cookies, auth_state
 
 
 def _valid_payload(
@@ -125,13 +116,17 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
     def setUp(self):
         _FakeCookieManager.instances.clear()
         for name in list(sys.modules):
-            if name.startswith("src.auth_cookies"):
+            if name.startswith("src.auth_cookies") or name == "src.auth_state":
                 sys.modules.pop(name, None)
+
+    def _load(self, session_state=None, **kwargs):
+        st = _install_streamlit_stub(session_state, **kwargs)
+        auth_cookies, auth_state = _install_auth_modules(st)
+        return st, auth_cookies, auth_state
 
     def test_fresh_manager_each_script_run_not_cross_run_singleton(self):
         session = {}
-        st = _install_streamlit_stub(session)
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load(session)
 
         first = auth_cookies.get_auth_cookie_manager()
         self.assertIsInstance(first, _FakeCookieManager)
@@ -154,8 +149,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
     def test_context_cookie_present_native_read_wins(self):
         payload = _valid_payload("ctx-access", "ctx-refresh")
         context = _FakeContextCookies({_AUTH_COOKIE_NAME: payload})
-        st = _install_streamlit_stub({}, context_cookies=context)
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {
             _AUTH_COOKIE_NAME: _valid_payload("mgr-access", "mgr-refresh")
@@ -168,8 +162,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertEqual(tokens["refresh_token"], "ctx-refresh")
 
     def test_context_absent_falls_back_to_cookie_manager(self):
-        st = _install_streamlit_stub({}, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {
             _AUTH_COOKIE_NAME: _valid_payload("mgr-access", "mgr-refresh")
@@ -181,8 +174,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertEqual(tokens["access_token"], "mgr-access")
 
     def test_context_api_unavailable_falls_back_safely(self):
-        st = _install_streamlit_stub({}, context_cookies=None)
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=None)
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {_AUTH_COOKIE_NAME: _valid_payload()}
 
@@ -194,8 +186,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
             def get(self, _key, default=None):
                 raise RuntimeError("context unavailable")
 
-        st = _install_streamlit_stub({}, context_cookies=_BrokenCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_BrokenCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {_AUTH_COOKIE_NAME: _valid_payload()}
 
@@ -204,8 +195,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
 
     def test_malformed_context_cookie_fails_closed(self):
         context = _FakeContextCookies({_AUTH_COOKIE_NAME: "not-json"})
-        st = _install_streamlit_stub({}, context_cookies=context)
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {}
 
@@ -218,8 +208,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
     def test_valid_context_cookie_hydrates_session_state(self):
         payload = _valid_payload("hydrate-access", "hydrate-refresh")
         context = _FakeContextCookies({_AUTH_COOKIE_NAME: payload})
-        st = _install_streamlit_stub({}, context_cookies=context)
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
         manager = auth_cookies.get_auth_cookie_manager()
 
         self.assertTrue(auth_cookies.hydrate_session_from_auth_cookie(manager))
@@ -230,16 +219,14 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
     def test_context_cookie_on_run_one_bypasses_hydration_pending(self):
         payload = _valid_payload()
         context = _FakeContextCookies({_AUTH_COOKIE_NAME: payload})
-        st = _install_streamlit_stub({}, context_cookies=context)
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {}
 
         self.assertFalse(auth_cookies.auth_cookie_hydration_pending(manager))
 
     def test_cookie_state_visible_after_browser_hydration(self):
-        st = _install_streamlit_stub({}, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
 
         run1_manager = auth_cookies.get_auth_cookie_manager()
         run1_manager.cookies = {}
@@ -263,8 +250,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertEqual(tokens["access_token"], "dummy-access")
 
     def test_legacy_bom_auth_manager_fallback(self):
-        st = _install_streamlit_stub({}, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {
             _AUTH_COOKIE_LEGACY_NAME: _valid_payload("legacy-access", "legacy-refresh")
@@ -277,8 +263,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
 
     def test_hydration_attempts_terminate_fail_closed(self):
         session = {"cadivor_auth_restore_attempts": 6, "cadivor_auth_cookie_absent": True}
-        st = _install_streamlit_stub(session, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load(session, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {}
 
@@ -287,8 +272,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
 
     def test_missing_cookie_eventually_not_hydration_pending_after_timeout(self):
         session = {}
-        st = _install_streamlit_stub(session, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load(session, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {}
 
@@ -301,8 +285,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertTrue(session.get("cadivor_auth_cookie_absent"))
 
     def test_invalid_cookie_not_hydration_pending(self):
-        st = _install_streamlit_stub({}, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {_AUTH_COOKIE_NAME: "not-json"}
 
@@ -310,8 +293,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
 
     def test_existing_session_tokens_skip_hydration(self):
         session = {"access_token": "a", "refresh_token": "b", "user": object()}
-        st = _install_streamlit_stub(session, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load(session, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {}
 
@@ -319,8 +301,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertFalse(auth_cookies.hydrate_session_from_auth_cookie(manager))
 
     def test_logout_clear_auth_cookie_unchanged(self):
-        st = _install_streamlit_stub({}, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
         manager = auth_cookies.get_auth_cookie_manager()
         manager.cookies = {
             _AUTH_COOKIE_NAME: _valid_payload(),
@@ -335,8 +316,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertTrue(st.session_state.get("cadivor_auth_cookie_absent"))
 
     def test_serialize_payload_unchanged(self):
-        st = _install_streamlit_stub({}, context_cookies=_FakeContextCookies())
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
         serialized = auth_cookies._serialize_auth_cookie_payload("acc", "ref")
         self.assertEqual(
             serialized,
@@ -346,8 +326,7 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
     def test_diagnostics_never_log_token_values(self):
         payload = _valid_payload("secret-access-token", "secret-refresh-token")
         context = _FakeContextCookies({_AUTH_COOKIE_NAME: payload})
-        st = _install_streamlit_stub({}, context_cookies=context)
-        auth_cookies = _install_auth_modules(st)
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
         manager = auth_cookies.get_auth_cookie_manager()
 
         buffer = io.StringIO()
@@ -361,6 +340,123 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
         self.assertNotIn("secret-access-token", output)
         self.assertNotIn("secret-refresh-token", output)
         self.assertNotIn(payload, output)
+
+    def test_plain_json_string_direct_parse(self):
+        _st, auth_cookies, auth_state = self._load({})
+        payload = _valid_payload("plain-access", "plain-refresh")
+        parsed, metadata = auth_state._parse_cookie_json_string(payload)
+        self.assertEqual(parsed["access_token"], "plain-access")
+        self.assertTrue(metadata["json_parse_direct"])
+        self.assertFalse(metadata["url_decode_attempted"])
+        self.assertIsNotNone(auth_cookies.parse_auth_cookie(payload))
+
+    def test_percent_encoded_json_normalizes_once(self):
+        _st, auth_cookies, auth_state = self._load({})
+        payload = _valid_payload("enc-access", "enc-refresh")
+        encoded = quote(payload, safe="")
+        parsed, metadata = auth_state._parse_cookie_json_string(encoded)
+        self.assertEqual(parsed["access_token"], "enc-access")
+        self.assertFalse(metadata["json_parse_direct"])
+        self.assertTrue(metadata["url_decode_attempted"])
+        self.assertTrue(metadata["decoding_changed_value"])
+        self.assertTrue(metadata["json_parse_after_url_decode"])
+        tokens = auth_cookies.parse_auth_cookie(encoded)
+        self.assertEqual(tokens["access_token"], "enc-access")
+
+    def test_dict_input_unchanged(self):
+        _st, auth_cookies, auth_state = self._load({})
+        payload = {"access_token": "dict-access", "refresh_token": "dict-refresh"}
+        self.assertEqual(auth_state.coerce_cookie(payload), payload)
+        tokens = auth_cookies.parse_auth_cookie(payload)
+        self.assertEqual(tokens["access_token"], "dict-access")
+
+    def test_malformed_percent_encoded_garbage_fails_closed(self):
+        _st, auth_cookies, auth_state = self._load({})
+        garbage = quote("%ZZ-not-json-{{", safe="")
+        self.assertIsNone(auth_state.coerce_cookie(garbage))
+        self.assertIsNone(auth_cookies.parse_auth_cookie(garbage))
+
+    def test_decoded_json_missing_access_token_fails_closed(self):
+        _st, auth_cookies, _auth_state = self._load({})
+        payload = quote(json.dumps({"refresh_token": "only-refresh"}), safe="")
+        self.assertIsNone(auth_cookies.parse_auth_cookie(payload))
+
+    def test_decoded_json_missing_refresh_token_fails_closed(self):
+        _st, auth_cookies, _auth_state = self._load({})
+        payload = quote(json.dumps({"access_token": "only-access"}), safe="")
+        self.assertIsNone(auth_cookies.parse_auth_cookie(payload))
+
+    def test_empty_access_or_refresh_token_fails_closed(self):
+        _st, auth_cookies, _auth_state = self._load({})
+        for body in (
+            {"access_token": "", "refresh_token": "r"},
+            {"access_token": "a", "refresh_token": ""},
+            {"access_token": "   ", "refresh_token": "r"},
+        ):
+            payload = quote(json.dumps(body), safe="")
+            self.assertIsNone(auth_cookies.parse_auth_cookie(payload))
+
+    def test_literal_plus_preserved_not_unquote_plus(self):
+        _st, auth_cookies, auth_state = self._load({})
+        plus_token = "token+with+plus"
+        payload = _valid_payload("access", plus_token)
+        tokens = auth_cookies.parse_auth_cookie(payload)
+        self.assertEqual(tokens["refresh_token"], plus_token)
+
+        encoded = quote(payload, safe="")
+        tokens = auth_cookies.parse_auth_cookie(encoded)
+        self.assertEqual(tokens["refresh_token"], plus_token)
+        # unquote_plus would turn literal "+" into space; unquote preserves it.
+        self.assertEqual(unquote_plus("a+b"), "a b")
+        self.assertEqual(auth_state.unquote("a+b"), "a+b")
+
+    def test_double_encoded_value_single_decode_only(self):
+        _st, auth_cookies, auth_state = self._load({})
+        payload = _valid_payload("double-a", "double-r")
+        double = quote(quote(payload, safe=""), safe="")
+        parsed, metadata = auth_state._parse_cookie_json_string(double)
+        self.assertIsNone(parsed)
+        self.assertTrue(metadata["url_decode_attempted"])
+        self.assertFalse(metadata["json_parse_after_url_decode"])
+        self.assertIsNone(auth_cookies.parse_auth_cookie(double))
+
+    def test_context_percent_encoded_cookie_hydrates_session(self):
+        payload = _valid_payload("ctx-enc-access", "ctx-enc-refresh")
+        encoded = quote(payload, safe="")
+        context = _FakeContextCookies({_AUTH_COOKIE_NAME: encoded})
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
+        manager = auth_cookies.get_auth_cookie_manager()
+
+        self.assertTrue(auth_cookies.hydrate_session_from_auth_cookie(manager))
+        self.assertEqual(st.session_state["access_token"], "ctx-enc-access")
+        self.assertEqual(st.session_state["refresh_token"], "ctx-enc-refresh")
+
+    def test_no_cookie_path_fails_closed(self):
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=_FakeContextCookies())
+        manager = auth_cookies.get_auth_cookie_manager()
+        manager.cookies = {}
+        self.assertFalse(auth_cookies.hydrate_session_from_auth_cookie(manager))
+        self.assertIsNone(auth_cookies.parse_auth_cookie(None))
+
+    def test_percent_encoded_diagnostics_no_secrets(self):
+        payload = _valid_payload("secret-a", "secret-r")
+        encoded = quote(payload, safe="")
+        context = _FakeContextCookies({_AUTH_COOKIE_NAME: encoded})
+        st, auth_cookies, _auth_state = self._load({}, context_cookies=context)
+        manager = auth_cookies.get_auth_cookie_manager()
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            auth_cookies.hydrate_session_from_auth_cookie(manager)
+
+        output = buffer.getvalue()
+        self.assertIn("AUTH_COOKIE parse_attempt", output)
+        self.assertIn("json_parse_after_url_decode=True", output)
+        self.assertIn("url_decode_attempted=True", output)
+        self.assertNotIn("secret-a", output)
+        self.assertNotIn("secret-r", output)
+        self.assertNotIn(payload, output)
+        self.assertNotIn(encoded, output)
 
 
 if __name__ == "__main__":

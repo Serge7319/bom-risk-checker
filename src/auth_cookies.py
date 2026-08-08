@@ -241,7 +241,25 @@ def _clear_logout_marker(cookie_manager: Any) -> None:
 
 def parse_auth_cookie(raw: Any) -> dict[str, str] | None:
     """Return access/refresh tokens from a cookie payload without logging values."""
-    parsed = coerce_cookie(raw)
+    parse_metadata: dict[str, bool] = {}
+    if isinstance(raw, str):
+        from src.auth_state import _parse_cookie_json_string
+
+        parsed, parse_metadata = _parse_cookie_json_string(raw)
+    else:
+        parsed = coerce_cookie(raw)
+
+    if parse_metadata:
+        log_auth_cookie(
+            "parse_attempt",
+            json_parse_direct=parse_metadata.get("json_parse_direct", False),
+            url_decode_attempted=parse_metadata.get("url_decode_attempted", False),
+            decoding_changed_value=parse_metadata.get("decoding_changed_value", False),
+            json_parse_after_url_decode=parse_metadata.get(
+                "json_parse_after_url_decode", False
+            ),
+        )
+
     if not isinstance(parsed, dict):
         return None
     access_token = str(parsed.get("access_token") or "").strip()

@@ -14,6 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import unquote
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -88,17 +89,49 @@ def log_logout_phase(label: str) -> None:
         print(f"[cadivor-logout] {label}: {elapsed_ms}ms", flush=True)
 
 
+def _parse_cookie_json_string(raw_cookie: str) -> tuple[dict[str, Any] | None, dict[str, bool]]:
+    """Parse a cookie JSON string, normalizing percent-encoded context reads once."""
+    metadata = {
+        "json_parse_direct": False,
+        "url_decode_attempted": False,
+        "decoding_changed_value": False,
+        "json_parse_after_url_decode": False,
+    }
+    text = str(raw_cookie).strip()
+    if not text:
+        return None, metadata
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            metadata["json_parse_direct"] = True
+            return parsed, metadata
+    except Exception:
+        pass
+
+    decoded = unquote(text)
+    metadata["url_decode_attempted"] = True
+    metadata["decoding_changed_value"] = decoded != text
+
+    try:
+        parsed = json.loads(decoded)
+        if isinstance(parsed, dict):
+            metadata["json_parse_after_url_decode"] = True
+            return parsed, metadata
+    except Exception:
+        pass
+
+    return None, metadata
+
+
 def coerce_cookie(raw_cookie: Any) -> dict[str, Any] | None:
     if not raw_cookie:
         return None
     if isinstance(raw_cookie, dict):
         return raw_cookie
     if isinstance(raw_cookie, str):
-        try:
-            parsed = json.loads(raw_cookie)
-            return parsed if isinstance(parsed, dict) else None
-        except Exception:
-            return None
+        parsed, _ = _parse_cookie_json_string(raw_cookie)
+        return parsed
     return None
 
 
