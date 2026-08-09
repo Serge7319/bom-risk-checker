@@ -974,6 +974,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     st.session_state["cv36_followup_ready_for"] = ready_for
     button_generation = _followup_button_generation(valid_suggestions)
 
+    st.markdown('<section class="cv-assistant-followups-panel">', unsafe_allow_html=True)
     st.markdown(
         '<div class="cv-assistant-section-label cv35-section-label">Continue the review</div>',
         unsafe_allow_html=True,
@@ -1004,6 +1005,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
             _queue_follow_up(custom, analysis_id=analysis_id)
         else:
             st.warning("Enter a follow-up question before submitting.")
+    st.markdown("</section>", unsafe_allow_html=True)
 
 
 def _first_sentence(text: str) -> str:
@@ -1217,9 +1219,9 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
               <ul>{reasons_html}</ul>
             </div>
             <aside class="cv49-answer-side">
-              <span>Confidence</span><strong>{confidence_score}%</strong>
+              <span class="cv49-side-label">Confidence</span><strong class="cv49-side-value">{confidence_score}%</strong>
               <div class="cv49-answer-track"><i style="width:{max(0,min(100,confidence_score))}%"></i></div>
-              <span>Recommended next action</span><p>{html.escape(next_action)}</p>
+              <span class="cv49-side-label">Recommended next action</span><p class="cv-assistant-preline">{html.escape(next_action)}</p>
             </aside>
           </div>
         </section>
@@ -1301,7 +1303,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
     driver_html = "".join(f'<li><span>{index}</span><p>{html.escape(driver)}</p></li>' for index, driver in enumerate(recommendation_drivers, start=1))
     if driver_html:
         st.markdown(
-            f'<section class="cv46-why"><div><span>Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><p class="cv-assistant-preline">{html.escape(explanation)}</p></div><ol>{driver_html}</ol></section>',
+            f'<section class="cv46-why"><div><span class="cv46-why-eyebrow">Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><p class="cv-assistant-preline">{html.escape(explanation)}</p></div><ol>{driver_html}</ol></section>',
             unsafe_allow_html=True,
         )
 
@@ -1328,7 +1330,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
     if rankings:
         st.markdown('<div class="cv35-section-label">Engineering priority ranking</div>', unsafe_allow_html=True)
         ranking_items=_evidence_items(rankings)
-        ranking_html="".join(f'<div class="cv47-ranking-row"><b>{idx}</b><div><strong>{html.escape(title)}</strong><span>{html.escape(detail)}</span></div></div>' for idx,(title,detail) in enumerate(ranking_items,1))
+        ranking_html="".join(f'<div class="cv47-ranking-row"><b>{idx}</b><div><strong class="cv47-ranking-title">{html.escape(title)}</strong><span class="cv47-ranking-detail">{html.escape(detail)}</span></div></div>' for idx,(title,detail) in enumerate(ranking_items,1))
         st.markdown(f'<div class="cv47-ranking-board">{ranking_html}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)

@@ -1081,3 +1081,166 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Sprint 72.1.2 — Shell-independent presentation polish                */
+/* ------------------------------------------------------------------ */
+.cv35-section-label,
+.cv-assistant-section-label {
+  display: block;
+  margin: var(--cv-space-4, 16px) 0 var(--cv-space-2, 8px);
+  font-size: var(--cv-font-xs, 11px);
+  font-weight: var(--cv-weight-semibold, 700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cv-text-muted);
+}
+
+.cv39-decision-card,
+.cv39-impact-card,
+.cv35-confidence-card {
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-lg, 16px);
+  background: var(--cv-surface);
+  box-shadow: var(--cv-shadow-xs);
+  padding: var(--cv-space-4, 16px);
+  margin: var(--cv-space-3, 12px) 0;
+}
+
+.cv39-progress-wrap {
+  margin: var(--cv-space-3, 12px) 0 var(--cv-space-4, 16px);
+  padding: var(--cv-space-3, 12px) var(--cv-space-4, 16px);
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-lg, 16px);
+  background: var(--cv-bg-subtle);
+}
+
+.cv35-confidence-track {
+  height: 9px;
+  background: var(--cv-border);
+  border-radius: var(--cv-radius-pill, 999px);
+  overflow: hidden;
+  margin: 13px 0 10px;
+}
+
+.cv35-confidence-track div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cv-primary), color-mix(in srgb, var(--cv-primary) 70%, white));
+}
+
+.cv49-side-label {
+  display: block;
+  font-size: var(--cv-font-xs, 11px);
+  color: var(--cv-text-muted);
+  margin-bottom: 4px;
+}
+
+.cv49-side-value {
+  display: block;
+  font-size: var(--cv-font-2xl, 24px);
+  color: var(--cv-text);
+  margin-bottom: var(--cv-space-2, 8px);
+}
+
+.cv47-ranking-board {
+  display: grid;
+  gap: var(--cv-space-2, 8px);
+  margin-bottom: var(--cv-space-4, 16px);
+}
+
+.cv47-ranking-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: var(--cv-space-3, 12px);
+  align-items: flex-start;
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-md, 12px);
+  background: var(--cv-surface);
+  padding: var(--cv-space-3, 12px);
+}
+
+.cv47-ranking-title {
+  display: block;
+  color: var(--cv-text);
+  font-size: var(--cv-font-md, 14px);
+  margin-bottom: 4px;
+}
+
+.cv47-ranking-detail {
+  display: block;
+  color: var(--cv-text-secondary);
+  font-size: var(--cv-font-sm, 12px);
+  line-height: 1.58;
+  white-space: pre-line;
+}
+
+.cv39-timeline-step {
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-md, 12px);
+  background: var(--cv-surface);
+  padding: var(--cv-space-3, 12px);
+  min-height: 100%;
+}
+
+.cv39-timeline-step strong {
+  display: block;
+  color: var(--cv-text);
+  font-size: var(--cv-font-sm, 13px);
+  margin: 6px 0;
+}
+
+.cv46-why {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: var(--cv-space-4, 16px);
+  border: 1px solid var(--cv-border);
+  background: var(--cv-bg-subtle);
+  border-radius: var(--cv-radius-xl, 20px);
+  padding: var(--cv-space-4, 16px) var(--cv-space-5, 20px);
+  margin: var(--cv-space-3, 12px) 0 var(--cv-space-4, 16px);
+}
+
+.cv46-why-eyebrow {
+  display: block;
+  font-size: var(--cv-font-xs, 11px);
+  font-weight: var(--cv-weight-semibold, 700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cv-primary);
+  margin-bottom: 6px;
+}
+
+.cv46-why ol {
+  margin: 0;
+  padding: 0 0 0 var(--cv-space-5, 20px);
+  display: grid;
+  gap: var(--cv-space-2, 8px);
+}
+
+.cv46-why li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--cv-space-2, 8px);
+  align-items: flex-start;
+  line-height: 1.58;
+}
+
+.cv46-why li p {
+  margin: 0;
+  color: var(--cv-text-secondary);
+  font-size: var(--cv-font-sm, 13px);
+  line-height: 1.62;
+}
+
+.cv-assistant-followups-panel {
+  margin-top: var(--cv-space-5, 20px);
+  padding-top: var(--cv-space-4, 16px);
+  border-top: 1px solid var(--cv-border);
+}
+
+@media (max-width: 760px) {
+  .cv46-why {
+    grid-template-columns: 1fr;
+  }
+}

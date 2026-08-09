@@ -171,6 +171,49 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
         self.assertIn(".cv39-impact-label", self.v2_css)
         self.assertIn("display: block", self.v2_css.split(".cv39-kpi-label", 1)[1].split("}", 1)[0])
 
+    def test_executive_sidebar_uses_semantic_label_value_classes(self) -> None:
+        html = self._render_sample_response()
+        self.assertIn('class="cv49-side-label"', html)
+        self.assertIn('class="cv49-side-value"', html)
+
+    def test_ranking_rows_use_separate_title_and_detail_classes(self) -> None:
+        st_stub, markdown_calls = _install_streamlit_stub()
+        assistant = self._load_assistant()
+        sample_answer = (
+            "### Intent\nGeneral Engineering Review\n"
+            "### Rankings\n"
+            "- **U1** — highest lifecycle risk\n"
+            "- **U2** — supplier concentration\n"
+        )
+        context = {
+            "analysis": {"analysis_id": "a1"},
+            "components": [{"part_number": "U1", "risk_score": 90}],
+            "coverage": {"score": 56},
+        }
+        with patch.object(assistant, "_render_response_scroll_anchor"):
+            with patch.object(assistant, "_render_quick_actions"):
+                with patch.object(st_stub, "columns", side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]):
+                    assistant._render_response(
+                        question="Rank these parts",
+                        answer=sample_answer,
+                        context=context,
+                    )
+        html = "\n".join(content for content, _kwargs in markdown_calls if isinstance(content, str))
+        self.assertIn('class="cv47-ranking-title"', html)
+        self.assertIn('class="cv47-ranking-detail"', html)
+
+    def test_shell_independent_polish_css_exists(self) -> None:
+        self.assertIn("Sprint 72.1.2", self.v2_css)
+        for selector in (
+            ".cv49-side-label",
+            ".cv47-ranking-detail",
+            ".cv-assistant-followups-panel",
+            ".cv35-section-label",
+        ):
+            self.assertIn(selector, self.v2_css)
+            block = self.v2_css.split(selector, 1)[1].split("}", 1)[0]
+            self.assertNotIn(".cv-assistant-shell", block)
+
 
 if __name__ == "__main__":
     unittest.main()
