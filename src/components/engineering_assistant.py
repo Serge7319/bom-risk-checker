@@ -13,6 +13,7 @@ from src.urls import internal_app_href
 from src.ui.navigation import alternative_finder_href, internal_nav_button, ALTERNATIVE_FINDER_PAGE
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
+from src.services.copilot_response_depth import wants_detailed_response as _wants_detailed_response
 from src.services.engineering_ai import EngineeringAI, EngineeringAIError, log_ai_config
 from src.services.copilot_conversation import (
     append_turn,
@@ -52,6 +53,9 @@ _COPILOT_WORKFLOW_KEYS = (
 
 _COPILOT_PROCESSING_LABEL = "Cadivor is analyzing this BOM…"
 _CLEAR_PROMPT_ON_NEXT_RUN_KEY = "cv7144_clear_prompt_on_next_run"
+_FULL_ASSESSMENT_EXPANDER_LABEL = "View full engineering assessment"
+_CONCISE_REASON_LIMIT = 3
+_CONCISE_ACTION_LIMIT = 3
 
 
 def _schedule_prompt_clear_on_next_run() -> None:
@@ -1196,17 +1200,239 @@ def _render_conversation_exchange(*, question: str, intent: str) -> None:
     )
 
 
+def _concise_reason_items(evidence: str, drivers: list[str], *, limit: int = _CONCISE_REASON_LIMIT) -> list[str]:
+    """Return capped reason lines for the concise answer surface."""
+    items: list[str] = []
+    for title, detail in _evidence_items(evidence):
+        line = f"{title}: {detail}" if title and title != "Engineering evidence" else detail
+        clean = _plain_markdown(line).strip()
+        if clean:
+            items.append(clean)
+    if not items:
+        items = [_plain_markdown(item).strip() for item in drivers if str(item or "").strip()]
+    return items[:limit]
+
+
+def _concise_action_items(actions: str, *, limit: int = _CONCISE_ACTION_LIMIT) -> list[str]:
+    """Return capped recommended actions for the concise answer surface."""
+    return _action_steps(actions)[:limit]
+
+
+def _should_render_workflow_timeline(
+    question: str,
+    *,
+    detailed: bool,
+    workflow_text: str,
+    context: dict[str, Any],
+) -> bool:
+    """Render workflow/timeline only for workflow-oriented or detailed requests."""
+    if detailed:
+        return True
+    if str(workflow_text or "").strip():
+        return True
+    text = str(question or "").strip().lower()
+    workflow_tokens = (
+        "workflow",
+        "timeline",
+        "implementation plan",
+        "action plan",
+        "step by step",
+        "steps should",
+        "what steps",
+        "how do i implement",
+        "owner action",
+        "closure plan",
+        "mitigation plan",
+        "engineering owner",
+    )
+    if any(token in text for token in workflow_tokens):
+        return True
+    timeline = list(context.get("timeline") or [])
+    decisions = list(context.get("decisions") or context.get("engineering_decisions") or [])
+    if (timeline or decisions) and any(token in text for token in ("monitor", "decision", "follow through", "close out", "track")):
+        return True
+    return False
+
+
+def _parse_workflow_steps(
+    workflow_text: str,
+    actions: str,
+    priority_part: str,
+    *,
+    intent: str,
+) -> list[tuple[str, str]]:
+    if str(workflow_text or "").strip():
+        workflow: list[tuple[str, str]] = []
+        for line in workflow_text.splitlines():
+            clean = line.strip()
+            if not clean.startswith(("-", "*")):
+                continue
+            clean = clean[1:].strip()
+            if " | " in clean:
+                label, detail = clean.split(" | ", 1)
+            else:
+                label, detail = clean, "Complete this step using the current BOM evidence and recorded engineering controls."
+            workflow.append((_plain_markdown(label), _plain_markdown(detail)))
+        return workflow[:5]
+    return _workflow_steps(actions, priority_part, intent=intent)
+
+
+def _render_compact_decision_summary(
+    *,
+    label: str,
+    status: str,
+    tone: str,
+    risk: str,
+    priority_part: str,
+    confidence_score: int,
+    confidence_label: str,
+) -> None:
+    priority_html = (
+        f'<span class="cv722-compact-item"><span class="cv722-compact-label">Priority</span>'
+        f'<strong class="cv722-compact-value">{html.escape(priority_part)}</strong></span>'
+        if priority_part
+        else ""
+    )
+    st.markdown(
+        f"""
+        <section class="cv39-decision-card cv722-compact-decision {tone}">
+          <div class="cv722-compact-top">
+            <div><div class="cv35-answer-label">{html.escape(label)}</div><h2>{html.escape(status)}</h2></div>
+            <span class="cv39-status-badge">{html.escape(risk)} risk</span>
+          </div>
+          <div class="cv722-compact-grid">
+            {priority_html}
+            <span class="cv722-compact-item"><span class="cv722-compact-label">Confidence</span><strong class="cv722-compact-value">{confidence_score}% · {html.escape(confidence_label)}</strong></span>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_expanded_engineering_assessment(
+    *,
+    question: str,
+    detailed: bool,
+    intent: str,
+    evidence: str,
+    actions: str,
+    rankings: str,
+    workflow_text: str,
+    context: dict[str, Any],
+    priority_part: str,
+    confidence_detail: str,
+    confidence_drivers: list[tuple[str, str, str]],
+    impact: list[tuple[str, str, str]],
+    complete: int,
+    total: int,
+    progress: int,
+    profile: dict[str, str],
+) -> None:
+    impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
+    if impact_html:
+        st.markdown('<div class="cv35-section-label">Projected engineering impact</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="cv39-impact-card">{impact_html}<p>Projections are directional estimates based on saved evidence, not measured outcomes.</p></div>',
+            unsafe_allow_html=True,
+        )
+
+    if confidence_drivers:
+        st.markdown('<div class="cv35-section-label">Confidence drivers</div>', unsafe_allow_html=True)
+        driver_html = "".join(
+            _html_confidence_driver(label, value, note) for label, value, note in confidence_drivers[:6]
+        )
+        detail_html = (
+            f'<p class="cv-assistant-preline cv722-confidence-detail">{html.escape(confidence_detail)}</p>'
+            if confidence_detail
+            else ""
+        )
+        st.markdown(
+            f'<div class="cv46-confidence-drivers cv722-confidence-drivers-only">{detail_html}{driver_html}</div>',
+            unsafe_allow_html=True,
+        )
+
+    if rankings:
+        st.markdown('<div class="cv35-section-label">Engineering priority ranking</div>', unsafe_allow_html=True)
+        ranking_items = _evidence_items(rankings)
+        ranking_html = "".join(
+            f'<div class="cv47-ranking-row"><b>{idx}</b><div><strong class="cv47-ranking-title">{html.escape(title)}</strong>'
+            f'<span class="cv47-ranking-detail">{html.escape(detail)}</span></div></div>'
+            for idx, (title, detail) in enumerate(ranking_items, 1)
+        )
+        st.markdown(f'<div class="cv47-ranking-board">{ranking_html}</div>', unsafe_allow_html=True)
+
+    evidence_items = _evidence_items(evidence)
+    if evidence_items:
+        st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)
+        _render_evidence_cards(evidence)
+
+    show_progress = detailed or intent in {"production_readiness", "evidence_sensitivity", "evidence_gap_priority"}
+    if show_progress:
+        progress_label = {
+            "production_readiness": "Release-readiness review",
+            "procurement": "Procurement review",
+            "supplier_qualification": "Supplier qualification review",
+            "schedule_resilience": "Schedule-resilience review",
+            "lifecycle": "Lifecycle review",
+            "inventory": "Inventory review",
+            "evidence_sensitivity": "Evidence-confidence review",
+        }.get(intent, "Engineering review progress")
+        st.markdown(
+            f'<div class="cv39-progress-wrap"><div class="cv39-progress-header"><strong class="cv39-progress-label">{html.escape(progress_label)}</strong><span class="cv39-progress-value">{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>',
+            unsafe_allow_html=True,
+        )
+
+    if _should_render_workflow_timeline(question, detailed=detailed, workflow_text=workflow_text, context=context):
+        workflow = _parse_workflow_steps(workflow_text, actions, priority_part, intent=intent)
+        if workflow:
+            st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
+            workflow_cols = st.columns(len(workflow))
+            for idx, ((label, detail), col) in enumerate(zip(workflow, workflow_cols), start=1):
+                col.markdown(
+                    f'<div class="cv39-timeline-step"><b>{idx}</b><strong>{html.escape(label)}</strong><p class="cv-assistant-preline">{html.escape(detail)}</p></div>',
+                    unsafe_allow_html=True,
+                )
+
+    _render_quick_actions(context, priority_part, intent=intent)
+
+
 def _render_conversational_answer(*, intent: str, assessment: str, priority_part: str,
                                   confidence_score: int, drivers: list[str],
-                                  actions: str, workflow_text: str) -> None:
+                                  actions: str, workflow_text: str,
+                                  reason_items: list[str] | None = None,
+                                  action_items: list[str] | None = None,
+                                  concise: bool = False) -> None:
     headline = _conversational_headline(intent, assessment, priority_part)
     answer_text = _plain_markdown(assessment).strip() or "The saved evidence is not sufficient for a reliable conclusion."
-    reason_items = [str(item).strip() for item in drivers if str(item).strip()][:4]
+    if reason_items is None:
+        reason_items = [str(item).strip() for item in drivers if str(item).strip()][:4]
     if not reason_items:
         reason_items = [answer_text]
     reasons_html = "".join(
-        f'<li><span>✓</span><p>{html.escape(reason)}</p></li>' for reason in reason_items
+        f'<li><span>✓</span><p>{html.escape(reason)}</p></li>' for reason in reason_items[:_CONCISE_REASON_LIMIT]
     )
+    if action_items is None:
+        action_items = _concise_action_items(actions)
+    if concise:
+        actions_html = "".join(
+            f'<li><span>→</span><p>{html.escape(action)}</p></li>' for action in action_items[:_CONCISE_ACTION_LIMIT]
+        )
+        st.markdown(
+            f"""
+            <section class="cv49-answer-card cv722-concise-answer">
+              <div class="cv49-answer-kicker">Cadivor Answer</div>
+              <div class="cv49-answer-main">
+                <h2>{html.escape(headline)}</h2>
+                <p class="cv-assistant-preline">{html.escape(answer_text)}</p>
+                <div class="cv722-concise-block"><span class="cv722-concise-label">Key engineering reasons</span><ul>{reasons_html}</ul></div>
+                <div class="cv722-concise-block"><span class="cv722-concise-label">Recommended actions</span><ul class="cv722-action-list">{actions_html}</ul></div>
+              </div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
     next_action = _next_action(actions, workflow_text)
     st.markdown(
         f"""
@@ -1231,6 +1457,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
 
 
 def _render_response(*, question: str, answer: str, context: dict[str, Any], auto_scroll: bool = False) -> None:
+    detailed = _wants_detailed_response(question)
     sections = _parse_report(answer)
     profile = _assessment_profile(sections)
     assessment = profile["assessment"]
@@ -1244,12 +1471,13 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
     intent = profile["intent"]
     priority_part = _priority_component(context, evidence)
     confidence_label, confidence_score, confidence_detail = _confidence_data(confidence, context)
-    confidence_class = "high" if confidence_score >= 75 else "medium" if confidence_score >= 45 else "low"
     decision = _decision_summary(context, assessment_body, confidence_score, priority_part, intent=intent, preferred_status=display_title)
     impact = _projected_impact(context, priority_part, intent=intent)
     complete, total, progress = _review_progress(context)
-    explanation, recommendation_drivers = _recommendation_explanation(assessment_body, evidence, priority_part)
+    _, recommendation_drivers = _recommendation_explanation(assessment_body, evidence, priority_part)
     confidence_drivers = _confidence_drivers(context, evidence)
+    concise_reasons = _concise_reason_items(evidence, recommendation_drivers)
+    concise_actions = _concise_action_items(actions)
 
     if auto_scroll:
         response_token = f"{abs(hash((question, answer))) :x}"
@@ -1267,98 +1495,40 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         drivers=recommendation_drivers,
         actions=actions,
         workflow_text=workflow_text,
+        reason_items=concise_reasons,
+        action_items=concise_actions,
+        concise=True,
     )
 
-    st.markdown(
-        '<div class="cv50-supporting-divider"><span>Supporting engineering assessment</span><i></i></div>',
-        unsafe_allow_html=True,
+    _render_compact_decision_summary(
+        label=profile["label"],
+        status=decision["status"],
+        tone=decision["tone"],
+        risk=decision["risk"],
+        priority_part=priority_part,
+        confidence_score=confidence_score,
+        confidence_label=confidence_label,
     )
 
-    kpis = _intent_kpis(context, intent=intent, priority_part=priority_part, confidence_score=confidence_score, complete=complete, total=total)
-    kpi_html = "".join(_html_kpi_cell(label, value) for label, value in kpis)
-    progress_label = {
-        "production_readiness": "Release-readiness review",
-        "procurement": "Procurement review",
-        "supplier_qualification": "Supplier qualification review",
-        "schedule_resilience": "Schedule-resilience review",
-        "lifecycle": "Lifecycle review",
-        "inventory": "Inventory review",
-        "evidence_sensitivity": "Evidence-confidence review",
-    }.get(intent, "Engineering review progress")
-    st.markdown(
-        f"""
-        <div class="cv39-decision-card {decision['tone']}">
-          <div class="cv39-decision-top">
-            <div><div class="cv35-answer-label">{html.escape(profile["label"])}</div><h2>{html.escape(decision['status'])}</h2></div>
-            <span class="cv39-status-badge">{html.escape(decision['risk'])} risk</span>
-          </div>
-          <div class="cv39-decision-grid">{kpi_html}</div>
-          <p class="cv-assistant-preline">{html.escape(decision['assessment'])}</p>
-        </div>
-        <div class="cv39-progress-wrap"><div class="cv39-progress-header"><strong class="cv39-progress-label">{html.escape(progress_label)}</strong><span class="cv39-progress-value">{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    driver_html = "".join(f'<li><span>{index}</span><p>{html.escape(driver)}</p></li>' for index, driver in enumerate(recommendation_drivers, start=1))
-    if driver_html:
-        st.markdown(
-            f'<section class="cv46-why"><div><span class="cv46-why-eyebrow">Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><p class="cv-assistant-preline">{html.escape(explanation)}</p></div><ol>{driver_html}</ol></section>',
-            unsafe_allow_html=True,
+    with st.expander(_FULL_ASSESSMENT_EXPANDER_LABEL, expanded=detailed):
+        _render_expanded_engineering_assessment(
+            question=question,
+            detailed=detailed,
+            intent=intent,
+            evidence=evidence,
+            actions=actions,
+            rankings=rankings,
+            workflow_text=workflow_text,
+            context=context,
+            priority_part=priority_part,
+            confidence_detail=confidence_detail,
+            confidence_drivers=confidence_drivers,
+            impact=impact,
+            complete=complete,
+            total=total,
+            progress=progress,
+            profile=profile,
         )
-
-    impact_col, confidence_col = st.columns([1.18, 1])
-    with impact_col:
-        st.markdown('<div class="cv35-section-label">Projected engineering impact</div>', unsafe_allow_html=True)
-        impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
-        st.markdown(f'<div class="cv39-impact-card">{impact_html}<p>Projections are directional estimates based on saved evidence, not measured outcomes.</p></div>', unsafe_allow_html=True)
-    with confidence_col:
-        st.markdown('<div class="cv35-section-label">Decision confidence</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <div class="cv35-confidence-card {confidence_class}">
-              <div class="cv35-confidence-top"><span class="cv35-confidence-top-label">Evidence confidence</span><strong class="cv35-confidence-top-value">{confidence_score}%</strong></div>
-              <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
-              <div class="cv35-confidence-label">{html.escape(confidence_label)}</div>
-              <div class="cv35-confidence-detail cv-assistant-preline">{html.escape(confidence_detail)}</div>
-              <div class="cv46-confidence-drivers">{"".join(_html_confidence_driver(label, value, note) for label, value, note in confidence_drivers[:6])}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    if rankings:
-        st.markdown('<div class="cv35-section-label">Engineering priority ranking</div>', unsafe_allow_html=True)
-        ranking_items=_evidence_items(rankings)
-        ranking_html="".join(f'<div class="cv47-ranking-row"><b>{idx}</b><div><strong class="cv47-ranking-title">{html.escape(title)}</strong><span class="cv47-ranking-detail">{html.escape(detail)}</span></div></div>' for idx,(title,detail) in enumerate(ranking_items,1))
-        st.markdown(f'<div class="cv47-ranking-board">{ranking_html}</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)
-    _render_evidence_cards(evidence)
-
-    st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
-    if workflow_text:
-        workflow = []
-        for line in workflow_text.splitlines():
-            clean = line.strip()
-            if not clean.startswith(("-", "*")):
-                continue
-            clean = clean[1:].strip()
-            if " | " in clean:
-                label, detail = clean.split(" | ", 1)
-            else:
-                label, detail = clean, "Complete this step using the current BOM evidence and recorded engineering controls."
-            workflow.append((_plain_markdown(label), _plain_markdown(detail)))
-        workflow = workflow[:5]
-    else:
-        workflow = _workflow_steps(actions, priority_part, intent=intent)
-    workflow_cols = st.columns(len(workflow))
-    for idx, ((label, detail), col) in enumerate(zip(workflow, workflow_cols), start=1):
-        col.markdown(
-            f'<div class="cv39-timeline-step"><b>{idx}</b><strong>{html.escape(label)}</strong><p class="cv-assistant-preline">{html.escape(detail)}</p></div>',
-            unsafe_allow_html=True,
-        )
-    _render_quick_actions(context, priority_part, intent=intent)
 
     st.markdown("</article>", unsafe_allow_html=True)
 

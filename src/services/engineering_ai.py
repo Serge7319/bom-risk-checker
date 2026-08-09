@@ -170,26 +170,9 @@ DETAILED_MAX_OUTPUT_TOKENS = 900
 
 def _wants_detailed_response(question: str) -> bool:
     """True when the user explicitly asks for a comprehensive or exhaustive analysis."""
-    text = str(question or "").strip().lower()
-    return any(
-        token in text
-        for token in (
-            "detailed report",
-            "full report",
-            "comprehensive analysis",
-            "comprehensive review",
-            "explain every component",
-            "every component",
-            "all components",
-            "each component",
-            "exhaustive",
-            "complete analysis",
-            "thorough analysis",
-            "deep dive",
-            "component by component",
-            "component-by-component",
-        )
-    )
+    from src.services.copilot_response_depth import wants_detailed_response
+
+    return wants_detailed_response(question)
 
 
 def _max_output_tokens(*, detailed: bool) -> int:
