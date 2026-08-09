@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import os
+import time
 from typing import Any
 from urllib import error, request
 
@@ -46,6 +47,65 @@ def _looks_like_placeholder_key(value: str) -> bool:
     if normalized in _PLACEHOLDER_KEYS:
         return True
     return any(token in normalized for token in ("your-api", "your_api", "replace", "example-key", "placeholder"))
+
+
+def _latency_bucket(duration_ms: int) -> str:
+    if duration_ms < 3000:
+        return "lt_3s"
+    if duration_ms < 8000:
+        return "3_8s"
+    if duration_ms < 15000:
+        return "8_15s"
+    return "gt_15s"
+
+
+def log_ai_config(api: "EngineeringAI") -> None:
+    """Emit safe AI provider configuration diagnostics (never secrets)."""
+    default_base_url = "https://api.openai.com/v1"
+    api_key = str(getattr(api, "api_key", "") or "")
+    model = str(getattr(api, "model", "unknown") or "unknown")
+    base_url = str(getattr(api, "base_url", default_base_url) or default_base_url).rstrip("/")
+    key_present = bool(api_key)
+    key_placeholder = _looks_like_placeholder_key(api_key) if key_present else False
+    configured = getattr(api, "configured", key_present and not key_placeholder)
+    if callable(configured):
+        configured = bool(configured)
+    configuration_state = getattr(api, "configuration_state", None)
+    if callable(configuration_state):
+        configuration_state = configuration_state
+    if not configuration_state:
+        configuration_state = "missing" if not key_present else ("placeholder" if key_placeholder else "connected")
+    base_url_default = base_url == default_base_url.rstrip("/")
+    print(
+        " ".join(
+            [
+                "AI_CONFIG",
+                "provider=openai",
+                f"key_present={key_present}",
+                f"key_placeholder={key_placeholder}",
+                f"configuration_state={configuration_state}",
+                f"model={model}",
+                f"base_url_default={base_url_default}",
+                f"configured={configured}",
+            ]
+        ),
+        flush=True,
+    )
+
+
+def log_ai_provider_event(event: str, **details: Any) -> None:
+    """Emit safe provider-runtime diagnostics (never prompt/response content)."""
+    forbidden = {"api_key", "authorization", "prompt", "answer", "question", "context"}
+    safe = {
+        str(key): str(value)
+        for key, value in details.items()
+        if str(key) not in forbidden
+    }
+    parts = " ".join(f"{key}={value}" for key, value in sorted(safe.items()))
+    line = f"AI_PROVIDER {event}"
+    if parts:
+        line = f"{line} {parts}"
+    print(line, flush=True)
 
 
 def _safe_json(value: Any, max_chars: int = 18000) -> str:
@@ -1287,6 +1347,13 @@ class EngineeringAI:
         if not clean_question:
             raise EngineeringAIError("Enter an engineering question first.", code="validation")
         if not self.configured:
+            log_ai_provider_event(
+                "request_skipped",
+                provider="cadivor-grounded",
+                configured=False,
+                duration_ms=0,
+                latency_bucket="lt_3s",
+            )
             return EngineeringAIResponse(
                 answer=_fallback_answer(clean_question, context, history),
                 provider="cadivor-grounded",
@@ -1294,6 +1361,8 @@ class EngineeringAI:
                 grounded=True,
             )
 
+        request_started = time.perf_counter()
+        log_ai_provider_event("request_started", provider="openai", configured=True)
         payload = {
             "model": self.model,
             "instructions": _system_instruction(),
@@ -1352,6 +1421,14 @@ class EngineeringAI:
                 code="empty",
             )
         usage = data.get("usage") or {}
+        duration_ms = int((time.perf_counter() - request_started) * 1000)
+        log_ai_provider_event(
+            "request_completed",
+            provider="openai",
+            configured=True,
+            duration_ms=duration_ms,
+            latency_bucket=_latency_bucket(duration_ms),
+        )
         return EngineeringAIResponse(
             answer=answer,
             provider="openai",

@@ -13,7 +13,7 @@ from src.urls import internal_app_href
 from src.ui.navigation import alternative_finder_href, internal_nav_button, ALTERNATIVE_FINDER_PAGE
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
-from src.services.engineering_ai import EngineeringAI, EngineeringAIError
+from src.services.engineering_ai import EngineeringAI, EngineeringAIError, log_ai_config
 from src.services.copilot_conversation import (
     append_turn,
     clear_thread,
@@ -1445,6 +1445,8 @@ def render_engineering_assistant(
             model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
             base_url=_secret("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         )
+        log_ai_config(api)
+        provider_target = "openai" if api.configured else "cadivor-grounded"
         st.session_state.pop("cv35_last_error", None)
         st.session_state["cv35_last_question"] = submitted_question
         st.markdown('<div id="cv47-processing-anchor"></div>', unsafe_allow_html=True)
@@ -1455,18 +1457,21 @@ def render_engineering_assistant(
                 _log_ask_cadivor(
                     "execution_started",
                     configured=api.configured,
+                    provider=provider_target,
                     question_len=len(submitted_question),
                 )
                 response = api.ask(question=submitted_question, context=context, history=compact_history(thread))
+                response_provider = str(getattr(response, "provider", provider_target))
                 _log_ask_cadivor(
                     "execution_completed",
                     configured=api.configured,
+                    provider=response_provider,
                     question_len=len(submitted_question),
                 )
                 consume_ai_credits(st.session_state, current_user, action="question")
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = submitted_question
-                st.session_state["cv35_provider_connected"] = api.configured
+                st.session_state["cv35_provider_connected"] = response_provider == "openai"
                 st.session_state["cv47_scroll_to_assessment"] = True
                 if st.session_state.pop("cv47_followup_question", None):
                     st.session_state["cv47_followup_answered"] = submitted_question
@@ -1475,7 +1480,7 @@ def render_engineering_assistant(
                     context,
                     question=submitted_question,
                     answer=response.answer,
-                    provider_connected=api.configured,
+                    provider_connected=response_provider == "openai",
                 )
                 # Copilot submission completed inside the authenticated workspace.
                 # The recovery snapshot is no longer needed after the answer and
@@ -1490,6 +1495,7 @@ def render_engineering_assistant(
                     "response_committed",
                     active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
                     thread_len=len(thread),
+                    provider=response_provider,
                 )
                 progress.update(label="Engineering review complete", state="complete")
             except EngineeringAIError as exc:

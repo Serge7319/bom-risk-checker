@@ -116,6 +116,7 @@ class AskCadivorSessionContractTests(unittest.TestCase):
 
         engineering_ai.EngineeringAI = _EngineeringAI
         engineering_ai.EngineeringAIError = _Error
+        engineering_ai.log_ai_config = lambda api: None
         sys.modules["src.services.engineering_ai"] = engineering_ai
 
         sys.modules.pop("src.components.engineering_assistant", None)
