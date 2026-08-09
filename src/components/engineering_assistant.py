@@ -685,7 +685,10 @@ def _render_evidence_cards(evidence: str) -> None:
     items = _evidence_items(evidence)
     if not items:
         message = _plain_markdown(evidence) or "No structured evidence was returned. Verify that component records are saved and re-run the review."
-        st.markdown(f'<div class="cv46-empty-evidence">{html.escape(message)}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="cv46-empty-evidence cv-assistant-preline">{html.escape(message)}</div>',
+            unsafe_allow_html=True,
+        )
         return
     cards: list[str] = []
     for title, detail in items[:8]:
@@ -766,7 +769,7 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
                 f"""
                 <div class="cv36-history-turn">
                   <div class="cv36-history-number">{index}</div>
-                  <div><small>Review {index}</small><strong>{question}</strong><p>{assessment}</p></div>
+                  <div><small>Review {index}</small><strong>{question}</strong><p class="cv-assistant-preline">{assessment}</p></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1173,7 +1176,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
           <div class="cv49-answer-grid">
             <div class="cv49-answer-main">
               <h2>{html.escape(headline)}</h2>
-              <p>{html.escape(answer_text)}</p>
+              <p class="cv-assistant-preline">{html.escape(answer_text)}</p>
               <ul>{reasons_html}</ul>
             </div>
             <aside class="cv49-answer-side">
@@ -1213,6 +1216,8 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         response_token = f"{abs(hash((question, answer))) :x}"
         _render_response_scroll_anchor(response_token=response_token)
 
+    st.markdown('<article class="cv-assistant-response">', unsafe_allow_html=True)
+
     _render_conversation_exchange(question=question, intent=intent)
 
     _render_conversational_answer(
@@ -1249,7 +1254,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
             <span class="cv39-status-badge">{html.escape(decision['risk'])} risk</span>
           </div>
           <div class="cv39-decision-grid">{kpi_html}</div>
-          <p>{html.escape(decision['assessment'])}</p>
+          <p class="cv-assistant-preline">{html.escape(decision['assessment'])}</p>
         </div>
         <div class="cv39-progress-wrap"><div><strong>{html.escape(progress_label)}</strong><span>{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>
         """,
@@ -1259,7 +1264,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
     driver_html = "".join(f'<li><span>{index}</span><p>{html.escape(driver)}</p></li>' for index, driver in enumerate(recommendation_drivers, start=1))
     if driver_html:
         st.markdown(
-            f'<section class="cv46-why"><div><span>Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><p>{html.escape(explanation)}</p></div><ol>{driver_html}</ol></section>',
+            f'<section class="cv46-why"><div><span>Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><p class="cv-assistant-preline">{html.escape(explanation)}</p></div><ol>{driver_html}</ol></section>',
             unsafe_allow_html=True,
         )
 
@@ -1279,7 +1284,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
               <div class="cv35-confidence-top"><span>Evidence confidence</span><strong>{confidence_score}%</strong></div>
               <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
               <div class="cv35-confidence-label">{html.escape(confidence_label)}</div>
-              <div class="cv35-confidence-detail">{html.escape(confidence_detail)}</div>
+              <div class="cv35-confidence-detail cv-assistant-preline">{html.escape(confidence_detail)}</div>
               <div class="cv46-confidence-drivers">{''.join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>' for label, value, note in confidence_drivers[:6])}</div>
             </div>
             """,
@@ -1314,10 +1319,13 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
     workflow_cols = st.columns(len(workflow))
     for idx, ((label, detail), col) in enumerate(zip(workflow, workflow_cols), start=1):
         col.markdown(
-            f'<div class="cv39-timeline-step"><b>{idx}</b><strong>{html.escape(label)}</strong><p>{html.escape(detail)}</p></div>',
+            f'<div class="cv39-timeline-step"><b>{idx}</b><strong>{html.escape(label)}</strong><p class="cv-assistant-preline">{html.escape(detail)}</p></div>',
             unsafe_allow_html=True,
         )
     _render_quick_actions(context, priority_part, intent=intent)
+
+    st.markdown("</article>", unsafe_allow_html=True)
+
 
 def render_engineering_assistant(
     *,
