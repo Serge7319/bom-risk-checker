@@ -44,7 +44,10 @@ class AuthDiagnosticsTests(unittest.TestCase):
             return False
 
         auth_cookies.read_auth_cookie_tokens = _read_auth_cookie_tokens
+        auth_cookies.read_auth_cookie_tokens_with_source = lambda _manager: (None, "none")
         auth_cookies.auth_cookie_hydration_pending = _hydration_pending
+        auth_cookies.manager_fallback_hydration_pending = _hydration_pending
+        auth_cookies._logout_marker_active = lambda _manager: False
         sys.modules["src.auth_cookies"] = auth_cookies
 
         import importlib
@@ -162,13 +165,74 @@ class AuthDiagnosticsTests(unittest.TestCase):
             "has_user",
             "has_access_token",
             "has_refresh_token",
+            "cookie_source",
             "cookie_present",
             "cookie_absent_flag",
+            "logout_marker_active",
             "hydration_pending",
             "force_signed_out",
+            "request_origin",
             "transition_reason",
         }
         self.assertTrue(required.issubset(set(fields)))
+
+    def test_auth_bounce_contains_required_keys_and_no_secrets(self):
+        st, diagnostics = self._load_diagnostics(
+            {
+                "cadivor_auth_status": "signed_out",
+                "access_token": "secret-access-token-value",
+                "refresh_token": "secret-refresh-token-value",
+            }
+        )
+        with patch.object(diagnostics, "_raw_session_id", return_value="session-bounce"):
+            with patch.object(diagnostics, "current_script_run_id", return_value="run-bounce"):
+                with patch.object(diagnostics, "_request_origin", return_value="app.example.com"):
+                    buffer = io.StringIO()
+                    with redirect_stdout(buffer):
+                        diagnostics.log_auth_bounce(
+                            "login_boundary_reached",
+                            cookie_manager=MagicMock(),
+                            auth_status="signed_out",
+                            cookie_source="none",
+                            transition_reason="auth_boundary_failed",
+                        )
+                    output = buffer.getvalue()
+
+        self.assertIn("AUTH_BOUNCE login_boundary_reached", output)
+        self.assertIn("session_hash=", output)
+        self.assertIn("cookie_source=none", output)
+        self.assertIn("logout_marker_active=", output)
+        self.assertIn("request_origin=app.example.com", output)
+        self.assertNotIn("secret-access-token-value", output)
+        self.assertNotIn("secret-refresh-token-value", output)
+
+    def test_auth_bounce_fields_include_auth_status(self):
+        _, diagnostics = self._load_diagnostics({"cadivor_auth_status": "authenticated"})
+        with patch.object(diagnostics, "_raw_session_id", return_value="session-bounce-fields"):
+            with patch.object(diagnostics, "current_script_run_id", return_value="run-bounce-fields"):
+                fields = diagnostics.build_auth_bounce_fields(
+                    cookie_manager=MagicMock(),
+                    auth_status="authenticated",
+                    transition_reason="runtime_entry",
+                )
+        required = {
+            "session_hash",
+            "script_run_id",
+            "cookie_source",
+            "cookie_present",
+            "cookie_absent_flag",
+            "logout_marker_active",
+            "has_user",
+            "has_access_token",
+            "has_refresh_token",
+            "auth_status",
+            "force_signed_out",
+            "hydration_pending",
+            "request_origin",
+            "transition_reason",
+        }
+        self.assertTrue(required.issubset(set(fields)))
+        self.assertEqual(fields["auth_status"], "authenticated")
 
 
 if __name__ == "__main__":

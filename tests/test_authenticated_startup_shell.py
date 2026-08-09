@@ -105,6 +105,7 @@ def _install_bootstrap_deps(st):
 
     auth_diagnostics = types.ModuleType("src.auth_diagnostics")
     auth_diagnostics.log_auth_correlation = MagicMock()
+    auth_diagnostics.log_auth_bounce = MagicMock()
     sys.modules["src.auth_diagnostics"] = auth_diagnostics
 
     _install_auth_state(st)

@@ -289,6 +289,7 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         auth_diagnostics.log_auth_correlation = lambda checkpoint, **kwargs: correlation_calls.append(
             (checkpoint, kwargs.get("transition_reason"))
         )
+        auth_diagnostics.log_auth_bounce = lambda event, **kwargs: None
         sys.modules["src.auth_diagnostics"] = auth_diagnostics
 
         status = auth_state.resolve_auth_state(supabase, cookie_manager=manager)
@@ -359,6 +360,7 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         auth_diagnostics.log_auth_correlation = lambda checkpoint, **kwargs: correlation_calls.append(
             (checkpoint, kwargs.get("transition_reason"))
         )
+        auth_diagnostics.log_auth_bounce = lambda event, **kwargs: None
         sys.modules["src.auth_diagnostics"] = auth_diagnostics
 
         auth = types.ModuleType("src.auth")

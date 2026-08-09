@@ -177,7 +177,7 @@ def _restore_copilot_workflow_snapshot() -> None:
 def ensure_authenticated_or_stop() -> None:
     """Resolve auth and render login/signup immediately for signed-out visitors."""
     from src.auth_cookies import native_cookie_api_available, read_auth_cookie_tokens_with_source
-    from src.auth_diagnostics import log_auth_correlation
+    from src.auth_diagnostics import log_auth_bounce, log_auth_correlation
 
     auth_status_in = str(st.session_state.get("cadivor_auth_status") or "unknown")
     log_startup_phase("bootstrap_begin")
@@ -204,12 +204,14 @@ def ensure_authenticated_or_stop() -> None:
 
     apply_auth_intent_from_query()
 
+    bootstrap_cookie_source = "skipped"
     if (
         not manual_login_in_flight()
         and not explicit_logout_pending()
         and not st.session_state.get("cadivor_force_signed_out")
     ):
         _tokens, cookie_source = read_auth_cookie_tokens_with_source(cookie_manager=None)
+        bootstrap_cookie_source = cookie_source
         if cookie_source == "context":
             hydration_reason = "native_context_restore_started"
         elif cookie_source == "manager_fallback":
@@ -220,6 +222,7 @@ def ensure_authenticated_or_stop() -> None:
             "after_cookie_hydration",
             cookie_manager=None,
             transition_reason=hydration_reason,
+            cookie_source=cookie_source,
         )
         hydrated = hydrate_session_from_auth_cookie(cookie_manager)
         log_auth_restore(
@@ -228,6 +231,17 @@ def ensure_authenticated_or_stop() -> None:
             cookie_source=cookie_source,
             cookie_absent=bool(st.session_state.get("cadivor_auth_cookie_absent")),
         )
+    log_auth_bounce(
+        "cookie_read",
+        cookie_manager=None,
+        auth_status=auth_status_in,
+        cookie_source=bootstrap_cookie_source,
+        transition_reason=(
+            "bootstrap_cookie_read_complete"
+            if bootstrap_cookie_source != "skipped"
+            else "bootstrap_cookie_read_skipped"
+        ),
+    )
 
     _restore_copilot_workflow_snapshot()
 
@@ -302,6 +316,13 @@ def ensure_authenticated_or_stop() -> None:
         log_auth_correlation(
             "before_show_auth_ui",
             cookie_manager=cookie_manager,
+            auth_status_in=auth_status,
+            transition_reason=auth_ui_reason,
+        )
+        log_auth_bounce(
+            "login_boundary_reached",
+            cookie_manager=cookie_manager,
+            auth_status=auth_status,
             transition_reason=auth_ui_reason,
         )
         show_auth_ui(supabase, cookie_manager)

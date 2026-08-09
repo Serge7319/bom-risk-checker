@@ -1582,11 +1582,17 @@ def run_authenticated_app() -> None:
 
     try:
         from src.auth_cookies import get_auth_cookie_manager
-        from src.auth_diagnostics import log_auth_correlation
+        from src.auth_diagnostics import log_auth_bounce, log_auth_correlation
 
+        cookie_manager = get_auth_cookie_manager()
         log_auth_correlation(
             "authenticated_runtime_entry",
-            cookie_manager=get_auth_cookie_manager(),
+            cookie_manager=cookie_manager,
+            transition_reason="runtime_entry",
+        )
+        log_auth_bounce(
+            "authenticated_runtime",
+            cookie_manager=cookie_manager,
             transition_reason="runtime_entry",
         )
     except Exception:
