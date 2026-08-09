@@ -115,7 +115,7 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
     def test_normal_question_uses_concise_response_depth(self) -> None:
         _, html, expander_calls = self._render(question="What should I review first in this BOM?")
         self.assertIn("cv722-concise-answer", html)
-        self.assertIn("cv722-compact-decision", html)
+        self.assertIn("cv722-summary-strip", html)
         self.assertNotIn("Why Cadivor recommends this", html)
         self.assertNotIn("Supporting engineering assessment", html)
         self.assertEqual(len(expander_calls), 1)
@@ -165,7 +165,7 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
 
     def test_confidence_not_duplicated_in_full_assessment(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertIn("cv722-compact-value", html)
+        self.assertIn("cv722-summary-value", html)
         self.assertIn("72%", html)
         self.assertNotIn("Evidence confidence", html)
 

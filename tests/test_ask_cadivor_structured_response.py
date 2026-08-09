@@ -101,10 +101,12 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
 
     def test_decision_confidence_label_value_separate_elements(self) -> None:
         html = self._render_sample_response()
-        self.assertIn('class="cv722-compact-label"', html)
-        self.assertIn('class="cv722-compact-value"', html)
+        self.assertIn('class="cv722-summary-label"', html)
+        self.assertIn('class="cv722-summary-value"', html)
         self.assertIn("Confidence", html)
         self.assertIn("56%", html)
+        self.assertNotRegex(html, r"Confidence\s*56%")
+        self.assertNotRegex(html, r"StatusReview")
 
     def test_bom_health_label_value_description_separated(self) -> None:
         html = self._render_sample_response()
@@ -125,7 +127,7 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
         html = self._render_sample_response()
         self.assertRegex(
             html,
-            r'class="cv722-compact-label"[^>]*>Priority</span>\s*<strong class="cv722-compact-value"[^>]*>PC817</strong>',
+            r'class="cv722-summary-label"[^>]*>Priority component</span>\s*<strong class="cv722-summary-value"[^>]*>PC817</strong>',
         )
 
     def test_evidence_confidence_driver_fields_separated(self) -> None:
@@ -173,9 +175,11 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
 
     def test_executive_sidebar_uses_semantic_label_value_classes(self) -> None:
         html = self._render_sample_response()
-        self.assertIn('class="cv722-concise-label"', html)
+        self.assertIn('class="cv722-section-label"', html)
         self.assertIn("Key engineering reasons", html)
         self.assertIn("Recommended actions", html)
+        self.assertIn('class="cv722-reason-list"', html)
+        self.assertIn('class="cv722-action-list"', html)
 
     def test_ranking_rows_use_separate_title_and_detail_classes(self) -> None:
         st_stub, markdown_calls = _install_streamlit_stub()

@@ -753,6 +753,7 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
     analysis_id = str(analysis.get("analysis_id") or "")
     if not analysis_id:
         return
+    st.markdown('<div class="cv722-quick-actions">', unsafe_allow_html=True)
     st.markdown('<div class="cv35-section-label">Continue the workflow</div>', unsafe_allow_html=True)
     part_label = priority_part or "component"
     component_url = _href("Analysis Details", analysis_id=analysis_id, tab="components", component=priority_part, focus="component-risk")
@@ -793,6 +794,7 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
                 )
             else:
                 col.link_button(label, url, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 
@@ -978,9 +980,9 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     st.session_state["cv36_followup_ready_for"] = ready_for
     button_generation = _followup_button_generation(valid_suggestions)
 
-    st.markdown('<section class="cv-assistant-followups-panel">', unsafe_allow_html=True)
+    st.markdown('<section class="cv-assistant-followups-panel cv723-followups-panel">', unsafe_allow_html=True)
     st.markdown(
-        '<div class="cv-assistant-section-label cv35-section-label">Continue the review</div>',
+        '<h3 class="cv723-followups-heading">Continue the review</h3>',
         unsafe_allow_html=True,
     )
     with st.container(key="cv_assistant_followups"):
@@ -1287,22 +1289,22 @@ def _render_compact_decision_summary(
     confidence_score: int,
     confidence_label: str,
 ) -> None:
-    priority_html = (
-        f'<span class="cv722-compact-item"><span class="cv722-compact-label">Priority</span>'
-        f'<strong class="cv722-compact-value">{html.escape(priority_part)}</strong></span>'
-        if priority_part
-        else ""
-    )
+    priority_value = html.escape(priority_part or "Not identified")
     st.markdown(
         f"""
-        <section class="cv39-decision-card cv722-compact-decision {tone}">
-          <div class="cv722-compact-top">
-            <div><div class="cv35-answer-label">{html.escape(label)}</div><h2>{html.escape(status)}</h2></div>
-            <span class="cv39-status-badge">{html.escape(risk)} risk</span>
+        <section class="cv722-summary-strip cv722-summary-strip--{html.escape(tone)}" aria-label="Engineering decision summary">
+          <div class="cv722-summary-item" data-field="status">
+            <span class="cv722-summary-label">Status</span>
+            <strong class="cv722-summary-value">{html.escape(status)}</strong>
           </div>
-          <div class="cv722-compact-grid">
-            {priority_html}
-            <span class="cv722-compact-item"><span class="cv722-compact-label">Confidence</span><strong class="cv722-compact-value">{confidence_score}% · {html.escape(confidence_label)}</strong></span>
+          <div class="cv722-summary-item cv722-summary-item--priority" data-field="priority">
+            <span class="cv722-summary-label">Priority component</span>
+            <strong class="cv722-summary-value">{priority_value}</strong>
+          </div>
+          <div class="cv722-summary-item" data-field="confidence">
+            <span class="cv722-summary-label">Confidence</span>
+            <strong class="cv722-summary-value">{confidence_score}%</strong>
+            <span class="cv722-summary-note">{html.escape(confidence_label)}</span>
           </div>
         </section>
         """,
@@ -1329,6 +1331,7 @@ def _render_expanded_engineering_assessment(
     progress: int,
     profile: dict[str, str],
 ) -> None:
+    st.markdown('<div class="cv722-expanded-assessment">', unsafe_allow_html=True)
     impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
     if impact_html:
         st.markdown('<div class="cv35-section-label">Projected engineering impact</div>', unsafe_allow_html=True)
@@ -1395,6 +1398,7 @@ def _render_expanded_engineering_assessment(
                 )
 
     _render_quick_actions(context, priority_part, intent=intent)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_conversational_answer(*, intent: str, assessment: str, priority_part: str,
@@ -1410,23 +1414,32 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
     if not reason_items:
         reason_items = [answer_text]
     reasons_html = "".join(
-        f'<li><span>✓</span><p>{html.escape(reason)}</p></li>' for reason in reason_items[:_CONCISE_REASON_LIMIT]
+        f'<li><span class="cv722-list-index">{index}</span><p>{html.escape(reason)}</p></li>'
+        for index, reason in enumerate(reason_items[:_CONCISE_REASON_LIMIT], start=1)
     )
     if action_items is None:
         action_items = _concise_action_items(actions)
     if concise:
         actions_html = "".join(
-            f'<li><span>→</span><p>{html.escape(action)}</p></li>' for action in action_items[:_CONCISE_ACTION_LIMIT]
+            f'<li><span class="cv722-list-index">{index}</span><p>{html.escape(action)}</p></li>'
+            for index, action in enumerate(action_items[:_CONCISE_ACTION_LIMIT], start=1)
         )
         st.markdown(
             f"""
             <section class="cv49-answer-card cv722-concise-answer">
               <div class="cv49-answer-kicker">Cadivor Answer</div>
-              <div class="cv49-answer-main">
-                <h2>{html.escape(headline)}</h2>
-                <p class="cv-assistant-preline">{html.escape(answer_text)}</p>
-                <div class="cv722-concise-block"><span class="cv722-concise-label">Key engineering reasons</span><ul>{reasons_html}</ul></div>
-                <div class="cv722-concise-block"><span class="cv722-concise-label">Recommended actions</span><ul class="cv722-action-list">{actions_html}</ul></div>
+              <div class="cv722-direct-answer">
+                <span class="cv722-section-label">Direct answer</span>
+                <h2 class="cv722-direct-answer-title">{html.escape(headline)}</h2>
+                <p class="cv722-direct-answer-text cv-assistant-preline">{html.escape(answer_text)}</p>
+              </div>
+              <div class="cv722-concise-block">
+                <span class="cv722-section-label">Key engineering reasons</span>
+                <ol class="cv722-reason-list">{reasons_html}</ol>
+              </div>
+              <div class="cv722-concise-block">
+                <span class="cv722-section-label">Recommended actions</span>
+                <ol class="cv722-action-list">{actions_html}</ol>
               </div>
             </section>
             """,

@@ -97,16 +97,16 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
         self.assertIn("display: grid", block)
         self.assertIn("gap:", block)
 
-    def test_why_ordered_list_css_exists(self) -> None:
-        self.assertIn(".cv46-why ol", self.v2_css)
-        self.assertIn(".cv46-why li", self.v2_css)
+    def test_concise_list_css_exists(self) -> None:
+        self.assertIn(".cv722-reason-list", self.v2_css)
+        self.assertIn(".cv722-action-list", self.v2_css)
 
     def test_existing_renderer_class_names_remain(self) -> None:
         for class_name in (
             "cv49-answer-card",
             "cv722-concise-answer",
-            "cv722-compact-decision",
-            "cv39-decision-card",
+            "cv722-summary-strip",
+            "cv39-impact-card",
             "cv46-evidence-board",
             "cv47-ranking-board",
             "cv39-timeline-step",
