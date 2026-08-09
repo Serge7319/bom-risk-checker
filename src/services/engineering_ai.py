@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import os
 import time
+import uuid
 from typing import Any
 from urllib import error, request
 
@@ -111,6 +112,55 @@ def log_ai_provider_event(event: str, **details: Any) -> None:
 def _safe_json(value: Any, max_chars: int = 18000) -> str:
     text = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
     return text[:max_chars]
+
+
+def _prepare_prompt_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Trim prompt-only fields that duplicate or do not affect engineering reasoning."""
+    payload = json.loads(json.dumps(context or {}, default=str))
+    summary = payload.get("summary")
+    if isinstance(summary, dict):
+        summary.pop("top_risks", None)
+    payload.pop("reports", None)
+    payload.pop("collaboration", None)
+    payload.pop("version", None)
+    payload.pop("generated_at", None)
+    analysis = payload.get("analysis")
+    if isinstance(analysis, dict):
+        analysis.pop("user_id", None)
+        analysis.pop("workspace_id", None)
+    return payload
+
+
+def _estimate_payload_stats(*, question: str, history: list[dict[str, str]] | None, context: dict[str, Any]) -> dict[str, int]:
+    history_json = _safe_json(history or [])
+    context_json = _safe_json(context)
+    user_text = (
+        f"ENGINEERING QUESTION:\n{question}\n\n"
+        f"RECENT COPILOT CONVERSATION:\n{history_json}\n\n"
+        f"CADIVOR ENGINEERING CONTEXT:\n{context_json}"
+    )
+    payload_chars = len(_system_instruction()) + len(user_text)
+    return {
+        "question_chars": len(str(question or "")),
+        "history_chars": len(history_json),
+        "context_chars": len(context_json),
+        "payload_chars": payload_chars,
+        "estimated_input_tokens": max(1, payload_chars // 4),
+    }
+
+
+def _new_request_id() -> str:
+    return uuid.uuid4().hex[:12]
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    reason = getattr(exc, "reason", None)
+    if isinstance(reason, TimeoutError):
+        return True
+    message = str(reason or exc).lower()
+    return "timed out" in message or "timeout" in message
 
 
 def _system_instruction() -> str:
@@ -1362,7 +1412,20 @@ class EngineeringAI:
             )
 
         request_started = time.perf_counter()
-        log_ai_provider_event("request_started", provider="openai", configured=True)
+        request_id = _new_request_id()
+        prompt_context = _prepare_prompt_context(context)
+        payload_stats = _estimate_payload_stats(
+            question=clean_question,
+            history=history,
+            context=prompt_context,
+        )
+        log_ai_provider_event(
+            "request_started",
+            provider="openai",
+            configured=True,
+            request_id=request_id,
+            **payload_stats,
+        )
         payload = {
             "model": self.model,
             "instructions": _system_instruction(),
@@ -1375,7 +1438,7 @@ class EngineeringAI:
                             "text": (
                                 f"ENGINEERING QUESTION:\n{clean_question}\n\n"
                                 f"RECENT COPILOT CONVERSATION:\n{_safe_json(history or [])}\n\n"
-                                f"CADIVOR ENGINEERING CONTEXT:\n{_safe_json(context)}"
+                                f"CADIVOR ENGINEERING CONTEXT:\n{_safe_json(prompt_context)}"
                             ),
                         }
                     ],
@@ -1396,11 +1459,73 @@ class EngineeringAI:
             with request.urlopen(req, timeout=45) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")[:1200]
-            raise _friendly_http_error(exc.code, detail) from exc
+            duration_ms = int((time.perf_counter() - request_started) * 1000)
+            friendly = _friendly_http_error(exc.code, exc.read().decode("utf-8", errors="ignore")[:1200])
+            log_ai_provider_event(
+                "request_failed",
+                provider="openai",
+                configured=True,
+                request_id=request_id,
+                code=friendly.code,
+                duration_ms=duration_ms,
+                latency_bucket=_latency_bucket(duration_ms),
+            )
+            raise friendly from exc
+        except error.URLError as exc:
+            duration_ms = int((time.perf_counter() - request_started) * 1000)
+            if _is_timeout_error(exc):
+                log_ai_provider_event(
+                    "request_failed",
+                    provider="openai",
+                    configured=True,
+                    request_id=request_id,
+                    code="timeout",
+                    duration_ms=duration_ms,
+                    latency_bucket=_latency_bucket(duration_ms),
+                )
+                raise EngineeringAIError(
+                    "The request took longer than expected. Please try again.",
+                    code="timeout",
+                ) from exc
+            log_ai_provider_event(
+                "request_failed",
+                provider="openai",
+                configured=True,
+                request_id=request_id,
+                code="unavailable",
+                duration_ms=duration_ms,
+                latency_bucket=_latency_bucket(duration_ms),
+            )
+            raise EngineeringAIError(
+                "The Engineering Assistant is temporarily unavailable. Please try again.",
+                code="unavailable",
+            ) from exc
         except TimeoutError as exc:
-            raise EngineeringAIError("The request took longer than expected. Please try again.", code="timeout") from exc
+            duration_ms = int((time.perf_counter() - request_started) * 1000)
+            log_ai_provider_event(
+                "request_failed",
+                provider="openai",
+                configured=True,
+                request_id=request_id,
+                code="timeout",
+                duration_ms=duration_ms,
+                latency_bucket=_latency_bucket(duration_ms),
+            )
+            raise EngineeringAIError(
+                "The request took longer than expected. Please try again.",
+                code="timeout",
+            ) from exc
         except Exception as exc:
+            duration_ms = int((time.perf_counter() - request_started) * 1000)
+            log_ai_provider_event(
+                "request_failed",
+                provider="openai",
+                configured=True,
+                request_id=request_id,
+                code="unavailable",
+                duration_ms=duration_ms,
+                latency_bucket=_latency_bucket(duration_ms),
+            )
             raise EngineeringAIError(
                 "The Engineering Assistant is temporarily unavailable. Please try again.",
                 code="unavailable",
@@ -1426,6 +1551,7 @@ class EngineeringAI:
             "request_completed",
             provider="openai",
             configured=True,
+            request_id=request_id,
             duration_ms=duration_ms,
             latency_bucket=_latency_bucket(duration_ms),
         )

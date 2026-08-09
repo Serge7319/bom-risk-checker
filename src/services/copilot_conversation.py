@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 MAX_TURNS = 8
+PROMPT_HISTORY_ANSWER_MAX = 1200
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +68,7 @@ def compact_history(thread: list[dict[str, Any]], max_turns: int = 4) -> list[di
         question = str(turn.get("question") or "").strip()
         answer = str(turn.get("answer") or "").strip()
         if question and answer:
-            compact.append({"question": question[:500], "answer": answer[:3000]})
+            compact.append({"question": question[:500], "answer": answer[:PROMPT_HISTORY_ANSWER_MAX]})
     return compact
 
 
