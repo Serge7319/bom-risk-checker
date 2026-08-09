@@ -41,6 +41,7 @@ _COPILOT_WORKFLOW_KEYS = (
     "cv36_pending_followup",
     "cv47_followup_question",
     "cv47_scroll_pending",
+    "cv7142_ask_inflight",
     "cadivor_route",
     "app_mode",
     "analysis_id",
@@ -48,6 +49,8 @@ _COPILOT_WORKFLOW_KEYS = (
     "cadivor_active_analysis_id",
     "cadivor_active_analysis_tab",
 )
+
+_COPILOT_PROCESSING_LABEL = "Cadivor is analyzing this BOM…"
 
 
 def _log_ask_cadivor(event: str, **details: Any) -> None:
@@ -123,7 +126,28 @@ def _clear_copilot_workflow_protection() -> None:
     """Drop copilot workflow recovery state after a submission completes."""
     st.session_state.pop("cv4801_followup_inflight", None)
     st.session_state.pop("cv4801_route_snapshot", None)
+    st.session_state.pop("cv7142_ask_inflight", None)
     _clear_copilot_workflow_snapshot()
+
+
+def _copilot_submission_inflight() -> bool:
+    return bool(
+        st.session_state.get("cv7142_ask_inflight")
+        or st.session_state.get("cv41_pending_manual")
+        or st.session_state.get("cv36_pending_followup")
+    )
+
+
+def _block_duplicate_submission(*, kind: str, analysis_id: str = "") -> bool:
+    """Return True when a copilot request is already queued or executing."""
+    if not _copilot_submission_inflight():
+        return False
+    _log_ask_cadivor(
+        "duplicate_submission_blocked",
+        kind=kind,
+        analysis_id=analysis_id or "active",
+    )
+    return True
 
 
 def _arm_copilot_workflow_snapshot(*, reason: str) -> None:
@@ -739,6 +763,9 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
 
 def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_id: str = "") -> None:
     """Queue a copilot question behind auth snapshot protection and rerun."""
+    if _block_duplicate_submission(kind=submission_kind, analysis_id=analysis_id):
+        return
+
     clean = _normalize_submitted_question(question)
     if not clean:
         return
@@ -749,12 +776,13 @@ def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_i
         question_len=len(clean),
     )
 
-    if submission_kind == "manual":
+    if submission_kind in {"manual", "suggestion"}:
         st.session_state["cv41_pending_manual"] = clean
     else:
         st.session_state["cv36_pending_followup"] = clean
         st.session_state["cv47_followup_question"] = clean
 
+    st.session_state["cv7142_ask_inflight"] = True
     st.session_state["cv47_scroll_pending"] = True
     _pin_ask_cadivor_tab(source=f"queue_{submission_kind}", analysis_id=analysis_id)
     _log_ask_cadivor("question_queued", kind=submission_kind, question_len=len(clean))
@@ -773,14 +801,14 @@ def _analysis_id_from_context(context: dict[str, Any]) -> str:
 
 
 def _select_initial_suggestion(question: str, *, index: int, prompt_key: str, analysis_id: str = "") -> None:
-    """Populate the question field from a suggested prompt without auto-submitting."""
-    st.session_state[prompt_key] = question
-    st.session_state.pop("cv41_pending_manual", None)
-    st.session_state.pop("cv36_pending_followup", None)
-    _clear_review_state()
-    _pin_ask_cadivor_tab(source="suggestion_cv35", analysis_id=analysis_id)
-    _log_ask_cadivor("suggestion_selected", kind="cv35", index=index)
-    st.rerun()
+    """Queue a suggested prompt through the protected copilot submission pipeline."""
+    _log_ask_cadivor(
+        "suggestion_selected",
+        kind="cv35",
+        index=index,
+        analysis_id=analysis_id or "active",
+    )
+    _queue_copilot_submission(question, submission_kind="suggestion", analysis_id=analysis_id)
 
 
 def _apply_copilot_query_picks(*, prompt_key: str) -> None:
@@ -794,17 +822,21 @@ def _apply_copilot_query_picks(*, prompt_key: str) -> None:
     if pick.isdigit():
         idx = int(pick)
         if 0 <= idx < len(SUGGESTIONS):
-            st.session_state[prompt_key] = SUGGESTIONS[idx]
-            st.session_state.pop("cv41_pending_manual", None)
-            st.session_state.pop("cv36_pending_followup", None)
-            _clear_review_state()
-            _pin_ask_cadivor_tab(source="url_cv35_pick")
-            _log_ask_cadivor("suggestion_selected", kind="cv35", index=idx, source="url")
             try:
                 del query_params["cv35_pick"]
             except Exception:
                 pass
-            st.rerun()
+            analysis_id = str(
+                st.session_state.get("cadivor_active_analysis_id")
+                or st.session_state.get("analysis_id")
+                or ""
+            )
+            _log_ask_cadivor("suggestion_selected", kind="cv35", index=idx, source="url")
+            _queue_copilot_submission(
+                SUGGESTIONS[idx],
+                submission_kind="suggestion",
+                analysis_id=analysis_id,
+            )
         return
 
     follow_pick = str(query_params.get("cv36_pick", "") or "").strip()
@@ -841,6 +873,7 @@ def _render_prompt_chip_grid(
     grid_class: str = "cv35-suggestion-grid",
     prompt_key: str = "cv35_question",
     button_generation: str = "",
+    disabled: bool = False,
 ) -> None:
     """Render suggested questions as in-app Streamlit buttons (no full-page navigation)."""
     labels = [str(raw or "").strip() for raw in items]
@@ -857,7 +890,7 @@ def _render_prompt_chip_grid(
             with cols[col_idx]:
                 key_suffix = f"{button_generation}_{index}" if button_generation else str(index)
                 button_key = f"{param_key}_btn_{key_suffix}"
-                if st.button(label, key=button_key, use_container_width=True):
+                if st.button(label, key=button_key, use_container_width=True, disabled=disabled):
                     if param_key == "cv36_pick":
                         _log_ask_cadivor("suggestion_selected", kind="cv36", index=index)
                         _queue_follow_up(label, analysis_id=analysis_id)
@@ -1309,17 +1342,28 @@ def render_engineering_assistant(
     prompt_key = "cv35_question"
     _apply_copilot_query_picks(prompt_key=prompt_key)
     auto_execute_followup = False
+    queued_question = ""
     pending_manual = st.session_state.pop("cv41_pending_manual", None)
     pending_followup = st.session_state.pop("cv36_pending_followup", None)
     if pending_manual:
-        st.session_state[prompt_key] = str(pending_manual)
+        queued_question = str(pending_manual)
+        st.session_state[prompt_key] = queued_question
         auto_execute_followup = True
+        st.session_state["cv7142_ask_inflight"] = True
     elif pending_followup:
         # Apply queued follow-ups before the text-area widget is instantiated.
-        st.session_state[prompt_key] = str(pending_followup)
+        queued_question = str(pending_followup)
+        st.session_state[prompt_key] = queued_question
         auto_execute_followup = True
+        st.session_state["cv7142_ask_inflight"] = True
     elif prompt_key not in st.session_state:
         st.session_state[prompt_key] = ""
+
+    copilot_busy = _copilot_submission_inflight()
+    actions_disabled = copilot_busy or not status.can_use
+    if copilot_busy and not auto_execute_followup:
+        st.info(_COPILOT_PROCESSING_LABEL)
+
     analysis_id = _analysis_id_from_context(context)
     if analysis_id:
         st.markdown(
@@ -1327,7 +1371,12 @@ def render_engineering_assistant(
             unsafe_allow_html=True,
         )
         with st.container(key="cv_assistant_suggestions"):
-            _render_prompt_chip_grid(SUGGESTIONS, param_key="cv35_pick", analysis_id=analysis_id)
+            _render_prompt_chip_grid(
+                SUGGESTIONS,
+                param_key="cv35_pick",
+                analysis_id=analysis_id,
+                disabled=actions_disabled,
+            )
 
     # A form submits the browser's current text-area value and the button click
     # in one transaction. This prevents pasted text from requiring a first click
@@ -1348,24 +1397,27 @@ def render_engineering_assistant(
             manual_submit = st.form_submit_button(
                 "Ask Cadivor",
                 type="primary",
-                disabled=not status.can_use,
+                disabled=actions_disabled,
                 use_container_width=False,
             )
 
     cleaned_question = _normalize_submitted_question(question)
-    manual_submit_requested = bool(manual_submit and status.can_use and cleaned_question)
+    manual_submit_requested = bool(manual_submit and status.can_use and cleaned_question and not copilot_busy)
     if manual_submit and not cleaned_question:
         st.warning("Enter an engineering question before submitting.")
+    if manual_submit and copilot_busy:
+        _block_duplicate_submission(kind="manual", analysis_id=analysis_id)
     if manual_submit_requested:
         _log_copilot_workflow("manual_copilot_submission_received", question_len=len(cleaned_question))
         _queue_copilot_submission(cleaned_question, submission_kind="manual", analysis_id=analysis_id)
 
-    can_submit = status.can_use and bool(cleaned_question)
+    submitted_question = _normalize_submitted_question(queued_question or cleaned_question)
     submit_requested = bool(
-        (auto_execute_followup and can_submit)
+        auto_execute_followup
+        and status.can_use
+        and submitted_question
         and not manual_submit_requested
     )
-    submitted_question = cleaned_question
     if submit_requested:
         _pin_ask_cadivor_tab(source="execute_copilot_question", analysis_id=analysis_id)
         _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
@@ -1381,14 +1433,23 @@ def render_engineering_assistant(
             base_url=_secret("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         )
         st.session_state.pop("cv35_last_error", None)
+        st.session_state["cv35_last_question"] = submitted_question
         st.markdown('<div id="cv47-processing-anchor"></div>', unsafe_allow_html=True)
         if st.session_state.pop("cv47_scroll_pending", False):
             components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
-        with st.status("Cadivor is reviewing the saved engineering evidence...", expanded=True) as progress:
+        with st.status(_COPILOT_PROCESSING_LABEL, expanded=True) as progress:
             try:
-                _log_ask_cadivor("provider_started", configured=api.configured)
+                _log_ask_cadivor(
+                    "execution_started",
+                    configured=api.configured,
+                    question_len=len(submitted_question),
+                )
                 response = api.ask(question=submitted_question, context=context, history=compact_history(thread))
-                _log_ask_cadivor("provider_completed", configured=api.configured)
+                _log_ask_cadivor(
+                    "execution_completed",
+                    configured=api.configured,
+                    question_len=len(submitted_question),
+                )
                 consume_ai_credits(st.session_state, current_user, action="question")
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = submitted_question

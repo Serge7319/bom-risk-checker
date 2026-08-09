@@ -187,7 +187,7 @@ class AskCadivorTabStateTests(unittest.TestCase):
         self.assertEqual(st.session_state["cv41_pending_manual"], "What should I review first?")
         self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
 
-    def test_select_initial_suggestion_updates_question_and_tab(self):
+    def test_select_initial_suggestion_queues_one_click_submission(self):
         st, assistant = self._load_assistant(
             session_state={"cadivor_active_analysis_tab": "Engineering Intelligence", "cv35_question": "old"},
         )
@@ -197,18 +197,19 @@ class AskCadivorTabStateTests(unittest.TestCase):
                 index=0,
                 prompt_key="cv35_question",
             )
-        self.assertEqual(st.session_state["cv35_question"], assistant.SUGGESTIONS[0])
+        self.assertEqual(st.session_state["cv41_pending_manual"], assistant.SUGGESTIONS[0])
+        self.assertTrue(st.session_state.get("cv7142_ask_inflight"))
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
-        self.assertNotIn("cv41_pending_manual", st.session_state)
 
-    def test_legacy_url_cv35_pick_consumed_once(self):
+    def test_legacy_url_cv35_pick_queues_one_click_submission(self):
         st, assistant = self._load_assistant(
             session_state={"cv35_question": "stale"},
             query_params={"cv35_pick": "1", "analysis_tab": "Ask Cadivor"},
         )
         with self.assertRaises(RuntimeError):
             assistant._apply_copilot_query_picks(prompt_key="cv35_question")
-        self.assertEqual(st.session_state["cv35_question"], assistant.SUGGESTIONS[1])
+        self.assertEqual(st.session_state["cv41_pending_manual"], assistant.SUGGESTIONS[1])
+        self.assertTrue(st.session_state.get("cv7142_ask_inflight"))
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
         self.assertNotIn("cv35_pick", st.query_params)
 

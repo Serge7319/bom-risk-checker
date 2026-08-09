@@ -140,7 +140,7 @@ class AskCadivorSessionContractTests(unittest.TestCase):
             assistant._queue_copilot_submission("What should I review first?", submission_kind="manual")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
 
-    def test_apply_copilot_query_pick_replaces_question(self):
+    def test_apply_copilot_query_pick_queues_submission(self):
         st, assistant = self._load_assistant(
             session_state={"cv35_question": "old stale question"},
             query_params={"cv35_pick": "0"},
@@ -149,7 +149,7 @@ class AskCadivorSessionContractTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             assistant._apply_copilot_query_picks(prompt_key="cv35_question")
         self.assertEqual(
-            st.session_state["cv35_question"],
+            st.session_state["cv41_pending_manual"],
             assistant.SUGGESTIONS[0],
         )
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")

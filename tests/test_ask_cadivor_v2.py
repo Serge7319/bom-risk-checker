@@ -129,13 +129,14 @@ class AskCadivorV2Tests(unittest.TestCase):
         self.assertIn('if active_tab == "Ask Cadivor":', self.detail_source)
         self.assertIn("render_engineering_assistant(", self.detail_source)
 
-    def test_suggested_prompt_flow_unchanged(self) -> None:
+    def test_suggested_prompt_flow_queues_submission(self) -> None:
         assistant = self._load_assistant()
         chip_source = inspect.getsource(assistant._render_prompt_chip_grid)
         select_source = inspect.getsource(assistant._select_initial_suggestion)
         self.assertIn("_select_initial_suggestion", chip_source)
+        self.assertIn("_queue_copilot_submission", select_source)
+        self.assertIn('submission_kind="suggestion"', select_source)
         self.assertIn("cv35_pick", self.assistant_source)
-        self.assertIn("st.rerun()", select_source)
 
     def test_manual_submit_flow_unchanged(self) -> None:
         self.assertIn("_queue_copilot_submission", self.assistant_source)
