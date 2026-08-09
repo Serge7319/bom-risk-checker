@@ -461,10 +461,14 @@ def _format_engineering_prose(text: str, *, context: dict[str, Any] | None = Non
             rendered.append(f'<ul class="cv-assistant-prose-list">{items}</ul>')
             continue
         if all(re.match(r"^\d+[.)]\s+", line.strip()) for line in lines):
-            items = "".join(
-                f"<li>{_emphasize_part_numbers(_inline_engineering_format(re.sub(r'^\\d+[.)]\\s+', '', line.strip())), parts)}</li>"
-                for line in lines
-            )
+            list_items: list[str] = []
+            for line in lines:
+                stripped = line.strip()
+                cleaned = re.sub(r"^\d+[.)]\s+", "", stripped)
+                list_items.append(
+                    f"<li>{_emphasize_part_numbers(_inline_engineering_format(cleaned), parts)}</li>"
+                )
+            items = "".join(list_items)
             rendered.append(f'<ol class="cv-assistant-prose-list">{items}</ol>')
             continue
         for line in lines:
