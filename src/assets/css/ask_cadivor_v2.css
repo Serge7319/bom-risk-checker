@@ -954,3 +954,130 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Sprint 72.1.1 — Structured field layout (shell-independent)        */
+/* Streamlit splits markdown blocks, so descendant selectors under    */
+/* .cv-assistant-shell often miss response markup in production.      */
+/* ------------------------------------------------------------------ */
+.cv39-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--cv-space-2, 8px);
+  margin: var(--cv-space-3, 12px) 0;
+}
+
+.cv39-kpi-item {
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-md, 12px);
+  background: var(--cv-bg-subtle);
+  padding: var(--cv-space-2, 8px) var(--cv-space-3, 12px);
+}
+
+.cv39-kpi-label,
+.cv39-impact-label,
+.cv46-driver-label,
+.cv35-confidence-top-label,
+.cv39-progress-label,
+.cv46-evidence-metric-label {
+  display: block;
+  font-size: var(--cv-font-xs, 11px);
+  color: var(--cv-text-muted);
+  margin-bottom: 4px;
+}
+
+.cv39-kpi-value,
+.cv39-impact-value,
+.cv46-driver-value,
+.cv35-confidence-top-value,
+.cv39-progress-value,
+.cv46-evidence-metric-value {
+  display: block;
+  font-size: var(--cv-font-md, 14px);
+  color: var(--cv-text);
+}
+
+.cv39-impact-note,
+.cv46-driver-note {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--cv-font-xs, 10px);
+  color: var(--cv-text-muted);
+  line-height: 1.45;
+}
+
+.cv39-progress-header,
+.cv35-confidence-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cv-space-2, 8px);
+}
+
+.cv39-progress-header {
+  margin-bottom: var(--cv-space-2, 8px);
+}
+
+.cv35-confidence-top-value {
+  font-size: var(--cv-font-2xl, 24px);
+}
+
+.cv39-impact-row {
+  padding: var(--cv-space-2, 8px) 0;
+  border-top: 1px solid var(--cv-border);
+}
+
+.cv39-impact-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.cv35-confidence-label {
+  display: block;
+  margin-top: var(--cv-space-2, 8px);
+  font-size: var(--cv-font-sm, 13px);
+  font-weight: var(--cv-weight-semibold, 700);
+  color: var(--cv-text);
+}
+
+.cv35-confidence-detail {
+  display: block;
+  margin-top: 4px;
+}
+
+.cv46-confidence-drivers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--cv-space-2, 8px);
+  margin-top: var(--cv-space-3, 12px);
+}
+
+.cv46-driver-item {
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-md, 12px);
+  background: var(--cv-bg-subtle);
+  padding: var(--cv-space-2, 8px) var(--cv-space-3, 12px);
+}
+
+.cv46-evidence-metric {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cv-space-2, 8px);
+  padding: 6px 0;
+  border-top: 1px solid var(--cv-border);
+}
+
+.cv46-evidence-metric:first-child {
+  border-top: 0;
+}
+
+@media (max-width: 760px) {
+  .cv39-decision-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cv46-confidence-drivers {
+    grid-template-columns: 1fr;
+  }
+}

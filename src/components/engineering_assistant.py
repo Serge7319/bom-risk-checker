@@ -400,6 +400,45 @@ def _plain_markdown(text: str) -> str:
     return text.strip()
 
 
+def _html_kpi_cell(label: str, value: str) -> str:
+    return (
+        f'<div class="cv39-kpi-item">'
+        f'<span class="cv39-kpi-label">{html.escape(label)}</span>'
+        f'<strong class="cv39-kpi-value">{html.escape(value)}</strong>'
+        f"</div>"
+    )
+
+
+def _html_impact_row(label: str, value: str, note: str) -> str:
+    return (
+        f'<div class="cv39-impact-row">'
+        f'<span class="cv39-impact-label">{html.escape(label)}</span>'
+        f'<strong class="cv39-impact-value">{html.escape(value)}</strong>'
+        f'<small class="cv39-impact-note">{html.escape(note)}</small>'
+        f"</div>"
+    )
+
+
+def _html_confidence_driver(label: str, value: str, note: str) -> str:
+    return (
+        f'<div class="cv46-driver-item">'
+        f'<span class="cv46-driver-label">{html.escape(label)}</span>'
+        f'<strong class="cv46-driver-value">{html.escape(value)}</strong>'
+        f'<small class="cv46-driver-note">{html.escape(note)}</small>'
+        f"</div>"
+    )
+
+
+def _html_evidence_metric(label: str, value: str, *, icon: str = "") -> str:
+    icon_html = f"<i>{html.escape(icon)}</i>" if icon else ""
+    return (
+        f'<div class="cv46-evidence-metric">'
+        f'<span class="cv46-evidence-metric-label">{icon_html}{html.escape(label)}</span>'
+        f'<strong class="cv46-evidence-metric-value">{html.escape(value)}</strong>'
+        f"</div>"
+    )
+
+
 def _evidence_items(evidence: str) -> list[tuple[str, str]]:
     items: list[tuple[str, str]] = []
     for line in str(evidence or "").splitlines():
@@ -696,9 +735,7 @@ def _render_evidence_cards(evidence: str) -> None:
         metric_blocks = []
         for label, value in metrics[:4]:
             icon, display_label = _metric_display(label)
-            metric_blocks.append(
-                f'<div class="cv46-evidence-metric"><span><i>{html.escape(icon)}</i>{html.escape(display_label)}</span><strong>{html.escape(value)}</strong></div>'
-            )
+            metric_blocks.append(_html_evidence_metric(display_label, value, icon=icon))
         status = "Priority" if any(token in detail.lower() for token in ("qualify immediately", "high", "obsolete", "replacement", "single-source")) else "Review"
         cards.append(
             f'<article class="cv46-evidence-card"><header><strong>{html.escape(title)}</strong><em>{status}</em></header>'
@@ -1236,7 +1273,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
     )
 
     kpis = _intent_kpis(context, intent=intent, priority_part=priority_part, confidence_score=confidence_score, complete=complete, total=total)
-    kpi_html = "".join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>' for label, value in kpis)
+    kpi_html = "".join(_html_kpi_cell(label, value) for label, value in kpis)
     progress_label = {
         "production_readiness": "Release-readiness review",
         "procurement": "Procurement review",
@@ -1256,7 +1293,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
           <div class="cv39-decision-grid">{kpi_html}</div>
           <p class="cv-assistant-preline">{html.escape(decision['assessment'])}</p>
         </div>
-        <div class="cv39-progress-wrap"><div><strong>{html.escape(progress_label)}</strong><span>{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>
+        <div class="cv39-progress-wrap"><div class="cv39-progress-header"><strong class="cv39-progress-label">{html.escape(progress_label)}</strong><span class="cv39-progress-value">{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>
         """,
         unsafe_allow_html=True,
     )
@@ -1271,21 +1308,18 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
     impact_col, confidence_col = st.columns([1.18, 1])
     with impact_col:
         st.markdown('<div class="cv35-section-label">Projected engineering impact</div>', unsafe_allow_html=True)
-        impact_html = "".join(
-            f'<div class="cv39-impact-row"><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>'
-            for label, value, note in impact
-        )
+        impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
         st.markdown(f'<div class="cv39-impact-card">{impact_html}<p>Projections are directional estimates based on saved evidence, not measured outcomes.</p></div>', unsafe_allow_html=True)
     with confidence_col:
         st.markdown('<div class="cv35-section-label">Decision confidence</div>', unsafe_allow_html=True)
         st.markdown(
             f"""
             <div class="cv35-confidence-card {confidence_class}">
-              <div class="cv35-confidence-top"><span>Evidence confidence</span><strong>{confidence_score}%</strong></div>
+              <div class="cv35-confidence-top"><span class="cv35-confidence-top-label">Evidence confidence</span><strong class="cv35-confidence-top-value">{confidence_score}%</strong></div>
               <div class="cv35-confidence-track"><div style="width:{confidence_score}%"></div></div>
               <div class="cv35-confidence-label">{html.escape(confidence_label)}</div>
               <div class="cv35-confidence-detail cv-assistant-preline">{html.escape(confidence_detail)}</div>
-              <div class="cv46-confidence-drivers">{''.join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong><small>{html.escape(note)}</small></div>' for label, value, note in confidence_drivers[:6])}</div>
+              <div class="cv46-confidence-drivers">{"".join(_html_confidence_driver(label, value, note) for label, value, note in confidence_drivers[:6])}</div>
             </div>
             """,
             unsafe_allow_html=True,
