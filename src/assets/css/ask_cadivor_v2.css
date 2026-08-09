@@ -673,3 +673,203 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Sprint 71.4.3 — Premium response presentation                        */
+/* ------------------------------------------------------------------ */
+.cv-assistant-shell .cv-assistant-response {
+  display: grid;
+  gap: var(--cv-space-3, 12px);
+  margin: var(--cv-space-3, 12px) 0 var(--cv-space-4, 16px);
+}
+
+.cv-assistant-shell .cv-assistant-response-header {
+  margin-bottom: 0;
+}
+
+.cv-assistant-shell .cv-assistant-response-kicker,
+.cv-assistant-shell .cv-assistant-section-kicker {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--cv-font-xs, 11px);
+  font-weight: var(--cv-weight-semibold, 700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cv-primary);
+}
+
+.cv-assistant-shell .cv-assistant-confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-pill, 999px);
+  background: var(--cv-bg-subtle);
+  color: var(--cv-text-secondary);
+  font-size: var(--cv-font-xs, 11px);
+  font-weight: var(--cv-weight-medium, 650);
+}
+
+.cv-assistant-shell .cv-assistant-executive-card {
+  margin-top: 0;
+}
+
+.cv-assistant-shell .cv-assistant-prose {
+  max-width: var(--cv-reading-max, 62ch);
+  color: var(--cv-text-secondary);
+  font-size: var(--cv-font-md, 14px);
+  line-height: 1.62;
+}
+
+.cv-assistant-shell .cv-assistant-prose p {
+  margin: 0 0 var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv-assistant-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.cv-assistant-shell .cv-assistant-prose-list {
+  margin: var(--cv-space-2, 8px) 0 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv-assistant-prose-list li {
+  line-height: 1.55;
+  color: var(--cv-text-secondary);
+}
+
+.cv-assistant-shell .cv-assistant-prose strong {
+  color: var(--cv-text);
+  font-weight: var(--cv-weight-semibold, 700);
+}
+
+.cv-assistant-shell .cv-assistant-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  padding: 1px 6px;
+  border-radius: var(--cv-radius-sm, 8px);
+  background: var(--cv-bg-subtle);
+  border: 1px solid var(--cv-border);
+}
+
+.cv-assistant-shell .cv-assistant-part {
+  font-weight: var(--cv-weight-semibold, 700);
+  color: var(--cv-primary);
+  white-space: nowrap;
+}
+
+.cv-assistant-shell .cv-assistant-section-stack {
+  display: grid;
+  gap: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv-assistant-section-card {
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-lg, 16px);
+  background: var(--cv-surface);
+  padding: var(--cv-space-4, 16px);
+  box-shadow: var(--cv-shadow-xs);
+}
+
+.cv-assistant-shell .cv-assistant-section-card-head {
+  margin-bottom: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv-assistant-section-evidence {
+  border-color: color-mix(in srgb, var(--cv-primary) 18%, var(--cv-border));
+}
+
+.cv-assistant-shell .cv-assistant-section-risk {
+  border-color: color-mix(in srgb, var(--cv-danger) 20%, var(--cv-border));
+  background: color-mix(in srgb, var(--cv-danger-bg, #fef2f2) 35%, var(--cv-surface));
+}
+
+.cv-assistant-shell .cv-assistant-section-uncertainty {
+  border-color: color-mix(in srgb, var(--cv-warning) 20%, var(--cv-border));
+  background: color-mix(in srgb, var(--cv-warning-bg, #fffbeb) 40%, var(--cv-surface));
+}
+
+.cv-assistant-shell .cv-assistant-section-confidence {
+  border-color: color-mix(in srgb, var(--cv-info, var(--cv-primary)) 18%, var(--cv-border));
+}
+
+.cv-assistant-shell .cv-assistant-section-actions {
+  border-color: color-mix(in srgb, var(--cv-success) 18%, var(--cv-border));
+}
+
+.cv-assistant-shell .cv-assistant-reason-list {
+  list-style: none;
+  margin: var(--cv-space-3, 12px) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv-assistant-reason-list li {
+  display: flex;
+  gap: var(--cv-space-2, 8px);
+  align-items: flex-start;
+}
+
+.cv-assistant-shell .cv-assistant-reason-list li span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cv-primary-subtle, #dbeafe);
+  color: var(--cv-primary);
+  font-size: 10px;
+  font-weight: var(--cv-weight-bold, 800);
+  flex: 0 0 auto;
+}
+
+.cv-assistant-shell .cv-assistant-reason-list li p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--cv-text-secondary);
+}
+
+.cv-assistant-shell .cv-assistant-supporting-divider {
+  margin-top: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv-assistant-supporting-grid {
+  display: grid;
+  gap: var(--cv-space-3, 12px);
+}
+
+.cv-assistant-shell .cv-assistant-supporting-grid .cv39-decision-card,
+.cv-assistant-shell .cv-assistant-supporting-grid .cv46-why,
+.cv-assistant-shell .cv-assistant-supporting-grid .cv35-confidence-card,
+.cv-assistant-shell .cv-assistant-supporting-grid .cv39-impact-card {
+  margin-top: 0;
+}
+
+.cv-assistant-shell .cv-assistant-followup-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--cv-space-3, 12px);
+  margin: var(--cv-space-5, 20px) 0 var(--cv-space-3, 12px);
+  padding-top: var(--cv-space-4, 16px);
+  border-top: 1px solid var(--cv-border);
+}
+
+.cv-assistant-shell .cv-assistant-followup-divider span {
+  font-size: var(--cv-font-xs, 11px);
+  font-weight: var(--cv-weight-semibold, 700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cv-text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 1024px) {
+  .cv-assistant-shell .cv-assistant-prose {
+    max-width: none;
+  }
+}

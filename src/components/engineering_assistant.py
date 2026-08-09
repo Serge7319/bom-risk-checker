@@ -388,6 +388,192 @@ def _plain_markdown(text: str) -> str:
     return text.strip()
 
 
+def _known_part_numbers(context: dict[str, Any]) -> set[str]:
+    numbers: set[str] = set()
+    for row in list(context.get("components") or []):
+        for key in ("part_number", "mpn", "manufacturer_part_number"):
+            value = str(row.get(key) or "").strip()
+            if len(value) >= 3:
+                numbers.add(value)
+    return numbers
+
+
+def _inline_engineering_format(text: str) -> str:
+    raw = str(text or "")
+    if not raw:
+        return ""
+    out: list[str] = []
+    index = 0
+    while index < len(raw):
+        if raw.startswith("**", index):
+            end = raw.find("**", index + 2)
+            if end != -1:
+                out.append(f"<strong>{html.escape(raw[index + 2 : end])}</strong>")
+                index = end + 2
+                continue
+        if raw[index] == "`":
+            end = raw.find("`", index + 1)
+            if end != -1:
+                out.append(f'<code class="cv-assistant-code">{html.escape(raw[index + 1 : end])}</code>')
+                index = end + 1
+                continue
+        next_mark = len(raw)
+        for marker in ("**", "`"):
+            pos = raw.find(marker, index)
+            if pos != -1:
+                next_mark = min(next_mark, pos)
+        out.append(html.escape(raw[index:next_mark]))
+        index = next_mark
+    return "".join(out)
+
+
+def _emphasize_part_numbers(text: str, parts: set[str]) -> str:
+    if not text or not parts:
+        return text
+    enriched = text
+    for part in sorted(parts, key=len, reverse=True):
+        escaped = html.escape(part)
+        if escaped in enriched and f'class="cv-assistant-part"' not in enriched:
+            enriched = enriched.replace(
+                escaped,
+                f'<span class="cv-assistant-part">{escaped}</span>',
+            )
+    return enriched
+
+
+def _format_engineering_prose(text: str, *, context: dict[str, Any] | None = None) -> str:
+    """Render a safe markdown subset into premium response prose HTML."""
+    source = str(text or "").strip()
+    if not source:
+        return ""
+    parts = _known_part_numbers(context or {})
+    blocks = re.split(r"\n\s*\n+", source)
+    rendered: list[str] = []
+    for block in blocks:
+        lines = [line.rstrip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        if all(re.match(r"^[-*]\s+", line.strip()) for line in lines):
+            items = "".join(
+                f"<li>{_emphasize_part_numbers(_inline_engineering_format(line.strip()[2:].strip()), parts)}</li>"
+                for line in lines
+            )
+            rendered.append(f'<ul class="cv-assistant-prose-list">{items}</ul>')
+            continue
+        if all(re.match(r"^\d+[.)]\s+", line.strip()) for line in lines):
+            items = "".join(
+                f"<li>{_emphasize_part_numbers(_inline_engineering_format(re.sub(r'^\\d+[.)]\\s+', '', line.strip())), parts)}</li>"
+                for line in lines
+            )
+            rendered.append(f'<ol class="cv-assistant-prose-list">{items}</ol>')
+            continue
+        for line in lines:
+            rendered.append(
+                f'<p>{_emphasize_part_numbers(_inline_engineering_format(line), parts)}</p>'
+            )
+    return "\n".join(rendered)
+
+
+_SECTION_VARIANTS: dict[str, tuple[str, str]] = {
+    "recommendation": ("Recommendation", "cv-assistant-section-recommendation"),
+    "direct answer": ("Executive answer", "cv-assistant-section-executive"),
+    "executive summary": ("Executive summary", "cv-assistant-section-executive"),
+    "key findings": ("Key findings", "cv-assistant-section-findings"),
+    "evidence": ("Evidence", "cv-assistant-section-evidence"),
+    "supporting evidence": ("Supporting evidence", "cv-assistant-section-evidence"),
+    "why it matters": ("Why it matters", "cv-assistant-section-impact"),
+    "why this matters": ("Why this matters", "cv-assistant-section-impact"),
+    "engineering impact": ("Engineering impact", "cv-assistant-section-impact"),
+    "supply-chain impact": ("Supply-chain impact", "cv-assistant-section-impact"),
+    "risk": ("Risk", "cv-assistant-section-risk"),
+    "risks": ("Risks", "cv-assistant-section-risk"),
+    "impact": ("Impact", "cv-assistant-section-impact"),
+    "missing evidence": ("Missing evidence", "cv-assistant-section-uncertainty"),
+    "uncertainty": ("Uncertainty", "cv-assistant-section-uncertainty"),
+    "assumptions": ("Assumptions", "cv-assistant-section-uncertainty"),
+    "recommended actions": ("Recommended next steps", "cv-assistant-section-actions"),
+    "recommended action": ("Recommended next steps", "cv-assistant-section-actions"),
+    "next steps": ("Recommended next steps", "cv-assistant-section-actions"),
+    "confidence": ("Confidence", "cv-assistant-section-confidence"),
+    "workflow": ("Workflow", "cv-assistant-section-actions"),
+    "rankings": ("Priority ranking", "cv-assistant-section-findings"),
+}
+
+
+def _section_variant(title: str) -> tuple[str, str]:
+    normalized = str(title or "").strip().lower()
+    if normalized in _SECTION_VARIANTS:
+        return _SECTION_VARIANTS[normalized]
+    return str(title or "Section").strip(), "cv-assistant-section-neutral"
+
+
+def _profile_consumed_sections(profile: dict[str, str]) -> set[str]:
+    consumed = {"intent", "follow-up questions", "followups"}
+    mapping = {
+        "assessment": {"direct answer", "executive summary", "engineering assessment", "assessment"},
+        "evidence": {"evidence", "supporting evidence", "procurement evidence", "schedule resilience evidence", "supplier evidence", "lifecycle evidence", "release evidence"},
+        "actions": {"recommended actions", "recommended action"},
+        "confidence": {"confidence"},
+        "rankings": {"rankings"},
+        "workflow": {"workflow"},
+    }
+    for field, names in mapping.items():
+        if str(profile.get(field) or "").strip():
+            consumed.update(names)
+    return consumed
+
+
+def _render_html_scroll(html_content: str) -> None:
+    """Render a zero-height scroll controller using supported Streamlit HTML APIs."""
+    try:
+        st.html(html_content, unsafe_allow_javascript=True)
+    except TypeError:
+        components.html(html_content, height=0)
+
+
+def _render_response_section_card(*, title: str, body: str, context: dict[str, Any]) -> None:
+    prose = _format_engineering_prose(body, context=context)
+    if not prose:
+        return
+    label, variant = _section_variant(title)
+    st.markdown(
+        f"""
+        <section class="cv-assistant-section-card {variant}">
+          <header class="cv-assistant-section-card-head">
+            <span class="cv-assistant-section-kicker">{html.escape(label)}</span>
+          </header>
+          <div class="cv-assistant-prose">{prose}</div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_structured_answer_sections(
+    sections: dict[str, str],
+    profile: dict[str, str],
+    context: dict[str, Any],
+) -> None:
+    consumed = _profile_consumed_sections(profile)
+    cards: list[tuple[str, str]] = []
+    for title, body in sections.items():
+        normalized = str(title or "").strip().lower()
+        if normalized in consumed or not str(body or "").strip():
+            continue
+        if normalized in {"direct answer", "executive summary"}:
+            continue
+        cards.append((title, body))
+    if not cards:
+        return
+    st.markdown(
+        '<div class="cv-assistant-section-stack">',
+        unsafe_allow_html=True,
+    )
+    for title, body in cards[:8]:
+        _render_response_section_card(title=title, body=body, context=context)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def _evidence_items(evidence: str) -> list[tuple[str, str]]:
     items: list[tuple[str, str]] = []
     for line in str(evidence or "").splitlines():
@@ -669,9 +855,16 @@ def _review_progress(context: dict[str, Any]) -> tuple[int, int, int]:
     complete = max(1, min(10, round(coverage / 10)))
     return complete, 10, complete * 10
 
-def _render_evidence_cards(evidence: str) -> None:
+def _render_evidence_cards(evidence: str, *, context: dict[str, Any] | None = None) -> None:
     items = _evidence_items(evidence)
     if not items:
+        prose = _format_engineering_prose(evidence, context=context or {})
+        if prose:
+            st.markdown(
+                f'<div class="cv-assistant-section-card cv-assistant-section-evidence"><div class="cv-assistant-prose">{prose}</div></div>',
+                unsafe_allow_html=True,
+            )
+            return
         message = _plain_markdown(evidence) or "No structured evidence was returned. Verify that component records are saved and re-run the review."
         st.markdown(f'<div class="cv46-empty-evidence">{html.escape(message)}</div>', unsafe_allow_html=True)
         return
@@ -923,7 +1116,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     button_generation = _followup_button_generation(valid_suggestions)
 
     st.markdown(
-        '<div class="cv-assistant-section-label cv35-section-label">Continue the review</div>',
+        '<div class="cv-assistant-followup-divider"><span>Continue the review</span></div>',
         unsafe_allow_html=True,
     )
     with st.container(key="cv_assistant_followups"):
@@ -1032,7 +1225,7 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
     placement while the answer layout stabilizes.
     """
     safe_token = html.escape(str(response_token or "response"))
-    components.html(
+    _render_html_scroll(
         f"""
         <script data-cadivor-response-token="{safe_token}">
         (function(){{
@@ -1097,43 +1290,59 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
                 const desired = Math.max(0, owner.scrollTop + hostRect.top - ownerRect.top - OFFSET);
                 owner.scrollTo({{ top: desired, left: 0, behavior: attempts <= 2 ? 'smooth' : 'auto' }});
               }}
-            }} catch (_) {{
-              try {{ host.scrollIntoView({{ block: 'start', inline: 'nearest', behavior: 'auto' }}); }} catch (_) {{}}
-            }}
+            }} catch (_) {{}}
 
-            const top = Math.round(currentTop(owner));
-            stable = Math.abs(top - OFFSET) <= 16 ? stable + 1 : 0;
-            if (stable >= 4 || attempts >= 70) {{
+            const top = currentTop(owner);
+            if (Math.abs(top - OFFSET) <= 2) stable += 1;
+            else stable = 0;
+            if (stable >= 2 || attempts >= 70) {{
               if (observer) observer.disconnect();
               return;
             }}
-            parentWindow.setTimeout(place, attempts < 16 ? 90 : 170);
+            parentWindow.setTimeout(place, 90);
           }}
 
-          try {{
-            observer = new MutationObserver(function(){{ parentWindow.requestAnimationFrame(place); }});
-            observer.observe(doc.body, {{ childList: true, subtree: true, attributes: true }});
-          }} catch (_) {{}}
-
-          parentWindow.requestAnimationFrame(function(){{ parentWindow.requestAnimationFrame(place); }});
-          [120, 260, 480, 800, 1250, 1900, 2800, 4000].forEach(ms => parentWindow.setTimeout(place, ms));
+          const target = doc.querySelector('[data-cadivor-conversation-start="true"]') || host;
+          if (target && target !== host) {{
+            target.scrollIntoView({{ behavior: 'auto', block: 'start' }});
+          }}
+          place();
+          observer = new MutationObserver(() => place());
+          observer.observe(doc.body, {{ childList: true, subtree: true }});
+          parentWindow.setTimeout(() => {{ if (observer) observer.disconnect(); }}, 5000);
         }})();
         </script>
-        """,
-        height=0,
+        """
     )
 
 
-def _render_conversation_exchange(*, question: str, intent: str) -> None:
+def _render_conversation_exchange(
+    *,
+    question: str,
+    intent: str,
+    confidence_score: int = 0,
+    confidence_label: str = "",
+) -> None:
     response_label, response_class = _response_type_meta(intent)
+    confidence_badge = ""
+    if confidence_score:
+        confidence_badge = (
+            f'<span class="cv-assistant-confidence-badge">'
+            f'{html.escape(confidence_label or "Confidence")} · {confidence_score}%'
+            f"</span>"
+        )
     st.markdown(
         f'''
-        <section id="cv50-conversation-start" tabindex="-1" data-cadivor-conversation-start="true" class="cv50-exchange">
+        <section id="cv50-conversation-start" tabindex="-1" data-cadivor-conversation-start="true" class="cv-assistant-response-header cv50-exchange">
           <div class="cv50-exchange-top">
-            <div class="cv50-you-asked"><span>You asked</span><strong>{html.escape(question)}</strong></div>
+            <div class="cv50-you-asked">
+              <span class="cv-assistant-response-kicker">Ask Cadivor</span>
+              <strong>{html.escape(question)}</strong>
+            </div>
             <div class="cv50-exchange-badges">
               <span class="cv50-type cv50-type-{html.escape(response_class)}">{html.escape(response_label)}</span>
-              <span class="cv50-saved">✓ Review auto-saved</span>
+              {confidence_badge}
+              <span class="cv50-saved">Review saved</span>
             </div>
           </div>
         </section>
@@ -1142,27 +1351,36 @@ def _render_conversation_exchange(*, question: str, intent: str) -> None:
     )
 
 
-def _render_conversational_answer(*, intent: str, assessment: str, priority_part: str,
-                                  confidence_score: int, drivers: list[str],
-                                  actions: str, workflow_text: str) -> None:
+def _render_conversational_answer(
+    *,
+    intent: str,
+    assessment: str,
+    priority_part: str,
+    confidence_score: int,
+    drivers: list[str],
+    actions: str,
+    workflow_text: str,
+    context: dict[str, Any],
+) -> None:
     headline = _conversational_headline(intent, assessment, priority_part)
-    answer_text = _plain_markdown(assessment).strip() or "The saved evidence is not sufficient for a reliable conclusion."
+    answer_prose = _format_engineering_prose(assessment, context=context)
+    if not answer_prose:
+        answer_prose = f"<p>{html.escape(_plain_markdown(assessment) or 'The saved evidence is not sufficient for a reliable conclusion.')}</p>"
     reason_items = [str(item).strip() for item in drivers if str(item).strip()][:4]
-    if not reason_items:
-        reason_items = [answer_text]
     reasons_html = "".join(
-        f'<li><span>✓</span><p>{html.escape(reason)}</p></li>' for reason in reason_items
+        f"<li><span>✓</span><p>{_emphasize_part_numbers(_inline_engineering_format(reason), _known_part_numbers(context))}</p></li>"
+        for reason in reason_items
     )
     next_action = _next_action(actions, workflow_text)
     st.markdown(
         f"""
-        <section class="cv49-answer-card">
-          <div class="cv49-answer-kicker">Cadivor Answer</div>
+        <section class="cv-assistant-executive-card cv49-answer-card">
+          <div class="cv49-answer-kicker">Executive answer</div>
           <div class="cv49-answer-grid">
             <div class="cv49-answer-main">
               <h2>{html.escape(headline)}</h2>
-              <p>{html.escape(answer_text)}</p>
-              <ul>{reasons_html}</ul>
+              <div class="cv-assistant-prose">{answer_prose}</div>
+              {"<ul class='cv-assistant-reason-list'>" + reasons_html + "</ul>" if reasons_html else ""}
             </div>
             <aside class="cv49-answer-side">
               <span>Confidence</span><strong>{confidence_score}%</strong>
@@ -1201,7 +1419,14 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         response_token = f"{abs(hash((question, answer))) :x}"
         _render_response_scroll_anchor(response_token=response_token)
 
-    _render_conversation_exchange(question=question, intent=intent)
+    st.markdown('<article class="cv-assistant-response">', unsafe_allow_html=True)
+
+    _render_conversation_exchange(
+        question=question,
+        intent=intent,
+        confidence_score=confidence_score,
+        confidence_label=confidence_label,
+    )
 
     _render_conversational_answer(
         intent=intent,
@@ -1211,12 +1436,17 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         drivers=recommendation_drivers,
         actions=actions,
         workflow_text=workflow_text,
+        context=context,
     )
 
+    _render_structured_answer_sections(sections, profile, context)
+
     st.markdown(
-        '<div class="cv50-supporting-divider"><span>Supporting engineering assessment</span><i></i></div>',
+        '<div class="cv50-supporting-divider cv-assistant-supporting-divider"><span>Supporting engineering assessment</span><i></i></div>',
         unsafe_allow_html=True,
     )
+
+    st.markdown('<div class="cv-assistant-supporting-grid">', unsafe_allow_html=True)
 
     kpis = _intent_kpis(context, intent=intent, priority_part=priority_part, confidence_score=confidence_score, complete=complete, total=total)
     kpi_html = "".join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>' for label, value in kpis)
@@ -1229,6 +1459,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         "inventory": "Inventory review",
         "evidence_sensitivity": "Evidence-confidence review",
     }.get(intent, "Engineering review progress")
+    decision_summary = _first_sentence(decision["assessment"])
     st.markdown(
         f"""
         <div class="cv39-decision-card {decision['tone']}">
@@ -1237,17 +1468,21 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
             <span class="cv39-status-badge">{html.escape(decision['risk'])} risk</span>
           </div>
           <div class="cv39-decision-grid">{kpi_html}</div>
-          <p>{html.escape(decision['assessment'])}</p>
+          <p>{html.escape(decision_summary)}</p>
         </div>
         <div class="cv39-progress-wrap"><div><strong>{html.escape(progress_label)}</strong><span>{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>
         """,
         unsafe_allow_html=True,
     )
 
-    driver_html = "".join(f'<li><span>{index}</span><p>{html.escape(driver)}</p></li>' for index, driver in enumerate(recommendation_drivers, start=1))
+    driver_html = "".join(
+        f'<li><span>{index}</span><p>{_emphasize_part_numbers(_inline_engineering_format(driver), _known_part_numbers(context))}</p></li>'
+        for index, driver in enumerate(recommendation_drivers, start=1)
+    )
     if driver_html:
+        explanation_html = _format_engineering_prose(explanation, context=context) or f"<p>{html.escape(explanation)}</p>"
         st.markdown(
-            f'<section class="cv46-why"><div><span>Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><p>{html.escape(explanation)}</p></div><ol>{driver_html}</ol></section>',
+            f'<section class="cv46-why"><div><span>Why Cadivor recommends this</span><h3>{html.escape(decision["status"])}</h3><div class="cv-assistant-prose">{explanation_html}</div></div><ol>{driver_html}</ol></section>',
             unsafe_allow_html=True,
         )
 
@@ -1281,7 +1516,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         st.markdown(f'<div class="cv47-ranking-board">{ranking_html}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)
-    _render_evidence_cards(evidence)
+    _render_evidence_cards(evidence, context=context)
 
     st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
     if workflow_text:
@@ -1306,6 +1541,8 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
             unsafe_allow_html=True,
         )
     _render_quick_actions(context, priority_part, intent=intent)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</article>", unsafe_allow_html=True)
 
 def render_engineering_assistant(
     *,
@@ -1436,7 +1673,9 @@ def render_engineering_assistant(
         st.session_state["cv35_last_question"] = submitted_question
         st.markdown('<div id="cv47-processing-anchor"></div>', unsafe_allow_html=True)
         if st.session_state.pop("cv47_scroll_pending", False):
-            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
+            _render_html_scroll(
+                """<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>"""
+            )
         with st.status(_COPILOT_PROCESSING_LABEL, expanded=True) as progress:
             try:
                 _log_ask_cadivor(
