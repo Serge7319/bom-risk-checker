@@ -51,6 +51,18 @@ _COPILOT_WORKFLOW_KEYS = (
 )
 
 _COPILOT_PROCESSING_LABEL = "Cadivor is analyzing this BOM…"
+_CLEAR_PROMPT_ON_NEXT_RUN_KEY = "cv7144_clear_prompt_on_next_run"
+
+
+def _schedule_prompt_clear_on_next_run() -> None:
+    """Defer clearing a widget-bound prompt until before the next text_area mount."""
+    st.session_state[_CLEAR_PROMPT_ON_NEXT_RUN_KEY] = True
+
+
+def _apply_deferred_prompt_clear(prompt_key: str) -> None:
+    """Clear the prompt widget value before it is instantiated on a later rerun."""
+    if st.session_state.pop(_CLEAR_PROMPT_ON_NEXT_RUN_KEY, False):
+        st.session_state[prompt_key] = ""
 
 
 def _log_ask_cadivor(event: str, **details: Any) -> None:
@@ -1340,6 +1352,7 @@ def render_engineering_assistant(
         utility_right.caption(f"{len(thread)} review{'s' if len(thread) != 1 else ''} in this BOM conversation")
 
     prompt_key = "cv35_question"
+    _apply_deferred_prompt_clear(prompt_key)
     _apply_copilot_query_picks(prompt_key=prompt_key)
     auto_execute_followup = False
     queued_question = ""
@@ -1471,7 +1484,7 @@ def render_engineering_assistant(
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
-                st.session_state[prompt_key] = ""
+                _schedule_prompt_clear_on_next_run()
                 _pin_ask_cadivor_tab(source="provider_complete", analysis_id=analysis_id)
                 _log_ask_cadivor(
                     "response_committed",
@@ -1489,8 +1502,8 @@ def render_engineering_assistant(
                 st.session_state.pop("cv41_pending_manual", None)
                 progress.update(label="Cadivor could not complete the review", state="error")
             except Exception as exc:
-                _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
-                _pin_ask_cadivor_tab(source="provider_failed", analysis_id=analysis_id)
+                _log_ask_cadivor("execution_failed", exception_type=type(exc).__name__)
+                _pin_ask_cadivor_tab(source="execution_failed", analysis_id=analysis_id)
                 # A response may already have been generated and saved before a
                 # secondary operation (history persistence, cleanup, etc.) fails.
                 # Do not show a false red failure banner when the visible answer

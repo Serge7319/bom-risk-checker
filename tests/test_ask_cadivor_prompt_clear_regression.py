@@ -1,12 +1,13 @@
-"""Sprint 71.4.2 — Ask Cadivor one-click suggested-question tests."""
+"""Sprint 71.4.4C — Ask Cadivor deferred prompt-clear regression tests."""
 from __future__ import annotations
 
 import importlib
 import inspect
+import io
 import sys
 import types
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from unittest.mock import MagicMock, patch
 
 
@@ -52,12 +53,12 @@ class _NullContext:
         return None
 
 
-class AskCadivorOneClickSuggestionTests(unittest.TestCase):
+class AskCadivorPromptClearRegressionTests(unittest.TestCase):
     def setUp(self):
         sys.modules.pop("src.components.engineering_assistant", None)
 
-    def _load_assistant(self, session_state=None, query_params=None):
-        st = _install_streamlit_stub(session_state, query_params)
+    def _load_assistant(self, session_state=None):
+        st = _install_streamlit_stub(session_state)
         secrets = types.ModuleType("src.secrets")
         secrets.get_secret = lambda key, default="": default
         sys.modules["src.secrets"] = secrets
@@ -90,7 +91,7 @@ class AskCadivorOneClickSuggestionTests(unittest.TestCase):
         sys.modules["src.services.ai_entitlements"] = ai_entitlements
 
         copilot = types.ModuleType("src.services.copilot_conversation")
-        copilot.append_turn = MagicMock(return_value=[])
+        copilot.append_turn = MagicMock(return_value=[{"question": "q", "answer": "a"}])
         copilot.clear_thread = MagicMock()
         copilot.compact_history = MagicMock(return_value=[])
         copilot.follow_up_suggestions = MagicMock(return_value=[])
@@ -107,32 +108,27 @@ class AskCadivorOneClickSuggestionTests(unittest.TestCase):
         assistant = importlib.import_module("src.components.engineering_assistant")
         return st, assistant
 
-    def test_suggestion_uses_same_queue_path_as_manual(self):
+    def test_deferred_clear_runs_before_text_area_not_after(self):
         _, assistant = self._load_assistant()
-        select_source = inspect.getsource(assistant._select_initial_suggestion)
-        queue_source = inspect.getsource(assistant._queue_copilot_submission)
-        self.assertIn("_queue_copilot_submission", select_source)
-        self.assertIn('"suggestion"', select_source)
-        self.assertIn("cv41_pending_manual", queue_source)
+        source = inspect.getsource(assistant.render_engineering_assistant)
+        text_area_idx = source.index("st.text_area(")
+        post_widget = source[text_area_idx:]
+        self.assertNotIn('st.session_state[prompt_key] = ""', post_widget)
+        clear_idx = source.index("_apply_deferred_prompt_clear(prompt_key)")
+        self.assertLess(clear_idx, text_area_idx)
 
-    def test_duplicate_submission_blocked_while_inflight(self):
+    def test_apply_deferred_prompt_clear_clears_before_widget_mount(self):
         st, assistant = self._load_assistant(
             {
-                "cv7142_ask_inflight": True,
-                "cv41_pending_manual": "What should I review first in this BOM?",
+                "cv7144_clear_prompt_on_next_run": True,
+                "cv35_question": "What should I review first in this BOM?",
             }
         )
-        assistant._queue_copilot_submission(
-            "Explain the highest component risks.",
-            submission_kind="suggestion",
-            analysis_id="a-1",
-        )
-        self.assertEqual(
-            st.session_state["cv41_pending_manual"],
-            "What should I review first in this BOM?",
-        )
+        assistant._apply_deferred_prompt_clear("cv35_question")
+        self.assertEqual(st.session_state["cv35_question"], "")
+        self.assertNotIn(assistant._CLEAR_PROMPT_ON_NEXT_RUN_KEY, st.session_state)
 
-    def test_queued_suggestion_executes_on_next_render(self):
+    def test_successful_fallback_execution_schedules_clear_without_failure_logs(self):
         st, assistant = self._load_assistant()
         suggestion = assistant.SUGGESTIONS[0]
         st.session_state.update(
@@ -144,48 +140,69 @@ class AskCadivorOneClickSuggestionTests(unittest.TestCase):
             }
         )
 
-        class _WorkingAI:
-            configured = True
-            ask_calls = 0
+        class _FallbackAI:
+            configured = False
 
             def __init__(self, **kwargs):
                 pass
 
             def ask(self, **kwargs):
-                _WorkingAI.ask_calls += 1
-                return types.SimpleNamespace(answer="Start with lifecycle risk.")
+                return types.SimpleNamespace(answer="Grounded fallback assessment.")
 
-        _WorkingAI.ask_calls = 0
-        with patch.object(assistant, "EngineeringAI", _WorkingAI):
+        events: list[str] = []
+        stdout = io.StringIO()
+        with patch.object(assistant, "EngineeringAI", _FallbackAI):
             with patch.object(assistant, "_usage_banner"):
-                with patch.object(assistant, "_render_prompt_chip_grid") as grid:
+                with patch.object(assistant, "_render_prompt_chip_grid"):
                     with patch.object(assistant, "_render_conversation_history"):
                         with patch.object(assistant, "_render_response"):
-                            assistant.render_engineering_assistant(
-                                current_user={"id": "user-1"},
-                                engineering_context={"analysis_id": "a-1", "analysis": {"analysis_id": "a-1"}},
-                            )
-                    grid.assert_called_once()
-                    self.assertTrue(grid.call_args.kwargs.get("disabled"))
+                            with redirect_stdout(stdout):
+                                assistant.render_engineering_assistant(
+                                    current_user={"id": "user-1"},
+                                    engineering_context={
+                                        "analysis_id": "a-1",
+                                        "analysis": {"analysis_id": "a-1"},
+                                    },
+                                )
+        output = stdout.getvalue()
+        for line in output.splitlines():
+            if line.startswith("ASK_CADIVOR "):
+                events.append(line.split(" ", 2)[1])
 
-        self.assertEqual(_WorkingAI.ask_calls, 1)
-        self.assertEqual(st.session_state["cv35_last_question"], suggestion)
-        self.assertNotIn("cv7142_ask_inflight", st.session_state)
+        self.assertIn("execution_started", events)
+        self.assertIn("execution_completed", events)
+        self.assertIn("response_committed", events)
+        self.assertNotIn("provider_failed", events)
+        self.assertNotIn("execution_failed", events)
         self.assertTrue(st.session_state.get(assistant._CLEAR_PROMPT_ON_NEXT_RUN_KEY))
+        self.assertEqual(st.session_state["cv35_last_question"], suggestion)
 
-    def test_processing_label_and_disabled_controls_present(self):
+    def test_next_run_applies_scheduled_clear_before_text_area(self):
+        st, assistant = self._load_assistant(
+            {
+                "cv7144_clear_prompt_on_next_run": True,
+                "cv35_question": "stale prompt text",
+            }
+        )
+        with patch.object(assistant, "_usage_banner"):
+            with patch.object(assistant, "_render_prompt_chip_grid"):
+                with patch.object(assistant, "_render_conversation_history"):
+                    with patch.object(assistant, "_render_response"):
+                        assistant.render_engineering_assistant(
+                            current_user={"id": "user-1"},
+                            engineering_context={
+                                "analysis_id": "a-1",
+                                "analysis": {"analysis_id": "a-1"},
+                            },
+                        )
+        self.assertEqual(st.session_state["cv35_question"], "")
+        self.assertNotIn(assistant._CLEAR_PROMPT_ON_NEXT_RUN_KEY, st.session_state)
+
+    def test_engineering_ai_error_still_logs_provider_failed(self):
         _, assistant = self._load_assistant()
         source = inspect.getsource(assistant.render_engineering_assistant)
-        self.assertIn("_COPILOT_PROCESSING_LABEL", source)
-        self.assertIn("disabled=actions_disabled", source)
-        self.assertIn("execution_started", source)
-        self.assertIn("execution_completed", source)
-        self.assertIn("duplicate_submission_blocked", inspect.getsource(assistant._block_duplicate_submission))
-
-    def test_no_second_ai_execution_path(self):
-        _, assistant = self._load_assistant()
-        tree = inspect.getsource(assistant.render_engineering_assistant)
-        self.assertEqual(tree.count("api.ask("), 1)
+        self.assertIn('except EngineeringAIError as exc:\n                _log_ask_cadivor("provider_failed"', source)
+        self.assertIn('_log_ask_cadivor("execution_failed"', source)
 
 
 if __name__ == "__main__":
