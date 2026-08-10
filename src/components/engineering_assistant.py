@@ -58,7 +58,7 @@ def _ask_cadivor_v2_css_text() -> str:
 
 
 def _presentation_css_block(*, style_id: str = _ASK_CADIVOR_V2_WORKSPACE_STYLE_ID) -> str:
-    """Co-locate trusted presentation CSS with workspace markup for reliable binding."""
+    """Build a trusted stylesheet block for standalone preview artifacts only."""
     css = _ask_cadivor_v2_css_text()
     if not css:
         return ""
@@ -125,6 +125,14 @@ def _apply_deferred_prompt_clear(prompt_key: str) -> None:
 def _log_ask_cadivor(event: str, **details: Any) -> None:
     """Safe stdout diagnostics for Ask Cadivor execution (metadata only)."""
     parts = [f"ASK_CADIVOR {event}"]
+    for key, value in details.items():
+        parts.append(f"{key}={value}")
+    print(" ".join(parts), flush=True)
+
+
+def _log_ask_render(event: str, **details: Any) -> None:
+    """Safe stdout diagnostics for Ask Cadivor presentation render boundaries."""
+    parts = [f"ASK_RENDER {event}"]
     for key, value in details.items():
         parts.append(f"{key}={value}")
     print(" ".join(parts), flush=True)
@@ -1068,8 +1076,9 @@ def _build_decision_workspace_html(
     # Assessment content stays in one canonical builder. The native <details> element
     # remains open by default so desktop browsers expose the right-hand column without
     # requiring interaction. Narrow layouts still expose the summary for collapse.
+    # Workspace markup must never embed <style>. premium.css hides any Streamlit
+    # element container that contains a style element via :has(style).
     return f"""
-        {_presentation_css_block()}
         <div class="cv725-decision-workspace">
           <div class="cv725-decision-primary">
             {primary_html}
@@ -1145,13 +1154,22 @@ def _render_decision_workspace(
         total=total,
         progress=progress,
     )
-    _render_presentation_html(
-        _build_decision_workspace_html(
-            primary_html=primary_html,
-            summary_html=summary_html,
-            assessment_html=assessment_html,
-        )
+    _inject_ask_cadivor_v2_styles()
+    workspace_html = _build_decision_workspace_html(
+        primary_html=primary_html,
+        summary_html=summary_html,
+        assessment_html=assessment_html,
     )
+    normalized_workspace = _normalize_presentation_html(workspace_html)
+    _log_ask_render(
+        "workspace_html_built",
+        html_len=len(normalized_workspace),
+        has_workspace="cv725-decision-workspace" in normalized_workspace,
+        has_style_tag="<style" in normalized_workspace.lower(),
+    )
+    _log_ask_render("workspace_render_requested")
+    _render_presentation_html(workspace_html)
+    _log_ask_render("workspace_render_completed")
     with st.container(key="cv725_workflow_actions"):
         _render_quick_actions(context, priority_part, intent=intent)
 
@@ -1441,6 +1459,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
             _queue_follow_up(custom, analysis_id=analysis_id)
         else:
             st.warning("Enter a follow-up question before submitting.")
+    _log_ask_render("followups_rendered")
 
 
 def _first_sentence(text: str) -> str:
@@ -1882,6 +1901,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
 
 
 def _render_response(*, question: str, answer: str, context: dict[str, Any], auto_scroll: bool = False) -> None:
+    _log_ask_render("response_entered")
     detailed = _wants_detailed_response(question)
     sections = _parse_report(answer)
     profile = _assessment_profile(sections)
@@ -1909,6 +1929,7 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         _render_response_scroll_anchor(response_token=response_token)
 
     _render_conversation_exchange(question=question, intent=intent)
+    _log_ask_render("exchange_rendered")
 
     _render_decision_workspace(
         question=question,

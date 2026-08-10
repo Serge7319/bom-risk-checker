@@ -52,10 +52,10 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
             ),
             assessment_html='<div class="cv724-impact-grid"></div>',
         )
-        self.assertRegex(raw, r"^\s{4,}<style id=\"cadivor-ask-cadivor-v2-workspace-css\">")
+        self.assertRegex(raw, r"^\s{4,}<div class=\"cv725-decision-workspace\">")
         normalized = self.assistant._normalize_presentation_html(raw)
-        self.assertTrue(normalized.startswith("<style"))
-        self.assertIn('<div class="cv725-decision-workspace">', normalized)
+        self.assertTrue(normalized.startswith("<div class=\"cv725-decision-workspace\">"))
+        self.assertNotIn("<style", normalized.lower())
         self.assertIn('class="cv725-assessment-details" open', normalized)
         self.assertNotRegex(normalized, r"^\s")
 

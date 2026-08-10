@@ -159,7 +159,7 @@ def write_pc817_preview_artifact(response_html: str) -> Path:
 
 
 def main() -> int:
-    markdown_calls, _html_calls = _install_streamlit_stub()
+    markdown_calls, html_calls = _install_streamlit_stub()
     for name in list(sys.modules):
         if name.startswith("src.components.engineering_assistant"):
             sys.modules.pop(name, None)
@@ -197,8 +197,9 @@ def main() -> int:
         "desktop_workspace": "cv725-decision-workspace" in html,
         "assessment_column": "cv725-decision-assessment" in html,
         "assessment_open_by_default": 'class="cv725-assessment-details" open' in html,
-        "colocated_workspace_css": "cadivor-ask-cadivor-v2-workspace-css" in workspace_html,
-        "workspace_css_has_grid_rule": ".cv725-decision-workspace" in workspace_html and "0.85fr" in workspace_html,
+        "stylesheet_injection_separate": any("cadivor-ask-cadivor-v2-css" in call for call in html_calls),
+        "workspace_has_no_style_tag": "<style" not in workspace_html.lower(),
+        "workspace_css_available": ".cv725-decision-workspace" in ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8"),
         "impact_grid": "cv724-impact-grid" in html,
         "driver_grid": "cv724-driver-grid" in html,
         "evidence_cards": "cv46-evidence-board" in html,

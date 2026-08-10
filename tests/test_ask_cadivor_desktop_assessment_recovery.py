@@ -65,7 +65,7 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         cls.assistant_source = ENGINEERING_ASSISTANT_PY.read_text(encoding="utf-8")
         cls.v2_css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
 
-    def _render_pc817(self) -> tuple[str, list[str]]:
+    def _render_pc817(self) -> tuple[str, list[str], list[tuple[str, dict]]]:
         st, markdown_calls, html_calls = _install_streamlit_stub()
         assistant = _load_assistant()
         from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
@@ -78,17 +78,23 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
                     context=PC817_CONTEXT,
                 )
         html = "\n".join(content for content, _kwargs in markdown_calls)
-        return html, html_calls
+        return html, html_calls, markdown_calls
 
     def test_normal_desktop_response_uses_open_details(self) -> None:
-        html, _ = self._render_pc817()
+        html, _, _ = self._render_pc817()
         self.assertIn('class="cv725-assessment-details" open', html)
         self.assertNotRegex(html, r'class="cv725-assessment-details">\s*<summary')
 
-    def test_workspace_includes_colocated_css(self) -> None:
-        html, _ = self._render_pc817()
-        self.assertIn("cadivor-ask-cadivor-v2-workspace-css", html)
-        self.assertIn(".cv725-decision-workspace", html)
+    def test_stylesheet_injection_separate_from_workspace(self) -> None:
+        html, html_calls, markdown_calls = self._render_pc817()
+        workspace_markdown = next(
+            (content for content, _kwargs in markdown_calls if "cv725-decision-workspace" in content),
+            "",
+        )
+        self.assertTrue(any("cadivor-ask-cadivor-v2-css" in call for call in html_calls))
+        self.assertNotIn("<style", workspace_markdown.lower())
+        self.assertIn(".cv725-decision-workspace", self.v2_css)
+        self.assertIn("cv725-decision-workspace", html)
 
     def test_css_injection_uses_st_html(self) -> None:
         _install_streamlit_stub()
@@ -123,13 +129,13 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         self.assertIn('class="cv725-assessment-details" open', preview)
 
     def test_no_duplicate_direct_answer_in_primary_surface(self) -> None:
-        html, _ = self._render_pc817()
+        html, _, _ = self._render_pc817()
         markup = html.split("</style>")[-1]
         self.assertEqual(markup.count("Review PC817 first."), 1)
         self.assertNotIn('class="cv722-direct-answer-text"', markup)
 
     def test_evidence_breakdown_structurally_separated(self) -> None:
-        html, _ = self._render_pc817()
+        html, _, _ = self._render_pc817()
         for component in ("PC817", "BZX55C5V1", "DRV8825"):
             self.assertIn(f'class="cv46-evidence-component">{component}</span>', html)
         self.assertEqual(html.count('class="cv46-evidence-status">Review</span>'), 3)
@@ -151,7 +157,7 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         self.assertEqual(assistant._supplementary_direct_answer_text(headline, headline), "")
 
     def test_desktop_workspace_still_present(self) -> None:
-        html, _ = self._render_pc817()
+        html, _, _ = self._render_pc817()
         self.assertIn("cv725-decision-workspace", html)
         self.assertIn("cv725-decision-primary", html)
         self.assertIn("cv725-decision-assessment", html)
