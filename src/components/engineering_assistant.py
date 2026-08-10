@@ -133,6 +133,37 @@ def _log_ask_cadivor(event: str, **details: Any) -> None:
     print(" ".join(parts), flush=True)
 
 
+def _log_ask_cadivor_state(event: str, *, reason: str = "") -> None:
+    """Log presence/length metadata for copilot workflow keys (never prompt/answer text)."""
+    pending_manual = st.session_state.get("cv41_pending_manual")
+    pending_followup = st.session_state.get("cv36_pending_followup")
+    last_answer = st.session_state.get("cv35_last_answer")
+    details: dict[str, Any] = {
+        "pending_manual_present": bool(pending_manual),
+        "pending_manual_len": len(str(pending_manual or "")),
+        "pending_followup_present": bool(pending_followup),
+        "inflight": bool(st.session_state.get("cv7142_ask_inflight")),
+        "snapshot_present": bool(st.session_state.get("cv48_copilot_snapshot")),
+        "followup_inflight_flag": bool(st.session_state.get("cv4801_followup_inflight")),
+        "last_answer_present": bool(str(last_answer or "").strip()),
+        "last_answer_len": len(str(last_answer or "")),
+        "active_tab": str(st.session_state.get("cadivor_active_analysis_tab") or ""),
+        "analysis_id": str(
+            st.session_state.get("cadivor_active_analysis_id")
+            or st.session_state.get("analysis_id")
+            or ""
+        ),
+    }
+    if reason:
+        details["reason"] = reason
+    _log_ask_cadivor(event, **details)
+
+
+def _log_ask_cadivor_state_clear(key: str, *, reason: str) -> None:
+    """Log when a copilot workflow key is cleared (metadata only)."""
+    _log_ask_cadivor("state_cleared", key=key, reason=reason)
+
+
 def _log_ask_render(event: str, **details: Any) -> None:
     """Safe stdout diagnostics for Ask Cadivor presentation render boundaries."""
     parts = [f"ASK_RENDER {event}"]
@@ -185,14 +216,38 @@ def _capture_copilot_workflow_snapshot() -> dict[str, Any]:
 def _restore_copilot_workflow_snapshot(snapshot: Any) -> None:
     if not isinstance(snapshot, dict):
         return
+    restored_keys: list[str] = []
     try:
         for key, value in snapshot.items():
             if not key or value is None:
                 continue
             if st.session_state.get(key) is None:
                 st.session_state[key] = value
+                restored_keys.append(str(key))
     except Exception:
         return
+    if restored_keys:
+        _log_ask_cadivor(
+            "workflow_snapshot_restored",
+            keys=",".join(restored_keys),
+            key_count=len(restored_keys),
+        )
+
+
+def _recover_stale_copilot_inflight() -> None:
+    """Drop orphaned inflight flags that would block one-click suggestions forever."""
+    if not st.session_state.get("cv7142_ask_inflight"):
+        return
+    if st.session_state.get("cv41_pending_manual") or st.session_state.get("cv36_pending_followup"):
+        return
+    snapshot = st.session_state.get("cv48_copilot_snapshot") or {}
+    if isinstance(snapshot, dict) and (
+        snapshot.get("cv41_pending_manual") or snapshot.get("cv36_pending_followup")
+    ):
+        return
+    _log_ask_cadivor_state("inflight_stale_detected", reason="no_pending_question")
+    st.session_state.pop("cv7142_ask_inflight", None)
+    st.session_state.pop("cv4801_followup_inflight", None)
 
 
 def _clear_copilot_workflow_snapshot() -> None:
@@ -204,9 +259,10 @@ def _clear_copilot_workflow_snapshot() -> None:
 
 def _clear_copilot_workflow_protection() -> None:
     """Drop copilot workflow recovery state after a submission completes."""
-    st.session_state.pop("cv4801_followup_inflight", None)
-    st.session_state.pop("cv4801_route_snapshot", None)
-    st.session_state.pop("cv7142_ask_inflight", None)
+    for key in ("cv4801_followup_inflight", "cv4801_route_snapshot", "cv7142_ask_inflight"):
+        if key in st.session_state:
+            _log_ask_cadivor_state_clear(key, reason="copilot_workflow_complete")
+            st.session_state.pop(key, None)
     _clear_copilot_workflow_snapshot()
 
 
@@ -255,7 +311,9 @@ def _clear_review_state() -> None:
         "cv35_last_error",
         "cv35_provider_connected",
     ):
-        st.session_state.pop(key, None)
+        if key in st.session_state:
+            _log_ask_cadivor_state_clear(key, reason="new_question_queued")
+            st.session_state.pop(key, None)
     _clear_followup_ui_state()
 
 
@@ -1955,8 +2013,11 @@ def render_engineering_assistant(
     engineering_context: Any,
     selected_component: str = "",
 ) -> None:
+    _log_ask_cadivor("script_run_started", surface="ask_cadivor")
     _inject_ask_cadivor_v2_styles()
     _restore_copilot_workflow_snapshot(st.session_state.get("cv48_copilot_snapshot"))
+    _recover_stale_copilot_inflight()
+    _log_ask_cadivor_state("script_run_state")
     try:
         context = (
             engineering_context.compact(max_components=15)
@@ -1985,8 +2046,29 @@ def render_engineering_assistant(
     _apply_copilot_query_picks(prompt_key=prompt_key)
     auto_execute_followup = False
     queued_question = ""
-    pending_manual = st.session_state.pop("cv41_pending_manual", None)
-    pending_followup = st.session_state.pop("cv36_pending_followup", None)
+    pending_manual = st.session_state.get("cv41_pending_manual")
+    pending_followup = st.session_state.get("cv36_pending_followup")
+    _log_ask_cadivor(
+        "pending_question_present",
+        manual_present=bool(pending_manual),
+        followup_present=bool(pending_followup),
+        manual_len=len(str(pending_manual or "")),
+    )
+    _log_ask_cadivor(
+        "inflight_state",
+        inflight=bool(st.session_state.get("cv7142_ask_inflight")),
+        followup_inflight_flag=bool(st.session_state.get("cv4801_followup_inflight")),
+    )
+    analysis_id = _analysis_id_from_context(context)
+    _log_ask_cadivor(
+        "analysis_id_restored",
+        analysis_id=analysis_id or "missing",
+        session_analysis_id=str(st.session_state.get("cadivor_active_analysis_id") or ""),
+    )
+    _log_ask_cadivor(
+        "ask_tab_restored",
+        active_tab=str(st.session_state.get("cadivor_active_analysis_tab") or ""),
+    )
     if pending_manual:
         queued_question = str(pending_manual)
         st.session_state[prompt_key] = queued_question
@@ -2016,7 +2098,6 @@ def render_engineering_assistant(
     if copilot_busy and not auto_execute_followup:
         st.info(_COPILOT_PROCESSING_LABEL)
 
-    analysis_id = _analysis_id_from_context(context)
     if analysis_id:
         st.markdown(
             '<div class="cv-assistant-section-label cv35-section-label">Suggested engineering workflows</div>',
@@ -2070,7 +2151,16 @@ def render_engineering_assistant(
         and submitted_question
         and not manual_submit_requested
     )
+    if auto_execute_followup and not submit_requested:
+        _log_ask_cadivor(
+            "execution_deferred",
+            can_use=bool(status.can_use),
+            submitted_question_len=len(submitted_question),
+            manual_submit_requested=bool(manual_submit_requested),
+        )
     if submit_requested:
+        st.session_state.pop("cv41_pending_manual", None)
+        st.session_state.pop("cv36_pending_followup", None)
         _pin_ask_cadivor_tab(source="execute_copilot_question", analysis_id=analysis_id)
         _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
         _log_ask_cadivor(
@@ -2190,6 +2280,11 @@ def render_engineering_assistant(
         _render_error(error_message)
 
     answer = st.session_state.get("cv35_last_answer")
+    _log_ask_cadivor(
+        "last_answer_present_before_render",
+        present=bool(str(answer or "").strip()),
+        answer_len=len(str(answer or "")),
+    )
     if answer:
         last_question = _normalize_submitted_question(st.session_state.get("cv35_last_question") or "Engineering review")
         question_changed = st.session_state.get("cv50_last_scrolled_question") != last_question

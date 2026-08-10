@@ -145,6 +145,7 @@ def render_startup_loading_shell(message: str = "Preparing your workspace…") -
 
 def _restore_copilot_workflow_snapshot() -> None:
     """Restore in-flight copilot workflow keys across reruns in the same session."""
+    print("ASK_CADIVOR script_run_auth_restore", flush=True)
     copilot_snapshot = st.session_state.get("cv48_copilot_snapshot") or {}
     copilot_inflight = bool(st.session_state.get("cv4801_followup_inflight"))
     if (
@@ -154,6 +155,11 @@ def _restore_copilot_workflow_snapshot() -> None:
         or explicit_logout_pending()
         or st.session_state.get("cadivor_force_signed_out")
     ):
+        _log_ask_cadivor_auth_restore(
+            restored=False,
+            inflight=copilot_inflight,
+            snapshot_keys=len(copilot_snapshot) if isinstance(copilot_snapshot, dict) else 0,
+        )
         return
     restored_keys: list[str] = []
     try:
@@ -172,6 +178,19 @@ def _restore_copilot_workflow_snapshot() -> None:
                 keys=",".join(restored_keys),
                 key_count=len(restored_keys),
             )
+        _log_ask_cadivor_auth_restore(
+            restored=bool(restored_keys),
+            inflight=copilot_inflight,
+            snapshot_keys=len(copilot_snapshot),
+            restored_keys=",".join(restored_keys) if restored_keys else "",
+        )
+
+
+def _log_ask_cadivor_auth_restore(**details: Any) -> None:
+    parts = ["ASK_CADIVOR auth_restore"]
+    for key, value in details.items():
+        parts.append(f"{key}={value}")
+    print(" ".join(parts), flush=True)
 
 
 def ensure_authenticated_or_stop() -> None:
