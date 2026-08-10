@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 from pathlib import Path
 from typing import Any, Iterable
@@ -261,6 +262,24 @@ def _inject_ask_cadivor_v2_styles(*, force: bool = False) -> bool:
         f"<style id='cadivor-ask-cadivor-v2-css'>{css}</style>",
         unsafe_allow_html=True,
     )
+    css_json = json.dumps(css)
+    components.html(
+        f"""
+        <script>
+        (function () {{
+          const doc = window.parent.document;
+          let node = doc.getElementById("cadivor-ask-cadivor-v2-css");
+          if (!node) {{
+            node = doc.createElement("style");
+            node.id = "cadivor-ask-cadivor-v2-css";
+            doc.head.appendChild(node);
+          }}
+          node.textContent = {css_json};
+        }})();
+        </script>
+        """,
+        height=0,
+    )
     st.session_state[run_key] = run_id
     return True
 
@@ -415,30 +434,40 @@ def _html_kpi_cell(label: str, value: str) -> str:
 
 def _html_impact_row(label: str, value: str, note: str) -> str:
     return (
-        f'<div class="cv39-impact-row">'
-        f'<span class="cv39-impact-label">{html.escape(label)}</span>'
-        f'<strong class="cv39-impact-value">{html.escape(value)}</strong>'
-        f'<small class="cv39-impact-note">{html.escape(note)}</small>'
-        f"</div>"
+        f'<article class="cv724-impact-cell">'
+        f'<div class="cv39-impact-label">{html.escape(label)}</div>'
+        f'<div class="cv39-impact-value">{html.escape(value)}</div>'
+        f'<div class="cv39-impact-note">{html.escape(note)}</div>'
+        f"</article>"
     )
 
 
 def _html_confidence_driver(label: str, value: str, note: str) -> str:
     return (
-        f'<div class="cv46-driver-item">'
-        f'<span class="cv46-driver-label">{html.escape(label)}</span>'
-        f'<strong class="cv46-driver-value">{html.escape(value)}</strong>'
-        f'<small class="cv46-driver-note">{html.escape(note)}</small>'
-        f"</div>"
+        f'<article class="cv724-driver-cell">'
+        f'<div class="cv46-driver-label">{html.escape(label)}</div>'
+        f'<div class="cv46-driver-value">{html.escape(value)}</div>'
+        f'<div class="cv46-driver-note">{html.escape(note)}</div>'
+        f"</article>"
+    )
+
+
+def _html_list_row(index: int, text: str, *, variant: str) -> str:
+    index_label = f"{index:02d}"
+    return (
+        f'<li class="cv722-{variant}-row">'
+        f'<div class="cv722-list-index" aria-hidden="true">{index_label}</div>'
+        f'<div class="cv722-row-body"><p>{html.escape(text)}</p></div>'
+        f"</li>"
     )
 
 
 def _html_evidence_metric(label: str, value: str, *, icon: str = "") -> str:
-    icon_html = f"<i>{html.escape(icon)}</i>" if icon else ""
+    icon_html = f"<span class='cv724-evidence-icon'>{html.escape(icon)}</span>" if icon else ""
     return (
         f'<div class="cv46-evidence-metric">'
-        f'<span class="cv46-evidence-metric-label">{icon_html}{html.escape(label)}</span>'
-        f'<strong class="cv46-evidence-metric-value">{html.escape(value)}</strong>'
+        f'<div class="cv46-evidence-metric-label">{icon_html}{html.escape(label)}</div>'
+        f'<div class="cv46-evidence-metric-value">{html.escape(value)}</div>'
         f"</div>"
     )
 
@@ -753,7 +782,7 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
     analysis_id = str(analysis.get("analysis_id") or "")
     if not analysis_id:
         return
-    st.markdown('<div class="cv722-quick-actions">', unsafe_allow_html=True)
+    st.markdown('<div class="cv724-workflow-actions">', unsafe_allow_html=True)
     st.markdown('<div class="cv35-section-label">Continue the workflow</div>', unsafe_allow_html=True)
     part_label = priority_part or "component"
     component_url = _href("Analysis Details", analysis_id=analysis_id, tab="components", component=priority_part, focus="component-risk")
@@ -778,14 +807,16 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
         "evidence_gap_priority": [(f"Open evidence source", component_url), ("Collect alternate evidence", alternative_url), ("Monitor evidence closure", monitoring_url), ("Record evidence decision", decision_url)],
     }
     actions = action_sets.get(intent, [(f"Open {part_label}", component_url), (f"Find {part_label} alternative", alternative_url), (f"Monitor {part_label}", monitoring_url), ("Create engineering record", decision_url)])
-    cols = st.columns(4)
-    for col, (label, url) in zip(cols, actions):
-        with col:
-            if url == alternative_url:
+    primary_label, primary_url = actions[1] if len(actions) > 1 else actions[0]
+    secondary_actions = [actions[0], actions[2], actions[3]] if len(actions) > 3 else actions[1:]
+    with st.container(key="cv724_workflow_actions"):
+        primary_col, secondary_col = st.columns([1.15, 2])
+        with primary_col:
+            if primary_url == alternative_url:
                 internal_nav_button(
-                    label,
+                    primary_label,
                     ALTERNATIVE_FINDER_PAGE,
-                    key=f"ea_quick_alt_{intent}_{label}",
+                    key=f"ea_quick_alt_primary_{intent}_{priority_part}",
                     use_container_width=True,
                     original_part=priority_part,
                     analysis_id=analysis_id,
@@ -793,7 +824,24 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
                     source_page="engineering_intelligence",
                 )
             else:
-                col.link_button(label, url, use_container_width=True)
+                primary_col.link_button(primary_label, primary_url, use_container_width=True)
+        with secondary_col:
+            sec_cols = secondary_col.columns(len(secondary_actions))
+            for col, (label, url) in zip(sec_cols, secondary_actions):
+                with col:
+                    if url == alternative_url:
+                        internal_nav_button(
+                            label,
+                            ALTERNATIVE_FINDER_PAGE,
+                            key=f"ea_quick_alt_{intent}_{label}",
+                            use_container_width=True,
+                            original_part=priority_part,
+                            analysis_id=analysis_id,
+                            return_analysis_id=analysis_id,
+                            source_page="engineering_intelligence",
+                        )
+                    else:
+                        col.link_button(label, url, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -980,12 +1028,15 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     st.session_state["cv36_followup_ready_for"] = ready_for
     button_generation = _followup_button_generation(valid_suggestions)
 
-    st.markdown('<section class="cv-assistant-followups-panel cv723-followups-panel">', unsafe_allow_html=True)
     st.markdown(
-        '<h3 class="cv723-followups-heading">Continue the review</h3>',
+        (
+            '<section class="cv-assistant-followups-panel cv723-followups-panel">'
+            '<h3 class="cv723-followups-heading">Continue the review</h3>'
+            '</section>'
+        ),
         unsafe_allow_html=True,
     )
-    with st.container(key="cv_assistant_followups"):
+    with st.container(key="cv724_followups"):
         st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
         _render_prompt_chip_grid(
             valid_suggestions,
@@ -1011,7 +1062,6 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
             _queue_follow_up(custom, analysis_id=analysis_id)
         else:
             st.warning("Enter a follow-up question before submitting.")
-    st.markdown("</section>", unsafe_allow_html=True)
 
 
 def _first_sentence(text: str) -> str:
@@ -1187,17 +1237,20 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
 def _render_conversation_exchange(*, question: str, intent: str) -> None:
     response_label, response_class = _response_type_meta(intent)
     st.markdown(
-        f'''
+        f"""
         <section id="cv50-conversation-start" tabindex="-1" data-cadivor-conversation-start="true" class="cv50-exchange">
           <div class="cv50-exchange-top">
-            <div class="cv50-you-asked"><span>You asked</span><strong>{html.escape(question)}</strong></div>
+            <div class="cv50-you-asked">
+              <div class="cv50-you-asked-label">You asked</div>
+              <div class="cv50-you-asked-question">{html.escape(question)}</div>
+            </div>
             <div class="cv50-exchange-badges">
               <span class="cv50-type cv50-type-{html.escape(response_class)}">{html.escape(response_label)}</span>
               <span class="cv50-saved">✓ Review auto-saved</span>
             </div>
           </div>
         </section>
-        ''',
+        """,
         unsafe_allow_html=True,
     )
 
@@ -1294,17 +1347,17 @@ def _render_compact_decision_summary(
         f"""
         <section class="cv722-summary-strip cv722-summary-strip--{html.escape(tone)}" aria-label="Engineering decision summary">
           <div class="cv722-summary-item" data-field="status">
-            <span class="cv722-summary-label">Status</span>
-            <strong class="cv722-summary-value">{html.escape(status)}</strong>
+            <div class="cv722-summary-label">Status</div>
+            <div class="cv722-summary-value">{html.escape(status)}</div>
           </div>
           <div class="cv722-summary-item cv722-summary-item--priority" data-field="priority">
-            <span class="cv722-summary-label">Priority component</span>
-            <strong class="cv722-summary-value">{priority_value}</strong>
+            <div class="cv722-summary-label">Priority component</div>
+            <div class="cv722-summary-value">{priority_value}</div>
           </div>
           <div class="cv722-summary-item" data-field="confidence">
-            <span class="cv722-summary-label">Confidence</span>
-            <strong class="cv722-summary-value">{confidence_score}%</strong>
-            <span class="cv722-summary-note">{html.escape(confidence_label)}</span>
+            <div class="cv722-summary-label">Confidence</div>
+            <div class="cv722-summary-value">{confidence_score}%</div>
+            <div class="cv722-summary-note">{html.escape(confidence_label)}</div>
           </div>
         </section>
         """,
@@ -1331,17 +1384,18 @@ def _render_expanded_engineering_assessment(
     progress: int,
     profile: dict[str, str],
 ) -> None:
-    st.markdown('<div class="cv722-expanded-assessment">', unsafe_allow_html=True)
     impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
     if impact_html:
-        st.markdown('<div class="cv35-section-label">Projected engineering impact</div>', unsafe_allow_html=True)
         st.markdown(
-            f'<div class="cv39-impact-card">{impact_html}<p>Projections are directional estimates based on saved evidence, not measured outcomes.</p></div>',
+            (
+                '<div class="cv35-section-label">Projected engineering impact</div>'
+                f'<div class="cv724-impact-grid">{impact_html}</div>'
+                '<p class="cv724-impact-disclaimer">Projections are directional estimates based on saved evidence, not measured outcomes.</p>'
+            ),
             unsafe_allow_html=True,
         )
 
     if confidence_drivers:
-        st.markdown('<div class="cv35-section-label">Confidence drivers</div>', unsafe_allow_html=True)
         driver_html = "".join(
             _html_confidence_driver(label, value, note) for label, value, note in confidence_drivers[:6]
         )
@@ -1351,19 +1405,28 @@ def _render_expanded_engineering_assessment(
             else ""
         )
         st.markdown(
-            f'<div class="cv46-confidence-drivers cv722-confidence-drivers-only">{detail_html}{driver_html}</div>',
+            (
+                '<div class="cv35-section-label">Confidence drivers</div>'
+                f'<div class="cv724-driver-grid cv722-confidence-drivers-only">{detail_html}{driver_html}</div>'
+            ),
             unsafe_allow_html=True,
         )
 
     if rankings:
-        st.markdown('<div class="cv35-section-label">Engineering priority ranking</div>', unsafe_allow_html=True)
         ranking_items = _evidence_items(rankings)
         ranking_html = "".join(
-            f'<div class="cv47-ranking-row"><b>{idx}</b><div><strong class="cv47-ranking-title">{html.escape(title)}</strong>'
-            f'<span class="cv47-ranking-detail">{html.escape(detail)}</span></div></div>'
+            f'<article class="cv47-ranking-row"><div class="cv47-ranking-index">{idx}</div><div class="cv47-ranking-copy">'
+            f'<div class="cv47-ranking-title">{html.escape(title)}</div>'
+            f'<div class="cv47-ranking-detail">{html.escape(detail)}</div></div></article>'
             for idx, (title, detail) in enumerate(ranking_items, 1)
         )
-        st.markdown(f'<div class="cv47-ranking-board">{ranking_html}</div>', unsafe_allow_html=True)
+        st.markdown(
+            (
+                '<div class="cv35-section-label">Engineering priority ranking</div>'
+                f'<div class="cv47-ranking-board">{ranking_html}</div>'
+            ),
+            unsafe_allow_html=True,
+        )
 
     evidence_items = _evidence_items(evidence)
     if evidence_items:
@@ -1382,23 +1445,38 @@ def _render_expanded_engineering_assessment(
             "evidence_sensitivity": "Evidence-confidence review",
         }.get(intent, "Engineering review progress")
         st.markdown(
-            f'<div class="cv39-progress-wrap"><div class="cv39-progress-header"><strong class="cv39-progress-label">{html.escape(progress_label)}</strong><span class="cv39-progress-value">{progress}%</span></div><div class="cv39-progress"><i style="width:{progress}%"></i></div></div>',
+            (
+                f'<div class="cv724-progress-card">'
+                f'<div class="cv39-progress-header">'
+                f'<div class="cv39-progress-label">{html.escape(progress_label)}</div>'
+                f'<div class="cv39-progress-value">{progress}%</div>'
+                f"</div>"
+                f'<div class="cv39-progress"><i style="width:{progress}%"></i></div>'
+                f"</div>"
+            ),
             unsafe_allow_html=True,
         )
 
     if _should_render_workflow_timeline(question, detailed=detailed, workflow_text=workflow_text, context=context):
         workflow = _parse_workflow_steps(workflow_text, actions, priority_part, intent=intent)
         if workflow:
-            st.markdown('<div class="cv35-section-label">Priority timeline</div>', unsafe_allow_html=True)
-            workflow_cols = st.columns(len(workflow))
-            for idx, ((label, detail), col) in enumerate(zip(workflow, workflow_cols), start=1):
-                col.markdown(
-                    f'<div class="cv39-timeline-step"><b>{idx}</b><strong>{html.escape(label)}</strong><p class="cv-assistant-preline">{html.escape(detail)}</p></div>',
-                    unsafe_allow_html=True,
-                )
+            workflow_html = "".join(
+                f'<article class="cv39-timeline-step">'
+                f'<div class="cv724-timeline-index">{idx}</div>'
+                f'<div class="cv724-timeline-title">{html.escape(label)}</div>'
+                f'<p class="cv-assistant-preline cv724-timeline-detail">{html.escape(detail)}</p>'
+                f"</article>"
+                for idx, (label, detail) in enumerate(workflow, start=1)
+            )
+            st.markdown(
+                (
+                    '<div class="cv35-section-label">Priority timeline</div>'
+                    f'<div class="cv724-timeline-grid">{workflow_html}</div>'
+                ),
+                unsafe_allow_html=True,
+            )
 
     _render_quick_actions(context, priority_part, intent=intent)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_conversational_answer(*, intent: str, assessment: str, priority_part: str,
@@ -1414,14 +1492,14 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
     if not reason_items:
         reason_items = [answer_text]
     reasons_html = "".join(
-        f'<li><span class="cv722-list-index">{index}</span><p>{html.escape(reason)}</p></li>'
+        _html_list_row(index, reason, variant="reason")
         for index, reason in enumerate(reason_items[:_CONCISE_REASON_LIMIT], start=1)
     )
     if action_items is None:
         action_items = _concise_action_items(actions)
     if concise:
         actions_html = "".join(
-            f'<li><span class="cv722-list-index">{index}</span><p>{html.escape(action)}</p></li>'
+            _html_list_row(index, action, variant="action")
             for index, action in enumerate(action_items[:_CONCISE_ACTION_LIMIT], start=1)
         )
         st.markdown(
@@ -1429,17 +1507,17 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
             <section class="cv49-answer-card cv722-concise-answer">
               <div class="cv49-answer-kicker">Cadivor Answer</div>
               <div class="cv722-direct-answer">
-                <span class="cv722-section-label">Direct answer</span>
-                <h2 class="cv722-direct-answer-title">{html.escape(headline)}</h2>
+                <div class="cv722-section-label">Direct answer</div>
+                <div class="cv722-direct-answer-title">{html.escape(headline)}</div>
                 <p class="cv722-direct-answer-text cv-assistant-preline">{html.escape(answer_text)}</p>
               </div>
               <div class="cv722-concise-block">
-                <span class="cv722-section-label">Key engineering reasons</span>
-                <ol class="cv722-reason-list">{reasons_html}</ol>
+                <div class="cv722-section-label">Key engineering reasons</div>
+                <ul class="cv722-reason-list">{reasons_html}</ul>
               </div>
               <div class="cv722-concise-block">
-                <span class="cv722-section-label">Recommended actions</span>
-                <ol class="cv722-action-list">{actions_html}</ol>
+                <div class="cv722-section-label">Recommended actions</div>
+                <ul class="cv722-action-list">{actions_html}</ul>
               </div>
             </section>
             """,
@@ -1496,8 +1574,6 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         response_token = f"{abs(hash((question, answer))) :x}"
         _render_response_scroll_anchor(response_token=response_token)
 
-    st.markdown('<article class="cv-assistant-response">', unsafe_allow_html=True)
-
     _render_conversation_exchange(question=question, intent=intent)
 
     _render_conversational_answer(
@@ -1542,8 +1618,6 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
             progress=progress,
             profile=profile,
         )
-
-    st.markdown("</article>", unsafe_allow_html=True)
 
 
 def render_engineering_assistant(

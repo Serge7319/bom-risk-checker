@@ -179,6 +179,7 @@ class AskCadivorV2Tests(unittest.TestCase):
     def test_css_injected_once_per_script_run(self) -> None:
         st, markdown_calls, _ctx = _install_streamlit_stub({})
         assistant = self._load_assistant()
+        components = sys.modules["streamlit.components.v1"]
 
         first = assistant._inject_ask_cadivor_v2_styles()
         second = assistant._inject_ask_cadivor_v2_styles()
@@ -190,6 +191,8 @@ class AskCadivorV2Tests(unittest.TestCase):
         ]
         self.assertEqual(len(style_calls), 1)
         self.assertIn("cadivor-ask-cadivor-v2-css", style_calls[0])
+        components.html.assert_called_once()
+        self.assertIn("cadivor-ask-cadivor-v2-css", str(components.html.call_args))
         self.assertEqual(st.session_state.get("_cadivor_ask_cadivor_v2_run_id"), "run-a")
 
     def test_css_reinjects_on_new_script_run(self) -> None:
@@ -231,7 +234,7 @@ class AskCadivorV2Tests(unittest.TestCase):
         self.assertIn("cv-assistant-shell", self.assistant_source)
         self.assertIn('key="cv_assistant_suggestions"', self.assistant_source)
         self.assertIn('key="cv_assistant_composer"', self.assistant_source)
-        self.assertIn('key="cv_assistant_followups"', self.assistant_source)
+        self.assertIn('key="cv724_followups"', self.assistant_source)
 
     def test_protected_state_functions_present(self) -> None:
         assistant = self._load_assistant()

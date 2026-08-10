@@ -26,6 +26,7 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
     st.columns = MagicMock(side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))])
     st.expander = lambda *args, **kwargs: _NullContext()
+    st.container = lambda **kwargs: _NullContext()
 
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
 
@@ -120,14 +121,14 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
         html = self._render_sample_response()
         self.assertRegex(
             html,
-            r'class="cv39-impact-label"[^>]*>Release readiness</span>\s*<strong class="cv39-impact-value"[^>]*>Focused review → Ready</strong>',
+            r'class="cv39-impact-label"[^>]*>Release readiness</div>\s*<div class="cv39-impact-value"[^>]*>Focused review → Ready</div>',
         )
 
     def test_priority_component_label_value_separate(self) -> None:
         html = self._render_sample_response()
         self.assertRegex(
             html,
-            r'class="cv722-summary-label"[^>]*>Priority component</span>\s*<strong class="cv722-summary-value"[^>]*>PC817</strong>',
+            r'class="cv722-summary-label"[^>]*>Priority component</div>\s*<div class="cv722-summary-value"[^>]*>PC817</div>',
         )
 
     def test_evidence_confidence_driver_fields_separated(self) -> None:

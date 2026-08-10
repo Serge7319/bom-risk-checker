@@ -106,7 +106,7 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
             "cv49-answer-card",
             "cv722-concise-answer",
             "cv722-summary-strip",
-            "cv39-impact-card",
+            "cv724-impact-cell",
             "cv46-evidence-board",
             "cv47-ranking-board",
             "cv39-timeline-step",
@@ -114,8 +114,8 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
             self.assertIn(class_name, self.assistant_source)
 
     def test_response_wrapper_present_in_renderer(self) -> None:
-        self.assertIn('<article class="cv-assistant-response">', self.assistant_source)
-        self.assertIn('st.markdown("</article>"', self.assistant_source)
+        self.assertNotIn('<article class="cv-assistant-response">', self.assistant_source)
+        self.assertIn("_render_response(", self.assistant_source)
 
     def test_preline_class_used_on_answer_text(self) -> None:
         self.assertIn('class="cv-assistant-preline"', self.assistant_source)
@@ -173,7 +173,7 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
         )
         self.assertIn("cv-assistant-preline", markdown_html)
         self.assertIn("First paragraph line one.", markdown_html)
-        self.assertIn('<article class="cv-assistant-response">', markdown_html)
+        self.assertNotIn('<article class="cv-assistant-response">', markdown_html)
 
     def test_plain_markdown_still_strips_bold_without_parser(self) -> None:
         assistant = self._load_assistant()

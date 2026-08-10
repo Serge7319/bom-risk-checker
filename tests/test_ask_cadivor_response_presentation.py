@@ -59,6 +59,7 @@ def _install_streamlit_stub(session_state: dict | None = None):
         return _NullContext()
 
     st.expander = _expander
+    st.container = lambda **kwargs: _NullContext()
     st.columns = MagicMock(
         side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
     )
@@ -142,12 +143,12 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         for label in ("Status", "Priority component", "Confidence"):
             self.assertIn(label, html)
         self.assertIn("PC817", html)
-        self.assertRegex(html, r'class="cv722-summary-label"[^>]*>Status</span>')
-        self.assertRegex(html, r'class="cv722-summary-value"[^>]*>Review before release</strong>')
-        self.assertRegex(html, r'class="cv722-summary-value"[^>]*>86%</strong>')
+        self.assertRegex(html, r'class="cv722-summary-label"[^>]*>Status</div>')
+        self.assertRegex(html, r'class="cv722-summary-value"[^>]*>Review before release</div>')
+        self.assertRegex(html, r'class="cv722-summary-value"[^>]*>86%</div>')
 
     def test_kpi_css_does_not_require_assistant_shell(self) -> None:
-        block = self.v2_css.split("Sprint 72.2.3", 1)[1]
+        block = self.v2_css.split("Sprint 72.2.4", 1)[1]
         for selector in (
             ".cv722-summary-strip",
             ".cv722-summary-label",
@@ -161,9 +162,9 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
 
     def test_expanded_assessment_classes_styled(self) -> None:
         _, html, _ = self._render_pc817()
-        self.assertIn("cv722-expanded-assessment", html)
-        self.assertIn("cv722-confidence-drivers-only", html)
-        css_block = self.v2_css.split(".cv722-expanded-assessment", 1)[1].split("}", 1)[0]
+        self.assertIn("cv724-impact-grid", html)
+        self.assertIn("cv724-driver-grid", html)
+        css_block = self.v2_css.split(".cv724-impact-grid", 1)[1].split("}", 1)[0]
         self.assertIn("display: grid", css_block)
 
     def test_deep_assessment_structural_classes_have_css(self) -> None:
@@ -183,11 +184,11 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertIn("border-top", block)
 
     def test_responsive_media_queries_cover_breakpoints(self) -> None:
-        section = self.v2_css.split("Sprint 72.2.3", 1)[1]
+        section = self.v2_css.split("Sprint 72.2.4", 1)[1]
         self.assertIn("@media (max-width: 1024px)", section)
         self.assertIn("@media (max-width: 768px)", section)
         self.assertIn("@media (max-width: 390px)", section)
-        tablet_block = section.split("@media (max-width: 768px)", 1)[1].split("}", 1)[0]
+        tablet_block = section.split("@media (max-width: 768px)", 1)[1].split("@media", 1)[0]
         self.assertIn(".cv722-summary-strip", tablet_block)
         self.assertIn("grid-template-columns: 1fr", tablet_block)
 
@@ -200,8 +201,10 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
 
     def test_no_direct_answer_duplication_in_expanded_assessment(self) -> None:
         _, html, _ = self._render_pc817()
-        direct = "Review PC817 first because it represents the most immediate lifecycle and sourcing exposure in this BOM."
-        self.assertEqual(html.count(direct), 1)
+        long_form = (
+            "Review PC817 first because it represents the most immediate lifecycle and sourcing exposure in this BOM."
+        )
+        self.assertEqual(html.count(long_form), 1)
 
     def test_timeline_remains_gated_for_generic_review(self) -> None:
         assistant, html, _ = self._render_pc817()
@@ -247,14 +250,14 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertFalse(expander_calls[0][1].get("expanded"))
 
     def test_obsolete_cv46_why_css_removed(self) -> None:
-        section_after_723 = self.v2_css.split("Sprint 72.2.3", 1)[1]
-        self.assertNotIn(".cv46-why", section_after_723)
+        section_after_724 = self.v2_css.split("Sprint 72.2.4", 1)[1]
+        self.assertNotIn(".cv46-why", section_after_724)
         self.assertNotIn("cv722-compact-decision", self.v2_css)
         self.assertNotIn("cv722-compact-label", self.v2_css)
 
-    def test_quick_actions_wrapper_present(self) -> None:
-        self.assertIn('class="cv722-quick-actions"', self.assistant_source)
-        self.assertIn(".cv722-quick-actions", self.v2_css)
+    def test_workflow_actions_wrapper_present(self) -> None:
+        self.assertIn('class="cv724-workflow-actions"', self.assistant_source)
+        self.assertIn(".cv724-workflow-actions", self.v2_css)
 
 
 if __name__ == "__main__":
