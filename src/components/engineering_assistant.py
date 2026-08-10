@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
 from typing import Any, Iterable
@@ -25,6 +26,11 @@ from src.services.copilot_conversation import (
     get_thread,
 )
 
+_ASK_CADIVOR_V2_CSS_PATH = Path(__file__).resolve().parents[1] / "assets" / "css" / "ask_cadivor_v2.css"
+_ASK_CADIVOR_V2_STYLE_ID = "cadivor-ask-cadivor-v2-css"
+_ASK_CADIVOR_V2_WORKSPACE_STYLE_ID = "cadivor-ask-cadivor-v2-workspace-css"
+
+
 def _normalize_presentation_html(markup: str) -> str:
     """Normalize trusted Cadivor HTML so Streamlit Markdown cannot treat it as a code block."""
     normalized = dedent(str(markup or "")).strip()
@@ -41,6 +47,33 @@ def _render_presentation_html(markup: str) -> None:
     if not normalized:
         return
     st.markdown(normalized, unsafe_allow_html=True)
+
+
+@lru_cache(maxsize=1)
+def _ask_cadivor_v2_css_text() -> str:
+    try:
+        return _ASK_CADIVOR_V2_CSS_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _presentation_css_block(*, style_id: str = _ASK_CADIVOR_V2_WORKSPACE_STYLE_ID) -> str:
+    """Co-locate trusted presentation CSS with workspace markup for reliable binding."""
+    css = _ask_cadivor_v2_css_text()
+    if not css:
+        return ""
+    return f'<style id="{html.escape(style_id)}">{css}</style>'
+
+
+def _inject_presentation_stylesheet(*, css: str, style_id: str) -> None:
+    """Inject trusted Ask Cadivor CSS into the main Streamlit document."""
+    if not css.strip():
+        return
+    markup = f'<style id="{html.escape(style_id)}">{css}</style>'
+    if hasattr(st, "html"):
+        st.html(markup)
+        return
+    st.markdown(markup, unsafe_allow_html=True)
 
 
 SUGGESTIONS = [
@@ -269,36 +302,11 @@ def _inject_ask_cadivor_v2_styles(*, force: bool = False) -> bool:
     if not force and st.session_state.get(run_key) == run_id:
         return False
 
-    css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "ask_cadivor_v2.css"
-    try:
-        css = css_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    if not css.strip():
+    css = _ask_cadivor_v2_css_text()
+    if not css:
         return False
 
-    st.markdown(
-        f"<style id='cadivor-ask-cadivor-v2-css'>{css}</style>",
-        unsafe_allow_html=True,
-    )
-    css_json = json.dumps(css)
-    components.html(
-        f"""
-        <script>
-        (function () {{
-          const doc = window.parent.document;
-          let node = doc.getElementById("cadivor-ask-cadivor-v2-css");
-          if (!node) {{
-            node = doc.createElement("style");
-            node.id = "cadivor-ask-cadivor-v2-css";
-            doc.head.appendChild(node);
-          }}
-          node.textContent = {css_json};
-        }})();
-        </script>
-        """,
-        height=0,
-    )
+    _inject_presentation_stylesheet(css=css, style_id=_ASK_CADIVOR_V2_STYLE_ID)
     st.session_state[run_key] = run_id
     return True
 
@@ -567,6 +575,29 @@ def _html_evidence_metric(label: str, value: str, *, icon: str = "") -> str:
         f'<div class="cv46-evidence-metric-label">{icon_html}{html.escape(label)}</div>'
         f'<div class="cv46-evidence-metric-value">{html.escape(value)}</div>'
         f"</div>"
+    )
+
+
+def _evidence_card_status(detail: str) -> str:
+    lowered = str(detail or "").lower()
+    if any(token in lowered for token in ("qualify immediately", "high", "obsolete", "replacement", "single-source")):
+        return "Priority"
+    return "Review"
+
+
+def _build_single_evidence_card_html(title: str, detail: str) -> str:
+    status = _evidence_card_status(detail)
+    return (
+        f'<article class="cv46-evidence-card">'
+        f'<header class="cv46-evidence-card-header">'
+        f'<span class="cv46-evidence-component">{html.escape(title)}</span>'
+        f'<span class="cv46-evidence-status">{html.escape(status)}</span>'
+        f"</header>"
+        f'<div class="cv46-evidence-body">'
+        f'<div class="cv46-evidence-label">Evidence</div>'
+        f'<p class="cv46-evidence-statement cv-assistant-preline">{html.escape(detail)}</p>'
+        f"</div>"
+        f"</article>"
     )
 
 
@@ -851,18 +882,7 @@ def _render_evidence_cards(evidence: str) -> None:
             unsafe_allow_html=True,
         )
         return
-    cards: list[str] = []
-    for title, detail in items[:8]:
-        metrics = _split_evidence_detail(detail)
-        metric_blocks = []
-        for label, value in metrics[:4]:
-            icon, display_label = _metric_display(label)
-            metric_blocks.append(_html_evidence_metric(display_label, value, icon=icon))
-        status = "Priority" if any(token in detail.lower() for token in ("qualify immediately", "high", "obsolete", "replacement", "single-source")) else "Review"
-        cards.append(
-            f'<article class="cv46-evidence-card"><header><strong>{html.escape(title)}</strong><em>{status}</em></header>'
-            f'<div class="cv46-evidence-metrics">{"".join(metric_blocks)}</div></article>'
-        )
+    cards = [_build_single_evidence_card_html(title, detail) for title, detail in items[:8]]
     st.markdown(f'<div class="cv46-evidence-board">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
@@ -871,18 +891,7 @@ def _build_evidence_cards_html(evidence: str) -> str:
     if not items:
         message = _plain_markdown(evidence) or "No structured evidence was returned. Verify that component records are saved and re-run the review."
         return f'<div class="cv46-empty-evidence cv-assistant-preline">{html.escape(message)}</div>'
-    cards: list[str] = []
-    for title, detail in items[:8]:
-        metrics = _split_evidence_detail(detail)
-        metric_blocks = []
-        for label, value in metrics[:4]:
-            icon, display_label = _metric_display(label)
-            metric_blocks.append(_html_evidence_metric(display_label, value, icon=icon))
-        status = "Priority" if any(token in detail.lower() for token in ("qualify immediately", "high", "obsolete", "replacement", "single-source")) else "Review"
-        cards.append(
-            f'<article class="cv46-evidence-card"><header><strong>{html.escape(title)}</strong><em>{status}</em></header>'
-            f'<div class="cv46-evidence-metrics">{"".join(metric_blocks)}</div></article>'
-        )
+    cards = [_build_single_evidence_card_html(title, detail) for title, detail in items[:8]]
     return f'<div class="cv46-evidence-board">{"".join(cards)}</div>'
 
 
@@ -929,13 +938,14 @@ def _build_concise_answer_html(
         _html_list_row(index, action, variant="action")
         for index, action in enumerate(action_items[:_CONCISE_ACTION_LIMIT], start=1)
     )
+    answer_body_html = _direct_answer_body_html(headline, answer_text)
     return f"""
             <section class="cv49-answer-card cv722-concise-answer">
               <div class="cv49-answer-kicker">Cadivor Answer</div>
               <div class="cv722-direct-answer">
                 <div class="cv722-section-label">Direct answer</div>
                 <div class="cv722-direct-answer-title">{html.escape(headline)}</div>
-                <p class="cv722-direct-answer-text cv-assistant-preline">{html.escape(answer_text)}</p>
+                {answer_body_html}
               </div>
               <div class="cv722-concise-block">
                 <div class="cv722-section-label">Key engineering reasons</div>
@@ -1051,20 +1061,22 @@ def _build_engineering_assessment_html(
 
 def _build_decision_workspace_html(
     *,
-    detailed: bool,
     primary_html: str,
     summary_html: str,
     assessment_html: str,
 ) -> str:
-    details_open = " open" if detailed else ""
+    # Assessment content stays in one canonical builder. The native <details> element
+    # remains open by default so desktop browsers expose the right-hand column without
+    # requiring interaction. Narrow layouts still expose the summary for collapse.
     return f"""
+        {_presentation_css_block()}
         <div class="cv725-decision-workspace">
           <div class="cv725-decision-primary">
             {primary_html}
             {summary_html}
           </div>
           <aside class="cv725-decision-assessment">
-            <details class="cv725-assessment-details"{details_open}>
+            <details class="cv725-assessment-details" open>
               <summary class="cv725-assessment-summary">{html.escape(_FULL_ASSESSMENT_EXPANDER_LABEL)}</summary>
               <div class="cv725-assessment-body">
                 <div class="cv725-assessment-heading">Engineering Assessment</div>
@@ -1135,7 +1147,6 @@ def _render_decision_workspace(
     )
     _render_presentation_html(
         _build_decision_workspace_html(
-            detailed=detailed,
             primary_html=primary_html,
             summary_html=summary_html,
             assessment_html=assessment_html,
@@ -1438,6 +1449,38 @@ def _first_sentence(text: str) -> str:
         return "Cadivor completed the engineering review."
     match = re.search(r"^(.+?[.!?])(?:\s|$)", plain)
     return (match.group(1) if match else plain).strip()
+
+
+def _supplementary_direct_answer_text(headline: str, answer_text: str) -> str:
+    headline_clean = str(headline or "").strip()
+    answer_clean = str(answer_text or "").strip()
+    if not answer_clean:
+        return ""
+    fallback = "The saved evidence is not sufficient for a reliable conclusion."
+    if answer_clean == fallback:
+        return answer_clean
+    if not headline_clean:
+        return answer_clean
+
+    def _norm(value: str) -> str:
+        return re.sub(r"\s+", " ", value.strip().rstrip(".!?")).lower()
+
+    if _norm(answer_clean) == _norm(headline_clean):
+        return ""
+    headline_stem = headline_clean.rstrip(".!?")
+    if answer_clean.lower().startswith(headline_stem.lower()):
+        remainder = answer_clean[len(headline_stem):].lstrip(" .")
+        if remainder.startswith((".", "!", "?")):
+            remainder = remainder[1:].lstrip()
+        return remainder
+    return answer_clean
+
+
+def _direct_answer_body_html(headline: str, answer_text: str) -> str:
+    supplementary = _supplementary_direct_answer_text(headline, answer_text)
+    if not supplementary:
+        return ""
+    return f'<p class="cv722-direct-answer-text cv-assistant-preline">{html.escape(supplementary)}</p>'
 
 
 def _conversational_headline(intent: str, assessment: str, priority_part: str) -> str:
@@ -1802,7 +1845,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
               <div class="cv722-direct-answer">
                 <div class="cv722-section-label">Direct answer</div>
                 <div class="cv722-direct-answer-title">{html.escape(headline)}</div>
-                <p class="cv722-direct-answer-text cv-assistant-preline">{html.escape(answer_text)}</p>
+                {_direct_answer_body_html(headline, answer_text)}
               </div>
               <div class="cv722-concise-block">
                 <div class="cv722-section-label">Key engineering reasons</div>

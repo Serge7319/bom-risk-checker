@@ -37,7 +37,6 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
 
     def test_indented_workspace_html_normalizes_to_column_zero(self) -> None:
         raw = self.assistant._build_decision_workspace_html(
-            detailed=False,
             primary_html=self.assistant._build_concise_answer_html(
                 headline="Review PC817 first.",
                 answer_text="Review PC817 first.",
@@ -53,10 +52,11 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
             ),
             assessment_html='<div class="cv724-impact-grid"></div>',
         )
-        self.assertTrue(raw.lstrip().startswith("<div") or raw.strip().startswith("<div"))
-        self.assertRegex(raw, r"^\s{4,}<div class=\"cv725-decision-workspace\">")
+        self.assertRegex(raw, r"^\s{4,}<style id=\"cadivor-ask-cadivor-v2-workspace-css\">")
         normalized = self.assistant._normalize_presentation_html(raw)
-        self.assertTrue(normalized.startswith("<div class=\"cv725-decision-workspace\">"))
+        self.assertTrue(normalized.startswith("<style"))
+        self.assertIn('<div class="cv725-decision-workspace">', normalized)
+        self.assertIn('class="cv725-assessment-details" open', normalized)
         self.assertNotRegex(normalized, r"^\s")
 
     def test_render_presentation_html_uses_unsafe_allow_html(self) -> None:

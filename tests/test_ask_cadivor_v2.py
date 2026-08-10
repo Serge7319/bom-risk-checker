@@ -52,7 +52,9 @@ def _install_streamlit_stub(session_state: dict | None = None, *, script_run_id:
     st = types.ModuleType("streamlit")
     st.session_state = session_state if session_state is not None else {}
     markdown_calls = []
+    html_calls: list[str] = []
     st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
+    st.html = lambda content, **kwargs: html_calls.append(str(content))
     st.form = lambda *args, **kwargs: _NullContext()
     st.text_area = lambda label, key, **kwargs: st.session_state.get(key, "")
     st.form_submit_button = MagicMock(return_value=False)
@@ -93,7 +95,7 @@ def _install_streamlit_stub(session_state: dict | None = None, *, script_run_id:
     sys.modules["streamlit.runtime.scriptrunner"] = scriptrunner
     sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
     sys.modules["streamlit.components.v1"] = components
-    return st, markdown_calls, _ctx
+    return st, markdown_calls, html_calls, _ctx
 
 
 class _NullContext:
@@ -177,7 +179,7 @@ class AskCadivorV2Tests(unittest.TestCase):
         self.assertNotRegex(self.v2_css, r":root\s*\{")
 
     def test_css_injected_once_per_script_run(self) -> None:
-        st, markdown_calls, _ctx = _install_streamlit_stub({})
+        st, markdown_calls, html_calls, _ctx = _install_streamlit_stub({})
         assistant = self._load_assistant()
         components = sys.modules["streamlit.components.v1"]
 
@@ -186,13 +188,9 @@ class AskCadivorV2Tests(unittest.TestCase):
 
         self.assertTrue(first)
         self.assertFalse(second)
-        style_calls = [
-            content for content, _kwargs in markdown_calls if isinstance(content, str) and "<style" in content
-        ]
-        self.assertEqual(len(style_calls), 1)
-        self.assertIn("cadivor-ask-cadivor-v2-css", style_calls[0])
-        components.html.assert_called_once()
-        self.assertIn("cadivor-ask-cadivor-v2-css", str(components.html.call_args))
+        self.assertEqual(len(html_calls), 1)
+        self.assertIn("cadivor-ask-cadivor-v2-css", html_calls[0])
+        components.html.assert_not_called()
         self.assertEqual(st.session_state.get("_cadivor_ask_cadivor_v2_run_id"), "run-a")
 
     def test_css_reinjects_on_new_script_run(self) -> None:

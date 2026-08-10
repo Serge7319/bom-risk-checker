@@ -53,6 +53,7 @@ def _install_streamlit_stub(session_state: dict | None = None):
 
     st.expander = _expander
     st.container = lambda **kwargs: _NullContext()
+    st.html = lambda content, **kwargs: markdown_calls.append((content, {}))
     st.columns = MagicMock(
         side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
     )
@@ -122,7 +123,7 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         self.assertNotIn("Supporting engineering assessment", html)
         self.assertEqual(len(expander_calls), 0)
         self.assertIn("cv725-assessment-details", html)
-        self.assertNotIn('cv725-assessment-details" open', html)
+        self.assertIn('class="cv725-assessment-details" open', html)
 
     def test_direct_answer_visible_outside_expander(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
@@ -143,28 +144,29 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         )
         self.assertEqual(len(actions), 3)
 
-    def test_full_assessment_expander_collapsed_for_normal_questions(self) -> None:
+    def test_full_assessment_visible_for_normal_questions(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertIn("View full engineering assessment", html)
-        self.assertIn('class="cv725-assessment-details"', html)
-        self.assertNotIn('class="cv725-assessment-details" open', html)
+        self.assertIn('class="cv725-assessment-details" open', html)
+        self.assertIn("cv724-impact-grid", html)
 
-    def test_detailed_question_expands_full_assessment(self) -> None:
+    def test_detailed_question_keeps_assessment_open(self) -> None:
         _, html, _ = self._render(question="Give me a comprehensive analysis of this BOM.")
         self.assertIn('class="cv725-assessment-details" open', html)
 
     def test_direct_answer_not_duplicated_in_detailed_assessment(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertNotIn("cv39-decision-grid", html)
-        assessment_repeat = html.count("Review U0 first because lifecycle exposure is highest.")
+        markup = html.split("</style>")[-1]
+        self.assertNotIn("cv39-decision-grid", markup)
+        assessment_repeat = markup.count("Review U0 first because lifecycle exposure is highest.")
         self.assertEqual(assessment_repeat, 1)
 
     def test_evidence_not_rendered_three_times(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertNotIn("Why Cadivor recommends this", html)
-        self.assertIn("Key engineering reasons", html)
-        self.assertIn("Evidence breakdown", html)
-        self.assertNotIn("cv35-confidence-top-value", html)
+        markup = html.split("</style>")[-1]
+        self.assertNotIn("Why Cadivor recommends this", markup)
+        self.assertIn("Key engineering reasons", markup)
+        self.assertIn("Evidence breakdown", markup)
+        self.assertNotIn('class="cv35-confidence-top-value"', markup)
 
     def test_confidence_not_duplicated_in_full_assessment(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")

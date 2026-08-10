@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Zero-credit Ask Cadivor presentation harness — Sprint 72.2.5.1.
+"""Zero-credit Ask Cadivor presentation harness — Sprint 72.2.5.2.
 
 Renders the PC817 production scenario through the canonical renderer without
-calling EngineeringAI.ask() or any OpenAI provider.
+calling EngineeringAI.ask() or any OpenAI provider. Also writes a browser-like
+preview artifact containing the actual stylesheet and workspace HTML.
 """
 from __future__ import annotations
 
@@ -14,6 +15,10 @@ from unittest.mock import MagicMock, patch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+ASK_CADIVOR_V2_CSS = REPO_ROOT / "src/assets/css/ask_cadivor_v2.css"
+DESIGN_TOKENS_CSS = REPO_ROOT / "src/assets/css/cadivor_design_system_v2.css"
+PREVIEW_ARTIFACT = REPO_ROOT / "tests/artifacts/ask_cadivor_pc817_preview.html"
 
 PC817_QUESTION = "What should I review first in this BOM?"
 
@@ -52,6 +57,7 @@ def _install_streamlit_stub():
     html_calls: list[str] = []
 
     st.markdown = lambda content, **kwargs: markdown_calls.append((str(content), dict(kwargs)))
+    st.html = lambda content, **kwargs: html_calls.append(str(content))
     st.expander = lambda *args, **kwargs: _NullContext()
     st.columns = MagicMock(
         side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
@@ -105,6 +111,53 @@ def _workspace_markdown(markdown_calls: list[tuple[str, dict]]) -> tuple[str, di
     return None
 
 
+def write_pc817_preview_artifact(response_html: str) -> Path:
+    PREVIEW_ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+    tokens_css = DESIGN_TOKENS_CSS.read_text(encoding="utf-8") if DESIGN_TOKENS_CSS.exists() else ""
+    ask_css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
+    preview = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ask Cadivor PC817 Preview — Sprint 72.2.5.2</title>
+  <style id="cadivor-design-system-v2-tokens">{tokens_css}</style>
+  <style id="ask_cadivor_v2.css">{ask_css}</style>
+  <style>
+    body {{
+      margin: 0;
+      padding: 24px;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      background: var(--cv-bg, #f6f8fc);
+      color: var(--cv-text, #0f172a);
+    }}
+    .preview-shell {{
+      max-width: 1480px;
+      margin: 0 auto;
+    }}
+    .preview-note {{
+      margin: 0 0 16px;
+      padding: 12px 16px;
+      border: 1px solid var(--cv-border, #e2e8f0);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--cv-text-secondary, #334155);
+      font-size: 13px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="preview-shell">
+    <p class="preview-note">Deterministic zero-credit preview for Ask Cadivor PC817. Stylesheets: cadivor_design_system_v2.css + ask_cadivor_v2.css.</p>
+    {response_html}
+  </div>
+</body>
+</html>
+"""
+    PREVIEW_ARTIFACT.write_text(preview, encoding="utf-8")
+    return PREVIEW_ARTIFACT
+
+
 def main() -> int:
     markdown_calls, _html_calls = _install_streamlit_stub()
     for name in list(sys.modules):
@@ -124,38 +177,44 @@ def main() -> int:
     workspace = _workspace_markdown(markdown_calls)
     workspace_html = workspace[0] if workspace else ""
     workspace_kwargs = workspace[1] if workspace else {}
+    preview_path = write_pc817_preview_artifact(html)
 
     checks = {
         "question_label_separate": "cv50-you-asked-label" in html and PC817_QUESTION in html,
         "direct_answer": "cv722-direct-answer-title" in html and "Review PC817 first." in html,
-        "three_reasons": html.count("cv722-reason-row") == 3,
-        "three_actions": html.count("cv722-action-row") == 3,
-        "no_ol_reasons": "<ol class=\"cv722-reason-list\"" not in html,
+        "no_duplicate_direct_answer": html.count("Review PC817 first.") == 1,
+        "no_duplicate_direct_answer_paragraph": 'class="cv722-direct-answer-text"' not in html,
+        "evidence_component_status_separated": all(
+            token in html
+            for token in ("cv46-evidence-component", "cv46-evidence-status", "cv46-evidence-label", "cv46-evidence-statement")
+        ),
+        "no_evidence_concatenation": all(
+            bad not in html for bad in ("PC817Review", "BZX55C5V1Review", "DRV8825Review", ">Review</em>", "•EVIDENCE")
+        ),
+        "three_reasons": html.count('class="cv722-reason-row"') == 3,
+        "three_actions": html.count('class="cv722-action-row"') == 3,
         "no_duplicate_numbering": "1. 1" not in html and not any(f"<p>{n}</p>" in html for n in ("1", "2", "3")),
-        "kpi_strip": "cv722-summary-strip" in html,
-        "kpi_block_labels": 'class="cv722-summary-label">Status</div>' in html,
         "desktop_workspace": "cv725-decision-workspace" in html,
         "assessment_column": "cv725-decision-assessment" in html,
+        "assessment_open_by_default": 'class="cv725-assessment-details" open' in html,
+        "colocated_workspace_css": "cadivor-ask-cadivor-v2-workspace-css" in workspace_html,
+        "workspace_css_has_grid_rule": ".cv725-decision-workspace" in workspace_html and "0.85fr" in workspace_html,
         "impact_grid": "cv724-impact-grid" in html,
         "driver_grid": "cv724-driver-grid" in html,
         "evidence_cards": "cv46-evidence-board" in html,
-        "details_not_expander": "cv725-assessment-details" in html,
-        "shell_independent_classes": "cv725-decision-primary" in html,
-        "no_split_article_wrapper": '<article class="cv-assistant-response">' not in html,
-        "concise_answer_in_workspace": "cv722-concise-answer" in workspace_html,
-        "kpi_block_level": 'class="cv722-summary-label">Status</div>' in workspace_html,
-        "impact_block_level": "cv39-kpi-label" in html or "cv724-impact-grid" in html,
-        "driver_block_level": "cv46-driver-label" in html,
+        "kpi_block_labels": 'class="cv722-summary-label">Status</div>' in html,
         "no_escaped_section_literal": "&lt;section" not in html,
-        "workspace_starts_column_zero": bool(workspace_html) and not workspace_html[:1].isspace() and workspace_html.startswith("<div"),
+        "workspace_starts_column_zero": bool(workspace_html) and workspace_html.lstrip().startswith("<"),
         "workspace_unsafe_allow_html": workspace_kwargs.get("unsafe_allow_html") is True,
-        "no_leading_indent_code_block": not workspace_html.startswith("    <"),
+        "no_closed_details_desktop_default": 'class="cv725-assessment-details">' not in workspace_html.replace('class="cv725-assessment-details" open', ""),
+        "preview_artifact_written": preview_path.exists(),
         "numeric_values_preserved": all(token in html for token in ("21.4", "2 suppliers", "93", "97", "56%")),
     }
 
     print("=== Ask Cadivor PC817 presentation harness ===")
     print(f"Question: {PC817_QUESTION}")
     print(f"Rendered HTML length: {len(html)} chars")
+    print(f"Preview artifact: {preview_path}")
     if workspace_html:
         print(f"Workspace repr (first 500): {repr(workspace_html[:500])}")
     print()

@@ -171,7 +171,9 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         for selector in (
             ".cv39-impact-label",
             ".cv46-driver-label",
-            ".cv46-evidence-metric-label",
+            ".cv46-evidence-label",
+            ".cv46-evidence-component",
+            ".cv46-evidence-status",
             ".cv47-ranking-title",
             ".cv39-progress-label",
         ):
@@ -199,13 +201,19 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertNotRegex(html, r"Priority componentPC817")
         self.assertNotRegex(html, r"Confidence86%")
         self.assertNotRegex(html, r">Status[^<]*Review required</strong>")
+        for bad in ("PC817Review", "BZX55C5V1Review", "DRV8825Review"):
+            self.assertNotIn(bad, html)
 
     def test_no_direct_answer_duplication_in_expanded_assessment(self) -> None:
         _, html, _ = self._render_pc817()
         long_form = (
             "Review PC817 first because it represents the most immediate lifecycle and sourcing exposure in this BOM."
         )
-        self.assertEqual(html.count(long_form), 1)
+        self.assertEqual(html.count("Review PC817 first."), 1)
+        markup = html.split("</style>")[-1]
+        self.assertEqual(markup.count("cv722-direct-answer-text"), 1)
+        self.assertIn("because it represents the most immediate lifecycle and sourcing exposure in this BOM.", html)
+        self.assertLessEqual(html.count(long_form), 1)
 
     def test_timeline_remains_gated_for_generic_review(self) -> None:
         assistant, html, _ = self._render_pc817()

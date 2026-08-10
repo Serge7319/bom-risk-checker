@@ -24,6 +24,7 @@ def _install_streamlit_stub():
     expander_calls: list[tuple[tuple, dict]] = []
 
     st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
+    st.html = lambda content, **kwargs: html_calls.append(str(content))
     st.expander = lambda *args, **kwargs: (expander_calls.append((args, kwargs)) or _NullContext())
     st.columns = MagicMock(
         side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
@@ -132,8 +133,8 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
         self.assertIn('class="cv46-driver-label">Verified</div>', cell)
         self.assertNotRegex(cell, r"VerifiedLifecycle")
 
-    def test_css_injected_into_parent_document(self) -> None:
-        st_stub, _, html_calls, _ = _install_streamlit_stub()
+    def test_css_injected_via_st_html(self) -> None:
+        _st_stub, _markdown_calls, html_calls, _ = _install_streamlit_stub()
         assistant = self._load_assistant()
         assistant._inject_ask_cadivor_v2_styles(force=True)
         self.assertTrue(any("cadivor-ask-cadivor-v2-css" in call for call in html_calls))
@@ -147,16 +148,16 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
         self.assertIn("cv723-followups-panel", self.assistant_source)
         self.assertIn('key="cv725_followups"', self.assistant_source)
 
-    def test_normal_question_collapsed_expander(self) -> None:
+    def test_normal_question_assessment_open_by_default(self) -> None:
         _, html, _, expander_calls = self._render()
         self.assertEqual(len(expander_calls), 0)
         self.assertIn("cv725-assessment-details", html)
-        self.assertNotIn('cv725-assessment-details" open', html)
+        self.assertIn('class="cv725-assessment-details" open', html)
 
-    def test_detailed_question_expands_assessment(self) -> None:
+    def test_detailed_question_keeps_assessment_open(self) -> None:
         _, html, _, expander_calls = self._render(question="Give me a comprehensive analysis of this BOM.")
         self.assertEqual(len(expander_calls), 0)
-        self.assertIn('cv725-assessment-details" open', html)
+        self.assertIn('class="cv725-assessment-details" open', html)
 
     def test_desktop_decision_workspace_present(self) -> None:
         html = self.harness_html
@@ -168,9 +169,10 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
     def test_no_duplicate_direct_answer_in_assessment(self) -> None:
         html = self.harness_html
         self.assertIn("cv724-impact-grid", html)
-        assessment = html.split("cv725-decision-assessment", 1)[1]
-        self.assertNotIn("cv722-direct-answer-text", assessment)
-        self.assertLessEqual(html.count("Review PC817 first."), 2)
+        markup = html.split("</style>")[-1]
+        assessment = markup.split("cv725-decision-assessment", 1)[1]
+        self.assertNotIn('class="cv722-direct-answer-text"', assessment)
+        self.assertEqual(markup.count("Review PC817 first."), 1)
 
     def test_no_sprint_7143_helpers(self) -> None:
         for helper in ("_format_engineering_prose", "_inline_engineering_format", "_render_structured_answer_sections"):
