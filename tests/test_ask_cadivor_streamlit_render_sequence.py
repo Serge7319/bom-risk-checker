@@ -119,9 +119,10 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
                     answer=PC817_ANSWER,
                     context=PC817_CONTEXT,
                 )
-        visible = [content for content, _kwargs, _side in markdown_calls]
-        self.assertTrue(html_calls)
-        self.assertTrue(any("cadivor-ask-cadivor-v2-css" in call for call in html_calls))
+        visible = [content for content, _kwargs, _side in markdown_calls if "cadivor-ask-cadivor-v2-css" not in content]
+        stylesheet = [content for content, _kwargs, _side in markdown_calls if "cadivor-ask-cadivor-v2-css" in content]
+        self.assertEqual(len(stylesheet), 1)
+        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
         self.assertTrue(any(call[0] == [0.85, 1.15] for call in st.columns_calls))
         self.assertTrue(all("<style" not in item.lower() for item in visible))
 

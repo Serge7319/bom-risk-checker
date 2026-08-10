@@ -143,8 +143,9 @@ class AskCadivorNativeWorkspaceTests(unittest.TestCase):
             self.assertNotIn(bad, html)
 
     def test_visible_content_has_no_style_tag(self) -> None:
-        _st, html, _left, _right, _html_calls = self._render_pc817()
-        self.assertNotIn("<style", html.lower())
+        _st, _html, left, right, _html_calls = self._render_pc817()
+        visible = left + right
+        self.assertNotIn("<style", visible.lower())
 
     def test_fake_assistant_shell_wrapper_removed(self) -> None:
         self.assertNotIn("cv-assistant-shell'>", self.assistant_source.replace(" ", ""))

@@ -66,14 +66,17 @@ def _presentation_css_block(*, style_id: str = _ASK_CADIVOR_V2_WORKSPACE_STYLE_I
 
 
 def _inject_presentation_stylesheet(*, css: str, style_id: str) -> None:
-    """Inject trusted Ask Cadivor CSS into the main Streamlit document."""
+    """Inject trusted Ask Cadivor CSS into the main Streamlit document.
+
+    Streamlit 1.60 st.html sanitizes body HTML with DOMPurify and strips bare
+    <style> nodes, leaving an empty [data-testid="stHtml"] shell that cannot
+    style sibling st.markdown blocks. Use the same st.markdown path as DS v2.
+    """
     if not css.strip():
         return
     markup = f'<style id="{html.escape(style_id)}">{css}</style>'
-    if hasattr(st, "html"):
-        st.html(markup)
-        return
     st.markdown(markup, unsafe_allow_html=True)
+    _log_ask_render("stylesheet_injected", style_id=style_id, via="st.markdown")
 
 
 SUGGESTIONS = [
@@ -1279,6 +1282,7 @@ def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_i
     _log_ask_cadivor("question_queued", kind=submission_kind, question_len=len(clean))
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
     _clear_review_state()
+    _log_ask_cadivor("rerun_requested", kind=submission_kind, source="queue_copilot_submission")
     st.rerun()
 
 
@@ -1294,7 +1298,7 @@ def _analysis_id_from_context(context: dict[str, Any]) -> str:
 def _select_initial_suggestion(question: str, *, index: int, prompt_key: str, analysis_id: str = "") -> None:
     """Queue a suggested prompt through the protected copilot submission pipeline."""
     _log_ask_cadivor(
-        "suggestion_selected",
+        "suggestion_clicked",
         kind="cv35",
         index=index,
         analysis_id=analysis_id or "active",
@@ -1988,12 +1992,22 @@ def render_engineering_assistant(
         st.session_state[prompt_key] = queued_question
         auto_execute_followup = True
         st.session_state["cv7142_ask_inflight"] = True
+        _log_ask_cadivor(
+            "queued_question_detected",
+            kind="manual_or_suggestion",
+            question_len=len(queued_question),
+        )
     elif pending_followup:
         # Apply queued follow-ups before the text-area widget is instantiated.
         queued_question = str(pending_followup)
         st.session_state[prompt_key] = queued_question
         auto_execute_followup = True
         st.session_state["cv7142_ask_inflight"] = True
+        _log_ask_cadivor(
+            "queued_question_detected",
+            kind="followup",
+            question_len=len(queued_question),
+        )
     elif prompt_key not in st.session_state:
         st.session_state[prompt_key] = ""
 

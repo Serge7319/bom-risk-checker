@@ -190,8 +190,11 @@ class AskCadivorV2Tests(unittest.TestCase):
 
         self.assertTrue(first)
         self.assertFalse(second)
-        self.assertEqual(len(html_calls), 1)
-        self.assertIn("cadivor-ask-cadivor-v2-css", html_calls[0])
+        stylesheet_calls = [
+            content for content, _kwargs in markdown_calls if "cadivor-ask-cadivor-v2-css" in content
+        ]
+        self.assertEqual(len(stylesheet_calls), 1)
+        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
         components.html.assert_not_called()
         self.assertEqual(st.session_state.get("_cadivor_ask_cadivor_v2_run_id"), "run-a")
 

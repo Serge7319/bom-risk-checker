@@ -124,18 +124,23 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         column_html = "\n".join(
             content for content, _kwargs, side in markdown_calls if side in ("left", "right")
         )
-        self.assertTrue(any("cadivor-ask-cadivor-v2-css" in call for call in html_calls))
+        self.assertTrue(
+            any("cadivor-ask-cadivor-v2-css" in content for content, _kwargs, _side in markdown_calls)
+        )
         self.assertNotIn("<style", column_html.lower())
         self.assertIn(".cv727-assessment-panel", self.v2_css)
         self.assertNotIn(".cv725-decision-workspace", self.v2_css.split("Sprint 72.2.7", 1)[1])
 
-    def test_css_injection_uses_st_html(self) -> None:
+    def test_css_injection_uses_st_markdown(self) -> None:
         _install_streamlit_stub()
         assistant = _load_assistant()
-        _, _markdown_calls, html_calls = _install_streamlit_stub()
+        _, markdown_calls, html_calls = _install_streamlit_stub()
         assistant = _load_assistant()
         assistant._inject_ask_cadivor_v2_styles(force=True)
-        self.assertTrue(any("cadivor-ask-cadivor-v2-css" in call for call in html_calls))
+        self.assertTrue(
+            any("cadivor-ask-cadivor-v2-css" in content for content, _kwargs, _side in markdown_calls)
+        )
+        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
 
     def test_css_injection_does_not_use_parent_document_mutation(self) -> None:
         inject_block = self.assistant_source.split("def _inject_ask_cadivor_v2_styles", 1)[1].split("def _render_context_header", 1)[0]
