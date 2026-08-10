@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zero-credit Ask Cadivor presentation harness — Sprint 72.2.5.
+"""Zero-credit Ask Cadivor presentation harness — Sprint 72.2.5.1.
 
 Renders the PC817 production scenario through the canonical renderer without
 calling EngineeringAI.ask() or any OpenAI provider.
@@ -48,10 +48,10 @@ PC817_CONTEXT = {
 def _install_streamlit_stub():
     st = types.ModuleType("streamlit")
     st.session_state = {}
-    markdown_calls: list[str] = []
+    markdown_calls: list[tuple[str, dict]] = []
     html_calls: list[str] = []
 
-    st.markdown = lambda content, **kwargs: markdown_calls.append(str(content))
+    st.markdown = lambda content, **kwargs: markdown_calls.append((str(content), dict(kwargs)))
     st.expander = lambda *args, **kwargs: _NullContext()
     st.columns = MagicMock(
         side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
@@ -95,11 +95,36 @@ def render_pc817_harness() -> str:
                 answer=PC817_ANSWER,
                 context=PC817_CONTEXT,
             )
-    return "\n".join(markdown_calls)
+    return "\n".join(content for content, _kwargs in markdown_calls)
+
+
+def _workspace_markdown(markdown_calls: list[tuple[str, dict]]) -> tuple[str, dict] | None:
+    for content, kwargs in markdown_calls:
+        if "cv725-decision-workspace" in content:
+            return content, kwargs
+    return None
 
 
 def main() -> int:
-    html = render_pc817_harness()
+    markdown_calls, _html_calls = _install_streamlit_stub()
+    for name in list(sys.modules):
+        if name.startswith("src.components.engineering_assistant"):
+            sys.modules.pop(name, None)
+    import src.components.engineering_assistant as assistant
+
+    with patch.object(assistant, "_render_response_scroll_anchor"):
+        with patch.object(assistant, "_render_quick_actions"):
+            assistant._render_response(
+                question=PC817_QUESTION,
+                answer=PC817_ANSWER,
+                context=PC817_CONTEXT,
+            )
+
+    html = "\n".join(content for content, _kwargs in markdown_calls)
+    workspace = _workspace_markdown(markdown_calls)
+    workspace_html = workspace[0] if workspace else ""
+    workspace_kwargs = workspace[1] if workspace else {}
+
     checks = {
         "question_label_separate": "cv50-you-asked-label" in html and PC817_QUESTION in html,
         "direct_answer": "cv722-direct-answer-title" in html and "Review PC817 first." in html,
@@ -117,10 +142,22 @@ def main() -> int:
         "details_not_expander": "cv725-assessment-details" in html,
         "shell_independent_classes": "cv725-decision-primary" in html,
         "no_split_article_wrapper": '<article class="cv-assistant-response">' not in html,
+        "concise_answer_in_workspace": "cv722-concise-answer" in workspace_html,
+        "kpi_block_level": 'class="cv722-summary-label">Status</div>' in workspace_html,
+        "impact_block_level": "cv39-kpi-label" in html or "cv724-impact-grid" in html,
+        "driver_block_level": "cv46-driver-label" in html,
+        "no_escaped_section_literal": "&lt;section" not in html,
+        "workspace_starts_column_zero": bool(workspace_html) and not workspace_html[:1].isspace() and workspace_html.startswith("<div"),
+        "workspace_unsafe_allow_html": workspace_kwargs.get("unsafe_allow_html") is True,
+        "no_leading_indent_code_block": not workspace_html.startswith("    <"),
+        "numeric_values_preserved": all(token in html for token in ("21.4", "2 suppliers", "93", "97", "56%")),
     }
+
     print("=== Ask Cadivor PC817 presentation harness ===")
     print(f"Question: {PC817_QUESTION}")
     print(f"Rendered HTML length: {len(html)} chars")
+    if workspace_html:
+        print(f"Workspace repr (first 500): {repr(workspace_html[:500])}")
     print()
     failed = False
     for name, ok in checks.items():

@@ -5,6 +5,7 @@ import html
 import json
 import re
 from pathlib import Path
+from textwrap import dedent
 from typing import Any, Iterable
 
 import streamlit as st
@@ -23,6 +24,24 @@ from src.services.copilot_conversation import (
     follow_up_suggestions,
     get_thread,
 )
+
+def _normalize_presentation_html(markup: str) -> str:
+    """Normalize trusted Cadivor HTML so Streamlit Markdown cannot treat it as a code block."""
+    normalized = dedent(str(markup or "")).strip()
+    if not normalized:
+        return ""
+    normalized = re.sub(r"\n[ \t]+", " ", normalized)
+    normalized = re.sub(r">\s+<", "><", normalized)
+    return normalized
+
+
+def _render_presentation_html(markup: str) -> None:
+    """Render static trusted Cadivor HTML in the main Streamlit DOM."""
+    normalized = _normalize_presentation_html(markup)
+    if not normalized:
+        return
+    st.markdown(normalized, unsafe_allow_html=True)
+
 
 SUGGESTIONS = [
     "What should I review first in this BOM?",
@@ -290,7 +309,7 @@ def _render_context_header(context: dict[str, Any]) -> None:
     health = html.escape(str(summary.get("health_score") or "—"))
     parts = html.escape(str(summary.get("total_parts") or "—"))
     posture = html.escape(str(summary.get("release_posture") or "Engineering review"))
-    st.markdown(
+    _render_presentation_html(
         f"""
         <header class="cv-assistant-context-header">
           <div class="cv-assistant-context-main">
@@ -305,8 +324,7 @@ def _render_context_header(context: dict[str, Any]) -> None:
             <span class="cv-assistant-meta-item">{posture}</span>
           </div>
         </header>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -342,14 +360,13 @@ def _render_error(exc: EngineeringAIError) -> None:
         "validation": "Question required",
     }
     title = title_by_code.get(getattr(exc, "code", ""), "Unable to complete the review")
-    st.markdown(
+    _render_presentation_html(
         f"""
         <div class="cv35-message cv35-message-error">
           <div class="cv35-message-icon">!</div>
           <div><strong>{html.escape(title)}</strong><p>{html.escape(str(exc))}</p></div>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -1032,6 +1049,33 @@ def _build_engineering_assessment_html(
     return "".join(sections)
 
 
+def _build_decision_workspace_html(
+    *,
+    detailed: bool,
+    primary_html: str,
+    summary_html: str,
+    assessment_html: str,
+) -> str:
+    details_open = " open" if detailed else ""
+    return f"""
+        <div class="cv725-decision-workspace">
+          <div class="cv725-decision-primary">
+            {primary_html}
+            {summary_html}
+          </div>
+          <aside class="cv725-decision-assessment">
+            <details class="cv725-assessment-details"{details_open}>
+              <summary class="cv725-assessment-summary">{html.escape(_FULL_ASSESSMENT_EXPANDER_LABEL)}</summary>
+              <div class="cv725-assessment-body">
+                <div class="cv725-assessment-heading">Engineering Assessment</div>
+                {assessment_html}
+              </div>
+            </details>
+          </aside>
+        </div>
+        """
+
+
 def _render_decision_workspace(
     *,
     question: str,
@@ -1089,26 +1133,13 @@ def _render_decision_workspace(
         total=total,
         progress=progress,
     )
-    details_open = " open" if detailed else ""
-    st.markdown(
-        f"""
-        <div class="cv725-decision-workspace">
-          <div class="cv725-decision-primary">
-            {primary_html}
-            {summary_html}
-          </div>
-          <aside class="cv725-decision-assessment">
-            <details class="cv725-assessment-details"{details_open}>
-              <summary class="cv725-assessment-summary">{html.escape(_FULL_ASSESSMENT_EXPANDER_LABEL)}</summary>
-              <div class="cv725-assessment-body">
-                <div class="cv725-assessment-heading">Engineering Assessment</div>
-                {assessment_html}
-              </div>
-            </details>
-          </aside>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    _render_presentation_html(
+        _build_decision_workspace_html(
+            detailed=detailed,
+            primary_html=primary_html,
+            summary_html=summary_html,
+            assessment_html=assessment_html,
+        )
     )
     with st.container(key="cv725_workflow_actions"):
         _render_quick_actions(context, priority_part, intent=intent)
@@ -1194,14 +1225,13 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
             question = html.escape(str(turn.get("question") or "Engineering question"))
             answer_sections = _parse_report(str(turn.get("answer") or ""))
             assessment = html.escape(_plain_markdown(_assessment_profile(answer_sections)["assessment"]))
-            st.markdown(
+            _render_presentation_html(
                 f"""
                 <div class="cv36-history-turn">
                   <div class="cv36-history-number">{index}</div>
                   <div><small>Review {index}</small><strong>{question}</strong><p class="cv-assistant-preline">{assessment}</p></div>
                 </div>
-                """,
-                unsafe_allow_html=True,
+                """
             )
 
 
@@ -1574,7 +1604,7 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
 
 def _render_conversation_exchange(*, question: str, intent: str) -> None:
     response_label, response_class = _response_type_meta(intent)
-    st.markdown(
+    _render_presentation_html(
         f"""
         <section id="cv50-conversation-start" tabindex="-1" data-cadivor-conversation-start="true" class="cv50-exchange">
           <div class="cv50-exchange-top">
@@ -1588,8 +1618,7 @@ def _render_conversation_exchange(*, question: str, intent: str) -> None:
             </div>
           </div>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -1681,7 +1710,7 @@ def _render_compact_decision_summary(
     confidence_label: str,
 ) -> None:
     priority_value = html.escape(priority_part or "Not identified")
-    st.markdown(
+    _render_presentation_html(
         f"""
         <section class="cv722-summary-strip cv722-summary-strip--{html.escape(tone)}" aria-label="Engineering decision summary">
           <div class="cv722-summary-item" data-field="status">
@@ -1698,8 +1727,7 @@ def _render_compact_decision_summary(
             <div class="cv722-summary-note">{html.escape(confidence_label)}</div>
           </div>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -1740,7 +1768,7 @@ def _render_expanded_engineering_assessment(
         progress=progress,
     )
     if assessment_html:
-        st.markdown(assessment_html, unsafe_allow_html=True)
+        _render_presentation_html(assessment_html)
     _render_quick_actions(context, priority_part, intent=intent)
 
 
@@ -1767,7 +1795,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
             _html_list_row(index, action, variant="action")
             for index, action in enumerate(action_items[:_CONCISE_ACTION_LIMIT], start=1)
         )
-        st.markdown(
+        _render_presentation_html(
             f"""
             <section class="cv49-answer-card cv722-concise-answer">
               <div class="cv49-answer-kicker">Cadivor Answer</div>
@@ -1785,12 +1813,11 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
                 <ul class="cv722-action-list">{actions_html}</ul>
               </div>
             </section>
-            """,
-            unsafe_allow_html=True,
+            """
         )
         return
     next_action = _next_action(actions, workflow_text)
-    st.markdown(
+    _render_presentation_html(
         f"""
         <section class="cv49-answer-card">
           <div class="cv49-answer-kicker">Cadivor Answer</div>
@@ -1807,8 +1834,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
             </aside>
           </div>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
