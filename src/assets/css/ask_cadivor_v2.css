@@ -1569,53 +1569,32 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
 }
 
 /* ------------------------------------------------------------------ */
-/* Sprint 72.2.5 — Desktop decision workspace + action normalization   */
+/* Sprint 72.2.7 — Native Streamlit decision workspace surfaces        */
 /* ------------------------------------------------------------------ */
 
-.cv725-decision-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: var(--cv-space-4, 16px);
-  align-items: start;
+.st-key-cv727_decision_workspace {
   max-width: 1480px;
   margin: var(--cv-space-3, 12px) 0 var(--cv-space-4, 16px);
 }
 
-.cv725-decision-primary {
+.st-key-cv727_decision_workspace [data-testid="column"] {
+  min-width: 0;
+}
+
+.cv727-assessment-panel {
   display: grid;
-  gap: var(--cv-space-4, 16px);
-  min-width: 0;
-}
-
-.cv725-decision-assessment {
-  min-width: 0;
-}
-
-.cv725-assessment-details {
+  gap: var(--cv-space-3, 12px);
   border: 1px solid var(--cv-border);
   border-radius: var(--cv-radius-lg, 16px);
-  background: var(--cv-bg-subtle);
+  background: linear-gradient(180deg, var(--cv-bg-subtle) 0%, var(--cv-surface) 100%);
   box-shadow: var(--cv-shadow-xs);
   padding: var(--cv-space-3, 12px) var(--cv-space-4, 16px);
+  min-width: 0;
 }
 
-.cv725-assessment-summary {
-  display: none;
-  cursor: pointer;
-  list-style: none;
-  font-size: var(--cv-font-sm, 13px);
-  font-weight: var(--cv-weight-medium, 500);
-  color: var(--cv-text-secondary);
-  margin-bottom: var(--cv-space-2, 8px);
-}
-
-.cv725-assessment-summary::-webkit-details-marker {
-  display: none;
-}
-
-.cv725-assessment-heading {
+.cv727-assessment-heading {
   display: block;
-  margin: 0 0 var(--cv-space-3, 12px);
+  margin: 0;
   font-size: var(--cv-font-xs, 11px);
   font-weight: var(--cv-weight-semibold, 700);
   letter-spacing: 0.08em;
@@ -1623,30 +1602,33 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
   color: var(--cv-primary);
 }
 
-.cv725-assessment-body {
+.cv727-assessment-body {
   display: grid;
   gap: var(--cv-space-3, 12px);
+  min-width: 0;
 }
 
-.cv725-decision-primary .cv49-answer-card,
-.cv725-decision-primary .cv722-summary-strip {
+.st-key-cv727_decision_workspace .cv49-answer-card,
+.st-key-cv727_decision_workspace .cv722-summary-strip,
+.cv727-assessment-panel .cv724-impact-grid,
+.cv727-assessment-panel .cv724-driver-grid {
   max-width: none;
-  margin: 0;
 }
 
-.cv725-decision-assessment .cv724-impact-grid,
-.cv725-decision-assessment .cv724-driver-grid {
-  max-width: none;
+.st-key-cv727_decision_workspace .cv49-answer-card,
+.st-key-cv727_decision_workspace .cv722-summary-strip {
+  margin-top: 0;
+  margin-bottom: var(--cv-space-4, 16px);
 }
 
 .st-key-cv725_workflow_actions,
 .st-key-cv725_workflow_actions [data-testid="stHorizontalBlock"] {
-  max-width: min(720px, 100%);
+  max-width: 1480px;
 }
 
 .st-key-cv725_workflow_actions {
-  margin-left: auto;
-  width: min(100%, calc(58% - var(--cv-space-2, 8px)));
+  width: 100%;
+  margin-left: 0;
 }
 
 .st-key-cv724_followups,
@@ -1654,52 +1636,6 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
 .st-key-cv724_followups .cv35-suggestion-grid,
 .st-key-cv725_followups .cv35-suggestion-grid {
   max-width: 1480px;
-}
-
-@media (min-width: 1025px) {
-  .cv725-decision-workspace {
-    display: grid !important;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) !important;
-  }
-
-  .cv725-assessment-details {
-    border: 1px solid var(--cv-border);
-    background: linear-gradient(180deg, var(--cv-bg-subtle) 0%, var(--cv-surface) 100%);
-  }
-
-  .cv725-assessment-summary {
-    display: none !important;
-  }
-
-  .cv725-assessment-details > .cv725-assessment-body {
-    display: grid !important;
-  }
-}
-
-@media (max-width: 1024px) {
-  .cv725-decision-workspace {
-    grid-template-columns: 1fr;
-    max-width: none;
-  }
-
-  .cv725-assessment-summary {
-    display: block;
-  }
-
-  .cv725-assessment-heading {
-    display: none;
-  }
-
-  .st-key-cv725_workflow_actions {
-    width: 100%;
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 768px) {
-  .cv725-assessment-details:not([open]) .cv725-assessment-body {
-    display: none;
-  }
 }
 
 .cv724-workflow-actions {

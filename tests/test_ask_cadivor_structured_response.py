@@ -24,7 +24,9 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.session_state = session_state if session_state is not None else {}
     markdown_calls: list[tuple[str, dict]] = []
     st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
-    st.columns = MagicMock(side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))])
+    st.columns = MagicMock(
+        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
+    )
     st.expander = lambda *args, **kwargs: _NullContext()
     st.container = lambda **kwargs: _NullContext()
 
@@ -92,7 +94,7 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
         }
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                with patch.object(st_stub, "columns", side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]):
+                with patch.object(st_stub, "columns", side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]):
                     assistant._render_response(
                         question="What should I review first?",
                         answer=sample_answer,
@@ -198,7 +200,7 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
         }
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                with patch.object(st_stub, "columns", side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]):
+                with patch.object(st_stub, "columns", side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]):
                     assistant._render_response(
                         question="Rank these parts",
                         answer=sample_answer,

@@ -27,7 +27,7 @@ def _install_streamlit_stub():
     st.html = lambda content, **kwargs: html_calls.append(str(content))
     st.expander = lambda *args, **kwargs: (expander_calls.append((args, kwargs)) or _NullContext())
     st.columns = MagicMock(
-        side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
+        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
     )
     st.container = lambda **kwargs: _NullContext()
 
@@ -142,35 +142,36 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
     def test_workflow_actions_compact_container(self) -> None:
         self.assertIn("cv724-workflow-actions", self.assistant_source)
         self.assertIn('key="cv725_workflow_actions"', self.assistant_source)
-        self.assertIn(".cv725-decision-workspace", self.v2_css)
+        self.assertIn(".st-key-cv727_decision_workspace", self.v2_css)
 
     def test_followups_separated_panel(self) -> None:
         self.assertIn("cv723-followups-panel", self.assistant_source)
         self.assertIn('key="cv725_followups"', self.assistant_source)
 
-    def test_normal_question_assessment_open_by_default(self) -> None:
+    def test_normal_question_assessment_visible_without_details(self) -> None:
         _, html, _, expander_calls = self._render()
         self.assertEqual(len(expander_calls), 0)
-        self.assertIn("cv725-assessment-details", html)
-        self.assertIn('class="cv725-assessment-details" open', html)
+        self.assertIn("cv727-assessment-panel", html)
+        self.assertNotIn("<details", html.lower())
 
-    def test_detailed_question_keeps_assessment_open(self) -> None:
+    def test_detailed_question_keeps_assessment_visible(self) -> None:
         _, html, _, expander_calls = self._render(question="Give me a comprehensive analysis of this BOM.")
         self.assertEqual(len(expander_calls), 0)
-        self.assertIn('class="cv725-assessment-details" open', html)
+        self.assertIn("cv727-assessment-panel", html)
 
-    def test_desktop_decision_workspace_present(self) -> None:
+    def test_native_decision_workspace_present(self) -> None:
         html = self.harness_html
-        self.assertIn("cv725-decision-workspace", html)
-        self.assertIn("cv725-decision-primary", html)
-        self.assertIn("cv725-decision-assessment", html)
-        self.assertIn("Sprint 72.2.5", self.v2_css)
+        self.assertIn("cv727-assessment-panel", html)
+        self.assertIn("cv722-concise-answer", html)
+        self.assertIn("cv722-summary-strip", html)
+        self.assertIn("Sprint 72.2.7", self.v2_css)
+        self.assertNotIn("cv725-decision-workspace", html)
 
     def test_no_duplicate_direct_answer_in_assessment(self) -> None:
         html = self.harness_html
         self.assertIn("cv724-impact-grid", html)
         markup = html.split("</style>")[-1]
-        assessment = markup.split("cv725-decision-assessment", 1)[1]
+        assessment = markup.split("cv727-assessment-panel", 1)[1]
         self.assertNotIn('class="cv722-direct-answer-text"', assessment)
         self.assertEqual(markup.count("Review PC817 first."), 1)
 

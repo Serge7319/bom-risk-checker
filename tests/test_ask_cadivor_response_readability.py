@@ -44,7 +44,9 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.session_state = session_state if session_state is not None else {}
     markdown_calls: list[tuple[str, dict]] = []
     st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
-    st.columns = MagicMock(return_value=(MagicMock(), MagicMock()))
+    st.columns = MagicMock(
+        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
+    )
     st.form = lambda *args, **kwargs: _NullContext()
     st.text_area = lambda label, key, **kwargs: st.session_state.get(key, "")
     st.form_submit_button = MagicMock(return_value=False)
@@ -107,7 +109,7 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
             "cv49-answer-card",
             "cv722-concise-answer",
             "cv722-summary-strip",
-            "cv725-decision-workspace",
+            "cv727-assessment-panel",
             "cv724-impact-cell",
             "cv46-evidence-board",
             "cv47-ranking-board",
@@ -158,9 +160,9 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
             "coverage": {"score": 72},
         }
 
-        def _columns(spec):
+        def _columns(spec, gap=None):
             count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
-            return [MagicMock() for _ in range(count)]
+            return [_NullContext() for _ in range(count)]
 
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):

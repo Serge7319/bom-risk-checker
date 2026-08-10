@@ -55,7 +55,7 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.container = lambda **kwargs: _NullContext()
     st.html = lambda content, **kwargs: markdown_calls.append((content, {}))
     st.columns = MagicMock(
-        side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
+        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
     )
 
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
@@ -117,13 +117,12 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
     def test_normal_question_uses_concise_response_depth(self) -> None:
         _, html, expander_calls = self._render(question="What should I review first in this BOM?")
         self.assertIn("cv722-concise-answer", html)
-        self.assertIn("cv725-decision-workspace", html)
+        self.assertIn("cv727-assessment-panel", html)
         self.assertIn("cv722-summary-strip", html)
         self.assertNotIn("Why Cadivor recommends this", html)
         self.assertNotIn("Supporting engineering assessment", html)
         self.assertEqual(len(expander_calls), 0)
-        self.assertIn("cv725-assessment-details", html)
-        self.assertIn('class="cv725-assessment-details" open', html)
+        self.assertNotIn("<details", html.lower())
 
     def test_direct_answer_visible_outside_expander(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
@@ -146,12 +145,12 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
 
     def test_full_assessment_visible_for_normal_questions(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertIn('class="cv725-assessment-details" open', html)
+        self.assertIn("cv727-assessment-panel", html)
         self.assertIn("cv724-impact-grid", html)
 
-    def test_detailed_question_keeps_assessment_open(self) -> None:
+    def test_detailed_question_keeps_assessment_visible(self) -> None:
         _, html, _ = self._render(question="Give me a comprehensive analysis of this BOM.")
-        self.assertIn('class="cv725-assessment-details" open', html)
+        self.assertIn("cv727-assessment-panel", html)
 
     def test_direct_answer_not_duplicated_in_detailed_assessment(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
@@ -252,10 +251,13 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
 class AskCadivorResponseDepthIntegrationMarkers(unittest.TestCase):
     def test_render_response_uses_decision_workspace(self) -> None:
         source = ENGINEERING_ASSISTANT_PY.read_text(encoding="utf-8")
-        self.assertIn("_FULL_ASSESSMENT_EXPANDER_LABEL", source)
+        self.assertIn("_DECISION_COLUMN_RATIO", source)
+        self.assertIn("st.columns(_DECISION_COLUMN_RATIO", source)
         self.assertIn("_render_decision_workspace", source)
+        self.assertIn("_build_assessment_panel_html", source)
         self.assertIn("_build_engineering_assessment_html", source)
         self.assertIn("_normalize_action_items", source)
+        self.assertNotIn("_build_decision_workspace_html", source)
 
 
 if __name__ == "__main__":

@@ -35,28 +35,26 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
         cls.v2_css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
         cls.assistant = _load_assistant()
 
-    def test_indented_workspace_html_normalizes_to_column_zero(self) -> None:
-        raw = self.assistant._build_decision_workspace_html(
-            primary_html=self.assistant._build_concise_answer_html(
-                headline="Review PC817 first.",
-                answer_text="Review PC817 first.",
-                reason_items=["PC817 has medium risk."],
-                action_items=["Investigate alternative suppliers for PC817."],
-            ),
-            summary_html=self.assistant._build_decision_summary_html(
-                status="Review required",
-                tone="warning",
-                priority_part="PC817",
-                confidence_score=56,
-                confidence_label="Medium",
-            ),
-            assessment_html='<div class="cv724-impact-grid"></div>',
+    def test_assessment_panel_html_normalizes_to_column_zero(self) -> None:
+        raw = self.assistant._build_assessment_panel_html(
+            '<div class="cv724-impact-grid"></div>'
         )
-        self.assertRegex(raw, r"^\s{4,}<div class=\"cv725-decision-workspace\">")
+        self.assertRegex(raw, r"^\s{4,}<section class=\"cv727-assessment-panel\">")
         normalized = self.assistant._normalize_presentation_html(raw)
-        self.assertTrue(normalized.startswith("<div class=\"cv725-decision-workspace\">"))
+        self.assertTrue(normalized.startswith("<section class=\"cv727-assessment-panel\">"))
         self.assertNotIn("<style", normalized.lower())
-        self.assertIn('class="cv725-assessment-details" open', normalized)
+        self.assertNotIn("<details", normalized.lower())
+        self.assertNotRegex(normalized, r"^\s")
+
+    def test_concise_answer_html_normalizes_to_column_zero(self) -> None:
+        raw = self.assistant._build_concise_answer_html(
+            headline="Review PC817 first.",
+            answer_text="Review PC817 first.",
+            reason_items=["PC817 has medium risk."],
+            action_items=["Investigate alternative suppliers for PC817."],
+        )
+        normalized = self.assistant._normalize_presentation_html(raw)
+        self.assertIn("cv722-concise-answer", normalized)
         self.assertNotRegex(normalized, r"^\s")
 
     def test_render_presentation_html_uses_unsafe_allow_html(self) -> None:
@@ -92,17 +90,17 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
         self.assertIn("cv722-concise-answer", normalized)
         self.assertNotIn("&lt;section", normalized)
 
-    def test_decision_workspace_rendered_via_presentation_html(self) -> None:
+    def test_decision_workspace_rendered_via_native_columns(self) -> None:
         self.assertIn("_render_presentation_html(", self.assistant_source)
-        self.assertIn("_build_decision_workspace_html(", self.assistant_source)
+        self.assertIn("_render_decision_workspace(", self.assistant_source)
+        self.assertIn("st.columns(_DECISION_COLUMN_RATIO", self.assistant_source)
         self.assertIn("_normalize_presentation_html(", self.assistant_source)
 
-    def test_desktop_css_contract_present(self) -> None:
-        section = self.v2_css.split("Sprint 72.2.5", 1)[1]
-        self.assertIn(".cv725-decision-workspace", section)
-        self.assertIn("grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr)", section)
-        self.assertIn("@media (min-width: 1025px)", section)
-        self.assertIn("@media (max-width: 1024px)", section)
+    def test_native_workspace_css_contract_present(self) -> None:
+        section = self.v2_css.split("Sprint 72.2.7", 1)[1]
+        self.assertIn(".cv727-assessment-panel", section)
+        self.assertIn(".st-key-cv727_decision_workspace", section)
+        self.assertNotIn(".cv725-decision-workspace", section)
 
 
 if __name__ == "__main__":

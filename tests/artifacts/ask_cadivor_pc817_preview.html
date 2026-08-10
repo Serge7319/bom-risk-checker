@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ask Cadivor PC817 Preview — Sprint 72.2.5.2</title>
+  <title>Ask Cadivor PC817 Preview — Sprint 72.2.7</title>
   <style id="cadivor-design-system-v2-tokens">/* Cadivor Design System v2 — authoritative shared token + primitive foundation (Sprint 72.1)
    Loaded before legacy design-system layers. Does not replace page-specific or recovery CSS. */
 
@@ -2215,53 +2215,32 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
 }
 
 /* ------------------------------------------------------------------ */
-/* Sprint 72.2.5 — Desktop decision workspace + action normalization   */
+/* Sprint 72.2.7 — Native Streamlit decision workspace surfaces        */
 /* ------------------------------------------------------------------ */
 
-.cv725-decision-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: var(--cv-space-4, 16px);
-  align-items: start;
+.st-key-cv727_decision_workspace {
   max-width: 1480px;
   margin: var(--cv-space-3, 12px) 0 var(--cv-space-4, 16px);
 }
 
-.cv725-decision-primary {
+.st-key-cv727_decision_workspace [data-testid="column"] {
+  min-width: 0;
+}
+
+.cv727-assessment-panel {
   display: grid;
-  gap: var(--cv-space-4, 16px);
-  min-width: 0;
-}
-
-.cv725-decision-assessment {
-  min-width: 0;
-}
-
-.cv725-assessment-details {
+  gap: var(--cv-space-3, 12px);
   border: 1px solid var(--cv-border);
   border-radius: var(--cv-radius-lg, 16px);
-  background: var(--cv-bg-subtle);
+  background: linear-gradient(180deg, var(--cv-bg-subtle) 0%, var(--cv-surface) 100%);
   box-shadow: var(--cv-shadow-xs);
   padding: var(--cv-space-3, 12px) var(--cv-space-4, 16px);
+  min-width: 0;
 }
 
-.cv725-assessment-summary {
-  display: none;
-  cursor: pointer;
-  list-style: none;
-  font-size: var(--cv-font-sm, 13px);
-  font-weight: var(--cv-weight-medium, 500);
-  color: var(--cv-text-secondary);
-  margin-bottom: var(--cv-space-2, 8px);
-}
-
-.cv725-assessment-summary::-webkit-details-marker {
-  display: none;
-}
-
-.cv725-assessment-heading {
+.cv727-assessment-heading {
   display: block;
-  margin: 0 0 var(--cv-space-3, 12px);
+  margin: 0;
   font-size: var(--cv-font-xs, 11px);
   font-weight: var(--cv-weight-semibold, 700);
   letter-spacing: 0.08em;
@@ -2269,30 +2248,33 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
   color: var(--cv-primary);
 }
 
-.cv725-assessment-body {
+.cv727-assessment-body {
   display: grid;
   gap: var(--cv-space-3, 12px);
+  min-width: 0;
 }
 
-.cv725-decision-primary .cv49-answer-card,
-.cv725-decision-primary .cv722-summary-strip {
+.st-key-cv727_decision_workspace .cv49-answer-card,
+.st-key-cv727_decision_workspace .cv722-summary-strip,
+.cv727-assessment-panel .cv724-impact-grid,
+.cv727-assessment-panel .cv724-driver-grid {
   max-width: none;
-  margin: 0;
 }
 
-.cv725-decision-assessment .cv724-impact-grid,
-.cv725-decision-assessment .cv724-driver-grid {
-  max-width: none;
+.st-key-cv727_decision_workspace .cv49-answer-card,
+.st-key-cv727_decision_workspace .cv722-summary-strip {
+  margin-top: 0;
+  margin-bottom: var(--cv-space-4, 16px);
 }
 
 .st-key-cv725_workflow_actions,
 .st-key-cv725_workflow_actions [data-testid="stHorizontalBlock"] {
-  max-width: min(720px, 100%);
+  max-width: 1480px;
 }
 
 .st-key-cv725_workflow_actions {
-  margin-left: auto;
-  width: min(100%, calc(58% - var(--cv-space-2, 8px)));
+  width: 100%;
+  margin-left: 0;
 }
 
 .st-key-cv724_followups,
@@ -2300,52 +2282,6 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
 .st-key-cv724_followups .cv35-suggestion-grid,
 .st-key-cv725_followups .cv35-suggestion-grid {
   max-width: 1480px;
-}
-
-@media (min-width: 1025px) {
-  .cv725-decision-workspace {
-    display: grid !important;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) !important;
-  }
-
-  .cv725-assessment-details {
-    border: 1px solid var(--cv-border);
-    background: linear-gradient(180deg, var(--cv-bg-subtle) 0%, var(--cv-surface) 100%);
-  }
-
-  .cv725-assessment-summary {
-    display: none !important;
-  }
-
-  .cv725-assessment-details > .cv725-assessment-body {
-    display: grid !important;
-  }
-}
-
-@media (max-width: 1024px) {
-  .cv725-decision-workspace {
-    grid-template-columns: 1fr;
-    max-width: none;
-  }
-
-  .cv725-assessment-summary {
-    display: block;
-  }
-
-  .cv725-assessment-heading {
-    display: none;
-  }
-
-  .st-key-cv725_workflow_actions {
-    width: 100%;
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 768px) {
-  .cv725-assessment-details:not([open]) .cv725-assessment-body {
-    display: none;
-  }
 }
 
 .cv724-workflow-actions {
@@ -2458,13 +2394,29 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
       color: var(--cv-text-secondary, #334155);
       font-size: 13px;
     }
+    .preview-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+      gap: 16px;
+      margin: 12px 0 16px;
+    }
+    @media (max-width: 1024px) {
+      .preview-workspace {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="preview-shell">
-    <p class="preview-note">Deterministic zero-credit preview for Ask Cadivor PC817. Stylesheets: cadivor_design_system_v2.css + ask_cadivor_v2.css.</p>
+    <p class="preview-note">Deterministic zero-credit preview for Ask Cadivor PC817. Native Streamlit column layout simulated for browser review.</p>
     <section id="cv50-conversation-start" tabindex="-1" data-cadivor-conversation-start="true" class="cv50-exchange"><div class="cv50-exchange-top"><div class="cv50-you-asked"><div class="cv50-you-asked-label">You asked</div><div class="cv50-you-asked-question">What should I review first in this BOM?</div></div><div class="cv50-exchange-badges"><span class="cv50-type cv50-type-recommendation">Recommendation</span><span class="cv50-saved">✓ Review auto-saved</span></div></div></section>
-<div class="cv725-decision-workspace"><div class="cv725-decision-primary"><section class="cv49-answer-card cv722-concise-answer"><div class="cv49-answer-kicker">Cadivor Answer</div><div class="cv722-direct-answer"><div class="cv722-section-label">Direct answer</div><div class="cv722-direct-answer-title">Review PC817 first.</div></div><div class="cv722-concise-block"><div class="cv722-section-label">Key engineering reasons</div><ul class="cv722-reason-list"><li class="cv722-reason-row"><div class="cv722-list-index" aria-hidden="true">01</div><div class="cv722-row-body"><p>PC817: medium risk with a 21.4 week lead time and only 2 suppliers</p></div></li><li class="cv722-reason-row"><div class="cv722-list-index" aria-hidden="true">02</div><div class="cv722-row-body"><p>BZX55C5V1: moderate lead-time exposure with MAX3232CPE</p></div></li><li class="cv722-reason-row"><div class="cv722-list-index" aria-hidden="true">03</div><div class="cv722-row-body"><p>DRV8825: End of Life lifecycle status requires attention</p></div></li></ul></div><div class="cv722-concise-block"><div class="cv722-section-label">Recommended actions</div><ul class="cv722-action-list"><li class="cv722-action-row"><div class="cv722-list-index" aria-hidden="true">01</div><div class="cv722-row-body"><p>Investigate alternative suppliers or parts for PC817</p></div></li><li class="cv722-action-row"><div class="cv722-list-index" aria-hidden="true">02</div><div class="cv722-row-body"><p>Validate procurement plans for moderate-lead-time components</p></div></li><li class="cv722-action-row"><div class="cv722-list-index" aria-hidden="true">03</div><div class="cv722-row-body"><p>Assess replacement strategy for DRV8825</p></div></li></ul></div></section><section class="cv722-summary-strip cv722-summary-strip--review" aria-label="Engineering decision summary"><div class="cv722-summary-item" data-field="status"><div class="cv722-summary-label">Status</div><div class="cv722-summary-value">Review before release</div></div><div class="cv722-summary-item cv722-summary-item--priority" data-field="priority"><div class="cv722-summary-label">Priority component</div><div class="cv722-summary-value">PC817</div></div><div class="cv722-summary-item" data-field="confidence"><div class="cv722-summary-label">Confidence</div><div class="cv722-summary-value">56%</div><div class="cv722-summary-note">Medium</div></div></section></div><aside class="cv725-decision-assessment"><details class="cv725-assessment-details" open><summary class="cv725-assessment-summary">View full engineering assessment</summary><div class="cv725-assessment-body"><div class="cv725-assessment-heading">Engineering Assessment</div><div class="cv35-section-label">Projected engineering impact</div><div class="cv724-impact-grid"><article class="cv724-impact-cell"><div class="cv39-impact-label">BOM health</div><div class="cv39-impact-value">93 → 97</div><div class="cv39-impact-note">Projected after mitigation</div></article><article class="cv724-impact-cell"><div class="cv39-impact-label">Release readiness</div><div class="cv39-impact-value">Focused review → Ready</div><div class="cv39-impact-note">Expected after evidence closure</div></article><article class="cv724-impact-cell"><div class="cv39-impact-label">Priority risk</div><div class="cv39-impact-value">40/100 → Reduced</div><div class="cv39-impact-note">After qualification or acceptance</div></article><article class="cv724-impact-cell"><div class="cv39-impact-label">Supplier coverage</div><div class="cv39-impact-value">2 → 3</div><div class="cv39-impact-note">If a second source is qualified</div></article></div><p class="cv724-impact-disclaimer">Projections are directional estimates based on saved evidence, not measured outcomes.</p><div class="cv35-section-label">Confidence drivers</div><div class="cv724-driver-grid cv722-confidence-drivers-only"><article class="cv724-driver-cell"><div class="cv46-driver-label">Verified</div><div class="cv46-driver-value">Supplier coverage for 1/3</div><div class="cv46-driver-note">Supports sourcing-diversity conclusions</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Verified</div><div class="cv46-driver-value">3 structured evidence signal(s)</div><div class="cv46-driver-note">Directly supports the current recommendation</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Missing</div><div class="cv46-driver-value">Lead time missing for 1 component(s)</div><div class="cv46-driver-note">Limits schedule-risk precision</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Missing</div><div class="cv46-driver-value">No saved decision history</div><div class="cv46-driver-note">No prior approval or risk-acceptance evidence</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Missing</div><div class="cv46-driver-value">No saved qualified alternatives</div><div class="cv46-driver-note">Replacement and second-source confidence remains limited</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Coverage</div><div class="cv46-driver-value">Overall evidence coverage is 56%</div><div class="cv46-driver-note">Additional verified fields would raise confidence</div></article></div><div class="cv35-section-label">Evidence breakdown</div><div class="cv46-evidence-board"><article class="cv46-evidence-card"><header class="cv46-evidence-card-header"><span class="cv46-evidence-component">PC817</span><span class="cv46-evidence-status">Review</span></header><div class="cv46-evidence-body"><div class="cv46-evidence-label">Evidence</div><p class="cv46-evidence-statement cv-assistant-preline">medium risk with a 21.4 week lead time and only 2 suppliers</p></div></article><article class="cv46-evidence-card"><header class="cv46-evidence-card-header"><span class="cv46-evidence-component">BZX55C5V1</span><span class="cv46-evidence-status">Review</span></header><div class="cv46-evidence-body"><div class="cv46-evidence-label">Evidence</div><p class="cv46-evidence-statement cv-assistant-preline">moderate lead-time exposure with MAX3232CPE</p></div></article><article class="cv46-evidence-card"><header class="cv46-evidence-card-header"><span class="cv46-evidence-component">DRV8825</span><span class="cv46-evidence-status">Review</span></header><div class="cv46-evidence-body"><div class="cv46-evidence-label">Evidence</div><p class="cv46-evidence-statement cv-assistant-preline">End of Life lifecycle status requires attention</p></div></article></div></div></details></aside></div>
+    <div class="preview-workspace st-key-cv727_decision_workspace">
+      <div class="preview-left"><section class="cv49-answer-card cv722-concise-answer"><div class="cv49-answer-kicker">Cadivor Answer</div><div class="cv722-direct-answer"><div class="cv722-section-label">Direct answer</div><div class="cv722-direct-answer-title">Review PC817 first.</div></div><div class="cv722-concise-block"><div class="cv722-section-label">Key engineering reasons</div><ul class="cv722-reason-list"><li class="cv722-reason-row"><div class="cv722-list-index" aria-hidden="true">01</div><div class="cv722-row-body"><p>PC817: medium risk with a 21.4 week lead time and only 2 suppliers</p></div></li><li class="cv722-reason-row"><div class="cv722-list-index" aria-hidden="true">02</div><div class="cv722-row-body"><p>BZX55C5V1: moderate lead-time exposure with MAX3232CPE</p></div></li><li class="cv722-reason-row"><div class="cv722-list-index" aria-hidden="true">03</div><div class="cv722-row-body"><p>DRV8825: End of Life lifecycle status requires attention</p></div></li></ul></div><div class="cv722-concise-block"><div class="cv722-section-label">Recommended actions</div><ul class="cv722-action-list"><li class="cv722-action-row"><div class="cv722-list-index" aria-hidden="true">01</div><div class="cv722-row-body"><p>Investigate alternative suppliers or parts for PC817</p></div></li><li class="cv722-action-row"><div class="cv722-list-index" aria-hidden="true">02</div><div class="cv722-row-body"><p>Validate procurement plans for moderate-lead-time components</p></div></li><li class="cv722-action-row"><div class="cv722-list-index" aria-hidden="true">03</div><div class="cv722-row-body"><p>Assess replacement strategy for DRV8825</p></div></li></ul></div></section>
+<section class="cv722-summary-strip cv722-summary-strip--review" aria-label="Engineering decision summary"><div class="cv722-summary-item" data-field="status"><div class="cv722-summary-label">Status</div><div class="cv722-summary-value">Review before release</div></div><div class="cv722-summary-item cv722-summary-item--priority" data-field="priority"><div class="cv722-summary-label">Priority component</div><div class="cv722-summary-value">PC817</div></div><div class="cv722-summary-item" data-field="confidence"><div class="cv722-summary-label">Confidence</div><div class="cv722-summary-value">56%</div><div class="cv722-summary-note">Medium</div></div></section></div>
+      <div class="preview-right"><section class="cv727-assessment-panel"><div class="cv727-assessment-heading">Engineering Assessment</div><div class="cv727-assessment-body"><div class="cv35-section-label">Projected engineering impact</div><div class="cv724-impact-grid"><article class="cv724-impact-cell"><div class="cv39-impact-label">BOM health</div><div class="cv39-impact-value">93 → 97</div><div class="cv39-impact-note">Projected after mitigation</div></article><article class="cv724-impact-cell"><div class="cv39-impact-label">Release readiness</div><div class="cv39-impact-value">Focused review → Ready</div><div class="cv39-impact-note">Expected after evidence closure</div></article><article class="cv724-impact-cell"><div class="cv39-impact-label">Priority risk</div><div class="cv39-impact-value">40/100 → Reduced</div><div class="cv39-impact-note">After qualification or acceptance</div></article><article class="cv724-impact-cell"><div class="cv39-impact-label">Supplier coverage</div><div class="cv39-impact-value">2 → 3</div><div class="cv39-impact-note">If a second source is qualified</div></article></div><p class="cv724-impact-disclaimer">Projections are directional estimates based on saved evidence, not measured outcomes.</p><div class="cv35-section-label">Confidence drivers</div><div class="cv724-driver-grid cv722-confidence-drivers-only"><article class="cv724-driver-cell"><div class="cv46-driver-label">Verified</div><div class="cv46-driver-value">Supplier coverage for 1/3</div><div class="cv46-driver-note">Supports sourcing-diversity conclusions</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Verified</div><div class="cv46-driver-value">3 structured evidence signal(s)</div><div class="cv46-driver-note">Directly supports the current recommendation</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Missing</div><div class="cv46-driver-value">Lead time missing for 1 component(s)</div><div class="cv46-driver-note">Limits schedule-risk precision</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Missing</div><div class="cv46-driver-value">No saved decision history</div><div class="cv46-driver-note">No prior approval or risk-acceptance evidence</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Missing</div><div class="cv46-driver-value">No saved qualified alternatives</div><div class="cv46-driver-note">Replacement and second-source confidence remains limited</div></article><article class="cv724-driver-cell"><div class="cv46-driver-label">Coverage</div><div class="cv46-driver-value">Overall evidence coverage is 56%</div><div class="cv46-driver-note">Additional verified fields would raise confidence</div></article></div><div class="cv35-section-label">Evidence breakdown</div><div class="cv46-evidence-board"><article class="cv46-evidence-card"><header class="cv46-evidence-card-header"><span class="cv46-evidence-component">PC817</span><span class="cv46-evidence-status">Review</span></header><div class="cv46-evidence-body"><div class="cv46-evidence-label">Evidence</div><p class="cv46-evidence-statement cv-assistant-preline">medium risk with a 21.4 week lead time and only 2 suppliers</p></div></article><article class="cv46-evidence-card"><header class="cv46-evidence-card-header"><span class="cv46-evidence-component">BZX55C5V1</span><span class="cv46-evidence-status">Review</span></header><div class="cv46-evidence-body"><div class="cv46-evidence-label">Evidence</div><p class="cv46-evidence-statement cv-assistant-preline">moderate lead-time exposure with MAX3232CPE</p></div></article><article class="cv46-evidence-card"><header class="cv46-evidence-card-header"><span class="cv46-evidence-component">DRV8825</span><span class="cv46-evidence-status">Review</span></header><div class="cv46-evidence-body"><div class="cv46-evidence-label">Evidence</div><p class="cv46-evidence-statement cv-assistant-preline">End of Life lifecycle status requires attention</p></div></article></div></div></section></div>
+    </div>
+    
   </div>
 </body>
 </html>

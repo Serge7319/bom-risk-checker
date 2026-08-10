@@ -61,7 +61,7 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.expander = _expander
     st.container = lambda **kwargs: _NullContext()
     st.columns = MagicMock(
-        side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
+        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
     )
 
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
@@ -186,14 +186,11 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertIn("border-top", block)
 
     def test_responsive_media_queries_cover_breakpoints(self) -> None:
-        section = self.v2_css.split("Sprint 72.2.5", 1)[1]
-        self.assertIn("@media (min-width: 1025px)", section)
-        self.assertIn("@media (max-width: 1024px)", section)
-        self.assertIn("@media (max-width: 768px)", section)
-        self.assertIn(".cv725-decision-workspace", section)
+        section = self.v2_css.split("Sprint 72.2.7", 1)[1]
+        self.assertIn(".st-key-cv727_decision_workspace", section)
+        self.assertIn(".cv727-assessment-panel", section)
         narrow_block = self.v2_css.split("@media (max-width: 768px)", 1)[-1]
         self.assertIn(".cv722-summary-strip", narrow_block)
-        self.assertIn("grid-template-columns: 1fr", narrow_block)
 
     def test_no_label_value_concatenation_in_markup(self) -> None:
         _, html, _ = self._render_pc817()
@@ -255,8 +252,9 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertIn("Recommended actions", html)
         self.assertIn("Evidence breakdown", html)
         self.assertEqual(len(expander_calls), 0)
-        self.assertIn("cv725-assessment-details", html)
-        self.assertIn("View full engineering assessment", html)
+        self.assertIn("cv727-assessment-panel", html)
+        self.assertNotIn("<details", html.lower())
+        self.assertNotIn("View full engineering assessment", html)
 
     def test_obsolete_cv46_why_css_removed(self) -> None:
         section_after_724 = self.v2_css.split("Sprint 72.2.4", 1)[1]

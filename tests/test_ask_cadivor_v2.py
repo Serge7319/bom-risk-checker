@@ -63,7 +63,9 @@ def _install_streamlit_stub(session_state: dict | None = None, *, script_run_id:
     st.info = MagicMock()
     st.success = MagicMock()
     st.caption = MagicMock()
-    st.columns = MagicMock(return_value=(MagicMock(), MagicMock()))
+    st.columns = MagicMock(
+        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
+    )
     st.button = MagicMock(return_value=False)
     st.link_button = MagicMock()
 
@@ -229,7 +231,8 @@ class AskCadivorV2Tests(unittest.TestCase):
 
     def test_context_header_and_containers_present(self) -> None:
         self.assertIn("_render_context_header", self.assistant_source)
-        self.assertIn("cv-assistant-shell", self.assistant_source)
+        self.assertIn('key="cv727_decision_workspace"', self.assistant_source)
+        self.assertNotIn('<div class="cv-assistant-shell">', self.assistant_source)
         self.assertIn('key="cv_assistant_suggestions"', self.assistant_source)
         self.assertIn('key="cv_assistant_composer"', self.assistant_source)
         self.assertIn('key="cv725_followups"', self.assistant_source)

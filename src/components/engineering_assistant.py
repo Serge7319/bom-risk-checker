@@ -106,7 +106,7 @@ _COPILOT_WORKFLOW_KEYS = (
 
 _COPILOT_PROCESSING_LABEL = "Cadivor is analyzing this BOM…"
 _CLEAR_PROMPT_ON_NEXT_RUN_KEY = "cv7144_clear_prompt_on_next_run"
-_FULL_ASSESSMENT_EXPANDER_LABEL = "View full engineering assessment"
+_DECISION_COLUMN_RATIO = [0.85, 1.15]
 _CONCISE_REASON_LIMIT = 3
 _CONCISE_ACTION_LIMIT = 3
 
@@ -1067,33 +1067,16 @@ def _build_engineering_assessment_html(
     return "".join(sections)
 
 
-def _build_decision_workspace_html(
-    *,
-    primary_html: str,
-    summary_html: str,
-    assessment_html: str,
-) -> str:
-    # Assessment content stays in one canonical builder. The native <details> element
-    # remains open by default so desktop browsers expose the right-hand column without
-    # requiring interaction. Narrow layouts still expose the summary for collapse.
-    # Workspace markup must never embed <style>. premium.css hides any Streamlit
-    # element container that contains a style element via :has(style).
+def _build_assessment_panel_html(assessment_html: str) -> str:
+    if not str(assessment_html or "").strip():
+        return ""
     return f"""
-        <div class="cv725-decision-workspace">
-          <div class="cv725-decision-primary">
-            {primary_html}
-            {summary_html}
+        <section class="cv727-assessment-panel">
+          <div class="cv727-assessment-heading">Engineering Assessment</div>
+          <div class="cv727-assessment-body">
+            {assessment_html}
           </div>
-          <aside class="cv725-decision-assessment">
-            <details class="cv725-assessment-details" open>
-              <summary class="cv725-assessment-summary">{html.escape(_FULL_ASSESSMENT_EXPANDER_LABEL)}</summary>
-              <div class="cv725-assessment-body">
-                <div class="cv725-assessment-heading">Engineering Assessment</div>
-                {assessment_html}
-              </div>
-            </details>
-          </aside>
-        </div>
+        </section>
         """
 
 
@@ -1154,21 +1137,26 @@ def _render_decision_workspace(
         total=total,
         progress=progress,
     )
+    assessment_panel_html = _build_assessment_panel_html(assessment_html)
     _inject_ask_cadivor_v2_styles()
-    workspace_html = _build_decision_workspace_html(
-        primary_html=primary_html,
-        summary_html=summary_html,
-        assessment_html=assessment_html,
-    )
-    normalized_workspace = _normalize_presentation_html(workspace_html)
     _log_ask_render(
-        "workspace_html_built",
-        html_len=len(normalized_workspace),
-        has_workspace="cv725-decision-workspace" in normalized_workspace,
-        has_style_tag="<style" in normalized_workspace.lower(),
+        "workspace_shell_ready",
+        left_html_len=len(_normalize_presentation_html(primary_html + summary_html)),
+        right_html_len=len(_normalize_presentation_html(assessment_panel_html)),
+        has_assessment_panel=bool(assessment_panel_html.strip()),
+        has_style_tag=False,
     )
-    _log_ask_render("workspace_render_requested")
-    _render_presentation_html(workspace_html)
+    _log_ask_render("workspace_columns_requested", ratio="0.85,1.15")
+    with st.container(key="cv727_decision_workspace"):
+        left_col, right_col = st.columns(_DECISION_COLUMN_RATIO, gap="medium")
+        with left_col:
+            _log_ask_render("workspace_left_column_entered")
+            _render_presentation_html(primary_html)
+            _render_presentation_html(summary_html)
+        with right_col:
+            _log_ask_render("workspace_right_column_entered")
+            if assessment_panel_html:
+                _render_presentation_html(assessment_panel_html)
     _log_ask_render("workspace_render_completed")
     with st.container(key="cv725_workflow_actions"):
         _render_quick_actions(context, priority_part, intent=intent)
@@ -1976,7 +1964,6 @@ def render_engineering_assistant(
     status = get_ai_usage_status(st.session_state, current_user or {})
 
     _render_context_header(context)
-    st.markdown('<div class="cv-assistant-shell">', unsafe_allow_html=True)
     _usage_banner(status)
     thread = get_thread(st.session_state, context)
     if thread:
@@ -2204,4 +2191,3 @@ def render_engineering_assistant(
                 '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
                 unsafe_allow_html=True,
             )
-    st.markdown('</div>', unsafe_allow_html=True)

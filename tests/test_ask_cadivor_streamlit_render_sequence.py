@@ -1,4 +1,4 @@
-"""Sprint 72.2.5.3 — Streamlit render-sequence + :has(style) container hiding tests."""
+"""Sprint 72.2.7 — Streamlit render-sequence + native column workspace tests."""
 from __future__ import annotations
 
 import sys
@@ -21,33 +21,46 @@ class _NullContext:
         return False
 
 
+class _RecordingColumn:
+    def __init__(self, side: str, st_module: types.ModuleType) -> None:
+        self._side = side
+        self._st = st_module
+
+    def __enter__(self):
+        self._st._active_column = self._side
+        return self
+
+    def __exit__(self, *args):
+        self._st._active_column = None
+        return False
+
+
 def _install_streamlit_stub():
     st = types.ModuleType("streamlit")
     st.session_state = {}
-    markdown_calls: list[tuple[str, dict]] = []
+    st._active_column = None
+    st.columns_calls: list[tuple[list[float], str | None]] = []
+    markdown_calls: list[tuple[str, dict, str | None]] = []
     html_calls: list[str] = []
-    render_sequence: list[str] = []
 
     def _markdown(content, **kwargs):
-        text = str(content)
-        markdown_calls.append((text, dict(kwargs)))
-        if "cv50-exchange" in text:
-            render_sequence.append("conversation_exchange")
-        if "cv725-decision-workspace" in text:
-            render_sequence.append("decision_workspace")
+        markdown_calls.append((str(content), dict(kwargs), st._active_column))
 
     def _html(content, **kwargs):
-        text = str(content)
-        html_calls.append(text)
-        if "<style" in text.lower():
-            render_sequence.append("stylesheet_injection")
+        html_calls.append(str(content))
+        if "<style" in str(content).lower():
+            st.render_sequence.append("stylesheet_injection")
 
+    def _columns(spec, gap=None):
+        ratio = list(spec) if isinstance(spec, (list, tuple)) else [1] * int(spec)
+        st.columns_calls.append((ratio, gap))
+        st.render_sequence.append("columns_created")
+        return [_RecordingColumn("left", st), _RecordingColumn("right", st)]
+
+    st.render_sequence: list[str] = []
     st.markdown = _markdown
     st.html = _html
-    st.expander = lambda *args, **kwargs: _NullContext()
-    st.columns = MagicMock(
-        side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
-    )
+    st.columns = _columns
     st.container = lambda **kwargs: _NullContext()
 
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
@@ -62,7 +75,7 @@ def _install_streamlit_stub():
     sys.modules["streamlit.runtime.scriptrunner"] = scriptrunner
     sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
     sys.modules["streamlit.components.v1"] = components
-    return markdown_calls, html_calls, render_sequence
+    return st, markdown_calls, html_calls
 
 
 def _load_assistant():
@@ -86,19 +99,16 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
         block = self.premium_css.split('div[data-testid="stElementContainer"]:has(style)', 1)[1].split("}", 1)[0]
         self.assertIn("display: none", block)
 
-    def test_workspace_html_contains_no_style_tag(self) -> None:
+    def test_assessment_panel_contains_no_style_tag(self) -> None:
         assistant = _load_assistant()
-        workspace = assistant._build_decision_workspace_html(
-            primary_html='<section class="cv722-concise-answer"></section>',
-            summary_html='<section class="cv722-summary-strip"></section>',
-            assessment_html='<div class="cv724-impact-grid"></div>',
-        )
-        normalized = assistant._normalize_presentation_html(workspace)
-        self.assertIn("cv725-decision-workspace", normalized)
+        panel = assistant._build_assessment_panel_html('<div class="cv724-impact-grid"></div>')
+        normalized = assistant._normalize_presentation_html(panel)
+        self.assertIn("cv727-assessment-panel", normalized)
         self.assertNotIn("<style", normalized.lower())
+        self.assertNotIn("<details", normalized.lower())
 
-    def test_stylesheet_injection_separate_from_workspace_render(self) -> None:
-        markdown_calls, html_calls, render_sequence = _install_streamlit_stub()
+    def test_stylesheet_injection_separate_from_column_renders(self) -> None:
+        st, markdown_calls, html_calls = _install_streamlit_stub()
         assistant = _load_assistant()
         from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
 
@@ -109,19 +119,11 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
                     answer=PC817_ANSWER,
                     context=PC817_CONTEXT,
                 )
-        workspace_calls = [content for content, _kwargs in markdown_calls if "cv725-decision-workspace" in content]
-        self.assertTrue(html_calls, "Expected stylesheet injection via st.html")
+        visible = [content for content, _kwargs, _side in markdown_calls]
+        self.assertTrue(html_calls)
         self.assertTrue(any("cadivor-ask-cadivor-v2-css" in call for call in html_calls))
-        self.assertTrue(workspace_calls, "Expected decision workspace markdown render")
-        self.assertTrue(all("<style" not in call.lower() for call in workspace_calls))
-        self.assertIn("stylesheet_injection", render_sequence)
-        self.assertIn("conversation_exchange", render_sequence)
-        self.assertIn("decision_workspace", render_sequence)
-        stylesheet_index = render_sequence.index("stylesheet_injection")
-        workspace_index = render_sequence.index("decision_workspace")
-        exchange_index = render_sequence.index("conversation_exchange")
-        self.assertLess(stylesheet_index, workspace_index)
-        self.assertLess(exchange_index, workspace_index)
+        self.assertTrue(any(call[0] == [0.85, 1.15] for call in st.columns_calls))
+        self.assertTrue(all("<style" not in item.lower() for item in visible))
 
     def test_render_sequence_logging_contract(self) -> None:
         _install_streamlit_stub()
@@ -144,16 +146,17 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
         events = [event for event, _details in logged]
         self.assertEqual(events[0], "response_entered")
         self.assertIn("exchange_rendered", events)
-        self.assertIn("workspace_html_built", events)
-        self.assertIn("workspace_render_requested", events)
+        self.assertIn("workspace_shell_ready", events)
+        self.assertIn("workspace_columns_requested", events)
+        self.assertIn("workspace_left_column_entered", events)
+        self.assertIn("workspace_right_column_entered", events)
         self.assertIn("workspace_render_completed", events)
-        built = next(details for event, details in logged if event == "workspace_html_built")
-        self.assertTrue(built["has_workspace"])
-        self.assertFalse(built["has_style_tag"])
-        self.assertGreater(built["html_len"], 500)
+        ready = next(details for event, details in logged if event == "workspace_shell_ready")
+        self.assertTrue(ready["has_assessment_panel"])
+        self.assertFalse(ready["has_style_tag"])
 
     def test_approved_workspace_content_preserved(self) -> None:
-        markdown_calls, _html_calls, _render_sequence = _install_streamlit_stub()
+        st, markdown_calls, _html_calls = _install_streamlit_stub()
         assistant = _load_assistant()
         from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
 
@@ -164,15 +167,17 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
                     answer=PC817_ANSWER,
                     context=PC817_CONTEXT,
                 )
-        html = "\n".join(content for content, _kwargs in markdown_calls)
-        self.assertIn("cv725-decision-workspace", html)
-        self.assertIn("cv725-decision-primary", html)
-        self.assertIn("cv725-decision-assessment", html)
+        html = "\n".join(content for content, _kwargs, _side in markdown_calls)
+        left = "\n".join(content for content, _kwargs, side in markdown_calls if side == "left")
+        right = "\n".join(content for content, _kwargs, side in markdown_calls if side == "right")
+        self.assertNotIn("cv725-decision-workspace", html)
+        self.assertIn("cv727-assessment-panel", right)
+        self.assertIn("cv722-concise-answer", left)
         self.assertIn("Review PC817 first.", html)
-        self.assertIn("cv46-evidence-component", html)
+        self.assertIn("cv46-evidence-component", right)
         self.assertNotIn("PC817Review", html)
         self.assertEqual(html.count("Review PC817 first."), 1)
-        self.assertIn(".cv725-decision-workspace", self.v2_css)
+        self.assertIn(".cv727-assessment-panel", self.v2_css)
 
 
 if __name__ == "__main__":

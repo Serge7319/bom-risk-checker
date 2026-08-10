@@ -1,4 +1,4 @@
-"""Sprint 72.2.5.2 — Desktop assessment visibility + CSS binding recovery tests."""
+"""Sprint 72.2.7 — Native Streamlit decision workspace recovery tests."""
 from __future__ import annotations
 
 import sys
@@ -21,19 +21,52 @@ class _NullContext:
         return False
 
 
+class _RecordingColumn:
+    def __init__(self, side: str, st_module: types.ModuleType) -> None:
+        self._side = side
+        self._st = st_module
+
+    def __enter__(self):
+        self._st._active_column = self._side
+        return self
+
+    def __exit__(self, *args):
+        self._st._active_column = None
+        return False
+
+
 def _install_streamlit_stub():
     st = types.ModuleType("streamlit")
     st.session_state = {}
-    markdown_calls: list[tuple[str, dict]] = []
+    st._active_column = None
+    st.columns_calls: list[tuple[list[float], str | None]] = []
+    st.container_calls: list[str] = []
+    markdown_calls: list[tuple[str, dict, str]] = []
     html_calls: list[str] = []
 
-    st.markdown = lambda content, **kwargs: markdown_calls.append((str(content), dict(kwargs)))
+    def _markdown(content, **kwargs):
+        side = st._active_column or "root"
+        markdown_calls.append((str(content), dict(kwargs), side))
+
+    def _columns(spec, gap=None):
+        if isinstance(spec, (list, tuple)):
+            ratio = list(spec)
+        else:
+            ratio = [1] * int(spec)
+        st.columns_calls.append((ratio, gap))
+        return [_RecordingColumn("left", st), _RecordingColumn("right", st)]
+
+    def _container(**kwargs):
+        key = str(kwargs.get("key") or "")
+        if key:
+            st.container_calls.append(key)
+        return _NullContext()
+
+    st.markdown = _markdown
     st.html = lambda content, **kwargs: html_calls.append(str(content))
     st.expander = lambda *args, **kwargs: _NullContext()
-    st.columns = MagicMock(
-        side_effect=lambda spec: [MagicMock() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
-    )
-    st.container = lambda **kwargs: _NullContext()
+    st.columns = _columns
+    st.container = _container
 
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
     scriptrunner.get_script_run_ctx = lambda *args, **kwargs: types.SimpleNamespace(script_run_id="test-run")
@@ -65,7 +98,7 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         cls.assistant_source = ENGINEERING_ASSISTANT_PY.read_text(encoding="utf-8")
         cls.v2_css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
 
-    def _render_pc817(self) -> tuple[str, list[str], list[tuple[str, dict]]]:
+    def _render_pc817(self) -> tuple[str, list[str], list[tuple[str, dict, str]], types.ModuleType]:
         st, markdown_calls, html_calls = _install_streamlit_stub()
         assistant = _load_assistant()
         from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
@@ -77,24 +110,24 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
                     answer=PC817_ANSWER,
                     context=PC817_CONTEXT,
                 )
-        html = "\n".join(content for content, _kwargs in markdown_calls)
-        return html, html_calls, markdown_calls
+        html = "\n".join(content for content, _kwargs, _side in markdown_calls)
+        return html, html_calls, markdown_calls, st
 
-    def test_normal_desktop_response_uses_open_details(self) -> None:
-        html, _, _ = self._render_pc817()
-        self.assertIn('class="cv725-assessment-details" open', html)
-        self.assertNotRegex(html, r'class="cv725-assessment-details">\s*<summary')
+    def test_assessment_visible_without_details_wrapper(self) -> None:
+        html, _, _, _ = self._render_pc817()
+        self.assertIn("cv727-assessment-panel", html)
+        self.assertNotIn("<details", html.lower())
+        self.assertNotIn("View full engineering assessment", html)
 
-    def test_stylesheet_injection_separate_from_workspace(self) -> None:
-        html, html_calls, markdown_calls = self._render_pc817()
-        workspace_markdown = next(
-            (content for content, _kwargs in markdown_calls if "cv725-decision-workspace" in content),
-            "",
+    def test_stylesheet_injection_separate_from_column_content(self) -> None:
+        html, html_calls, markdown_calls, _ = self._render_pc817()
+        column_html = "\n".join(
+            content for content, _kwargs, side in markdown_calls if side in ("left", "right")
         )
         self.assertTrue(any("cadivor-ask-cadivor-v2-css" in call for call in html_calls))
-        self.assertNotIn("<style", workspace_markdown.lower())
-        self.assertIn(".cv725-decision-workspace", self.v2_css)
-        self.assertIn("cv725-decision-workspace", html)
+        self.assertNotIn("<style", column_html.lower())
+        self.assertIn(".cv727-assessment-panel", self.v2_css)
+        self.assertNotIn(".cv725-decision-workspace", self.v2_css.split("Sprint 72.2.7", 1)[1])
 
     def test_css_injection_uses_st_html(self) -> None:
         _install_streamlit_stub()
@@ -109,33 +142,32 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         self.assertIn("_inject_presentation_stylesheet", inject_block)
         self.assertNotIn("window.parent.document", inject_block)
 
-    def test_desktop_grid_rule_present(self) -> None:
-        section = self.v2_css.split("Sprint 72.2.5", 1)[1]
-        self.assertIn("grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr)", section)
-        desktop_block = section.split("@media (min-width: 1025px)", 1)[1]
-        self.assertIn(".cv725-assessment-summary", desktop_block)
-        self.assertIn("display: none !important", desktop_block)
+    def test_native_column_ratio_present(self) -> None:
+        _, _, _, st = self._render_pc817()
+        self.assertTrue(any(call[0] == [0.85, 1.15] for call in st.columns_calls))
+        self.assertIn("_DECISION_COLUMN_RATIO = [0.85, 1.15]", self.assistant_source)
 
-    def test_mobile_stack_rule_present(self) -> None:
-        section = self.v2_css.split("Sprint 72.2.5", 1)[1]
-        self.assertIn("@media (max-width: 1024px)", section)
-        self.assertIn("grid-template-columns: 1fr", section)
+    def test_native_workspace_css_contract(self) -> None:
+        section = self.v2_css.split("Sprint 72.2.7", 1)[1]
+        self.assertIn(".st-key-cv727_decision_workspace", section)
+        self.assertIn(".cv727-assessment-panel", section)
+        self.assertNotIn("grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr)", section)
 
     def test_preview_artifact_exists(self) -> None:
         self.assertTrue(PREVIEW_ARTIFACT.exists(), f"Missing preview artifact: {PREVIEW_ARTIFACT}")
         preview = PREVIEW_ARTIFACT.read_text(encoding="utf-8")
-        self.assertIn("cv725-decision-workspace", preview)
+        self.assertIn("cv727-assessment-panel", preview)
         self.assertIn("ask_cadivor_v2.css", preview)
-        self.assertIn('class="cv725-assessment-details" open', preview)
+        self.assertNotIn("cv725-decision-workspace", preview)
 
     def test_no_duplicate_direct_answer_in_primary_surface(self) -> None:
-        html, _, _ = self._render_pc817()
+        html, _, _, _ = self._render_pc817()
         markup = html.split("</style>")[-1]
         self.assertEqual(markup.count("Review PC817 first."), 1)
         self.assertNotIn('class="cv722-direct-answer-text"', markup)
 
     def test_evidence_breakdown_structurally_separated(self) -> None:
-        html, _, _ = self._render_pc817()
+        html, _, _, _ = self._render_pc817()
         for component in ("PC817", "BZX55C5V1", "DRV8825"):
             self.assertIn(f'class="cv46-evidence-component">{component}</span>', html)
         self.assertEqual(html.count('class="cv46-evidence-status">Review</span>'), 3)
@@ -156,12 +188,16 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         )
         self.assertEqual(assistant._supplementary_direct_answer_text(headline, headline), "")
 
-    def test_desktop_workspace_still_present(self) -> None:
-        html, _, _ = self._render_pc817()
-        self.assertIn("cv725-decision-workspace", html)
-        self.assertIn("cv725-decision-primary", html)
-        self.assertIn("cv725-decision-assessment", html)
+    def test_native_workspace_columns_present(self) -> None:
+        html, _, markdown_calls, st = self._render_pc817()
+        left_html = "\n".join(content for content, _kwargs, side in markdown_calls if side == "left")
+        right_html = "\n".join(content for content, _kwargs, side in markdown_calls if side == "right")
+        self.assertIn("cv727_decision_workspace", st.container_calls)
+        self.assertIn("cv722-concise-answer", left_html)
+        self.assertIn("cv722-summary-strip", left_html)
+        self.assertIn("cv727-assessment-panel", right_html)
         self.assertIn("cv724-impact-grid", html)
+        self.assertNotIn("cv725-decision-workspace", html)
 
 
 if __name__ == "__main__":
