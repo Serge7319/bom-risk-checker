@@ -423,6 +423,87 @@ def _plain_markdown(text: str) -> str:
     return text.strip()
 
 
+_ENUMERATION_ONLY_RE = re.compile(r"^\d+[\).\s]*$")
+_ACTION_PREFIX_RE = re.compile(r"^(?:[-*•]\s*)?\d+[\).\s]+")
+
+
+def _is_enumeration_only(text: str) -> bool:
+    clean = str(text or "").strip()
+    if not clean:
+        return True
+    if _ENUMERATION_ONLY_RE.fullmatch(clean):
+        return True
+    return len(clean) <= 2 and clean.isdigit()
+
+
+def _strip_action_prefix(text: str) -> str:
+    clean = str(text or "").strip()
+    clean = re.sub(r"^[-*•]\s+", "", clean)
+    while True:
+        updated = _ACTION_PREFIX_RE.sub("", clean, count=1).strip()
+        if updated == clean:
+            break
+        clean = updated
+    return clean.strip(" .")
+
+
+def _normalize_action_items(actions: str, *, limit: int = _CONCISE_ACTION_LIMIT) -> list[str]:
+    """Normalize recommended actions without producing enumeration-only rows."""
+    plain = _plain_markdown(actions)
+    if not plain:
+        return []
+
+    items: list[str] = []
+    lines = [line.strip() for line in plain.splitlines() if line.strip()]
+    if len(lines) > 1:
+        pending_number: str | None = None
+        for line in lines:
+            if _is_enumeration_only(line):
+                pending_number = line
+                continue
+            stripped = _strip_action_prefix(line)
+            if stripped and not _is_enumeration_only(stripped):
+                items.append(stripped)
+                pending_number = None
+            elif pending_number and stripped:
+                combined = _strip_action_prefix(f"{pending_number} {stripped}")
+                if combined and not _is_enumeration_only(combined):
+                    items.append(combined)
+                pending_number = None
+        if items:
+            return items[:limit]
+
+    inline_markers = len(re.findall(r"(?:^|\s)\d+[.)]\s+", plain))
+    if inline_markers >= 2:
+        for part in re.split(r"\s+(?=\d+[.)]\s+)", plain):
+            candidate = _strip_action_prefix(part.strip(" ."))
+            if candidate and not _is_enumeration_only(candidate):
+                items.append(candidate)
+        if items:
+            return items[:limit]
+
+    parts = re.split(r"(?<!\d)\.\s+(?!\d)", plain)
+    for part in parts:
+        candidate = _strip_action_prefix(part.strip(" ."))
+        if candidate and not _is_enumeration_only(candidate):
+            items.append(candidate)
+
+    if not items:
+        candidate = _strip_action_prefix(plain)
+        if candidate and not _is_enumeration_only(candidate):
+            items.append(candidate)
+
+    return items[:limit]
+
+
+def _action_steps(actions: str) -> list[str]:
+    normalized = _normalize_action_items(actions, limit=4)
+    if normalized:
+        return normalized
+    plain = _plain_markdown(actions)
+    return [plain] if plain else []
+
+
 def _html_kpi_cell(label: str, value: str) -> str:
     return (
         f'<div class="cv39-kpi-item">'
@@ -628,15 +709,6 @@ def _recommendation_explanation(assessment: str, evidence: str, priority_part: s
     return summary, drivers[:5]
 
 
-def _action_steps(actions: str) -> list[str]:
-    plain = _plain_markdown(actions)
-    if not plain:
-        return []
-    parts = re.split(r"(?:\.|;|, then |, and then )\s+", plain)
-    steps = [part.strip(" .") for part in parts if part.strip(" .")]
-    return steps[:4] or [plain]
-
-
 def _assessment_kpis(context: dict[str, Any], confidence_score: int) -> list[tuple[str, str, str]]:
     analysis = context.get("analysis") or {}
     summary = context.get("summary") or {}
@@ -777,13 +849,280 @@ def _render_evidence_cards(evidence: str) -> None:
     st.markdown(f'<div class="cv46-evidence-board">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
+def _build_evidence_cards_html(evidence: str) -> str:
+    items = _evidence_items(evidence)
+    if not items:
+        message = _plain_markdown(evidence) or "No structured evidence was returned. Verify that component records are saved and re-run the review."
+        return f'<div class="cv46-empty-evidence cv-assistant-preline">{html.escape(message)}</div>'
+    cards: list[str] = []
+    for title, detail in items[:8]:
+        metrics = _split_evidence_detail(detail)
+        metric_blocks = []
+        for label, value in metrics[:4]:
+            icon, display_label = _metric_display(label)
+            metric_blocks.append(_html_evidence_metric(display_label, value, icon=icon))
+        status = "Priority" if any(token in detail.lower() for token in ("qualify immediately", "high", "obsolete", "replacement", "single-source")) else "Review"
+        cards.append(
+            f'<article class="cv46-evidence-card"><header><strong>{html.escape(title)}</strong><em>{status}</em></header>'
+            f'<div class="cv46-evidence-metrics">{"".join(metric_blocks)}</div></article>'
+        )
+    return f'<div class="cv46-evidence-board">{"".join(cards)}</div>'
+
+
+def _build_decision_summary_html(
+    *,
+    status: str,
+    tone: str,
+    priority_part: str,
+    confidence_score: int,
+    confidence_label: str,
+) -> str:
+    priority_value = html.escape(priority_part or "Not identified")
+    return f"""
+        <section class="cv722-summary-strip cv722-summary-strip--{html.escape(tone)}" aria-label="Engineering decision summary">
+          <div class="cv722-summary-item" data-field="status">
+            <div class="cv722-summary-label">Status</div>
+            <div class="cv722-summary-value">{html.escape(status)}</div>
+          </div>
+          <div class="cv722-summary-item cv722-summary-item--priority" data-field="priority">
+            <div class="cv722-summary-label">Priority component</div>
+            <div class="cv722-summary-value">{priority_value}</div>
+          </div>
+          <div class="cv722-summary-item" data-field="confidence">
+            <div class="cv722-summary-label">Confidence</div>
+            <div class="cv722-summary-value">{confidence_score}%</div>
+            <div class="cv722-summary-note">{html.escape(confidence_label)}</div>
+          </div>
+        </section>
+        """
+
+
+def _build_concise_answer_html(
+    *,
+    headline: str,
+    answer_text: str,
+    reason_items: list[str],
+    action_items: list[str],
+) -> str:
+    reasons_html = "".join(
+        _html_list_row(index, reason, variant="reason")
+        for index, reason in enumerate(reason_items[:_CONCISE_REASON_LIMIT], start=1)
+    )
+    actions_html = "".join(
+        _html_list_row(index, action, variant="action")
+        for index, action in enumerate(action_items[:_CONCISE_ACTION_LIMIT], start=1)
+    )
+    return f"""
+            <section class="cv49-answer-card cv722-concise-answer">
+              <div class="cv49-answer-kicker">Cadivor Answer</div>
+              <div class="cv722-direct-answer">
+                <div class="cv722-section-label">Direct answer</div>
+                <div class="cv722-direct-answer-title">{html.escape(headline)}</div>
+                <p class="cv722-direct-answer-text cv-assistant-preline">{html.escape(answer_text)}</p>
+              </div>
+              <div class="cv722-concise-block">
+                <div class="cv722-section-label">Key engineering reasons</div>
+                <ul class="cv722-reason-list">{reasons_html}</ul>
+              </div>
+              <div class="cv722-concise-block">
+                <div class="cv722-section-label">Recommended actions</div>
+                <ul class="cv722-action-list">{actions_html}</ul>
+              </div>
+            </section>
+            """
+
+
+def _build_engineering_assessment_html(
+    *,
+    question: str,
+    detailed: bool,
+    intent: str,
+    evidence: str,
+    actions: str,
+    rankings: str,
+    workflow_text: str,
+    context: dict[str, Any],
+    priority_part: str,
+    confidence_detail: str,
+    confidence_drivers: list[tuple[str, str, str]],
+    impact: list[tuple[str, str, str]],
+    complete: int,
+    total: int,
+    progress: int,
+) -> str:
+    sections: list[str] = []
+    impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
+    if impact_html:
+        sections.append(
+            '<div class="cv35-section-label">Projected engineering impact</div>'
+            f'<div class="cv724-impact-grid">{impact_html}</div>'
+            '<p class="cv724-impact-disclaimer">Projections are directional estimates based on saved evidence, not measured outcomes.</p>'
+        )
+
+    if confidence_drivers:
+        driver_html = "".join(
+            _html_confidence_driver(label, value, note) for label, value, note in confidence_drivers[:6]
+        )
+        detail_html = (
+            f'<p class="cv-assistant-preline cv722-confidence-detail">{html.escape(confidence_detail)}</p>'
+            if confidence_detail
+            else ""
+        )
+        sections.append(
+            '<div class="cv35-section-label">Confidence drivers</div>'
+            f'<div class="cv724-driver-grid cv722-confidence-drivers-only">{detail_html}{driver_html}</div>'
+        )
+
+    if rankings:
+        ranking_items = _evidence_items(rankings)
+        ranking_html = "".join(
+            f'<article class="cv47-ranking-row"><div class="cv47-ranking-index">{idx}</div><div class="cv47-ranking-copy">'
+            f'<div class="cv47-ranking-title">{html.escape(title)}</div>'
+            f'<div class="cv47-ranking-detail">{html.escape(detail)}</div></div></article>'
+            for idx, (title, detail) in enumerate(ranking_items, 1)
+        )
+        sections.append(
+            '<div class="cv35-section-label">Engineering priority ranking</div>'
+            f'<div class="cv47-ranking-board">{ranking_html}</div>'
+        )
+
+    if _evidence_items(evidence):
+        sections.append(
+            '<div class="cv35-section-label">Evidence breakdown</div>'
+            f'{_build_evidence_cards_html(evidence)}'
+        )
+
+    show_progress = detailed or intent in {"production_readiness", "evidence_sensitivity", "evidence_gap_priority"}
+    if show_progress:
+        progress_label = {
+            "production_readiness": "Release-readiness review",
+            "procurement": "Procurement review",
+            "supplier_qualification": "Supplier qualification review",
+            "schedule_resilience": "Schedule-resilience review",
+            "lifecycle": "Lifecycle review",
+            "inventory": "Inventory review",
+            "evidence_sensitivity": "Evidence-confidence review",
+        }.get(intent, "Engineering review progress")
+        sections.append(
+            f'<div class="cv724-progress-card">'
+            f'<div class="cv39-progress-header">'
+            f'<div class="cv39-progress-label">{html.escape(progress_label)}</div>'
+            f'<div class="cv39-progress-value">{progress}%</div>'
+            f"</div>"
+            f'<div class="cv39-progress"><i style="width:{progress}%"></i></div>'
+            f"</div>"
+        )
+
+    if _should_render_workflow_timeline(question, detailed=detailed, workflow_text=workflow_text, context=context):
+        workflow = _parse_workflow_steps(workflow_text, actions, priority_part, intent=intent)
+        if workflow:
+            workflow_html = "".join(
+                f'<article class="cv39-timeline-step">'
+                f'<div class="cv724-timeline-index">{idx}</div>'
+                f'<div class="cv724-timeline-title">{html.escape(label)}</div>'
+                f'<p class="cv-assistant-preline cv724-timeline-detail">{html.escape(detail)}</p>'
+                f"</article>"
+                for idx, (label, detail) in enumerate(workflow, start=1)
+            )
+            sections.append(
+                '<div class="cv35-section-label">Priority timeline</div>'
+                f'<div class="cv724-timeline-grid">{workflow_html}</div>'
+            )
+
+    return "".join(sections)
+
+
+def _render_decision_workspace(
+    *,
+    question: str,
+    detailed: bool,
+    intent: str,
+    assessment_body: str,
+    priority_part: str,
+    confidence_score: int,
+    confidence_label: str,
+    concise_reasons: list[str],
+    concise_actions: list[str],
+    decision: dict[str, str],
+    profile: dict[str, str],
+    evidence: str,
+    actions: str,
+    rankings: str,
+    workflow_text: str,
+    context: dict[str, Any],
+    confidence_detail: str,
+    confidence_drivers: list[tuple[str, str, str]],
+    impact: list[tuple[str, str, str]],
+    complete: int,
+    total: int,
+    progress: int,
+) -> None:
+    headline = _conversational_headline(intent, assessment_body, priority_part)
+    answer_text = _plain_markdown(assessment_body).strip() or "The saved evidence is not sufficient for a reliable conclusion."
+    primary_html = _build_concise_answer_html(
+        headline=headline,
+        answer_text=answer_text,
+        reason_items=concise_reasons,
+        action_items=concise_actions,
+    )
+    summary_html = _build_decision_summary_html(
+        status=decision["status"],
+        tone=decision["tone"],
+        priority_part=priority_part,
+        confidence_score=confidence_score,
+        confidence_label=confidence_label,
+    )
+    assessment_html = _build_engineering_assessment_html(
+        question=question,
+        detailed=detailed,
+        intent=intent,
+        evidence=evidence,
+        actions=actions,
+        rankings=rankings,
+        workflow_text=workflow_text,
+        context=context,
+        priority_part=priority_part,
+        confidence_detail=confidence_detail,
+        confidence_drivers=confidence_drivers,
+        impact=impact,
+        complete=complete,
+        total=total,
+        progress=progress,
+    )
+    details_open = " open" if detailed else ""
+    st.markdown(
+        f"""
+        <div class="cv725-decision-workspace">
+          <div class="cv725-decision-primary">
+            {primary_html}
+            {summary_html}
+          </div>
+          <aside class="cv725-decision-assessment">
+            <details class="cv725-assessment-details"{details_open}>
+              <summary class="cv725-assessment-summary">{html.escape(_FULL_ASSESSMENT_EXPANDER_LABEL)}</summary>
+              <div class="cv725-assessment-body">
+                <div class="cv725-assessment-heading">Engineering Assessment</div>
+                {assessment_html}
+              </div>
+            </details>
+          </aside>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="cv725_workflow_actions"):
+        _render_quick_actions(context, priority_part, intent=intent)
+
+
 def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent: str = "general") -> None:
     analysis = context.get("analysis") or {}
     analysis_id = str(analysis.get("analysis_id") or "")
     if not analysis_id:
         return
-    st.markdown('<div class="cv724-workflow-actions">', unsafe_allow_html=True)
-    st.markdown('<div class="cv35-section-label">Continue the workflow</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="cv724-workflow-actions"><div class="cv35-section-label">Continue the workflow</div></div>',
+        unsafe_allow_html=True,
+    )
     part_label = priority_part or "component"
     component_url = _href("Analysis Details", analysis_id=analysis_id, tab="components", component=priority_part, focus="component-risk")
     alternative_url = alternative_finder_href(
@@ -842,7 +1181,6 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
                         )
                     else:
                         col.link_button(label, url, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 
@@ -1036,7 +1374,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
         ),
         unsafe_allow_html=True,
     )
-    with st.container(key="cv724_followups"):
+    with st.container(key="cv725_followups"):
         st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
         _render_prompt_chip_grid(
             valid_suggestions,
@@ -1270,7 +1608,7 @@ def _concise_reason_items(evidence: str, drivers: list[str], *, limit: int = _CO
 
 def _concise_action_items(actions: str, *, limit: int = _CONCISE_ACTION_LIMIT) -> list[str]:
     """Return capped recommended actions for the concise answer surface."""
-    return _action_steps(actions)[:limit]
+    return _normalize_action_items(actions, limit=limit)
 
 
 def _should_render_workflow_timeline(
@@ -1384,98 +1722,25 @@ def _render_expanded_engineering_assessment(
     progress: int,
     profile: dict[str, str],
 ) -> None:
-    impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
-    if impact_html:
-        st.markdown(
-            (
-                '<div class="cv35-section-label">Projected engineering impact</div>'
-                f'<div class="cv724-impact-grid">{impact_html}</div>'
-                '<p class="cv724-impact-disclaimer">Projections are directional estimates based on saved evidence, not measured outcomes.</p>'
-            ),
-            unsafe_allow_html=True,
-        )
-
-    if confidence_drivers:
-        driver_html = "".join(
-            _html_confidence_driver(label, value, note) for label, value, note in confidence_drivers[:6]
-        )
-        detail_html = (
-            f'<p class="cv-assistant-preline cv722-confidence-detail">{html.escape(confidence_detail)}</p>'
-            if confidence_detail
-            else ""
-        )
-        st.markdown(
-            (
-                '<div class="cv35-section-label">Confidence drivers</div>'
-                f'<div class="cv724-driver-grid cv722-confidence-drivers-only">{detail_html}{driver_html}</div>'
-            ),
-            unsafe_allow_html=True,
-        )
-
-    if rankings:
-        ranking_items = _evidence_items(rankings)
-        ranking_html = "".join(
-            f'<article class="cv47-ranking-row"><div class="cv47-ranking-index">{idx}</div><div class="cv47-ranking-copy">'
-            f'<div class="cv47-ranking-title">{html.escape(title)}</div>'
-            f'<div class="cv47-ranking-detail">{html.escape(detail)}</div></div></article>'
-            for idx, (title, detail) in enumerate(ranking_items, 1)
-        )
-        st.markdown(
-            (
-                '<div class="cv35-section-label">Engineering priority ranking</div>'
-                f'<div class="cv47-ranking-board">{ranking_html}</div>'
-            ),
-            unsafe_allow_html=True,
-        )
-
-    evidence_items = _evidence_items(evidence)
-    if evidence_items:
-        st.markdown('<div class="cv35-section-label">Evidence breakdown</div>', unsafe_allow_html=True)
-        _render_evidence_cards(evidence)
-
-    show_progress = detailed or intent in {"production_readiness", "evidence_sensitivity", "evidence_gap_priority"}
-    if show_progress:
-        progress_label = {
-            "production_readiness": "Release-readiness review",
-            "procurement": "Procurement review",
-            "supplier_qualification": "Supplier qualification review",
-            "schedule_resilience": "Schedule-resilience review",
-            "lifecycle": "Lifecycle review",
-            "inventory": "Inventory review",
-            "evidence_sensitivity": "Evidence-confidence review",
-        }.get(intent, "Engineering review progress")
-        st.markdown(
-            (
-                f'<div class="cv724-progress-card">'
-                f'<div class="cv39-progress-header">'
-                f'<div class="cv39-progress-label">{html.escape(progress_label)}</div>'
-                f'<div class="cv39-progress-value">{progress}%</div>'
-                f"</div>"
-                f'<div class="cv39-progress"><i style="width:{progress}%"></i></div>'
-                f"</div>"
-            ),
-            unsafe_allow_html=True,
-        )
-
-    if _should_render_workflow_timeline(question, detailed=detailed, workflow_text=workflow_text, context=context):
-        workflow = _parse_workflow_steps(workflow_text, actions, priority_part, intent=intent)
-        if workflow:
-            workflow_html = "".join(
-                f'<article class="cv39-timeline-step">'
-                f'<div class="cv724-timeline-index">{idx}</div>'
-                f'<div class="cv724-timeline-title">{html.escape(label)}</div>'
-                f'<p class="cv-assistant-preline cv724-timeline-detail">{html.escape(detail)}</p>'
-                f"</article>"
-                for idx, (label, detail) in enumerate(workflow, start=1)
-            )
-            st.markdown(
-                (
-                    '<div class="cv35-section-label">Priority timeline</div>'
-                    f'<div class="cv724-timeline-grid">{workflow_html}</div>'
-                ),
-                unsafe_allow_html=True,
-            )
-
+    assessment_html = _build_engineering_assessment_html(
+        question=question,
+        detailed=detailed,
+        intent=intent,
+        evidence=evidence,
+        actions=actions,
+        rankings=rankings,
+        workflow_text=workflow_text,
+        context=context,
+        priority_part=priority_part,
+        confidence_detail=confidence_detail,
+        confidence_drivers=confidence_drivers,
+        impact=impact,
+        complete=complete,
+        total=total,
+        progress=progress,
+    )
+    if assessment_html:
+        st.markdown(assessment_html, unsafe_allow_html=True)
     _render_quick_actions(context, priority_part, intent=intent)
 
 
@@ -1576,48 +1841,30 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
 
     _render_conversation_exchange(question=question, intent=intent)
 
-    _render_conversational_answer(
+    _render_decision_workspace(
+        question=question,
+        detailed=detailed,
         intent=intent,
-        assessment=assessment_body,
-        priority_part=priority_part,
-        confidence_score=confidence_score,
-        drivers=recommendation_drivers,
-        actions=actions,
-        workflow_text=workflow_text,
-        reason_items=concise_reasons,
-        action_items=concise_actions,
-        concise=True,
-    )
-
-    _render_compact_decision_summary(
-        label=profile["label"],
-        status=decision["status"],
-        tone=decision["tone"],
-        risk=decision["risk"],
+        assessment_body=assessment_body,
         priority_part=priority_part,
         confidence_score=confidence_score,
         confidence_label=confidence_label,
+        concise_reasons=concise_reasons,
+        concise_actions=concise_actions,
+        decision=decision,
+        profile=profile,
+        evidence=evidence,
+        actions=actions,
+        rankings=rankings,
+        workflow_text=workflow_text,
+        context=context,
+        confidence_detail=confidence_detail,
+        confidence_drivers=confidence_drivers,
+        impact=impact,
+        complete=complete,
+        total=total,
+        progress=progress,
     )
-
-    with st.expander(_FULL_ASSESSMENT_EXPANDER_LABEL, expanded=detailed):
-        _render_expanded_engineering_assessment(
-            question=question,
-            detailed=detailed,
-            intent=intent,
-            evidence=evidence,
-            actions=actions,
-            rankings=rankings,
-            workflow_text=workflow_text,
-            context=context,
-            priority_part=priority_part,
-            confidence_detail=confidence_detail,
-            confidence_drivers=confidence_drivers,
-            impact=impact,
-            complete=complete,
-            total=total,
-            progress=progress,
-            profile=profile,
-        )
 
 
 def render_engineering_assistant(

@@ -55,6 +55,7 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.button = MagicMock(return_value=False)
     st.link_button = MagicMock()
     st.expander = lambda *args, **kwargs: _NullContext()
+    st.container = lambda **kwargs: _NullContext()
     sys.modules["streamlit"] = st
     return st, markdown_calls
 
@@ -106,6 +107,7 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
             "cv49-answer-card",
             "cv722-concise-answer",
             "cv722-summary-strip",
+            "cv725-decision-workspace",
             "cv724-impact-cell",
             "cv46-evidence-board",
             "cv47-ranking-board",

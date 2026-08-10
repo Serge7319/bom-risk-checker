@@ -140,27 +140,36 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
 
     def test_workflow_actions_compact_container(self) -> None:
         self.assertIn("cv724-workflow-actions", self.assistant_source)
-        self.assertIn('key="cv724_workflow_actions"', self.assistant_source)
-        self.assertIn(".cv724-workflow-actions", self.v2_css)
+        self.assertIn('key="cv725_workflow_actions"', self.assistant_source)
+        self.assertIn(".cv725-decision-workspace", self.v2_css)
 
     def test_followups_separated_panel(self) -> None:
         self.assertIn("cv723-followups-panel", self.assistant_source)
-        self.assertIn('key="cv724_followups"', self.assistant_source)
+        self.assertIn('key="cv725_followups"', self.assistant_source)
 
     def test_normal_question_collapsed_expander(self) -> None:
-        _, _, _, expander_calls = self._render()
-        self.assertEqual(len(expander_calls), 1)
-        self.assertFalse(expander_calls[0][1].get("expanded"))
+        _, html, _, expander_calls = self._render()
+        self.assertEqual(len(expander_calls), 0)
+        self.assertIn("cv725-assessment-details", html)
+        self.assertNotIn('cv725-assessment-details" open', html)
 
     def test_detailed_question_expands_assessment(self) -> None:
-        _, _, _, expander_calls = self._render(question="Give me a comprehensive analysis of this BOM.")
-        self.assertTrue(expander_calls[0][1].get("expanded"))
+        _, html, _, expander_calls = self._render(question="Give me a comprehensive analysis of this BOM.")
+        self.assertEqual(len(expander_calls), 0)
+        self.assertIn('cv725-assessment-details" open', html)
+
+    def test_desktop_decision_workspace_present(self) -> None:
+        html = self.harness_html
+        self.assertIn("cv725-decision-workspace", html)
+        self.assertIn("cv725-decision-primary", html)
+        self.assertIn("cv725-decision-assessment", html)
+        self.assertIn("Sprint 72.2.5", self.v2_css)
 
     def test_no_duplicate_direct_answer_in_assessment(self) -> None:
         html = self.harness_html
         self.assertIn("cv724-impact-grid", html)
-        expanded = html.split("cv724-impact-grid", 1)[1]
-        self.assertNotIn("cv722-direct-answer-text", expanded)
+        assessment = html.split("cv725-decision-assessment", 1)[1]
+        self.assertNotIn("cv722-direct-answer-text", assessment)
         self.assertLessEqual(html.count("Review PC817 first."), 2)
 
     def test_no_sprint_7143_helpers(self) -> None:

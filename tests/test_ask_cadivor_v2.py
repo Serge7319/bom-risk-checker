@@ -234,7 +234,7 @@ class AskCadivorV2Tests(unittest.TestCase):
         self.assertIn("cv-assistant-shell", self.assistant_source)
         self.assertIn('key="cv_assistant_suggestions"', self.assistant_source)
         self.assertIn('key="cv_assistant_composer"', self.assistant_source)
-        self.assertIn('key="cv724_followups"', self.assistant_source)
+        self.assertIn('key="cv725_followups"', self.assistant_source)
 
     def test_protected_state_functions_present(self) -> None:
         assistant = self._load_assistant()

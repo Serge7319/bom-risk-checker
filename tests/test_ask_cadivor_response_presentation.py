@@ -184,13 +184,14 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertIn("border-top", block)
 
     def test_responsive_media_queries_cover_breakpoints(self) -> None:
-        section = self.v2_css.split("Sprint 72.2.4", 1)[1]
+        section = self.v2_css.split("Sprint 72.2.5", 1)[1]
+        self.assertIn("@media (min-width: 1025px)", section)
         self.assertIn("@media (max-width: 1024px)", section)
         self.assertIn("@media (max-width: 768px)", section)
-        self.assertIn("@media (max-width: 390px)", section)
-        tablet_block = section.split("@media (max-width: 768px)", 1)[1].split("@media", 1)[0]
-        self.assertIn(".cv722-summary-strip", tablet_block)
-        self.assertIn("grid-template-columns: 1fr", tablet_block)
+        self.assertIn(".cv725-decision-workspace", section)
+        narrow_block = self.v2_css.split("@media (max-width: 768px)", 1)[-1]
+        self.assertIn(".cv722-summary-strip", narrow_block)
+        self.assertIn("grid-template-columns: 1fr", narrow_block)
 
     def test_no_label_value_concatenation_in_markup(self) -> None:
         _, html, _ = self._render_pc817()
@@ -245,9 +246,9 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertIn("Key engineering reasons", html)
         self.assertIn("Recommended actions", html)
         self.assertIn("Evidence breakdown", html)
-        self.assertEqual(len(expander_calls), 1)
-        self.assertIn("View full engineering assessment", expander_calls[0][0][0])
-        self.assertFalse(expander_calls[0][1].get("expanded"))
+        self.assertEqual(len(expander_calls), 0)
+        self.assertIn("cv725-assessment-details", html)
+        self.assertIn("View full engineering assessment", html)
 
     def test_obsolete_cv46_why_css_removed(self) -> None:
         section_after_724 = self.v2_css.split("Sprint 72.2.4", 1)[1]
@@ -257,6 +258,7 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
 
     def test_workflow_actions_wrapper_present(self) -> None:
         self.assertIn('class="cv724-workflow-actions"', self.assistant_source)
+        self.assertIn('key="cv725_workflow_actions"', self.assistant_source)
         self.assertIn(".cv724-workflow-actions", self.v2_css)
 
 

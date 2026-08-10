@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zero-credit Ask Cadivor presentation harness — Sprint 72.2.4.
+"""Zero-credit Ask Cadivor presentation harness — Sprint 72.2.5.
 
 Renders the PC817 production scenario through the canonical renderer without
 calling EngineeringAI.ask() or any OpenAI provider.
@@ -21,13 +21,13 @@ PC817_ANSWER = (
     "### Intent\nGeneral Engineering Review\n\n"
     "### Direct Answer\nReview PC817 first.\n\n"
     "### Evidence\n"
-    "- **PC817** — medium risk, 21.4-week lead time, 2 suppliers\n"
-    "- **BZX55C5V1** — 8–16 week lead times with MAX3232CPE exposure\n"
-    "- **DRV8825** — End of Life lifecycle status\n\n"
+    "- **PC817** — medium risk with a 21.4 week lead time and only 2 suppliers\n"
+    "- **BZX55C5V1** — moderate lead-time exposure with MAX3232CPE\n"
+    "- **DRV8825** — End of Life lifecycle status requires attention\n\n"
     "### Recommended Actions\n"
-    "Investigate alternate suppliers/parts for PC817. "
-    "Validate procurement plans for moderate lead-time components. "
-    "Assess replacement/last-time-buy strategy for DRV8825."
+    "1. Investigate alternative suppliers or parts for PC817.\n"
+    "2. Validate procurement plans for moderate-lead-time components.\n"
+    "3. Assess replacement strategy for DRV8825."
 )
 
 PC817_CONTEXT = {
@@ -102,12 +102,21 @@ def main() -> int:
     html = render_pc817_harness()
     checks = {
         "question_label_separate": "cv50-you-asked-label" in html and PC817_QUESTION in html,
+        "direct_answer": "cv722-direct-answer-title" in html and "Review PC817 first." in html,
+        "three_reasons": html.count("cv722-reason-row") == 3,
+        "three_actions": html.count("cv722-action-row") == 3,
         "no_ol_reasons": "<ol class=\"cv722-reason-list\"" not in html,
-        "ul_reasons": "cv722-reason-list" in html,
+        "no_duplicate_numbering": "1. 1" not in html and not any(f"<p>{n}</p>" in html for n in ("1", "2", "3")),
         "kpi_strip": "cv722-summary-strip" in html,
-        "impact_grid": "cv724-impact-grid" in html or "cv724-impact-cell" in html,
-        "no_duplicate_ol_index": "1. 1" not in html and ">1</span><p>1" not in html,
-        "block_kpi_labels": 'class="cv722-summary-label">Status</div>' in html,
+        "kpi_block_labels": 'class="cv722-summary-label">Status</div>' in html,
+        "desktop_workspace": "cv725-decision-workspace" in html,
+        "assessment_column": "cv725-decision-assessment" in html,
+        "impact_grid": "cv724-impact-grid" in html,
+        "driver_grid": "cv724-driver-grid" in html,
+        "evidence_cards": "cv46-evidence-board" in html,
+        "details_not_expander": "cv725-assessment-details" in html,
+        "shell_independent_classes": "cv725-decision-primary" in html,
+        "no_split_article_wrapper": '<article class="cv-assistant-response">' not in html,
     }
     print("=== Ask Cadivor PC817 presentation harness ===")
     print(f"Question: {PC817_QUESTION}")
