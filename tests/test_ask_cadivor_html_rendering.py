@@ -105,3 +105,8 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def tearDownModule():
+    from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
+    restore_ask_cadivor_streamlit_modules()
+

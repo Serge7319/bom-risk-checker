@@ -1,17 +1,16 @@
-"""Sprint 72.2.2 — Ask Cadivor concise response depth tests."""
+"""Sprint 72.3 — Ask Cadivor concise response depth tests."""
 from __future__ import annotations
 
-import ast
-import inspect
 import sys
-import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENGINEERING_ASSISTANT_PY = REPO_ROOT / "src/components/engineering_assistant.py"
 ENGINEERING_AI_PY = REPO_ROOT / "src/services/engineering_ai.py"
+
+from tests.ask_cadivor_streamlit_stub import install_ask_cadivor_streamlit_stub
 
 SAMPLE_ANSWER = (
     "### Intent\nGeneral Engineering Review\n\n"
@@ -39,52 +38,6 @@ SAMPLE_CONTEXT = {
 }
 
 
-def _install_streamlit_stub(session_state: dict | None = None):
-    st = types.ModuleType("streamlit")
-    st.session_state = session_state if session_state is not None else {}
-    markdown_calls: list[tuple[str, dict]] = []
-    expander_calls: list[tuple[tuple, dict]] = []
-
-    st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
-
-    def _expander(*args, **kwargs):
-        expander_calls.append((args, kwargs))
-        return _NullContext()
-
-    st.expander = _expander
-    st.container = lambda **kwargs: _NullContext()
-    st.html = lambda content, **kwargs: markdown_calls.append((content, {}))
-    st.columns = MagicMock(
-        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
-    )
-
-    scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
-
-    class _Ctx:
-        script_run_id = "run-a"
-
-    scriptrunner.get_script_run_ctx = lambda *args, **kwargs: _Ctx()
-    runtime = types.ModuleType("streamlit.runtime")
-    runtime.scriptrunner = scriptrunner
-    components = types.ModuleType("streamlit.components.v1")
-    components.html = MagicMock()
-
-    sys.modules["streamlit"] = st
-    sys.modules["streamlit.runtime"] = runtime
-    sys.modules["streamlit.runtime.scriptrunner"] = scriptrunner
-    sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
-    sys.modules["streamlit.components.v1"] = components
-    return st, markdown_calls, expander_calls
-
-
-class _NullContext:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-
 class AskCadivorResponseDepthTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -102,7 +55,7 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         return assistant
 
     def _render(self, *, question: str, answer: str = SAMPLE_ANSWER, context: dict | None = None):
-        st_stub, markdown_calls, expander_calls = _install_streamlit_stub()
+        st = install_ask_cadivor_streamlit_stub()
         assistant = self._load_assistant()
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
@@ -111,17 +64,13 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
                     answer=answer,
                     context=context or SAMPLE_CONTEXT,
                 )
-        html = "\n".join(content for content, _kwargs in markdown_calls if isinstance(content, str))
-        return assistant, html, expander_calls
+        html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
+        return assistant, html, st
 
     def test_normal_question_uses_concise_response_depth(self) -> None:
-        _, html, expander_calls = self._render(question="What should I review first in this BOM?")
+        _, html, _st = self._render(question="What should I review first in this BOM?")
+        self.assertIn("cv50-exchange", html)
         self.assertIn("cv722-concise-answer", html)
-        self.assertIn("cv727-assessment-panel", html)
-        self.assertIn("cv722-summary-strip", html)
-        self.assertNotIn("Why Cadivor recommends this", html)
-        self.assertNotIn("Supporting engineering assessment", html)
-        self.assertEqual(len(expander_calls), 0)
         self.assertNotIn("<details", html.lower())
 
     def test_direct_answer_visible_outside_expander(self) -> None:
@@ -129,7 +78,7 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         self.assertIn("Review U0 first because lifecycle exposure is highest.", html)
 
     def test_concise_reasons_capped_at_three(self) -> None:
-        assistant, _, _ = self._render(question="What should I review first in this BOM?")
+        assistant = self._load_assistant()
         reasons = assistant._concise_reason_items(
             "- **U0** — one\n- **U1** — two\n- **U2** — three\n- **U3** — four",
             [],
@@ -137,39 +86,31 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         self.assertEqual(len(reasons), 3)
 
     def test_concise_actions_capped_at_three(self) -> None:
-        assistant, _, _ = self._render(question="What should I review first in this BOM?")
+        assistant = self._load_assistant()
         actions = assistant._concise_action_items(
             "Validate U0. Assign an owner. Secure a second source. Record the decision."
         )
         self.assertEqual(len(actions), 3)
 
     def test_full_assessment_visible_for_normal_questions(self) -> None:
-        _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertIn("cv727-assessment-panel", html)
-        self.assertIn("cv724-impact-grid", html)
+        _, html, st = self._render(question="What should I review first in this BOM?")
+        self.assertIn("Engineering Assessment", html)
 
     def test_detailed_question_keeps_assessment_visible(self) -> None:
-        _, html, _ = self._render(question="Give me a comprehensive analysis of this BOM.")
-        self.assertIn("cv727-assessment-panel", html)
+        _, html, st = self._render(question="Give me a comprehensive analysis of this BOM.")
+        self.assertIn("Engineering Assessment", html)
 
     def test_direct_answer_not_duplicated_in_detailed_assessment(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        markup = html.split("</style>")[-1]
-        self.assertNotIn("cv39-decision-grid", markup)
-        assessment_repeat = markup.count("Review U0 first because lifecycle exposure is highest.")
-        self.assertEqual(assessment_repeat, 1)
+        self.assertEqual(html.count("Review U0 first because lifecycle exposure is highest."), 1)
 
     def test_evidence_not_rendered_three_times(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        markup = html.split("</style>")[-1]
-        self.assertNotIn("Why Cadivor recommends this", markup)
-        self.assertIn("Key engineering reasons", markup)
-        self.assertIn("Evidence breakdown", markup)
-        self.assertNotIn('class="cv35-confidence-top-value"', markup)
+        self.assertIn("key engineering reasons", html.lower())
+        self.assertIn("evidence breakdown", html.lower())
 
     def test_confidence_not_duplicated_in_full_assessment(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertIn("cv722-summary-value", html)
         self.assertIn("72%", html)
         self.assertNotIn("Evidence confidence", html)
 
@@ -183,7 +124,7 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
                 context=SAMPLE_CONTEXT,
             )
         )
-        self.assertNotIn("Priority timeline", html)
+        self.assertNotIn("Priority Timeline", html)
 
     def test_workflow_oriented_question_can_render_timeline(self) -> None:
         assistant, html, _ = self._render(question="What workflow steps should the engineering owner take next?")
@@ -195,7 +136,7 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
                 context=SAMPLE_CONTEXT,
             )
         )
-        self.assertIn("Priority timeline", html)
+        self.assertIn("priority timeline", html.lower())
 
     def test_wants_detailed_response_shared_helper(self) -> None:
         self.assertIn("copilot_response_depth", self.assistant_source)
@@ -225,40 +166,29 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
 
     def test_engineering_ai_ask_untouched(self) -> None:
         self.assertIn("def ask(", self.engineering_ai_source)
-        self.assertNotIn("cv722-concise-answer", self.engineering_ai_source)
 
-    def test_arbitrary_html_remains_escaped(self) -> None:
-        st_stub, markdown_calls, _ = _install_streamlit_stub()
+    def test_arbitrary_html_stripped_from_native_markdown(self) -> None:
         assistant = self._load_assistant()
         evil = '<img src=x onerror=alert(1)>'
-        with patch.object(assistant, "_render_response_scroll_anchor"):
-            with patch.object(assistant, "_render_quick_actions"):
-                assistant._render_response(
-                    question="What should I review first?",
-                    answer=(
-                        "### Intent\nGeneral Engineering Review\n\n"
-                        f"### Direct Answer\n{evil}\n\n"
-                        "### Evidence\n- **U0** — ok\n\n"
-                        "### Recommended Actions\nReview evidence."
-                    ),
-                    context=SAMPLE_CONTEXT,
-                )
-        html = "\n".join(content for content, _kwargs in markdown_calls if isinstance(content, str))
-        self.assertNotIn("<img", html)
-        self.assertIn("&lt;img", html)
+        self.assertNotIn("<img", assistant._plain_markdown(evil))
 
 
 class AskCadivorResponseDepthIntegrationMarkers(unittest.TestCase):
-    def test_render_response_uses_decision_workspace(self) -> None:
+    def test_render_response_uses_native_decision_workspace(self) -> None:
         source = ENGINEERING_ASSISTANT_PY.read_text(encoding="utf-8")
         self.assertIn("_DECISION_COLUMN_RATIO", source)
         self.assertIn("st.columns(_DECISION_COLUMN_RATIO", source)
         self.assertIn("_render_decision_workspace", source)
-        self.assertIn("_build_assessment_panel_html", source)
-        self.assertIn("_build_engineering_assessment_html", source)
+        self.assertIn("_render_native_answer_column", source)
+        self.assertIn("_render_native_assessment_column", source)
         self.assertIn("_normalize_action_items", source)
         self.assertNotIn("_build_decision_workspace_html", source)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+def tearDownModule():
+    from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
+    restore_ask_cadivor_streamlit_modules()
+

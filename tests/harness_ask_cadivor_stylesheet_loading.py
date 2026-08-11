@@ -23,71 +23,11 @@ DS_V2_CSS = REPO_ROOT / "src/assets/css/cadivor_design_system_v2.css"
 from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
 
 
-class _NullContext:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-
-class _RecordingColumn:
-    def __init__(self, side: str, st_module: types.ModuleType) -> None:
-        self._side = side
-        self._st = st_module
-
-    def __enter__(self):
-        self._st._active_column = self._side
-        return self
-
-    def __exit__(self, *args):
-        self._st._active_column = None
-        return False
+from tests.ask_cadivor_streamlit_stub import install_ask_cadivor_streamlit_stub, restore_ask_cadivor_streamlit_modules
 
 
 def _install_streamlit_stub(*, script_run_id: str = "stylesheet-harness-run"):
-    st = types.ModuleType("streamlit")
-    st.session_state = {}
-    st._active_column = None
-    st.markdown_calls: list[tuple[str, dict, str | None]] = []
-    st.html_calls: list[str] = []
-    st.columns_calls: list[list[float]] = []
-
-    class _ScriptRunCtx:
-        def __init__(self, run_id: str) -> None:
-            self.script_run_id = run_id
-
-    script_ctx = _ScriptRunCtx(script_run_id)
-
-    def _markdown(content, **kwargs):
-        side = st._active_column or "root"
-        st.markdown_calls.append((str(content), dict(kwargs), side))
-
-    st.markdown = _markdown
-    st.html = lambda content, **kwargs: st.html_calls.append(str(content))
-    st.columns = lambda spec, gap=None: (
-        st.columns_calls.append(list(spec) if isinstance(spec, (list, tuple)) else [1] * int(spec)) or [
-            _RecordingColumn("left", st),
-            _RecordingColumn("right", st),
-        ]
-    )
-    st.container = lambda **kwargs: _NullContext()
-    st.error = lambda *args, **kwargs: None
-
-    scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
-    scriptrunner.get_script_run_ctx = lambda *args, **kwargs: script_ctx
-    runtime = types.ModuleType("streamlit.runtime")
-    runtime.scriptrunner = scriptrunner
-    components = types.ModuleType("streamlit.components.v1")
-    components.html = lambda content, **kwargs: st.html_calls.append(str(content))
-
-    sys.modules["streamlit"] = st
-    sys.modules["streamlit.runtime"] = runtime
-    sys.modules["streamlit.runtime.scriptrunner"] = scriptrunner
-    sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
-    sys.modules["streamlit.components.v1"] = components
-    st.script_ctx = script_ctx
-    return st
+    return install_ask_cadivor_streamlit_stub(script_run_id=script_run_id)
 
 
 def _stylesheet_markdown_calls(st) -> list[str]:
@@ -153,15 +93,16 @@ def main() -> int:
         "ask_css_contains_contract_selectors": all(
             selector in ask_css
             for selector in (
-                ".cv49-answer-card",
-                ".cv727-assessment-panel",
-                ".cv724-impact-grid",
-                ".cv46-evidence-board",
+                ".cv50-exchange",
+                ".cv722-reason-list",
+                ".cv722-summary-strip",
+                ".cv46-evidence-card-header",
             )
         ),
         "response_renderer_emits_no_style_tag": len(response_stylesheet_calls) == 0,
-        "response_markup_present": "cv49-answer-card" in response_html,
-        "native_columns_ratio_preserved": any(call == [0.85, 1.15] for call in st.columns_calls),
+        "response_markup_present": "Review PC817 first." in response_html and "cv722-reason-row" in response_html,
+        "native_columns_ratio_preserved": any(call[0] == [0.85, 1.15] for call in st.columns_calls),
+        "self_contained_surfaces_present": "cv727-assessment-panel" in response_html,
         "no_st_html_stylesheet_path": all("cadivor-ask-cadivor-v2-css" not in call for call in st.html_calls),
         "engineering_assistant_has_no_runtime_injection": "_inject_ask_cadivor_v2_styles" not in (
             REPO_ROOT / "src/components/engineering_assistant.py"
@@ -178,6 +119,7 @@ def main() -> int:
         print(f"[{status}] {name}")
         failed = failed or not ok
     print()
+    restore_ask_cadivor_streamlit_modules()
     if failed:
         print("Harness: FAILED")
         return 1

@@ -1,31 +1,18 @@
-"""Sprint 72.1 — Ask Cadivor response readability tests."""
+"""Sprint 72.3 — Ask Cadivor native response readability tests."""
 from __future__ import annotations
 
 import inspect
-import re
 import sys
-import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASK_CADIVOR_V2_CSS = REPO_ROOT / "src/assets/css/ask_cadivor_v2.css"
 ENGINEERING_ASSISTANT_PY = REPO_ROOT / "src/components/engineering_assistant.py"
 ENGINEERING_AI_PY = REPO_ROOT / "src/services/engineering_ai.py"
 
-ORPHAN_CLASSES = (
-    ".cv39-decision-grid",
-    ".cv39-progress-wrap",
-    ".cv39-progress",
-    ".cv47-ranking-board",
-    ".cv47-ranking-row",
-    ".cv39-timeline-step",
-    ".cv46-evidence-metric",
-    ".cv46-evidence-metrics",
-    ".cv46-empty-evidence",
-    ".cv46-confidence-drivers",
-)
+from tests.ask_cadivor_streamlit_stub import install_ask_cadivor_streamlit_stub
 
 REVIVED_7143_HELPERS = (
     "_format_engineering_prose",
@@ -37,37 +24,6 @@ REVIVED_7143_HELPERS = (
     "_emphasize_part_numbers",
     "_known_part_numbers",
 )
-
-
-def _install_streamlit_stub(session_state: dict | None = None):
-    st = types.ModuleType("streamlit")
-    st.session_state = session_state if session_state is not None else {}
-    markdown_calls: list[tuple[str, dict]] = []
-    st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
-    st.columns = MagicMock(
-        side_effect=lambda spec, gap=None: [_NullContext() for _ in (spec if isinstance(spec, (list, tuple)) else range(int(spec)))]
-    )
-    st.form = lambda *args, **kwargs: _NullContext()
-    st.text_area = lambda label, key, **kwargs: st.session_state.get(key, "")
-    st.form_submit_button = MagicMock(return_value=False)
-    st.status = lambda *args, **kwargs: _NullContext()
-    st.warning = MagicMock()
-    st.info = MagicMock()
-    st.caption = MagicMock()
-    st.button = MagicMock(return_value=False)
-    st.link_button = MagicMock()
-    st.expander = lambda *args, **kwargs: _NullContext()
-    st.container = lambda **kwargs: _NullContext()
-    sys.modules["streamlit"] = st
-    return st, markdown_calls
-
-
-class _NullContext:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
 
 
 class AskCadivorResponseReadabilityTests(unittest.TestCase):
@@ -85,45 +41,21 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
 
         return assistant
 
-    def test_orphan_class_css_exists(self) -> None:
-        for selector in ORPHAN_CLASSES:
-            self.assertIn(selector, self.v2_css, f"missing CSS for {selector}")
-
-    def test_preline_css_preserves_line_breaks(self) -> None:
-        self.assertIn(".cv-assistant-preline", self.v2_css)
-        block = self.v2_css.split(".cv-assistant-preline", 1)[1].split("}", 1)[0]
-        self.assertIn("white-space: pre-line", block)
-
-    def test_response_wrapper_css_exists(self) -> None:
-        self.assertIn(".cv-assistant-response", self.v2_css)
-        block = self.v2_css.split(".cv-assistant-response", 1)[1].split("}", 1)[0]
-        self.assertIn("display: grid", block)
-        self.assertIn("gap:", block)
-
-    def test_concise_list_css_exists(self) -> None:
-        self.assertIn(".cv722-reason-list", self.v2_css)
-        self.assertIn(".cv722-action-list", self.v2_css)
-
-    def test_existing_renderer_class_names_remain(self) -> None:
-        for class_name in (
-            "cv49-answer-card",
-            "cv722-concise-answer",
-            "cv722-summary-strip",
-            "cv727-assessment-panel",
-            "cv724-impact-cell",
-            "cv46-evidence-board",
-            "cv47-ranking-board",
-            "cv39-timeline-step",
+    def test_shell_independent_css_exists(self) -> None:
+        section = self.v2_css.split("Sprint 72.2.4", 1)[1]
+        for selector in (
+            ".cv50-exchange",
+            ".cv722-reason-list",
+            ".cv722-summary-strip",
+            ".cv46-evidence-card-header",
         ):
-            self.assertIn(class_name, self.assistant_source)
+            self.assertIn(selector, section)
 
-    def test_response_wrapper_present_in_renderer(self) -> None:
-        self.assertNotIn('<article class="cv-assistant-response">', self.assistant_source)
-        self.assertIn("_render_response(", self.assistant_source)
-
-    def test_preline_class_used_on_answer_text(self) -> None:
-        self.assertIn('class="cv-assistant-preline"', self.assistant_source)
-        self.assertIn("_render_conversational_answer", self.assistant_source)
+    def test_production_renderer_uses_native_workspace(self) -> None:
+        self.assertIn("_render_native_answer_column", self.assistant_source)
+        self.assertIn("_render_native_assessment_column", self.assistant_source)
+        self.assertIn("_render_decision_workspace", self.assistant_source)
+        self.assertNotIn("_build_decision_workspace_html", self.assistant_source)
 
     def test_sprint_7143_formatter_helpers_not_present(self) -> None:
         for helper in REVIVED_7143_HELPERS:
@@ -144,8 +76,8 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
         ):
             self.assertIn(marker, self.assistant_source)
 
-    def test_render_response_preserves_newlines_in_html(self) -> None:
-        st_stub, markdown_calls = _install_streamlit_stub()
+    def test_render_response_preserves_readable_text(self) -> None:
+        st = install_ask_cadivor_streamlit_stub()
         assistant = self._load_assistant()
         sample_answer = (
             "### Executive Summary\n"
@@ -159,25 +91,17 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
             "components": [{"part_number": "U1", "risk_score": 90}],
             "coverage": {"score": 72},
         }
-
-        def _columns(spec, gap=None):
-            count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
-            return [_NullContext() for _ in range(count)]
-
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                with patch.object(st_stub, "columns", side_effect=_columns):
-                    assistant._render_response(
-                        question="What should I review first?",
-                        answer=sample_answer,
-                        context=context,
-                    )
-        markdown_html = "\n".join(
-            content for content, _kwargs in markdown_calls if isinstance(content, str)
-        )
-        self.assertIn("cv-assistant-preline", markdown_html)
+                assistant._render_response(
+                    question="What should I review first?",
+                    answer=sample_answer,
+                    context=context,
+                )
+        markdown_html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
         self.assertIn("First paragraph line one.", markdown_html)
         self.assertNotIn('<article class="cv-assistant-response">', markdown_html)
+        self.assertNotIn("<style", markdown_html.lower())
 
     def test_plain_markdown_still_strips_bold_without_parser(self) -> None:
         assistant = self._load_assistant()
@@ -190,3 +114,8 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def tearDownModule():
+    from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
+    restore_ask_cadivor_streamlit_modules()
+

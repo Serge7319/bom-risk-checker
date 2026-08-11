@@ -13,6 +13,13 @@ import streamlit.components.v1 as components
 
 from src.urls import internal_app_href
 from src.ui.navigation import alternative_finder_href, internal_nav_button, ALTERNATIVE_FINDER_PAGE
+from src.ui.cadivor_design_system import (
+    MetricCard,
+    cadivor_badge,
+    cadivor_meta_row,
+    render_kpi_row_safe,
+    render_subsection_header,
+)
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
 from src.services.copilot_response_depth import wants_detailed_response as _wants_detailed_response
@@ -450,6 +457,7 @@ def _direct_answer_title(assessment: str, fallback: str) -> str:
 def _plain_markdown(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", str(text or ""))
     text = re.sub(r"`(.+?)`", r"\1", text)
+    text = re.sub(r"<[^>]+>", "", text)
     return text.strip()
 
 
@@ -1077,6 +1085,117 @@ def _build_assessment_panel_html(assessment_html: str) -> str:
         """
 
 
+def _native_badge_tone(raw: str) -> str:
+    tone = str(raw or "neutral").strip().lower()
+    if tone in {"ready", "success", "high"}:
+        return "success"
+    if tone in {"critical", "danger", "blocked"}:
+        return "danger"
+    if tone in {"warning", "medium", "review"}:
+        return "warning"
+    if tone in {"confidence", "info", "monitoring"}:
+        return tone
+    return "neutral"
+
+
+def _build_conversation_exchange_html(*, question: str, intent: str) -> str:
+    response_label, response_class = _response_type_meta(intent)
+    safe_question = html.escape(_plain_markdown(str(question or "").strip()))
+    return f"""
+        <section class="cv50-exchange">
+          <div class="cv50-exchange-top">
+            <div class="cv50-you-asked">
+              <span class="cv50-you-asked-label">You asked</span>
+              <strong class="cv50-you-asked-question">{safe_question}</strong>
+            </div>
+            <div class="cv50-exchange-badges">
+              <span class="cv50-type cv50-type--{html.escape(response_class)}">{html.escape(response_label)}</span>
+              <span class="cv50-saved">✓ Review auto-saved</span>
+            </div>
+          </div>
+        </section>
+        """
+
+
+def _render_native_conversation_exchange(*, question: str, intent: str) -> None:
+    st.markdown(
+        _build_conversation_exchange_html(question=question, intent=intent),
+        unsafe_allow_html=True,
+    )
+
+
+def _render_native_answer_column(
+    *,
+    headline: str,
+    answer_text: str,
+    reason_items: list[str],
+    action_items: list[str],
+    decision: dict[str, str],
+    priority_part: str,
+    confidence_score: int,
+    confidence_label: str,
+) -> None:
+    st.markdown(
+        _build_concise_answer_html(
+            headline=headline,
+            answer_text=answer_text,
+            reason_items=reason_items,
+            action_items=action_items,
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        _build_decision_summary_html(
+            status=str(decision.get("status") or "Review"),
+            tone=str(decision.get("tone") or "neutral"),
+            priority_part=priority_part,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _render_native_assessment_column(
+    *,
+    question: str,
+    detailed: bool,
+    intent: str,
+    evidence: str,
+    actions: str,
+    rankings: str,
+    workflow_text: str,
+    context: dict[str, Any],
+    priority_part: str,
+    confidence_detail: str,
+    confidence_drivers: list[tuple[str, str, str]],
+    impact: list[tuple[str, str, str]],
+    complete: int,
+    total: int,
+    progress: int,
+) -> None:
+    assessment_html = _build_engineering_assessment_html(
+        question=question,
+        detailed=detailed,
+        intent=intent,
+        evidence=evidence,
+        actions=actions,
+        rankings=rankings,
+        workflow_text=workflow_text,
+        context=context,
+        priority_part=priority_part,
+        confidence_detail=confidence_detail,
+        confidence_drivers=confidence_drivers,
+        impact=impact,
+        complete=complete,
+        total=total,
+        progress=progress,
+    )
+    panel_html = _build_assessment_panel_html(assessment_html)
+    if panel_html.strip():
+        st.markdown(panel_html, unsafe_allow_html=True)
+
+
 def _render_decision_workspace(
     *,
     question: str,
@@ -1104,57 +1223,50 @@ def _render_decision_workspace(
 ) -> None:
     headline = _conversational_headline(intent, assessment_body, priority_part)
     answer_text = _plain_markdown(assessment_body).strip() or "The saved evidence is not sufficient for a reliable conclusion."
-    primary_html = _build_concise_answer_html(
-        headline=headline,
-        answer_text=answer_text,
-        reason_items=concise_reasons,
-        action_items=concise_actions,
-    )
-    summary_html = _build_decision_summary_html(
-        status=decision["status"],
-        tone=decision["tone"],
-        priority_part=priority_part,
-        confidence_score=confidence_score,
-        confidence_label=confidence_label,
-    )
-    assessment_html = _build_engineering_assessment_html(
-        question=question,
-        detailed=detailed,
-        intent=intent,
-        evidence=evidence,
-        actions=actions,
-        rankings=rankings,
-        workflow_text=workflow_text,
-        context=context,
-        priority_part=priority_part,
-        confidence_detail=confidence_detail,
-        confidence_drivers=confidence_drivers,
-        impact=impact,
-        complete=complete,
-        total=total,
-        progress=progress,
-    )
-    assessment_panel_html = _build_assessment_panel_html(assessment_html)
     _log_ask_render(
         "workspace_shell_ready",
-        left_html_len=len(_normalize_presentation_html(primary_html + summary_html)),
-        right_html_len=len(_normalize_presentation_html(assessment_panel_html)),
-        has_assessment_panel=bool(assessment_panel_html.strip()),
+        left_html_len=0,
+        right_html_len=0,
+        has_assessment_panel=True,
         has_style_tag=False,
+        renderer="native_streamlit",
     )
     _log_ask_render("workspace_columns_requested", ratio="0.85,1.15")
-    with st.container(key="cv727_decision_workspace"):
-        left_col, right_col = st.columns(_DECISION_COLUMN_RATIO, gap="medium")
+    with st.container():
+        left_col, right_col = st.columns(_DECISION_COLUMN_RATIO, gap="large")
         with left_col:
             _log_ask_render("workspace_left_column_entered")
-            _render_presentation_html(primary_html)
-            _render_presentation_html(summary_html)
+            _render_native_answer_column(
+                headline=headline,
+                answer_text=answer_text,
+                reason_items=concise_reasons,
+                action_items=concise_actions,
+                decision=decision,
+                priority_part=priority_part,
+                confidence_score=confidence_score,
+                confidence_label=confidence_label,
+            )
         with right_col:
             _log_ask_render("workspace_right_column_entered")
-            if assessment_panel_html:
-                _render_presentation_html(assessment_panel_html)
+            _render_native_assessment_column(
+                question=question,
+                detailed=detailed,
+                intent=intent,
+                evidence=evidence,
+                actions=actions,
+                rankings=rankings,
+                workflow_text=workflow_text,
+                context=context,
+                priority_part=priority_part,
+                confidence_detail=confidence_detail,
+                confidence_drivers=confidence_drivers,
+                impact=impact,
+                complete=complete,
+                total=total,
+                progress=progress,
+            )
     _log_ask_render("workspace_render_completed")
-    with st.container(key="cv725_workflow_actions"):
+    with st.container(border=True):
         _render_quick_actions(context, priority_part, intent=intent)
 
 
@@ -1163,10 +1275,7 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
     analysis_id = str(analysis.get("analysis_id") or "")
     if not analysis_id:
         return
-    st.markdown(
-        '<div class="cv724-workflow-actions"><div class="cv35-section-label">Continue the workflow</div></div>',
-        unsafe_allow_html=True,
-    )
+    render_subsection_header("Continue the workflow", icon="workflow")
     part_label = priority_part or "component"
     component_url = _href("Analysis Details", analysis_id=analysis_id, tab="components", component=priority_part, focus="component-risk")
     alternative_url = alternative_finder_href(
@@ -1192,7 +1301,7 @@ def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent
     actions = action_sets.get(intent, [(f"Open {part_label}", component_url), (f"Find {part_label} alternative", alternative_url), (f"Monitor {part_label}", monitoring_url), ("Create engineering record", decision_url)])
     primary_label, primary_url = actions[1] if len(actions) > 1 else actions[0]
     secondary_actions = [actions[0], actions[2], actions[3]] if len(actions) > 3 else actions[1:]
-    with st.container(key="cv724_workflow_actions"):
+    with st.container(border=True):
         primary_col, secondary_col = st.columns([1.15, 2])
         with primary_col:
             if primary_url == alternative_url:
@@ -1410,16 +1519,9 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     st.session_state["cv36_followup_ready_for"] = ready_for
     button_generation = _followup_button_generation(valid_suggestions)
 
-    st.markdown(
-        (
-            '<section class="cv-assistant-followups-panel cv723-followups-panel">'
-            '<h3 class="cv723-followups-heading">Continue the review</h3>'
-            '</section>'
-        ),
-        unsafe_allow_html=True,
-    )
-    with st.container(key="cv725_followups"):
-        st.markdown('<div class="cv35-section-label">Suggested follow-ups</div>', unsafe_allow_html=True)
+    render_subsection_header("Continue the review", icon="messages-square")
+    with st.container(border=True):
+        st.caption("Suggested follow-ups")
         _render_prompt_chip_grid(
             valid_suggestions,
             param_key="cv36_pick",
@@ -1428,8 +1530,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
             button_generation=button_generation,
         )
 
-    st.markdown('<div class="cv35-section-label">Ask a different follow-up</div>', unsafe_allow_html=True)
-    st.caption("Ask any new engineering question about this assessment or the BOM. You are not limited to the suggested questions.")
+    st.caption("Ask a different follow-up")
     with st.form("cv47_custom_followup_form", clear_on_submit=True):
         custom = st.text_area(
             "Your follow-up question",
@@ -1650,23 +1751,7 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
 
 
 def _render_conversation_exchange(*, question: str, intent: str) -> None:
-    response_label, response_class = _response_type_meta(intent)
-    _render_presentation_html(
-        f"""
-        <section id="cv50-conversation-start" tabindex="-1" data-cadivor-conversation-start="true" class="cv50-exchange">
-          <div class="cv50-exchange-top">
-            <div class="cv50-you-asked">
-              <div class="cv50-you-asked-label">You asked</div>
-              <div class="cv50-you-asked-question">{html.escape(question)}</div>
-            </div>
-            <div class="cv50-exchange-badges">
-              <span class="cv50-type cv50-type-{html.escape(response_class)}">{html.escape(response_label)}</span>
-              <span class="cv50-saved">✓ Review auto-saved</span>
-            </div>
-          </div>
-        </section>
-        """
-    )
+    _render_native_conversation_exchange(question=question, intent=intent)
 
 
 def _concise_reason_items(evidence: str, drivers: list[str], *, limit: int = _CONCISE_REASON_LIMIT) -> list[str]:
@@ -2037,7 +2122,7 @@ def render_engineering_assistant(
             '<div class="cv-assistant-section-label cv35-section-label">Suggested engineering workflows</div>',
             unsafe_allow_html=True,
         )
-        with st.container(key="cv_assistant_suggestions"):
+        with st.container(border=True):
             _render_prompt_chip_grid(
                 SUGGESTIONS,
                 param_key="cv35_pick",
@@ -2048,7 +2133,7 @@ def render_engineering_assistant(
     # A form submits the browser's current text-area value and the button click
     # in one transaction. This prevents pasted text from requiring a first click
     # merely to synchronize the widget before the button becomes enabled.
-    with st.container(key="cv_assistant_composer"):
+    with st.container(border=True):
         with st.form("cv41_engineering_question_form", clear_on_submit=False):
             question = st.text_area(
                 "Your engineering question",

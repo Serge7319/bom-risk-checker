@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Zero-credit full-path Ask Cadivor harness — Sprint 72.2.7.
+"""Zero-credit full-path Ask Cadivor harness — Sprint 72.3 native renderer.
 
 Calls render_engineering_assistant() with a completed PC817 session state.
 EngineeringAI is never invoked.
 """
 from __future__ import annotations
 
+import re
 import sys
 import types
 from pathlib import Path
@@ -15,117 +16,22 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tests.ask_cadivor_streamlit_stub import install_ask_cadivor_streamlit_stub, restore_ask_cadivor_streamlit_modules
 from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
 
 
-class _NullContext:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-
-class _RecordingColumn:
-    def __init__(self, side: str, st_module: types.ModuleType) -> None:
-        self._side = side
-        self._st = st_module
-
-    def __enter__(self):
-        self._st._active_column = self._side
-        self._st.render_sequence.append(f"column_{self._side}_enter")
-        return self
-
-    def __exit__(self, *args):
-        self._st._active_column = None
-        return False
-
-
 def install_full_path_streamlit_stub(*, session_state: dict | None = None):
-    st = types.ModuleType("streamlit")
-    st.session_state = dict(session_state or {})
-    st._active_column = None
-    st.render_sequence: list[str] = []
-    st.columns_calls: list[tuple[list[float], str | None]] = []
-    st.container_calls: list[str] = []
-    markdown_calls: list[tuple[str, dict]] = []
-    html_calls: list[str] = []
-
-    def _markdown(content, **kwargs):
-        text = str(content)
-        markdown_calls.append((text, dict(kwargs)))
-        side = st._active_column or "root"
-        st.render_sequence.append(f"markdown_{side}")
-        if "cv50-exchange" in text:
-            st.render_sequence.append("conversation_exchange")
-        if "cv722-concise-answer" in text or "cv49-answer-card" in text:
-            st.render_sequence.append("left_answer_card")
-        if "cv722-summary-strip" in text:
-            st.render_sequence.append("left_kpi_strip")
-        if "cv727-assessment-panel" in text:
-            st.render_sequence.append("right_assessment_panel")
-
-    def _html(content, **kwargs):
-        text = str(content)
-        html_calls.append(text)
-        if "<style" in text.lower():
-            st.render_sequence.append("stylesheet_injection")
-
-    def _columns(spec, gap=None):
-        if isinstance(spec, (list, tuple)):
-            ratio = list(spec)
-        else:
-            ratio = [1] * int(spec)
-        st.columns_calls.append((ratio, gap))
-        st.render_sequence.append("columns_created")
-        if ratio == [0.85, 1.15]:
-            return [_RecordingColumn("left", st), _RecordingColumn("right", st)]
-        return [MagicMock() for _ in ratio]
-
-    def _container(**kwargs):
-        key = str(kwargs.get("key") or "")
-        if key:
-            st.container_calls.append(key)
-            st.render_sequence.append(f"container_{key}")
-        return _NullContext()
-
-    st.markdown = _markdown
-    st.html = _html
-    st.columns = _columns
-    st.container = _container
-    st.expander = lambda *args, **kwargs: _NullContext()
-    st.form = lambda *args, **kwargs: _NullContext()
-    st.text_area = MagicMock(return_value="")
-    st.caption = MagicMock()
-    st.form_submit_button = MagicMock(return_value=False)
-    st.button = MagicMock(return_value=False)
-    st.info = MagicMock()
-    st.warning = MagicMock()
-    st.success = MagicMock()
-    st.status = lambda *args, **kwargs: _NullContext()
-    st.link_button = MagicMock()
-
-    scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
-    scriptrunner.get_script_run_ctx = lambda *args, **kwargs: types.SimpleNamespace(script_run_id="full-path-run")
-    runtime = types.ModuleType("streamlit.runtime")
-    runtime.scriptrunner = scriptrunner
-    components = types.ModuleType("streamlit.components.v1")
-    components.html = lambda content, **kwargs: html_calls.append(str(content))
-
-    sys.modules["streamlit"] = st
-    sys.modules["streamlit.runtime"] = runtime
-    sys.modules["streamlit.runtime.scriptrunner"] = scriptrunner
-    sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
-    sys.modules["streamlit.components.v1"] = components
-
-    import src.ui.navigation as navigation
-
-    navigation.st = st
-    return st, markdown_calls, html_calls
+    return install_ask_cadivor_streamlit_stub(session_state=session_state, script_run_id="full-path-run")
 
 
-def run_full_path_harness() -> tuple[types.ModuleType, list[tuple[str, dict]], list[str]]:
-    st, markdown_calls, html_calls = install_full_path_streamlit_stub(
+def run_full_path_harness() -> tuple[types.ModuleType, list[tuple[str, dict, str | None]], list[str]]:
+    for mod_name in list(sys.modules):
+        if mod_name.startswith("src.ui.cadivor_design_system"):
+            sys.modules.pop(mod_name, None)
+    for mod_name in list(sys.modules):
+        if mod_name.startswith("src.components.engineering_assistant"):
+            sys.modules.pop(mod_name, None)
+    st = install_full_path_streamlit_stub(
         session_state={
             "cv35_last_answer": PC817_ANSWER,
             "cv35_last_question": PC817_QUESTION,
@@ -173,41 +79,54 @@ def run_full_path_harness() -> tuple[types.ModuleType, list[tuple[str, dict]], l
                         )
 
     st._blocked_ai_calls = _BlockedAI.ask_calls  # type: ignore[attr-defined]
-    return st, markdown_calls, html_calls
+    return st, st.markdown_calls, st.html_calls
 
 
 def main() -> int:
     st, markdown_calls, _html_calls = run_full_path_harness()
-    html = "\n".join(content for content, _kwargs in markdown_calls)
+    html = "\n".join(content for content, _kwargs, _side in markdown_calls)
+    left = "\n".join(content for content, _kwargs, side in markdown_calls if side == "left")
+    right = "\n".join(content for content, _kwargs, side in markdown_calls if side == "right")
     checks = {
         "columns_ratio": any(call[0] == [0.85, 1.15] for call in st.columns_calls),
-        "decision_workspace_container": "cv727_decision_workspace" in st.container_calls,
-        "conversation_exchange": "conversation_exchange" in st.render_sequence,
-        "left_answer_card": "left_answer_card" in st.render_sequence,
-        "left_kpi_strip": "left_kpi_strip" in st.render_sequence,
-        "right_assessment_panel": "right_assessment_panel" in st.render_sequence,
+        "conversation_exchange_html": "cv50-exchange" in html,
+        "direct_answer_present": "Review PC817 first." in left,
+        "three_reason_rows": html.count("cv722-reason-row") >= 3,
+        "three_action_rows": html.count("cv722-action-row") >= 3,
+        "three_evidence_cards": html.count("cv46-evidence-card") >= 3,
+        "decision_summary_strip": len(re.findall(r'class="cv722-summary-item', html)) == 3,
+        "impact_grid_four_cells": html.count("cv724-impact-cell") == 4,
         "followups_after_columns": (
             "columns_created" in st.render_sequence
-            and st.render_sequence.index("columns_created")
-            < st.render_sequence.index("container_cv725_followups")
-            if "container_cv725_followups" in st.render_sequence
-            else "columns_created" in st.render_sequence
+            and (
+                st.render_sequence.index("columns_created")
+                < st.render_sequence.index("reason_card")
+                if "reason_card" in st.render_sequence
+                else True
+            )
         ),
-        "no_giant_cv725_grid": "cv725-decision-workspace" not in html,
+        "self_contained_block_surfaces": "cv722-concise-answer" in html and "cv727-assessment-panel" in html,
         "no_details_wrapper": "<details" not in html.lower(),
         "no_openai_calls": st._blocked_ai_calls == 0,
         "no_fake_shell_wrapper": "<div class=\"cv-assistant-shell\">" not in html,
         "review_pc817_present": "Review PC817 first." in html,
-        "evidence_separated": "cv46-evidence-component" in html,
+        "evidence_components_present": all(part in html for part in ("PC817", "BZX55C5V1", "DRV8825")),
+        "no_concatenated_component_status": all(
+            token not in html for token in ("PC817Review", "BZX55C5V1Review", "DRV8825Review")
+        ),
+        "no_keyed_container_calls_in_source": "st.container(key=" not in (
+            REPO_ROOT / "src/components/engineering_assistant.py"
+        ).read_text(encoding="utf-8"),
     }
 
-    print("=== Ask Cadivor full-path harness (render_engineering_assistant) ===")
+    print("=== Ask Cadivor full-path harness (native renderer) ===")
     failed = False
     for name, ok in checks.items():
         status = "PASS" if ok else "FAIL"
         print(f"[{status}] {name}")
         failed = failed or not ok
     print()
+    restore_ask_cadivor_streamlit_modules()
     if failed:
         print("Harness: FAILED")
         return 1

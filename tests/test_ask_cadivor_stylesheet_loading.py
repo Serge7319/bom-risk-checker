@@ -68,7 +68,9 @@ class AskCadivorStylesheetLoadingTests(unittest.TestCase):
         simulate_authenticated_app_css_stack(st)
         html, response_calls = render_pc817_response_without_stylesheet(st)
         self.assertTrue(all("<style" not in content.lower() for content, _kwargs, _side in response_calls))
-        self.assertIn("cv49-answer-card", html)
+        self.assertIn("Review PC817 first.", html)
+        self.assertIn("cv722-concise-answer", html)
+        self.assertIn("cv722-reason-row", html)
 
     def test_css_injected_once_per_script_run_via_design_system_v2(self) -> None:
         st = _install_streamlit_stub()
@@ -121,3 +123,8 @@ class AskCadivorStylesheetLoadingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def tearDownModule():
+    from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
+    restore_ask_cadivor_streamlit_modules()
+

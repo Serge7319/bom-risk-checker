@@ -5,6 +5,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENGINEERING_ASSISTANT_PY = REPO_ROOT / "src/components/engineering_assistant.py"
@@ -13,6 +14,9 @@ ENGINEERING_ASSISTANT_PY = REPO_ROOT / "src/components/engineering_assistant.py"
 def _load_assistant():
     st = types.ModuleType("streamlit")
     st.session_state = {}
+    st.button = MagicMock(return_value=False)
+    st.columns = MagicMock(return_value=[MagicMock(), MagicMock()])
+    st.container = MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=MagicMock()), __exit__=MagicMock(return_value=False)))
     sys.modules["streamlit"] = st
     sys.modules["streamlit.runtime"] = types.ModuleType("streamlit.runtime")
     sys.modules["streamlit.runtime.scriptrunner"] = types.ModuleType("streamlit.runtime.scriptrunner")
@@ -81,14 +85,19 @@ class AskCadivorActionNormalizationTests(unittest.TestCase):
         self.assertEqual(len(items), 3)
         self.assertIn("PC817", items[0])
 
-    def test_no_standalone_number_rows_in_rendered_html(self) -> None:
+    def test_no_standalone_number_rows_in_rendered_output(self) -> None:
         from tests.harness_ask_cadivor_presentation import render_pc817_harness
 
-        html = render_pc817_harness()
-        self.assertNotIn("<p>1</p>", html)
-        self.assertNotIn("<p>2</p>", html)
-        self.assertNotRegex(html, r'cv722-row-body"><p>\d+</p>')
+        html, st = render_pc817_harness()
+        self.assertIn('cv722-list-index" aria-hidden="true">01', html)
+        self.assertGreaterEqual(html.count("cv722-action-row"), 3)
+        self.assertNotRegex(html, r">\s*1\s*<")
 
 
 if __name__ == "__main__":
     unittest.main()
+
+def tearDownModule():
+    from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
+    restore_ask_cadivor_streamlit_modules()
+

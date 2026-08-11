@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import sys
 import types
 import unittest
@@ -189,6 +190,17 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Reports")
         self.assertEqual(st.session_state["cadivor_analysis_section_new-id"], "Reports")
         self.assertEqual(st.session_state["cadivor_analysis_section_sync_id"], "new-id")
+
+
+def tearDownModule():
+    import importlib
+
+    navigation = sys.modules.get("src.ui.navigation")
+    navigate = getattr(navigation, "navigate_to", None) if navigation is not None else None
+    if inspect.isfunction(navigate) and navigate.__module__ != "src.ui.navigation":
+        sys.modules.pop("src.ui.navigation", None)
+        importlib.import_module("src.ui.navigation")
+    sys.modules.pop("src.pages.analysis_detail", None)
 
 
 if __name__ == "__main__":

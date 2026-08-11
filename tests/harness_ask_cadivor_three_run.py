@@ -89,8 +89,13 @@ class StatefulStreamlitRun:
             raise RuntimeError("rerun")
 
         def _columns(spec, gap=None):
-            count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
-            return [_RecordingColumn("left" if i == 0 else "right", st) for i in range(count)]
+            ratio = list(spec) if isinstance(spec, (list, tuple)) else [1] * int(spec)
+            st.columns_calls.append((ratio, gap))
+            if ratio == [0.85, 1.15]:
+                return [_RecordingColumn("left", st), _RecordingColumn("right", st)]
+            return [_RecordingColumn(f"col_{idx}", st) for idx in range(len(ratio))]
+
+        st.columns_calls: list[tuple[list[float], str | None]] = []
 
         def _button(label, key=None, **kwargs):
             return bool(run.button_clicks.get(str(key), False))
@@ -99,12 +104,25 @@ class StatefulStreamlitRun:
         st.html = MagicMock()
         st.rerun = _rerun
         st.columns = _columns
-        st.container = lambda **kwargs: _NullContext()
+        st.container_calls: list[str] = []
+
+        def _container(*args, **kwargs):
+            if args:
+                raise TypeError("container() takes 0 positional arguments")
+            if "key" in kwargs:
+                raise TypeError("LayoutsMixin.container() got an unexpected keyword argument 'key'")
+            st.container_calls.append("border" if kwargs.get("border") else "plain")
+            return _NullContext()
+
+        st.container = _container
         st.form = lambda *args, **kwargs: _NullContext()
         st.text_area = MagicMock(
             side_effect=lambda label, key, **kwargs: st.session_state.get(key, "")
         )
         st.caption = MagicMock()
+        st.metric = MagicMock()
+        st.progress = MagicMock()
+        st.error = MagicMock()
         st.form_submit_button = MagicMock(return_value=False)
         st.button = _button
         st.info = MagicMock()
@@ -118,12 +136,23 @@ class StatefulStreamlitRun:
 
         scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
         scriptrunner.get_script_run_ctx = lambda *args, **kwargs: types.SimpleNamespace(
-            script_run_id=f"three-run-{run.id}"
+            script_run_id=f"three-run-{run.id}",
+            gather_usage_stats=False,
         )
         runtime = types.ModuleType("streamlit.runtime")
         runtime.scriptrunner = scriptrunner
         components = types.ModuleType("streamlit.components.v1")
         components.html = MagicMock()
+
+        for mod_name in list(sys.modules):
+            if mod_name.startswith("src.ui.cadivor_design_system"):
+                sys.modules.pop(mod_name, None)
+        for mod_name in list(sys.modules):
+            if mod_name.startswith("src.components.engineering_assistant"):
+                sys.modules.pop(mod_name, None)
+
+        if "src.ui.navigation" in sys.modules:
+            sys.modules["src.ui.navigation"].st = st
 
         sys.modules["streamlit"] = st
         sys.modules["streamlit.runtime"] = runtime
@@ -228,8 +257,9 @@ def _blocked_ai_factory():
     return _BlockedAI
 
 
-def run_assistant_render(*, assistant, run: StatefulStreamlitRun, analysis_id: str = "harness-a1") -> tuple[list[str], int]:
+def run_assistant_render(*, run: StatefulStreamlitRun, analysis_id: str = "harness-a1") -> tuple[list[str], int]:
     log_buffer = io.StringIO()
+    assistant = _load_assistant()
     run.bind_assistant(assistant)
     ai_cls = _blocked_ai_factory()
     usage = types.SimpleNamespace(
@@ -280,6 +310,7 @@ def main() -> int:
 
     # RUN 1 — suggestion click (queue only, no render execution path)
     run1 = StatefulStreamlitRun(session_state=session_state)
+    assistant = _load_assistant()
     run1.bind_assistant(assistant)
     log_buffer = io.StringIO()
     with redirect_stdout(log_buffer):
@@ -306,14 +337,14 @@ def main() -> int:
     active_tab = simulate_analysis_tab_restore(session_state, analysis_id=analysis_id)
     run2 = StatefulStreamlitRun(session_state=session_state)
     run2_logs, ask_calls_run2 = run_assistant_render(
-        assistant=assistant, run=run2, analysis_id=analysis_id
+        run=run2, analysis_id=analysis_id
     )
     all_logs.extend(run2_logs)
 
     # RUN 3 — idle rerun
     run3 = StatefulStreamlitRun(session_state=session_state)
     run3_logs, ask_calls_run3 = run_assistant_render(
-        assistant=assistant, run=run3, analysis_id=analysis_id
+        run=run3, analysis_id=analysis_id
     )
     all_logs.extend(run3_logs)
 

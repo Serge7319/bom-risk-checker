@@ -1181,6 +1181,30 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
   flex: 0 0 auto;
 }
 
+.cv50-type,
+.cv50-saved {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: var(--cv-radius-pill, 999px);
+  padding: 5px 10px;
+  font-size: var(--cv-font-xs, 10px);
+  font-weight: var(--cv-weight-semibold, 700);
+  white-space: nowrap;
+}
+
+.cv50-type {
+  border: 1px solid var(--cv-border);
+  background: var(--cv-surface);
+  color: var(--cv-primary);
+}
+
+.cv50-saved {
+  border: 1px solid var(--cv-success-bg, #d1fae5);
+  background: var(--cv-success-bg, #ecfdf5);
+  color: var(--cv-success, #047857);
+}
+
 .cv49-answer-kicker {
   display: block;
   font-size: var(--cv-font-xs, 11px);
@@ -1724,5 +1748,119 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
     width: 24px;
     height: 24px;
     font-size: 10px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Sprint 72.3.1 — Native Streamlit class surfaces (1.37 compatible)  */
+/* ------------------------------------------------------------------ */
+
+.cv-assistant-shell .cv731-surface {
+  border: 1px solid var(--cv-border);
+  border-radius: var(--cv-radius-md, 12px);
+  background: var(--cv-surface);
+  padding: var(--cv-space-3, 12px) var(--cv-space-4, 16px);
+  margin-bottom: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv731-conversation-exchange {
+  margin: 0 0 var(--cv-space-3, 12px);
+  padding: var(--cv-space-3, 12px) var(--cv-space-4, 16px);
+  border-radius: var(--cv-radius-lg, 16px);
+  box-shadow: var(--cv-shadow-xs);
+}
+
+.cv-assistant-shell .cv731-exchange-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cv-text-muted);
+  margin-bottom: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv731-exchange-question {
+  margin: 0 0 var(--cv-space-2, 8px);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--cv-text);
+}
+
+.cv-assistant-shell .cv731-reason-card {
+  background: var(--cv-bg-subtle);
+}
+
+.cv-assistant-shell .cv731-action-card {
+  border-color: color-mix(in srgb, var(--cv-primary) 24%, var(--cv-border));
+  background: color-mix(in srgb, var(--cv-primary-subtle, #eff6ff) 72%, var(--cv-surface));
+  box-shadow: var(--cv-shadow-xs);
+}
+
+.cv-assistant-shell .cv731-evidence-card,
+.cv-assistant-shell .cv731-ranking-card,
+.cv-assistant-shell .cv731-timeline-card {
+  background: var(--cv-surface);
+}
+
+.cv-assistant-shell .cv731-item-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cv-primary) 12%, var(--cv-surface));
+  color: var(--cv-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv731-item-body,
+.cv-assistant-shell .cv731-detail-body,
+.cv-assistant-shell .cv731-evidence-statement {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--cv-text);
+}
+
+.cv-assistant-shell .cv731-evidence-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cv-space-2, 8px);
+  margin-bottom: var(--cv-space-2, 8px);
+}
+
+.cv-assistant-shell .cv731-evidence-title {
+  font-size: 14px;
+  color: var(--cv-text);
+}
+
+.cv-assistant-shell .cv731-evidence-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cv-text-muted);
+  margin-bottom: var(--cv-space-1, 4px);
+}
+
+.cv-assistant-shell .cv731-detail-title {
+  margin-bottom: var(--cv-space-1, 4px);
+}
+
+@media (max-width: 1024px) {
+  .cv-assistant-shell .cv64-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .cv-assistant-shell .cv64-metric-grid {
+    grid-template-columns: 1fr !important;
   }
 }

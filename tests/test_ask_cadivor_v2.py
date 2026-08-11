@@ -239,11 +239,10 @@ class AskCadivorV2Tests(unittest.TestCase):
 
     def test_context_header_and_containers_present(self) -> None:
         self.assertIn("_render_context_header", self.assistant_source)
-        self.assertIn('key="cv727_decision_workspace"', self.assistant_source)
+        self.assertIn("st.container(border=True)", self.assistant_source)
+        self.assertIn("_build_concise_answer_html", self.assistant_source)
+        self.assertNotIn("st.container(key=", self.assistant_source)
         self.assertNotIn('<div class="cv-assistant-shell">', self.assistant_source)
-        self.assertIn('key="cv_assistant_suggestions"', self.assistant_source)
-        self.assertIn('key="cv_assistant_composer"', self.assistant_source)
-        self.assertIn('key="cv725_followups"', self.assistant_source)
 
     def test_protected_state_functions_present(self) -> None:
         assistant = self._load_assistant()
@@ -286,3 +285,8 @@ class AskCadivorV2Tests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def tearDownModule():
+    from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
+    restore_ask_cadivor_streamlit_modules()
+
