@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from textwrap import dedent
@@ -142,6 +144,81 @@ def _log_ask_render(event: str, **details: Any) -> None:
     for key, value in details.items():
         parts.append(f"{key}={value}")
     print(" ".join(parts), flush=True)
+
+
+_ASK_RUNTIME_RENDERER_VERSION = "72.3.2"
+_ASK_RUNTIME_CSS_BASENAME = "ask_cadivor_v2" + ".css"
+_ASK_RUNTIME_CSS_CONTRACT = {
+    "cv50": ".cv50-exchange",
+    "cv722_reason": ".cv722-reason-row",
+    "cv722_action": ".cv722-action-row",
+    "cv722_summary": ".cv722-summary-strip",
+    "cv724_impact": ".cv724-impact-cell",
+    "cv724_driver": ".cv724-driver-cell",
+    "cv46_evidence": ".cv46-evidence-card",
+}
+
+
+def _ask_cadivor_css_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "assets" / "css" / _ASK_RUNTIME_CSS_BASENAME
+
+
+def _ask_runtime_css_metadata() -> dict[str, Any]:
+    css_path = _ask_cadivor_css_path()
+    css_exists = css_path.is_file()
+    css_text = ""
+    if css_exists:
+        try:
+            css_text = css_path.read_text(encoding="utf-8")
+        except OSError:
+            css_exists = False
+    css_bytes = len(css_text.encode("utf-8")) if css_text else 0
+    css_sha256 = (
+        hashlib.sha256(css_text.encode("utf-8")).hexdigest()[:16]
+        if css_text
+        else "unknown"
+    )
+    return {
+        "css_path": str(css_path),
+        "css_exists": css_exists,
+        "css_bytes": css_bytes,
+        "css_sha256": css_sha256,
+        "css_text": css_text,
+    }
+
+
+def _log_ask_runtime_css_contract(css_text: str) -> None:
+    parts = ["ASK_RUNTIME css_contract"]
+    for key, selector in _ASK_RUNTIME_CSS_CONTRACT.items():
+        parts.append(f"{key}={selector in css_text}")
+    print(" ".join(parts), flush=True)
+
+
+def _log_ask_runtime_identity() -> None:
+    """Metadata-only production identity log for Ask Cadivor render path."""
+    meta = _ask_runtime_css_metadata()
+    css_text = str(meta.pop("css_text"))
+    parts = [
+        "ASK_RUNTIME",
+        f"commit_sha={os.environ.get('RAILWAY_GIT_COMMIT_SHA', 'unknown')}",
+        f"streamlit_version={st.__version__}",
+        f"renderer_version={_ASK_RUNTIME_RENDERER_VERSION}",
+        f"renderer_module={Path(__file__).resolve()}",
+        f"css_path={meta['css_path']}",
+        f"css_exists={str(meta['css_exists']).lower()}",
+        f"css_bytes={meta['css_bytes']}",
+        f"css_sha256={meta['css_sha256']}",
+        "response_path=native_085_115",
+        "conversation_surface=cv50",
+        "answer_surface=cv722",
+        "assessment_surface=cv724_cv46",
+    ]
+    print(" ".join(parts), flush=True)
+    _log_ask_runtime_css_contract(css_text)
+
+
+def _log_ask_runtime_surface(event: str) -> None:
+    print(f"ASK_RUNTIME {event}", flush=True)
 
 
 def _pin_ask_cadivor_tab(*, source: str = "unknown", analysis_id: str = "") -> None:
@@ -1032,6 +1109,7 @@ def _build_engineering_assessment_html(
         )
 
     if _evidence_items(evidence):
+        _log_ask_runtime_surface("evidence_render")
         sections.append(
             '<div class="cv35-section-label">Evidence breakdown</div>'
             f'{_build_evidence_cards_html(evidence)}'
@@ -1123,6 +1201,7 @@ def _build_conversation_exchange_html(*, question: str, intent: str) -> str:
 
 
 def _render_native_conversation_exchange(*, question: str, intent: str) -> None:
+    _log_ask_runtime_surface("exchange_render")
     st.markdown(
         _build_conversation_exchange_html(question=question, intent=intent),
         unsafe_allow_html=True,
@@ -1140,6 +1219,7 @@ def _render_native_answer_column(
     confidence_score: int,
     confidence_label: str,
 ) -> None:
+    _log_ask_runtime_surface("answer_render")
     st.markdown(
         _build_concise_answer_html(
             headline=headline,
@@ -1149,6 +1229,7 @@ def _render_native_answer_column(
         ),
         unsafe_allow_html=True,
     )
+    _log_ask_runtime_surface("decision_summary_render")
     st.markdown(
         _build_decision_summary_html(
             status=str(decision.get("status") or "Review"),
@@ -1198,6 +1279,7 @@ def _render_native_assessment_column(
     )
     panel_html = _build_assessment_panel_html(assessment_html)
     if panel_html.strip():
+        _log_ask_runtime_surface("assessment_render")
         st.markdown(panel_html, unsafe_allow_html=True)
 
 
@@ -1977,6 +2059,7 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
 
 def _render_response(*, question: str, answer: str, context: dict[str, Any], auto_scroll: bool = False) -> None:
     _log_ask_render("response_entered")
+    _log_ask_runtime_identity()
     detailed = _wants_detailed_response(question)
     sections = _parse_report(answer)
     profile = _assessment_profile(sections)
