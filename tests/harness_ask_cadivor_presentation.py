@@ -257,11 +257,10 @@ def main() -> int:
         "right_assessment_in_right_column": "cv727-assessment-panel" in right_html,
         "no_giant_cv725_grid": "cv725-decision-workspace" not in html,
         "no_details_wrapper": "<details" not in html.lower(),
-        "stylesheet_injection_separate": any(
-            "cadivor-ask-cadivor-v2-css" in content for content, _kwargs, _side in markdown_calls
+        "response_has_no_runtime_style_injection": not any(
+            "<style" in content.lower() for content, _kwargs, _side in markdown_calls
         ),
-        "column_content_has_no_style_tag": "<style" not in (left_html + right_html).lower(),
-        "native_workspace_css_available": ".cv727-assessment-panel" in ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8"),
+        "global_stylesheet_available_on_disk": ".cv727-assessment-panel" in ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8"),
         "impact_grid": "cv724-impact-grid" in html,
         "driver_grid": "cv724-driver-grid" in html,
         "evidence_cards": "cv46-evidence-board" in html,

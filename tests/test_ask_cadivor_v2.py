@@ -182,11 +182,12 @@ class AskCadivorV2Tests(unittest.TestCase):
 
     def test_css_injected_once_per_script_run(self) -> None:
         st, markdown_calls, html_calls, _ctx = _install_streamlit_stub({})
-        assistant = self._load_assistant()
-        components = sys.modules["streamlit.components.v1"]
+        for name in ("src.ui.design_system_v2",):
+            sys.modules.pop(name, None)
+        from src.ui.design_system_v2 import inject_ask_cadivor_v2_css
 
-        first = assistant._inject_ask_cadivor_v2_styles()
-        second = assistant._inject_ask_cadivor_v2_styles()
+        first = inject_ask_cadivor_v2_css()
+        second = inject_ask_cadivor_v2_css()
 
         self.assertTrue(first)
         self.assertFalse(second)
@@ -195,23 +196,27 @@ class AskCadivorV2Tests(unittest.TestCase):
         ]
         self.assertEqual(len(stylesheet_calls), 1)
         self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
+        components = sys.modules["streamlit.components.v1"]
         components.html.assert_not_called()
         self.assertEqual(st.session_state.get("_cadivor_ask_cadivor_v2_run_id"), "run-a")
 
     def test_css_reinjects_on_new_script_run(self) -> None:
         session = {}
         _install_streamlit_stub(session, script_run_id="run-a")
-        assistant = self._load_assistant()
+        for name in ("src.ui.design_system_v2",):
+            sys.modules.pop(name, None)
+        from src.ui.design_system_v2 import inject_ask_cadivor_v2_css
 
-        self.assertTrue(assistant._inject_ask_cadivor_v2_styles())
-        self.assertFalse(assistant._inject_ask_cadivor_v2_styles())
+        self.assertTrue(inject_ask_cadivor_v2_css())
+        self.assertFalse(inject_ask_cadivor_v2_css())
 
         from streamlit.runtime.scriptrunner import get_script_run_ctx
 
         get_script_run_ctx().script_run_id = "run-b"
-        sys.modules.pop("src.components.engineering_assistant", None)
-        assistant = self._load_assistant()
-        self.assertTrue(assistant._inject_ask_cadivor_v2_styles())
+        sys.modules.pop("src.ui.design_system_v2", None)
+        from src.ui.design_system_v2 import inject_ask_cadivor_v2_css as reinject
+
+        self.assertTrue(reinject())
 
     def test_responsive_rules_exist(self) -> None:
         for width in ("1280px", "1024px", "768px"):
@@ -229,8 +234,8 @@ class AskCadivorV2Tests(unittest.TestCase):
     def test_inline_css_removed(self) -> None:
         self.assertNotIn("cadivor-engineering-assistant-43", self.assistant_source)
         self.assertNotIn("cv35-hero", self.assistant_source)
-        self.assertIn("_inject_ask_cadivor_v2_styles", self.assistant_source)
-        self.assertIn("ask_cadivor_v2.css", self.assistant_source)
+        self.assertNotIn("_inject_ask_cadivor_v2_styles", self.assistant_source)
+        self.assertNotIn("ask_cadivor_v2.css", self.assistant_source)
 
     def test_context_header_and_containers_present(self) -> None:
         self.assertIn("_render_context_header", self.assistant_source)
@@ -255,8 +260,8 @@ class AskCadivorV2Tests(unittest.TestCase):
     @patch("src.components.engineering_assistant.get_ai_usage_status")
     @patch("src.components.engineering_assistant.get_thread", return_value=[])
     @patch("src.components.engineering_assistant._apply_copilot_query_picks")
-    def test_render_calls_injection(self, _apply, _thread, mock_usage) -> None:
-        _install_streamlit_stub({"cv35_question": ""})
+    def test_render_does_not_inject_stylesheet(self, _apply, _thread, mock_usage) -> None:
+        st, markdown_calls, html_calls, _ctx = _install_streamlit_stub({"cv35_question": ""})
         assistant = self._load_assistant()
         mock_usage.return_value = MagicMock(
             is_admin=False,
@@ -271,12 +276,12 @@ class AskCadivorV2Tests(unittest.TestCase):
             "project_name": "Demo BOM",
             "summary": {"health_score": 82, "total_parts": 14, "release_posture": "Review"},
         }
-        with patch.object(assistant, "_inject_ask_cadivor_v2_styles", wraps=assistant._inject_ask_cadivor_v2_styles) as inject:
-            assistant.render_engineering_assistant(
-                current_user={"id": "u1"},
-                engineering_context=context,
-            )
-            inject.assert_called_once()
+        assistant.render_engineering_assistant(
+            current_user={"id": "u1"},
+            engineering_context=context,
+        )
+        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in content for content, _kwargs in markdown_calls))
+        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
 
 
 if __name__ == "__main__":

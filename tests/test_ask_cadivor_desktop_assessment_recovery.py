@@ -119,33 +119,35 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         self.assertNotIn("<details", html.lower())
         self.assertNotIn("View full engineering assessment", html)
 
-    def test_stylesheet_injection_separate_from_column_content(self) -> None:
+    def test_response_markup_has_no_runtime_stylesheet(self) -> None:
         html, html_calls, markdown_calls, _ = self._render_pc817()
         column_html = "\n".join(
             content for content, _kwargs, side in markdown_calls if side in ("left", "right")
         )
         self.assertTrue(
-            any("cadivor-ask-cadivor-v2-css" in content for content, _kwargs, _side in markdown_calls)
+            all("cadivor-ask-cadivor-v2-css" not in content for content, _kwargs, _side in markdown_calls)
         )
         self.assertNotIn("<style", column_html.lower())
+        self.assertNotIn("<style", html.lower())
         self.assertIn(".cv727-assessment-panel", self.v2_css)
         self.assertNotIn(".cv725-decision-workspace", self.v2_css.split("Sprint 72.2.7", 1)[1])
 
-    def test_css_injection_uses_st_markdown(self) -> None:
-        _install_streamlit_stub()
-        assistant = _load_assistant()
-        _, markdown_calls, html_calls = _install_streamlit_stub()
-        assistant = _load_assistant()
-        assistant._inject_ask_cadivor_v2_styles(force=True)
-        self.assertTrue(
-            any("cadivor-ask-cadivor-v2-css" in content for content, _kwargs, _side in markdown_calls)
-        )
-        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
+    def test_css_injection_uses_global_app_shell(self) -> None:
+        from tests.harness_ask_cadivor_stylesheet_loading import _install_streamlit_stub, simulate_authenticated_app_css_stack
 
-    def test_css_injection_does_not_use_parent_document_mutation(self) -> None:
-        inject_block = self.assistant_source.split("def _inject_ask_cadivor_v2_styles", 1)[1].split("def _render_context_header", 1)[0]
-        self.assertIn("_inject_presentation_stylesheet", inject_block)
+        st = _install_streamlit_stub()
+        simulate_authenticated_app_css_stack(st)
+        self.assertTrue(
+            any("cadivor-ask-cadivor-v2-css" in content for content, _kwargs, _side in st.markdown_calls)
+        )
+        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in st.html_calls))
+
+    def test_css_loading_does_not_use_parent_document_mutation(self) -> None:
+        ds_v2_source = (REPO_ROOT / "src/ui/design_system_v2.py").read_text(encoding="utf-8")
+        inject_block = ds_v2_source.split("def inject_ask_cadivor_v2_css", 1)[1]
+        self.assertIn("st.markdown(", inject_block)
         self.assertNotIn("window.parent.document", inject_block)
+        self.assertNotIn("_inject_ask_cadivor_v2_styles", self.assistant_source)
 
     def test_native_column_ratio_present(self) -> None:
         _, _, _, st = self._render_pc817()

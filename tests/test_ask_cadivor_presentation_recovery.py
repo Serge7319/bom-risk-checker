@@ -133,14 +133,15 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
         self.assertIn('class="cv46-driver-label">Verified</div>', cell)
         self.assertNotRegex(cell, r"VerifiedLifecycle")
 
-    def test_css_injected_via_st_markdown(self) -> None:
-        _st_stub, markdown_calls, html_calls, _ = _install_streamlit_stub()
-        assistant = self._load_assistant()
-        assistant._inject_ask_cadivor_v2_styles(force=True)
+    def test_css_injected_via_global_app_shell(self) -> None:
+        from tests.harness_ask_cadivor_stylesheet_loading import _install_streamlit_stub, simulate_authenticated_app_css_stack
+
+        st = _install_streamlit_stub()
+        simulate_authenticated_app_css_stack(st)
         self.assertTrue(
-            any("cadivor-ask-cadivor-v2-css" in content for content, _kwargs in markdown_calls)
+            any("cadivor-ask-cadivor-v2-css" in content for content, _kwargs, _side in st.markdown_calls)
         )
-        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
+        self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in st.html_calls))
 
     def test_workflow_actions_compact_container(self) -> None:
         self.assertIn("cv724-workflow-actions", self.assistant_source)

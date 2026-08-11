@@ -107,7 +107,7 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
         self.assertNotIn("<style", normalized.lower())
         self.assertNotIn("<details", normalized.lower())
 
-    def test_stylesheet_injection_separate_from_column_renders(self) -> None:
+    def test_response_renderer_emits_no_stylesheet(self) -> None:
         st, markdown_calls, html_calls = _install_streamlit_stub()
         assistant = _load_assistant()
         from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
@@ -119,12 +119,10 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
                     answer=PC817_ANSWER,
                     context=PC817_CONTEXT,
                 )
-        visible = [content for content, _kwargs, _side in markdown_calls if "cadivor-ask-cadivor-v2-css" not in content]
-        stylesheet = [content for content, _kwargs, _side in markdown_calls if "cadivor-ask-cadivor-v2-css" in content]
-        self.assertEqual(len(stylesheet), 1)
+        visible = [content for content, _kwargs, _side in markdown_calls]
+        self.assertTrue(all("<style" not in item.lower() for item in visible))
         self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in html_calls))
         self.assertTrue(any(call[0] == [0.85, 1.15] for call in st.columns_calls))
-        self.assertTrue(all("<style" not in item.lower() for item in visible))
 
     def test_render_sequence_logging_contract(self) -> None:
         _install_streamlit_stub()

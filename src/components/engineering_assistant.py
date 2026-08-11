@@ -4,7 +4,6 @@ from __future__ import annotations
 import html
 import json
 import re
-from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
 from typing import Any, Iterable
@@ -26,10 +25,6 @@ from src.services.copilot_conversation import (
     get_thread,
 )
 
-_ASK_CADIVOR_V2_CSS_PATH = Path(__file__).resolve().parents[1] / "assets" / "css" / "ask_cadivor_v2.css"
-_ASK_CADIVOR_V2_STYLE_ID = "cadivor-ask-cadivor-v2-css"
-_ASK_CADIVOR_V2_WORKSPACE_STYLE_ID = "cadivor-ask-cadivor-v2-workspace-css"
-
 
 def _normalize_presentation_html(markup: str) -> str:
     """Normalize trusted Cadivor HTML so Streamlit Markdown cannot treat it as a code block."""
@@ -47,36 +42,6 @@ def _render_presentation_html(markup: str) -> None:
     if not normalized:
         return
     st.markdown(normalized, unsafe_allow_html=True)
-
-
-@lru_cache(maxsize=1)
-def _ask_cadivor_v2_css_text() -> str:
-    try:
-        return _ASK_CADIVOR_V2_CSS_PATH.read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
-
-
-def _presentation_css_block(*, style_id: str = _ASK_CADIVOR_V2_WORKSPACE_STYLE_ID) -> str:
-    """Build a trusted stylesheet block for standalone preview artifacts only."""
-    css = _ask_cadivor_v2_css_text()
-    if not css:
-        return ""
-    return f'<style id="{html.escape(style_id)}">{css}</style>'
-
-
-def _inject_presentation_stylesheet(*, css: str, style_id: str) -> None:
-    """Inject trusted Ask Cadivor CSS into the main Streamlit document.
-
-    Streamlit 1.60 st.html sanitizes body HTML with DOMPurify and strips bare
-    <style> nodes, leaving an empty [data-testid="stHtml"] shell that cannot
-    style sibling st.markdown blocks. Use the same st.markdown path as DS v2.
-    """
-    if not css.strip():
-        return
-    markup = f'<style id="{html.escape(style_id)}">{css}</style>'
-    st.markdown(markup, unsafe_allow_html=True)
-    _log_ask_render("stylesheet_injected", style_id=style_id, via="st.markdown")
 
 
 SUGGESTIONS = [
@@ -349,35 +314,6 @@ def _secret(name: str, default: str = "") -> str:
 
     value = get_secret(name, default=default)
     return str(value or default)
-
-
-def _current_script_run_id() -> str:
-    try:
-        from streamlit.runtime.scriptrunner import get_script_run_ctx
-
-        ctx = get_script_run_ctx()
-        if ctx is None:
-            return "__no_ctx__"
-        run_id = getattr(ctx, "script_run_id", None)
-        return str(run_id) if run_id is not None else str(id(ctx))
-    except Exception:
-        return "__unknown__"
-
-
-def _inject_ask_cadivor_v2_styles(*, force: bool = False) -> bool:
-    """Inject Ask Cadivor v2 CSS once per script run (reinject every rerun)."""
-    run_id = _current_script_run_id()
-    run_key = "_cadivor_ask_cadivor_v2_run_id"
-    if not force and st.session_state.get(run_key) == run_id:
-        return False
-
-    css = _ask_cadivor_v2_css_text()
-    if not css:
-        return False
-
-    _inject_presentation_stylesheet(css=css, style_id=_ASK_CADIVOR_V2_STYLE_ID)
-    st.session_state[run_key] = run_id
-    return True
 
 
 def _render_context_header(context: dict[str, Any]) -> None:
@@ -1199,7 +1135,6 @@ def _render_decision_workspace(
         progress=progress,
     )
     assessment_panel_html = _build_assessment_panel_html(assessment_html)
-    _inject_ask_cadivor_v2_styles()
     _log_ask_render(
         "workspace_shell_ready",
         left_html_len=len(_normalize_presentation_html(primary_html + summary_html)),
@@ -2014,7 +1949,6 @@ def render_engineering_assistant(
     selected_component: str = "",
 ) -> None:
     _log_ask_cadivor("script_run_started", surface="ask_cadivor")
-    _inject_ask_cadivor_v2_styles()
     _restore_copilot_workflow_snapshot(st.session_state.get("cv48_copilot_snapshot"))
     _recover_stale_copilot_inflight()
     _log_ask_cadivor_state("script_run_state")
