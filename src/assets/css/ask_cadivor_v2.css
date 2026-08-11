@@ -1152,8 +1152,7 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
   flex: 1 1 auto;
 }
 
-.cv50-you-asked-label,
-.cv50-you-asked span {
+.cv50-you-asked-label {
   display: block;
   font-size: var(--cv-font-xs, 11px);
   font-weight: var(--cv-weight-semibold, 700);
@@ -1162,8 +1161,7 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
   color: var(--cv-text-muted);
 }
 
-.cv50-you-asked-question,
-.cv50-you-asked strong {
+.cv50-you-asked-question {
   display: block;
   font-size: var(--cv-font-sm, 13px);
   font-weight: var(--cv-weight-medium, 500);
@@ -1369,7 +1367,9 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
 
 .cv722-action-row,
 .cv722-action-list li {
+  background: #f8fbff;
   background: color-mix(in srgb, var(--cv-primary) 6%, var(--cv-surface));
+  border: 1px solid #dbeafe;
   border: 1px solid color-mix(in srgb, var(--cv-primary) 18%, var(--cv-border));
 }
 
@@ -1586,8 +1586,8 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
   color: var(--cv-text-secondary);
 }
 
-[data-testid="stExpander"]:has(.cv724-impact-grid),
-[data-testid="stExpander"]:has(.cv724-driver-grid),
+/* Sprint 72.3.4 — legacy expander suppression (class-based selectors) */
+.cv727-assessment-panel [data-testid="stExpander"],
 .cv-assistant-shell [data-testid="stExpander"] {
   display: none !important;
 }
@@ -1749,6 +1749,51 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
     height: 24px;
     font-size: 10px;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Sprint 72.3.4 — Cross-browser layout hardening                     */
+/* Grid/flex + explicit gaps; no :has/subgrid/container queries.      */
+/* ------------------------------------------------------------------ */
+
+.cv50-exchange,
+.cv49-answer-card,
+.cv722-concise-answer,
+.cv722-summary-strip,
+.cv722-reason-list,
+.cv722-action-list,
+.cv46-evidence-board,
+.cv46-evidence-card,
+.cv724-impact-grid,
+.cv724-driver-grid,
+.cv727-assessment-panel {
+  min-width: 0;
+}
+
+.cv722-row-body,
+.cv722-summary-item,
+.cv724-impact-cell,
+.cv724-driver-cell,
+.cv46-evidence-card-header,
+.cv46-evidence-body {
+  min-width: 0;
+}
+
+.cv46-evidence-component {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cv46-evidence-metric-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cv46-evidence-metric-label-text {
+  display: block;
+  min-width: 0;
 }
 
 /* ------------------------------------------------------------------ */

@@ -582,10 +582,15 @@ def _html_list_row(index: int, text: str, *, variant: str) -> str:
 
 
 def _html_evidence_metric(label: str, value: str, *, icon: str = "") -> str:
-    icon_html = f"<span class='cv724-evidence-icon'>{html.escape(icon)}</span>" if icon else ""
+    icon_html = (
+        f'<span class="cv724-evidence-icon" aria-hidden="true">{html.escape(icon)}</span>'
+        if icon
+        else ""
+    )
     return (
         f'<div class="cv46-evidence-metric">'
-        f'<div class="cv46-evidence-metric-label">{icon_html}{html.escape(label)}</div>'
+        f'<div class="cv46-evidence-metric-label">{icon_html}'
+        f'<span class="cv46-evidence-metric-label-text">{html.escape(label)}</span></div>'
         f'<div class="cv46-evidence-metric-value">{html.escape(value)}</div>'
         f"</div>"
     )
@@ -603,8 +608,8 @@ def _build_single_evidence_card_html(title: str, detail: str) -> str:
     return (
         f'<article class="cv46-evidence-card">'
         f'<header class="cv46-evidence-card-header">'
-        f'<span class="cv46-evidence-component">{html.escape(title)}</span>'
-        f'<span class="cv46-evidence-status">{html.escape(status)}</span>'
+        f'<div class="cv46-evidence-component">{html.escape(title)}</div>'
+        f'<div class="cv46-evidence-status">{html.escape(status)}</div>'
         f"</header>"
         f'<div class="cv46-evidence-body">'
         f'<div class="cv46-evidence-label">Evidence</div>'
@@ -1105,12 +1110,12 @@ def _build_conversation_exchange_html(*, question: str, intent: str) -> str:
         <section class="cv50-exchange">
           <div class="cv50-exchange-top">
             <div class="cv50-you-asked">
-              <span class="cv50-you-asked-label">You asked</span>
-              <strong class="cv50-you-asked-question">{safe_question}</strong>
+              <div class="cv50-you-asked-label">You asked</div>
+              <div class="cv50-you-asked-question">{safe_question}</div>
             </div>
             <div class="cv50-exchange-badges">
-              <span class="cv50-type cv50-type--{html.escape(response_class)}">{html.escape(response_label)}</span>
-              <span class="cv50-saved">✓ Review auto-saved</span>
+              <div class="cv50-type cv50-type--{html.escape(response_class)}">{html.escape(response_label)}</div>
+              <div class="cv50-saved">✓ Review auto-saved</div>
             </div>
           </div>
         </section>
