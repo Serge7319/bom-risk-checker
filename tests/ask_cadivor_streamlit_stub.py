@@ -11,10 +11,11 @@ try:
     import streamlit as _REAL_STREAMLIT
 
     _CONTAINER_PARAMS = set(inspect.signature(_REAL_STREAMLIT.container).parameters)
+    _CONTAINER_PARAMS.add("key")
     _COLUMNS_PARAMS = set(inspect.signature(_REAL_STREAMLIT.columns).parameters)
 except Exception:  # pragma: no cover - defensive fallback
     _REAL_STREAMLIT = None  # type: ignore[assignment]
-    _CONTAINER_PARAMS = {"height", "border"}
+    _CONTAINER_PARAMS = {"height", "border", "key"}
     _COLUMNS_PARAMS = {"spec", "gap", "vertical_alignment"}
 
 
@@ -34,11 +35,20 @@ def restore_ask_cadivor_streamlit_modules() -> None:
 
     navigation = sys.modules.get("src.ui.navigation")
     if navigation is not None:
-        navigate = getattr(navigation, "navigate_to", None)
-        if inspect.isfunction(navigate) and navigate.__module__ != "src.ui.navigation":
+        if not getattr(navigation, "__file__", None):
+            sys.modules.pop("src.ui.navigation", None)
             _reimport_module("src.ui.navigation")
-        elif _REAL_STREAMLIT is not None:
-            sys.modules["src.ui.navigation"].st = _REAL_STREAMLIT
+        else:
+            navigate = getattr(navigation, "navigate_to", None)
+            if inspect.isfunction(navigate) and navigate.__module__ != "src.ui.navigation":
+                _reimport_module("src.ui.navigation")
+            elif _REAL_STREAMLIT is not None:
+                sys.modules["src.ui.navigation"].st = _REAL_STREAMLIT
+
+    for broken_module in ("src.pages.analysis_detail",):
+        module = sys.modules.get(broken_module)
+        if module is not None and not getattr(module, "__file__", None):
+            sys.modules.pop(broken_module, None)
 
     for mod_name in list(sys.modules):
         if mod_name.startswith("src.ui.cadivor_design_system"):
@@ -53,6 +63,17 @@ class _NullContext:
 
     def __exit__(self, *args):
         return False
+
+
+class _StatusContext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def update(self, **kwargs):
+        return None
 
 
 class _RecordingColumn:
@@ -82,6 +103,12 @@ class _RecordingColumn:
             self._st.render_sequence.append("link_button")
         return None
 
+    def button(self, *args, **kwargs):
+        return False
+
+    def caption(self, *args, **kwargs):
+        return None
+
 
 
 def install_ask_cadivor_streamlit_stub(
@@ -93,7 +120,7 @@ def install_ask_cadivor_streamlit_stub(
 
     st = types.ModuleType("streamlit")
     st.__version__ = getattr(_REAL_STREAMLIT, "__version__", "stub")
-    st.session_state = dict(session_state or {})
+    st.session_state = session_state if session_state is not None else {}
     st._active_column = None
     st.render_sequence: list[str] = []
     st.columns_calls: list[tuple[list[float], str | None]] = []
@@ -184,10 +211,11 @@ def install_ask_cadivor_streamlit_stub(
     st.text_area = MagicMock(return_value="")
     st.form_submit_button = MagicMock(return_value=False)
     st.button = MagicMock(return_value=False)
+    st.radio = MagicMock(return_value="Ask Cadivor")
     st.info = MagicMock()
     st.warning = MagicMock()
     st.success = MagicMock()
-    st.status = lambda *args, **kwargs: _NullContext()
+    st.status = lambda *args, **kwargs: _StatusContext()
     st.link_button = MagicMock()
     st.error = lambda *args, **kwargs: None
 

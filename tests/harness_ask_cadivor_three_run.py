@@ -58,6 +58,12 @@ class _RecordingColumn:
         count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
         return [MagicMock() for _ in range(count)]
 
+    def button(self, *args, **kwargs):
+        return False
+
+    def caption(self, *args, **kwargs):
+        return None
+
 
 class StatefulStreamlitRun:
     """One script run with shared session_state persisted across reruns."""

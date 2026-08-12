@@ -433,6 +433,32 @@ def _clear_followup_ui_state() -> None:
 
 
 
+def _copilot_supabase_client() -> Any:
+    try:
+        from src.auth_bootstrap import get_supabase_client
+
+        return get_supabase_client()
+    except Exception:
+        return None
+
+
+def _restore_persisted_copilot_thread(
+    *,
+    context: dict[str, Any],
+    current_user: dict[str, Any],
+) -> None:
+    try:
+        from src.services.copilot_conversation import hydrate_thread_from_store
+    except ImportError:
+        return
+    hydrate_thread_from_store(
+        st.session_state,
+        context,
+        user_id=str((current_user or {}).get("id") or ""),
+        supabase=_copilot_supabase_client(),
+    )
+
+
 def _normalize_submitted_question(value: Any) -> str:
     """Return one active question and discard accidental duplicated history text."""
     text = str(value or "").replace("\r\n", "\n").strip()
@@ -2207,6 +2233,7 @@ def render_engineering_assistant(
         )
     except Exception:
         context = {}
+    _restore_persisted_copilot_thread(context=context, current_user=current_user)
     status = get_ai_usage_status(st.session_state, current_user or {})
 
     _render_context_header(context)
@@ -2216,6 +2243,16 @@ def render_engineering_assistant(
         utility_left, utility_right = st.columns([1, 4])
         if utility_left.button("New conversation", key="cv36_new_conversation", use_container_width=True):
             clear_thread(st.session_state, context)
+            try:
+                from src.services.copilot_conversation import clear_persisted_thread
+
+                clear_persisted_thread(
+                    context,
+                    user_id=str((current_user or {}).get("id") or ""),
+                    supabase=_copilot_supabase_client(),
+                )
+            except ImportError:
+                pass
             _clear_review_state()
             st.session_state["cv35_question"] = ""
             st.session_state.pop("cv36_pending_followup", None)
@@ -2392,6 +2429,17 @@ def render_engineering_assistant(
                     answer=response.answer,
                     provider_connected=response_provider == "openai",
                 )
+                try:
+                    from src.services.copilot_conversation import persist_thread_to_store
+
+                    persist_thread_to_store(
+                        context,
+                        user_id=str((current_user or {}).get("id") or ""),
+                        supabase=_copilot_supabase_client(),
+                        thread=thread,
+                    )
+                except ImportError:
+                    pass
                 # Copilot submission completed inside the authenticated workspace.
                 # The recovery snapshot is no longer needed after the answer and
                 # active route are safely stored.
