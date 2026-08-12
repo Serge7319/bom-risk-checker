@@ -80,7 +80,7 @@ class AskCadivorInlinePresentationTests(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 3)
         for style in rows:
             self.assertIn("display:grid", style.replace(" ", ""))
-            self.assertIn("#dbeafe", style)
+            self.assertIn("#bfdbfe", style)
 
     def test_summary_strip_has_inline_three_column_grid(self) -> None:
         match = re.search(r'class="cv722-summary-strip[^"]*"[^>]*style="([^"]+)"', self.html)

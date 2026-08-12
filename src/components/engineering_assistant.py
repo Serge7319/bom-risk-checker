@@ -75,6 +75,7 @@ from src.components.ask_cadivor_response_styles import (
     CV727_ASSESSMENT_BODY_STYLE,
     CV727_ASSESSMENT_HEADING_STYLE,
     CV727_ASSESSMENT_PANEL_STYLE,
+    CV727_SECTION_SEPARATOR_STYLE,
 )
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
@@ -255,7 +256,7 @@ def _log_ask_runtime_identity() -> None:
     parts = [
         "ASK_RUNTIME",
         f"commit_sha={os.environ.get('RAILWAY_GIT_COMMIT_SHA', 'unknown')}",
-        f"streamlit_version={st.__version__}",
+        f"streamlit_version={getattr(st, '__version__', 'unknown')}",
         f"renderer_version={_ASK_RUNTIME_RENDERER_VERSION}",
         f"renderer_module={Path(__file__).resolve()}",
         f"css_path={meta['css_path']}",
@@ -1113,6 +1114,15 @@ def _build_concise_answer_html(
             """
 
 
+def _append_assessment_section(sections: list[str], html: str) -> None:
+    if sections:
+        sections.append(
+            f'<div class="cv727-section-separator" style="{CV727_SECTION_SEPARATOR_STYLE}" '
+            f'aria-hidden="true"></div>'
+        )
+    sections.append(html)
+
+
 def _build_engineering_assessment_html(
     *,
     question: str,
@@ -1134,11 +1144,12 @@ def _build_engineering_assessment_html(
     sections: list[str] = []
     impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
     if impact_html:
-        sections.append(
+        _append_assessment_section(
+            sections,
             f'<div class="cv35-section-label" style="{CV35_SECTION_LABEL_STYLE}">Projected engineering impact</div>'
             f'<div class="cv724-impact-grid" style="{CV724_IMPACT_GRID_STYLE}">{impact_html}</div>'
             f'<p class="cv724-impact-disclaimer" style="{CV724_IMPACT_DISCLAIMER_STYLE}">'
-            "Projections are directional estimates based on saved evidence, not measured outcomes.</p>"
+            "Projections are directional estimates based on saved evidence, not measured outcomes.</p>",
         )
 
     if confidence_drivers:
@@ -1150,9 +1161,10 @@ def _build_engineering_assessment_html(
             if confidence_detail
             else ""
         )
-        sections.append(
+        _append_assessment_section(
+            sections,
             f'<div class="cv35-section-label" style="{CV35_SECTION_LABEL_STYLE}">Confidence drivers</div>'
-            f'<div class="cv724-driver-grid cv722-confidence-drivers-only" style="{CV724_DRIVER_GRID_STYLE}">{detail_html}{driver_html}</div>'
+            f'<div class="cv724-driver-grid cv722-confidence-drivers-only" style="{CV724_DRIVER_GRID_STYLE}">{detail_html}{driver_html}</div>',
         )
 
     if rankings:
@@ -1163,16 +1175,18 @@ def _build_engineering_assessment_html(
             f'<div class="cv47-ranking-detail">{html.escape(detail)}</div></div></article>'
             for idx, (title, detail) in enumerate(ranking_items, 1)
         )
-        sections.append(
+        _append_assessment_section(
+            sections,
             '<div class="cv35-section-label">Engineering priority ranking</div>'
-            f'<div class="cv47-ranking-board">{ranking_html}</div>'
+            f'<div class="cv47-ranking-board">{ranking_html}</div>',
         )
 
     if _evidence_items(evidence):
         _log_ask_runtime_surface("evidence_render")
-        sections.append(
+        _append_assessment_section(
+            sections,
             f'<div class="cv35-section-label" style="{CV35_SECTION_LABEL_STYLE}">Evidence breakdown</div>'
-            f'{_build_evidence_cards_html(evidence)}'
+            f'{_build_evidence_cards_html(evidence)}',
         )
 
     show_progress = detailed or intent in {"production_readiness", "evidence_sensitivity", "evidence_gap_priority"}

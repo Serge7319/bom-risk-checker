@@ -1,7 +1,9 @@
-"""Sprint 72.3.6 — Static inline presentation styles for Ask Cadivor response surfaces.
+"""Sprint 72.3.6+ — Static inline presentation styles for Ask Cadivor response surfaces.
 
 Literal colors and widely supported CSS only. These styles must not depend on the
 external ask_cadivor_v2.css contract. Never interpolate dynamic content here.
+
+Sprint 72.3.7 polish: spacing rhythm, section separation, reason/action hierarchy.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ CV50_SAVED_BADGE_STYLE = (
 # Answer card (cv49/cv722)
 CV49_ANSWER_CARD_STYLE = (
     "display:grid;gap:16px;border:1px solid #e2e8f0;border-radius:20px;"
-    "background:#ffffff;padding:16px 20px;margin:12px 0;max-width:920px;min-width:0;"
+    "background:#ffffff;padding:18px 20px;margin:12px 0;max-width:920px;min-width:0;"
 )
 CV49_ANSWER_KICKER_STYLE = (
     "display:block;font-size:11px;font-weight:700;letter-spacing:0.08em;"
@@ -61,19 +63,19 @@ CV722_DIRECT_ANSWER_TEXT_STYLE = (
 )
 CV722_CONCISE_BLOCK_STYLE = "display:grid;gap:8px;min-width:0;"
 CV722_LIST_STYLE = (
-    "margin:0;padding:0;list-style:none;display:grid;gap:8px;min-width:0;"
+    "margin:0;padding:0;list-style:none;display:grid;gap:10px;min-width:0;"
 )
 
 # Reason / action rows
 CV722_REASON_ROW_STYLE = (
     "display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;"
-    "align-items:flex-start;padding:8px 12px;border-radius:12px;list-style:none;"
-    "background:#f8fafc;border:1px solid #e2e8f0;min-width:0;"
+    "align-items:center;padding:10px 12px;border-radius:12px;list-style:none;"
+    "background:#fafbfc;border:1px solid #e8edf2;min-width:0;"
 )
 CV722_ACTION_ROW_STYLE = (
     "display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;"
-    "align-items:flex-start;padding:8px 12px;border-radius:12px;list-style:none;"
-    "background:#f8fbff;border:1px solid #dbeafe;min-width:0;"
+    "align-items:center;padding:10px 12px;border-radius:12px;list-style:none;"
+    "background:#f0f7ff;border:1px solid #bfdbfe;min-width:0;"
 )
 CV722_REASON_INDEX_STYLE = (
     "display:grid;place-items:center;width:28px;height:28px;border-radius:8px;"
@@ -86,9 +88,11 @@ CV722_ACTION_INDEX_STYLE = (
 CV722_ROW_BODY_STYLE = "min-width:0;"
 CV722_ROW_BODY_TEXT_STYLE = (
     "display:block;margin:0;font-size:13px;line-height:1.6;color:#475569;"
+    "word-break:break-word;"
 )
 CV722_ACTION_BODY_TEXT_STYLE = (
     "display:block;margin:0;font-size:13px;line-height:1.6;color:#0f172a;font-weight:500;"
+    "word-break:break-word;"
 )
 
 # Decision summary
@@ -119,7 +123,10 @@ CV727_ASSESSMENT_HEADING_STYLE = (
     "display:block;margin:0;font-size:11px;font-weight:700;letter-spacing:0.08em;"
     "text-transform:uppercase;color:#2563eb;"
 )
-CV727_ASSESSMENT_BODY_STYLE = "display:grid;gap:12px;min-width:0;"
+CV727_ASSESSMENT_BODY_STYLE = "display:grid;gap:16px;min-width:0;"
+CV727_SECTION_SEPARATOR_STYLE = (
+    "display:block;height:0;margin:0;border:0;border-top:1px solid #eef2f6;"
+)
 CV35_SECTION_LABEL_STYLE = (
     "display:block;font-size:11px;font-weight:700;letter-spacing:0.08em;"
     "text-transform:uppercase;color:#2563eb;margin:0 0 8px;"
@@ -132,7 +139,7 @@ CV724_IMPACT_GRID_STYLE = (
 )
 CV724_DRIVER_GRID_STYLE = CV724_IMPACT_GRID_STYLE
 CV724_METRIC_CELL_STYLE = (
-    "display:grid;gap:4px;padding:12px;border:1px solid #e2e8f0;border-radius:12px;"
+    "display:grid;gap:6px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;"
     "background:#f8fafc;min-width:0;"
 )
 CV39_IMPACT_LABEL_STYLE = CV722_SECTION_LABEL_STYLE
@@ -142,7 +149,7 @@ CV46_DRIVER_LABEL_STYLE = CV722_SECTION_LABEL_STYLE
 CV46_DRIVER_VALUE_STYLE = CV722_SUMMARY_VALUE_STYLE
 CV46_DRIVER_NOTE_STYLE = CV722_SUMMARY_NOTE_STYLE
 CV724_IMPACT_DISCLAIMER_STYLE = (
-    "display:block;margin:0 0 12px;font-size:11px;color:#64748b;max-width:72ch;"
+    "display:block;margin:0 0 16px;font-size:11px;line-height:1.5;color:#64748b;max-width:72ch;"
 )
 
 # Evidence breakdown
@@ -169,4 +176,5 @@ CV46_EVIDENCE_BODY_STYLE = "display:grid;gap:4px;min-width:0;"
 CV46_EVIDENCE_LABEL_STYLE = CV722_SECTION_LABEL_STYLE
 CV46_EVIDENCE_STATEMENT_STYLE = (
     "display:block;margin:0;font-size:13px;line-height:1.58;color:#475569;"
+    "word-break:break-word;"
 )
