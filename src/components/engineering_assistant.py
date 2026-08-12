@@ -22,6 +22,60 @@ from src.ui.cadivor_design_system import (
     render_kpi_row_safe,
     render_subsection_header,
 )
+from src.components.ask_cadivor_response_styles import (
+    CV35_SECTION_LABEL_STYLE,
+    CV39_IMPACT_LABEL_STYLE,
+    CV39_IMPACT_NOTE_STYLE,
+    CV39_IMPACT_VALUE_STYLE,
+    CV46_DRIVER_LABEL_STYLE,
+    CV46_DRIVER_NOTE_STYLE,
+    CV46_DRIVER_VALUE_STYLE,
+    CV46_EVIDENCE_BOARD_STYLE,
+    CV46_EVIDENCE_BODY_STYLE,
+    CV46_EVIDENCE_CARD_STYLE,
+    CV46_EVIDENCE_COMPONENT_STYLE,
+    CV46_EVIDENCE_HEADER_STYLE,
+    CV46_EVIDENCE_LABEL_STYLE,
+    CV46_EVIDENCE_STATEMENT_STYLE,
+    CV46_EVIDENCE_STATUS_STYLE,
+    CV49_ANSWER_CARD_STYLE,
+    CV49_ANSWER_KICKER_STYLE,
+    CV50_EXCHANGE_BADGES_STYLE,
+    CV50_EXCHANGE_STYLE,
+    CV50_EXCHANGE_TOP_STYLE,
+    CV50_SAVED_BADGE_STYLE,
+    CV50_TYPE_BADGE_STYLE,
+    CV50_YOU_ASKED_LABEL_STYLE,
+    CV50_YOU_ASKED_QUESTION_STYLE,
+    CV50_YOU_ASKED_STYLE,
+    CV722_ACTION_BODY_TEXT_STYLE,
+    CV722_ACTION_INDEX_STYLE,
+    CV722_ACTION_ROW_STYLE,
+    CV722_CONCISE_BLOCK_STYLE,
+    CV722_DIRECT_ANSWER_STYLE,
+    CV722_DIRECT_ANSWER_TEXT_STYLE,
+    CV722_DIRECT_ANSWER_TITLE_STYLE,
+    CV722_LIST_STYLE,
+    CV722_REASON_INDEX_STYLE,
+    CV722_REASON_ROW_STYLE,
+    CV722_ROW_BODY_STYLE,
+    CV722_ROW_BODY_TEXT_STYLE,
+    CV722_SECTION_LABEL_STYLE,
+    CV722_SUMMARY_ITEM_STYLE,
+    CV722_SUMMARY_LABEL_STYLE,
+    CV722_SUMMARY_NOTE_STYLE,
+    CV722_SUMMARY_STRIP_STYLE,
+    CV722_SUMMARY_VALUE_PRIORITY_STYLE,
+    CV722_SUMMARY_VALUE_STATUS_STYLE,
+    CV722_SUMMARY_VALUE_STYLE,
+    CV724_DRIVER_GRID_STYLE,
+    CV724_IMPACT_DISCLAIMER_STYLE,
+    CV724_IMPACT_GRID_STYLE,
+    CV724_METRIC_CELL_STYLE,
+    CV727_ASSESSMENT_BODY_STYLE,
+    CV727_ASSESSMENT_HEADING_STYLE,
+    CV727_ASSESSMENT_PANEL_STYLE,
+)
 
 from src.services.ai_entitlements import consume_ai_credits, get_ai_usage_status
 from src.services.copilot_response_depth import wants_detailed_response as _wants_detailed_response
@@ -630,30 +684,34 @@ def _html_kpi_cell(label: str, value: str) -> str:
 
 def _html_impact_row(label: str, value: str, note: str) -> str:
     return (
-        f'<article class="cv724-impact-cell">'
-        f'<div class="cv39-impact-label">{html.escape(label)}</div>'
-        f'<div class="cv39-impact-value">{html.escape(value)}</div>'
-        f'<div class="cv39-impact-note">{html.escape(note)}</div>'
+        f'<article class="cv724-impact-cell" style="{CV724_METRIC_CELL_STYLE}">'
+        f'<div class="cv39-impact-label" style="{CV39_IMPACT_LABEL_STYLE}">{html.escape(label)}</div>'
+        f'<div class="cv39-impact-value" style="{CV39_IMPACT_VALUE_STYLE}">{html.escape(value)}</div>'
+        f'<div class="cv39-impact-note" style="{CV39_IMPACT_NOTE_STYLE}">{html.escape(note)}</div>'
         f"</article>"
     )
 
 
 def _html_confidence_driver(label: str, value: str, note: str) -> str:
     return (
-        f'<article class="cv724-driver-cell">'
-        f'<div class="cv46-driver-label">{html.escape(label)}</div>'
-        f'<div class="cv46-driver-value">{html.escape(value)}</div>'
-        f'<div class="cv46-driver-note">{html.escape(note)}</div>'
+        f'<article class="cv724-driver-cell" style="{CV724_METRIC_CELL_STYLE}">'
+        f'<div class="cv46-driver-label" style="{CV46_DRIVER_LABEL_STYLE}">{html.escape(label)}</div>'
+        f'<div class="cv46-driver-value" style="{CV46_DRIVER_VALUE_STYLE}">{html.escape(value)}</div>'
+        f'<div class="cv46-driver-note" style="{CV46_DRIVER_NOTE_STYLE}">{html.escape(note)}</div>'
         f"</article>"
     )
 
 
 def _html_list_row(index: int, text: str, *, variant: str) -> str:
     index_label = f"{index:02d}"
+    row_style = CV722_REASON_ROW_STYLE if variant == "reason" else CV722_ACTION_ROW_STYLE
+    index_style = CV722_REASON_INDEX_STYLE if variant == "reason" else CV722_ACTION_INDEX_STYLE
+    body_text_style = CV722_ROW_BODY_TEXT_STYLE if variant == "reason" else CV722_ACTION_BODY_TEXT_STYLE
     return (
-        f'<li class="cv722-{variant}-row">'
-        f'<div class="cv722-list-index" aria-hidden="true">{index_label}</div>'
-        f'<div class="cv722-row-body"><p>{html.escape(text)}</p></div>'
+        f'<li class="cv722-{variant}-row" style="{row_style}">'
+        f'<div class="cv722-list-index" aria-hidden="true" style="{index_style}">{index_label}</div>'
+        f'<div class="cv722-row-body" style="{CV722_ROW_BODY_STYLE}">'
+        f'<p style="{body_text_style}">{html.escape(text)}</p></div>'
         f"</li>"
     )
 
@@ -683,14 +741,15 @@ def _evidence_card_status(detail: str) -> str:
 def _build_single_evidence_card_html(title: str, detail: str) -> str:
     status = _evidence_card_status(detail)
     return (
-        f'<article class="cv46-evidence-card">'
-        f'<header class="cv46-evidence-card-header">'
-        f'<div class="cv46-evidence-component">{html.escape(title)}</div>'
-        f'<div class="cv46-evidence-status">{html.escape(status)}</div>'
+        f'<article class="cv46-evidence-card" style="{CV46_EVIDENCE_CARD_STYLE}">'
+        f'<header class="cv46-evidence-card-header" style="{CV46_EVIDENCE_HEADER_STYLE}">'
+        f'<div class="cv46-evidence-component" style="{CV46_EVIDENCE_COMPONENT_STYLE}">{html.escape(title)}</div>'
+        f'<div class="cv46-evidence-status" style="{CV46_EVIDENCE_STATUS_STYLE}">{html.escape(status)}</div>'
         f"</header>"
-        f'<div class="cv46-evidence-body">'
-        f'<div class="cv46-evidence-label">Evidence</div>'
-        f'<p class="cv46-evidence-statement cv-assistant-preline">{html.escape(detail)}</p>'
+        f'<div class="cv46-evidence-body" style="{CV46_EVIDENCE_BODY_STYLE}">'
+        f'<div class="cv46-evidence-label" style="{CV46_EVIDENCE_LABEL_STYLE}">Evidence</div>'
+        f'<p class="cv46-evidence-statement cv-assistant-preline" style="{CV46_EVIDENCE_STATEMENT_STYLE}">'
+        f"{html.escape(detail)}</p>"
         f"</div>"
         f"</article>"
     )
@@ -987,7 +1046,7 @@ def _build_evidence_cards_html(evidence: str) -> str:
         message = _plain_markdown(evidence) or "No structured evidence was returned. Verify that component records are saved and re-run the review."
         return f'<div class="cv46-empty-evidence cv-assistant-preline">{html.escape(message)}</div>'
     cards = [_build_single_evidence_card_html(title, detail) for title, detail in items[:8]]
-    return f'<div class="cv46-evidence-board">{"".join(cards)}</div>'
+    return f'<div class="cv46-evidence-board" style="{CV46_EVIDENCE_BOARD_STYLE}">{"".join(cards)}</div>'
 
 
 def _build_decision_summary_html(
@@ -1000,19 +1059,19 @@ def _build_decision_summary_html(
 ) -> str:
     priority_value = html.escape(priority_part or "Not identified")
     return f"""
-        <section class="cv722-summary-strip cv722-summary-strip--{html.escape(tone)}" aria-label="Engineering decision summary">
-          <div class="cv722-summary-item" data-field="status">
-            <div class="cv722-summary-label">Status</div>
-            <div class="cv722-summary-value">{html.escape(status)}</div>
+        <section class="cv722-summary-strip cv722-summary-strip--{html.escape(tone)}" aria-label="Engineering decision summary" style="{CV722_SUMMARY_STRIP_STYLE}">
+          <div class="cv722-summary-item" data-field="status" style="{CV722_SUMMARY_ITEM_STYLE}">
+            <div class="cv722-summary-label" style="{CV722_SUMMARY_LABEL_STYLE}">Status</div>
+            <div class="cv722-summary-value" style="{CV722_SUMMARY_VALUE_STATUS_STYLE}">{html.escape(status)}</div>
           </div>
-          <div class="cv722-summary-item cv722-summary-item--priority" data-field="priority">
-            <div class="cv722-summary-label">Priority component</div>
-            <div class="cv722-summary-value">{priority_value}</div>
+          <div class="cv722-summary-item cv722-summary-item--priority" data-field="priority" style="{CV722_SUMMARY_ITEM_STYLE}">
+            <div class="cv722-summary-label" style="{CV722_SUMMARY_LABEL_STYLE}">Priority component</div>
+            <div class="cv722-summary-value" style="{CV722_SUMMARY_VALUE_PRIORITY_STYLE}">{priority_value}</div>
           </div>
-          <div class="cv722-summary-item" data-field="confidence">
-            <div class="cv722-summary-label">Confidence</div>
-            <div class="cv722-summary-value">{confidence_score}%</div>
-            <div class="cv722-summary-note">{html.escape(confidence_label)}</div>
+          <div class="cv722-summary-item" data-field="confidence" style="{CV722_SUMMARY_ITEM_STYLE}">
+            <div class="cv722-summary-label" style="{CV722_SUMMARY_LABEL_STYLE}">Confidence</div>
+            <div class="cv722-summary-value" style="{CV722_SUMMARY_VALUE_STYLE}">{confidence_score}%</div>
+            <div class="cv722-summary-note" style="{CV722_SUMMARY_NOTE_STYLE}">{html.escape(confidence_label)}</div>
           </div>
         </section>
         """
@@ -1035,20 +1094,20 @@ def _build_concise_answer_html(
     )
     answer_body_html = _direct_answer_body_html(headline, answer_text)
     return f"""
-            <section class="cv49-answer-card cv722-concise-answer">
-              <div class="cv49-answer-kicker">Cadivor Answer</div>
-              <div class="cv722-direct-answer">
-                <div class="cv722-section-label">Direct answer</div>
-                <div class="cv722-direct-answer-title">{html.escape(headline)}</div>
+            <section class="cv49-answer-card cv722-concise-answer" style="{CV49_ANSWER_CARD_STYLE}">
+              <div class="cv49-answer-kicker" style="{CV49_ANSWER_KICKER_STYLE}">Cadivor Answer</div>
+              <div class="cv722-direct-answer" style="{CV722_DIRECT_ANSWER_STYLE}">
+                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Direct answer</div>
+                <div class="cv722-direct-answer-title" style="{CV722_DIRECT_ANSWER_TITLE_STYLE}">{html.escape(headline)}</div>
                 {answer_body_html}
               </div>
-              <div class="cv722-concise-block">
-                <div class="cv722-section-label">Key engineering reasons</div>
-                <ul class="cv722-reason-list">{reasons_html}</ul>
+              <div class="cv722-concise-block" style="{CV722_CONCISE_BLOCK_STYLE}">
+                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Key engineering reasons</div>
+                <ul class="cv722-reason-list" style="{CV722_LIST_STYLE}">{reasons_html}</ul>
               </div>
-              <div class="cv722-concise-block">
-                <div class="cv722-section-label">Recommended actions</div>
-                <ul class="cv722-action-list">{actions_html}</ul>
+              <div class="cv722-concise-block" style="{CV722_CONCISE_BLOCK_STYLE}">
+                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Recommended actions</div>
+                <ul class="cv722-action-list" style="{CV722_LIST_STYLE}">{actions_html}</ul>
               </div>
             </section>
             """
@@ -1076,9 +1135,10 @@ def _build_engineering_assessment_html(
     impact_html = "".join(_html_impact_row(label, value, note) for label, value, note in impact)
     if impact_html:
         sections.append(
-            '<div class="cv35-section-label">Projected engineering impact</div>'
-            f'<div class="cv724-impact-grid">{impact_html}</div>'
-            '<p class="cv724-impact-disclaimer">Projections are directional estimates based on saved evidence, not measured outcomes.</p>'
+            f'<div class="cv35-section-label" style="{CV35_SECTION_LABEL_STYLE}">Projected engineering impact</div>'
+            f'<div class="cv724-impact-grid" style="{CV724_IMPACT_GRID_STYLE}">{impact_html}</div>'
+            f'<p class="cv724-impact-disclaimer" style="{CV724_IMPACT_DISCLAIMER_STYLE}">'
+            "Projections are directional estimates based on saved evidence, not measured outcomes.</p>"
         )
 
     if confidence_drivers:
@@ -1091,8 +1151,8 @@ def _build_engineering_assessment_html(
             else ""
         )
         sections.append(
-            '<div class="cv35-section-label">Confidence drivers</div>'
-            f'<div class="cv724-driver-grid cv722-confidence-drivers-only">{detail_html}{driver_html}</div>'
+            f'<div class="cv35-section-label" style="{CV35_SECTION_LABEL_STYLE}">Confidence drivers</div>'
+            f'<div class="cv724-driver-grid cv722-confidence-drivers-only" style="{CV724_DRIVER_GRID_STYLE}">{detail_html}{driver_html}</div>'
         )
 
     if rankings:
@@ -1111,7 +1171,7 @@ def _build_engineering_assessment_html(
     if _evidence_items(evidence):
         _log_ask_runtime_surface("evidence_render")
         sections.append(
-            '<div class="cv35-section-label">Evidence breakdown</div>'
+            f'<div class="cv35-section-label" style="{CV35_SECTION_LABEL_STYLE}">Evidence breakdown</div>'
             f'{_build_evidence_cards_html(evidence)}'
         )
 
@@ -1159,9 +1219,9 @@ def _build_assessment_panel_html(assessment_html: str) -> str:
     if not str(assessment_html or "").strip():
         return ""
     return f"""
-        <section class="cv727-assessment-panel">
-          <div class="cv727-assessment-heading">Engineering Assessment</div>
-          <div class="cv727-assessment-body">
+        <section class="cv727-assessment-panel" style="{CV727_ASSESSMENT_PANEL_STYLE}">
+          <div class="cv727-assessment-heading" style="{CV727_ASSESSMENT_HEADING_STYLE}">Engineering Assessment</div>
+          <div class="cv727-assessment-body" style="{CV727_ASSESSMENT_BODY_STYLE}">
             {assessment_html}
           </div>
         </section>
@@ -1185,15 +1245,15 @@ def _build_conversation_exchange_html(*, question: str, intent: str) -> str:
     response_label, response_class = _response_type_meta(intent)
     safe_question = html.escape(_plain_markdown(str(question or "").strip()))
     return f"""
-        <section class="cv50-exchange">
-          <div class="cv50-exchange-top">
-            <div class="cv50-you-asked">
-              <div class="cv50-you-asked-label">You asked</div>
-              <div class="cv50-you-asked-question">{safe_question}</div>
+        <section class="cv50-exchange" style="{CV50_EXCHANGE_STYLE}">
+          <div class="cv50-exchange-top" style="{CV50_EXCHANGE_TOP_STYLE}">
+            <div class="cv50-you-asked" style="{CV50_YOU_ASKED_STYLE}">
+              <div class="cv50-you-asked-label" style="{CV50_YOU_ASKED_LABEL_STYLE}">You asked</div>
+              <div class="cv50-you-asked-question" style="{CV50_YOU_ASKED_QUESTION_STYLE}">{safe_question}</div>
             </div>
-            <div class="cv50-exchange-badges">
-              <div class="cv50-type cv50-type--{html.escape(response_class)}">{html.escape(response_label)}</div>
-              <div class="cv50-saved">✓ Review auto-saved</div>
+            <div class="cv50-exchange-badges" style="{CV50_EXCHANGE_BADGES_STYLE}">
+              <div class="cv50-type cv50-type--{html.escape(response_class)}" style="{CV50_TYPE_BADGE_STYLE}">{html.escape(response_label)}</div>
+              <div class="cv50-saved" style="{CV50_SAVED_BADGE_STYLE}">✓ Review auto-saved</div>
             </div>
           </div>
         </section>
@@ -1672,7 +1732,7 @@ def _direct_answer_body_html(headline: str, answer_text: str) -> str:
     supplementary = _supplementary_direct_answer_text(headline, answer_text)
     if not supplementary:
         return ""
-    return f'<p class="cv722-direct-answer-text cv-assistant-preline">{html.escape(supplementary)}</p>'
+    return f'<p class="cv722-direct-answer-text cv-assistant-preline" style="{CV722_DIRECT_ANSWER_TEXT_STYLE}">{html.escape(supplementary)}</p>'
 
 
 def _conversational_headline(intent: str, assessment: str, priority_part: str) -> str:

@@ -60,21 +60,21 @@ class AskCadivorBrowserNeutralContractTests(unittest.TestCase):
 
     def test_component_and_status_are_block_elements(self) -> None:
         self.assertGreaterEqual(
-            len(re.findall(r'<div class="cv46-evidence-component">', self.html)),
+            len(re.findall(r'<div class="cv46-evidence-component"(?: style="[^"]*")?>', self.html)),
             3,
         )
         self.assertGreaterEqual(
-            len(re.findall(r'<div class="cv46-evidence-status">', self.html)),
+            len(re.findall(r'<div class="cv46-evidence-status"(?: style="[^"]*")?>', self.html)),
             3,
         )
         self.assertNotRegex(self.html, r'<span class="cv46-evidence-component"')
         self.assertNotRegex(self.html, r'<span class="cv46-evidence-status"')
 
     def test_exchange_badges_are_block_elements(self) -> None:
-        self.assertIn('<div class="cv50-you-asked-label">', self.html)
-        self.assertIn('<div class="cv50-you-asked-question">', self.html)
+        self.assertRegex(self.html, r'<div class="cv50-you-asked-label"(?: style="[^"]*")?>')
+        self.assertRegex(self.html, r'<div class="cv50-you-asked-question"(?: style="[^"]*")?>')
         self.assertRegex(self.html, r'<div class="cv50-type cv50-type--')
-        self.assertIn('<div class="cv50-saved">', self.html)
+        self.assertRegex(self.html, r'<div class="cv50-saved"(?: style="[^"]*")?>')
 
     def test_no_concatenated_pc817_review_strings(self) -> None:
         for token in ("PC817Review", "BZX55C5V1Review", "DRV8825Review"):

@@ -39,9 +39,9 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
         raw = self.assistant._build_assessment_panel_html(
             '<div class="cv724-impact-grid"></div>'
         )
-        self.assertRegex(raw, r"^\s{4,}<section class=\"cv727-assessment-panel\">")
+        self.assertRegex(raw, r'^\s{4,}<section class="cv727-assessment-panel"')
         normalized = self.assistant._normalize_presentation_html(raw)
-        self.assertTrue(normalized.startswith("<section class=\"cv727-assessment-panel\">"))
+        self.assertTrue(normalized.startswith("<section class=\"cv727-assessment-panel\""))
         self.assertNotIn("<style", normalized.lower())
         self.assertNotIn("<details", normalized.lower())
         self.assertNotRegex(normalized, r"^\s")

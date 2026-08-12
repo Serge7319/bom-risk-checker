@@ -56,12 +56,12 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
 
     def test_single_numbering_for_reasons(self) -> None:
         self.assertGreaterEqual(self.harness_html.count("cv722-reason-row"), 3)
-        self.assertIn('cv722-list-index" aria-hidden="true">01', self.harness_html)
+        self.assertRegex(self.harness_html, r'cv722-list-index" aria-hidden="true"[^>]*>01')
         self.assertNotIn("1. 1", self.harness_html)
 
     def test_single_numbering_for_actions(self) -> None:
         self.assertGreaterEqual(self.harness_html.count("cv722-action-row"), 3)
-        self.assertIn('cv722-list-index" aria-hidden="true">03', self.harness_html)
+        self.assertRegex(self.harness_html, r'cv722-list-index" aria-hidden="true"[^>]*>03')
 
     def test_decision_summary_and_impact_surfaces_present(self) -> None:
         self.assertIn("decision_summary", self.harness_st.render_sequence)

@@ -50,9 +50,9 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
 
     def test_numbered_reason_and_action_badges(self) -> None:
         _, html, _, _, _ = self._render_pc817()
-        self.assertIn('cv722-list-index" aria-hidden="true">01', html)
-        self.assertIn('cv722-list-index" aria-hidden="true">02', html)
-        self.assertIn('cv722-list-index" aria-hidden="true">03', html)
+        self.assertRegex(html, r'cv722-list-index" aria-hidden="true"[^>]*>01')
+        self.assertRegex(html, r'cv722-list-index" aria-hidden="true"[^>]*>02')
+        self.assertRegex(html, r'cv722-list-index" aria-hidden="true"[^>]*>03')
         self.assertIn("Investigate alternative suppliers or parts for PC817", html)
 
     def test_decision_summary_kpi_labels(self) -> None:

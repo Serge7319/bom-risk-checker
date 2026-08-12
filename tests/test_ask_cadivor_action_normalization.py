@@ -89,7 +89,7 @@ class AskCadivorActionNormalizationTests(unittest.TestCase):
         from tests.harness_ask_cadivor_presentation import render_pc817_harness
 
         html, st = render_pc817_harness()
-        self.assertIn('cv722-list-index" aria-hidden="true">01', html)
+        self.assertRegex(html, r'cv722-list-index" aria-hidden="true"[^>]*>01')
         self.assertGreaterEqual(html.count("cv722-action-row"), 3)
         self.assertNotRegex(html, r">\s*1\s*<")
 
