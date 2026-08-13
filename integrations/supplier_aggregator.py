@@ -2,6 +2,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import streamlit as st
 
+from integrations.provider_health import (
+    PROVIDER_AVAILABLE,
+    PROVIDER_ERROR,
+    PROVIDER_NOT_CONFIGURED,
+    PROVIDER_PART_NOT_FOUND,
+    classify_provider_exception,
+    sanitize_provider_message,
+    summarize_provider_health,
+)
 from integrations.mouser_client import search_mouser_by_part_number
 from integrations.digikey_client import search_digikey_by_part_number
 
@@ -11,65 +20,52 @@ except Exception:
     search_newark_by_part_number = None
 
 
+def _empty_supplier_result(source_name: str, *, provider_status: str, error: str = "") -> dict:
+    return {
+        "source": source_name,
+        "provider_status": provider_status,
+        "error": error,
+        "lifecycle_status": "Unknown",
+        "stock_total": 0,
+        "supplier_count": 0,
+        "lead_time_weeks": None,
+        "unit_price": 0.0,
+        "has_alternates": False,
+        "manufacturer": "",
+        "description": "",
+        "mouser_part_number": "",
+        "manufacturer_part_number": "",
+        "product_detail_url": "",
+        "package": "",
+        "pin_count": 0,
+        "mounting_style": "",
+        "voltage_range": "",
+        "architecture": "",
+        "channel_count": 0,
+        "supply_voltage_min": None,
+        "supply_voltage_max": None,
+        "bandwidth_mhz": None,
+        "slew_rate_v_us": None,
+    }
+
+
 def _safe_supplier_lookup(source_name, lookup_func, part_number):
     try:
         if lookup_func is None:
-            return {
-                "source": source_name,
-                "error": f"{source_name} client not available",
-                "lifecycle_status": "Unknown",
-                "stock_total": 0,
-                "supplier_count": 0,
-                "lead_time_weeks": None,
-                "unit_price": 0.0,
-                "has_alternates": False,
-                "manufacturer": "",
-                "description": "",
-                "mouser_part_number": "",
-                "manufacturer_part_number": "",
-                "product_detail_url": "",
-                "package": "",
-                "pin_count": 0,
-                "mounting_style": "",
-                "voltage_range": "",
-                "architecture": "",
-                "channel_count": 0,
-                "supply_voltage_min": None,
-                "supply_voltage_max": None,
-                "bandwidth_mhz": None,
-                "slew_rate_v_us": None,
-                "bandwidth_mhz": None,
-                "slew_rate_v_us": None,
-            }
+            return _empty_supplier_result(
+                source_name,
+                provider_status=PROVIDER_NOT_CONFIGURED,
+                error=f"{source_name} is not configured",
+            )
 
         result = lookup_func(part_number)
 
         if not result:
-            return {
-                "source": source_name,
-                "error": f"No result from {source_name}",
-                "lifecycle_status": "Unknown",
-                "stock_total": 0,
-                "supplier_count": 0,
-                "lead_time_weeks": None,
-                "unit_price": 0.0,
-                "has_alternates": False,
-                "manufacturer": "",
-                "description": "",
-                "mouser_part_number": "",
-                "manufacturer_part_number": "",
-                "product_detail_url": "",
-                "package": "",
-                "pin_count": 0,
-                "mounting_style": "",
-                "voltage_range": "",
-                "architecture": "",
-                "channel_count": 0,
-                "supply_voltage_min": None,
-                "supply_voltage_max": None,
-                "bandwidth_mhz": None,
-                "slew_rate_v_us": None,
-            }
+            return _empty_supplier_result(
+                source_name,
+                provider_status=PROVIDER_ERROR,
+                error=f"No response from {source_name}",
+            )
 
         result["source"] = source_name
         result.setdefault("package", "")
@@ -81,36 +77,30 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         result.setdefault("supply_voltage_min", None)
         result.setdefault("supply_voltage_max", None)
 
+        if result.get("error"):
+            result["provider_status"] = PROVIDER_ERROR
+            result["error"] = sanitize_provider_message(result.get("error"))
+            return result
+
+        if not str(result.get("manufacturer_part_number") or "").strip():
+            result["provider_status"] = PROVIDER_PART_NOT_FOUND
+            result.pop("error", None)
+            return result
+
+        result["provider_status"] = PROVIDER_AVAILABLE
+        result.pop("error", None)
         return result
 
     except Exception as error:
-        print(f"{source_name} lookup failed:", error)
+        provider_status = classify_provider_exception(error)
+        safe_message = sanitize_provider_message(error)
+        print(f"{source_name} lookup failed:", safe_message)
 
-        return {
-            "source": source_name,
-            "error": str(error),
-            "lifecycle_status": "Unknown",
-            "stock_total": 0,
-            "supplier_count": 0,
-            "lead_time_weeks": None,
-            "unit_price": 0.0,
-            "has_alternates": False,
-            "manufacturer": "",
-            "description": "",
-            "mouser_part_number": "",
-            "manufacturer_part_number": "",
-            "product_detail_url": "",
-            "package": "",
-            "pin_count": 0,
-            "mounting_style": "",
-            "voltage_range": "",
-            "architecture": "",
-            "channel_count": 0,
-            "supply_voltage_min": None,
-            "supply_voltage_max": None,
-            "bandwidth_mhz": None,
-            "slew_rate_v_us": None,
-        }
+        return _empty_supplier_result(
+            source_name,
+            provider_status=provider_status,
+            error=safe_message,
+        )
 
 
 def get_supplier_results(part_number):
@@ -145,12 +135,13 @@ def get_best_part_data(part_number: str) -> dict:
     
     valid_results = [
         result for result in supplier_results
-        if not result.get("error")
+        if result.get("provider_status") == PROVIDER_AVAILABLE
         and result.get("manufacturer_part_number")
     ]
 
     if not valid_results:
-        return default_aggregated_result(part_number, supplier_results)
+        aggregated = default_aggregated_result(part_number, supplier_results)
+        return aggregated
 
     best_result = max(
         valid_results,
@@ -172,6 +163,9 @@ def get_best_part_data(part_number: str) -> dict:
     best_result["total_market_stock"] = total_market_stock
     best_result["sources_available"] = ", ".join(source_names)
     best_result["all_supplier_results"] = supplier_results
+    provider_health = summarize_provider_health(supplier_results)
+    best_result["provider_health"] = provider_health
+    best_result["supplier_data_verified"] = provider_health["has_verified_data"]
 
     # Borrow missing package / pin-count / mounting-style data
     # from any other supplier that has it.
@@ -283,7 +277,7 @@ def search_supplier_alternatives(part_number):
     results = []
 
     for supplier_data in supplier_results:
-        if supplier_data.get("error"):
+        if supplier_data.get("provider_status") != PROVIDER_AVAILABLE:
             continue
 
         if supplier_data.get("manufacturer_part_number"):
@@ -307,6 +301,7 @@ def search_supplier_alternatives(part_number):
 
 
 def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
+    provider_health = summarize_provider_health(supplier_results)
     return {
         "source": "No supplier match",
         "searched_part_number": part_number,
@@ -327,6 +322,8 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
         "total_market_stock": 0,
         "sources_available": "",
         "all_supplier_results": supplier_results,
+        "provider_health": provider_health,
+        "supplier_data_verified": provider_health["has_verified_data"],
         "voltage_range": "",
         "architecture": "",
         "channel_count": 0,

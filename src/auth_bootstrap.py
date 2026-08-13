@@ -223,6 +223,16 @@ def ensure_authenticated_or_stop() -> None:
 
     apply_auth_intent_from_query()
 
+    from src.auth_recovery import apply_password_recovery_from_query, password_recovery_active
+
+    apply_password_recovery_from_query(supabase)
+    if password_recovery_active():
+        log_startup_phase("render_password_recovery_ui")
+        show_auth_ui(supabase, cookie_manager)
+        if _timing_enabled():
+            st.caption(f"Startup timing: {startup_phase_summary()}")
+        st.stop()
+
     bootstrap_cookie_source = "skipped"
     if (
         not manual_login_in_flight()

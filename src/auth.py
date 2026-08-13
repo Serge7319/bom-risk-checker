@@ -5,6 +5,7 @@ from textwrap import dedent
 
 from src.auth_state import (
     APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
+    APP_PASSWORD_RECOVERY, APP_PASSWORD_RESET,
     AUTH_SIGNING_IN,
     begin_manual_login,
     finish_manual_login_failed,
@@ -13,6 +14,12 @@ from src.auth_state import (
 )
 from src.config import CADIVOR_MARKETING_URL
 from src.ui.core_premium_ui import inject_core_premium_ui_auth
+
+
+def _auth_recovery():
+    from src import auth_recovery
+
+    return auth_recovery
 
 
 def _set_auth_cookie(cookie_manager, session, key: str):
@@ -338,6 +345,61 @@ def _render_back_to_marketing_link() -> None:
     )
 
 
+def _render_password_reset_request(supabase) -> None:
+    st.markdown(
+        """
+        <div class="auth-heading">Reset your password</div>
+        <p class="auth-copy">Enter the email address for your Cadivor workspace. If an account exists, we will send recovery instructions.</p>
+        <div class="auth-divider"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.form("cadivor_password_reset_request_form", clear_on_submit=True, border=False):
+        email = st.text_input("Email", placeholder="you@company.com")
+        submit = st.form_submit_button("Send recovery email", use_container_width=True)
+    if submit:
+        recovery = _auth_recovery()
+        message = recovery.request_password_reset_email(supabase, email)
+        st.session_state[recovery._RECOVERY_NOTICE_KEY] = message
+        recovery.cancel_password_reset_request()
+        st.rerun()
+    if st.button("Back to login", key="cadivor_back_to_login_from_reset"):
+        _auth_recovery().cancel_password_reset_request()
+        st.rerun()
+    _render_back_to_marketing_link()
+
+
+def _render_password_recovery_form(supabase, cookie_manager) -> None:
+    st.markdown(
+        """
+        <div class="auth-heading">Choose a new password</div>
+        <p class="auth-copy">Your recovery link is active. Enter a new password to restore access to your Cadivor workspace.</p>
+        <div class="auth-divider"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+    recovery = _auth_recovery()
+    error = st.session_state.pop(recovery._RECOVERY_ERROR_KEY, None)
+    if error:
+        st.error(error)
+    with st.form("cadivor_password_recovery_form", clear_on_submit=True, border=False):
+        password = st.text_input("New password", type="password", placeholder="Enter a new password")
+        confirm_password = st.text_input("Confirm password", type="password", placeholder="Re-enter your new password")
+        submit = st.form_submit_button("Update password", use_container_width=True)
+    if submit:
+        success, message = recovery.complete_password_recovery(
+            supabase,
+            password,
+            confirm_password,
+            cookie_manager=cookie_manager,
+        )
+        if success:
+            st.session_state[recovery._RECOVERY_NOTICE_KEY] = message
+            st.rerun()
+        st.error(message)
+    _render_back_to_marketing_link()
+
+
 def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     st.markdown(
         f"""
@@ -391,6 +453,11 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         else:
             _submit_manual_login(supabase, cookie_manager, email, password)
         return
+
+    if auth_mode == "Login":
+        if st.button("Forgot password?", key="cadivor_forgot_password_link"):
+            _auth_recovery().begin_password_reset_request()
+            st.rerun()
 
     _render_back_to_marketing_link()
 
@@ -660,10 +727,14 @@ def show_auth_ui(supabase, cookie_manager=None):
         state = APP_LOGIN
 
     if state in (APP_LOGIN, APP_SIGNUP):
+        recovery = _auth_recovery()
         notice = st.session_state.pop("cadivor_auth_notice", None)
+        recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
         error = st.session_state.pop("cadivor_auth_error", None)
         if notice:
             st.success(notice)
+        if recovery_notice:
+            st.success(recovery_notice)
         if error:
             st.error(error)
         _render_auth_page(
@@ -671,6 +742,19 @@ def show_auth_ui(supabase, cookie_manager=None):
             cookie_manager=cookie_manager,
             initial_mode="Create Account" if state == APP_SIGNUP else "Login",
         )
+        return
+
+    if state == APP_PASSWORD_RESET:
+        recovery = _auth_recovery()
+        recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
+        if recovery_notice:
+            st.success(recovery_notice)
+        _render_password_reset_request(supabase)
+        return
+
+    recovery = _auth_recovery()
+    if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
+        _render_password_recovery_form(supabase, cookie_manager)
         return
 
     # Production routing: www.cadivor.com owns marketing; the app shows auth only.

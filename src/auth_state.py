@@ -32,6 +32,8 @@ APP_PUBLIC = "public"
 APP_LOGIN = "login"
 APP_SIGNUP = "signup"
 APP_SIGNING_IN = "signing_in"
+APP_PASSWORD_RESET = "password_reset"
+APP_PASSWORD_RECOVERY = "password_recovery"
 APP_AUTHENTICATED = "authenticated"
 
 _AUTH_KEYS = ("user", "access_token", "refresh_token")

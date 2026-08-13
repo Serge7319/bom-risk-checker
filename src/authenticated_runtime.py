@@ -50,6 +50,7 @@ from src.design_impact_analyzer import build_design_impact, render_design_impact
 from src.cost_optimization import build_cost_optimization, render_cost_optimization
 from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
 from integrations.supplier_aggregator import get_best_part_data
+from integrations.provider_health import unverified_supplier_reason_replacements
 from src.health_score import calculate_bom_health_score, generate_executive_summary
 from src.plans import PLANS, get_plan, validate_bom_against_plan, resolve_effective_plan, format_limit
 from src.alternative_engine import compare_parts, suggest_alternatives_v2, rank_alternatives
@@ -245,8 +246,17 @@ def load_user_data():
     if response.data:
         return response.data[0]
 
-    st.error("User profile not found. Please log out and create a new account.")
-    stop_authenticated_page()
+    from src.services.user_provisioning import UserProvisioningError, ensure_user_profile
+
+    try:
+        profile, _created = ensure_user_profile(supabase, user, operation="load_user_data")
+        return profile
+    except UserProvisioningError:
+        st.error(
+            "Cadivor could not initialize your workspace profile. "
+            "Please try again in a moment or contact support if this continues."
+        )
+        stop_authenticated_page()
 
 
 
@@ -1639,15 +1649,17 @@ def run_authenticated_app() -> None:
         try:
             part_data = get_best_part_data(part_number)
 
-        except Exception as e:
+        except Exception:
             part_data = {
                 "mpn": part_number,
                 "lifecycle_status": "Unknown",
                 "stock_available": 0,
                 "supplier_count": 0,
-                "risk_score": 100,
-                "risk_level": "High",
-                "risk_reasons": f"Supplier lookup failed: {e}",
+                "supplier_data_verified": False,
+                "provider_health": {
+                    "has_verified_data": False,
+                    "summary_message": "Supplier data could not be verified during this analysis.",
+                },
             }
 
         part_data["quantity"] = row.get("quantity", 0)
@@ -1714,6 +1726,16 @@ def run_authenticated_app() -> None:
     def analyze_single_part(row):
         part_data = get_part_data(row)
         risk_result = calculate_risk(part_data)
+        risk_reasons = list(risk_result["risk_reasons"])
+        supplier_verified = bool(part_data.get("supplier_data_verified", True))
+        if not supplier_verified:
+            replacements = unverified_supplier_reason_replacements()
+            risk_reasons = [replacements.get(reason, reason) for reason in risk_reasons]
+            if not any("could not be verified" in reason.lower() for reason in risk_reasons):
+                risk_reasons.insert(
+                    0,
+                    "Some supplier data could not be verified during this analysis",
+                )
 
         return {
             "MPN": row["mpn"],
@@ -1740,9 +1762,10 @@ def run_authenticated_app() -> None:
             "Has Alternates": part_data.get("has_alternates", False),
             "Alternate Count": part_data.get("alternate_count", 0),
             "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
+            "Supplier Data Verified": supplier_verified,
             "Risk Score": risk_result["risk_score"],
             "Risk Level": risk_result["risk_level"],
-            "Risk Reasons": "; ".join(risk_result["risk_reasons"]) or "No major risk found",
+            "Risk Reasons": "; ".join(risk_reasons) or "No major risk found",
         }
 
     def analyze_bom(df, progress_status=None, progress_bar=None):
@@ -1803,7 +1826,18 @@ def run_authenticated_app() -> None:
                         }
                     )
 
-        return pd.DataFrame(results)
+        results_df = pd.DataFrame(results)
+        if "Supplier Data Verified" in results_df.columns:
+            degraded = not bool(results_df["Supplier Data Verified"].all())
+        else:
+            degraded = False
+        st.session_state["cadivor_supplier_degraded"] = degraded
+        st.session_state["cadivor_supplier_degraded_message"] = (
+            "Some supplier data could not be verified during this analysis."
+            if degraded
+            else ""
+        )
+        return results_df
 
     def show_dashboard_summary(results_df):
         st.subheader("📊 BOM Risk Dashboard")
@@ -11841,6 +11875,13 @@ def run_authenticated_app() -> None:
                     stop_authenticated_page()
 
                 results_df = st.session_state["results_df"]
+                if st.session_state.get("cadivor_supplier_degraded"):
+                    st.info(
+                        st.session_state.get(
+                            "cadivor_supplier_degraded_message",
+                            "Some supplier data could not be verified during this analysis.",
+                        )
+                    )
 
         if st.session_state.get("show_upgrade_checkout"):
             upgrade_message = st.session_state.get(
