@@ -65,7 +65,18 @@ def startup_phase_summary() -> str:
 def get_supabase_client() -> Any:
     url = get_secret("SUPABASE_URL", required=True)
     key = get_secret("SUPABASE_KEY", required=True)
-    return create_client(url, key)
+    try:
+        from supabase.lib.client_options import SyncClientOptions
+        from supabase_auth import SyncMemoryStorage
+
+        return create_client(
+            url,
+            key,
+            options=SyncClientOptions(flow_type="pkce", storage=SyncMemoryStorage()),
+        )
+    except ImportError:
+        # Test stubs may replace `supabase` with a non-package mock; library default is pkce.
+        return create_client(url, key)
 
 
 def qp_value(name: str, default: str = "") -> str:

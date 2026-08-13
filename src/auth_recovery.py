@@ -5,7 +5,6 @@ import os
 from typing import Any
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from src.auth_state import APP_LOGIN, APP_PASSWORD_RECOVERY, APP_PASSWORD_RESET, log_auth_diagnostic
 
@@ -13,7 +12,8 @@ _RECOVERY_ACTIVE_KEY = "cadivor_password_recovery_active"
 _RECOVERY_ERROR_KEY = "cadivor_password_recovery_error"
 _RECOVERY_NOTICE_KEY = "cadivor_password_recovery_notice"
 _RECOVERY_APPLIED_KEY = "cadivor_password_recovery_query_applied"
-_HASH_BRIDGE_RUN_KEY = "cadivor_password_recovery_hash_bridge_run"
+_RECOVERY_EXCHANGE_CONSUMED_KEY = "cadivor_password_recovery_exchange_consumed"
+_RECOVERY_CALLBACK_MARKER = "cadivor_recovery"
 
 
 def password_recovery_active() -> bool:
@@ -45,8 +45,19 @@ def _read_query_param(name: str) -> str:
     return str(value or "").strip()
 
 
+def _recovery_callback_requested() -> bool:
+    return _read_query_param(_RECOVERY_CALLBACK_MARKER).lower() in {"1", "true", "yes"}
+
+
+def _recovery_credentials_in_query() -> bool:
+    return bool(
+        _read_query_param("token_hash")
+        or _read_query_param("code")
+    )
+
+
 def _clear_recovery_query_params() -> None:
-    for key in ("type", "access_token", "refresh_token", "code", "cadivor_recovery"):
+    for key in ("type", "token_hash", "code", _RECOVERY_CALLBACK_MARKER):
         try:
             if key in st.query_params:
                 del st.query_params[key]
@@ -54,13 +65,26 @@ def _clear_recovery_query_params() -> None:
             pass
 
 
-def _activate_recovery_session(supabase: Any, access_token: str, refresh_token: str) -> bool:
-    if not access_token or not refresh_token:
+def _commit_recovery_session(user: Any, access_token: str, refresh_token: str) -> None:
+    st.session_state["user"] = user
+    st.session_state["access_token"] = str(access_token)
+    st.session_state["refresh_token"] = str(refresh_token)
+    st.session_state[_RECOVERY_ACTIVE_KEY] = True
+    st.session_state["cadivor_root_state"] = APP_PASSWORD_RECOVERY
+    st.session_state["cadivor_auth_status"] = "signed_out"
+    st.session_state.pop("cadivor_force_signed_out", None)
+    log_auth_diagnostic("password_recovery_session_active")
+
+
+def _activate_recovery_from_token_hash(supabase: Any, token_hash: str) -> bool:
+    if not token_hash:
         return False
     try:
-        session_response = supabase.auth.set_session(access_token, refresh_token)
+        session_response = supabase.auth.verify_otp(
+            {"token_hash": token_hash, "type": "recovery"}
+        )
     except Exception as exc:
-        log_auth_diagnostic("password_recovery_session_failed", error=type(exc).__name__)
+        log_auth_diagnostic("password_recovery_token_verify_failed", error=type(exc).__name__)
         st.session_state[_RECOVERY_ERROR_KEY] = (
             "This password recovery link is invalid or has expired. "
             "Request a new reset email and try again."
@@ -76,15 +100,42 @@ def _activate_recovery_session(supabase: Any, access_token: str, refresh_token: 
         )
         return False
 
-    st.session_state["user"] = user
-    st.session_state["access_token"] = str(session.access_token)
-    st.session_state["refresh_token"] = str(session.refresh_token)
-    st.session_state[_RECOVERY_ACTIVE_KEY] = True
-    st.session_state["cadivor_root_state"] = APP_PASSWORD_RECOVERY
-    st.session_state["cadivor_auth_status"] = "signed_out"
-    st.session_state.pop("cadivor_force_signed_out", None)
-    log_auth_diagnostic("password_recovery_session_active")
+    _commit_recovery_session(user, str(session.access_token), str(session.refresh_token))
     return True
+
+
+def _activate_recovery_from_code(supabase: Any, auth_code: str) -> bool:
+    if not auth_code:
+        return False
+    try:
+        session_response = supabase.auth.exchange_code_for_session({"auth_code": auth_code})
+    except Exception as exc:
+        log_auth_diagnostic("password_recovery_code_exchange_failed", error=type(exc).__name__)
+        st.session_state[_RECOVERY_ERROR_KEY] = (
+            "This password recovery link is invalid or has expired. "
+            "Request a new reset email and try again."
+        )
+        return False
+
+    session = getattr(session_response, "session", None)
+    user = getattr(session_response, "user", None) or getattr(session, "user", None)
+    if session is None or user is None:
+        st.session_state[_RECOVERY_ERROR_KEY] = (
+            "This password recovery link is invalid or has expired. "
+            "Request a new reset email and try again."
+        )
+        return False
+
+    _commit_recovery_session(user, str(session.access_token), str(session.refresh_token))
+    return True
+
+
+def _mark_recovery_exchange_consumed() -> None:
+    st.session_state[_RECOVERY_EXCHANGE_CONSUMED_KEY] = True
+
+
+def _recovery_exchange_already_consumed() -> bool:
+    return bool(st.session_state.get(_RECOVERY_EXCHANGE_CONSUMED_KEY))
 
 
 def _recovery_redirect_url(**params: str) -> str:
@@ -98,64 +149,42 @@ def _recovery_redirect_url(**params: str) -> str:
         return f"{origin}/?{query}" if query else f"{origin}/"
 
 
-def render_recovery_hash_bridge() -> None:
-    """Read Supabase recovery tokens from the URL hash once per session."""
-    if st.session_state.get(_HASH_BRIDGE_RUN_KEY):
-        return
-    st.session_state[_HASH_BRIDGE_RUN_KEY] = True
-    redirect_target = _recovery_redirect_url(cadivor_recovery="1")
-    try:
-        components.html(
-            f"""
-            <script>
-            (function () {{
-              try {{
-                const hash = window.location.hash ? window.location.hash.substring(1) : "";
-                if (!hash) return;
-                const params = new URLSearchParams(hash);
-                if (params.get("type") !== "recovery") return;
-                const accessToken = params.get("access_token") || "";
-                const refreshToken = params.get("refresh_token") || "";
-                if (!accessToken || !refreshToken) return;
-                const target = new URL({redirect_target!r});
-                target.searchParams.set("type", "recovery");
-                target.searchParams.set("access_token", accessToken);
-                target.searchParams.set("refresh_token", refreshToken);
-                window.location.replace(target.toString());
-              }} catch (err) {{
-                /* no-op */
-              }}
-            }})();
-            </script>
-            """,
-            height=0,
-            width=0,
-        )
-    except Exception:
-        pass
-
-
 def apply_password_recovery_from_query(supabase: Any) -> None:
-    """Detect recovery tokens from Supabase redirect links."""
+    """Detect Supabase PKCE recovery callbacks from server-readable query params."""
     if st.session_state.get(_RECOVERY_APPLIED_KEY) and password_recovery_active():
         return
 
-    render_recovery_hash_bridge()
+    if password_recovery_active() and _recovery_callback_requested():
+        st.session_state[_RECOVERY_APPLIED_KEY] = True
+        _clear_recovery_query_params()
+        return
 
+    token_hash = _read_query_param("token_hash")
     recovery_type = _read_query_param("type").lower()
-    access_token = _read_query_param("access_token")
-    refresh_token = _read_query_param("refresh_token")
-    recovery_flag = _read_query_param("cadivor_recovery").lower()
+    auth_code = _read_query_param("code")
+    recovery_marker = _recovery_callback_requested()
 
-    if recovery_type == "recovery" and access_token and refresh_token:
-        if _activate_recovery_session(supabase, access_token, refresh_token):
+    if _recovery_exchange_already_consumed() and _recovery_credentials_in_query():
+        st.session_state[_RECOVERY_ERROR_KEY] = (
+            "This password recovery link has already been used. "
+            "Request a new reset email and try again."
+        )
+        _clear_recovery_query_params()
+        return
+
+    if token_hash and recovery_type == "recovery" and recovery_marker:
+        if _activate_recovery_from_token_hash(supabase, token_hash):
+            _mark_recovery_exchange_consumed()
             st.session_state[_RECOVERY_APPLIED_KEY] = True
             _clear_recovery_query_params()
         return
 
-    if recovery_flag == "1" and password_recovery_active():
-        st.session_state[_RECOVERY_APPLIED_KEY] = True
-        _clear_recovery_query_params()
+    if auth_code and recovery_marker:
+        if _activate_recovery_from_code(supabase, auth_code):
+            _mark_recovery_exchange_consumed()
+            st.session_state[_RECOVERY_APPLIED_KEY] = True
+            _clear_recovery_query_params()
+        return
 
 
 def request_password_reset_email(supabase: Any, email: str) -> str:
@@ -164,7 +193,7 @@ def request_password_reset_email(supabase: Any, email: str) -> str:
     if not normalized:
         return "Enter the email address associated with your Cadivor account."
 
-    redirect_to = _recovery_redirect_url()
+    redirect_to = _recovery_redirect_url(**{_RECOVERY_CALLBACK_MARKER: "1"})
     try:
         supabase.auth.reset_password_for_email(
             normalized,
@@ -207,6 +236,8 @@ def complete_password_recovery(
         )
 
     st.session_state.pop(_RECOVERY_ACTIVE_KEY, None)
+    st.session_state.pop(_RECOVERY_APPLIED_KEY, None)
+    st.session_state.pop(_RECOVERY_EXCHANGE_CONSUMED_KEY, None)
     st.session_state.pop("user", None)
     st.session_state.pop("access_token", None)
     st.session_state.pop("refresh_token", None)

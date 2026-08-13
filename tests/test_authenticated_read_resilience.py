@@ -39,10 +39,10 @@ class AuthenticatedReadResilienceTests(unittest.TestCase):
         trial_block = source[trial_block_start : trial_block_start + 180]
         self.assertNotIn("execute_supabase_read", trial_block)
 
-    def test_get_supabase_client_unchanged(self) -> None:
+    def test_get_supabase_client_uses_pkce_flow(self) -> None:
         source = AUTH_BOOTSTRAP_PATH.read_text(encoding="utf-8")
-        self.assertIn("return create_client(url, key)", source)
-        self.assertNotIn("ClientOptions", source)
+        self.assertIn("SyncClientOptions", source)
+        self.assertIn('flow_type="pkce"', source)
         self.assertNotIn("HTTPTransport", source)
 
     def test_read_helper_not_used_for_delete_or_insert_paths(self) -> None:
