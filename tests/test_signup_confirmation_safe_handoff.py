@@ -260,7 +260,7 @@ class SignupConfirmationSafeHandoffTests(unittest.TestCase):
 
 
 class SignupConfirmationVisualHierarchyTests(unittest.TestCase):
-    """Sprint 74.2B.3 — compact copy and primary/secondary/tertiary actions."""
+    """Sprint 74.2B.3 / 74.2B.3.1 — compact copy and Streamlit 1.50 button hierarchy."""
 
     def setUp(self):
         self.st = _install_streamlit_stub({})
@@ -337,16 +337,65 @@ class SignupConfirmationVisualHierarchyTests(unittest.TestCase):
                 auth._render_signup_confirmation_pending()
                 mocked.assert_called_once()
 
-    def test_scoped_css_targets_pending_button_kinds_not_global_login(self):
+    def test_button_css_targets_actual_streamlit_150_button_testids(self):
+        """Sprint 74.2B.3.1 — style the <button> that owns stBaseButton-* testids."""
         auth = self._load_auth()
         source = Path(auth.__file__).read_text(encoding="utf-8")
-        self.assertIn(':has(.auth-confirm-status)', source)
-        self.assertIn('stBaseButton-primary', source)
-        self.assertIn('stBaseButton-secondary', source)
-        self.assertIn('stBaseButton-tertiary', source)
+        # Known-broken parent :not(...) pattern must be gone.
+        self.assertNotIn(
+            'div.stButton:not([data-testid="stBaseButton-secondary"])',
+            source,
+        )
+        self.assertNotIn(
+            'div.stButton:not([data-testid=\'stBaseButton-secondary\'])',
+            source,
+        )
+        # Primary / secondary / tertiary target the button element itself.
+        self.assertIn(
+            'div.stButton > button[data-testid="stBaseButton-primary"]',
+            source,
+        )
+        self.assertIn(
+            'div.stButton > button[data-testid="stBaseButton-secondary"]',
+            source,
+        )
+        self.assertIn(
+            'div.stButton > button[data-testid="stBaseButton-tertiary"]',
+            source,
+        )
+        # Secondary must not reuse the primary blue-fill contract.
+        secondary_rule = source.split(
+            'div.stButton > button[data-testid="stBaseButton-secondary"]'
+        )[1].split("}")[0]
+        self.assertIn("background:#fff", secondary_rule)
+        self.assertNotIn("linear-gradient(135deg,#2563EB,#1D4ED8)", secondary_rule)
+        # Tertiary must not look like a filled rectangle.
+        tertiary_rule = source.split(
+            'div.stButton > button[data-testid="stBaseButton-tertiary"]'
+        )[1].split("}")[0]
+        self.assertIn("background:transparent", tertiary_rule)
+        self.assertIn("border:0", tertiary_rule)
+        self.assertNotIn("linear-gradient(135deg,#2563EB,#1D4ED8)", tertiary_rule)
         self.assertNotIn('auth-confirm-checklist', source)
-        # Global login form submit selector remains for other surfaces.
+        # Login/create form submit selector remains for primary form actions.
         self.assertIn('stFormSubmitButton', source)
+
+    def test_pending_surface_omits_generic_back_to_cadivor_link(self):
+        auth = self._load_auth()
+        state = self._load_state()
+        self.st.session_state[state.SIGNUP_PENDING_EMAIL_KEY] = "user@example.com"
+        bodies: list[str] = []
+
+        def capture(body, **kwargs):
+            bodies.append(str(body))
+
+        self.st.markdown.side_effect = capture
+        with patch.object(auth, "_render_back_to_marketing_link") as back:
+            auth._render_signup_confirmation_pending()
+            back.assert_not_called()
+        joined = "\n".join(bodies)
+        self.assertNotIn("cadivor-back-home", joined)
+        self.assertNotIn("Back to Cadivor", joined)
 
     def test_login_create_and_recovery_brand_contracts_unchanged(self):
         auth = self._load_auth()
@@ -358,9 +407,13 @@ class SignupConfirmationVisualHierarchyTests(unittest.TestCase):
         )
         # Recovery surfaces still use shared brand helper + secondary back control.
         self.assertIn('cadivor_back_to_login_from_reset', source)
+        self.assertIn('type="secondary"', source)
         self.assertIn('def _render_password_reset_request', source)
         self.assertIn('def _render_password_recovery_form', source)
         self.assertIn('def _render_auth_card_brand', source)
+        # Marketing back link remains available for non-pending auth surfaces.
+        self.assertIn('def _render_back_to_marketing_link', source)
+        self.assertIn('_render_back_to_marketing_link()', source)
 
 
 if __name__ == "__main__":
