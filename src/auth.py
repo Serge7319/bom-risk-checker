@@ -446,34 +446,83 @@ def _clear_signup_confirmation_pending() -> None:
     _clear_signup_password_state()
 
 
+def _exit_signup_pending_to_login() -> None:
+    """Clear pending signup handoff and return to the normal Login view."""
+    _clear_signup_confirmation_pending()
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    st.rerun()
+
+
+def _exit_signup_pending_to_password_reset() -> None:
+    """Clear pending signup handoff and open the existing reset-request surface."""
+    _clear_signup_confirmation_pending()
+    _auth_recovery().begin_password_reset_request()
+    st.rerun()
+
+
+def _exit_signup_pending_to_create_account() -> None:
+    """Clear pending signup handoff and return to Create Account without email prefill."""
+    _clear_signup_confirmation_pending()
+    st.session_state["cadivor_root_state"] = APP_SIGNUP
+    st.session_state["cadivor_auth_intent_applied"] = True
+    # Never put the previous email (or any email) into query state.
+    try:
+        for key in list(st.query_params.keys()):
+            key_l = str(key).lower()
+            if key_l in {"email", "e"} or "email" in key_l:
+                del st.query_params[key]
+    except Exception:
+        pass
+    st.rerun()
+
+
 def _render_signup_confirmation_pending() -> None:
     # Safe: pending surface does not instantiate the auth form widgets.
     _clear_signup_password_state()
     email = str(st.session_state.get(SIGNUP_PENDING_EMAIL_KEY) or "").strip()
     safe_email = html.escape(email) if email else "your inbox"
     _render_auth_card_brand(
-        eyebrow="Email confirmation required",
-        context_sub="Confirm your email to activate your Cadivor workspace.",
+        eyebrow="Next step",
+        context_sub="Check your inbox and continue when a confirmation link arrives.",
     )
     _html(
         f"""
-<div class="auth-confirm-status" role="status">Confirmation email sent</div>
+<div class="auth-confirm-status" role="status">Signup request received</div>
 <div class="auth-heading">Check your email</div>
-<p class="auth-copy">We sent a confirmation link to:</p>
+<p class="auth-copy">We’ve received your signup request for:</p>
 <div class="auth-confirm-email">{safe_email}</div>
-<p class="auth-copy">Open the email from Cadivor and select “Confirm my email” to activate your workspace.</p>
+<p class="auth-copy">If this address is eligible for account creation, Cadivor will send a confirmation link. Delivery may take a few minutes.</p>
+<p class="auth-copy">Already have a Cadivor account? Sign in or reset your password.</p>
 <ul class="auth-confirm-checklist">
-  <li data-step="1">Check your inbox for “Confirm your Cadivor account.”</li>
-  <li data-step="2">Select “Confirm my email.”</li>
-  <li data-step="3">Return to Cadivor and sign in.</li>
+  <li>Check your inbox, spam, and promotions folders.</li>
+  <li>If you already have an account, return to login.</li>
+  <li>If you cannot remember your password, start password recovery.</li>
+  <li>You can also try a different email address.</li>
 </ul>
-<p class="auth-trust-note">If you do not see the email, check your spam or promotions folder.</p>
+<p class="auth-trust-note">If a confirmation email arrives, open the link, then return to Cadivor and sign in.</p>
 """
     )
-    if st.button("Return to login", key="cadivor_return_to_login_from_signup_pending", type="secondary"):
-        _clear_signup_confirmation_pending()
-        st.session_state["cadivor_root_state"] = APP_LOGIN
-        st.rerun()
+    clicked_login = st.button(
+        "Return to login",
+        key="cadivor_return_to_login_from_signup_pending",
+        type="secondary",
+    )
+    clicked_reset = st.button(
+        "Reset password",
+        key="cadivor_reset_password_from_signup_pending",
+        type="secondary",
+    )
+    clicked_different_email = st.button(
+        "Use a different email",
+        key="cadivor_use_different_email_from_signup_pending",
+        type="secondary",
+    )
+    if clicked_login:
+        _exit_signup_pending_to_login()
+    elif clicked_reset:
+        _exit_signup_pending_to_password_reset()
+    elif clicked_different_email:
+        _exit_signup_pending_to_create_account()
     _render_back_to_marketing_link()
 
 

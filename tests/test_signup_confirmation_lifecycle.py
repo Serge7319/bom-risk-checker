@@ -232,7 +232,11 @@ class SignupConfirmationLifecycleTests(unittest.TestCase):
         joined = "\n".join(bodies)
         self.assertIn("Check your email", joined)
         self.assertIn("new@cadivor.com", joined)
-        self.assertIn("Email confirmation required", joined)
+        self.assertIn("Signup request received", joined)
+        self.assertIn("Next step", joined)
+        self.assertIn("If this address is eligible for account creation", joined)
+        self.assertNotIn("Confirmation email sent", joined)
+        self.assertNotIn("Email confirmation required", joined)
 
     def test_signing_in_normalization_does_not_bypass_pending(self):
         self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_PENDING
@@ -248,8 +252,12 @@ class SignupConfirmationLifecycleTests(unittest.TestCase):
         self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_PENDING
         self.st.session_state[self.state.SIGNUP_PENDING_EMAIL_KEY] = "new@cadivor.com"
         self.st.session_state["cadivor_signup_password"] = "should-clear"
-        self.st.button.return_value = True
         self.rerun_requested = False
+
+        def _button(label, key=None, **kwargs):
+            return key == "cadivor_return_to_login_from_signup_pending"
+
+        self.st.button.side_effect = _button
         self.auth._render_signup_confirmation_pending()
         self.assertEqual(self.st.session_state["cadivor_root_state"], self.state.APP_LOGIN)
         self.assertNotIn(self.state.SIGNUP_PENDING_EMAIL_KEY, self.st.session_state)

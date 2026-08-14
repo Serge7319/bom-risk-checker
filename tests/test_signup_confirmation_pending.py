@@ -120,11 +120,19 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         self.st.markdown.side_effect = capture_markdown
         auth._render_signup_confirmation_pending()
         joined = "\n".join(bodies)
+        self.assertIn("Signup request received", joined)
         self.assertIn("Check your email", joined)
+        self.assertIn("Next step", joined)
+        self.assertIn("We’ve received your signup request for:", joined)
         self.assertIn("pending@cadivor.com", joined)
-        self.assertIn("Email confirmation required", joined)
-        self.assertIn("Confirm my email", joined)
-        self.assertIn("spam or promotions folder", joined)
+        self.assertIn("If this address is eligible for account creation", joined)
+        self.assertIn("Already have a Cadivor account? Sign in or reset your password.", joined)
+        self.assertIn("Check your inbox, spam, and promotions folders.", joined)
+        self.assertNotIn("Confirmation email sent", joined)
+        self.assertNotIn("We sent a confirmation link", joined)
+        self.assertNotIn("Email confirmation required", joined)
+        self.assertNotIn("This email is already registered", joined)
+        self.assertNotIn("Account already exists", joined)
         self.assertNotIn("secret-password", joined)
         self.assertNotIn("cadivor_auth_form", joined)
 
@@ -134,7 +142,11 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         self.st.session_state[state.SIGNUP_PENDING_EMAIL_KEY] = "pending@cadivor.com"
         self.st.session_state["cadivor_signup_password"] = "should-not-survive"
         self.st.session_state["cadivor_root_state"] = state.APP_SIGNUP_CONFIRMATION_PENDING
-        self.st.button.return_value = True
+
+        def _button(label, key=None, **kwargs):
+            return key == "cadivor_return_to_login_from_signup_pending"
+
+        self.st.button.side_effect = _button
 
         auth._render_signup_confirmation_pending()
 
