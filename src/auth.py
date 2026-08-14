@@ -349,18 +349,16 @@ def _render_auth_card_brand(*, context_sub: str, eyebrow: str = "") -> None:
     eyebrow_markup = (
         f'<div class="auth-recovery-eyebrow">{eyebrow}</div>' if eyebrow else ""
     )
-    st.markdown(
+    _html(
         f"""
-        <div class="auth-card-header">
-            {eyebrow_markup}
-            <a href="{CADIVOR_MARKETING_URL}" target="_self" class="auth-card-brand-link">
-                <div class="auth-card-logo">C</div>
-                <div class="auth-card-title">Cadivor</div>
-            </a>
-            <div class="auth-card-sub">{context_sub}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+<div class="auth-card-header">
+{eyebrow_markup}<a href="{CADIVOR_MARKETING_URL}" target="_self" class="auth-card-brand-link">
+    <div class="auth-card-logo">C</div>
+    <div class="auth-card-title">Cadivor</div>
+</a>
+<div class="auth-card-sub">{context_sub}</div>
+</div>
+"""
     )
 
 

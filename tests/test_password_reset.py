@@ -379,5 +379,94 @@ class PasswordRecoverySurfaceTests(unittest.TestCase):
         recovery_form.assert_not_called()
 
 
+class LoginBrandRenderTests(unittest.TestCase):
+    def _assert_brand_markup_safe_for_html_render(self, body: str) -> None:
+        lines = body.splitlines()
+        non_empty = [line for line in lines if line.strip()]
+        self.assertTrue(non_empty, "brand markup must not be empty")
+        self.assertEqual(
+            len(non_empty[0]) - len(non_empty[0].lstrip(" ")),
+            0,
+            "brand markup must not begin with markdown code-block indentation",
+        )
+        for line in lines:
+            if line.strip():
+                continue
+            self.assertEqual(
+                line,
+                "",
+                "brand markup must not contain whitespace-only indented lines",
+            )
+        self.assertRegex(body, r'^<div class="auth-card-header">', body[:80])
+        self.assertIn('<a href="', body)
+        self.assertEqual(body.count("<div"), body.count("</div>"))
+        self.assertEqual(body.count("<a"), body.count("</a>"))
+
+    def setUp(self):
+        self.st = _install_streamlit_stub({})
+        self.st.markdown = MagicMock()
+        sys.modules.pop("src.auth", None)
+
+    def test_deployed_login_brand_regression_pattern_is_rejected(self):
+        deployed = f"""
+        <div class="auth-card-header">
+            
+            <a href="https://www.cadivor.com/" target="_self" class="auth-card-brand-link">
+                <div class="auth-card-logo">C</div>
+            </a>
+        </div>
+        """
+        with self.assertRaises(AssertionError):
+            self._assert_brand_markup_safe_for_html_render(deployed)
+
+    def test_login_brand_renders_html_not_literal_markup(self):
+        auth = importlib.import_module("src.auth")
+        auth._render_auth_card_brand(
+            context_sub="Engineering intelligence for modern electronics teams.",
+        )
+
+        self.st.markdown.assert_called_once()
+        body = self.st.markdown.call_args.args[0]
+        kwargs = self.st.markdown.call_args.kwargs
+        self.assertTrue(kwargs.get("unsafe_allow_html"))
+        self._assert_brand_markup_safe_for_html_render(body)
+        self.assertIn("auth-card-brand-link", body)
+        self.assertIn("Engineering intelligence for modern electronics teams.", body)
+        self.assertNotIn("\n            <a href", body)
+
+    def test_recovery_brand_renders_with_eyebrow_and_html_flags(self):
+        auth = importlib.import_module("src.auth")
+        auth._render_auth_card_brand(
+            eyebrow="Secure account recovery",
+            context_sub="Choose a secure new password to restore access to your Cadivor workspace.",
+        )
+
+        self.st.markdown.assert_called_once()
+        body = self.st.markdown.call_args.args[0]
+        kwargs = self.st.markdown.call_args.kwargs
+        self.assertTrue(kwargs.get("unsafe_allow_html"))
+        self._assert_brand_markup_safe_for_html_render(body)
+        self.assertIn("auth-recovery-eyebrow", body)
+        self.assertIn("Secure account recovery", body)
+
+    def test_render_auth_page_calls_login_brand_helper(self):
+        auth = importlib.import_module("src.auth")
+        self.st.form = MagicMock()
+        self.st.form.return_value.__enter__ = MagicMock(return_value=None)
+        self.st.form.return_value.__exit__ = MagicMock(return_value=False)
+        self.st.radio = MagicMock(return_value="Login")
+        self.st.text_input = MagicMock(return_value="")
+        self.st.form_submit_button = MagicMock(return_value=False)
+        self.st.button = MagicMock(return_value=False)
+        with patch.object(auth, "_render_auth_card_brand") as brand, patch.object(
+            auth, "_render_back_to_marketing_link"
+        ):
+            auth._render_auth_page(MagicMock(), MagicMock(), "Login")
+
+        brand.assert_called_once_with(
+            context_sub="Engineering intelligence for modern electronics teams.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
