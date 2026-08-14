@@ -1,5 +1,7 @@
-"""Sprint 74.2B.2 — security-safe signup confirmation handoff copy and actions."""
+"""Sprint 74.2B.2/74.2B.3 — security-safe signup confirmation handoff copy and actions."""
 from __future__ import annotations
+
+from pathlib import Path
 
 import importlib
 import sys
@@ -55,7 +57,7 @@ class SignupConfirmationSafeHandoffTests(unittest.TestCase):
         self.assertIn("Signup request received", joined)
         self.assertIn("Check your email", joined)
         self.assertIn("If this address is eligible for account creation", joined)
-        self.assertIn("Already have a Cadivor account? Sign in or reset your password.", joined)
+        self.assertIn("Already have a Cadivor account? Return to login or reset your password.", joined)
         self.assertIn("We’ve received your signup request for:", joined)
         self.assertIn("user@example.com", joined)
 
@@ -66,6 +68,10 @@ class SignupConfirmationSafeHandoffTests(unittest.TestCase):
         self.assertNotIn("Email confirmation required", joined)
         self.assertNotRegex(joined, r"(?i)we (have )?sent (a |the )?confirmation")
         self.assertNotRegex(joined, r"(?i)confirmation email sent")
+        self.assertIn("New account? Check your inbox, spam, and promotions folders.", joined)
+        self.assertNotIn("auth-confirm-checklist", joined)
+        self.assertNotIn("If a confirmation email arrives, open the link, then return to Cadivor and sign in.", joined)
+        self.assertNotIn("You can also try a different email address.", joined)
 
     def test_new_and_obfuscated_existing_shapes_share_generic_pending_surface(self):
         auth = self._load_auth()
@@ -232,7 +238,6 @@ class SignupConfirmationSafeHandoffTests(unittest.TestCase):
 
     def test_no_admin_or_existence_lookup_helpers_introduced(self):
         auth = self._load_auth()
-        from pathlib import Path
 
         source = Path(auth.__file__).read_text(encoding="utf-8")
         # Pending surface and exit helpers must not call admin/service-role lookups.
@@ -251,6 +256,111 @@ class SignupConfirmationSafeHandoffTests(unittest.TestCase):
         )
         for needle in forbidden:
             self.assertNotIn(needle, pending_region)
+
+
+
+class SignupConfirmationVisualHierarchyTests(unittest.TestCase):
+    """Sprint 74.2B.3 — compact copy and primary/secondary/tertiary actions."""
+
+    def setUp(self):
+        self.st = _install_streamlit_stub({})
+        self.st.markdown = MagicMock()
+        self.st.button = MagicMock(return_value=False)
+        self.st.rerun = MagicMock()
+        self.st.query_params = {}
+        for mod in ("src.auth", "src.auth_state", "src.auth_recovery"):
+            sys.modules.pop(mod, None)
+
+    def _load_auth(self):
+        return importlib.import_module("src.auth")
+
+    def _load_state(self):
+        return importlib.import_module("src.auth_state")
+
+    def test_button_hierarchy_types(self):
+        auth = self._load_auth()
+        state = self._load_state()
+        self.st.session_state[state.SIGNUP_PENDING_EMAIL_KEY] = "user@example.com"
+        calls = []
+
+        def capture_button(label, key=None, type=None, **kwargs):
+            calls.append({"label": label, "key": key, "type": type, "kwargs": kwargs})
+            return False
+
+        self.st.button.side_effect = capture_button
+        auth._render_signup_confirmation_pending()
+        by_key = {c["key"]: c for c in calls}
+        self.assertEqual(by_key["cadivor_return_to_login_from_signup_pending"]["type"], "primary")
+        self.assertEqual(by_key["cadivor_reset_password_from_signup_pending"]["type"], "secondary")
+        self.assertEqual(by_key["cadivor_use_different_email_from_signup_pending"]["type"], "tertiary")
+        # Exactly one primary among the three pending actions.
+        pending_types = [c["type"] for c in calls if c["key"] and "signup_pending" in c["key"]]
+        self.assertEqual(pending_types.count("primary"), 1)
+        self.assertEqual(pending_types.count("secondary"), 1)
+        self.assertEqual(pending_types.count("tertiary"), 1)
+        self.assertNotEqual(
+            by_key["cadivor_reset_password_from_signup_pending"]["type"],
+            "primary",
+        )
+        self.assertNotEqual(
+            by_key["cadivor_use_different_email_from_signup_pending"]["type"],
+            "primary",
+        )
+
+    def test_actions_invoke_existing_exit_helpers(self):
+        auth = self._load_auth()
+        state = self._load_state()
+        self.st.session_state[state.SIGNUP_PENDING_EMAIL_KEY] = "user@example.com"
+
+        for key, helper in (
+            ("cadivor_return_to_login_from_signup_pending", "_exit_signup_pending_to_login"),
+            ("cadivor_reset_password_from_signup_pending", "_exit_signup_pending_to_password_reset"),
+            ("cadivor_use_different_email_from_signup_pending", "_exit_signup_pending_to_create_account"),
+        ):
+            for mod in ("src.auth", "src.auth_state", "src.auth_recovery"):
+                sys.modules.pop(mod, None)
+            self.st = _install_streamlit_stub({})
+            self.st.markdown = MagicMock()
+            self.st.button = MagicMock(return_value=False)
+            self.st.rerun = MagicMock()
+            self.st.query_params = {}
+            auth = self._load_auth()
+            state = self._load_state()
+            self.st.session_state[state.SIGNUP_PENDING_EMAIL_KEY] = "user@example.com"
+
+            def _button(label, key=None, **kwargs):
+                return key == target_key
+
+            target_key = key
+            self.st.button.side_effect = _button
+            with patch.object(auth, helper) as mocked:
+                auth._render_signup_confirmation_pending()
+                mocked.assert_called_once()
+
+    def test_scoped_css_targets_pending_button_kinds_not_global_login(self):
+        auth = self._load_auth()
+        source = Path(auth.__file__).read_text(encoding="utf-8")
+        self.assertIn(':has(.auth-confirm-status)', source)
+        self.assertIn('stBaseButton-primary', source)
+        self.assertIn('stBaseButton-secondary', source)
+        self.assertIn('stBaseButton-tertiary', source)
+        self.assertNotIn('auth-confirm-checklist', source)
+        # Global login form submit selector remains for other surfaces.
+        self.assertIn('stFormSubmitButton', source)
+
+    def test_login_create_and_recovery_brand_contracts_unchanged(self):
+        auth = self._load_auth()
+        source = Path(auth.__file__).read_text(encoding="utf-8")
+        # Login/create brand subtitle contract.
+        self.assertIn(
+            'Engineering intelligence for modern electronics teams.',
+            source,
+        )
+        # Recovery surfaces still use shared brand helper + secondary back control.
+        self.assertIn('cadivor_back_to_login_from_reset', source)
+        self.assertIn('def _render_password_reset_request', source)
+        self.assertIn('def _render_password_recovery_form', source)
+        self.assertIn('def _render_auth_card_brand', source)
 
 
 if __name__ == "__main__":
