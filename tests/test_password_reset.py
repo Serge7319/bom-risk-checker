@@ -468,5 +468,64 @@ class LoginBrandRenderTests(unittest.TestCase):
         )
 
 
+class RecoveryBrandCenteringTests(unittest.TestCase):
+    AUTH_PATH = Path(__file__).resolve().parents[1] / "src" / "auth.py"
+
+    def setUp(self):
+        self.st = _install_streamlit_stub({})
+        self.st.markdown = MagicMock()
+        sys.modules.pop("src.auth", None)
+        self.auth_source = self.AUTH_PATH.read_text(encoding="utf-8")
+
+    def _render_brand(self, *, eyebrow: str = "", context_sub: str = "Context copy."):
+        auth = importlib.import_module("src.auth")
+        auth._render_auth_card_brand(eyebrow=eyebrow, context_sub=context_sub)
+        return self.st.markdown.call_args.args[0]
+
+    def test_auth_card_header_uses_independent_centering_layout(self):
+        self.assertIn(".auth-card-header{display:flex;flex-direction:column;align-items:center;", self.auth_source)
+        self.assertIn(".auth-card-brand-link{display:block;", self.auth_source)
+
+    def test_login_brand_is_block_wrapped_without_eyebrow(self):
+        body = self._render_brand(
+            context_sub="Engineering intelligence for modern electronics teams.",
+        )
+        self.assertRegex(
+            body,
+            r'<div class="auth-card-header">\s*<a href="[^"]+" target="_self" class="auth-card-brand-link">',
+        )
+        self.assertNotIn("auth-recovery-eyebrow", body)
+        self.assertRegex(body, r'</a>\s*<div class="auth-card-sub">')
+
+    def test_recovery_eyebrow_is_separate_row_after_brand_link(self):
+        body = self._render_brand(
+            eyebrow="Secure account recovery",
+            context_sub="Choose a secure new password to restore access to your Cadivor workspace.",
+        )
+        self.assertRegex(
+            body,
+            r'</a>\s*<div class="auth-recovery-eyebrow">Secure account recovery</div>\s*<div class="auth-card-sub">',
+        )
+        self.assertNotRegex(
+            body,
+            r'<div class="auth-recovery-eyebrow">[^<]+</div><a href=',
+        )
+        self.assertNotRegex(
+            body,
+            r'auth-recovery-eyebrow">[^<]+</div><a href=',
+        )
+
+    def test_recovery_context_subtitle_is_separate_centered_element(self):
+        body = self._render_brand(
+            eyebrow="Secure account recovery",
+            context_sub="We'll send recovery instructions to the email associated with your workspace.",
+        )
+        self.assertIn(
+            '<div class="auth-card-sub">We\'ll send recovery instructions to the email associated with your workspace.</div>',
+            body,
+        )
+        self.assertRegex(body, r'<div class="auth-recovery-eyebrow">[^<]+</div>\s*<div class="auth-card-sub">')
+
+
 if __name__ == "__main__":
     unittest.main()
