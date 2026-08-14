@@ -315,5 +315,69 @@ class PasswordRecoveryBootstrapTests(unittest.TestCase):
         self.assertEqual(create_client.call_args.kwargs["options"].flow_type, "pkce")
 
 
+class PasswordRecoverySurfaceTests(unittest.TestCase):
+    AUTH_PATH = Path(__file__).resolve().parents[1] / "src" / "auth.py"
+
+    def setUp(self):
+        self.st = _install_streamlit_stub({})
+        sys.modules.pop("src.auth", None)
+        sys.modules.pop("src.auth_recovery", None)
+        self.auth_source = self.AUTH_PATH.read_text(encoding="utf-8")
+
+    def test_recovery_surfaces_use_auth_card_brand_shell(self):
+        self.assertIn("_render_auth_card_brand", self.auth_source)
+        self.assertIn('eyebrow="Secure account recovery"', self.auth_source)
+        self.assertIn("auth-card-header", self.auth_source)
+        self.assertIn("auth-card-logo", self.auth_source)
+
+    def test_set_new_password_surface_copy_and_controls(self):
+        self.assertIn("Choose a new password", self.auth_source)
+        self.assertIn(
+            "Your recovery link is active. Choose a secure new password to restore access to your Cadivor workspace.",
+            self.auth_source,
+        )
+        self.assertIn('st.text_input("New password", type="password"', self.auth_source)
+        self.assertIn('st.text_input("Confirm password", type="password"', self.auth_source)
+        self.assertIn('st.form_submit_button("Update password"', self.auth_source)
+        self.assertIn("auth-trust-note", self.auth_source)
+
+    def test_reset_password_request_surface_copy(self):
+        self.assertIn("Reset your password", self.auth_source)
+        self.assertIn('st.form_submit_button("Send recovery email"', self.auth_source)
+        self.assertIn('type="secondary"', self.auth_source)
+
+    def test_recovery_active_renders_set_password_not_login(self):
+        sys.modules.pop("src.auth", None)
+        auth = importlib.import_module("src.auth")
+
+        self.st.session_state["cadivor_password_recovery_active"] = True
+        self.st.session_state["cadivor_root_state"] = "password_recovery"
+
+        with patch.object(auth, "_auth_css"), patch.object(auth, "inject_core_premium_ui_auth"), patch.object(
+            auth, "_render_password_recovery_form"
+        ) as recovery_form, patch.object(auth, "_render_auth_page") as login_form:
+            auth.show_auth_ui(MagicMock(), None)
+
+        recovery_form.assert_called_once()
+        login_form.assert_not_called()
+
+    def test_normal_login_does_not_render_recovery_controls(self):
+        sys.modules.pop("src.auth", None)
+        auth = importlib.import_module("src.auth")
+        self.st.session_state["cadivor_root_state"] = "login"
+        self.st.session_state.pop("cadivor_password_recovery_active", None)
+
+        with patch.object(auth, "_auth_css"), patch.object(auth, "inject_core_premium_ui_auth"), patch.object(
+            auth, "_render_password_recovery_form"
+        ) as recovery_form, patch.object(auth, "_render_auth_page") as login_form, patch.object(
+            auth, "_auth_recovery"
+        ) as auth_recovery_factory:
+            auth_recovery_factory.return_value.password_recovery_active.return_value = False
+            auth.show_auth_ui(MagicMock(), None)
+
+        login_form.assert_called_once()
+        recovery_form.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
