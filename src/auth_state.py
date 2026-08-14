@@ -32,9 +32,12 @@ APP_PUBLIC = "public"
 APP_LOGIN = "login"
 APP_SIGNUP = "signup"
 APP_SIGNING_IN = "signing_in"
+APP_SIGNUP_CONFIRMATION_PENDING = "signup_confirmation_pending"
 APP_PASSWORD_RESET = "password_reset"
 APP_PASSWORD_RECOVERY = "password_recovery"
 APP_AUTHENTICATED = "authenticated"
+
+SIGNUP_PENDING_EMAIL_KEY = "cadivor_signup_pending_email"
 
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
 _MAX_RESTORE_ATTEMPTS = 1

@@ -1,3 +1,4 @@
+import html
 import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
@@ -5,8 +6,11 @@ from textwrap import dedent
 
 from src.auth_state import (
     APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
+    APP_SIGNUP_CONFIRMATION_PENDING,
     APP_PASSWORD_RECOVERY, APP_PASSWORD_RESET,
+    AUTH_SIGNED_OUT,
     AUTH_SIGNING_IN,
+    SIGNUP_PENDING_EMAIL_KEY,
     begin_manual_login,
     finish_manual_login_failed,
     mark_authenticated,
@@ -222,7 +226,7 @@ def _auth_css():
         .faq-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}.faq-card{padding:22px;}.faq-card strong{display:block;color:#0F172A!important;margin-bottom:8px;font-size:17px;}.faq-card span{color:#64748B!important;line-height:1.6;font-size:14px;}.footer{margin:70px 0 0 0;background:#0F172A;border-radius:24px;padding:34px;display:flex;justify-content:space-between;gap:28px;align-items:flex-start;box-shadow:0 24px 60px rgba(15,23,42,.20);}.footer strong{color:#fff!important;font-size:22px;}.footer p{color:#CBD5E1!important;max-width:520px;line-height:1.6;}.footer-links{display:flex;gap:22px;flex-wrap:wrap;}.footer-links a{color:#E2E8F0!important;text-decoration:none!important;font-weight:800;}
         .bottom-cta{margin:54px 0 0 0;background:linear-gradient(135deg,#0F172A,#1E3A8A);border-radius:24px;padding:30px 34px;display:flex;align-items:center;justify-content:space-between;gap:22px;box-shadow:0 26px 60px rgba(15,23,42,.20);}.bottom-cta strong{color:#fff!important;font-size:26px;display:block;margin-bottom:6px;}.bottom-cta span{color:#CBD5E1!important;font-size:15px;}
         /* Auth route */
-        .auth-card-header{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-card-brand-link{display:block;text-decoration:none!important;color:inherit!important;}.auth-card-brand-link:hover{text-decoration:none!important;}.auth-card-brand-link:hover .auth-card-title{color:#2563EB!important;}.auth-recovery-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:#2563EB!important;border:1px solid #BFDBFE;border-radius:999px;padding:7px 13px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin:0 0 16px 0;box-shadow:0 8px 18px rgba(37,99,235,.08);}.auth-recovery-eyebrow:before{content:"";width:7px;height:7px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.10);}.auth-trust-note{color:#64748B!important;font-size:12.5px;line-height:1.55;margin:14px 0 0 0;text-align:center;font-weight:700;}.cadivor-back-home{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:8px 0;color:#2f6fed!important;text-decoration:none!important;font-size:13px;font-weight:900;transition:color .18s ease;}.cadivor-back-home:hover{color:#174ea6!important;text-decoration:underline!important;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
+        .auth-card-header{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-card-brand-link{display:block;text-decoration:none!important;color:inherit!important;}.auth-card-brand-link:hover{text-decoration:none!important;}.auth-card-brand-link:hover .auth-card-title{color:#2563EB!important;}.auth-recovery-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:#2563EB!important;border:1px solid #BFDBFE;border-radius:999px;padding:7px 13px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin:0 0 16px 0;box-shadow:0 8px 18px rgba(37,99,235,.08);}.auth-recovery-eyebrow:before{content:"";width:7px;height:7px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.10);}.auth-confirm-status{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:0 0 14px 0;padding:8px 12px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#047857!important;font-size:12px;font-weight:900;letter-spacing:.02em;}.auth-confirm-status:before{content:"✓";font-weight:950;}.auth-confirm-email{display:block;margin:10px 0 16px 0;padding:12px 14px;border-radius:12px;background:#F8FAFC;border:1px solid #E2E8F0;color:#0F172A!important;font-size:15px;font-weight:900;word-break:break-word;}.auth-confirm-checklist{margin:0 0 16px 0;padding:0;list-style:none;text-align:left;}.auth-confirm-checklist li{position:relative;margin:0 0 10px 0;padding:0 0 0 28px;color:#475569!important;font-size:13.5px;font-weight:750;line-height:1.5;}.auth-confirm-checklist li:before{content:attr(data-step);position:absolute;left:0;top:0;width:20px;height:20px;border-radius:999px;background:#EFF6FF;color:#2563EB!important;display:grid;place-items:center;font-size:11px;font-weight:950;}.auth-trust-note{color:#64748B!important;font-size:12.5px;line-height:1.55;margin:14px 0 0 0;text-align:center;font-weight:700;}.cadivor-back-home{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:8px 0;color:#2f6fed!important;text-decoration:none!important;font-size:13px;font-weight:900;transition:color .18s ease;}.cadivor-back-home:hover{color:#174ea6!important;text-decoration:underline!important;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
         [data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"] label,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] label,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;width:100%!important;max-width:100%!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] > div{overflow:visible!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]::before,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"] > div,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input[type="text"],[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input[type="password"],[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input:focus,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton:not([data-testid="stBaseButton-secondary"]) > button{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button:hover,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton:not([data-testid="stBaseButton-secondary"]) > button:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button *,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton:not([data-testid="stBaseButton-secondary"]) > button *{color:#fff!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) [data-testid="stBaseButton-secondary"]{width:100%!important;margin-top:8px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) [data-testid="stBaseButton-secondary"] > button{width:100%!important;min-height:46px!important;border-radius:12px!important;background:#fff!important;border:1px solid #CBD5E1!important;color:#0F172A!important;font-weight:850!important;box-shadow:none!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) [data-testid="stBaseButton-secondary"] > button:hover{background:#F8FAFC!important;border-color:#94A3B8!important;color:#0F172A!important;}
         @media(max-width:700px){[data-testid="stMainBlockContainer"]:has(.auth-card-header),.main .block-container:has(.auth-card-header){margin:3vh auto 32px auto!important;width:94vw!important;max-width:94vw!important;padding:28px 22px!important;border-radius:18px!important;}.auth-divider{margin-left:-22px!important;margin-right:-22px!important;}}
         .page-section{padding-top:58px!important;} .compact-section{padding-top:42px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
@@ -331,12 +335,52 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
         st.rerun()
         return
 
+    # Confirmation required: no authenticated session. Enter UI-only pending state.
     st.session_state.pop("cadivor_manual_login_in_progress", None)
-    st.session_state["cadivor_auth_status"] = "signed_out"
-    st.session_state["cadivor_root_state"] = APP_LOGIN
-    message = "Account created. Please check your email to confirm your account, then return here to log in."
-    st.session_state["cadivor_auth_notice"] = message
-    st.success(message)
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state.pop("cadivor_auth_notice", None)
+    st.session_state.pop("cadivor_auth_error", None)
+    # Never retain the signup password after submission.
+    for key in ("password", "cadivor_signup_password", "cadivor_auth_password"):
+        st.session_state.pop(key, None)
+    st.session_state[SIGNUP_PENDING_EMAIL_KEY] = str(email or "").strip()
+    st.session_state["cadivor_root_state"] = APP_SIGNUP_CONFIRMATION_PENDING
+    st.rerun()
+
+
+def _clear_signup_confirmation_pending() -> None:
+    st.session_state.pop(SIGNUP_PENDING_EMAIL_KEY, None)
+    for key in ("password", "cadivor_signup_password", "cadivor_auth_password"):
+        st.session_state.pop(key, None)
+
+
+def _render_signup_confirmation_pending() -> None:
+    email = str(st.session_state.get(SIGNUP_PENDING_EMAIL_KEY) or "").strip()
+    safe_email = html.escape(email) if email else "your inbox"
+    _render_auth_card_brand(
+        eyebrow="Email confirmation required",
+        context_sub="Confirm your email to activate your Cadivor workspace.",
+    )
+    _html(
+        f"""
+<div class="auth-confirm-status" role="status">Confirmation email sent</div>
+<div class="auth-heading">Check your email</div>
+<p class="auth-copy">We sent a confirmation link to:</p>
+<div class="auth-confirm-email">{safe_email}</div>
+<p class="auth-copy">Open the email from Cadivor and select “Confirm my email” to activate your workspace.</p>
+<ul class="auth-confirm-checklist">
+  <li data-step="1">Check your inbox for “Confirm your Cadivor account.”</li>
+  <li data-step="2">Select “Confirm my email.”</li>
+  <li data-step="3">Return to Cadivor and sign in.</li>
+</ul>
+<p class="auth-trust-note">If you do not see the email, check your spam or promotions folder.</p>
+"""
+    )
+    if st.button("Return to login", key="cadivor_return_to_login_from_signup_pending", type="secondary"):
+        _clear_signup_confirmation_pending()
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        st.rerun()
+    _render_back_to_marketing_link()
 
 
 def _render_back_to_marketing_link() -> None:
@@ -751,6 +795,10 @@ def show_auth_ui(supabase, cookie_manager=None):
         st.session_state["cadivor_root_state"] = APP_LOGIN
         st.session_state.pop("cadivor_manual_login_in_progress", None)
         state = APP_LOGIN
+
+    if state == APP_SIGNUP_CONFIRMATION_PENDING:
+        _render_signup_confirmation_pending()
+        return
 
     if state in (APP_LOGIN, APP_SIGNUP):
         recovery = _auth_recovery()
