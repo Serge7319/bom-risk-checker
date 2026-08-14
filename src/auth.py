@@ -307,6 +307,102 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     st.rerun()
 
 
+def _signup_response_get(obj, key: str, default=None):
+    """Defensive attribute/dict access for supabase_auth response objects."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _signup_nonempty_token(value) -> bool:
+    return bool(str(value or "").strip())
+
+
+def _signup_user_email_confirmed(user) -> bool:
+    confirmed_at = _signup_response_get(user, "email_confirmed_at")
+    if confirmed_at is None:
+        confirmed_at = _signup_response_get(user, "confirmed_at")
+    if confirmed_at is None:
+        return False
+    return bool(str(confirmed_at).strip())
+
+
+def _signup_session_has_usable_tokens(session) -> bool:
+    if session is None:
+        return False
+    access_token = _signup_response_get(session, "access_token")
+    refresh_token = _signup_response_get(session, "refresh_token")
+    return _signup_nonempty_token(access_token) and _signup_nonempty_token(refresh_token)
+
+
+def classify_signup_auth_response(response) -> tuple[str, object, object]:
+    """Classify a supabase_auth signup AuthResponse for Cadivor handoff.
+
+    Returns:
+        (kind, user, session) where kind is one of:
+        - "authenticated": usable confirmed session
+        - "confirmation_pending": signup succeeded but email confirmation required
+        - "unusable": successful transport response without a safe handoff target
+    """
+    if response is None:
+        return "unusable", None, None
+
+    user = _signup_response_get(response, "user")
+    session = _signup_response_get(response, "session")
+    if user is None and session is not None:
+        user = _signup_response_get(session, "user")
+
+    usable_session = _signup_session_has_usable_tokens(session)
+    if usable_session and user is not None and _signup_user_email_confirmed(user):
+        return "authenticated", user, session
+
+    if user is not None:
+        # Unconfirmed user, blank/missing tokens, or otherwise non-usable session.
+        return "confirmation_pending", user, session
+
+    return "unusable", user, session
+
+
+def _clear_signup_password_state() -> None:
+    """Clear known password session/widget keys at a Streamlit-safe lifecycle point."""
+    for key in ("password", "cadivor_signup_password", "cadivor_auth_password"):
+        st.session_state.pop(key, None)
+    for key in list(st.session_state.keys()):
+        key_text = str(key)
+        key_l = key_text.lower()
+        if "password" not in key_l:
+            continue
+        # Avoid clearing unrelated app state; only auth-form oriented keys.
+        if (
+            "cadivor" in key_l
+            or "auth" in key_l
+            or key_text.endswith("Password")
+            or "cadivor_auth_form" in key_l
+        ):
+            st.session_state.pop(key, None)
+
+
+def _enter_signup_confirmation_pending(email: str) -> None:
+    """Enter the durable UI-only confirmation handoff and rerun."""
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state.pop("cadivor_auth_notice", None)
+    st.session_state.pop("cadivor_auth_error", None)
+    _clear_signup_password_state()
+    st.session_state[SIGNUP_PENDING_EMAIL_KEY] = str(email or "").strip()
+    st.session_state["cadivor_root_state"] = APP_SIGNUP_CONFIRMATION_PENDING
+    # Prevent login/signup query intent from remounting the credential form.
+    st.session_state["cadivor_auth_intent_applied"] = True
+    try:
+        if "auth" in st.query_params:
+            del st.query_params["auth"]
+    except Exception:
+        pass
+    st.rerun()
+
+
 def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -> None:
     """Create an account in the same script run as the Create Account submit."""
     begin_manual_login(cookie_manager)
@@ -329,32 +425,30 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
         return
 
     _log_manual_login_event("manual_login_provider_completed", cookie_manager)
-    session = getattr(response, "session", None)
-    if session is not None:
-        mark_authenticated(response.user, session, cookie_manager)
+    kind, user, session = classify_signup_auth_response(response)
+    if kind == "authenticated":
+        mark_authenticated(user, session, cookie_manager)
         st.rerun()
         return
+    if kind == "confirmation_pending":
+        _enter_signup_confirmation_pending(email)
+        return
 
-    # Confirmation required: no authenticated session. Enter UI-only pending state.
-    st.session_state.pop("cadivor_manual_login_in_progress", None)
-    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-    st.session_state.pop("cadivor_auth_notice", None)
-    st.session_state.pop("cadivor_auth_error", None)
-    # Never retain the signup password after submission.
-    for key in ("password", "cadivor_signup_password", "cadivor_auth_password"):
-        st.session_state.pop(key, None)
-    st.session_state[SIGNUP_PENDING_EMAIL_KEY] = str(email or "").strip()
-    st.session_state["cadivor_root_state"] = APP_SIGNUP_CONFIRMATION_PENDING
-    st.rerun()
+    finish_manual_login_failed(cookie_manager)
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    message = "Account creation did not return a usable authentication session. Please try again."
+    st.session_state["cadivor_auth_error"] = message
+    st.error(message)
 
 
 def _clear_signup_confirmation_pending() -> None:
     st.session_state.pop(SIGNUP_PENDING_EMAIL_KEY, None)
-    for key in ("password", "cadivor_signup_password", "cadivor_auth_password"):
-        st.session_state.pop(key, None)
+    _clear_signup_password_state()
 
 
 def _render_signup_confirmation_pending() -> None:
+    # Safe: pending surface does not instantiate the auth form widgets.
+    _clear_signup_password_state()
     email = str(st.session_state.get(SIGNUP_PENDING_EMAIL_KEY) or "").strip()
     safe_email = html.escape(email) if email else "your inbox"
     _render_auth_card_brand(
@@ -791,14 +885,15 @@ def show_auth_ui(supabase, cookie_manager=None):
         st.session_state["cadivor_root_state"] = state
         st.session_state["cadivor_auth_intent_applied"] = True
 
+    # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
+    if state == APP_SIGNUP_CONFIRMATION_PENDING:
+        _render_signup_confirmation_pending()
+        return
+
     if state == APP_SIGNING_IN:
         st.session_state["cadivor_root_state"] = APP_LOGIN
         st.session_state.pop("cadivor_manual_login_in_progress", None)
         state = APP_LOGIN
-
-    if state == APP_SIGNUP_CONFIRMATION_PENDING:
-        _render_signup_confirmation_pending()
-        return
 
     if state in (APP_LOGIN, APP_SIGNUP):
         recovery = _auth_recovery()

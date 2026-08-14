@@ -73,8 +73,8 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         auth = self._load_auth()
         state = self._load_state()
         supabase = MagicMock()
-        user = object()
-        session = object()
+        user = types.SimpleNamespace(email_confirmed_at="2024-01-01T00:00:00Z", email="live@cadivor.com")
+        session = types.SimpleNamespace(access_token="access-token", refresh_token="refresh-token", user=user)
         supabase.auth.sign_up.return_value = types.SimpleNamespace(user=user, session=session)
 
         with patch.object(auth, "begin_manual_login"), patch.object(auth, "render_auth_transition"), patch.object(

@@ -30,6 +30,7 @@ from src.secrets import get_secret, get_secret_bool
 from src.auth_state import (
     APP_LOGIN,
     APP_SIGNUP,
+    APP_SIGNUP_CONFIRMATION_PENDING,
     AUTH_AUTHENTICATED,
     AUTH_SIGNING_IN,
     begin_logout,
@@ -98,9 +99,12 @@ def qp_value(name: str, default: str = "") -> str:
 
 
 def apply_auth_intent_from_query() -> None:
-    """Translate marketing auth links into the signed-out auth state once."""
-    if st.session_state.get("cadivor_auth_intent_applied"):
-        return
+    """Translate marketing auth links into the signed-out auth state once.
+
+    Signup confirmation pending is sticky: login/signup query intent must not
+    remount the credential form after a successful confirmation-required signup.
+    """
+    root_state = str(st.session_state.get("cadivor_root_state") or "")
     try:
         requested_auth = st.query_params.get("auth", "")
     except Exception:
@@ -108,6 +112,20 @@ def apply_auth_intent_from_query() -> None:
     if isinstance(requested_auth, (list, tuple)):
         requested_auth = requested_auth[0] if requested_auth else ""
     requested_auth = str(requested_auth or "").strip().lower()
+
+    if root_state == APP_SIGNUP_CONFIRMATION_PENDING:
+        # Consume one-time intent without replacing the pending handoff surface.
+        if requested_auth in {"login", "signup"}:
+            st.session_state["cadivor_auth_intent_applied"] = True
+            try:
+                if "auth" in st.query_params:
+                    del st.query_params["auth"]
+            except Exception:
+                pass
+        return
+
+    if st.session_state.get("cadivor_auth_intent_applied"):
+        return
     if requested_auth == "login":
         st.session_state["cadivor_root_state"] = APP_LOGIN
         st.session_state["cadivor_auth_intent_applied"] = True
