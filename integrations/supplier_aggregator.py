@@ -50,22 +50,49 @@ def _empty_supplier_result(source_name: str, *, provider_status: str, error: str
 
 
 def _safe_supplier_lookup(source_name, lookup_func, part_number):
+    from src.performance_timing import (
+        emit_timing,
+        normalize_provider,
+        supplier_outcome_from_status,
+        timing_enabled,
+    )
+    import time as _time
+
+    started = _time.perf_counter() if timing_enabled() else None
     try:
         if lookup_func is None:
-            return _empty_supplier_result(
+            result = _empty_supplier_result(
                 source_name,
                 provider_status=PROVIDER_NOT_CONFIGURED,
                 error=f"{source_name} is not configured",
             )
+            if started is not None:
+                emit_timing(
+                    "supplier.lookup",
+                    duration_ms=round((_time.perf_counter() - started) * 1000.0, 1),
+                    outcome="unavailable",
+                    provider=normalize_provider(source_name),
+                    operation="lookup",
+                )
+            return result
 
         result = lookup_func(part_number)
 
         if not result:
-            return _empty_supplier_result(
+            result = _empty_supplier_result(
                 source_name,
                 provider_status=PROVIDER_ERROR,
                 error=f"No response from {source_name}",
             )
+            if started is not None:
+                emit_timing(
+                    "supplier.lookup",
+                    duration_ms=round((_time.perf_counter() - started) * 1000.0, 1),
+                    outcome="error",
+                    provider=normalize_provider(source_name),
+                    operation="lookup",
+                )
+            return result
 
         result["source"] = source_name
         result.setdefault("package", "")
@@ -80,21 +107,53 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         if result.get("error"):
             result["provider_status"] = PROVIDER_ERROR
             result["error"] = sanitize_provider_message(result.get("error"))
+            if started is not None:
+                emit_timing(
+                    "supplier.lookup",
+                    duration_ms=round((_time.perf_counter() - started) * 1000.0, 1),
+                    outcome="error",
+                    provider=normalize_provider(source_name),
+                    operation="lookup",
+                )
             return result
 
         if not str(result.get("manufacturer_part_number") or "").strip():
             result["provider_status"] = PROVIDER_PART_NOT_FOUND
             result.pop("error", None)
+            if started is not None:
+                emit_timing(
+                    "supplier.lookup",
+                    duration_ms=round((_time.perf_counter() - started) * 1000.0, 1),
+                    outcome="empty",
+                    provider=normalize_provider(source_name),
+                    operation="lookup",
+                )
             return result
 
         result["provider_status"] = PROVIDER_AVAILABLE
         result.pop("error", None)
+        if started is not None:
+            emit_timing(
+                "supplier.lookup",
+                duration_ms=round((_time.perf_counter() - started) * 1000.0, 1),
+                outcome=supplier_outcome_from_status(PROVIDER_AVAILABLE),
+                provider=normalize_provider(source_name),
+                operation="lookup",
+            )
         return result
 
     except Exception as error:
         provider_status = classify_provider_exception(error)
         safe_message = sanitize_provider_message(error)
         print(f"{source_name} lookup failed:", safe_message)
+        if started is not None:
+            emit_timing(
+                "supplier.lookup",
+                duration_ms=round((_time.perf_counter() - started) * 1000.0, 1),
+                outcome=supplier_outcome_from_status(provider_status),
+                provider=normalize_provider(source_name),
+                operation="lookup",
+            )
 
         return _empty_supplier_result(
             source_name,

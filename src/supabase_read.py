@@ -46,12 +46,49 @@ def execute_supabase_read(
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
 
+    from src.performance_timing import (
+        emit_timing,
+        normalize_operation,
+        timing_enabled,
+    )
+
+    op_name = normalize_operation(operation)
     last_exc: BaseException | None = None
     for attempt in range(1, attempts + 1):
+        started = time.perf_counter()
         try:
-            return builder.execute()
+            result = builder.execute()
+            if timing_enabled():
+                row_count = None
+                try:
+                    data = getattr(result, "data", None)
+                    if isinstance(data, list):
+                        row_count = len(data)
+                except Exception:
+                    row_count = None
+                emit_timing(
+                    "supabase.read",
+                    duration_ms=round((time.perf_counter() - started) * 1000.0, 1),
+                    outcome="success",
+                    provider="supabase",
+                    operation=op_name,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    row_count=row_count,
+                )
+            return result
         except TRANSIENT_READ_EXCEPTIONS as exc:
             last_exc = exc
+            if timing_enabled():
+                emit_timing(
+                    "supabase.read",
+                    duration_ms=round((time.perf_counter() - started) * 1000.0, 1),
+                    outcome="retry" if attempt < attempts else "error",
+                    provider="supabase",
+                    operation=op_name,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                )
             logger.warning(
                 "supabase_read_transport_retry operation=%s attempt=%s/%s error=%s",
                 operation,

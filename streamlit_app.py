@@ -62,12 +62,17 @@ if st.session_state.pop("cadivor_logout_reload_pending", False):
     )
     st.stop()
 
-ensure_authenticated_or_stop()
+from src.performance_timing import timed_phase
+
+with timed_phase("startup.ensure_authenticated", operation="resolve"):
+    ensure_authenticated_or_stop()
 
 if should_render_authenticated_startup_shell():
     render_startup_loading_shell(AUTHENTICATED_STARTUP_SHELL_MESSAGE)
 log_startup_phase("load_authenticated_runtime")
-from src.authenticated_runtime import run_authenticated_app
+with timed_phase("startup.authenticated_runtime_import", operation="import"):
+    from src.authenticated_runtime import run_authenticated_app
 
-run_authenticated_app()
+with timed_phase("startup.run_authenticated_app", operation="render", route="authenticated"):
+    run_authenticated_app()
 log_startup_phase("authenticated_runtime_loaded")

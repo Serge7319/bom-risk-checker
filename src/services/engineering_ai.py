@@ -107,6 +107,30 @@ def log_ai_provider_event(event: str, **details: Any) -> None:
     if parts:
         line = f"{line} {parts}"
     print(line, flush=True)
+    # Optional CADIVOR_PERF span when startup timing is enabled (no prompt/response).
+    try:
+        from src.performance_timing import emit_timing, safe_outcome, timing_enabled
+
+        if not timing_enabled():
+            return
+        duration = details.get("duration_ms")
+        if duration is None:
+            return
+        outcome = "success"
+        event_l = str(event or "").lower()
+        if "timeout" in event_l:
+            outcome = "timeout"
+        elif "error" in event_l or "fail" in event_l:
+            outcome = "error"
+        emit_timing(
+            "openai.http",
+            duration_ms=float(duration),
+            outcome=safe_outcome(outcome),
+            provider="openai",
+            operation="http",
+        )
+    except Exception:
+        return
 
 
 def _safe_json(value: Any, max_chars: int = 18000) -> str:

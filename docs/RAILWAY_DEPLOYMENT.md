@@ -106,6 +106,10 @@ Use Stripe test mode for Railway verification. Update Stripe callback URLs only 
 | `CADIVOR_STARTUP_TIMING` | off |
 | `CADIVOR_LOGOUT_TIMING` | off |
 
+When `CADIVOR_STARTUP_TIMING` is enabled, Cadivor emits structured `CADIVOR_PERF`
+JSON lines (in addition to legacy `[cadivor-startup]` milestones). See
+`docs/RAILWAY_BUILD_FAILED_TRIAGE.md` for build-email triage.
+
 ## Secret loading
 
 Cadivor resolves configuration through `src/secrets.py`:

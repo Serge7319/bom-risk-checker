@@ -1629,17 +1629,21 @@ def run_authenticated_app() -> None:
     )
 
     log_startup_phase("authenticated_runtime_begin")
-    current_user = load_user_data()
+    from src.performance_timing import emit_timing, timed_phase
+
+    with timed_phase("runtime.load_user_data", operation="load_user_data"):
+        current_user = load_user_data()
 
     is_admin = str(current_user.get("role", "")).lower() == "admin"
-    effective_plan_name, trial_expired = resolve_effective_plan(current_user)
-    if trial_expired:
-        try:
-            supabase.table("users").update({"plan": "Starter"}).eq("id", current_user["id"]).execute()
-            current_user["plan"] = "Starter"
-        except Exception:
-            pass
-        st.info("Your 14-day Cadivor trial has ended. Your workspace is now on Starter; saved analyses remain available.")
+    with timed_phase("runtime.plan_resolve", operation="resolve"):
+        effective_plan_name, trial_expired = resolve_effective_plan(current_user)
+        if trial_expired:
+            try:
+                supabase.table("users").update({"plan": "Starter"}).eq("id", current_user["id"]).execute()
+                current_user["plan"] = "Starter"
+            except Exception:
+                pass
+            st.info("Your 14-day Cadivor trial has ended. Your workspace is now on Starter; saved analyses remain available.")
 
 
     @st.cache_data(ttl=3600, show_spinner=False)
@@ -2214,76 +2218,75 @@ def run_authenticated_app() -> None:
         else f"{_context_company} Workspace"
     )
 
-    _default_context_workspace, _default_context_error = ensure_personal_workspace(
-        supabase,
-        _context_user_id,
-        _context_email,
-        _context_name,
-        _context_workspace_name,
-        selected_plan_name,
-    )
+    with timed_phase("runtime.workspace_init", operation="init"):
+        _default_context_workspace, _default_context_error = ensure_personal_workspace(
+            supabase,
+            _context_user_id,
+            _context_email,
+            _context_name,
+            _context_workspace_name,
+            selected_plan_name,
+        )
 
-    _context_workspaces, _context_workspaces_error = list_user_workspaces(
-        supabase,
-        _context_user_id,
-    )
-    _preferred_context_workspace_id, _context_preference_error = (
-        get_active_workspace_preference(
+        _context_workspaces, _context_workspaces_error = list_user_workspaces(
             supabase,
             _context_user_id,
         )
-    )
-
-    _context_available_ids = {
-        str(item.get("id"))
-        for item in (_context_workspaces or [])
-        if item.get("id")
-    }
-    _context_requested_id = str(
-        st.session_state.get("active_workspace_id")
-        or _preferred_context_workspace_id
-        or ""
-    )
-
-    if _context_requested_id in _context_available_ids:
-        active_workspace, _active_workspace_error = get_workspace_by_id(
-            supabase,
-            _context_user_id,
-            _context_requested_id,
-        )
-    else:
-        active_workspace = _default_context_workspace or (
-            _context_workspaces[0] if _context_workspaces else {}
-        )
-
-    active_workspace = active_workspace or {}
-    active_workspace_id = str(active_workspace.get("id") or "")
-    active_workspace_name = _safe_text(
-        active_workspace.get("name"),
-        "Cadivor Workspace",
-    )
-    active_workspace_role = _safe_text(
-        active_workspace.get("current_role"),
-        "owner",
-    ).lower()
-
-    if active_workspace_id:
-        st.session_state["active_workspace_id"] = active_workspace_id
-        st.session_state["active_workspace_name"] = active_workspace_name
-        st.session_state["active_workspace_role"] = active_workspace_role
-
-    try:
-        saved_bom_count_response = execute_supabase_read(
-            _workspace_query(
-                supabase.table("analyses")
-                .select("id", count="exact")
+        _preferred_context_workspace_id, _context_preference_error = (
+            get_active_workspace_preference(
+                supabase,
+                _context_user_id,
             )
-            .eq("user_id", current_user["id"]),
-            operation="saved_bom_count",
         )
-        saved_bom_count = saved_bom_count_response.count or 0
-    except SupabaseReadTransportError:
-        saved_bom_count = 0
+
+        _context_available_ids = {
+            str(item.get("id"))
+            for item in (_context_workspaces or [])
+            if item.get("id")
+        }
+        _context_requested_id = str(
+            st.session_state.get("active_workspace_id")
+            or _preferred_context_workspace_id
+            or ""
+        )
+
+        if _context_requested_id in _context_available_ids:
+            active_workspace, _active_workspace_error = get_workspace_by_id(
+                supabase,
+                _context_user_id,
+                _context_requested_id,
+            )
+        else:
+            active_workspace = _default_context_workspace or (
+                _context_workspaces[0] if _context_workspaces else {}
+            )
+
+        active_workspace = active_workspace or {}
+        active_workspace_id = str(active_workspace.get("id") or "")
+        active_workspace_name = _safe_text(
+            active_workspace.get("name"),
+            "Cadivor Workspace",
+        )
+        active_workspace_role = _safe_text(
+            active_workspace.get("current_role"),
+            "owner",
+        ).lower()
+
+        if active_workspace_id:
+            st.session_state["active_workspace_id"] = active_workspace_id
+            st.session_state["active_workspace_name"] = active_workspace_name
+            st.session_state["active_workspace_role"] = active_workspace_role
+
+        try:
+            saved_bom_count_response = execute_supabase_read(
+                _workspace_query(supabase.table("analyses").select("id", count="exact")).eq(
+                    "user_id", current_user["id"]
+                ),
+                operation="saved_bom_count",
+            )
+            saved_bom_count = saved_bom_count_response.count or 0
+        except SupabaseReadTransportError:
+            saved_bom_count = 0
 
     # Single-route authority. Query parameters are consumed only as an initial deep
     # link; internal navigation writes cadivor_route directly. Every shell and page
@@ -2346,11 +2349,12 @@ def run_authenticated_app() -> None:
     onboarding_progress = {}
     onboarding_error = None
     if onboarding_user_id:
-        onboarding_progress, onboarding_error = ensure_onboarding_progress(
-            supabase,
-            onboarding_user_id,
-        )
-        onboarding_progress = onboarding_progress or {}
+        with timed_phase("runtime.onboarding_sync", operation="init"):
+            onboarding_progress, onboarding_error = ensure_onboarding_progress(
+                supabase,
+                onboarding_user_id,
+            )
+            onboarding_progress = onboarding_progress or {}
 
         # Synchronize steps that can be inferred from existing Cadivor data.
         inferred_profile_complete = bool(
@@ -2453,21 +2457,24 @@ def run_authenticated_app() -> None:
     )
 
     # Design System v1 is deliberately injected after the application shell.
-    inject_design_system_v1()
-    inject_workspace_consistency_css()
-    inject_premium_interaction_css()
-    # Shell geometry loads before the final premium UI authority layer.
-    inject_unified_shell_css()
-    # Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
-    inject_core_premium_ui()
-    mark_authenticated_surface_ready()
+    with timed_phase("runtime.css_injection", operation="render"):
+        inject_design_system_v1()
+        inject_workspace_consistency_css()
+        inject_premium_interaction_css()
+        # Shell geometry loads before the final premium UI authority layer.
+        inject_unified_shell_css()
+        # Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
+        inject_core_premium_ui()
+        mark_authenticated_surface_ready()
 
-    try:
-        _workspace_command_records = build_workspace_commands(
-            supabase, current_user["id"], limit_per_source=60,
-        )
-    except Exception:
-        _workspace_command_records = []
+    with timed_phase("runtime.workspace_commands", operation="workspace_commands") as cmd_meta:
+        try:
+            _workspace_command_records = build_workspace_commands(
+                supabase, current_user["id"], limit_per_source=60,
+            )
+            cmd_meta["row_count"] = len(_workspace_command_records or [])
+        except Exception:
+            _workspace_command_records = []
     render_command_nav_triggers(_workspace_command_records)
     render_command_center(
         current_page=app_mode,
@@ -2475,6 +2482,14 @@ def run_authenticated_app() -> None:
         workspace_commands=_workspace_command_records,
     )
     render_premium_interactions(current_page=app_mode)
+
+    emit_timing(
+        "runtime.route_enter",
+        duration_ms=0.0,
+        route=app_mode,
+        outcome="success",
+        event="route_enter",
+    )
 
     if app_mode == "Onboarding":
         progress = onboarding_progress or {}

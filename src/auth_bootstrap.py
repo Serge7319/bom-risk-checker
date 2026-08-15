@@ -50,7 +50,12 @@ _STARTUP_PHASES: list[tuple[str, float]] = []
 
 
 def _timing_enabled() -> bool:
-    return get_secret_bool("CADIVOR_STARTUP_TIMING", default=False)
+    try:
+        from src.performance_timing import timing_enabled
+
+        return timing_enabled()
+    except Exception:
+        return get_secret_bool("CADIVOR_STARTUP_TIMING", default=False)
 
 
 def log_startup_phase(label: str) -> None:
@@ -58,6 +63,18 @@ def log_startup_phase(label: str) -> None:
     _STARTUP_PHASES.append((label, elapsed))
     if _timing_enabled():
         print(f"[cadivor-startup] {label}: {elapsed:.3f}s", flush=True)
+        try:
+            from src.performance_timing import emit_timing
+
+            # Milestone only (cumulative elapsed) — distinct from duration spans.
+            emit_timing(
+                f"startup.milestone.{label}",
+                duration_ms=round(elapsed * 1000.0, 1),
+                outcome="success",
+                event="milestone",
+            )
+        except Exception:
+            pass
 
 
 def startup_phase_summary() -> str:
@@ -233,13 +250,15 @@ def ensure_authenticated_or_stop() -> None:
     """Resolve auth and render login/signup immediately for signed-out visitors."""
     from src.auth_cookies import native_cookie_api_available, read_auth_cookie_tokens_with_source
     from src.auth_diagnostics import log_auth_bounce, log_auth_correlation
+    from src.performance_timing import emit_timing, timed_phase
 
     auth_status_in = str(st.session_state.get("cadivor_auth_status") or "unknown")
     log_startup_phase("bootstrap_begin")
     log_auth_restore("bootstrap_started")
 
     log_startup_phase("supabase_client")
-    supabase = get_supabase_client()
+    with timed_phase("auth.supabase_client", operation="init"):
+        supabase = get_supabase_client()
     cookie_manager = None
 
     # One stable authentication surface slot for this script run.
@@ -265,7 +284,8 @@ def ensure_authenticated_or_stop() -> None:
     if requested_page:
         st.session_state["cadivor_requested_page"] = requested_page
 
-    apply_auth_intent_from_query()
+    with timed_phase("auth.intent_apply", operation="resolve"):
+        apply_auth_intent_from_query()
 
     from src.auth_recovery import apply_password_recovery_from_query, password_recovery_active
     from src.auth_signup_confirmation import (
@@ -276,26 +296,57 @@ def ensure_authenticated_or_stop() -> None:
     )
 
     # Deterministic marker precedence: never guess when both markers appear.
-    if signup_and_recovery_markers_conflict():
-        reject_conflicting_auth_callbacks()
-    else:
-        apply_password_recovery_from_query(supabase)
-        apply_signup_confirmation_from_query(supabase)
+    with timed_phase("auth.callback_apply", operation="resolve"):
+        if signup_and_recovery_markers_conflict():
+            reject_conflicting_auth_callbacks()
+        else:
+            apply_password_recovery_from_query(supabase)
+            apply_signup_confirmation_from_query(supabase)
 
     if password_recovery_active():
         log_startup_phase("render_password_recovery_ui")
+        _render_t0 = time.perf_counter()
         with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
+        emit_timing(
+            "auth.render_signed_out",
+            duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
+            outcome="stopped",
+            route="password_recovery",
+            operation="render",
+        )
         if _timing_enabled():
             st.caption(f"Startup timing: {startup_phase_summary()}")
+        emit_timing(
+            "auth.boundary",
+            duration_ms=0.0,
+            outcome="stopped",
+            route="password_recovery",
+            event="boundary",
+        )
         st.stop()
 
     if signup_confirmation_surface_active():
         log_startup_phase("render_signup_confirmation_ui")
+        _render_t0 = time.perf_counter()
         with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
+        emit_timing(
+            "auth.render_signed_out",
+            duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
+            outcome="stopped",
+            route="signup_confirmation",
+            operation="render",
+        )
         if _timing_enabled():
             st.caption(f"Startup timing: {startup_phase_summary()}")
+        emit_timing(
+            "auth.boundary",
+            duration_ms=0.0,
+            outcome="stopped",
+            route="signup_confirmation",
+            event="boundary",
+        )
         st.stop()
 
     bootstrap_cookie_source = "skipped"
@@ -304,27 +355,29 @@ def ensure_authenticated_or_stop() -> None:
         and not explicit_logout_pending()
         and not st.session_state.get("cadivor_force_signed_out")
     ):
-        _tokens, cookie_source = read_auth_cookie_tokens_with_source(cookie_manager=None)
-        bootstrap_cookie_source = cookie_source
-        if cookie_source == "context":
-            hydration_reason = "native_context_restore_started"
-        elif cookie_source == "manager_fallback":
-            hydration_reason = "manager_fallback_restore_started"
-        else:
-            hydration_reason = "native_context_cookie_absent"
-        log_auth_correlation(
-            "after_cookie_hydration",
-            cookie_manager=None,
-            transition_reason=hydration_reason,
-            cookie_source=cookie_source,
-        )
-        hydrated = hydrate_session_from_auth_cookie(cookie_manager)
-        log_auth_restore(
-            "cookie_read_ready",
-            credential_present=hydrated,
-            cookie_source=cookie_source,
-            cookie_absent=bool(st.session_state.get("cadivor_auth_cookie_absent")),
-        )
+        with timed_phase("auth.cookie_read", operation="hydrate") as cookie_meta:
+            _tokens, cookie_source = read_auth_cookie_tokens_with_source(cookie_manager=None)
+            bootstrap_cookie_source = cookie_source
+            if cookie_source == "context":
+                hydration_reason = "native_context_restore_started"
+            elif cookie_source == "manager_fallback":
+                hydration_reason = "manager_fallback_restore_started"
+            else:
+                hydration_reason = "native_context_cookie_absent"
+            log_auth_correlation(
+                "after_cookie_hydration",
+                cookie_manager=None,
+                transition_reason=hydration_reason,
+                cookie_source=cookie_source,
+            )
+            hydrated = hydrate_session_from_auth_cookie(cookie_manager)
+            cookie_meta["outcome"] = "success" if hydrated else "empty"
+            log_auth_restore(
+                "cookie_read_ready",
+                credential_present=hydrated,
+                cookie_source=cookie_source,
+                cookie_absent=bool(st.session_state.get("cadivor_auth_cookie_absent")),
+            )
     log_auth_bounce(
         "cookie_read",
         cookie_manager=None,
@@ -344,6 +397,12 @@ def ensure_authenticated_or_stop() -> None:
         if handle_explicit_logout_if_pending():
             log_startup_phase("logout_redirect")
             auth_surface_host.empty()
+            emit_timing(
+                "auth.boundary",
+                duration_ms=0.0,
+                outcome="redirected",
+                event="boundary",
+            )
             st.stop()
 
     if not manual_login_in_flight():
@@ -359,12 +418,28 @@ def ensure_authenticated_or_stop() -> None:
                 max_attempts=_MAX_HYDRATION_ATTEMPTS,
             )
             if attempts >= _MAX_HYDRATION_ATTEMPTS:
-                finalize_manager_fallback_hydration_timeout(cookie_manager)
+                with timed_phase(
+                    "auth.cookie_hydration",
+                    operation="hydrate",
+                    attempt=attempts,
+                    max_attempts=_MAX_HYDRATION_ATTEMPTS,
+                    outcome_on_success="settled",
+                ):
+                    finalize_manager_fallback_hydration_timeout(cookie_manager)
             else:
+                _hyd_t0 = time.perf_counter()
                 with auth_surface_host.container():
                     render_auth_boot()
                 log_auth_restore("manager_fallback_hydration_rerun", attempt=attempts)
                 time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
+                emit_timing(
+                    "auth.cookie_hydration",
+                    duration_ms=round((time.perf_counter() - _hyd_t0) * 1000.0, 1),
+                    outcome="continue",
+                    operation="hydrate",
+                    attempt=attempts,
+                    max_attempts=_MAX_HYDRATION_ATTEMPTS,
+                )
                 st.rerun()
         elif not native_cookie_api_available():
             if cookie_manager is None:
@@ -377,12 +452,28 @@ def ensure_authenticated_or_stop() -> None:
                     max_attempts=_MAX_HYDRATION_ATTEMPTS,
                 )
                 if attempts >= _MAX_HYDRATION_ATTEMPTS:
-                    finalize_auth_cookie_hydration_timeout(cookie_manager)
+                    with timed_phase(
+                        "auth.cookie_hydration",
+                        operation="hydrate",
+                        attempt=attempts,
+                        max_attempts=_MAX_HYDRATION_ATTEMPTS,
+                        outcome_on_success="settled",
+                    ):
+                        finalize_auth_cookie_hydration_timeout(cookie_manager)
                 else:
+                    _hyd_t0 = time.perf_counter()
                     with auth_surface_host.container():
                         render_auth_boot()
                     log_auth_restore("hydration_wait_rerun", attempt=attempts)
                     time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
+                    emit_timing(
+                        "auth.cookie_hydration",
+                        duration_ms=round((time.perf_counter() - _hyd_t0) * 1000.0, 1),
+                        outcome="continue",
+                        operation="hydrate",
+                        attempt=attempts,
+                        max_attempts=_MAX_HYDRATION_ATTEMPTS,
+                    )
                     st.rerun()
 
     log_startup_phase("resolve_auth_state")
@@ -392,7 +483,11 @@ def ensure_authenticated_or_stop() -> None:
         cookie_manager=cookie_manager,
         transition_reason="pre_resolve",
     )
-    auth_status = resolve_auth_state(supabase, cookie_manager)
+    with timed_phase("auth.resolve_auth_state", operation="validate") as resolve_meta:
+        auth_status = resolve_auth_state(supabase, cookie_manager)
+        resolve_meta["outcome"] = (
+            "authenticated" if auth_status == AUTH_AUTHENTICATED else "signed_out"
+        )
     log_auth_correlation(
         "after_resolve_auth_state",
         cookie_manager=cookie_manager,
@@ -422,10 +517,25 @@ def ensure_authenticated_or_stop() -> None:
             auth_status=auth_status,
             transition_reason=auth_ui_reason,
         )
+        _render_t0 = time.perf_counter()
         with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
+        emit_timing(
+            "auth.render_signed_out",
+            duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
+            outcome="stopped",
+            route="signed_out",
+            operation="render",
+        )
         if _timing_enabled():
             st.caption(f"Startup timing: {startup_phase_summary()}")
+        emit_timing(
+            "auth.boundary",
+            duration_ms=0.0,
+            outcome="signed_out",
+            route="signed_out",
+            event="boundary",
+        )
         st.stop()
 
     # Authenticated workspace: clear the auth surface so no boot/card height remains.
@@ -436,3 +546,10 @@ def ensure_authenticated_or_stop() -> None:
     persist_session_auth_cookie(cookie_manager)
     log_startup_phase("auth_boundary_passed")
     log_auth_restore("restoration_complete", auth_status=auth_status)
+    emit_timing(
+        "auth.boundary",
+        duration_ms=0.0,
+        outcome="authenticated",
+        route="authenticated",
+        event="boundary",
+    )
