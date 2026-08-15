@@ -31,6 +31,8 @@ from src.auth_state import (
     APP_LOGIN,
     APP_SIGNUP,
     APP_SIGNUP_CONFIRMATION_PENDING,
+    APP_SIGNUP_CONFIRMATION_SUCCESS,
+    APP_SIGNUP_CONFIRMATION_INVALID,
     AUTH_AUTHENTICATED,
     AUTH_SIGNING_IN,
     begin_logout,
@@ -101,8 +103,9 @@ def qp_value(name: str, default: str = "") -> str:
 def apply_auth_intent_from_query() -> None:
     """Translate marketing auth links into the signed-out auth state once.
 
-    Signup confirmation pending is sticky: login/signup query intent must not
-    remount the credential form after a successful confirmation-required signup.
+    Signup confirmation pending/result surfaces are sticky: login/signup query
+    intent must not remount the credential form after a confirmation-required
+    signup or a confirmation callback result.
     """
     root_state = str(st.session_state.get("cadivor_root_state") or "")
     try:
@@ -113,8 +116,12 @@ def apply_auth_intent_from_query() -> None:
         requested_auth = requested_auth[0] if requested_auth else ""
     requested_auth = str(requested_auth or "").strip().lower()
 
-    if root_state == APP_SIGNUP_CONFIRMATION_PENDING:
-        # Consume one-time intent without replacing the pending handoff surface.
+    if root_state in {
+        APP_SIGNUP_CONFIRMATION_PENDING,
+        APP_SIGNUP_CONFIRMATION_SUCCESS,
+        APP_SIGNUP_CONFIRMATION_INVALID,
+    }:
+        # Consume one-time intent without replacing the confirmation surface.
         if requested_auth in {"login", "signup"}:
             st.session_state["cadivor_auth_intent_applied"] = True
             try:
@@ -261,10 +268,30 @@ def ensure_authenticated_or_stop() -> None:
     apply_auth_intent_from_query()
 
     from src.auth_recovery import apply_password_recovery_from_query, password_recovery_active
+    from src.auth_signup_confirmation import (
+        apply_signup_confirmation_from_query,
+        reject_conflicting_auth_callbacks,
+        signup_and_recovery_markers_conflict,
+        signup_confirmation_surface_active,
+    )
 
-    apply_password_recovery_from_query(supabase)
+    # Deterministic marker precedence: never guess when both markers appear.
+    if signup_and_recovery_markers_conflict():
+        reject_conflicting_auth_callbacks()
+    else:
+        apply_password_recovery_from_query(supabase)
+        apply_signup_confirmation_from_query(supabase)
+
     if password_recovery_active():
         log_startup_phase("render_password_recovery_ui")
+        with auth_surface_host.container():
+            show_auth_ui(supabase, cookie_manager)
+        if _timing_enabled():
+            st.caption(f"Startup timing: {startup_phase_summary()}")
+        st.stop()
+
+    if signup_confirmation_surface_active():
+        log_startup_phase("render_signup_confirmation_ui")
         with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():

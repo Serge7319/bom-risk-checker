@@ -7,6 +7,8 @@ from textwrap import dedent
 from src.auth_state import (
     APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
     APP_SIGNUP_CONFIRMATION_PENDING,
+    APP_SIGNUP_CONFIRMATION_SUCCESS,
+    APP_SIGNUP_CONFIRMATION_INVALID,
     APP_PASSWORD_RECOVERY, APP_PASSWORD_RESET,
     AUTH_SIGNED_OUT,
     AUTH_SIGNING_IN,
@@ -24,6 +26,12 @@ def _auth_recovery():
     from src import auth_recovery
 
     return auth_recovery
+
+
+def _auth_signup_confirmation():
+    from src import auth_signup_confirmation
+
+    return auth_signup_confirmation
 
 
 def _set_auth_cookie(cookie_manager, session, key: str):
@@ -466,9 +474,13 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
+        confirm = _auth_signup_confirmation()
         response = supabase.auth.sign_up({
             "email": email,
             "password": password,
+            "options": {
+                "email_redirect_to": confirm.signup_confirmation_redirect_url(),
+            },
         })
     except Exception as error:
         finish_manual_login_failed(cookie_manager)
@@ -575,6 +587,90 @@ def _render_signup_confirmation_pending() -> None:
         _exit_signup_pending_to_password_reset()
     elif clicked_different_email:
         _exit_signup_pending_to_create_account()
+
+
+def _render_signup_confirmation_success(cookie_manager=None) -> None:
+    confirm = _auth_signup_confirmation()
+    session_ready = confirm.signup_confirmation_session_ready()
+    if session_ready:
+        _render_auth_card_brand(
+            eyebrow="EMAIL CONFIRMED",
+            context_sub="Your Cadivor workspace is ready.",
+        )
+        _html(
+            """
+<div class="auth-confirm-status" role="status">Confirmation complete</div>
+<div class="auth-heading">Welcome to Cadivor</div>
+<p class="auth-copy">Your email has been confirmed successfully.</p>
+"""
+        )
+        if st.button(
+            "Continue to workspace",
+            key="cadivor_signup_confirm_continue_workspace",
+            type="primary",
+            use_container_width=True,
+        ):
+            confirm.continue_signup_confirmation_to_workspace(cookie_manager)
+        return
+
+    _render_auth_card_brand(
+        eyebrow="EMAIL CONFIRMED",
+        context_sub="Your Cadivor account is ready.",
+    )
+    _html(
+        """
+<div class="auth-confirm-status" role="status">Confirmation complete</div>
+<div class="auth-heading">Continue to Cadivor</div>
+<p class="auth-copy">Your email has been confirmed. Sign in to access your workspace.</p>
+"""
+    )
+    if st.button(
+        "Continue to login",
+        key="cadivor_signup_confirm_continue_login",
+        type="primary",
+        use_container_width=True,
+    ):
+        confirm.continue_signup_confirmation_to_login()
+
+
+def _render_signup_confirmation_invalid() -> None:
+    confirm = _auth_signup_confirmation()
+    _render_auth_card_brand(
+        eyebrow="EMAIL CONFIRMATION",
+        context_sub="Continue when you’re ready.",
+    )
+    _html(
+        """
+<div class="auth-confirm-status" role="status">Confirmation link unavailable</div>
+<div class="auth-heading">This link can’t be used</div>
+<p class="auth-copy">The confirmation link may have expired or already been used. Return to login, or create an account again if needed.</p>
+"""
+    )
+    clicked_login = st.button(
+        "Return to login",
+        key="cadivor_signup_confirm_invalid_login",
+        type="primary",
+        use_container_width=True,
+    )
+    clicked_signup = st.button(
+        "Create Account",
+        key="cadivor_signup_confirm_invalid_signup",
+        type="secondary",
+        use_container_width=True,
+    )
+    clicked_reset = st.button(
+        "Reset password",
+        key="cadivor_signup_confirm_invalid_reset",
+        type="tertiary",
+    )
+    if clicked_login:
+        confirm.exit_signup_confirmation_invalid_to_login()
+    elif clicked_signup:
+        confirm.exit_signup_confirmation_invalid_to_signup()
+    elif clicked_reset:
+        confirm.clear_signup_confirmation_result()
+        _auth_recovery().begin_password_reset_request()
+        st.rerun()
 
 
 def _render_back_to_marketing_link() -> None:
@@ -1005,6 +1101,14 @@ def show_auth_ui(supabase, cookie_manager=None):
         # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
         if state == APP_SIGNUP_CONFIRMATION_PENDING:
             _render_signup_confirmation_pending()
+            return
+
+        if state == APP_SIGNUP_CONFIRMATION_SUCCESS:
+            _render_signup_confirmation_success(cookie_manager)
+            return
+
+        if state == APP_SIGNUP_CONFIRMATION_INVALID:
+            _render_signup_confirmation_invalid()
             return
 
         if state == APP_SIGNING_IN:
