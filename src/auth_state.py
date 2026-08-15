@@ -502,8 +502,11 @@ def render_auth_transition(message: str = "Preparing Cadivor") -> None:
         section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{display:none!important}}
         html,body,.stApp,[data-testid="stAppViewContainer"]{{background:#F5F7FB!important;color:#0F172A!important}}
         .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
+        /* Auth-only: disable Chrome scroll anchoring on Streamlit's stMain scrollport
+           while the compact boot surface is present (Incognito first-paint clipping). */
+        [data-testid="stMain"]:has(.cv-auth-transition){{overflow-anchor:none}}
         /* Content-height signed-out boot shell — never reserve a full viewport. */
-        .cv-auth-transition{{width:min(94vw,480px);min-height:0;height:auto;margin:clamp(24px,7vh,72px) auto;padding:clamp(32px,6vh,56px) 24px;display:grid;place-items:center;box-sizing:border-box;background:radial-gradient(circle at 50% 35%,#fff 0,#F7F9FC 42%,#EEF3F8 100%);font-family:Inter,system-ui,sans-serif;border-radius:22px}}
+        .cv-auth-transition{{width:min(94vw,480px);min-height:0;height:auto;overflow-anchor:none;margin:clamp(24px,7vh,72px) auto;padding:clamp(32px,6vh,56px) 24px;display:grid;place-items:center;box-sizing:border-box;background:radial-gradient(circle at 50% 35%,#fff 0,#F7F9FC 42%,#EEF3F8 100%);font-family:Inter,system-ui,sans-serif;border-radius:22px}}
         .cv-auth-transition-card{{width:min(420px,100%);padding:30px 30px 26px;border:1px solid #DCE4EE;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 24px 70px rgba(15,23,42,.10);text-align:center}}
         .cv-auth-transition-mark{{width:48px;height:48px;margin:0 auto 16px;border-radius:14px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:22px;box-shadow:0 12px 26px rgba(37,99,235,.25)}}
         .cv-auth-transition-card h1{{margin:0;color:#0F172A!important;font-size:20px;letter-spacing:-.025em}}

@@ -163,6 +163,11 @@ def _auth_css():
             margin:0 auto!important;
             padding:1.8rem 1.3rem 4rem 1.3rem!important;
         }
+        /* Auth-only: disable Chrome scroll anchoring on Streamlit's stMain scrollport
+           while the Cadivor auth card is present (Incognito first-paint clipping). */
+        [data-testid="stMain"]:has(.st-key-cadivor_auth_card){
+            overflow-anchor:none;
+        }
         /* Auth login / signup card — centered, fixed width on all displays */
         [data-testid="stAppViewContainer"]:has(.st-key-cadivor_auth_card){
             display:flex!important;
@@ -184,6 +189,7 @@ def _auth_css():
             height:auto!important;
             min-height:0!important;
             max-height:none!important;
+            overflow-anchor:none;
         }
         /* Keep the Streamlit main column from becoming a second white card shell. */
         [data-testid="stMainBlockContainer"]:has(.st-key-cadivor_auth_card),
