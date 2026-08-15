@@ -67,10 +67,18 @@ def _install_streamlit_stub(
         def __exit__(self, *args):
             return False
 
+    class _EmptyHost:
+        def container(self, *args, **kwargs):
+            return _NullContext()
+
+        def empty(self):
+            return self
+
     def _container(*args, **kwargs):
         return _NullContext()
 
     st.container = _container
+    st.empty = lambda: _EmptyHost()
     st.cache_resource = lambda **_kwargs: (lambda fn: fn)
 
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")

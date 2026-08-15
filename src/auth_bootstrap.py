@@ -234,6 +234,14 @@ def ensure_authenticated_or_stop() -> None:
     log_startup_phase("supabase_client")
     supabase = get_supabase_client()
     cookie_manager = None
+
+    # One stable authentication surface slot for this script run.
+    # Created before CookieManager mount / hydration so boot and signed-out UI
+    # replace each other in the same Streamlit delta position instead of
+    # stacking as top-level siblings during stale-element transitions.
+    # Do not store this DeltaGenerator in session_state.
+    auth_surface_host = st.empty()
+
     log_auth_correlation(
         "bootstrap_entry",
         cookie_manager=None,
@@ -257,7 +265,8 @@ def ensure_authenticated_or_stop() -> None:
     apply_password_recovery_from_query(supabase)
     if password_recovery_active():
         log_startup_phase("render_password_recovery_ui")
-        show_auth_ui(supabase, cookie_manager)
+        with auth_surface_host.container():
+            show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():
             st.caption(f"Startup timing: {startup_phase_summary()}")
         st.stop()
@@ -307,6 +316,7 @@ def ensure_authenticated_or_stop() -> None:
         begin_logout(supabase, get_auth_cookie_manager(mount=True))
         if handle_explicit_logout_if_pending():
             log_startup_phase("logout_redirect")
+            auth_surface_host.empty()
             st.stop()
 
     if not manual_login_in_flight():
@@ -324,7 +334,8 @@ def ensure_authenticated_or_stop() -> None:
             if attempts >= _MAX_HYDRATION_ATTEMPTS:
                 finalize_manager_fallback_hydration_timeout(cookie_manager)
             else:
-                render_auth_boot()
+                with auth_surface_host.container():
+                    render_auth_boot()
                 log_auth_restore("manager_fallback_hydration_rerun", attempt=attempts)
                 time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
                 st.rerun()
@@ -341,7 +352,8 @@ def ensure_authenticated_or_stop() -> None:
                 if attempts >= _MAX_HYDRATION_ATTEMPTS:
                     finalize_auth_cookie_hydration_timeout(cookie_manager)
                 else:
-                    render_auth_boot()
+                    with auth_surface_host.container():
+                        render_auth_boot()
                     log_auth_restore("hydration_wait_rerun", attempt=attempts)
                     time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
                     st.rerun()
@@ -383,10 +395,14 @@ def ensure_authenticated_or_stop() -> None:
             auth_status=auth_status,
             transition_reason=auth_ui_reason,
         )
-        show_auth_ui(supabase, cookie_manager)
+        with auth_surface_host.container():
+            show_auth_ui(supabase, cookie_manager)
         if _timing_enabled():
             st.caption(f"Startup timing: {startup_phase_summary()}")
         st.stop()
+
+    # Authenticated workspace: clear the auth surface so no boot/card height remains.
+    auth_surface_host.empty()
 
     if cookie_manager is None:
         cookie_manager = get_auth_cookie_manager(mount=True)

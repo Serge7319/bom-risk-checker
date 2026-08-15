@@ -19,6 +19,18 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.markdown = MagicMock()
     st.caption = MagicMock()
 
+    class _Host:
+        def container(self, *args, **kwargs):
+            return MagicMock(
+                __enter__=MagicMock(return_value=self),
+                __exit__=MagicMock(return_value=False),
+            )
+
+        def empty(self):
+            return self
+
+    st.empty = MagicMock(side_effect=lambda: _Host())
+
     def cache_resource(**kwargs):
         def decorator(fn):
             return fn
