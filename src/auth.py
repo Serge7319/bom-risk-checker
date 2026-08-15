@@ -88,6 +88,41 @@ Questions about these Terms may be sent to **info@cadivor.com** with “Terms”
 """
 
 
+
+AUTH_MODE_WIDGET_KEY = "cadivor_auth_mode"
+AUTH_MODE_LOGIN = "Login"
+AUTH_MODE_SIGNUP = "Create Account"
+AUTH_CARD_CONTAINER_KEY = "cadivor_auth_card"
+AUTH_MODE_OPTIONS = (AUTH_MODE_LOGIN, AUTH_MODE_SIGNUP)
+
+
+def _auth_mode_label_for_root(state: str) -> str:
+    return AUTH_MODE_SIGNUP if str(state) == APP_SIGNUP else AUTH_MODE_LOGIN
+
+
+def _seed_auth_mode_widget(label: str) -> None:
+    """Set the mode radio session key only before the widget is instantiated."""
+    desired = AUTH_MODE_SIGNUP if label == AUTH_MODE_SIGNUP else AUTH_MODE_LOGIN
+    st.session_state[AUTH_MODE_WIDGET_KEY] = desired
+
+
+def _ensure_auth_mode_widget_seeded(initial_mode: str) -> None:
+    """Seed missing radio state from root/intent without overwriting user selection."""
+    current = st.session_state.get(AUTH_MODE_WIDGET_KEY)
+    if current in AUTH_MODE_OPTIONS:
+        return
+    _seed_auth_mode_widget(initial_mode)
+
+
+def _sync_root_state_from_auth_mode(auth_mode: str) -> None:
+    """Mirror the outside-form radio into cadivor_root_state (no widget mutation)."""
+    desired = APP_SIGNUP if auth_mode == AUTH_MODE_SIGNUP else APP_LOGIN
+    st.session_state["cadivor_root_state"] = desired
+    # Intent is considered consumed once the user (or seed) owns a mode.
+    st.session_state["cadivor_auth_intent_applied"] = True
+
+
+
 def _auth_css():
     st.markdown(
         """
@@ -129,14 +164,13 @@ def _auth_css():
             padding:1.8rem 1.3rem 4rem 1.3rem!important;
         }
         /* Auth login / signup card — centered, fixed width on all displays */
-        [data-testid="stAppViewContainer"]:has(.auth-card-header){
+        [data-testid="stAppViewContainer"]:has(.st-key-cadivor_auth_card){
             display:flex!important;
             flex-direction:column!important;
             align-items:center!important;
             background:var(--cadivor-bg)!important;
         }
-        [data-testid="stMainBlockContainer"]:has(.auth-card-header),
-        .main .block-container:has(.auth-card-header){
+        .st-key-cadivor_auth_card{
             width:min(480px,92vw)!important;
             max-width:480px!important;
             margin:7vh auto 48px auto!important;
@@ -147,14 +181,28 @@ def _auth_css():
             border-radius:22px!important;
             box-shadow:0 28px 70px rgba(15,23,42,.13)!important;
             box-sizing:border-box!important;
+            height:auto!important;
+            min-height:0!important;
+            max-height:none!important;
         }
-        [data-testid="stMainBlockContainer"]:has(.auth-card-header) > div,
-        [data-testid="stMainBlockContainer"]:has(.auth-card-header) [data-testid="stVerticalBlock"],
-        [data-testid="stMainBlockContainer"]:has(.auth-card-header) [data-testid="stForm"]{
+        /* Keep the Streamlit main column from becoming a second white card shell. */
+        [data-testid="stMainBlockContainer"]:has(.st-key-cadivor_auth_card),
+        .main .block-container:has(.st-key-cadivor_auth_card){
+            background:transparent!important;
+            border:0!important;
+            box-shadow:none!important;
+            max-width:100%!important;
+            width:100%!important;
+            padding-left:1rem!important;
+            padding-right:1rem!important;
+        }
+        .st-key-cadivor_auth_card > div,
+        .st-key-cadivor_auth_card [data-testid="stVerticalBlock"],
+        .st-key-cadivor_auth_card [data-testid="stForm"]{
             width:100%!important;
             max-width:100%!important;
         }
-        [data-testid="stMainBlockContainer"]:has(.auth-card-header) .cadivor-back-home{
+        .st-key-cadivor_auth_card .cadivor-back-home{
             display:flex!important;
             justify-content:center!important;
             width:100%!important;
@@ -226,9 +274,9 @@ def _auth_css():
         .faq-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}.faq-card{padding:22px;}.faq-card strong{display:block;color:#0F172A!important;margin-bottom:8px;font-size:17px;}.faq-card span{color:#64748B!important;line-height:1.6;font-size:14px;}.footer{margin:70px 0 0 0;background:#0F172A;border-radius:24px;padding:34px;display:flex;justify-content:space-between;gap:28px;align-items:flex-start;box-shadow:0 24px 60px rgba(15,23,42,.20);}.footer strong{color:#fff!important;font-size:22px;}.footer p{color:#CBD5E1!important;max-width:520px;line-height:1.6;}.footer-links{display:flex;gap:22px;flex-wrap:wrap;}.footer-links a{color:#E2E8F0!important;text-decoration:none!important;font-weight:800;}
         .bottom-cta{margin:54px 0 0 0;background:linear-gradient(135deg,#0F172A,#1E3A8A);border-radius:24px;padding:30px 34px;display:flex;align-items:center;justify-content:space-between;gap:22px;box-shadow:0 26px 60px rgba(15,23,42,.20);}.bottom-cta strong{color:#fff!important;font-size:26px;display:block;margin-bottom:6px;}.bottom-cta span{color:#CBD5E1!important;font-size:15px;}
         /* Auth route */
-        .auth-card-header{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-card-brand-link{display:block;text-decoration:none!important;color:inherit!important;}.auth-card-brand-link:hover{text-decoration:none!important;}.auth-card-brand-link:hover .auth-card-title{color:#2563EB!important;}.auth-recovery-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:#2563EB!important;border:1px solid #BFDBFE;border-radius:999px;padding:7px 13px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin:0 0 16px 0;box-shadow:0 8px 18px rgba(37,99,235,.08);}.auth-recovery-eyebrow:before{content:"";width:7px;height:7px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.10);}.auth-confirm-status{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px 0;padding:7px 11px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#047857!important;font-size:12px;font-weight:900;letter-spacing:.02em;}.auth-confirm-status:before{content:"✓";font-weight:950;}.auth-confirm-email{display:block;margin:8px 0 12px 0;padding:10px 12px;border-radius:12px;background:#F8FAFC;border:1px solid #E2E8F0;color:#0F172A!important;font-size:15px;font-weight:900;word-break:break-word;}.auth-confirm-guidance{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:11px 12px;color:#475569!important;font-size:12.5px;font-weight:750;line-height:1.5;margin:0 0 14px 0;text-align:left;}[data-testid="stMainBlockContainer"]:has(.auth-confirm-status) .auth-copy{margin:0 0 10px 0;}[data-testid="stMainBlockContainer"]:has(.auth-confirm-status) .auth-heading{margin:0 0 6px 0;}.auth-trust-note{color:#64748B!important;font-size:12.5px;line-height:1.55;margin:14px 0 0 0;text-align:center;font-weight:700;}.cadivor-back-home{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:8px 0;color:#2f6fed!important;text-decoration:none!important;font-size:13px;font-weight:900;transition:color .18s ease;}.cadivor-back-home:hover{color:#174ea6!important;text-decoration:underline!important;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
-        [data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"] label,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] label,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;width:100%!important;max-width:100%!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] > div{overflow:visible!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]::before,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"] > div,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input[type="text"],[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input[type="password"],[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input:focus,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton > button[data-testid="stBaseButton-primary"]{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button:hover,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton > button[data-testid="stBaseButton-primary"]:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div[data-testid="stFormSubmitButton"] > button *,[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton > button[data-testid="stBaseButton-primary"] *{color:#fff!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton > button[data-testid="stBaseButton-secondary"]{width:100%!important;min-height:46px!important;border-radius:12px!important;background:#fff!important;border:1px solid #CBD5E1!important;color:#0F172A!important;font-weight:850!important;box-shadow:none!important;margin-top:8px!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton > button[data-testid="stBaseButton-secondary"]:hover{background:#F8FAFC!important;border-color:#94A3B8!important;color:#0F172A!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton > button[data-testid="stBaseButton-tertiary"]{width:auto!important;min-height:40px!important;height:auto!important;padding:6px 10px!important;border-radius:8px!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#2563EB!important;font-weight:850!important;font-size:13px!important;margin:4px auto 0 auto!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton > button[data-testid="stBaseButton-tertiary"]:hover{background:transparent!important;color:#1D4ED8!important;text-decoration:underline!important;}[data-testid="stMainBlockContainer"]:has(.auth-card-header) div.stButton:has(> button[data-testid="stBaseButton-tertiary"]){display:flex!important;justify-content:center!important;width:100%!important;}
-        @media(max-width:700px){[data-testid="stMainBlockContainer"]:has(.auth-card-header),.main .block-container:has(.auth-card-header){margin:3vh auto 32px auto!important;width:94vw!important;max-width:94vw!important;padding:28px 22px!important;border-radius:18px!important;}.auth-divider{margin-left:-22px!important;margin-right:-22px!important;}}
+        .auth-card-header{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-card-brand-link{display:block;text-decoration:none!important;color:inherit!important;}.auth-card-brand-link:hover{text-decoration:none!important;}.auth-card-brand-link:hover .auth-card-title{color:#2563EB!important;}.auth-recovery-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:#2563EB!important;border:1px solid #BFDBFE;border-radius:999px;padding:7px 13px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin:0 0 16px 0;box-shadow:0 8px 18px rgba(37,99,235,.08);}.auth-recovery-eyebrow:before{content:"";width:7px;height:7px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.10);}.auth-confirm-status{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px 0;padding:7px 11px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#047857!important;font-size:12px;font-weight:900;letter-spacing:.02em;}.auth-confirm-status:before{content:"✓";font-weight:950;}.auth-confirm-email{display:block;margin:8px 0 12px 0;padding:10px 12px;border-radius:12px;background:#F8FAFC;border:1px solid #E2E8F0;color:#0F172A!important;font-size:15px;font-weight:900;word-break:break-word;}.auth-confirm-guidance{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:11px 12px;color:#475569!important;font-size:12.5px;font-weight:750;line-height:1.5;margin:0 0 14px 0;text-align:left;}.st-key-cadivor_auth_card:has(.auth-confirm-status) .auth-copy{margin:0 0 10px 0;}.st-key-cadivor_auth_card:has(.auth-confirm-status) .auth-heading{margin:0 0 6px 0;}.auth-trust-note{color:#64748B!important;font-size:12.5px;line-height:1.55;margin:14px 0 0 0;text-align:center;font-weight:700;}.cadivor-back-home{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:8px 0;color:#2f6fed!important;text-decoration:none!important;font-size:13px;font-weight:900;transition:color .18s ease;}.cadivor-back-home:hover{color:#174ea6!important;text-decoration:underline!important;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
+        .st-key-cadivor_auth_card div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}.st-key-cadivor_auth_card div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}.st-key-cadivor_auth_card div[data-testid="stRadio"] label,.st-key-cadivor_auth_card div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] label,.st-key-cadivor_auth_card div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;width:100%!important;max-width:100%!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] > div{overflow:visible!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]::before,.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"] > div,.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] input,.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="text"],.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="password"],.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] input:focus,.st-key-cadivor_auth_card div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}.st-key-cadivor_auth_card div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"]{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button:hover,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"]:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button *,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"] *{color:#fff!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-secondary"]{width:100%!important;min-height:46px!important;border-radius:12px!important;background:#fff!important;border:1px solid #CBD5E1!important;color:#0F172A!important;font-weight:850!important;box-shadow:none!important;margin-top:8px!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-secondary"]:hover{background:#F8FAFC!important;border-color:#94A3B8!important;color:#0F172A!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-tertiary"]{width:auto!important;min-height:40px!important;height:auto!important;padding:6px 10px!important;border-radius:8px!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#2563EB!important;font-weight:850!important;font-size:13px!important;margin:4px auto 0 auto!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-tertiary"]:hover{background:transparent!important;color:#1D4ED8!important;text-decoration:underline!important;}.st-key-cadivor_auth_card div.stButton:has(> button[data-testid="stBaseButton-tertiary"]){display:flex!important;justify-content:center!important;width:100%!important;}
+        @media(max-width:700px){.st-key-cadivor_auth_card{margin:3vh auto 32px auto!important;width:94vw!important;max-width:94vw!important;padding:28px 22px!important;border-radius:18px!important;}.auth-divider{margin-left:-22px!important;margin-right:-22px!important;}}
         .page-section{padding-top:58px!important;} .compact-section{padding-top:42px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
 
         .mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px;}
@@ -450,6 +498,7 @@ def _exit_signup_pending_to_login() -> None:
     """Clear pending signup handoff and return to the normal Login view."""
     _clear_signup_confirmation_pending()
     st.session_state["cadivor_root_state"] = APP_LOGIN
+    _seed_auth_mode_widget(AUTH_MODE_LOGIN)
     st.rerun()
 
 
@@ -465,6 +514,7 @@ def _exit_signup_pending_to_create_account() -> None:
     _clear_signup_confirmation_pending()
     st.session_state["cadivor_root_state"] = APP_SIGNUP
     st.session_state["cadivor_auth_intent_applied"] = True
+    _seed_auth_mode_widget(AUTH_MODE_SIGNUP)
     # Never put the previous email (or any email) into query state.
     try:
         for key in list(st.query_params.keys()):
@@ -626,14 +676,25 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         unsafe_allow_html=True,
     )
 
-    options = ["Login", "Create Account"]
+    # Mode selector is outside the form so one radio change immediately reruns
+    # Python with the new value (Streamlit forms batch widgets until submit).
+    _ensure_auth_mode_widget_seeded(initial_mode)
+    auth_mode = st.radio(
+        "Choose an option",
+        list(AUTH_MODE_OPTIONS),
+        key=AUTH_MODE_WIDGET_KEY,
+        horizontal=True,
+    )
+    if auth_mode not in AUTH_MODE_OPTIONS:
+        auth_mode = AUTH_MODE_LOGIN
+    _sync_root_state_from_auth_mode(auth_mode)
+
     with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
-        auth_mode = st.radio("Choose an option", options, index=options.index(initial_mode), horizontal=True)
         email = st.text_input("Email", placeholder="you@company.com")
         password = st.text_input("Password", type="password", placeholder="Enter your password")
 
         accepted_terms = True
-        if auth_mode == "Create Account":
+        if auth_mode == AUTH_MODE_SIGNUP:
             st.markdown(
                 """
                 <div class="terms-box"><strong>Terms summary:</strong> Cadivor provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.</div>
@@ -645,7 +706,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 st.markdown(CADIVOR_TERMS)
 
         submit = st.form_submit_button(
-            "Create Account" if auth_mode == "Create Account" else "Login",
+            AUTH_MODE_SIGNUP if auth_mode == AUTH_MODE_SIGNUP else AUTH_MODE_LOGIN,
             use_container_width=True,
         )
 
@@ -653,16 +714,16 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         if not email or not password:
             st.warning("Please enter your email and password.")
             return
-        if auth_mode == "Create Account" and not accepted_terms:
+        if auth_mode == AUTH_MODE_SIGNUP and not accepted_terms:
             st.warning("Please accept the Terms of Service and Privacy Policy to create an account.")
             return
-        if auth_mode == "Create Account":
+        if auth_mode == AUTH_MODE_SIGNUP:
             _submit_manual_signup(supabase, cookie_manager, email, password)
         else:
             _submit_manual_login(supabase, cookie_manager, email, password)
         return
 
-    if auth_mode == "Login":
+    if auth_mode == AUTH_MODE_LOGIN:
         if st.button("Forgot password?", key="cadivor_forgot_password_link"):
             _auth_recovery().begin_password_reset_request()
             st.rerun()
@@ -910,6 +971,8 @@ def show_auth_ui(supabase, cookie_manager=None):
         )
     except Exception:
         pass
+    # CSS and premium inject stay outside the white card so markdown/style
+    # blocks cannot inflate the card shell.
     _auth_css()
     inject_core_premium_ui_auth()
     state = str(st.session_state.get("cadivor_root_state") or APP_PUBLIC)
@@ -928,53 +991,59 @@ def show_auth_ui(supabase, cookie_manager=None):
         state = APP_SIGNUP if requested_auth == "signup" else APP_LOGIN
         st.session_state["cadivor_root_state"] = state
         st.session_state["cadivor_auth_intent_applied"] = True
+        # Seed only when the widget key is absent so later Create Account
+        # selections are not overwritten by a lingering ?auth= query.
+        _ensure_auth_mode_widget_seeded(_auth_mode_label_for_root(state))
 
-    # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
-    if state == APP_SIGNUP_CONFIRMATION_PENDING:
-        _render_signup_confirmation_pending()
-        return
+    with st.container(key=AUTH_CARD_CONTAINER_KEY, border=False):
+        # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
+        if state == APP_SIGNUP_CONFIRMATION_PENDING:
+            _render_signup_confirmation_pending()
+            return
 
-    if state == APP_SIGNING_IN:
-        st.session_state["cadivor_root_state"] = APP_LOGIN
-        st.session_state.pop("cadivor_manual_login_in_progress", None)
-        state = APP_LOGIN
+        if state == APP_SIGNING_IN:
+            st.session_state["cadivor_root_state"] = APP_LOGIN
+            st.session_state.pop("cadivor_manual_login_in_progress", None)
+            state = APP_LOGIN
+            _seed_auth_mode_widget(AUTH_MODE_LOGIN)
 
-    if state in (APP_LOGIN, APP_SIGNUP):
+        if state in (APP_LOGIN, APP_SIGNUP):
+            recovery = _auth_recovery()
+            notice = st.session_state.pop("cadivor_auth_notice", None)
+            recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
+            error = st.session_state.pop("cadivor_auth_error", None)
+            if notice:
+                st.success(notice)
+            if recovery_notice:
+                st.success(recovery_notice)
+            if error:
+                st.error(error)
+            _render_auth_page(
+                supabase=supabase,
+                cookie_manager=cookie_manager,
+                initial_mode=_auth_mode_label_for_root(state),
+            )
+            return
+
+        if state == APP_PASSWORD_RESET:
+            recovery = _auth_recovery()
+            recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
+            if recovery_notice:
+                st.success(recovery_notice)
+            _render_password_reset_request(supabase)
+            return
+
         recovery = _auth_recovery()
-        notice = st.session_state.pop("cadivor_auth_notice", None)
-        recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
-        error = st.session_state.pop("cadivor_auth_error", None)
-        if notice:
-            st.success(notice)
-        if recovery_notice:
-            st.success(recovery_notice)
-        if error:
-            st.error(error)
+        if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
+            _render_password_recovery_form(supabase, cookie_manager)
+            return
+
+        # Production routing: www.cadivor.com owns marketing; the app shows auth only.
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        _seed_auth_mode_widget(AUTH_MODE_LOGIN)
+        _render_back_to_marketing_link()
         _render_auth_page(
             supabase=supabase,
             cookie_manager=cookie_manager,
-            initial_mode="Create Account" if state == APP_SIGNUP else "Login",
+            initial_mode=AUTH_MODE_LOGIN,
         )
-        return
-
-    if state == APP_PASSWORD_RESET:
-        recovery = _auth_recovery()
-        recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
-        if recovery_notice:
-            st.success(recovery_notice)
-        _render_password_reset_request(supabase)
-        return
-
-    recovery = _auth_recovery()
-    if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
-        _render_password_recovery_form(supabase, cookie_manager)
-        return
-
-    # Production routing: www.cadivor.com owns marketing; the app shows auth only.
-    st.session_state["cadivor_root_state"] = APP_LOGIN
-    _render_back_to_marketing_link()
-    _render_auth_page(
-        supabase=supabase,
-        cookie_manager=cookie_manager,
-        initial_mode="Login",
-    )

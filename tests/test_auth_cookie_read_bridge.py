@@ -60,6 +60,19 @@ def _install_streamlit_stub(
     def get_script_run_ctx():
         return _ctx
 
+    class _NullContext:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def _container(*args, **kwargs):
+        return _NullContext()
+
+    st.container = _container
+    st.cache_resource = lambda **_kwargs: (lambda fn: fn)
+
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
     scriptrunner.get_script_run_ctx = get_script_run_ctx
     runtime = types.ModuleType("streamlit.runtime")

@@ -31,6 +31,7 @@ def begin_password_reset_request() -> None:
 
 def cancel_password_reset_request() -> None:
     st.session_state["cadivor_root_state"] = APP_LOGIN
+    st.session_state["cadivor_auth_mode"] = "Login"
     st.session_state.pop(_RECOVERY_ERROR_KEY, None)
     st.session_state.pop(_RECOVERY_NOTICE_KEY, None)
 
@@ -242,6 +243,7 @@ def complete_password_recovery(
     st.session_state.pop("access_token", None)
     st.session_state.pop("refresh_token", None)
     st.session_state["cadivor_root_state"] = APP_LOGIN
+    st.session_state["cadivor_auth_mode"] = "Login"
     st.session_state["cadivor_auth_status"] = "signed_out"
     st.session_state[_RECOVERY_NOTICE_KEY] = (
         "Your password was updated. Sign in with your new password."
