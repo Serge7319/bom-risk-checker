@@ -332,24 +332,25 @@ def timed_phase(
         meta["outcome"] = "error"
         raise
     finally:
-        if not enabled:
-            return
-        try:
-            duration_ms = _round_ms(time.perf_counter() - started)
-            emit_timing(
-                phase,
-                duration_ms=duration_ms,
-                outcome=safe_outcome(meta.get("outcome"), default="success"),
-                route=route,
-                provider=provider,
-                operation=operation,
-                attempt=attempt,
-                max_attempts=max_attempts,
-                row_count=meta.get("row_count"),
-                cache_status=cache_status,
-            )
-        except Exception:
-            pass
+        # Do not exit this block early: an early exit suppresses BaseException
+        # (Streamlit RerunException / StopException) and breaks auth control flow.
+        if enabled:
+            try:
+                duration_ms = _round_ms(time.perf_counter() - started)
+                emit_timing(
+                    phase,
+                    duration_ms=duration_ms,
+                    outcome=safe_outcome(meta.get("outcome"), default="success"),
+                    route=route,
+                    provider=provider,
+                    operation=operation,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    row_count=meta.get("row_count"),
+                    cache_status=cache_status,
+                )
+            except Exception:
+                pass
 
 
 def supplier_outcome_from_status(provider_status: Any) -> str:

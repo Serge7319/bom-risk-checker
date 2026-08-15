@@ -294,5 +294,237 @@ class SupplierTimingTests(unittest.TestCase):
         self.assertNotIn("CADIVOR_PERF", buf.getvalue())
 
 
+def _streamlit_control_exceptions():
+    from streamlit.runtime.scriptrunner_utils.exceptions import (
+        RerunException,
+        StopException,
+    )
+    from streamlit.runtime.scriptrunner_utils.script_requests import RerunData
+
+    return RerunException, StopException, RerunData
+
+
+class TimedPhaseStreamlitControlFlowTests(unittest.TestCase):
+    """Sprint 75.1.2 — finally must not suppress Streamlit control exceptions."""
+
+    def setUp(self):
+        sys.modules.pop("src.performance_timing", None)
+        self.mod = importlib.import_module("src.performance_timing")
+        self._env_backup = os.environ.get("CADIVOR_STARTUP_TIMING")
+        self.RerunException, self.StopException, self.RerunData = (
+            _streamlit_control_exceptions()
+        )
+        self.assertFalse(issubclass(self.RerunException, Exception))
+        self.assertFalse(issubclass(self.StopException, Exception))
+        self.assertTrue(issubclass(self.RerunException, BaseException))
+        self.assertTrue(issubclass(self.StopException, BaseException))
+
+    def tearDown(self):
+        if self._env_backup is None:
+            os.environ.pop("CADIVOR_STARTUP_TIMING", None)
+        else:
+            os.environ["CADIVOR_STARTUP_TIMING"] = self._env_backup
+        sys.modules.pop("src.performance_timing", None)
+
+    def _set_flag(self, value):
+        if value is None:
+            os.environ.pop("CADIVOR_STARTUP_TIMING", None)
+        else:
+            os.environ["CADIVOR_STARTUP_TIMING"] = value
+        sys.modules.pop("src.performance_timing", None)
+        self.mod = importlib.import_module("src.performance_timing")
+
+    def _assert_control_transparent(self, flag_value, *, expect_perf: bool):
+        self._set_flag(flag_value)
+
+        # 1) ordinary success
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with self.mod.timed_phase("ctl.success"):
+                pass
+        if expect_perf:
+            self.assertIn("CADIVOR_PERF", buf.getvalue())
+            payload = json.loads(buf.getvalue().strip().split(" ", 1)[1])
+            self.assertEqual(payload["outcome"], "success")
+            self.assertNotIn("password", payload)
+        else:
+            self.assertNotIn("CADIVOR_PERF", buf.getvalue())
+
+        # 2) ordinary Exception re-raised unchanged (same instance)
+        exc = RuntimeError("ordinary-failure email=a@b.com token=sekrit")
+        buf = io.StringIO()
+        with self.assertRaises(RuntimeError) as raised, redirect_stdout(buf):
+            with self.mod.timed_phase("ctl.error"):
+                raise exc
+        self.assertIs(raised.exception, exc)
+        if expect_perf:
+            self.assertIn("CADIVOR_PERF", buf.getvalue())
+            self.assertNotIn("a@b.com", buf.getvalue())
+            self.assertNotIn("sekrit", buf.getvalue())
+            self.assertNotIn("ordinary-failure", buf.getvalue())
+            payload = json.loads(buf.getvalue().strip().split(" ", 1)[1])
+            self.assertEqual(payload["outcome"], "error")
+        else:
+            self.assertNotIn("CADIVOR_PERF", buf.getvalue())
+
+        # 3) BaseException sentinel propagates unchanged
+        class _Sentinel(BaseException):
+            pass
+
+        sentinel = _Sentinel("sentinel")
+        after = []
+        with self.assertRaises(_Sentinel) as raised:
+            with self.mod.timed_phase("ctl.base"):
+                raise sentinel
+            after.append("continued")
+        self.assertIs(raised.exception, sentinel)
+        self.assertEqual(after, [])
+
+        # 4–7) RerunException / StopException: propagate; code after with must not run
+        for exc_factory, label in (
+            (lambda: self.RerunException(self.RerunData()), "rerun"),
+            (lambda: self.StopException(), "stop"),
+        ):
+            after = []
+            work_calls = []
+            buf = io.StringIO()
+            control_exc = exc_factory()
+            with self.assertRaises(type(control_exc)) as raised, redirect_stdout(buf):
+                with self.mod.timed_phase(f"ctl.{label}"):
+                    work_calls.append(1)
+                    raise control_exc
+                after.append("after_with")
+                work_calls.append(2)
+            self.assertIs(raised.exception, control_exc)
+            self.assertEqual(after, [])
+            self.assertEqual(work_calls, [1])
+            if expect_perf:
+                self.assertIn("CADIVOR_PERF", buf.getvalue())
+                self.assertNotIn("email=", buf.getvalue())
+            else:
+                self.assertNotIn("CADIVOR_PERF", buf.getvalue())
+
+    def test_control_flow_flag_absent(self):
+        self._assert_control_transparent(None, expect_perf=False)
+
+    def test_control_flow_flag_false(self):
+        self._assert_control_transparent("false", expect_perf=False)
+
+    def test_control_flow_flag_true(self):
+        self._assert_control_transparent("true", expect_perf=True)
+
+    def test_finally_has_no_return(self):
+        src = (REPO / "src" / "performance_timing.py").read_text(encoding="utf-8")
+        # Narrow: the timed_phase finally must not contain a return statement.
+        start = src.index("def timed_phase(")
+        finally_idx = src.index("finally:", start)
+        next_def = src.find("\ndef ", finally_idx + 1)
+        block = src[finally_idx:next_def if next_def > 0 else None]
+        self.assertNotIn("\n            return\n", block)
+        self.assertNotIn("\n        return\n", block)
+
+
+class EntrypointAuthBoundaryControlFlowTests(unittest.TestCase):
+    """Outer streamlit_app pattern: timed_phase around ensure_authenticated_or_stop."""
+
+    def setUp(self):
+        sys.modules.pop("src.performance_timing", None)
+        self.mod = importlib.import_module("src.performance_timing")
+        self.RerunException, self.StopException, self.RerunData = (
+            _streamlit_control_exceptions()
+        )
+        self._env_backup = os.environ.get("CADIVOR_STARTUP_TIMING")
+
+    def tearDown(self):
+        if self._env_backup is None:
+            os.environ.pop("CADIVOR_STARTUP_TIMING", None)
+        else:
+            os.environ["CADIVOR_STARTUP_TIMING"] = self._env_backup
+        sys.modules.pop("src.performance_timing", None)
+
+    def _reload(self, flag):
+        if flag is None:
+            os.environ.pop("CADIVOR_STARTUP_TIMING", None)
+        else:
+            os.environ["CADIVOR_STARTUP_TIMING"] = flag
+        sys.modules.pop("src.performance_timing", None)
+        self.mod = importlib.import_module("src.performance_timing")
+
+    def test_entrypoint_rerun_and_stop_block_authenticated_path(self):
+        for flag in (None, "false", "0", "true"):
+            self._reload(flag)
+
+            after_rerun = []
+            with self.assertRaises(self.RerunException):
+                with self.mod.timed_phase(
+                    "startup.ensure_authenticated", operation="resolve"
+                ):
+                    # hydration st.rerun() equivalent
+                    raise self.RerunException(self.RerunData())
+                after_rerun.append("authenticated_runtime")
+            self.assertEqual(after_rerun, [])
+
+            after_stop = []
+            with self.assertRaises(self.StopException):
+                with self.mod.timed_phase(
+                    "startup.ensure_authenticated", operation="resolve"
+                ):
+                    # signed-out st.stop() equivalent
+                    raise self.StopException()
+                after_stop.append("authenticated_runtime")
+            self.assertEqual(after_stop, [])
+
+    def test_no_cookie_multi_run_settlement_budget(self):
+        """Simulate Incognito hydration: 6 x 0.25s then signed-out stop; no auth path."""
+        from src.auth_cookies import (
+            _MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS,
+            _MAX_HYDRATION_ATTEMPTS,
+        )
+
+        self.assertEqual(_MAX_HYDRATION_ATTEMPTS, 6)
+        self.assertEqual(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS, 0.25)
+
+        for flag in (None, "false"):
+            self._reload(flag)
+            attempts = 0
+            surfaces = []
+            authenticated_crossed = False
+            sleeps = []
+
+            class _FakeSleep:
+                def __call__(self, seconds):
+                    sleeps.append(seconds)
+
+            fake_sleep = _FakeSleep()
+
+            # Multi-run loop mimicking Streamlit script restarts after RerunException
+            for _run in range(1, 20):
+                try:
+                    with self.mod.timed_phase(
+                        "startup.ensure_authenticated", operation="resolve"
+                    ):
+                        attempts += 1
+                        if attempts < _MAX_HYDRATION_ATTEMPTS:
+                            surfaces.append("boot")
+                            fake_sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
+                            raise self.RerunException(self.RerunData())
+                        surfaces.append("login")
+                        raise self.StopException()
+                    authenticated_crossed = True
+                    break
+                except self.RerunException:
+                    continue
+                except self.StopException:
+                    break
+
+            self.assertFalse(authenticated_crossed)
+            self.assertEqual(attempts, _MAX_HYDRATION_ATTEMPTS)
+            self.assertEqual(surfaces.count("boot"), _MAX_HYDRATION_ATTEMPTS - 1)
+            self.assertEqual(surfaces[-1], "login")
+            self.assertEqual(sleeps, [0.25] * (_MAX_HYDRATION_ATTEMPTS - 1))
+            self.assertAlmostEqual(sum(sleeps), 1.25, places=5)
+            self.assertNotIn("boot", surfaces[-1:])
+
+
 if __name__ == "__main__":
     unittest.main()
