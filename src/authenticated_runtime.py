@@ -3,34 +3,14 @@
 Loaded only after the auth bootstrap succeeds. Heavy imports, workspace
 initialization, and authenticated page routing live here so the public login
 shell can render without importing the full product surface.
+
+Sprint 75.2A: route-specific engines/pages are imported inside their route
+branches (or nested helpers) so Dashboard cold-start does not load the full
+product graph.
 """
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from src.alternative_engine import suggest_alternatives_v2
-from src.bom_parser import normalize_bom_columns, validate_bom, clean_bom_data
-from src.risk_engine import calculate_risk
-from src.report_generator import save_results_to_excel
-from src.ai_report_intelligence import (
-    build_ai_report_intelligence,
-    build_ai_executive_pdf,
-    build_ai_procurement_pdf,
-)
-from src.role_report_generator import build_role_report_pdf
-from src.pdf_entitlements import add_student_edition_watermark
-from src.alternative_reasoning import build_alternative_reasoning
-from src.monitoring_intelligence import build_monitoring_action_center
-from src.decision_engine import build_decision_center, STATUSES
-from src.decision_dashboard import decision_card_html, packet_header_html
-from src.decision_repository import (
-    load_decision_state,
-    save_decision_workflow,
-    add_decision_note,
-)
-from src.procurement_advisor import build_procurement_advisor
-from src.engineering_overview import build_engineering_overview
 from src.readability_system import readability_css
 from src.living_workspace import (
     compute_dashboard_summary_metrics,
@@ -45,15 +25,16 @@ from src.pages.dashboard_workspaces import (
     render_dashboard_workspace_navigation,
     render_portfolio_intelligence_workspace,
 )
-from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
-from src.design_impact_analyzer import build_design_impact, render_design_impact
-from src.cost_optimization import build_cost_optimization, render_cost_optimization
-from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
-from integrations.supplier_aggregator import get_best_part_data
-from integrations.provider_health import unverified_supplier_reason_replacements
-from src.health_score import calculate_bom_health_score, generate_executive_summary
+from src.decision_engine import build_decision_center, STATUSES
+from src.decision_dashboard import decision_card_html, packet_header_html
+from src.decision_repository import (
+    load_decision_state,
+    save_decision_workflow,
+    add_decision_note,
+)
+from src.procurement_advisor import build_procurement_advisor
+from src.engineering_overview import build_engineering_overview
 from src.plans import PLANS, get_plan, validate_bom_against_plan, resolve_effective_plan, format_limit
-from src.alternative_engine import compare_parts, suggest_alternatives_v2, rank_alternatives
 from src.auth_bootstrap import get_supabase_client, log_startup_phase, qp_value as _qp_value
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
 from src.auth_state import (
@@ -65,19 +46,6 @@ from src.auth_state import (
     begin_logout,
     finalize_logout_cookie,
 )
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
-import resend
-from src.monitoring_engine import build_monitor_record
-from src.monitoring_engine import build_monitor_record, build_alert_record
-from src.monitoring_engine import (
-    build_monitor_record,
-    build_alert_record,
-    detect_monitor_alerts,
-)
 import time
 import html
 import re
@@ -86,8 +54,6 @@ import math
 from datetime import datetime, timezone
 
 start_time = time.time()
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from src.stripe_helper import create_checkout_session
 from src.ui.milestone10a import apply_milestone10a_design_system
 from src.ui.framework import (
     inject_premium_css,
@@ -104,7 +70,6 @@ from src.ui.framework import (
 )
 from src.urls import app_checkout_url
 from src.secrets import get_secret
-from src.pages.analysis_detail import render_analysis_detail
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
     apply_alternative_finder_prefill,
@@ -153,14 +118,6 @@ from src.components.onboarding import (
 )
 from src.components.upgrade_prompt import render_upgrade_prompt
 from src.components.first_analysis_brief import render_first_analysis_brief
-from src.engineering_decision_engine import (
-    build_engineering_decision_brief,
-    render_engineering_decision_brief,
-    get_cached_decision_brief,
-    cache_decision_brief,
-    decision_brief_cache_key,
-    format_decision_brief_for_report,
-)
 from src.onboarding_service import (
     ensure_onboarding_progress,
     update_onboarding_progress,
@@ -636,6 +593,11 @@ def generate_engineering_change_package_pdf(
     comparison_snapshot=None,
 ):
     """Generate a wrapped, ECO-ready engineering change package PDF."""
+    from io import BytesIO
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib import colors
     buffer = BytesIO()
     generated_at = datetime.now(timezone.utc)
     comparison_snapshot = comparison_snapshot or {}
@@ -680,6 +642,8 @@ def generate_engineering_change_package_pdf(
     next_steps = unique_steps[:7]
 
     def _header_footer(canvas, doc):
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
         canvas.saveState()
         width, height = letter
         canvas.setFillColor(colors.HexColor("#2563EB"))
@@ -798,6 +762,7 @@ def generate_engineering_change_package_pdf(
         return html.escape(text_value)
 
     def _p(value, style=body_style, bold=False, color=None):
+        from reportlab.platypus import Paragraph
         content = _clean_text(value)
         if bold:
             content = f"<b>{content}</b>"
@@ -806,6 +771,7 @@ def generate_engineering_change_package_pdf(
         return Paragraph(content, style)
 
     def _bullet_block(items, prefix, empty_message, color, style=compact_style):
+        from reportlab.platypus import Paragraph
         if not items:
             return _p(empty_message, style)
 
@@ -1263,6 +1229,11 @@ def render_global_search_panel(user_id):
 
 
 def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_health_score, alternative_history=None):
+    from io import BytesIO
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib import colors
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -1648,6 +1619,8 @@ def run_authenticated_app() -> None:
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def get_part_data(row):
+        from integrations.supplier_aggregator import get_best_part_data
+        from src.alternative_engine import suggest_alternatives_v2
         part_number = row["mpn_normalized"]
 
         try:
@@ -1688,6 +1661,7 @@ def run_authenticated_app() -> None:
         return part_data
 
     def send_monitor_alert_email(to_email: str, subject: str, message: str):
+        import resend
         resend.api_key = get_secret("RESEND_API_KEY", required=True)
         from_email = get_secret(
             "ALERT_FROM_EMAIL",
@@ -1728,6 +1702,8 @@ def run_authenticated_app() -> None:
 
 
     def analyze_single_part(row):
+        from src.risk_engine import calculate_risk
+        from integrations.provider_health import unverified_supplier_reason_replacements
         part_data = get_part_data(row)
         risk_result = calculate_risk(part_data)
         risk_reasons = list(risk_result["risk_reasons"])
@@ -1773,6 +1749,8 @@ def run_authenticated_app() -> None:
         }
 
     def analyze_bom(df, progress_status=None, progress_bar=None):
+        from src.bom_parser import normalize_bom_columns, validate_bom, clean_bom_data
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         df = normalize_bom_columns(df)
         df = validate_bom(df)
         df = clean_bom_data(df)
@@ -1894,6 +1872,7 @@ def run_authenticated_app() -> None:
                 .rename_axis("Risk Level")
                 .reset_index(name="Components")
             )
+            import plotly.express as px
             risk_fig = px.bar(
                 risk_counts,
                 x="Risk Level",
@@ -2988,6 +2967,7 @@ def run_authenticated_app() -> None:
             """,
             unsafe_allow_html=True,
         )
+        from src.pages.analysis_detail import render_analysis_detail
         render_analysis_detail(
             current_user=current_user,
             supabase=supabase,
@@ -3075,6 +3055,7 @@ def run_authenticated_app() -> None:
             st.error(f"Monitoring history could not be loaded: {exc}")
             monitor_df = pd.DataFrame()
 
+        from src.monitoring_intelligence import build_monitoring_action_center
         monitoring_center = build_monitoring_action_center(alert_df, monitor_df)
         monitored_count = monitoring_center["monitored_components"]
         monitor_limit_label = "Unlimited" if monitoring_limit is None or is_admin else f"{int(monitoring_limit):,}"
@@ -3360,6 +3341,7 @@ def run_authenticated_app() -> None:
             key="scenario_lifecycle_event",
         )
 
+        from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
         scenario_intelligence = build_supply_scenario(
             scenario_analyses,
             scenario_parts,
@@ -3420,6 +3402,7 @@ def run_authenticated_app() -> None:
             help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
         )
 
+        from src.cost_optimization import build_cost_optimization, render_cost_optimization
         cost_intelligence = build_cost_optimization(
             cost_analyses,
             cost_parts,
@@ -3457,6 +3440,7 @@ def run_authenticated_app() -> None:
             or ""
         )
 
+        from src.design_impact_analyzer import build_design_impact, render_design_impact
         impact_intelligence = build_design_impact(
             impact_analyses,
             impact_parts,
@@ -3499,6 +3483,7 @@ def run_authenticated_app() -> None:
         except Exception:
             portfolio_alerts = []
 
+        from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
         portfolio_intelligence = build_portfolio_intelligence(
             portfolio_analyses,
             portfolio_parts,
@@ -4402,6 +4387,14 @@ def run_authenticated_app() -> None:
                     return pd.DataFrame()
 
         def _build_executive_pdf(analysis_row, parts_df, decision_brief=None):
+            from io import BytesIO
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib import colors
+            from src.engineering_decision_engine import (
+                format_decision_brief_for_report,
+            )
             buffer = BytesIO()
             doc = SimpleDocTemplate(
                 buffer,
@@ -5483,6 +5476,20 @@ def run_authenticated_app() -> None:
                     columns=["_sort_alternative_count", "_sort_risk_score"]
                 )
 
+            from src.engineering_decision_engine import (
+                build_engineering_decision_brief,
+                get_cached_decision_brief,
+                decision_brief_cache_key,
+                cache_decision_brief,
+                format_decision_brief_for_report,
+            )
+            from src.ai_report_intelligence import (
+                build_ai_report_intelligence,
+                build_ai_executive_pdf,
+                build_ai_procurement_pdf,
+            )
+            from src.role_report_generator import build_role_report_pdf
+            from src.pdf_entitlements import add_student_edition_watermark
             report_brief_key = decision_brief_cache_key(
                 analysis_id=_report_value(selected_analysis, "id", "analysis_id", default="")
             )
@@ -6159,6 +6166,7 @@ def run_authenticated_app() -> None:
             ):
                 try:
                     price_id = get_secret(secret_key, required=True)
+                    from src.stripe_helper import create_checkout_session
                     st.session_state[state_key] = create_checkout_session(
                         price_id,
                         current_user["email"],
@@ -8137,6 +8145,11 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
     if app_mode == "Alternative Finder":
+
+        from integrations.supplier_aggregator import get_best_part_data
+        from src.alternative_engine import suggest_alternatives_v2, compare_parts, rank_alternatives
+        from src.alternative_reasoning import build_alternative_reasoning
+        from src.risk_engine import calculate_risk
         return_analysis_id = _qp_value("return_analysis_id")
         if return_analysis_id:
             if st.button(
@@ -10685,6 +10698,19 @@ def run_authenticated_app() -> None:
 
         stop_authenticated_page()
     if app_mode == "BOM Analyzer":
+
+        from integrations.supplier_aggregator import get_best_part_data
+        from src.health_score import calculate_bom_health_score, generate_executive_summary
+        from src.monitoring_engine import build_monitor_record, build_alert_record, detect_monitor_alerts
+        from src.engineering_decision_engine import (
+            build_engineering_decision_brief,
+            render_engineering_decision_brief,
+            get_cached_decision_brief,
+            cache_decision_brief,
+            decision_brief_cache_key,
+        )
+        from src.report_generator import save_results_to_excel
+        from src.stripe_helper import create_checkout_session
         # Sprint 50.1.2 — returning through navigation resumes the active engineering
         # analysis instead of reopening the Saved BOM selector. A deliberate New
         # Analysis request clears this context above and continues to the selector.
