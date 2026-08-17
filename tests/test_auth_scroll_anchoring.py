@@ -67,8 +67,11 @@ class AuthScrollAnchoringSourceGuards(unittest.TestCase):
             self.assertNotIn(banned, joined)
 
     def test_stable_host_contract_intact(self):
+        # Sprint 75.2B: lazy host via _auth_surface(); still one st.empty() allocation site.
+        self.assertIn("auth_surface_host = None", self.bootstrap)
+        self.assertIn("def _auth_surface():", self.bootstrap)
         self.assertIn("auth_surface_host = st.empty()", self.bootstrap)
-        self.assertIn("with auth_surface_host.container():", self.bootstrap)
+        self.assertIn("with _auth_surface().container():", self.bootstrap)
         self.assertIn("render_auth_boot()", self.bootstrap)
         self.assertIn("show_auth_ui", self.bootstrap)
 

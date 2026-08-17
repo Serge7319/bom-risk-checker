@@ -177,8 +177,11 @@ def render_unified_shell(
                     args=(destination,),
                 )
 
+        saved_line = (
+            f"<span>{_escape(saved_summary)}</span>" if str(saved_summary or "").strip() else ""
+        )
         st.markdown(
-            f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
+            f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>{_escape(usage_summary)}</span>{saved_line}</div>""",
             unsafe_allow_html=True,
         )
         if str(plan_name).lower() in {"starter", "free", "trial", "student"}:

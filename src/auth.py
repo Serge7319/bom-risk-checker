@@ -14,8 +14,11 @@ from src.auth_state import (
     AUTH_SIGNING_IN,
     SIGNUP_PENDING_EMAIL_KEY,
     begin_manual_login,
+    clear_manual_login_attempt_metadata,
     finish_manual_login_failed,
+    manual_login_in_flight,
     mark_authenticated,
+    recover_stale_manual_login,
     render_auth_transition,
 )
 from src.config import CADIVOR_MARKETING_URL
@@ -335,6 +338,12 @@ def _log_manual_login_event(event: str, cookie_manager=None) -> None:
         pass
 
 
+def _is_streamlit_control_exception(error: BaseException) -> bool:
+    """True for Streamlit rerun/stop control flow (must not be treated as login failure)."""
+    name = type(error).__name__
+    return name in {"RerunException", "StopException"}
+
+
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Authenticate credentials in the same script run as the Login submit."""
     begin_manual_login(cookie_manager)
@@ -349,6 +358,8 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             "password": password,
         })
     except Exception as error:
+        if _is_streamlit_control_exception(error):
+            raise
         finish_manual_login_failed(cookie_manager)
         st.session_state["cadivor_root_state"] = APP_LOGIN
         message = f"Authentication failed: {error}"
@@ -448,7 +459,7 @@ def _clear_signup_password_state() -> None:
 
 def _enter_signup_confirmation_pending(email: str) -> None:
     """Enter the durable UI-only confirmation handoff and rerun."""
-    st.session_state.pop("cadivor_manual_login_in_progress", None)
+    clear_manual_login_attempt_metadata()
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state.pop("cadivor_auth_notice", None)
     st.session_state.pop("cadivor_auth_error", None)
@@ -483,6 +494,8 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
             },
         })
     except Exception as error:
+        if _is_streamlit_control_exception(error):
+            raise
         finish_manual_login_failed(cookie_manager)
         st.session_state["cadivor_root_state"] = APP_LOGIN
         message = f"Account creation failed: {error}"
@@ -807,12 +820,18 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             with st.expander("View Terms of Service"):
                 st.markdown(CADIVOR_TERMS)
 
+        _login_in_flight = auth_mode == AUTH_MODE_LOGIN and manual_login_in_flight()
         submit = st.form_submit_button(
-            AUTH_MODE_SIGNUP if auth_mode == AUTH_MODE_SIGNUP else AUTH_MODE_LOGIN,
+            "Signing in…" if _login_in_flight else (
+                AUTH_MODE_SIGNUP if auth_mode == AUTH_MODE_SIGNUP else AUTH_MODE_LOGIN
+            ),
             use_container_width=True,
+            disabled=_login_in_flight,
         )
 
-    if submit:
+    if submit and not (
+        auth_mode == AUTH_MODE_LOGIN and manual_login_in_flight()
+    ):
         if not email or not password:
             st.warning("Please enter your email and password.")
             return
@@ -1098,27 +1117,39 @@ def show_auth_ui(supabase, cookie_manager=None):
         _ensure_auth_mode_widget_seeded(_auth_mode_label_for_root(state))
 
     with st.container(key=AUTH_CARD_CONTAINER_KEY, border=False):
-        # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
-        if state == APP_SIGNUP_CONFIRMATION_PENDING:
-            _render_signup_confirmation_pending()
+        # Sprint 75.2B.1 callback precedence (relative to signing-in only):
+        # recovery → signup confirmation surfaces → pending → recent signing-in → login.
+        # Distinct from protected A1 WIP, which reorders recovery ahead of the entire
+        # LOGIN/SIGNUP/PASSWORD_RESET cascade on the dirty workspace copy.
+        recovery = _auth_recovery()
+        if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
+            clear_manual_login_attempt_metadata()
+            _render_password_recovery_form(supabase, cookie_manager)
             return
 
         if state == APP_SIGNUP_CONFIRMATION_SUCCESS:
+            clear_manual_login_attempt_metadata()
             _render_signup_confirmation_success(cookie_manager)
             return
 
         if state == APP_SIGNUP_CONFIRMATION_INVALID:
+            clear_manual_login_attempt_metadata()
             _render_signup_confirmation_invalid()
             return
 
-        if state == APP_SIGNING_IN:
-            st.session_state["cadivor_root_state"] = APP_LOGIN
-            st.session_state.pop("cadivor_manual_login_in_progress", None)
+        if state == APP_SIGNUP_CONFIRMATION_PENDING:
+            clear_manual_login_attempt_metadata()
+            _render_signup_confirmation_pending()
+            return
+
+        if recover_stale_manual_login():
             state = APP_LOGIN
-            _seed_auth_mode_widget(AUTH_MODE_LOGIN)
+
+        if manual_login_in_flight():
+            render_auth_transition("Opening your engineering workspace…")
+            return
 
         if state in (APP_LOGIN, APP_SIGNUP):
-            recovery = _auth_recovery()
             notice = st.session_state.pop("cadivor_auth_notice", None)
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
             error = st.session_state.pop("cadivor_auth_error", None)
@@ -1136,16 +1167,10 @@ def show_auth_ui(supabase, cookie_manager=None):
             return
 
         if state == APP_PASSWORD_RESET:
-            recovery = _auth_recovery()
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
             if recovery_notice:
                 st.success(recovery_notice)
             _render_password_reset_request(supabase)
-            return
-
-        recovery = _auth_recovery()
-        if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
-            _render_password_recovery_form(supabase, cookie_manager)
             return
 
         # Production routing: www.cadivor.com owns marketing; the app shows auth only.

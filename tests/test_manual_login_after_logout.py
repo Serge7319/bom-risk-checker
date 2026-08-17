@@ -105,6 +105,8 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         st, _auth_cookies, auth_state = self._load(
             {
                 "cadivor_manual_login_in_progress": True,
+                "cadivor_manual_login_started_at": __import__("time").time(),
+                "cadivor_manual_login_attempt_id": "test-attempt",
                 "cadivor_root_state": "signing_in",
             },
             context_cookies=context,
@@ -307,10 +309,16 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
 
     def test_manual_login_in_flight_helper(self):
         st, _auth_cookies, auth_state = self._load(
-            {"cadivor_manual_login_in_progress": True}
+            {
+                "cadivor_manual_login_in_progress": True,
+                "cadivor_manual_login_started_at": __import__("time").time(),
+                "cadivor_manual_login_attempt_id": "test-attempt",
+            }
         )
         self.assertTrue(auth_state.manual_login_in_flight())
         st.session_state.pop("cadivor_manual_login_in_progress")
+        st.session_state.pop("cadivor_manual_login_started_at", None)
+        st.session_state.pop("cadivor_manual_login_attempt_id", None)
         self.assertFalse(auth_state.manual_login_in_flight())
 
     def test_bootstrap_routes_signing_in_without_auth_boundary_failed(self):
@@ -336,6 +344,8 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         st = _install_streamlit_stub(
             {
                 "cadivor_manual_login_in_progress": True,
+                "cadivor_manual_login_started_at": __import__("time").time(),
+                "cadivor_manual_login_attempt_id": "test-attempt",
                 "cadivor_root_state": "signing_in",
             }
         )

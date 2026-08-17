@@ -12,9 +12,10 @@ import json
 import os
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 from urllib.parse import unquote
 
 import streamlit as st
@@ -41,9 +42,26 @@ APP_AUTHENTICATED = "authenticated"
 
 SIGNUP_PENDING_EMAIL_KEY = "cadivor_signup_pending_email"
 
+# Sprint 75.2B.1 — privacy-safe manual login attempt metadata (no email/password/tokens).
+MANUAL_LOGIN_IN_PROGRESS_KEY = "cadivor_manual_login_in_progress"
+MANUAL_LOGIN_STARTED_AT_KEY = "cadivor_manual_login_started_at"
+MANUAL_LOGIN_ATTEMPT_ID_KEY = "cadivor_manual_login_attempt_id"
+# Conservative production auth RPC window (30–60s band): long enough for slow
+# Supabase round-trips, short enough that an interrupted attempt cannot brick Login.
+MANUAL_LOGIN_STALE_TIMEOUT_SECONDS = 45
+STALE_MANUAL_LOGIN_MESSAGE = (
+    "Your previous sign-in attempt did not finish. Please try again."
+)
+ManualLoginState = Literal["none", "inflight", "stale"]
+
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
 _MAX_RESTORE_ATTEMPTS = 1
 _RESTORE_DELAY_SECONDS = 0.0
+_MANUAL_LOGIN_ATTEMPT_KEYS = (
+    MANUAL_LOGIN_IN_PROGRESS_KEY,
+    MANUAL_LOGIN_STARTED_AT_KEY,
+    MANUAL_LOGIN_ATTEMPT_ID_KEY,
+)
 
 _LOGOUT_SURVIVOR_KEYS = frozenset(
     {
@@ -160,6 +178,7 @@ def clear_auth_session(*, keep_status: bool = False, transition_reason: str = "c
     st.session_state.pop("cadivor_auth_cookie_persisted_run_id", None)
     st.session_state.pop("cadivor_auth_transition", None)
     st.session_state.pop("cadivor_auth_restore_attempts", None)
+    clear_manual_login_attempt_metadata()
     if not keep_status:
         st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
 
@@ -240,13 +259,13 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
         str(session.refresh_token),
     )
     st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
-    manual_login_success = bool(st.session_state.get("cadivor_manual_login_in_progress"))
+    manual_login_success = bool(st.session_state.get(MANUAL_LOGIN_IN_PROGRESS_KEY))
     st.session_state.pop("cadivor_force_signed_out", None)
     st.session_state.pop("cadivor_auth_ui_was_shown", None)
     st.session_state.pop("cadivor_logout_in_progress", None)
     st.session_state.pop("cadivor_explicit_logout", None)
     st.session_state.pop("cadivor_logout_committed", None)
-    st.session_state.pop("cadivor_manual_login_in_progress", None)
+    clear_manual_login_attempt_metadata()
     st.session_state.pop("cadivor_auth_submission", None)
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
@@ -289,6 +308,12 @@ def mark_signed_out(reason: str = "signed_out") -> None:
     _log("signed_out", reason=reason)
 
 
+def clear_manual_login_attempt_metadata() -> None:
+    """Drop privacy-safe attempt metadata; never logs credentials or tokens."""
+    for key in _MANUAL_LOGIN_ATTEMPT_KEYS:
+        st.session_state.pop(key, None)
+
+
 def begin_manual_login(cookie_manager: Any = None) -> None:
     """Consume explicit-logout suppression for a deliberate credential login."""
     try:
@@ -308,7 +333,9 @@ def begin_manual_login(cookie_manager: Any = None) -> None:
     st.session_state.pop("cadivor_logout_committed", None)
     st.session_state.pop("cadivor_logout_reload_pending", None)
     st.session_state.pop("cadivor_auth_submission", None)
-    st.session_state["cadivor_manual_login_in_progress"] = True
+    st.session_state[MANUAL_LOGIN_IN_PROGRESS_KEY] = True
+    st.session_state[MANUAL_LOGIN_STARTED_AT_KEY] = time.time()
+    st.session_state[MANUAL_LOGIN_ATTEMPT_ID_KEY] = str(uuid.uuid4())
 
     try:
         from src.auth_cookies import (
@@ -336,7 +363,7 @@ def begin_manual_login(cookie_manager: Any = None) -> None:
 
 def finish_manual_login_failed(cookie_manager: Any = None) -> None:
     """Re-arm signed-out protection after a failed deliberate login attempt."""
-    st.session_state.pop("cadivor_manual_login_in_progress", None)
+    clear_manual_login_attempt_metadata()
     st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
 
@@ -361,9 +388,55 @@ def finish_manual_login_failed(cookie_manager: Any = None) -> None:
         pass
 
 
-def manual_login_in_flight() -> bool:
-    """True while a same-run manual credential transaction is executing."""
-    return bool(st.session_state.get("cadivor_manual_login_in_progress"))
+def manual_login_state(*, now: float | None = None) -> ManualLoginState:
+    """Classify manual login attempt: none | inflight | stale.
+
+    Timing is based only on ``cadivor_manual_login_started_at``. Missing
+    timestamps with leftover signing-in flags are treated as stale so Login
+    cannot remain permanently disabled after an interrupted request.
+    """
+    in_progress = bool(st.session_state.get(MANUAL_LOGIN_IN_PROGRESS_KEY))
+    started_raw = st.session_state.get(MANUAL_LOGIN_STARTED_AT_KEY)
+    attempt_id = st.session_state.get(MANUAL_LOGIN_ATTEMPT_ID_KEY)
+    root_signing = str(st.session_state.get("cadivor_root_state") or "") == APP_SIGNING_IN
+    auth_signing = str(st.session_state.get("cadivor_auth_status") or "") == AUTH_SIGNING_IN
+    has_attempt_signal = bool(in_progress or started_raw is not None or attempt_id or root_signing or auth_signing)
+    if not has_attempt_signal:
+        return "none"
+
+    if started_raw is None:
+        return "stale"
+    try:
+        started_at = float(started_raw)
+    except (TypeError, ValueError):
+        return "stale"
+
+    clock = time.time() if now is None else float(now)
+    if (clock - started_at) > MANUAL_LOGIN_STALE_TIMEOUT_SECONDS:
+        return "stale"
+    if in_progress or root_signing or auth_signing:
+        return "inflight"
+    return "none"
+
+
+def recover_stale_manual_login(*, now: float | None = None) -> bool:
+    """Clear stale attempt metadata and restore an enabled Login surface.
+
+    Returns True when a stale attempt was recovered. Does not retry Supabase.
+    """
+    if manual_login_state(now=now) != "stale":
+        return False
+    clear_manual_login_attempt_metadata()
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state["cadivor_auth_error"] = STALE_MANUAL_LOGIN_MESSAGE
+    _log("stale_manual_login_recovered")
+    return True
+
+
+def manual_login_in_flight(*, now: float | None = None) -> bool:
+    """True only for a recent in-flight credential transaction (not stale)."""
+    return manual_login_state(now=now) == "inflight"
 
 
 def _remote_sign_out(supabase: Any) -> None:
@@ -684,7 +757,8 @@ def _resolve_pending_credentials(
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
     """Resolve UNKNOWN -> SIGNED_OUT/AUTHENTICATED before either shell renders."""
-    manual_login = bool(st.session_state.get("cadivor_manual_login_in_progress"))
+    recover_stale_manual_login()
+    manual_login = manual_login_in_flight()
 
     if not manual_login:
         if explicit_logout_pending():
