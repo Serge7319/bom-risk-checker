@@ -143,7 +143,7 @@ class ManualLoginAtomicTests(unittest.TestCase):
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "bad")
 
         mark_mock.assert_not_called()
-        st.rerun.assert_not_called()
+        st.rerun.assert_called_once()
 
     def test_auth_source_has_no_pending_submission_storage(self):
         source = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")

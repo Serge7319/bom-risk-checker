@@ -52,6 +52,12 @@ MANUAL_LOGIN_STALE_TIMEOUT_SECONDS = 45
 STALE_MANUAL_LOGIN_MESSAGE = (
     "Your previous sign-in attempt did not finish. Please try again."
 )
+MANUAL_LOGIN_FAILURE_MESSAGE = (
+    "Cadivor could not sign you in. Check your credentials and try again."
+)
+MANUAL_LOGIN_TRANSPORT_TIMEOUT_MESSAGE = (
+    "Cadivor could not complete sign-in in time. Please try again."
+)
 ManualLoginState = Literal["none", "inflight", "stale"]
 
 _AUTH_KEYS = ("user", "access_token", "refresh_token")

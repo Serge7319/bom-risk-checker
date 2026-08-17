@@ -16,6 +16,8 @@ from src.auth_state import (
     begin_manual_login,
     clear_manual_login_attempt_metadata,
     finish_manual_login_failed,
+    MANUAL_LOGIN_FAILURE_MESSAGE,
+    MANUAL_LOGIN_TRANSPORT_TIMEOUT_MESSAGE,
     manual_login_in_flight,
     mark_authenticated,
     recover_stale_manual_login,
@@ -344,6 +346,42 @@ def _is_streamlit_control_exception(error: BaseException) -> bool:
     return name in {"RerunException", "StopException"}
 
 
+def _is_login_transport_timeout(error: BaseException) -> bool:
+    """True when the existing Supabase/httpx client raised a phase/idle timeout."""
+    try:
+        import httpx
+    except ImportError:
+        return False
+    if isinstance(error, httpx.TimeoutException):
+        return True
+    cause = getattr(error, "__cause__", None)
+    return isinstance(cause, httpx.TimeoutException)
+
+
+def _manual_login_failure_category(error: BaseException) -> str:
+    """Redacted failure category for server logs. Never includes credentials or payloads."""
+    if _is_login_transport_timeout(error):
+        return "transport_timeout"
+    name = type(error).__name__
+    if "Auth" in name:
+        return "invalid_credentials_or_auth_failure"
+    return "provider_failure"
+
+
+def _fail_manual_login_and_rerun(
+    cookie_manager,
+    *,
+    message: str,
+    category: str,
+) -> None:
+    """Clear in-flight Login state, store a safe message, then rebuild the auth surface."""
+    finish_manual_login_failed(cookie_manager)
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    st.session_state["cadivor_auth_error"] = message
+    _log_manual_login_event(category, cookie_manager)
+    st.rerun()
+
+
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Authenticate credentials in the same script run as the Login submit."""
     begin_manual_login(cookie_manager)
@@ -360,20 +398,25 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     except Exception as error:
         if _is_streamlit_control_exception(error):
             raise
-        finish_manual_login_failed(cookie_manager)
-        st.session_state["cadivor_root_state"] = APP_LOGIN
-        message = f"Authentication failed: {error}"
-        st.session_state["cadivor_auth_error"] = message
-        st.error(message)
+        message = (
+            MANUAL_LOGIN_TRANSPORT_TIMEOUT_MESSAGE
+            if _is_login_transport_timeout(error)
+            else MANUAL_LOGIN_FAILURE_MESSAGE
+        )
+        _fail_manual_login_and_rerun(
+            cookie_manager,
+            message=message,
+            category=_manual_login_failure_category(error),
+        )
         return
 
     _log_manual_login_event("manual_login_provider_completed", cookie_manager)
     if not getattr(response, "session", None):
-        finish_manual_login_failed(cookie_manager)
-        st.session_state["cadivor_root_state"] = APP_LOGIN
-        message = "Login failed: no session was returned. Please confirm your email and try again."
-        st.session_state["cadivor_auth_error"] = message
-        st.error(message)
+        _fail_manual_login_and_rerun(
+            cookie_manager,
+            message=MANUAL_LOGIN_FAILURE_MESSAGE,
+            category="no_session",
+        )
         return
 
     mark_authenticated(response.user, response.session, cookie_manager)

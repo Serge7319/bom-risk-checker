@@ -119,8 +119,12 @@ class LoginAtomicity752BTests(unittest.TestCase):
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
         finish.assert_called_once()
         self.assertEqual(st.session_state["cadivor_root_state"], auth_state.APP_LOGIN)
-        self.assertIn("Authentication failed", st.session_state.get("cadivor_auth_error", ""))
-        st.rerun.assert_not_called()
+        self.assertEqual(
+            st.session_state.get("cadivor_auth_error"),
+            auth_state.MANUAL_LOGIN_FAILURE_MESSAGE,
+        )
+        self.assertNotIn("bad creds", str(st.session_state.get("cadivor_auth_error", "")))
+        st.rerun.assert_called_once()
 
     def test_supabase_exception_clears_attempt_metadata(self):
         st, auth, auth_state = self._load_auth()
@@ -131,6 +135,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         self.assertIsNone(st.session_state.get("cadivor_manual_login_started_at"))
         self.assertIsNone(st.session_state.get("cadivor_manual_login_attempt_id"))
         self.assertEqual(st.session_state["cadivor_root_state"], auth_state.APP_LOGIN)
+        st.rerun.assert_called_once()
 
     def test_rpc_timeout_exception_clears_attempt_metadata(self):
         st, auth, auth_state = self._load_auth()
@@ -141,6 +146,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         self.assertIsNone(st.session_state.get("cadivor_manual_login_started_at"))
         self.assertIsNone(st.session_state.get("cadivor_manual_login_attempt_id"))
         self.assertEqual(st.session_state["cadivor_root_state"], auth_state.APP_LOGIN)
+        st.rerun.assert_called_once()
 
     def test_successful_login_reruns_without_second_click(self):
         st, auth, _auth_state = self._load_auth()
