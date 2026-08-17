@@ -181,6 +181,14 @@ def _auth_css():
         [data-testid="stMain"]:has(.st-key-cadivor_auth_card){
             overflow-anchor:none;
         }
+        /* Auth-only: collapse outer main vertical-block gap while login/signup is present.
+           Zero-height prior-run slots still exist in DOM but must not reserve ~16px each. */
+        [data-testid="stMain"]:has(.st-key-cadivor_auth_card)
+          [data-testid="stMainBlockContainer"]
+          > [data-testid="stVerticalBlock"]{
+            gap:0!important;
+            row-gap:0!important;
+        }
         /* Auth login / signup card — centered, fixed width on all displays */
         [data-testid="stAppViewContainer"]:has(.st-key-cadivor_auth_card){
             display:flex!important;

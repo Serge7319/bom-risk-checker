@@ -586,6 +586,13 @@ def render_auth_transition(message: str = "Preparing Cadivor") -> None:
         /* Auth-only: disable Chrome scroll anchoring on Streamlit's stMain scrollport
            while the compact boot surface is present (Incognito first-paint clipping). */
         [data-testid="stMain"]:has(.cv-auth-transition){{overflow-anchor:none}}
+        /* Auth-only: collapse outer main vertical-block gap while boot/transition is present. */
+        [data-testid="stMain"]:has(.cv-auth-transition)
+          [data-testid="stMainBlockContainer"]
+          > [data-testid="stVerticalBlock"]{{
+            gap:0!important;
+            row-gap:0!important;
+        }}
         /* Content-height signed-out boot shell — never reserve a full viewport. */
         .cv-auth-transition{{width:min(94vw,480px);min-height:0;height:auto;overflow-anchor:none;margin:clamp(24px,7vh,72px) auto;padding:clamp(32px,6vh,56px) 24px;display:grid;place-items:center;box-sizing:border-box;background:radial-gradient(circle at 50% 35%,#fff 0,#F7F9FC 42%,#EEF3F8 100%);font-family:Inter,system-ui,sans-serif;border-radius:22px}}
         .cv-auth-transition-card{{width:min(420px,100%);padding:30px 30px 26px;border:1px solid #DCE4EE;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 24px 70px rgba(15,23,42,.10);text-align:center}}

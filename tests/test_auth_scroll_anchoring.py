@@ -52,6 +52,32 @@ class AuthScrollAnchoringSourceGuards(unittest.TestCase):
         )
         self.assertEqual(len(matches), 1)
 
+    def test_auth_css_has_scoped_main_vertical_block_gap_reset(self):
+        self.assertIn(
+            '[data-testid="stMain"]:has(.st-key-cadivor_auth_card)',
+            self.auth,
+        )
+        self.assertRegex(
+            self.auth,
+            r'\[data-testid="stMain"\]:has\(\.st-key-cadivor_auth_card\)\s*\n\s*\[data-testid="stMainBlockContainer"\]\s*\n\s*>\s*\[data-testid="stVerticalBlock"\]\s*\{\s*gap:0!important;\s*row-gap:0!important;\s*\}',
+        )
+        matches = re.findall(
+            r'\[data-testid="stMainBlockContainer"\]\s*>\s*\[data-testid="stVerticalBlock"\]\s*\{\s*gap:0!important;\s*row-gap:0!important;',
+            self.auth,
+        )
+        self.assertEqual(len(matches), 1)
+
+    def test_boot_css_has_scoped_main_vertical_block_gap_reset(self):
+        self.assertRegex(
+            self.state,
+            r'\[data-testid="stMain"\]:has\(\.cv-auth-transition\)\s*\n\s*\[data-testid="stMainBlockContainer"\]\s*\n\s*>\s*\[data-testid="stVerticalBlock"\]\s*\{\{\s*gap:0!important;\s*row-gap:0!important;\s*\}\}',
+        )
+        matches = re.findall(
+            r'\[data-testid="stMainBlockContainer"\]\s*>\s*\[data-testid="stVerticalBlock"\]\s*\{\{\s*gap:0!important;\s*row-gap:0!important;',
+            self.state,
+        )
+        self.assertEqual(len(matches), 1)
+
     def test_no_unscoped_stmain_overflow_anchor(self):
         joined = self.auth + "\n" + self.state
         # Forbid bare stMain { overflow-anchor:none } without :has(...)
@@ -60,6 +86,17 @@ class AuthScrollAnchoringSourceGuards(unittest.TestCase):
             joined,
         ):
             self.fail(f"unscoped stMain overflow-anchor rule found: {m.group(0)[:120]}")
+
+    def test_no_unscoped_main_vertical_block_gap_reset(self):
+        joined = self.auth + "\n" + self.state
+        for m in re.finditer(
+            r'\[data-testid="stMainBlockContainer"\]\s*>\s*\[data-testid="stVerticalBlock"\]\s*\{[^}]*gap:0!important',
+            joined,
+        ):
+            context_start = max(0, m.start() - 120)
+            context = joined[context_start : m.start() + 80]
+            if ':has(.st-key-cadivor_auth_card)' not in context and ':has(.cv-auth-transition)' not in context:
+                self.fail(f"unscoped main vertical-block gap reset found: {m.group(0)[:120]}")
 
     def test_no_javascript_scroll_calls(self):
         joined = "\n".join([self.auth, self.state, self.bootstrap])
@@ -174,6 +211,8 @@ class AuthScrollAnchoringLifecycleTests(unittest.TestCase):
         joined = "\n".join(self.bodies)
         self.assertIn('[data-testid="stMain"]:has(.cv-auth-transition)', joined)
         self.assertIn("overflow-anchor:none", joined)
+        self.assertIn("gap:0!important", joined)
+        self.assertIn("row-gap:0!important", joined)
         self.assertIn("cv-auth-transition", joined)
         self.assertIn("Restoring your secure workspace…", joined)
 
@@ -183,6 +222,8 @@ class AuthScrollAnchoringLifecycleTests(unittest.TestCase):
         joined = "\n".join(self.bodies)
         self.assertIn('[data-testid="stMain"]:has(.st-key-cadivor_auth_card)', joined)
         self.assertRegex(joined, r"overflow-anchor\s*:\s*none")
+        self.assertIn("gap:0!important", joined)
+        self.assertIn("row-gap:0!important", joined)
         self.assertNotIn("Restoring your secure workspace…", joined)
         self.assertEqual(
             self.st.container.call_args.kwargs.get("key"),
