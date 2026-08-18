@@ -14,13 +14,8 @@ from src.auth_state import (
     AUTH_SIGNING_IN,
     SIGNUP_PENDING_EMAIL_KEY,
     begin_manual_login,
-    clear_manual_login_attempt_metadata,
     finish_manual_login_failed,
-    MANUAL_LOGIN_FAILURE_MESSAGE,
-    MANUAL_LOGIN_TRANSPORT_TIMEOUT_MESSAGE,
-    manual_login_in_flight,
     mark_authenticated,
-    recover_stale_manual_login,
     render_auth_transition,
 )
 from src.config import CADIVOR_MARKETING_URL
@@ -189,7 +184,7 @@ def _auth_css():
             background:var(--cadivor-bg)!important;
         }
         .st-key-cadivor_auth_card{
-            width:min(94vw,480px)!important;
+            width:min(480px,92vw)!important;
             max-width:480px!important;
             margin:7vh auto 48px auto!important;
             padding:38px 38px 34px 38px!important;
@@ -340,108 +335,34 @@ def _log_manual_login_event(event: str, cookie_manager=None) -> None:
         pass
 
 
-def _is_streamlit_control_exception(error: BaseException) -> bool:
-    """True for Streamlit rerun/stop control flow (must not be treated as login failure)."""
-    name = type(error).__name__
-    return name in {"RerunException", "StopException"}
-
-
-def _is_login_transport_timeout(error: BaseException) -> bool:
-    """True when the existing Supabase/httpx client raised a phase/idle timeout."""
-    try:
-        import httpx
-    except ImportError:
-        return False
-    if isinstance(error, httpx.TimeoutException):
-        return True
-    cause = getattr(error, "__cause__", None)
-    return isinstance(cause, httpx.TimeoutException)
-
-
-def _manual_login_failure_category(error: BaseException) -> str:
-    """Redacted failure category for server logs. Never includes credentials or payloads."""
-    if _is_login_transport_timeout(error):
-        return "transport_timeout"
-    name = type(error).__name__
-    if "Auth" in name:
-        return "invalid_credentials_or_auth_failure"
-    return "provider_failure"
-
-
-def _fail_manual_login_and_rerun(
-    cookie_manager,
-    *,
-    message: str,
-    category: str,
-) -> None:
-    """Clear in-flight Login state, store a safe message, then rebuild the auth surface."""
-    finish_manual_login_failed(cookie_manager)
-    st.session_state["cadivor_root_state"] = APP_LOGIN
-    st.session_state["cadivor_auth_error"] = message
-    _log_manual_login_event(category, cookie_manager)
-    st.rerun()
-
-
-def _sign_in_with_password_bounded(email: str, password: str):
-    """Login-only Supabase auth call with a dedicated short-timeout HTTP client."""
-    import httpx
-    from supabase import create_client
-    from supabase.lib.client_options import SyncClientOptions
-    from supabase_auth import SyncMemoryStorage
-
-    from src.secrets import get_secret
-
-    url = get_secret("SUPABASE_URL", required=True)
-    key = get_secret("SUPABASE_KEY", required=True)
-    timeout = httpx.Timeout(5.0, read=10.0, write=10.0, pool=5.0)
-    http_client = httpx.Client(timeout=timeout)
-    try:
-        options = SyncClientOptions(
-            flow_type="pkce",
-            storage=SyncMemoryStorage(),
-            httpx_client=http_client,
-        )
-        client = create_client(url, key, options=options)
-        return client.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
-        })
-    finally:
-        http_client.close()
-
-
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Authenticate credentials in the same script run as the Login submit."""
     begin_manual_login(cookie_manager)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
+    render_auth_transition("Opening your engineering workspace…")
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
-        with st.spinner("Signing in…"):
-            response = _sign_in_with_password_bounded(email, password)
+        response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
     except Exception as error:
-        if _is_streamlit_control_exception(error):
-            raise
-        message = (
-            MANUAL_LOGIN_TRANSPORT_TIMEOUT_MESSAGE
-            if _is_login_transport_timeout(error)
-            else MANUAL_LOGIN_FAILURE_MESSAGE
-        )
-        _fail_manual_login_and_rerun(
-            cookie_manager,
-            message=message,
-            category=_manual_login_failure_category(error),
-        )
+        finish_manual_login_failed(cookie_manager)
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        message = f"Authentication failed: {error}"
+        st.session_state["cadivor_auth_error"] = message
+        st.error(message)
         return
 
     _log_manual_login_event("manual_login_provider_completed", cookie_manager)
     if not getattr(response, "session", None):
-        _fail_manual_login_and_rerun(
-            cookie_manager,
-            message=MANUAL_LOGIN_FAILURE_MESSAGE,
-            category="no_session",
-        )
+        finish_manual_login_failed(cookie_manager)
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        message = "Login failed: no session was returned. Please confirm your email and try again."
+        st.session_state["cadivor_auth_error"] = message
+        st.error(message)
         return
 
     mark_authenticated(response.user, response.session, cookie_manager)
@@ -527,7 +448,7 @@ def _clear_signup_password_state() -> None:
 
 def _enter_signup_confirmation_pending(email: str) -> None:
     """Enter the durable UI-only confirmation handoff and rerun."""
-    clear_manual_login_attempt_metadata()
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state.pop("cadivor_auth_notice", None)
     st.session_state.pop("cadivor_auth_error", None)
@@ -562,8 +483,6 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
             },
         })
     except Exception as error:
-        if _is_streamlit_control_exception(error):
-            raise
         finish_manual_login_failed(cookie_manager)
         st.session_state["cadivor_root_state"] = APP_LOGIN
         message = f"Account creation failed: {error}"
@@ -888,18 +807,12 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             with st.expander("View Terms of Service"):
                 st.markdown(CADIVOR_TERMS)
 
-        _login_in_flight = auth_mode == AUTH_MODE_LOGIN and manual_login_in_flight()
         submit = st.form_submit_button(
-            "Signing in…" if _login_in_flight else (
-                AUTH_MODE_SIGNUP if auth_mode == AUTH_MODE_SIGNUP else AUTH_MODE_LOGIN
-            ),
+            AUTH_MODE_SIGNUP if auth_mode == AUTH_MODE_SIGNUP else AUTH_MODE_LOGIN,
             use_container_width=True,
-            disabled=_login_in_flight,
         )
 
-    if submit and not (
-        auth_mode == AUTH_MODE_LOGIN and manual_login_in_flight()
-    ):
+    if submit:
         if not email or not password:
             st.warning("Please enter your email and password.")
             return
@@ -1185,35 +1098,27 @@ def show_auth_ui(supabase, cookie_manager=None):
         _ensure_auth_mode_widget_seeded(_auth_mode_label_for_root(state))
 
     with st.container(key=AUTH_CARD_CONTAINER_KEY, border=False):
-        # Sprint 75.2B.1 callback precedence (relative to signing-in only):
-        # recovery → signup confirmation surfaces → pending → recent signing-in → login.
-        # Distinct from protected A1 WIP, which reorders recovery ahead of the entire
-        # LOGIN/SIGNUP/PASSWORD_RESET cascade on the dirty workspace copy.
-        recovery = _auth_recovery()
-        if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
-            clear_manual_login_attempt_metadata()
-            _render_password_recovery_form(supabase, cookie_manager)
+        # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
+        if state == APP_SIGNUP_CONFIRMATION_PENDING:
+            _render_signup_confirmation_pending()
             return
 
         if state == APP_SIGNUP_CONFIRMATION_SUCCESS:
-            clear_manual_login_attempt_metadata()
             _render_signup_confirmation_success(cookie_manager)
             return
 
         if state == APP_SIGNUP_CONFIRMATION_INVALID:
-            clear_manual_login_attempt_metadata()
             _render_signup_confirmation_invalid()
             return
 
-        if state == APP_SIGNUP_CONFIRMATION_PENDING:
-            clear_manual_login_attempt_metadata()
-            _render_signup_confirmation_pending()
-            return
-
-        if recover_stale_manual_login():
+        if state == APP_SIGNING_IN:
+            st.session_state["cadivor_root_state"] = APP_LOGIN
+            st.session_state.pop("cadivor_manual_login_in_progress", None)
             state = APP_LOGIN
+            _seed_auth_mode_widget(AUTH_MODE_LOGIN)
 
-        if state in (APP_LOGIN, APP_SIGNUP, APP_SIGNING_IN):
+        if state in (APP_LOGIN, APP_SIGNUP):
+            recovery = _auth_recovery()
             notice = st.session_state.pop("cadivor_auth_notice", None)
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
             error = st.session_state.pop("cadivor_auth_error", None)
@@ -1231,10 +1136,16 @@ def show_auth_ui(supabase, cookie_manager=None):
             return
 
         if state == APP_PASSWORD_RESET:
+            recovery = _auth_recovery()
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
             if recovery_notice:
                 st.success(recovery_notice)
             _render_password_reset_request(supabase)
+            return
+
+        recovery = _auth_recovery()
+        if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
+            _render_password_recovery_form(supabase, cookie_manager)
             return
 
         # Production routing: www.cadivor.com owns marketing; the app shows auth only.

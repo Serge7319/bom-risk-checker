@@ -261,18 +261,12 @@ def ensure_authenticated_or_stop() -> None:
         supabase = get_supabase_client()
     cookie_manager = None
 
-    # Sprint 75.2B: create the auth surface host lazily. Established authenticated
-    # navigations must not allocate an empty slot that clears chrome before the
-    # workspace shell remounts. Signed-out / recovery / hydration paths still get
-    # one stable host for boot↔login replacement.
+    # One stable authentication surface slot for this script run.
+    # Created before CookieManager mount / hydration so boot and signed-out UI
+    # replace each other in the same Streamlit delta position instead of
+    # stacking as top-level siblings during stale-element transitions.
     # Do not store this DeltaGenerator in session_state.
-    auth_surface_host = None
-
-    def _auth_surface():
-        nonlocal auth_surface_host
-        if auth_surface_host is None:
-            auth_surface_host = st.empty()
-        return auth_surface_host
+    auth_surface_host = st.empty()
 
     log_auth_correlation(
         "bootstrap_entry",
@@ -312,7 +306,7 @@ def ensure_authenticated_or_stop() -> None:
     if password_recovery_active():
         log_startup_phase("render_password_recovery_ui")
         _render_t0 = time.perf_counter()
-        with _auth_surface().container():
+        with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
         emit_timing(
             "auth.render_signed_out",
@@ -335,7 +329,7 @@ def ensure_authenticated_or_stop() -> None:
     if signup_confirmation_surface_active():
         log_startup_phase("render_signup_confirmation_ui")
         _render_t0 = time.perf_counter()
-        with _auth_surface().container():
+        with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
         emit_timing(
             "auth.render_signed_out",
@@ -402,7 +396,7 @@ def ensure_authenticated_or_stop() -> None:
         begin_logout(supabase, get_auth_cookie_manager(mount=True))
         if handle_explicit_logout_if_pending():
             log_startup_phase("logout_redirect")
-            _auth_surface().empty()
+            auth_surface_host.empty()
             emit_timing(
                 "auth.boundary",
                 duration_ms=0.0,
@@ -434,7 +428,7 @@ def ensure_authenticated_or_stop() -> None:
                     finalize_manager_fallback_hydration_timeout(cookie_manager)
             else:
                 _hyd_t0 = time.perf_counter()
-                with _auth_surface().container():
+                with auth_surface_host.container():
                     render_auth_boot()
                 log_auth_restore("manager_fallback_hydration_rerun", attempt=attempts)
                 time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
@@ -468,7 +462,7 @@ def ensure_authenticated_or_stop() -> None:
                         finalize_auth_cookie_hydration_timeout(cookie_manager)
                 else:
                     _hyd_t0 = time.perf_counter()
-                    with _auth_surface().container():
+                    with auth_surface_host.container():
                         render_auth_boot()
                     log_auth_restore("hydration_wait_rerun", attempt=attempts)
                     time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
@@ -524,7 +518,7 @@ def ensure_authenticated_or_stop() -> None:
             transition_reason=auth_ui_reason,
         )
         _render_t0 = time.perf_counter()
-        with _auth_surface().container():
+        with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
         emit_timing(
             "auth.render_signed_out",
@@ -544,9 +538,8 @@ def ensure_authenticated_or_stop() -> None:
         )
         st.stop()
 
-    # Authenticated workspace: clear any auth surface opened this run.
-    if auth_surface_host is not None:
-        auth_surface_host.empty()
+    # Authenticated workspace: clear the auth surface so no boot/card height remains.
+    auth_surface_host.empty()
 
     if cookie_manager is None:
         cookie_manager = get_auth_cookie_manager(mount=True)

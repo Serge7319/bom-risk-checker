@@ -91,7 +91,7 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
                 break
         self.assertIsNotNone(show)
         source_segment = ast.get_source_segment(self.auth, show) or ""
-        idx_login = source_segment.find("if state in (APP_LOGIN, APP_SIGNUP, APP_SIGNING_IN):")
+        idx_login = source_segment.find("if state in (APP_LOGIN, APP_SIGNUP):")
         # A1 places password_recovery_active() before the login/signup block.
         a1 = "if recovery.password_recovery_active() or state == APP_PASSWORD_RECOVERY:"
         idx_a1 = source_segment.find(a1)

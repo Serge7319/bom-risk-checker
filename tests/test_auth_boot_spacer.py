@@ -57,10 +57,8 @@ class AuthBootSpacerCssTests(unittest.TestCase):
         compact = re.sub(r"\s+", "", self.rule)
         self.assertIn("height:auto", compact)
         self.assertIn("min-height:0", compact)
-        self.assertTrue(
-            "display:flex" in compact or "display:grid" in compact,
-            "expected compact layout on boot shell",
-        )
+        self.assertIn("display:grid", compact)
+        self.assertIn("place-items:center", compact)
         self.assertIn("box-sizing:border-box", compact)
         self.assertTrue(
             "padding:" in compact or "padding-top:" in compact,
@@ -74,10 +72,6 @@ class AuthBootSpacerCssTests(unittest.TestCase):
         self.assertNotIn("position:absolute", compact)
         self.assertNotIn("position:fixed", compact)
         self.assertNotIn("overflow:hidden", compact)
-
-    def test_boot_transition_has_no_nested_card_shell(self):
-        self.assertNotIn("cv-auth-transition-card", self.source)
-        self.assertNotIn("box-shadow:0 24px 70px", self.source)
 
 
 class AuthBootSpacerLifecycleTests(unittest.TestCase):

@@ -1557,41 +1557,6 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
 
 
-def _shell_saved_summary(saved_bom_count, selected_plan) -> str:
-    """Format saved-BOM usage for the early workspace shell.
-
-    The early workspace shell omits saved-BOM usage until a future live-fragment
-    design; it never displays stale or unknown application data.
-
-    * ``None`` / unknown / malformed → empty string (no saved-BOM line).
-    * Valid ``0`` or positive int → live count with plan limit (from a real value).
-    """
-    if saved_bom_count is None:
-        return ""
-    try:
-        count = int(saved_bom_count)
-    except (TypeError, ValueError):
-        return ""
-    limit_label = format_limit(selected_plan["max_saved_boms"], "saved BOM")
-    return f"{count:,} / {limit_label}"
-
-
-def _localized_cold_route_load(load_host, *, message: str, module_name: str, import_fn):
-    """Show a localized loader while importing a cold route module; always clear.
-
-    Exceptions (including ``ImportError``) propagate unchanged after cleanup.
-    Streamlit control exceptions that subclass ``BaseException`` are not swallowed.
-    """
-    try:
-        import sys as _sys
-
-        if module_name not in _sys.modules:
-            load_host.info(message)
-        return import_fn()
-    finally:
-        load_host.empty()
-
-
 def run_authenticated_app() -> None:
     global current_user, is_admin, app_mode, saved_bom_count
     global active_workspace_id, active_workspace_name, active_workspace_role
@@ -2232,115 +2197,6 @@ def run_authenticated_app() -> None:
         else f"{_context_company} Workspace"
     )
 
-    # Single-route authority. Query parameters are consumed only as an initial deep
-    # link; internal navigation writes cadivor_route directly. Every shell and page
-    # renderer below reads this same committed value.
-    try:
-        _raw_external_page = st.query_params.get("page", "")
-        if isinstance(_raw_external_page, list):
-            _raw_external_page = _raw_external_page[0] if _raw_external_page else ""
-    except Exception:
-        _raw_external_page = ""
-    _external_page = _safe_text(_raw_external_page, "")
-
-    app_mode = _safe_text(
-        st.session_state.get("cadivor_route")
-        or st.session_state.get("app_mode")
-        or "Dashboard",
-        "Dashboard",
-    )
-    if _external_page and not st.session_state.get("cadivor_external_route_consumed"):
-        app_mode = _external_page
-        st.session_state["cadivor_external_route_consumed"] = True
-
-    if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
-        app_mode = "Dashboard"
-    st.session_state["cadivor_route"] = app_mode
-    st.session_state["app_mode"] = app_mode  # compatibility mirror
-
-    # Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
-    # Query values are treated only as navigation inputs; the durable browser-session
-    # context lives in st.session_state and is never written to the database.
-    _incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
-    _incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "").replace("+", " ")
-    if _incoming_analysis_id:
-        st.session_state["cadivor_active_analysis_id"] = _incoming_analysis_id
-        st.session_state["analysis_id"] = _incoming_analysis_id
-    if _incoming_analysis_tab:
-        st.session_state["cadivor_active_analysis_tab"] = _incoming_analysis_tab
-
-    _new_analysis_requested = _safe_text(_qp_value("new_analysis", ""), "").lower() in {
-        "1", "true", "yes"
-    }
-    if _new_analysis_requested:
-        for _state_key in (
-            "cadivor_active_analysis_id",
-            "cadivor_active_analysis_tab",
-            "analysis_id",
-            "results_df",
-            "analysis_saved",
-            "uploaded_filename",
-        ):
-            st.session_state.pop(_state_key, None)
-
-    profile_for_shell = get_user_profile(current_user) if "get_user_profile" in globals() else current_user
-    # Sprint 75.2B.2: early shell omits saved-BOM usage while the live count is
-    # unknown (no placeholder, no session cache). Live query remains in workspace_init.
-    saved_bom_count = None
-    shell_name = profile_for_shell.get("full_name") or profile_for_shell.get("email", "Cadivor User").split("@")[0].title()
-    shell_company = profile_for_shell.get("company_name") or profile_for_shell.get("company") or selected_plan_name
-    shell_email = profile_for_shell.get("email") or current_user.get("email", "")
-    shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:2] or "C"
-
-    import urllib.parse as _urlparse
-
-
-    # ---------- Cadivor Unified Application Shell ----------
-    # One deterministic shell authority. Internal navigation uses session state and
-    # the browser URL is not changed by ordinary sidebar interactions.
-    inject_premium_css()
-    st.markdown(readability_css(), unsafe_allow_html=True)
-
-
-    def _s55_clear_analysis():
-        for _key in (
-            "cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id",
-            "results_df", "analysis_saved", "uploaded_filename",
-        ):
-            st.session_state.pop(_key, None)
-        navigate_to("BOM Analyzer")
-
-
-    def _s55_logout():
-        """End the local session immediately; never route through page handling."""
-        st.session_state.pop("cadivor_route_transition", None)
-        st.session_state.pop("cadivor_nav_params", None)
-        begin_logout(supabase, cookie_manager)
-
-
-    render_unified_shell(
-        current_page=app_mode,
-        profile=profile_for_shell,
-        workspace_name=shell_company,
-        plan_name=selected_plan_name,
-        usage_summary=f"{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month",
-        saved_summary=_shell_saved_summary(saved_bom_count, selected_plan),
-        navigate=navigate_to,
-        clear_analysis=_s55_clear_analysis,
-        request_logout=_s55_logout,
-    )
-
-    # Design System v1 is deliberately injected after the application shell.
-    with timed_phase("runtime.css_injection", operation="render"):
-        inject_design_system_v1()
-        inject_workspace_consistency_css()
-        inject_premium_interaction_css()
-        # Shell geometry loads before the final premium UI authority layer.
-        inject_unified_shell_css()
-        # Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
-        inject_core_premium_ui()
-        mark_authenticated_surface_ready()
-
     with timed_phase("runtime.workspace_init", operation="init"):
         _default_context_workspace, _default_context_error = ensure_personal_workspace(
             supabase,
@@ -2410,6 +2266,59 @@ def run_authenticated_app() -> None:
             saved_bom_count = saved_bom_count_response.count or 0
         except SupabaseReadTransportError:
             saved_bom_count = 0
+
+    # Single-route authority. Query parameters are consumed only as an initial deep
+    # link; internal navigation writes cadivor_route directly. Every shell and page
+    # renderer below reads this same committed value.
+    try:
+        _raw_external_page = st.query_params.get("page", "")
+        if isinstance(_raw_external_page, list):
+            _raw_external_page = _raw_external_page[0] if _raw_external_page else ""
+    except Exception:
+        _raw_external_page = ""
+    _external_page = _safe_text(_raw_external_page, "")
+
+    app_mode = _safe_text(
+        st.session_state.get("cadivor_route")
+        or st.session_state.get("app_mode")
+        or "Dashboard",
+        "Dashboard",
+    )
+    if _external_page and not st.session_state.get("cadivor_external_route_consumed"):
+        app_mode = _external_page
+        st.session_state["cadivor_external_route_consumed"] = True
+
+    if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
+        app_mode = "Dashboard"
+    st.session_state["cadivor_route"] = app_mode
+    st.session_state["app_mode"] = app_mode  # compatibility mirror
+
+    # Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
+    # Query values are treated only as navigation inputs; the durable browser-session
+    # context lives in st.session_state and is never written to the database.
+    _incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
+    _incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "").replace("+", " ")
+    if _incoming_analysis_id:
+        st.session_state["cadivor_active_analysis_id"] = _incoming_analysis_id
+        st.session_state["analysis_id"] = _incoming_analysis_id
+    if _incoming_analysis_tab:
+        st.session_state["cadivor_active_analysis_tab"] = _incoming_analysis_tab
+
+    _new_analysis_requested = _safe_text(_qp_value("new_analysis", ""), "").lower() in {
+        "1", "true", "yes"
+    }
+    if _new_analysis_requested:
+        for _state_key in (
+            "cadivor_active_analysis_id",
+            "cadivor_active_analysis_tab",
+            "analysis_id",
+            "results_df",
+            "analysis_saved",
+            "uploaded_filename",
+        ):
+            st.session_state.pop(_state_key, None)
+
+    profile_for_shell = get_user_profile(current_user) if "get_user_profile" in globals() else current_user
 
     auth_user_for_onboarding = st.session_state.get("user")
     onboarding_user_id = _safe_text(
@@ -2483,6 +2392,60 @@ def run_authenticated_app() -> None:
             )
             if synced and not sync_error:
                 onboarding_progress = synced
+    shell_name = profile_for_shell.get("full_name") or profile_for_shell.get("email", "Cadivor User").split("@")[0].title()
+    shell_company = profile_for_shell.get("company_name") or profile_for_shell.get("company") or selected_plan_name
+    shell_email = profile_for_shell.get("email") or current_user.get("email", "")
+    shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:2] or "C"
+
+    import urllib.parse as _urlparse
+
+
+    # ---------- Cadivor Unified Application Shell ----------
+    # One deterministic shell authority. Internal navigation uses session state and
+    # the browser URL is not changed by ordinary sidebar interactions.
+    inject_premium_css()
+    st.markdown(readability_css(), unsafe_allow_html=True)
+
+
+    def _s55_clear_analysis():
+        for _key in (
+            "cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id",
+            "results_df", "analysis_saved", "uploaded_filename",
+        ):
+            st.session_state.pop(_key, None)
+        navigate_to("BOM Analyzer")
+
+
+    def _s55_logout():
+        """End the local session immediately; never route through page handling."""
+        st.session_state.pop("cadivor_route_transition", None)
+        st.session_state.pop("cadivor_nav_params", None)
+        begin_logout(supabase, cookie_manager)
+
+
+    render_unified_shell(
+        current_page=app_mode,
+        profile=profile_for_shell,
+        workspace_name=shell_company,
+        plan_name=selected_plan_name,
+        usage_summary=f"{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month",
+        saved_summary=f"{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')}",
+        navigate=navigate_to,
+        clear_analysis=_s55_clear_analysis,
+        request_logout=_s55_logout,
+    )
+
+    # Design System v1 is deliberately injected after the application shell.
+    with timed_phase("runtime.css_injection", operation="render"):
+        inject_design_system_v1()
+        inject_workspace_consistency_css()
+        inject_premium_interaction_css()
+        # Shell geometry loads before the final premium UI authority layer.
+        inject_unified_shell_css()
+        # Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
+        inject_core_premium_ui()
+        mark_authenticated_surface_ready()
+
     with timed_phase("runtime.workspace_commands", operation="workspace_commands") as cmd_meta:
         try:
             _workspace_command_records = build_workspace_commands(
@@ -3004,19 +2967,7 @@ def run_authenticated_app() -> None:
             """,
             unsafe_allow_html=True,
         )
-        _ad_load_host = st.empty()
-
-        def _import_analysis_detail():
-            from src.pages.analysis_detail import render_analysis_detail as _render
-
-            return _render
-
-        render_analysis_detail = _localized_cold_route_load(
-            _ad_load_host,
-            message="Loading Analysis Details…",
-            module_name="src.pages.analysis_detail",
-            import_fn=_import_analysis_detail,
-        )
+        from src.pages.analysis_detail import render_analysis_detail
         render_analysis_detail(
             current_user=current_user,
             supabase=supabase,
@@ -4372,22 +4323,11 @@ def run_authenticated_app() -> None:
 
     # ---------- Reports ----------
     if app_mode == "Reports":
-        _reports_load_host = st.empty()
-
-        def _prepare_reports_route():
-            import src.ai_report_intelligence  # noqa: F401 — cold route module
-
-            try:
-                return load_analysis_history(current_user["id"]) or []
-            except Exception:
-                return []
-
-        report_records = _localized_cold_route_load(
-            _reports_load_host,
-            message="Loading Reports…",
-            module_name="src.ai_report_intelligence",
-            import_fn=_prepare_reports_route,
-        )
+        # Milestone 5.5 — Functional Reports Center
+        try:
+            report_records = load_analysis_history(current_user["id"]) or []
+        except Exception:
+            report_records = []
 
         def _report_int(value, default=0):
             try:
@@ -8206,33 +8146,10 @@ def run_authenticated_app() -> None:
 
     if app_mode == "Alternative Finder":
 
-        _af_load_host = st.empty()
-
-        def _import_alternative_finder():
-            from integrations.supplier_aggregator import get_best_part_data as _get_best
-            from src.alternative_engine import (
-                compare_parts as _compare,
-                rank_alternatives as _rank,
-                suggest_alternatives_v2 as _suggest,
-            )
-            from src.alternative_reasoning import build_alternative_reasoning as _reason
-            from src.risk_engine import calculate_risk as _risk
-
-            return _get_best, _suggest, _compare, _rank, _reason, _risk
-
-        (
-            get_best_part_data,
-            suggest_alternatives_v2,
-            compare_parts,
-            rank_alternatives,
-            build_alternative_reasoning,
-            calculate_risk,
-        ) = _localized_cold_route_load(
-            _af_load_host,
-            message="Loading Alternative Finder…",
-            module_name="src.alternative_engine",
-            import_fn=_import_alternative_finder,
-        )
+        from integrations.supplier_aggregator import get_best_part_data
+        from src.alternative_engine import suggest_alternatives_v2, compare_parts, rank_alternatives
+        from src.alternative_reasoning import build_alternative_reasoning
+        from src.risk_engine import calculate_risk
         return_analysis_id = _qp_value("return_analysis_id")
         if return_analysis_id:
             if st.button(

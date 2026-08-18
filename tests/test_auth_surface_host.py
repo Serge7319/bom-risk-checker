@@ -145,45 +145,38 @@ class AuthSurfaceHostSourceGuards(unittest.TestCase):
                 and node.func.value.id == "st"
             ):
                 empty_calls.append(node)
-        # Sprint 75.2B: lazy host allocates st.empty() once inside _auth_surface().
         self.assertEqual(len(empty_calls), 1, "exactly one st.empty() in ensure_authenticated_or_stop")
 
     def test_host_created_before_cookie_read_and_hydration(self):
         src = self.bootstrap
         fn = src[src.find("def ensure_authenticated_or_stop") :]
-        # Lazy host: helper defined before cookie read; allocation happens on first auth UI need.
-        lazy_idx = fn.find("auth_surface_host = None")
-        helper_idx = fn.find("def _auth_surface():")
         empty_idx = fn.find("auth_surface_host = st.empty()")
         cookie_idx = fn.find("read_auth_cookie_tokens_with_source(")
         boot_idx = fn.find("render_auth_boot()")
-        show_idx = fn.find("with _auth_surface().container():\n            show_auth_ui")
-        self.assertGreaterEqual(lazy_idx, 0)
-        self.assertGreater(helper_idx, lazy_idx)
-        self.assertGreater(empty_idx, helper_idx)
-        self.assertGreater(cookie_idx, helper_idx)
-        self.assertGreater(boot_idx, helper_idx)
-        self.assertGreater(show_idx, helper_idx)
+        show_idx = fn.find("with auth_surface_host.container():\n            show_auth_ui")
+        self.assertGreater(empty_idx, 0)
+        self.assertGreater(cookie_idx, empty_idx)
+        self.assertGreater(boot_idx, empty_idx)
+        self.assertGreater(show_idx, empty_idx)
 
     def test_boot_and_auth_ui_render_inside_host_container(self):
-        # Both hydration arms and signed-out arm use the lazy host container.
-        self.assertGreaterEqual(self.bootstrap.count("with _auth_surface().container():"), 3)
+        # Both hydration arms and signed-out arm use the host container.
+        self.assertGreaterEqual(self.bootstrap.count("with auth_surface_host.container():"), 3)
         self.assertIn(
-            "with _auth_surface().container():\n                    render_auth_boot()",
+            "with auth_surface_host.container():\n                    render_auth_boot()",
             self.bootstrap,
         )
-        self.assertIn("with _auth_surface().container():\n            show_auth_ui", self.bootstrap)
+        self.assertIn("with auth_surface_host.container():\n            show_auth_ui", self.bootstrap)
         # Every render_auth_boot() in ensure_authenticated is nested under the host.
         for match in re.finditer(r"render_auth_boot\(\)", self.bootstrap):
             window = self.bootstrap[max(0, match.start() - 120) : match.start()]
             self.assertIn(
-                "_auth_surface().container()",
+                "auth_surface_host.container()",
                 window,
-                "render_auth_boot must execute inside _auth_surface().container()",
+                "render_auth_boot must execute inside auth_surface_host.container()",
             )
 
     def test_authenticated_path_clears_host(self):
-        self.assertIn("if auth_surface_host is not None:", self.bootstrap)
         self.assertIn("auth_surface_host.empty()", self.bootstrap)
         boundary = self.bootstrap.find('log_startup_phase("auth_boundary_passed")')
         clear_idx = self.bootstrap.rfind("auth_surface_host.empty()", 0, boundary)
@@ -332,9 +325,9 @@ class AuthSurfaceHostLifecycleTests(unittest.TestCase):
         with patch.object(self.bootstrap, "resolve_auth_state", return_value=self.state.AUTH_AUTHENTICATED):
             self.bootstrap.ensure_authenticated_or_stop()
         self.auth.show_auth_ui.assert_not_called()
-        # Sprint 75.2B: established authenticated path never allocates the auth host.
-        self.assertEqual(_AuthSurfaceHost.created, [])
-        self.assertEqual(self.st.empty.call_count, 0)
+        host = _AuthSurfaceHost.created[0]
+        self.assertEqual(host.cleared, 1)
+        self.assertEqual(host.container_enters, 0)
         self.cookies.persist_session_auth_cookie.assert_called()
 
     def test_mode_switch_settled_no_boot_one_host(self):

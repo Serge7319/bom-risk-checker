@@ -52,32 +52,6 @@ class AuthScrollAnchoringSourceGuards(unittest.TestCase):
         )
         self.assertEqual(len(matches), 1)
 
-    def test_auth_css_has_no_vertical_block_gap_reset(self):
-        self.assertNotIn("gap:0!important", self.auth)
-        self.assertNotIn("row-gap:0!important", self.auth)
-
-    def test_auth_card_responsive_width_contract(self):
-        self.assertRegex(
-            self.auth,
-            r"\.st-key-cadivor_auth_card\s*\{[^}]*width:min\(94vw,480px\)!important;",
-        )
-        self.assertRegex(
-            self.auth,
-            r"\.st-key-cadivor_auth_card\s*\{[^}]*max-width:480px!important;",
-        )
-        self.assertRegex(
-            self.auth,
-            r"\.st-key-cadivor_auth_card\s*\{[^}]*height:auto!important;",
-        )
-        self.assertRegex(
-            self.auth,
-            r"\.st-key-cadivor_auth_card\s*\{[^}]*min-height:0!important;",
-        )
-
-    def test_boot_css_has_no_vertical_block_gap_reset(self):
-        self.assertNotIn("gap:0!important", self.state)
-        self.assertNotIn("row-gap:0!important", self.state)
-
     def test_no_unscoped_stmain_overflow_anchor(self):
         joined = self.auth + "\n" + self.state
         # Forbid bare stMain { overflow-anchor:none } without :has(...)
@@ -93,11 +67,8 @@ class AuthScrollAnchoringSourceGuards(unittest.TestCase):
             self.assertNotIn(banned, joined)
 
     def test_stable_host_contract_intact(self):
-        # Sprint 75.2B: lazy host via _auth_surface(); still one st.empty() allocation site.
-        self.assertIn("auth_surface_host = None", self.bootstrap)
-        self.assertIn("def _auth_surface():", self.bootstrap)
         self.assertIn("auth_surface_host = st.empty()", self.bootstrap)
-        self.assertIn("with _auth_surface().container():", self.bootstrap)
+        self.assertIn("with auth_surface_host.container():", self.bootstrap)
         self.assertIn("render_auth_boot()", self.bootstrap)
         self.assertIn("show_auth_ui", self.bootstrap)
 
@@ -165,7 +136,6 @@ class AuthScrollAnchoringLifecycleTests(unittest.TestCase):
         st.expander = MagicMock(return_value=_CM())
         st.empty = MagicMock(return_value=MagicMock(container=lambda: _CM(), empty=lambda: None))
         st.cache_resource = lambda **k: (lambda fn: fn)
-        st.spinner = lambda *a, **k: _CM()
 
         class _Ctx:
             script_run_id = "scroll-anchor-run"
@@ -201,7 +171,6 @@ class AuthScrollAnchoringLifecycleTests(unittest.TestCase):
         joined = "\n".join(self.bodies)
         self.assertIn('[data-testid="stMain"]:has(.cv-auth-transition)', joined)
         self.assertIn("overflow-anchor:none", joined)
-        self.assertNotIn("gap:0!important", joined)
         self.assertIn("cv-auth-transition", joined)
         self.assertIn("Restoring your secure workspace…", joined)
 
@@ -211,7 +180,6 @@ class AuthScrollAnchoringLifecycleTests(unittest.TestCase):
         joined = "\n".join(self.bodies)
         self.assertIn('[data-testid="stMain"]:has(.st-key-cadivor_auth_card)', joined)
         self.assertRegex(joined, r"overflow-anchor\s*:\s*none")
-        self.assertNotIn("gap:0!important", joined)
         self.assertNotIn("Restoring your secure workspace…", joined)
         self.assertEqual(
             self.st.container.call_args.kwargs.get("key"),

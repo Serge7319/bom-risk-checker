@@ -31,15 +31,6 @@ class ManualLoginAtomicTests(unittest.TestCase):
         st.warning = MagicMock()
         st.markdown = MagicMock()
 
-        class _CM:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        st.spinner = lambda *a, **k: _CM()
-
         ui = types.ModuleType("src.ui.core_premium_ui")
         ui.inject_core_premium_ui_auth = MagicMock()
         sys.modules["src.ui.core_premium_ui"] = ui
@@ -56,15 +47,6 @@ class ManualLoginAtomicTests(unittest.TestCase):
         auth = importlib.import_module("src.auth")
         return st, auth, auth_state
 
-    def _bind_login_provider(self, auth, supabase):
-        def _bounded(email, password):
-            return supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": password,
-            })
-
-        auth._sign_in_with_password_bounded = _bounded
-
     def test_login_submit_calls_sign_in_in_same_script_run(self):
         _st, auth, auth_state = self._load_auth()
         supabase = MagicMock()
@@ -75,7 +57,6 @@ class ManualLoginAtomicTests(unittest.TestCase):
             session=session,
         )
         cookie_manager = MagicMock()
-        self._bind_login_provider(auth, supabase)
 
         with patch.object(auth, "mark_authenticated") as mark_mock:
             auth._submit_manual_login(
@@ -109,7 +90,6 @@ class ManualLoginAtomicTests(unittest.TestCase):
             calls.append("rerun")
 
         auth.st.rerun = rerun
-        self._bind_login_provider(auth, supabase)
 
         auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
 
@@ -122,7 +102,6 @@ class ManualLoginAtomicTests(unittest.TestCase):
             user=types.SimpleNamespace(id="u"),
             session=types.SimpleNamespace(access_token="a", refresh_token="r"),
         )
-        self._bind_login_provider(auth, supabase)
 
         auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
 
@@ -146,7 +125,6 @@ class ManualLoginAtomicTests(unittest.TestCase):
         def mark_authenticated(*args, **kwargs):
             order.append("mark_authenticated")
 
-        self._bind_login_provider(auth, supabase)
         with patch.object(auth, "mark_authenticated", side_effect=mark_authenticated):
             auth.st.rerun = lambda: order.append("rerun")
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
@@ -160,13 +138,12 @@ class ManualLoginAtomicTests(unittest.TestCase):
             user=types.SimpleNamespace(id="u"),
             session=None,
         )
-        self._bind_login_provider(auth, supabase)
 
         with patch.object(auth, "mark_authenticated") as mark_mock:
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "bad")
 
         mark_mock.assert_not_called()
-        st.rerun.assert_called_once()
+        st.rerun.assert_not_called()
 
     def test_auth_source_has_no_pending_submission_storage(self):
         source = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
@@ -184,10 +161,7 @@ class ManualLoginAtomicTests(unittest.TestCase):
         source = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
         self.assertIn("_submit_manual_login(", source)
         self.assertIn("_submit_manual_signup(", source)
-        self.assertIn("_sign_in_with_password_bounded(", source)
         self.assertNotIn("cadivor_auth_submission", source)
-        submit_block = source[source.find("def _submit_manual_login"): source.find("def _signup_response_get")]
-        self.assertNotIn("render_auth_transition(", submit_block)
 
 
 if __name__ == "__main__":

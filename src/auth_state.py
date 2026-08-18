@@ -12,10 +12,9 @@ import json
 import os
 import threading
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Any, Literal, NamedTuple
+from typing import Any, NamedTuple
 from urllib.parse import unquote
 
 import streamlit as st
@@ -42,32 +41,9 @@ APP_AUTHENTICATED = "authenticated"
 
 SIGNUP_PENDING_EMAIL_KEY = "cadivor_signup_pending_email"
 
-# Sprint 75.2B.1 — privacy-safe manual login attempt metadata (no email/password/tokens).
-MANUAL_LOGIN_IN_PROGRESS_KEY = "cadivor_manual_login_in_progress"
-MANUAL_LOGIN_STARTED_AT_KEY = "cadivor_manual_login_started_at"
-MANUAL_LOGIN_ATTEMPT_ID_KEY = "cadivor_manual_login_attempt_id"
-# Conservative production auth RPC window (30–60s band): long enough for slow
-# Supabase round-trips, short enough that an interrupted attempt cannot brick Login.
-MANUAL_LOGIN_STALE_TIMEOUT_SECONDS = 45
-STALE_MANUAL_LOGIN_MESSAGE = (
-    "Your previous sign-in attempt did not finish. Please try again."
-)
-MANUAL_LOGIN_FAILURE_MESSAGE = (
-    "Cadivor could not sign you in. Check your credentials and try again."
-)
-MANUAL_LOGIN_TRANSPORT_TIMEOUT_MESSAGE = (
-    "Cadivor could not complete sign-in in time. Please try again."
-)
-ManualLoginState = Literal["none", "inflight", "stale"]
-
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
 _MAX_RESTORE_ATTEMPTS = 1
 _RESTORE_DELAY_SECONDS = 0.0
-_MANUAL_LOGIN_ATTEMPT_KEYS = (
-    MANUAL_LOGIN_IN_PROGRESS_KEY,
-    MANUAL_LOGIN_STARTED_AT_KEY,
-    MANUAL_LOGIN_ATTEMPT_ID_KEY,
-)
 
 _LOGOUT_SURVIVOR_KEYS = frozenset(
     {
@@ -184,7 +160,6 @@ def clear_auth_session(*, keep_status: bool = False, transition_reason: str = "c
     st.session_state.pop("cadivor_auth_cookie_persisted_run_id", None)
     st.session_state.pop("cadivor_auth_transition", None)
     st.session_state.pop("cadivor_auth_restore_attempts", None)
-    clear_manual_login_attempt_metadata()
     if not keep_status:
         st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
 
@@ -265,13 +240,13 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
         str(session.refresh_token),
     )
     st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
-    manual_login_success = bool(st.session_state.get(MANUAL_LOGIN_IN_PROGRESS_KEY))
+    manual_login_success = bool(st.session_state.get("cadivor_manual_login_in_progress"))
     st.session_state.pop("cadivor_force_signed_out", None)
     st.session_state.pop("cadivor_auth_ui_was_shown", None)
     st.session_state.pop("cadivor_logout_in_progress", None)
     st.session_state.pop("cadivor_explicit_logout", None)
     st.session_state.pop("cadivor_logout_committed", None)
-    clear_manual_login_attempt_metadata()
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state.pop("cadivor_auth_submission", None)
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
@@ -314,12 +289,6 @@ def mark_signed_out(reason: str = "signed_out") -> None:
     _log("signed_out", reason=reason)
 
 
-def clear_manual_login_attempt_metadata() -> None:
-    """Drop privacy-safe attempt metadata; never logs credentials or tokens."""
-    for key in _MANUAL_LOGIN_ATTEMPT_KEYS:
-        st.session_state.pop(key, None)
-
-
 def begin_manual_login(cookie_manager: Any = None) -> None:
     """Consume explicit-logout suppression for a deliberate credential login."""
     try:
@@ -339,9 +308,7 @@ def begin_manual_login(cookie_manager: Any = None) -> None:
     st.session_state.pop("cadivor_logout_committed", None)
     st.session_state.pop("cadivor_logout_reload_pending", None)
     st.session_state.pop("cadivor_auth_submission", None)
-    st.session_state[MANUAL_LOGIN_IN_PROGRESS_KEY] = True
-    st.session_state[MANUAL_LOGIN_STARTED_AT_KEY] = time.time()
-    st.session_state[MANUAL_LOGIN_ATTEMPT_ID_KEY] = str(uuid.uuid4())
+    st.session_state["cadivor_manual_login_in_progress"] = True
 
     try:
         from src.auth_cookies import (
@@ -369,7 +336,7 @@ def begin_manual_login(cookie_manager: Any = None) -> None:
 
 def finish_manual_login_failed(cookie_manager: Any = None) -> None:
     """Re-arm signed-out protection after a failed deliberate login attempt."""
-    clear_manual_login_attempt_metadata()
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
 
@@ -394,55 +361,9 @@ def finish_manual_login_failed(cookie_manager: Any = None) -> None:
         pass
 
 
-def manual_login_state(*, now: float | None = None) -> ManualLoginState:
-    """Classify manual login attempt: none | inflight | stale.
-
-    Timing is based only on ``cadivor_manual_login_started_at``. Missing
-    timestamps with leftover signing-in flags are treated as stale so Login
-    cannot remain permanently disabled after an interrupted request.
-    """
-    in_progress = bool(st.session_state.get(MANUAL_LOGIN_IN_PROGRESS_KEY))
-    started_raw = st.session_state.get(MANUAL_LOGIN_STARTED_AT_KEY)
-    attempt_id = st.session_state.get(MANUAL_LOGIN_ATTEMPT_ID_KEY)
-    root_signing = str(st.session_state.get("cadivor_root_state") or "") == APP_SIGNING_IN
-    auth_signing = str(st.session_state.get("cadivor_auth_status") or "") == AUTH_SIGNING_IN
-    has_attempt_signal = bool(in_progress or started_raw is not None or attempt_id or root_signing or auth_signing)
-    if not has_attempt_signal:
-        return "none"
-
-    if started_raw is None:
-        return "stale"
-    try:
-        started_at = float(started_raw)
-    except (TypeError, ValueError):
-        return "stale"
-
-    clock = time.time() if now is None else float(now)
-    if (clock - started_at) > MANUAL_LOGIN_STALE_TIMEOUT_SECONDS:
-        return "stale"
-    if in_progress or root_signing or auth_signing:
-        return "inflight"
-    return "none"
-
-
-def recover_stale_manual_login(*, now: float | None = None) -> bool:
-    """Clear stale attempt metadata and restore an enabled Login surface.
-
-    Returns True when a stale attempt was recovered. Does not retry Supabase.
-    """
-    if manual_login_state(now=now) != "stale":
-        return False
-    clear_manual_login_attempt_metadata()
-    st.session_state["cadivor_root_state"] = APP_LOGIN
-    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
-    st.session_state["cadivor_auth_error"] = STALE_MANUAL_LOGIN_MESSAGE
-    _log("stale_manual_login_recovered")
-    return True
-
-
-def manual_login_in_flight(*, now: float | None = None) -> bool:
-    """True only for a recent in-flight credential transaction (not stale)."""
-    return manual_login_state(now=now) == "inflight"
+def manual_login_in_flight() -> bool:
+    """True while a same-run manual credential transaction is executing."""
+    return bool(st.session_state.get("cadivor_manual_login_in_progress"))
 
 
 def _remote_sign_out(supabase: Any) -> None:
@@ -574,7 +495,7 @@ def finalize_logout_cookie(cookie_manager: Any) -> None:
 
 
 def render_auth_transition(message: str = "Preparing Cadivor") -> None:
-    """Render one compact auth status surface without nested card shells."""
+    """Render one light branded transition surface for auth changes."""
     safe_message = str(message or "Preparing Cadivor")
     st.markdown(
         f"""
@@ -586,20 +507,23 @@ def render_auth_transition(message: str = "Preparing Cadivor") -> None:
         /* Auth-only: disable Chrome scroll anchoring on Streamlit's stMain scrollport
            while the compact boot surface is present (Incognito first-paint clipping). */
         [data-testid="stMain"]:has(.cv-auth-transition){{overflow-anchor:none}}
-        /* Lightweight boot/status shell — no nested white card panels. */
-        .cv-auth-transition{{width:min(94vw,480px);min-height:0;height:auto;overflow-anchor:none;margin:clamp(16px,4vh,48px) auto;padding:12px 0;display:flex;flex-direction:column;align-items:center;gap:10px;box-sizing:border-box;background:transparent;font-family:Inter,system-ui,sans-serif;text-align:center}}
-        .cv-auth-transition-mark{{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:18px}}
-        .cv-auth-transition-name{{margin:0;color:#0F172A!important;font-size:18px;font-weight:800;letter-spacing:-.02em}}
-        .cv-auth-transition-line{{margin:0;color:#64748B!important;font-size:13px;line-height:1.45}}
-        .cv-auth-progress{{width:min(240px,72vw);height:4px;border-radius:999px;background:#E8EEF6;overflow:hidden}}
+        /* Content-height signed-out boot shell — never reserve a full viewport. */
+        .cv-auth-transition{{width:min(94vw,480px);min-height:0;height:auto;overflow-anchor:none;margin:clamp(24px,7vh,72px) auto;padding:clamp(32px,6vh,56px) 24px;display:grid;place-items:center;box-sizing:border-box;background:radial-gradient(circle at 50% 35%,#fff 0,#F7F9FC 42%,#EEF3F8 100%);font-family:Inter,system-ui,sans-serif;border-radius:22px}}
+        .cv-auth-transition-card{{width:min(420px,100%);padding:30px 30px 26px;border:1px solid #DCE4EE;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 24px 70px rgba(15,23,42,.10);text-align:center}}
+        .cv-auth-transition-mark{{width:48px;height:48px;margin:0 auto 16px;border-radius:14px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:22px;box-shadow:0 12px 26px rgba(37,99,235,.25)}}
+        .cv-auth-transition-card h1{{margin:0;color:#0F172A!important;font-size:20px;letter-spacing:-.025em}}
+        .cv-auth-transition-card p{{margin:8px 0 18px;color:#64748B!important;font-size:13px}}
+        .cv-auth-progress{{height:4px;border-radius:999px;background:#E8EEF6;overflow:hidden}}
         .cv-auth-progress span{{display:block;width:42%;height:100%;border-radius:inherit;background:#2563EB;animation:cv-auth-progress 1.1s ease-in-out infinite}}
         @keyframes cv-auth-progress{{0%{{transform:translateX(-110%)}}100%{{transform:translateX(340%)}}}}
         </style>
         <div class="cv-auth-transition" role="status" aria-live="polite">
-          <div class="cv-auth-transition-mark">C</div>
-          <p class="cv-auth-transition-name">Cadivor</p>
-          <p class="cv-auth-transition-line">{safe_message}</p>
-          <div class="cv-auth-progress"><span></span></div>
+          <div class="cv-auth-transition-card">
+            <div class="cv-auth-transition-mark">C</div>
+            <h1>Cadivor</h1>
+            <p>{safe_message}</p>
+            <div class="cv-auth-progress"><span></span></div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -760,8 +684,7 @@ def _resolve_pending_credentials(
 
 def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
     """Resolve UNKNOWN -> SIGNED_OUT/AUTHENTICATED before either shell renders."""
-    recover_stale_manual_login()
-    manual_login = manual_login_in_flight()
+    manual_login = bool(st.session_state.get("cadivor_manual_login_in_progress"))
 
     if not manual_login:
         if explicit_logout_pending():
