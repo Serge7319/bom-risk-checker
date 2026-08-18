@@ -42,6 +42,21 @@ APP_AUTHENTICATED = "authenticated"
 SIGNUP_PENDING_EMAIL_KEY = "cadivor_signup_pending_email"
 
 _AUTH_KEYS = ("user", "access_token", "refresh_token")
+_AUTH_PASSWORD_KEYS = (
+    "cadivor_auth_password",
+    "cadivor_signup_password",
+    "password",
+)
+_LOG_REDACT_KEYS = frozenset(
+    {
+        "access_token",
+        "refresh_token",
+        "password",
+        "api_key",
+        "cadivor_auth_password",
+        "cadivor_signup_password",
+    }
+)
 _MAX_RESTORE_ATTEMPTS = 1
 _RESTORE_DELAY_SECONDS = 0.0
 
@@ -62,10 +77,22 @@ _LOGOUT_T0: float | None = None
 
 def _log(event: str, **details: Any) -> None:
     """Keep a small in-session transition log for beta diagnostics."""
+    safe_details = {}
+    for key, value in details.items():
+        key_text = str(key)
+        key_l = key_text.lower()
+        if (
+            key_text in _LOG_REDACT_KEYS
+            or "password" in key_l
+            or key_l.endswith("token")
+            or "secret" in key_l
+        ):
+            continue
+        safe_details[key_text] = str(value)[:240]
     record = {
         "at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "event": event,
-        **{key: str(value)[:240] for key, value in details.items()},
+        **safe_details,
     }
     records = list(st.session_state.get("cadivor_auth_debug_log") or [])
     records.append(record)
@@ -143,6 +170,16 @@ def coerce_cookie(raw_cookie: Any) -> dict[str, Any] | None:
     return None
 
 
+def clear_auth_password_state() -> None:
+    """Remove login/signup password widget keys from session_state.
+
+    Streamlit 1.50 allows ``pop`` after a widget is instantiated; it does not
+    allow assigning a new value to that widget key in the same run.
+    """
+    for key in _AUTH_PASSWORD_KEYS:
+        st.session_state.pop(key, None)
+
+
 def clear_auth_session(*, keep_status: bool = False, transition_reason: str = "clear_auth_session") -> None:
     try:
         from src.auth_diagnostics import log_auth_correlation
@@ -155,6 +192,7 @@ def clear_auth_session(*, keep_status: bool = False, transition_reason: str = "c
         pass
     for key in _AUTH_KEYS:
         st.session_state.pop(key, None)
+    clear_auth_password_state()
     st.session_state.pop("cadivor_cookie_write_pending", None)
     st.session_state.pop(_AUTH_VALIDATED_RUN_KEY, None)
     st.session_state.pop("cadivor_auth_cookie_persisted_run_id", None)
@@ -248,6 +286,7 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     st.session_state.pop("cadivor_logout_committed", None)
     st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state.pop("cadivor_auth_submission", None)
+    clear_auth_password_state()
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
     route = requested or "Dashboard"
@@ -337,6 +376,7 @@ def begin_manual_login(cookie_manager: Any = None) -> None:
 def finish_manual_login_failed(cookie_manager: Any = None) -> None:
     """Re-arm signed-out protection after a failed deliberate login attempt."""
     st.session_state.pop("cadivor_manual_login_in_progress", None)
+    clear_auth_password_state()
     st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
 
