@@ -574,7 +574,7 @@ def finalize_logout_cookie(cookie_manager: Any) -> None:
 
 
 def render_auth_transition(message: str = "Preparing Cadivor") -> None:
-    """Render one light branded transition surface for auth changes."""
+    """Render one compact auth status surface without nested card shells."""
     safe_message = str(message or "Preparing Cadivor")
     st.markdown(
         f"""
@@ -586,30 +586,20 @@ def render_auth_transition(message: str = "Preparing Cadivor") -> None:
         /* Auth-only: disable Chrome scroll anchoring on Streamlit's stMain scrollport
            while the compact boot surface is present (Incognito first-paint clipping). */
         [data-testid="stMain"]:has(.cv-auth-transition){{overflow-anchor:none}}
-        /* Auth-only: collapse outer main vertical-block gap while boot/transition is present. */
-        [data-testid="stMain"]:has(.cv-auth-transition)
-          [data-testid="stMainBlockContainer"]
-          > [data-testid="stVerticalBlock"]{{
-            gap:0!important;
-            row-gap:0!important;
-        }}
-        /* Content-height signed-out boot shell — never reserve a full viewport. */
-        .cv-auth-transition{{width:min(94vw,480px);min-height:0;height:auto;overflow-anchor:none;margin:clamp(24px,7vh,72px) auto;padding:clamp(32px,6vh,56px) 24px;display:grid;place-items:center;box-sizing:border-box;background:radial-gradient(circle at 50% 35%,#fff 0,#F7F9FC 42%,#EEF3F8 100%);font-family:Inter,system-ui,sans-serif;border-radius:22px}}
-        .cv-auth-transition-card{{width:min(420px,100%);padding:30px 30px 26px;border:1px solid #DCE4EE;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 24px 70px rgba(15,23,42,.10);text-align:center}}
-        .cv-auth-transition-mark{{width:48px;height:48px;margin:0 auto 16px;border-radius:14px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:22px;box-shadow:0 12px 26px rgba(37,99,235,.25)}}
-        .cv-auth-transition-card h1{{margin:0;color:#0F172A!important;font-size:20px;letter-spacing:-.025em}}
-        .cv-auth-transition-card p{{margin:8px 0 18px;color:#64748B!important;font-size:13px}}
-        .cv-auth-progress{{height:4px;border-radius:999px;background:#E8EEF6;overflow:hidden}}
+        /* Lightweight boot/status shell — no nested white card panels. */
+        .cv-auth-transition{{width:min(94vw,480px);min-height:0;height:auto;overflow-anchor:none;margin:clamp(16px,4vh,48px) auto;padding:12px 0;display:flex;flex-direction:column;align-items:center;gap:10px;box-sizing:border-box;background:transparent;font-family:Inter,system-ui,sans-serif;text-align:center}}
+        .cv-auth-transition-mark{{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:18px}}
+        .cv-auth-transition-name{{margin:0;color:#0F172A!important;font-size:18px;font-weight:800;letter-spacing:-.02em}}
+        .cv-auth-transition-line{{margin:0;color:#64748B!important;font-size:13px;line-height:1.45}}
+        .cv-auth-progress{{width:min(240px,72vw);height:4px;border-radius:999px;background:#E8EEF6;overflow:hidden}}
         .cv-auth-progress span{{display:block;width:42%;height:100%;border-radius:inherit;background:#2563EB;animation:cv-auth-progress 1.1s ease-in-out infinite}}
         @keyframes cv-auth-progress{{0%{{transform:translateX(-110%)}}100%{{transform:translateX(340%)}}}}
         </style>
         <div class="cv-auth-transition" role="status" aria-live="polite">
-          <div class="cv-auth-transition-card">
-            <div class="cv-auth-transition-mark">C</div>
-            <h1>Cadivor</h1>
-            <p>{safe_message}</p>
-            <div class="cv-auth-progress"><span></span></div>
-          </div>
+          <div class="cv-auth-transition-mark">C</div>
+          <p class="cv-auth-transition-name">Cadivor</p>
+          <p class="cv-auth-transition-line">{safe_message}</p>
+          <div class="cv-auth-progress"><span></span></div>
         </div>
         """,
         unsafe_allow_html=True,

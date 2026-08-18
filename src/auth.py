@@ -181,14 +181,6 @@ def _auth_css():
         [data-testid="stMain"]:has(.st-key-cadivor_auth_card){
             overflow-anchor:none;
         }
-        /* Auth-only: collapse outer main vertical-block gap while login/signup is present.
-           Zero-height prior-run slots still exist in DOM but must not reserve ~16px each. */
-        [data-testid="stMain"]:has(.st-key-cadivor_auth_card)
-          [data-testid="stMainBlockContainer"]
-          > [data-testid="stVerticalBlock"]{
-            gap:0!important;
-            row-gap:0!important;
-        }
         /* Auth login / signup card — centered, fixed width on all displays */
         [data-testid="stAppViewContainer"]:has(.st-key-cadivor_auth_card){
             display:flex!important;
@@ -197,7 +189,7 @@ def _auth_css():
             background:var(--cadivor-bg)!important;
         }
         .st-key-cadivor_auth_card{
-            width:min(480px,92vw)!important;
+            width:min(94vw,480px)!important;
             max-width:480px!important;
             margin:7vh auto 48px auto!important;
             padding:38px 38px 34px 38px!important;
@@ -390,19 +382,44 @@ def _fail_manual_login_and_rerun(
     st.rerun()
 
 
+def _sign_in_with_password_bounded(email: str, password: str):
+    """Login-only Supabase auth call with a dedicated short-timeout HTTP client."""
+    import httpx
+    from supabase import create_client
+    from supabase.lib.client_options import SyncClientOptions
+    from supabase_auth import SyncMemoryStorage
+
+    from src.secrets import get_secret
+
+    url = get_secret("SUPABASE_URL", required=True)
+    key = get_secret("SUPABASE_KEY", required=True)
+    timeout = httpx.Timeout(5.0, read=10.0, write=10.0, pool=5.0)
+    http_client = httpx.Client(timeout=timeout)
+    try:
+        options = SyncClientOptions(
+            flow_type="pkce",
+            storage=SyncMemoryStorage(),
+            httpx_client=http_client,
+        )
+        client = create_client(url, key, options=options)
+        return client.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+    finally:
+        http_client.close()
+
+
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Authenticate credentials in the same script run as the Login submit."""
     begin_manual_login(cookie_manager)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
-    render_auth_transition("Opening your engineering workspace…")
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
-        response = supabase.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
-        })
+        with st.spinner("Signing in…"):
+            response = _sign_in_with_password_bounded(email, password)
     except Exception as error:
         if _is_streamlit_control_exception(error):
             raise
@@ -1196,11 +1213,7 @@ def show_auth_ui(supabase, cookie_manager=None):
         if recover_stale_manual_login():
             state = APP_LOGIN
 
-        if manual_login_in_flight():
-            render_auth_transition("Opening your engineering workspace…")
-            return
-
-        if state in (APP_LOGIN, APP_SIGNUP):
+        if state in (APP_LOGIN, APP_SIGNUP, APP_SIGNING_IN):
             notice = st.session_state.pop("cadivor_auth_notice", None)
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
             error = st.session_state.pop("cadivor_auth_error", None)

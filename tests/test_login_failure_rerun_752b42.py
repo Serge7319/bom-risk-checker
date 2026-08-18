@@ -87,6 +87,7 @@ class _Lifecycle:
 
         st.form = lambda *args, **kwargs: _Ctx()
         st.expander = lambda *args, **kwargs: _Ctx()
+        st.spinner = lambda *args, **kwargs: _Ctx()
         st.rerun = _rerun
         st.error = _error
         st.success = lambda *args, **kwargs: lifecycle.record("success")
@@ -125,6 +126,16 @@ class _Lifecycle:
         self.auth_state = auth_state
         return self
 
+    @staticmethod
+    def _bind_login_provider(auth, supabase):
+        def _bounded(email, password):
+            return supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password,
+            })
+
+        auth._sign_in_with_password_bounded = _bounded
+
 
 class LoginFailureRerun752B42Tests(unittest.TestCase):
     def setUp(self):
@@ -153,6 +164,7 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
 
     def _run_failure_lifecycle(self, supabase, expected_message: str):
         life = _Lifecycle().load({"cadivor_root_state": "login", "cadivor_auth_status": "signed_out"})
+        _Lifecycle._bind_login_provider(life.auth, supabase)
         life.submit = True
         with self.assertRaises(_RerunSignal):
             life.auth.show_auth_ui(supabase, None)
@@ -161,7 +173,7 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
         self.assertIn("radio", run1)
         self.assertTrue(any(item.startswith("text_input:") for item in run1))
         self.assertIn("form_submit_button", run1)
-        self.assertTrue(any(item.startswith("transition:") for item in run1))
+        self.assertFalse(any(item.startswith("transition:") for item in run1))
         self.assertEqual(life.rerun_count, 1)
         self.assertEqual(supabase.auth.sign_in_with_password.call_count, 1)
         self.assertEqual(life.st.session_state["cadivor_root_state"], life.auth_state.APP_LOGIN)
@@ -234,6 +246,7 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
     def test_successful_login_one_provider_call_one_rerun(self):
         life = _Lifecycle().load({"cadivor_root_state": "login", "cadivor_auth_status": "signed_out"})
         supabase = self._provider()
+        _Lifecycle._bind_login_provider(life.auth, supabase)
         life.submit = True
         with patch.object(life.auth, "mark_authenticated") as mark:
             with self.assertRaises(_RerunSignal):
@@ -243,8 +256,9 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
         self.assertEqual(life.rerun_count, 1)
         self.assertIsNone(life.st.session_state.get("cadivor_auth_error"))
         self.assertFalse(any(item.startswith("error:") for item in life.events))
+        self.assertFalse(any(item.startswith("transition:") for item in life.events))
 
-    def test_recent_signing_in_transition_only(self):
+    def test_recent_signing_in_keeps_login_form_disabled(self):
         life = _Lifecycle().load()
         now = time.time()
         life.st.session_state.update(
@@ -257,10 +271,12 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
             }
         )
         supabase = self._provider()
+        _Lifecycle._bind_login_provider(life.auth, supabase)
         life.submit = True
         life.auth.show_auth_ui(supabase, None)
-        self.assertTrue(any(item.startswith("transition:") for item in life.events))
-        self.assertNotIn("form_submit_button", life.events)
+        self.assertFalse(any(item.startswith("transition:") for item in life.events))
+        self.assertIn("form_submit_button", life.events)
+        self.assertIn("submit_disabled", life.events)
         supabase.auth.sign_in_with_password.assert_not_called()
         self.assertEqual(life.rerun_count, 0)
 
@@ -293,6 +309,7 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
             pass
 
         supabase = self._provider(side_effect=RerunException("streamlit-rerun"))
+        _Lifecycle._bind_login_provider(life.auth, supabase)
         life.submit = True
         with self.assertRaises(RerunException):
             life.auth.show_auth_ui(supabase, None)
@@ -307,6 +324,7 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
             pass
 
         supabase = self._provider(side_effect=StopException("streamlit-stop"))
+        _Lifecycle._bind_login_provider(life.auth, supabase)
         life.submit = True
         with self.assertRaises(StopException):
             life.auth.show_auth_ui(supabase, None)
@@ -364,11 +382,17 @@ class LoginFailureRerun752B42Tests(unittest.TestCase):
         for value in life.st.session_state.values():
             self.assertNotEqual(str(value), PASSWORD)
 
-    def test_static_guard_no_rejected_transport(self):
+    def test_static_guard_login_only_bounded_transport(self):
         auth_src = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
         bootstrap_src = (ROOT / "src" / "auth_bootstrap.py").read_text(encoding="utf-8")
-        self.assertNotIn("httpx_client", auth_src)
-        self.assertNotIn("httpx_client", bootstrap_src)
+        bounded_start = auth_src.find("def _sign_in_with_password_bounded")
+        bounded_end = auth_src.find("\ndef _submit_manual_login", bounded_start)
+        self.assertTrue(bounded_start >= 0)
+        bounded_block = auth_src[bounded_start:bounded_end]
+        self.assertIn("httpx_client", bounded_block)
+        self.assertIn("httpx.Timeout(5.0, read=10.0, write=10.0, pool=5.0)", bounded_block)
+        self.assertNotIn("httpx_client", auth_src[:bounded_start])
+        self.assertNotIn("httpx_client", auth_src[bounded_end:])
         self.assertNotIn("ThreadPoolExecutor", auth_src)
         self.assertNotIn("supabase._sync", auth_src)
         self.assertNotIn("supabase._sync", bootstrap_src)

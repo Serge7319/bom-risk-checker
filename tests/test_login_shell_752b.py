@@ -33,6 +33,15 @@ class LoginAtomicity752BTests(unittest.TestCase):
         st.markdown = MagicMock()
         st.info = MagicMock()
 
+        class _CM:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        st.spinner = lambda *a, **k: _CM()
+
         ui = types.ModuleType("src.ui.core_premium_ui")
         ui.inject_core_premium_ui_auth = MagicMock()
         sys.modules["src.ui.core_premium_ui"] = ui
@@ -61,7 +70,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         )
         return now
 
-    def test_signing_in_shows_transition_without_wiping_inflight(self):
+    def test_signing_in_shows_login_form_without_wiping_inflight(self):
         st, auth, auth_state = self._load_auth()
         self._seed_recent_attempt(st, auth_state)
         with patch.object(auth, "_auth_css"), patch.object(
@@ -70,10 +79,19 @@ class LoginAtomicity752BTests(unittest.TestCase):
             auth, "_render_auth_page"
         ) as login_form:
             auth.show_auth_ui(MagicMock(), None)
-        transition.assert_called_once()
-        login_form.assert_not_called()
+        transition.assert_not_called()
+        login_form.assert_called_once()
         self.assertTrue(st.session_state.get("cadivor_manual_login_in_progress"))
         self.assertEqual(st.session_state["cadivor_root_state"], auth_state.APP_SIGNING_IN)
+
+    def _bind_login_provider(self, auth, supabase):
+        def _bounded(email, password):
+            return supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password,
+            })
+
+        auth._sign_in_with_password_bounded = _bounded
 
     def test_one_submit_calls_supabase_once(self):
         _st, auth, _auth_state = self._load_auth()
@@ -83,6 +101,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         supabase.auth.sign_in_with_password.return_value = types.SimpleNamespace(
             user=user, session=session
         )
+        self._bind_login_provider(auth, supabase)
         with patch.object(auth, "mark_authenticated"):
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
         supabase.auth.sign_in_with_password.assert_called_once()
@@ -105,6 +124,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
 
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.side_effect = sign_in
+        self._bind_login_provider(auth, supabase)
         with patch.object(auth, "begin_manual_login", side_effect=begin), patch.object(
             auth, "finish_manual_login_failed"
         ):
@@ -115,6 +135,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         st, auth, auth_state = self._load_auth()
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.side_effect = RuntimeError("bad creds")
+        self._bind_login_provider(auth, supabase)
         with patch.object(auth, "finish_manual_login_failed") as finish:
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
         finish.assert_called_once()
@@ -130,6 +151,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         st, auth, auth_state = self._load_auth()
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.side_effect = RuntimeError("provider down")
+        self._bind_login_provider(auth, supabase)
         auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
         self.assertIsNone(st.session_state.get("cadivor_manual_login_in_progress"))
         self.assertIsNone(st.session_state.get("cadivor_manual_login_started_at"))
@@ -141,6 +163,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         st, auth, auth_state = self._load_auth()
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.side_effect = TimeoutError("timed out")
+        self._bind_login_provider(auth, supabase)
         auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
         self.assertIsNone(st.session_state.get("cadivor_manual_login_in_progress"))
         self.assertIsNone(st.session_state.get("cadivor_manual_login_started_at"))
@@ -156,6 +179,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
         supabase.auth.sign_in_with_password.return_value = types.SimpleNamespace(
             user=user, session=session
         )
+        self._bind_login_provider(auth, supabase)
         with patch.object(auth, "mark_authenticated"):
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
         st.rerun.assert_called_once()
@@ -175,8 +199,8 @@ class LoginAtomicity752BTests(unittest.TestCase):
             auth, "_render_auth_page"
         ) as login_form:
             auth.show_auth_ui(supabase, None)
-        transition.assert_called_once()
-        login_form.assert_not_called()
+        transition.assert_not_called()
+        login_form.assert_called_once()
         supabase.auth.sign_in_with_password.assert_not_called()
 
     def test_stale_signing_in_recovers_enabled_login(self):
@@ -263,6 +287,7 @@ class LoginAtomicity752BTests(unittest.TestCase):
 
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.side_effect = RerunException("rerun")
+        self._bind_login_provider(auth, supabase)
         with self.assertRaises(RerunException):
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
 
