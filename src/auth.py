@@ -98,6 +98,8 @@ Questions about these Terms may be sent to **info@cadivor.com** with “Terms”
 
 
 AUTH_MODE_WIDGET_KEY = "cadivor_auth_mode"
+AUTH_EMAIL_WIDGET_KEY = "cadivor_auth_email"
+AUTH_PASSWORD_WIDGET_KEY = "cadivor_auth_password"
 AUTH_MODE_LOGIN = "Login"
 AUTH_MODE_SIGNUP = "Create Account"
 AUTH_CARD_CONTAINER_KEY = "cadivor_auth_card"
@@ -792,8 +794,19 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     _sync_root_state_from_auth_mode(auth_mode)
 
     with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
-        email = st.text_input("Email", placeholder="you@company.com")
-        password = st.text_input("Password", type="password", placeholder="Enter your password")
+        email = st.text_input(
+            "Email",
+            placeholder="you@company.com",
+            key=AUTH_EMAIL_WIDGET_KEY,
+            autocomplete="email",
+        )
+        password = st.text_input(
+            "Password",
+            type="password",
+            placeholder="Enter your password",
+            key=AUTH_PASSWORD_WIDGET_KEY,
+            autocomplete="current-password",
+        )
 
         accepted_terms = True
         if auth_mode == AUTH_MODE_SIGNUP:
