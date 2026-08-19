@@ -17,7 +17,6 @@ from src.auth_state import (
     finish_manual_login_failed,
     mark_authenticated,
     render_auth_transition,
-    clear_auth_password_state,
 )
 from src.config import CADIVOR_MARKETING_URL
 from src.ui.core_premium_ui import inject_core_premium_ui_auth
@@ -99,16 +98,10 @@ Questions about these Terms may be sent to **info@cadivor.com** with “Terms”
 
 
 AUTH_MODE_WIDGET_KEY = "cadivor_auth_mode"
-AUTH_EMAIL_WIDGET_KEY = "cadivor_auth_email"
-AUTH_PASSWORD_WIDGET_KEY = "cadivor_auth_password"
 AUTH_MODE_LOGIN = "Login"
 AUTH_MODE_SIGNUP = "Create Account"
 AUTH_CARD_CONTAINER_KEY = "cadivor_auth_card"
 AUTH_MODE_OPTIONS = (AUTH_MODE_LOGIN, AUTH_MODE_SIGNUP)
-_LOGIN_PROVIDER_ERROR = (
-    "Authentication failed. Please check your email and password and try again."
-)
-_LAST_AUTH_MODE_KEY = "cadivor_last_auth_mode"
 
 
 def _auth_mode_label_for_root(state: str) -> str:
@@ -344,10 +337,10 @@ def _log_manual_login_event(event: str, cookie_manager=None) -> None:
 
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Authenticate credentials in the same script run as the Login submit."""
-    clear_auth_password_state()
     begin_manual_login(cookie_manager)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
+    render_auth_transition("Opening your engineering workspace…")
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
@@ -355,11 +348,12 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             "email": email,
             "password": password,
         })
-    except Exception:
+    except Exception as error:
         finish_manual_login_failed(cookie_manager)
         st.session_state["cadivor_root_state"] = APP_LOGIN
-        st.session_state["cadivor_auth_error"] = _LOGIN_PROVIDER_ERROR
-        st.rerun()
+        message = f"Authentication failed: {error}"
+        st.session_state["cadivor_auth_error"] = message
+        st.error(message)
         return
 
     _log_manual_login_event("manual_login_provider_completed", cookie_manager)
@@ -368,11 +362,10 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
         st.session_state["cadivor_root_state"] = APP_LOGIN
         message = "Login failed: no session was returned. Please confirm your email and try again."
         st.session_state["cadivor_auth_error"] = message
-        st.rerun()
+        st.error(message)
         return
 
     mark_authenticated(response.user, response.session, cookie_manager)
-    clear_auth_password_state()
     st.rerun()
 
 
@@ -436,13 +429,12 @@ def classify_signup_auth_response(response) -> tuple[str, object, object]:
 
 def _clear_signup_password_state() -> None:
     """Clear known password session/widget keys at a Streamlit-safe lifecycle point."""
-    clear_auth_password_state()
+    for key in ("password", "cadivor_signup_password", "cadivor_auth_password"):
+        st.session_state.pop(key, None)
     for key in list(st.session_state.keys()):
         key_text = str(key)
         key_l = key_text.lower()
         if "password" not in key_l:
-            continue
-        if key_text.startswith("cadivor_password_recovery"):
             continue
         # Avoid clearing unrelated app state; only auth-form oriented keys.
         if (
@@ -475,7 +467,6 @@ def _enter_signup_confirmation_pending(email: str) -> None:
 
 def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -> None:
     """Create an account in the same script run as the Create Account submit."""
-    clear_auth_password_state()
     begin_manual_login(cookie_manager)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
@@ -798,29 +789,11 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     )
     if auth_mode not in AUTH_MODE_OPTIONS:
         auth_mode = AUTH_MODE_LOGIN
-    previous_mode = st.session_state.get(_LAST_AUTH_MODE_KEY)
-    if (
-        previous_mode in AUTH_MODE_OPTIONS
-        and previous_mode != auth_mode
-        and AUTH_MODE_LOGIN in {previous_mode, auth_mode}
-    ):
-        # Login ↔ Create Account: drop the shared password widget before it remounts.
-        clear_auth_password_state()
-    st.session_state[_LAST_AUTH_MODE_KEY] = auth_mode
     _sync_root_state_from_auth_mode(auth_mode)
 
-    with st.form("cadivor_auth_form", clear_on_submit=True, border=False):
-        email = st.text_input(
-            "Email",
-            placeholder="you@company.com",
-            key=AUTH_EMAIL_WIDGET_KEY,
-        )
-        password = st.text_input(
-            "Password",
-            type="password",
-            placeholder="Enter your password",
-            key=AUTH_PASSWORD_WIDGET_KEY,
-        )
+    with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
+        email = st.text_input("Email", placeholder="you@company.com")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
 
         accepted_terms = True
         if auth_mode == AUTH_MODE_SIGNUP:
@@ -840,8 +813,6 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         )
 
     if submit:
-        email = str(st.session_state.get(AUTH_EMAIL_WIDGET_KEY) or email or "").strip()
-        password = str(st.session_state.get(AUTH_PASSWORD_WIDGET_KEY) or password or "")
         if not email or not password:
             st.warning("Please enter your email and password.")
             return
@@ -856,7 +827,6 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
 
     if auth_mode == AUTH_MODE_LOGIN:
         if st.button("Forgot password?", key="cadivor_forgot_password_link"):
-            clear_auth_password_state()
             _auth_recovery().begin_password_reset_request()
             st.rerun()
 
@@ -1130,27 +1100,22 @@ def show_auth_ui(supabase, cookie_manager=None):
     with st.container(key=AUTH_CARD_CONTAINER_KEY, border=False):
         # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
         if state == APP_SIGNUP_CONFIRMATION_PENDING:
-            clear_auth_password_state()
             _render_signup_confirmation_pending()
             return
 
         if state == APP_SIGNUP_CONFIRMATION_SUCCESS:
-            clear_auth_password_state()
             _render_signup_confirmation_success(cookie_manager)
             return
 
         if state == APP_SIGNUP_CONFIRMATION_INVALID:
-            clear_auth_password_state()
             _render_signup_confirmation_invalid()
             return
 
-        recovered_signing_in = state == APP_SIGNING_IN
-        if recovered_signing_in:
-            # Keep the Login card mounted. Do not reseed the radio widget key —
-            # that remounts the form and drops a pending Login submit.
+        if state == APP_SIGNING_IN:
             st.session_state["cadivor_root_state"] = APP_LOGIN
+            st.session_state.pop("cadivor_manual_login_in_progress", None)
             state = APP_LOGIN
-            _ensure_auth_mode_widget_seeded(AUTH_MODE_LOGIN)
+            _seed_auth_mode_widget(AUTH_MODE_LOGIN)
 
         if state in (APP_LOGIN, APP_SIGNUP):
             recovery = _auth_recovery()
@@ -1168,15 +1133,9 @@ def show_auth_ui(supabase, cookie_manager=None):
                 cookie_manager=cookie_manager,
                 initial_mode=_auth_mode_label_for_root(state),
             )
-            if recovered_signing_in and st.session_state.get("cadivor_manual_login_in_progress"):
-                # No submit completed this run (success reruns; failure clears).
-                st.session_state.pop("cadivor_manual_login_in_progress", None)
-                clear_auth_password_state()
-                st.rerun()
             return
 
         if state == APP_PASSWORD_RESET:
-            clear_auth_password_state()
             recovery = _auth_recovery()
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
             if recovery_notice:
@@ -1186,7 +1145,6 @@ def show_auth_ui(supabase, cookie_manager=None):
 
         recovery = _auth_recovery()
         if state == APP_PASSWORD_RECOVERY or recovery.password_recovery_active():
-            clear_auth_password_state()
             _render_password_recovery_form(supabase, cookie_manager)
             return
 
