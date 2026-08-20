@@ -28,16 +28,15 @@ class OneClickLoginWidgetContractTests(unittest.TestCase):
         self.assertIn('autocomplete="email"', self.source)
         self.assertIn('autocomplete="current-password"', self.source)
 
-    def test_login_uses_one_native_form_and_explicit_submit(self):
+    def test_login_uses_native_form_and_explicit_button_callback(self):
         self.assertIn('with st.form("cadivor_login_form"', self.source)
         self.assertIn("submit = st.form_submit_button(", self.source)
         self.assertIn('key="cadivor_login_submit"', self.source)
+        self.assertIn("on_click=_request_manual_login_submit", self.source)
 
     def test_no_automatic_password_submission_or_browser_replay(self):
+        self.assertNotIn("on_change=_request_manual_login_submit", self.source)
         for removed in (
-            "AUTH_LOGIN_SUBMIT_REQUESTED_KEY",
-            "_request_manual_login_submit",
-            "on_change=",
             "_install_login_pointerdown_bridge",
             "cadivorCommitThenSubmit",
             'addEventListener("pointerdown"',
@@ -48,6 +47,33 @@ class OneClickLoginWidgetContractTests(unittest.TestCase):
         self.assertNotIn("cadivor_auth_submission", self.source)
         self.assertNotIn("ThreadPoolExecutor", self.source)
         self.assertNotIn("httpx.Client", self.source)
+
+    def test_latched_button_click_authenticates_when_transient_submit_is_false(self):
+        st = _install_auth_ui_stub({})
+        auth = importlib.import_module("src.auth")
+        st.session_state[auth.AUTH_MODE_WIDGET_KEY] = auth.AUTH_MODE_LOGIN
+        st.session_state[auth.AUTH_EMAIL_WIDGET_KEY] = "engineer@example.com"
+        st.session_state[auth.AUTH_PASSWORD_WIDGET_KEY] = "typed-password"
+        st.session_state[auth.AUTH_LOGIN_SUBMIT_REQUESTED_KEY] = True
+        st.text_input.side_effect = ["", ""]
+        st.form_submit_button.return_value = False
+        st.button.return_value = False
+
+        response = MagicMock(user=MagicMock(), session=MagicMock())
+        supabase = MagicMock()
+        supabase.auth.sign_in_with_password.return_value = response
+
+        with (
+            patch.object(auth, "begin_manual_login"),
+            patch.object(auth, "render_auth_transition"),
+            patch.object(auth, "mark_authenticated"),
+        ):
+            auth._render_auth_page(supabase, MagicMock(), auth.AUTH_MODE_LOGIN)
+
+        supabase.auth.sign_in_with_password.assert_called_once_with(
+            {"email": "engineer@example.com", "password": "typed-password"}
+        )
+        self.assertNotIn(auth.AUTH_LOGIN_SUBMIT_REQUESTED_KEY, st.session_state)
 
     def test_non_submit_rerun_never_calls_provider(self):
         st = _install_auth_ui_stub({})
