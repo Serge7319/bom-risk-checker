@@ -99,7 +99,6 @@ Questions about these Terms may be sent to **info@cadivor.com** with “Terms”
 AUTH_MODE_WIDGET_KEY = "cadivor_auth_mode"
 AUTH_EMAIL_WIDGET_KEY = "cadivor_auth_email"
 AUTH_PASSWORD_WIDGET_KEY = "cadivor_auth_password"
-AUTH_LOGIN_SUBMIT_REQUESTED_KEY = "cadivor_login_submit_requested"
 AUTH_MODE_LOGIN = "Login"
 AUTH_MODE_SIGNUP = "Create Account"
 AUTH_CARD_CONTAINER_KEY = "cadivor_auth_card"
@@ -130,18 +129,6 @@ def _sync_root_state_from_auth_mode(auth_mode: str) -> None:
     st.session_state["cadivor_root_state"] = desired
     # Intent is considered consumed once the user (or seed) owns a mode.
     st.session_state["cadivor_auth_intent_applied"] = True
-
-
-def _request_manual_login_submit() -> None:
-    """Latch a Login click without storing or copying either credential.
-
-    Streamlit executes form callbacks after committing the form widget batch
-    and before the script body reruns. Keeping this non-sensitive intent bit
-    lets the rerun complete the same physical click even when the submit
-    widget's transient boolean is lost during a manually edited password's
-    focus/commit handoff.
-    """
-    st.session_state[AUTH_LOGIN_SUBMIT_REQUESTED_KEY] = True
 
 
 def _auth_css():
@@ -826,35 +813,32 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     _sync_root_state_from_auth_mode(auth_mode)
 
     if auth_mode == AUTH_MODE_LOGIN:
-        # Keep Login credentials outside a Streamlit form. On a fresh browser
-        # session, committing a manually typed password can rerun the script
-        # before the button click is delivered. The password callback latches
-        # only submit intent; the rerun then reads the committed keyed widgets
-        # and performs the existing provider request exactly once.
-        email = st.text_input(
-            "Email",
-            placeholder="you@company.com",
-            key=AUTH_EMAIL_WIDGET_KEY,
-            autocomplete="email",
-        )
-        password = st.text_input(
-            "Password",
-            type="password",
-            placeholder="Enter your password",
-            key=AUTH_PASSWORD_WIDGET_KEY,
-            autocomplete="current-password",
-            on_change=_request_manual_login_submit,
-        )
-        submit = st.button(
-            AUTH_MODE_LOGIN,
-            key="cadivor_login_submit",
-            type="primary",
-            use_container_width=True,
-            on_click=_request_manual_login_submit,
-        )
+        # Keep the credentials and explicit Login action in one native form.
+        # Streamlit commits the email/password widget batch before returning
+        # submit=True, so manually typed credentials are sent by one click
+        # without password-blur callbacks or synthetic click replay.
+        with st.form("cadivor_login_form", clear_on_submit=False, border=False):
+            email = st.text_input(
+                "Email",
+                placeholder="you@company.com",
+                key=AUTH_EMAIL_WIDGET_KEY,
+                autocomplete="email",
+            )
+            password = st.text_input(
+                "Password",
+                type="password",
+                placeholder="Enter your password",
+                key=AUTH_PASSWORD_WIDGET_KEY,
+                autocomplete="current-password",
+            )
+            submit = st.form_submit_button(
+                AUTH_MODE_LOGIN,
+                key="cadivor_login_submit",
+                type="primary",
+                use_container_width=True,
+            )
         accepted_terms = True
     else:
-        st.session_state.pop(AUTH_LOGIN_SUBMIT_REQUESTED_KEY, None)
         with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
             email = st.text_input(
                 "Email",
@@ -884,14 +868,9 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 use_container_width=True,
             )
 
-    login_submit_requested = (
-        auth_mode == AUTH_MODE_LOGIN
-        and bool(st.session_state.pop(AUTH_LOGIN_SUBMIT_REQUESTED_KEY, False))
-    )
-    if submit or login_submit_requested:
-        # The callback runs after the browser's form batch is committed. Read
-        # the keyed state first, with the widget return as a test/back-compat
-        # fallback, so a manual password commit cannot require another click.
+    if submit:
+        # The native form commits both keyed credentials before this branch.
+        # Read session state first and retain widget returns as a test fallback.
         email = str(st.session_state.get(AUTH_EMAIL_WIDGET_KEY) or email or "")
         password = str(st.session_state.get(AUTH_PASSWORD_WIDGET_KEY) or password or "")
         if not email or not password:
