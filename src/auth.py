@@ -137,13 +137,58 @@ def _request_manual_login_submit() -> None:
     """Latch a Login click without storing or copying either credential.
 
     Streamlit executes form callbacks after committing the form widget batch
-    and before the script body reruns.  Keeping this non-sensitive intent bit
+    and before the script body reruns. Keeping this non-sensitive intent bit
     lets the rerun complete the same physical click even when the submit
     widget's transient boolean is lost during a manually edited password's
     focus/commit handoff.
     """
     st.session_state[AUTH_LOGIN_SUBMIT_REQUESTED_KEY] = True
 
+
+def _install_login_pointerdown_bridge() -> None:
+    """Submit the existing Streamlit form before a password blur can eat a click.
+
+    The bridge never reads, copies, stores, or transmits either credential. It
+    only converts a trusted primary pointer-down on the visible Login button
+    into that same button's click while the password input still owns focus.
+    Keyboard and ordinary Streamlit submit behavior remain unchanged.
+    """
+    components.html(
+        """
+<script>
+(() => {
+  const doc = window.parent.document;
+  const marker = "cadivorPointerdownSubmit";
+
+  const bind = () => {
+    const card = doc.querySelector(".st-key-cadivor_auth_card");
+    if (!card) return;
+    const button = [...card.querySelectorAll("button")].find(
+      (node) => (node.textContent || "").trim() === "Login"
+    );
+    if (!button || button.dataset[marker] === "1") return;
+    button.dataset[marker] = "1";
+    button.addEventListener("pointerdown", (event) => {
+      if (!event.isTrusted || event.button !== 0) return;
+      const active = doc.activeElement;
+      if (!active || active.getAttribute("type") !== "password") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      button.click();
+    }, true);
+  };
+
+  bind();
+  const observer = new MutationObserver(bind);
+  observer.observe(doc.body, {childList: true, subtree: true});
+  window.setTimeout(() => observer.disconnect(), 15000);
+})();
+</script>
+        """,
+        height=0,
+        width=0,
+        scrolling=False,
+    )
 
 
 def _auth_css():
@@ -191,18 +236,21 @@ def _auth_css():
         [data-testid="stMain"]:has(.st-key-cadivor_auth_card){
             overflow-anchor:none;
         }
-        /* Auth login / signup card — centered, fixed width on all displays */
+        /* Auth card is pinned to the viewport so stale/zero-height Streamlit
+           slots cannot push the active credential surface below the fold. */
         [data-testid="stAppViewContainer"]:has(.st-key-cadivor_auth_card){
-            display:flex!important;
-            flex-direction:column!important;
-            align-items:center!important;
             background:var(--cadivor-bg)!important;
         }
         .st-key-cadivor_auth_card{
-            width:min(480px,92vw)!important;
+            position:fixed!important;
+            top:clamp(10px,2vh,22px)!important;
+            left:50%!important;
+            transform:translateX(-50%)!important;
+            z-index:1000!important;
+            width:min(480px,calc(100vw - 24px))!important;
             max-width:480px!important;
-            margin:7vh auto 48px auto!important;
-            padding:38px 38px 34px 38px!important;
+            margin:0!important;
+            padding:clamp(22px,3vh,34px) 34px 28px 34px!important;
             background:#FFFFFF!important;
             border:1px solid #E2E8F0!important;
             border-top:6px solid #2563EB!important;
@@ -211,7 +259,10 @@ def _auth_css():
             box-sizing:border-box!important;
             height:auto!important;
             min-height:0!important;
-            max-height:none!important;
+            max-height:calc(100dvh - clamp(20px,4vh,44px))!important;
+            overflow-x:hidden!important;
+            overflow-y:auto!important;
+            overscroll-behavior:contain;
             overflow-anchor:none;
         }
         /* Keep the Streamlit main column from becoming a second white card shell. */
@@ -305,7 +356,23 @@ def _auth_css():
         /* Auth route */
         .auth-card-header{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-card-brand-link{display:block;text-decoration:none!important;color:inherit!important;}.auth-card-brand-link:hover{text-decoration:none!important;}.auth-card-brand-link:hover .auth-card-title{color:#2563EB!important;}.auth-recovery-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:#2563EB!important;border:1px solid #BFDBFE;border-radius:999px;padding:7px 13px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin:0 0 16px 0;box-shadow:0 8px 18px rgba(37,99,235,.08);}.auth-recovery-eyebrow:before{content:"";width:7px;height:7px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.10);}.auth-confirm-status{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px 0;padding:7px 11px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#047857!important;font-size:12px;font-weight:900;letter-spacing:.02em;}.auth-confirm-status:before{content:"✓";font-weight:950;}.auth-confirm-email{display:block;margin:8px 0 12px 0;padding:10px 12px;border-radius:12px;background:#F8FAFC;border:1px solid #E2E8F0;color:#0F172A!important;font-size:15px;font-weight:900;word-break:break-word;}.auth-confirm-guidance{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:11px 12px;color:#475569!important;font-size:12.5px;font-weight:750;line-height:1.5;margin:0 0 14px 0;text-align:left;}.st-key-cadivor_auth_card:has(.auth-confirm-status) .auth-copy{margin:0 0 10px 0;}.st-key-cadivor_auth_card:has(.auth-confirm-status) .auth-heading{margin:0 0 6px 0;}.auth-trust-note{color:#64748B!important;font-size:12.5px;line-height:1.55;margin:14px 0 0 0;text-align:center;font-weight:700;}.cadivor-back-home{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:8px 0;color:#2f6fed!important;text-decoration:none!important;font-size:13px;font-weight:900;transition:color .18s ease;}.cadivor-back-home:hover{color:#174ea6!important;text-decoration:underline!important;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
         .st-key-cadivor_auth_card div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}.st-key-cadivor_auth_card div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}.st-key-cadivor_auth_card div[data-testid="stRadio"] label,.st-key-cadivor_auth_card div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] label,.st-key-cadivor_auth_card div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;width:100%!important;max-width:100%!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] > div{overflow:visible!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]::before,.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"] > div,.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] input,.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="text"],.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="password"],.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] input:focus,.st-key-cadivor_auth_card div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}.st-key-cadivor_auth_card div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"]{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button:hover,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"]:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button *,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"] *{color:#fff!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-secondary"]{width:100%!important;min-height:46px!important;border-radius:12px!important;background:#fff!important;border:1px solid #CBD5E1!important;color:#0F172A!important;font-weight:850!important;box-shadow:none!important;margin-top:8px!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-secondary"]:hover{background:#F8FAFC!important;border-color:#94A3B8!important;color:#0F172A!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-tertiary"]{width:auto!important;min-height:40px!important;height:auto!important;padding:6px 10px!important;border-radius:8px!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#2563EB!important;font-weight:850!important;font-size:13px!important;margin:4px auto 0 auto!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-tertiary"]:hover{background:transparent!important;color:#1D4ED8!important;text-decoration:underline!important;}.st-key-cadivor_auth_card div.stButton:has(> button[data-testid="stBaseButton-tertiary"]){display:flex!important;justify-content:center!important;width:100%!important;}
-        @media(max-width:700px){.st-key-cadivor_auth_card{margin:3vh auto 32px auto!important;width:94vw!important;max-width:94vw!important;padding:28px 22px!important;border-radius:18px!important;}.auth-divider{margin-left:-22px!important;margin-right:-22px!important;}}
+        .st-key-cadivor_auth_card [data-testid="stCustomComponentV1"]:has(iframe[title="streamlit.components.v1.html"]){position:absolute!important;width:0!important;height:0!important;overflow:hidden!important;}
+        @media(max-height:900px){
+            .st-key-cadivor_auth_card{padding:20px 30px 20px 30px!important;}
+            .auth-card-header{margin-bottom:14px!important;}
+            .auth-card-logo{width:44px!important;height:44px!important;margin-bottom:8px!important;font-size:20px!important;}
+            .auth-card-title{font-size:23px!important;margin-bottom:3px!important;}
+            .auth-copy{margin-bottom:10px!important;line-height:1.45!important;}
+            .auth-strip{padding:9px 11px!important;margin-bottom:10px!important;line-height:1.35!important;}
+            .auth-divider{margin:12px -30px 14px -30px!important;}
+            .st-key-cadivor_auth_card div[data-testid="stRadio"]{padding:8px 11px 5px 11px!important;margin-bottom:10px!important;}
+            .st-key-cadivor_auth_card div[data-testid="stTextInput"]{margin-bottom:8px!important;}
+            .st-key-cadivor_auth_card .cadivor-back-home{margin-top:8px!important;}
+        }
+        @media(max-width:700px){
+            .st-key-cadivor_auth_card{top:8px!important;width:calc(100vw - 16px)!important;max-width:calc(100vw - 16px)!important;max-height:calc(100dvh - 16px)!important;padding:20px 18px!important;border-radius:18px!important;}
+            .auth-divider{margin-left:-18px!important;margin-right:-18px!important;}
+        }
         .page-section{padding-top:58px!important;} .compact-section{padding-top:42px!important;} .cadivor-nav-links a.active{color:#2563EB!important;background:#EFF6FF;border-radius:10px;padding:8px 10px;margin:-8px -10px;}
 
         .mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px;}
@@ -847,6 +914,9 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 key="cadivor_signup_submit",
                 use_container_width=True,
             )
+
+    if auth_mode == AUTH_MODE_LOGIN:
+        _install_login_pointerdown_bridge()
 
     login_submit_requested = (
         auth_mode == AUTH_MODE_LOGIN
