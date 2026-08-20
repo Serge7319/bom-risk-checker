@@ -49,7 +49,7 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         self.st.rerun.assert_called_once()
         self.st.success.assert_not_called()
 
-    def test_signup_failure_does_not_enter_pending_state(self):
+    def test_duplicate_signup_enters_safe_pending_state(self):
         auth = self._load_auth()
         state = self._load_state()
         supabase = MagicMock()
@@ -60,12 +60,41 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         ), patch.object(auth, "finish_manual_login_failed") as finish_failed:
             auth._submit_manual_signup(supabase, MagicMock(), "dup@cadivor.com", "secret-password")
 
+        finish_failed.assert_not_called()
+        self.assertEqual(self.st.session_state["cadivor_root_state"], state.APP_SIGNUP_CONFIRMATION_PENDING)
+        self.assertEqual(self.st.session_state[state.SIGNUP_PENDING_EMAIL_KEY], "dup@cadivor.com")
+        self.assertNotIn("cadivor_auth_error", self.st.session_state)
+        self.st.rerun.assert_called_once()
+
+    def test_duplicate_signup_error_code_enters_safe_pending_state(self):
+        auth = self._load_auth()
+        state = self._load_state()
+        supabase = MagicMock()
+        error = Exception("Account unavailable")
+        error.code = "user_already_exists"
+        supabase.auth.sign_up.side_effect = error
+
+        with patch.object(auth, "begin_manual_login"), patch.object(auth, "render_auth_transition"), patch.object(
+            auth, "_log_manual_login_event"
+        ):
+            auth._submit_manual_signup(supabase, MagicMock(), "dup@cadivor.com", "secret-password")
+
+        self.assertEqual(self.st.session_state["cadivor_root_state"], state.APP_SIGNUP_CONFIRMATION_PENDING)
+        self.st.rerun.assert_called_once()
+
+    def test_provider_signup_failure_does_not_enter_pending_state(self):
+        auth = self._load_auth()
+        state = self._load_state()
+        supabase = MagicMock()
+        supabase.auth.sign_up.side_effect = Exception("Authentication provider unavailable")
+
+        with patch.object(auth, "begin_manual_login"), patch.object(auth, "render_auth_transition"), patch.object(
+            auth, "_log_manual_login_event"
+        ), patch.object(auth, "finish_manual_login_failed") as finish_failed:
+            auth._submit_manual_signup(supabase, MagicMock(), "dup@cadivor.com", "secret-password")
+
         finish_failed.assert_called_once()
         self.assertEqual(self.st.session_state["cadivor_root_state"], state.APP_LOGIN)
-        self.assertNotEqual(
-            self.st.session_state.get("cadivor_root_state"),
-            state.APP_SIGNUP_CONFIRMATION_PENDING,
-        )
         self.assertNotIn(state.SIGNUP_PENDING_EMAIL_KEY, self.st.session_state)
         self.assertIn("Account creation failed", self.st.session_state.get("cadivor_auth_error", ""))
 
