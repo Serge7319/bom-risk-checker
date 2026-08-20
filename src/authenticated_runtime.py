@@ -12424,3 +12424,11 @@ def run_authenticated_app() -> None:
     # Re-introduce durable persistence only through a server-side/HttpOnly mechanism,
     # not a visible Streamlit component that can schedule frontend reruns.
     inject_workspace_geometry_final()
+
+    # Final first-paint handoff marker. The startup overlay stays opaque until
+    # the route body and final workspace geometry have both been emitted.
+    # This marker is visual-only and carries no user or session data.
+    st.markdown(
+        '<span class="cv-workspace-ready-marker" aria-hidden="true"></span>',
+        unsafe_allow_html=True,
+    )
