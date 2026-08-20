@@ -234,9 +234,33 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
             if call.args
         )
         self.assertIn("[data-stale]:has(.cv-startup-shell)", rendered)
-        self.assertIn(":has(.cv-foundation-topbar) .cv-startup-shell", rendered)
+        self.assertIn(":has(.cv-workspace-ready-marker) .cv-startup-shell", rendered)
+        self.assertNotIn(":has(.cv-foundation-topbar) .cv-startup-shell", rendered)
         self.assertIn("position:fixed", rendered)
         self.assertIn("pointer-events:none", rendered)
+
+    def test_workspace_ready_marker_is_emitted_after_final_geometry(self):
+        runtime_source = (ROOT / "src" / "authenticated_runtime.py").read_text(
+            encoding="utf-8"
+        )
+        geometry_index = runtime_source.rfind("inject_workspace_geometry_final()")
+        marker_index = runtime_source.rfind("cv-workspace-ready-marker")
+        self.assertGreater(geometry_index, -1)
+        self.assertGreater(marker_index, geometry_index)
+        self.assertEqual(runtime_source.count("cv-workspace-ready-marker"), 1)
+
+    def test_startup_overlay_does_not_retire_on_shell_chrome_alone(self):
+        bootstrap_source = (ROOT / "src" / "auth_bootstrap.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            ":has(.cv-workspace-ready-marker) .cv-startup-shell",
+            bootstrap_source,
+        )
+        self.assertNotIn(
+            ":has(.cv-foundation-topbar) .cv-startup-shell",
+            bootstrap_source,
+        )
 
     def test_startup_shell_is_visual_only_and_not_an_auth_surface(self):
         st, bootstrap, *_rest = self._load_bootstrap({})
