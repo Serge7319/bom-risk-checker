@@ -100,6 +100,7 @@ Questions about these Terms may be sent to **info@cadivor.com** with “Terms”
 AUTH_MODE_WIDGET_KEY = "cadivor_auth_mode"
 AUTH_EMAIL_WIDGET_KEY = "cadivor_auth_email"
 AUTH_PASSWORD_WIDGET_KEY = "cadivor_auth_password"
+AUTH_LOGIN_SUBMIT_REQUESTED_KEY = "cadivor_login_submit_requested"
 AUTH_MODE_LOGIN = "Login"
 AUTH_MODE_SIGNUP = "Create Account"
 AUTH_CARD_CONTAINER_KEY = "cadivor_auth_card"
@@ -130,6 +131,18 @@ def _sync_root_state_from_auth_mode(auth_mode: str) -> None:
     st.session_state["cadivor_root_state"] = desired
     # Intent is considered consumed once the user (or seed) owns a mode.
     st.session_state["cadivor_auth_intent_applied"] = True
+
+
+def _request_manual_login_submit() -> None:
+    """Latch a Login click without storing or copying either credential.
+
+    Streamlit executes form callbacks after committing the form widget batch
+    and before the script body reruns.  Keeping this non-sensitive intent bit
+    lets the rerun complete the same physical click even when the submit
+    widget's transient boolean is lost during a manually edited password's
+    focus/commit handoff.
+    """
+    st.session_state[AUTH_LOGIN_SUBMIT_REQUESTED_KEY] = True
 
 
 
@@ -820,12 +833,31 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             with st.expander("View Terms of Service"):
                 st.markdown(CADIVOR_TERMS)
 
-        submit = st.form_submit_button(
-            AUTH_MODE_SIGNUP if auth_mode == AUTH_MODE_SIGNUP else AUTH_MODE_LOGIN,
-            use_container_width=True,
-        )
+        if auth_mode == AUTH_MODE_LOGIN:
+            submit = st.form_submit_button(
+                AUTH_MODE_LOGIN,
+                key="cadivor_login_submit",
+                use_container_width=True,
+                on_click=_request_manual_login_submit,
+            )
+        else:
+            st.session_state.pop(AUTH_LOGIN_SUBMIT_REQUESTED_KEY, None)
+            submit = st.form_submit_button(
+                AUTH_MODE_SIGNUP,
+                key="cadivor_signup_submit",
+                use_container_width=True,
+            )
 
-    if submit:
+    login_submit_requested = (
+        auth_mode == AUTH_MODE_LOGIN
+        and bool(st.session_state.pop(AUTH_LOGIN_SUBMIT_REQUESTED_KEY, False))
+    )
+    if submit or login_submit_requested:
+        # The callback runs after the browser's form batch is committed. Read
+        # the keyed state first, with the widget return as a test/back-compat
+        # fallback, so a manual password commit cannot require another click.
+        email = str(st.session_state.get(AUTH_EMAIL_WIDGET_KEY) or email or "")
+        password = str(st.session_state.get(AUTH_PASSWORD_WIDGET_KEY) or password or "")
         if not email or not password:
             st.warning("Please enter your email and password.")
             return
