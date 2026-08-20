@@ -206,6 +206,36 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
         )
         self.assertNotIn("Opening your engineering workspace", bootstrap.AUTHENTICATED_STARTUP_SHELL_MESSAGE)
 
+    def test_startup_shell_preserves_workspace_chrome_during_handoff(self):
+        st, bootstrap, *_rest = self._load_bootstrap({})
+        bootstrap.render_startup_loading_shell()
+
+        rendered = "\n".join(
+            str(call.args[0])
+            for call in st.markdown.call_args_list
+            if call.args
+        )
+        self.assertIn("cv-startup-shell-topbar", rendered)
+        self.assertIn("cv-startup-shell-nav", rendered)
+        self.assertIn("cv-startup-shell-main", rendered)
+        self.assertIn("Dashboard", rendered)
+        self.assertIn("BOM Analyzer", rendered)
+        self.assertIn("Loading your workspace", rendered)
+
+    def test_startup_shell_is_visual_only_and_not_an_auth_surface(self):
+        st, bootstrap, *_rest = self._load_bootstrap({})
+        bootstrap.render_startup_loading_shell()
+
+        rendered = "\n".join(
+            str(call.args[0])
+            for call in st.markdown.call_args_list
+            if call.args
+        )
+        self.assertNotIn("cadivor_auth_form", rendered)
+        self.assertNotIn("st-key-cadivor_auth_card", rendered)
+        self.assertNotIn("text_input", rendered)
+        self.assertNotIn("st.rerun", rendered)
+
     def test_streamlit_entrypoint_gates_startup_shell(self):
         source = (ROOT / "streamlit_app.py").read_text(encoding="utf-8")
         self.assertIn("should_render_authenticated_startup_shell()", source)
