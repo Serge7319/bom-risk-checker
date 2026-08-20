@@ -18,6 +18,7 @@ from src.auth_state import (
     render_auth_transition,
 )
 from src.config import CADIVOR_MARKETING_URL
+from src.auth_atomic_login import render_atomic_login
 from src.ui.core_premium_ui import inject_core_premium_ui_auth
 
 
@@ -99,7 +100,7 @@ Questions about these Terms may be sent to **info@cadivor.com** with “Terms”
 AUTH_MODE_WIDGET_KEY = "cadivor_auth_mode"
 AUTH_EMAIL_WIDGET_KEY = "cadivor_auth_email"
 AUTH_PASSWORD_WIDGET_KEY = "cadivor_auth_password"
-AUTH_LOGIN_SUBMIT_REQUESTED_KEY = "cadivor_login_submit_requested"
+AUTH_ATOMIC_LOGIN_CONSUMED_KEY = "cadivor_atomic_login_consumed_request_id"
 AUTH_MODE_LOGIN = "Login"
 AUTH_MODE_SIGNUP = "Create Account"
 AUTH_CARD_CONTAINER_KEY = "cadivor_auth_card"
@@ -130,17 +131,6 @@ def _sync_root_state_from_auth_mode(auth_mode: str) -> None:
     st.session_state["cadivor_root_state"] = desired
     # Intent is considered consumed once the user (or seed) owns a mode.
     st.session_state["cadivor_auth_intent_applied"] = True
-
-
-def _request_manual_login_submit() -> None:
-    """Latch only an explicit Login button activation.
-
-    Streamlit form callbacks run after the form widget batch is committed and
-    before the script body reruns. This non-sensitive intent bit preserves the
-    physical button activation if the transient submit boolean is lost while
-    a manually edited password is committed.
-    """
-    st.session_state[AUTH_LOGIN_SUBMIT_REQUESTED_KEY] = True
 
 
 def _auth_css():
@@ -825,31 +815,16 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
     _sync_root_state_from_auth_mode(auth_mode)
 
     if auth_mode == AUTH_MODE_LOGIN:
-        # Keep the credentials and explicit Login action in one native form.
-        # Streamlit commits the email/password widget batch before returning
-        # submit=True, so manually typed credentials are sent by one click
-        # without password-blur callbacks or synthetic click replay.
-        with st.form("cadivor_login_form", clear_on_submit=False, border=False):
-            email = st.text_input(
-                "Email",
-                placeholder="you@company.com",
-                key=AUTH_EMAIL_WIDGET_KEY,
-                autocomplete="email",
-            )
-            password = st.text_input(
-                "Password",
-                type="password",
-                placeholder="Enter your password",
-                key=AUTH_PASSWORD_WIDGET_KEY,
-                autocomplete="current-password",
-            )
-            submit = st.form_submit_button(
-                AUTH_MODE_LOGIN,
-                key="cadivor_login_submit",
-                type="primary",
-                use_container_width=True,
-                on_click=_request_manual_login_submit,
-            )
+        # The Login component owns one native browser form and emits the email,
+        # password, and a unique request id together on the physical submit.
+        # This avoids Streamlit's separate password-commit and button reruns.
+        login_payload = render_atomic_login(
+            key="cadivor_atomic_login",
+            disabled=False,
+        )
+        email = ""
+        password = ""
+        submit = False
         accepted_terms = True
     else:
         with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
@@ -881,25 +856,33 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
                 use_container_width=True,
             )
 
-    login_submit_requested = (
-        auth_mode == AUTH_MODE_LOGIN
-        and bool(st.session_state.pop(AUTH_LOGIN_SUBMIT_REQUESTED_KEY, False))
-    )
-    if submit or login_submit_requested:
-        # The native form commits both keyed credentials before the callback.
-        # Read session state first and retain widget returns as a test fallback.
+    if auth_mode == AUTH_MODE_LOGIN:
+        payload = login_payload if isinstance(login_payload, dict) else {}
+        request_id = str(payload.get("request_id") or "").strip()
+        consumed_id = str(
+            st.session_state.get(AUTH_ATOMIC_LOGIN_CONSUMED_KEY) or ""
+        )
+        if request_id and request_id != consumed_id:
+            # Consume before provider I/O so component rerenders cannot replay a
+            # physical click. Only the non-sensitive request id is persisted.
+            st.session_state[AUTH_ATOMIC_LOGIN_CONSUMED_KEY] = request_id
+            email = str(payload.get("email") or "").strip()
+            password = str(payload.get("password") or "")
+            if not email or not password:
+                st.warning("Please enter your email and password.")
+                return
+            _submit_manual_login(supabase, cookie_manager, email, password)
+            return
+    elif submit:
         email = str(st.session_state.get(AUTH_EMAIL_WIDGET_KEY) or email or "")
         password = str(st.session_state.get(AUTH_PASSWORD_WIDGET_KEY) or password or "")
         if not email or not password:
             st.warning("Please enter your email and password.")
             return
-        if auth_mode == AUTH_MODE_SIGNUP and not accepted_terms:
+        if not accepted_terms:
             st.warning("Please accept the Terms of Service and Privacy Policy to create an account.")
             return
-        if auth_mode == AUTH_MODE_SIGNUP:
-            _submit_manual_signup(supabase, cookie_manager, email, password)
-        else:
-            _submit_manual_login(supabase, cookie_manager, email, password)
+        _submit_manual_signup(supabase, cookie_manager, email, password)
         return
 
     if auth_mode == AUTH_MODE_LOGIN:
