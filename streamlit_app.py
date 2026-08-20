@@ -73,19 +73,6 @@ log_startup_phase("load_authenticated_runtime")
 with timed_phase("startup.authenticated_runtime_import", operation="import"):
     from src.authenticated_runtime import run_authenticated_app
 
-try:
-    with timed_phase(
-        "startup.run_authenticated_app",
-        operation="render",
-        route="authenticated",
-    ):
-        run_authenticated_app()
-finally:
-    # Retire the opaque startup shell only after the complete runtime render.
-    # The finally boundary also exposes Streamlit stop/error surfaces instead
-    # of leaving users behind a permanent loading overlay.
-    st.markdown(
-        '<span class="cv-workspace-ready-marker" aria-hidden="true"></span>',
-        unsafe_allow_html=True,
-    )
+with timed_phase("startup.run_authenticated_app", operation="render", route="authenticated"):
+    run_authenticated_app()
 log_startup_phase("authenticated_runtime_loaded")
