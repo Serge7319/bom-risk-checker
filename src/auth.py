@@ -358,6 +358,28 @@ def _log_manual_login_event(event: str, cookie_manager=None) -> None:
         pass
 
 
+MANUAL_LOGIN_FAILURE_MESSAGE = (
+    "Cadivor could not sign you in. Check your credentials and try again."
+)
+MANUAL_LOGIN_NO_SESSION_MESSAGE = (
+    "Cadivor could not complete sign-in. Please try again."
+)
+
+
+def _fail_manual_login_and_rerun(
+    cookie_manager,
+    *,
+    event: str,
+    message: str,
+) -> None:
+    """Rebuild an enabled Login surface after a provider-side failure."""
+    finish_manual_login_failed(cookie_manager)
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    st.session_state["cadivor_auth_error"] = message
+    _log_manual_login_event(event, cookie_manager)
+    st.rerun()
+
+
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Authenticate credentials in the same script run as the Login submit."""
     begin_manual_login(cookie_manager)
@@ -371,24 +393,30 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             "email": email,
             "password": password,
         })
-    except Exception as error:
-        finish_manual_login_failed(cookie_manager)
-        st.session_state["cadivor_root_state"] = APP_LOGIN
-        message = f"Authentication failed: {error}"
-        st.session_state["cadivor_auth_error"] = message
-        st.error(message)
+    except Exception:
+        _fail_manual_login_and_rerun(
+            cookie_manager,
+            event="manual_login_provider_exception",
+            message=MANUAL_LOGIN_FAILURE_MESSAGE,
+        )
         return
 
     _log_manual_login_event("manual_login_provider_completed", cookie_manager)
-    if not getattr(response, "session", None):
-        finish_manual_login_failed(cookie_manager)
-        st.session_state["cadivor_root_state"] = APP_LOGIN
-        message = "Login failed: no session was returned. Please confirm your email and try again."
-        st.session_state["cadivor_auth_error"] = message
-        st.error(message)
+    session = getattr(response, "session", None)
+    user = getattr(response, "user", None)
+    access_token = str(getattr(session, "access_token", "") or "").strip()
+    refresh_token = str(getattr(session, "refresh_token", "") or "").strip()
+    if session is None or user is None or not access_token or not refresh_token:
+        _fail_manual_login_and_rerun(
+            cookie_manager,
+            event="manual_login_provider_no_session",
+            message=MANUAL_LOGIN_NO_SESSION_MESSAGE,
+        )
         return
 
-    mark_authenticated(response.user, response.session, cookie_manager)
+    _log_manual_login_event("manual_login_provider_session_ready", cookie_manager)
+    mark_authenticated(user, session, cookie_manager)
+    _log_manual_login_event("manual_login_session_committed", cookie_manager)
     st.rerun()
 
 
