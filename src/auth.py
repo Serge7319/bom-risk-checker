@@ -153,7 +153,10 @@ def _install_login_pointerdown_bridge() -> None:
     into that same button's click while the password input still owns focus.
     Keyboard and ordinary Streamlit submit behavior remain unchanged.
     """
-    components.html(
+    renderer = getattr(components, "html", None)
+    if not callable(renderer):
+        return
+    renderer(
         """
 <script>
 (() => {
