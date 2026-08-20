@@ -29,7 +29,7 @@ class OneClickLoginWidgetContractTests(unittest.TestCase):
         self.assertIn('autocomplete="current-password"', self.source)
 
     def test_fix_does_not_add_risky_submit_state_or_transport_changes(self):
-        self.assertIn("clear_on_submit=False", self.source)
+        self.assertIn('with st.form("cadivor_auth_form"', self.source)
         self.assertNotIn("cadivor_auth_submission", self.source)
         self.assertNotIn("ThreadPoolExecutor", self.source)
         self.assertNotIn("httpx.Client", self.source)
@@ -40,6 +40,12 @@ class OneClickLoginWidgetContractTests(unittest.TestCase):
         self.assertIn("on_click=_request_manual_login_submit", self.source)
         self.assertNotIn("cadivor_login_password_requested", self.source)
 
+    def test_password_commit_latches_fresh_session_submit_without_browser_js(self):
+        self.assertIn("on_change=_request_manual_login_submit", self.source)
+        self.assertNotIn("_install_login_pointerdown_bridge", self.source)
+        self.assertNotIn("cadivorCommitThenSubmit", self.source)
+        self.assertNotIn('addEventListener("pointerdown"', self.source)
+
     def test_latched_manual_click_authenticates_when_transient_submit_is_false(self):
         st = _install_auth_ui_stub({})
         auth = importlib.import_module("src.auth")
@@ -48,7 +54,7 @@ class OneClickLoginWidgetContractTests(unittest.TestCase):
         st.session_state[auth.AUTH_PASSWORD_WIDGET_KEY] = "typed-password"
         st.session_state[auth.AUTH_LOGIN_SUBMIT_REQUESTED_KEY] = True
         st.text_input.side_effect = ["", ""]
-        st.form_submit_button.return_value = False
+        st.button.return_value = False
 
         response = MagicMock(user=MagicMock(), session=MagicMock())
         supabase = MagicMock()
@@ -72,7 +78,7 @@ class OneClickLoginWidgetContractTests(unittest.TestCase):
         state = importlib.import_module("src.auth_state")
         st.session_state[auth.AUTH_MODE_WIDGET_KEY] = auth.AUTH_MODE_LOGIN
         st.text_input.side_effect = ["engineer@example.com", "correct-password"]
-        st.form_submit_button.return_value = True
+        st.button.return_value = True
 
         user = MagicMock()
         session = MagicMock()
