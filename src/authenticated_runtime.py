@@ -12173,6 +12173,11 @@ def run_authenticated_app() -> None:
                 st.session_state["last_saved_analysis_id"] = analysis_id
                 st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
                 st.toast("Analysis saved to your workspace.", icon="✅")
+                # The Saved BOM Manager was rendered earlier in this script run
+                # from pre-save history. Rebuild once after persistence so the
+                # new analysis appears immediately. analysis_saved prevents a
+                # duplicate insert on the rerun.
+                st.rerun()
         if "results_df" in st.session_state:
             results_df = st.session_state["results_df"]
 
