@@ -24,12 +24,23 @@ class ManualLoginPointerdownContractTests(unittest.TestCase):
         self.assertGreater(bridge_call, form_call)
         self.assertIn("if auth_mode == AUTH_MODE_LOGIN:", self.source)
 
-    def test_bridge_replays_visible_login_button_before_password_blur(self):
+    def test_bridge_commits_then_submits_fresh_password_once(self):
         self.assertIn('addEventListener("pointerdown"', self.source)
         self.assertIn('active.getAttribute("type") !== "password"', self.source)
         self.assertIn("event.preventDefault()", self.source)
         self.assertIn("event.stopImmediatePropagation()", self.source)
+        self.assertIn('active.dispatchEvent(new Event("change"', self.source)
+        self.assertIn("active.blur()", self.source)
+        self.assertIn("originalButton.isConnected", self.source)
+        self.assertIn("commitGraceElapsed", self.source)
+        self.assertIn("delete parentWindow[intentKey]", self.source)
         self.assertIn("button.click()", self.source)
+
+    def test_bridge_intent_survives_only_the_commit_rerun(self):
+        self.assertIn('const intentKey = "__cadivorLoginCommitThenSubmit"', self.source)
+        self.assertIn("deadline: Date.now() + 5000", self.source)
+        self.assertIn("const poll = window.setInterval(finishIntent, 100)", self.source)
+        self.assertIn("if (!parentWindow[intentKey])", self.source)
 
     def test_bridge_does_not_read_or_copy_credentials(self):
         start = self.source.index("def _install_login_pointerdown_bridge")
