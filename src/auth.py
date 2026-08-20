@@ -547,15 +547,11 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
         mark_authenticated(user, session, cookie_manager)
         st.rerun()
         return
-    if kind == "confirmation_pending":
-        _enter_signup_confirmation_pending(email)
-        return
-
-    finish_manual_login_failed(cookie_manager)
-    st.session_state["cadivor_root_state"] = APP_LOGIN
-    message = "Account creation did not return a usable authentication session. Please try again."
-    st.session_state["cadivor_auth_error"] = message
-    st.error(message)
+    # Supabase can intentionally return a userless/tokenless response while still
+    # accepting a signup request (for example, account-enumeration protection).
+    # A non-exceptional response must therefore use the same safe, non-committal
+    # confirmation handoff instead of remounting Login.
+    _enter_signup_confirmation_pending(email)
 
 
 def _clear_signup_confirmation_pending() -> None:
