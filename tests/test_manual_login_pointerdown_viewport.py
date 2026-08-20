@@ -16,19 +16,24 @@ class ManualLoginPointerdownContractTests(unittest.TestCase):
         cls.source = AUTH_PATH.read_text(encoding="utf-8")
         cls.tree = ast.parse(cls.source)
 
-    def test_login_uses_server_owned_password_commit_handoff(self):
+    def test_login_uses_one_explicit_native_form_submit(self):
         self.assertIn("if auth_mode == AUTH_MODE_LOGIN:", self.source)
-        self.assertIn("on_change=_request_manual_login_submit", self.source)
-        self.assertIn("on_click=_request_manual_login_submit", self.source)
+        self.assertIn('with st.form("cadivor_login_form"', self.source)
+        self.assertIn("submit = st.form_submit_button(", self.source)
         self.assertIn('key="cadivor_login_submit"', self.source)
+        self.assertNotIn("on_change=_request_manual_login_submit", self.source)
+        self.assertNotIn("on_click=_request_manual_login_submit", self.source)
 
-    def test_login_is_not_batched_inside_the_signup_form(self):
+    def test_login_and_signup_use_separate_stable_forms(self):
         login_branch = self.source.index("if auth_mode == AUTH_MODE_LOGIN:")
+        login_form = self.source.index(
+            'with st.form("cadivor_login_form"', login_branch
+        )
         signup_form = self.source.index(
             'with st.form("cadivor_auth_form"', login_branch
         )
-        login_button = self.source.index("submit = st.button(", login_branch)
-        self.assertLess(login_button, signup_form)
+        self.assertLess(login_form, signup_form)
+        self.assertIn('autocomplete="current-password"', self.source)
         self.assertIn('autocomplete="new-password"', self.source)
 
     def test_failed_pointerdown_bridge_is_removed(self):
@@ -41,8 +46,9 @@ class ManualLoginPointerdownContractTests(unittest.TestCase):
         ):
             self.assertNotIn(removed, self.source)
 
-    def test_existing_submit_latch_and_provider_path_remain(self):
-        self.assertIn("AUTH_LOGIN_SUBMIT_REQUESTED_KEY", self.source)
+    def test_failed_submit_latches_are_removed_and_provider_path_remains(self):
+        self.assertNotIn("AUTH_LOGIN_SUBMIT_REQUESTED_KEY", self.source)
+        self.assertNotIn("_request_manual_login_submit", self.source)
         self.assertIn("supabase.auth.sign_in_with_password", self.source)
 
 
