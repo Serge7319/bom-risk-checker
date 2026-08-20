@@ -123,7 +123,7 @@ class SignupResponseShapeTests(unittest.TestCase):
         self.assertIsNone(user)
         self.assertIsNone(session)
 
-    def test_unusable_signup_response_does_not_enter_pending(self):
+    def test_userless_success_response_enters_safe_pending_handoff(self):
         state = importlib.import_module("src.auth_state")
         supabase = MagicMock()
         supabase.auth.sign_up.return_value = types.SimpleNamespace(user=None, session=None)
@@ -133,10 +133,17 @@ class SignupResponseShapeTests(unittest.TestCase):
             self.auth, "finish_manual_login_failed"
         ) as finish_failed:
             self.auth._submit_manual_signup(supabase, MagicMock(), "x@cadivor.com", "secret")
-        finish_failed.assert_called_once()
-        self.assertEqual(self.st.session_state["cadivor_root_state"], state.APP_LOGIN)
-        self.assertNotIn(state.SIGNUP_PENDING_EMAIL_KEY, self.st.session_state)
-        self.st.error.assert_called()
+        finish_failed.assert_not_called()
+        self.assertEqual(
+            self.st.session_state["cadivor_root_state"],
+            state.APP_SIGNUP_CONFIRMATION_PENDING,
+        )
+        self.assertEqual(
+            self.st.session_state[state.SIGNUP_PENDING_EMAIL_KEY],
+            "x@cadivor.com",
+        )
+        self.assertTrue(self.rerun_requested)
+        self.st.error.assert_not_called()
 
 
 class SignupConfirmationLifecycleTests(unittest.TestCase):
