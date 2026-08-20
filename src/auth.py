@@ -1,6 +1,5 @@
 import html
 import streamlit as st
-import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 from textwrap import dedent
 
@@ -144,109 +143,6 @@ def _request_manual_login_submit() -> None:
     """
     st.session_state[AUTH_LOGIN_SUBMIT_REQUESTED_KEY] = True
 
-
-def _install_login_pointerdown_bridge() -> None:
-    """Commit the focused password widget, then submit the existing form once.
-
-    A fresh Streamlit session can consume the first physical Login click while
-    committing the password widget. This credential-blind bridge records only
-    a short-lived submit intent on the parent window, blurs the password field,
-    and clicks the newly rendered Login button after that commit rerun. It
-    never reads, copies, stores, logs, or transmits either credential.
-    """
-    renderer = getattr(components, "html", None)
-    if not callable(renderer):
-        return
-    renderer(
-        """
-<script>
-(() => {
-  const parentWindow = window.parent;
-  const doc = parentWindow.document;
-  const marker = "cadivorCommitThenSubmit";
-  const intentKey = "__cadivorLoginCommitThenSubmit";
-
-  const loginButton = () => {
-    const card = doc.querySelector(".st-key-cadivor_auth_card");
-    if (!card) return null;
-    return [...card.querySelectorAll("button")].find(
-      (node) => (node.textContent || "").trim() === "Login"
-    ) || null;
-  };
-
-  const finishIntent = () => {
-    const intent = parentWindow[intentKey];
-    if (!intent) return;
-    const now = Date.now();
-    if (now > intent.deadline) {
-      delete parentWindow[intentKey];
-      return;
-    }
-
-    const button = loginButton();
-    if (!button) return;
-    const originalGone =
-      !intent.originalButton || !intent.originalButton.isConnected;
-    const passwordNoLongerFocused =
-      !doc.activeElement ||
-      doc.activeElement.getAttribute("type") !== "password";
-    const commitGraceElapsed = now - intent.startedAt >= 350;
-
-    if (originalGone || (passwordNoLongerFocused && commitGraceElapsed)) {
-      delete parentWindow[intentKey];
-      button.click();
-    }
-  };
-
-  const bind = () => {
-    const button = loginButton();
-    if (!button || button.dataset[marker] === "1") return;
-    button.dataset[marker] = "1";
-    button.addEventListener("pointerdown", (event) => {
-      if (!event.isTrusted || event.button !== 0) return;
-      const active = doc.activeElement;
-      if (!active || active.getAttribute("type") !== "password") return;
-
-      // Suppress only this premature physical activation. The synthetic click
-      // happens after Streamlit has received the password widget commit.
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (!parentWindow[intentKey]) {
-        parentWindow[intentKey] = {
-          startedAt: Date.now(),
-          deadline: Date.now() + 5000,
-          originalButton: button,
-        };
-      }
-      active.dispatchEvent(new Event("change", {bubbles: true}));
-      active.blur();
-      window.setTimeout(finishIntent, 350);
-    }, true);
-  };
-
-  bind();
-  finishIntent();
-  const observer = new MutationObserver(() => {
-    bind();
-    finishIntent();
-  });
-  observer.observe(doc.body, {childList: true, subtree: true});
-  const poll = window.setInterval(finishIntent, 100);
-  window.setTimeout(() => {
-    window.clearInterval(poll);
-    observer.disconnect();
-    const intent = parentWindow[intentKey];
-    if (intent && Date.now() > intent.deadline) {
-      delete parentWindow[intentKey];
-    }
-  }, 6000);
-})();
-</script>
-        """,
-        height=0,
-        width=0,
-        scrolling=False,
-    )
 
 def _auth_css():
     st.markdown(
@@ -413,7 +309,6 @@ def _auth_css():
         /* Auth route */
         .auth-card-header{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px;}.auth-card-logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff!important;display:grid;place-items:center;margin:0 auto 14px auto;font-size:24px;font-weight:950;box-shadow:0 18px 38px rgba(37,99,235,.26);}.auth-card-title{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px 0;}.auth-card-sub{color:#64748B!important;font-size:13px;font-weight:700;line-height:1.5;}.auth-card-brand-link{display:block;text-decoration:none!important;color:inherit!important;}.auth-card-brand-link:hover{text-decoration:none!important;}.auth-card-brand-link:hover .auth-card-title{color:#2563EB!important;}.auth-recovery-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;color:#2563EB!important;border:1px solid #BFDBFE;border-radius:999px;padding:7px 13px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin:0 0 16px 0;box-shadow:0 8px 18px rgba(37,99,235,.08);}.auth-recovery-eyebrow:before{content:"";width:7px;height:7px;border-radius:99px;background:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.10);}.auth-confirm-status{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin:0 0 10px 0;padding:7px 11px;border-radius:999px;background:#ECFDF5;border:1px solid #A7F3D0;color:#047857!important;font-size:12px;font-weight:900;letter-spacing:.02em;}.auth-confirm-status:before{content:"✓";font-weight:950;}.auth-confirm-email{display:block;margin:8px 0 12px 0;padding:10px 12px;border-radius:12px;background:#F8FAFC;border:1px solid #E2E8F0;color:#0F172A!important;font-size:15px;font-weight:900;word-break:break-word;}.auth-confirm-guidance{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:11px 12px;color:#475569!important;font-size:12.5px;font-weight:750;line-height:1.5;margin:0 0 14px 0;text-align:left;}.st-key-cadivor_auth_card:has(.auth-confirm-status) .auth-copy{margin:0 0 10px 0;}.st-key-cadivor_auth_card:has(.auth-confirm-status) .auth-heading{margin:0 0 6px 0;}.auth-trust-note{color:#64748B!important;font-size:12.5px;line-height:1.55;margin:14px 0 0 0;text-align:center;font-weight:700;}.cadivor-back-home{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;padding:8px 0;color:#2f6fed!important;text-decoration:none!important;font-size:13px;font-weight:900;transition:color .18s ease;}.cadivor-back-home:hover{color:#174ea6!important;text-decoration:underline!important;}.auth-heading{color:#0F172A!important;font-size:26px;font-weight:950;letter-spacing:-.045em;margin:0 0 8px 0;}.auth-copy{color:#64748B!important;font-size:15px;line-height:1.58;margin:0 0 18px 0;}.auth-strip{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12.5px;font-weight:780;line-height:1.45;margin:0 0 18px 0;}.auth-divider{height:1px;background:#E5E7EB;margin:18px -38px 20px -38px;}.terms-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;color:#475569!important;font-size:12px;line-height:1.55;margin:8px 0 4px 0;}.auth-back{display:block;text-align:center;color:#334155!important;text-decoration:none!important;font-size:13px;font-weight:900;margin-top:16px;}
         .st-key-cadivor_auth_card div[data-testid="stRadio"]{background:#F8FAFC!important;border:1px solid #E5E7EB!important;border-radius:14px!important;padding:11px 13px 7px 13px!important;margin-bottom:16px!important;}.st-key-cadivor_auth_card div[data-testid="stRadio"] > label{color:#334155!important;font-weight:850!important;font-size:13px!important;}.st-key-cadivor_auth_card div[data-testid="stRadio"] label,.st-key-cadivor_auth_card div[data-testid="stRadio"] p{color:#0F172A!important;font-weight:800!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] label,.st-key-cadivor_auth_card div[data-testid="stCheckbox"] label{color:#334155!important;font-weight:800!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"]{overflow:visible!important;margin-bottom:14px!important;width:100%!important;max-width:100%!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] > div{overflow:visible!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:12px!important;min-height:48px!important;height:48px!important;box-shadow:none!important;outline:none!important;overflow:hidden!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]::before,.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"]::after{display:none!important;content:none!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"] > div,.st-key-cadivor_auth_card div[data-testid="stTextInput"] [data-baseweb="input"] > div:focus-within{border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;min-height:46px!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] input,.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="text"],.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="password"],.st-key-cadivor_auth_card div[data-testid="stTextInput"] input[type="email"]{background:transparent!important;border:0!important;outline:0!important;border-radius:0!important;min-height:46px!important;height:46px!important;color:#0F172A!important;box-shadow:none!important;padding:0 14px!important;caret-color:#2563EB!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] input:focus,.st-key-cadivor_auth_card div[data-testid="stTextInput"] input:focus-visible{border:0!important;outline:0!important;box-shadow:none!important;}.st-key-cadivor_auth_card div[data-testid="stTextInput"] button{min-height:46px!important;height:46px!important;width:44px!important;border:0!important;outline:0!important;background:#fff!important;border-radius:0!important;box-shadow:none!important;}.st-key-cadivor_auth_card div[data-testid="stCheckbox"] p{color:#334155!important;font-weight:750!important;font-size:13px!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"]{width:100%!important;min-height:50px!important;border-radius:13px!important;background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;border:1px solid #2563EB!important;color:#fff!important;font-weight:900!important;box-shadow:0 18px 34px rgba(37,99,235,.24)!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button:hover,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"]:hover{background:linear-gradient(135deg,#1D4ED8,#1E40AF)!important;border-color:#1D4ED8!important;color:#fff!important;}.st-key-cadivor_auth_card div[data-testid="stFormSubmitButton"] > button *,.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-primary"] *{color:#fff!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-secondary"]{width:100%!important;min-height:46px!important;border-radius:12px!important;background:#fff!important;border:1px solid #CBD5E1!important;color:#0F172A!important;font-weight:850!important;box-shadow:none!important;margin-top:8px!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-secondary"]:hover{background:#F8FAFC!important;border-color:#94A3B8!important;color:#0F172A!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-tertiary"]{width:auto!important;min-height:40px!important;height:auto!important;padding:6px 10px!important;border-radius:8px!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#2563EB!important;font-weight:850!important;font-size:13px!important;margin:4px auto 0 auto!important;}.st-key-cadivor_auth_card div.stButton > button[data-testid="stBaseButton-tertiary"]:hover{background:transparent!important;color:#1D4ED8!important;text-decoration:underline!important;}.st-key-cadivor_auth_card div.stButton:has(> button[data-testid="stBaseButton-tertiary"]){display:flex!important;justify-content:center!important;width:100%!important;}
-        .st-key-cadivor_auth_card [data-testid="stCustomComponentV1"]:has(iframe[title="streamlit.components.v1.html"]){position:absolute!important;width:0!important;height:0!important;overflow:hidden!important;}
         @media(max-height:900px){
             .st-key-cadivor_auth_card{padding:20px 30px 20px 30px!important;}
             .auth-card-header{margin-bottom:14px!important;}
@@ -930,7 +825,12 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         auth_mode = AUTH_MODE_LOGIN
     _sync_root_state_from_auth_mode(auth_mode)
 
-    with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
+    if auth_mode == AUTH_MODE_LOGIN:
+        # Keep Login credentials outside a Streamlit form. On a fresh browser
+        # session, committing a manually typed password can rerun the script
+        # before the button click is delivered. The password callback latches
+        # only submit intent; the rerun then reads the committed keyed widgets
+        # and performs the existing provider request exactly once.
         email = st.text_input(
             "Email",
             placeholder="you@company.com",
@@ -943,10 +843,32 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             placeholder="Enter your password",
             key=AUTH_PASSWORD_WIDGET_KEY,
             autocomplete="current-password",
+            on_change=_request_manual_login_submit,
         )
-
+        submit = st.button(
+            AUTH_MODE_LOGIN,
+            key="cadivor_login_submit",
+            type="primary",
+            use_container_width=True,
+            on_click=_request_manual_login_submit,
+        )
         accepted_terms = True
-        if auth_mode == AUTH_MODE_SIGNUP:
+    else:
+        st.session_state.pop(AUTH_LOGIN_SUBMIT_REQUESTED_KEY, None)
+        with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
+            email = st.text_input(
+                "Email",
+                placeholder="you@company.com",
+                key=AUTH_EMAIL_WIDGET_KEY,
+                autocomplete="email",
+            )
+            password = st.text_input(
+                "Password",
+                type="password",
+                placeholder="Enter your password",
+                key=AUTH_PASSWORD_WIDGET_KEY,
+                autocomplete="new-password",
+            )
             st.markdown(
                 """
                 <div class="terms-box"><strong>Terms summary:</strong> Cadivor provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.</div>
@@ -956,24 +878,11 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
             accepted_terms = st.checkbox("I agree to the Terms of Service and Privacy Policy.")
             with st.expander("View Terms of Service"):
                 st.markdown(CADIVOR_TERMS)
-
-        if auth_mode == AUTH_MODE_LOGIN:
-            submit = st.form_submit_button(
-                AUTH_MODE_LOGIN,
-                key="cadivor_login_submit",
-                use_container_width=True,
-                on_click=_request_manual_login_submit,
-            )
-        else:
-            st.session_state.pop(AUTH_LOGIN_SUBMIT_REQUESTED_KEY, None)
             submit = st.form_submit_button(
                 AUTH_MODE_SIGNUP,
                 key="cadivor_signup_submit",
                 use_container_width=True,
             )
-
-    if auth_mode == AUTH_MODE_LOGIN:
-        _install_login_pointerdown_bridge()
 
     login_submit_requested = (
         auth_mode == AUTH_MODE_LOGIN
