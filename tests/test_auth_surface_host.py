@@ -204,12 +204,14 @@ class AuthSurfaceHostSourceGuards(unittest.TestCase):
             "scrollIntoView",
             "window.scrollTo",
             "scrollTo(",
-            "[data-stale]",
-            "data-stale",
             "iframe{display:none",
             "stCustomComponentV1{display:none",
         ):
             self.assertNotIn(banned, joined)
+        # A startup-shell-only stale selector is allowed to keep that visual
+        # handoff opaque. Never suppress or restyle stale elements globally.
+        self.assertNotIn("[data-stale]{", joined)
+        self.assertIn("[data-stale]:has(.cv-startup-shell)", self.bootstrap)
 
     def test_auth_cookies_module_untouched_by_this_sprint_marker(self):
         # Behavioral invariants: CookieManager still constructed only in auth_cookies.

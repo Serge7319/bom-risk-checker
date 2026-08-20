@@ -208,7 +208,9 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
 
     def test_startup_shell_preserves_workspace_chrome_during_handoff(self):
         st, bootstrap, *_rest = self._load_bootstrap({})
-        bootstrap.render_startup_loading_shell()
+        bootstrap.render_startup_loading_shell(
+            bootstrap.AUTHENTICATED_STARTUP_SHELL_MESSAGE
+        )
 
         rendered = "\n".join(
             str(call.args[0])
@@ -221,6 +223,20 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
         self.assertIn("Dashboard", rendered)
         self.assertIn("BOM Analyzer", rendered)
         self.assertIn("Loading your workspace", rendered)
+
+    def test_startup_shell_does_not_fade_before_real_shell_marker(self):
+        st, bootstrap, *_rest = self._load_bootstrap({})
+        bootstrap.render_startup_loading_shell()
+
+        rendered = "\n".join(
+            str(call.args[0])
+            for call in st.markdown.call_args_list
+            if call.args
+        )
+        self.assertIn("[data-stale]:has(.cv-startup-shell)", rendered)
+        self.assertIn(":has(.cv-foundation-topbar) .cv-startup-shell", rendered)
+        self.assertIn("position:fixed", rendered)
+        self.assertIn("pointer-events:none", rendered)
 
     def test_startup_shell_is_visual_only_and_not_an_auth_surface(self):
         st, bootstrap, *_rest = self._load_bootstrap({})

@@ -178,7 +178,14 @@ def render_startup_loading_shell(message: str = "Preparing your workspace…") -
         section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{display:none!important}}
         html,body,.stApp,[data-testid="stAppViewContainer"]{{background:#F5F7FB!important;color:#0F172A!important}}
         .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
-        .cv-startup-shell{{min-height:100vh;background:#F5F7FB;font-family:Inter,system-ui,sans-serif;color:#0F172A}}
+        /* Keep the handoff shell as an opaque, non-interactive viewport overlay.
+           Streamlit marks old elements stale before the replacement tree has
+           finished painting; the narrow stale rule prevents that framework
+           fade. The real shell marker then retires this overlay. */
+        .cv-startup-shell{{position:fixed;inset:0;z-index:900;min-height:100vh;background:#F5F7FB;font-family:Inter,system-ui,sans-serif;color:#0F172A;opacity:1;pointer-events:none;transition:opacity .16s ease}}
+        [data-stale]:has(.cv-startup-shell),
+        [data-stale]:has(.cv-startup-shell) .cv-startup-shell{{opacity:1!important}}
+        [data-testid="stAppViewContainer"]:has(.cv-foundation-topbar) .cv-startup-shell{{opacity:0!important}}
         .cv-startup-shell-topbar{{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #E2E8F0;background:#FFFFFF}}
         .cv-startup-shell-brand{{display:flex;align-items:center;gap:11px;font-size:17px;font-weight:900;letter-spacing:-.025em}}
         .cv-startup-shell-mark{{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#2563EB;color:#FFFFFF;font-weight:950;font-size:16px;box-shadow:0 8px 18px rgba(37,99,235,.22)}}
