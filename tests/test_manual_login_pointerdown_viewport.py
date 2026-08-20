@@ -16,52 +16,35 @@ class ManualLoginPointerdownContractTests(unittest.TestCase):
         cls.source = AUTH_PATH.read_text(encoding="utf-8")
         cls.tree = ast.parse(cls.source)
 
-    def test_bridge_is_login_only_and_installed_after_form(self):
-        form_call = self.source.find('with st.form("cadivor_auth_form"')
-        bridge_call = self.source.find(
-            "\n        _install_login_pointerdown_bridge()", form_call
-        )
-        self.assertGreater(bridge_call, form_call)
+    def test_login_uses_server_owned_password_commit_handoff(self):
         self.assertIn("if auth_mode == AUTH_MODE_LOGIN:", self.source)
+        self.assertIn("on_change=_request_manual_login_submit", self.source)
+        self.assertIn("on_click=_request_manual_login_submit", self.source)
+        self.assertIn('key="cadivor_login_submit"', self.source)
 
-    def test_bridge_commits_then_submits_fresh_password_once(self):
-        self.assertIn('addEventListener("pointerdown"', self.source)
-        self.assertIn('active.getAttribute("type") !== "password"', self.source)
-        self.assertIn("event.preventDefault()", self.source)
-        self.assertIn("event.stopImmediatePropagation()", self.source)
-        self.assertIn('active.dispatchEvent(new Event("change"', self.source)
-        self.assertIn("active.blur()", self.source)
-        self.assertIn("originalButton.isConnected", self.source)
-        self.assertIn("commitGraceElapsed", self.source)
-        self.assertIn("delete parentWindow[intentKey]", self.source)
-        self.assertIn("button.click()", self.source)
+    def test_login_is_not_batched_inside_the_signup_form(self):
+        login_branch = self.source.index("if auth_mode == AUTH_MODE_LOGIN:")
+        signup_form = self.source.index(
+            'with st.form("cadivor_auth_form"', login_branch
+        )
+        login_button = self.source.index("submit = st.button(", login_branch)
+        self.assertLess(login_button, signup_form)
+        self.assertIn('autocomplete="new-password"', self.source)
 
-    def test_bridge_intent_survives_only_the_commit_rerun(self):
-        self.assertIn('const intentKey = "__cadivorLoginCommitThenSubmit"', self.source)
-        self.assertIn("deadline: Date.now() + 5000", self.source)
-        self.assertIn("const poll = window.setInterval(finishIntent, 100)", self.source)
-        self.assertIn("if (!parentWindow[intentKey])", self.source)
-
-    def test_bridge_does_not_read_or_copy_credentials(self):
-        start = self.source.index("def _install_login_pointerdown_bridge")
-        end = self.source.index("\ndef _auth_css", start)
-        bridge = self.source[start:end]
-        for forbidden in (
-            ".value",
-            "AUTH_EMAIL_WIDGET_KEY",
-            "AUTH_PASSWORD_WIDGET_KEY",
-            "sessionStorage",
-            "localStorage",
-            "query_params",
-            "postMessage",
-            "fetch(",
+    def test_failed_pointerdown_bridge_is_removed(self):
+        for removed in (
+            "_install_login_pointerdown_bridge",
+            "cadivorCommitThenSubmit",
+            "addEventListener(\"pointerdown\"",
+            "event.preventDefault()",
+            "button.click()",
         ):
-            self.assertNotIn(forbidden, bridge)
+            self.assertNotIn(removed, self.source)
 
     def test_existing_submit_latch_and_provider_path_remain(self):
         self.assertIn("AUTH_LOGIN_SUBMIT_REQUESTED_KEY", self.source)
-        self.assertIn("on_click=_request_manual_login_submit", self.source)
         self.assertIn("supabase.auth.sign_in_with_password", self.source)
+
 
 
 class AuthViewportContractTests(unittest.TestCase):
