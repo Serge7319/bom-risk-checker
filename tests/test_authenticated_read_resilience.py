@@ -80,6 +80,16 @@ class AuthenticatedReadResilienceTests(unittest.TestCase):
         self.assertIn("except SupabaseReadTransportError:", source[start : start + 420])
         self.assertIn("saved_bom_count = 0", source[start : start + 420])
 
+    def test_successful_analysis_save_reruns_after_persistence(self) -> None:
+        source = _runtime_source()
+        saved_flag = source.index('st.session_state["analysis_saved"] = True')
+        rerun = source.index("st.rerun()", saved_flag)
+        results_render = source.index('if "results_df" in st.session_state:', saved_flag)
+        self.assertLess(saved_flag, rerun)
+        self.assertLess(rerun, results_render)
+        save_window = source[saved_flag:results_render]
+        self.assertIn("duplicate insert on the rerun", save_window)
+
 
 if __name__ == "__main__":
     unittest.main()
