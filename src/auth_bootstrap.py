@@ -169,7 +169,7 @@ def should_render_authenticated_startup_shell() -> bool:
 
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
-    """Minimal branded surface shown while the lightweight bootstrap runs."""
+    """Render lightweight workspace chrome while the authenticated app initializes."""
     safe_message = str(message or "Preparing your workspace…")
     st.markdown(
         f"""
@@ -178,23 +178,64 @@ def render_startup_loading_shell(message: str = "Preparing your workspace…") -
         section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{display:none!important}}
         html,body,.stApp,[data-testid="stAppViewContainer"]{{background:#F5F7FB!important;color:#0F172A!important}}
         .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
-        .cv-startup-shell{{min-height:100vh;display:grid;place-items:center;padding:32px;background:radial-gradient(circle at 50% 35%,#fff 0,#F7F9FC 42%,#EEF3F8 100%);font-family:Inter,system-ui,sans-serif}}
-        .cv-startup-shell-card{{width:min(420px,calc(100vw - 40px));padding:30px 30px 26px;border:1px solid #DCE4EE;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 24px 70px rgba(15,23,42,.10);text-align:center}}
-        .cv-startup-shell-mark{{width:48px;height:48px;margin:0 auto 16px;border-radius:14px;display:grid;place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:22px;box-shadow:0 12px 26px rgba(37,99,235,.25)}}
-        .cv-startup-shell-card h1{{margin:0;color:#0F172A!important;font-size:20px;letter-spacing:-.025em}}
-        .cv-startup-shell-card p{{margin:8px 0 0;color:#64748B!important;font-size:13px}}
+        .cv-startup-shell{{min-height:100vh;background:#F5F7FB;font-family:Inter,system-ui,sans-serif;color:#0F172A}}
+        .cv-startup-shell-topbar{{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #E2E8F0;background:#FFFFFF}}
+        .cv-startup-shell-brand{{display:flex;align-items:center;gap:11px;font-size:17px;font-weight:900;letter-spacing:-.025em}}
+        .cv-startup-shell-mark{{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#2563EB;color:#FFFFFF;font-weight:950;font-size:16px;box-shadow:0 8px 18px rgba(37,99,235,.22)}}
+        .cv-startup-shell-status{{display:flex;align-items:center;gap:9px;color:#64748B;font-size:12px;font-weight:750}}
+        .cv-startup-shell-status i{{width:8px;height:8px;border-radius:999px;background:#2563EB;box-shadow:0 0 0 4px rgba(37,99,235,.10);animation:cv-shell-pulse 1.35s ease-in-out infinite}}
+        .cv-startup-shell-body{{display:grid;grid-template-columns:176px minmax(0,1fr);min-height:calc(100vh - 64px)}}
+        .cv-startup-shell-nav{{padding:20px 12px;background:#0B1F3A;border-right:1px solid #173154;color:#DCE8F7}}
+        .cv-startup-shell-nav-title{{padding:0 10px 16px;color:#FFFFFF;font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}}
+        .cv-startup-shell-nav-item{{height:36px;display:flex;align-items:center;gap:9px;margin:3px 0;padding:0 10px;border-radius:9px;color:#AFC2DA;font-size:11px;font-weight:750}}
+        .cv-startup-shell-nav-item.active{{background:#173E78;color:#FFFFFF}}
+        .cv-startup-shell-nav-item b{{width:8px;height:8px;border:1.5px solid currentColor;border-radius:3px;opacity:.9}}
+        .cv-startup-shell-main{{padding:34px 32px;overflow:hidden}}
+        .cv-startup-shell-heading{{width:min(360px,55%);height:25px;border-radius:8px;background:#DCE5F0;margin-bottom:12px}}
+        .cv-startup-shell-copy{{width:min(560px,78%);height:12px;border-radius:999px;background:#E5EBF3;margin-bottom:28px}}
+        .cv-startup-shell-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}}
+        .cv-startup-shell-tile{{height:92px;border:1px solid #E1E7EF;border-radius:14px;background:#FFFFFF;box-shadow:0 8px 20px rgba(15,23,42,.035)}}
+        .cv-startup-shell-panel{{height:250px;border:1px solid #E1E7EF;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 28px rgba(15,23,42,.04)}}
+        .cv-startup-shell-tile,.cv-startup-shell-panel,.cv-startup-shell-heading,.cv-startup-shell-copy{{position:relative;overflow:hidden}}
+        .cv-startup-shell-tile:after,.cv-startup-shell-panel:after,.cv-startup-shell-heading:after,.cv-startup-shell-copy:after{{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);animation:cv-shell-shimmer 1.5s infinite}}
+        @keyframes cv-shell-shimmer{{100%{{transform:translateX(100%)}}}}
+        @keyframes cv-shell-pulse{{0%,100%{{opacity:.45}}50%{{opacity:1}}}}
+        @media(max-width:760px){{
+          .cv-startup-shell-body{{grid-template-columns:64px minmax(0,1fr)}}
+          .cv-startup-shell-nav{{padding:18px 8px}}
+          .cv-startup-shell-nav-title,.cv-startup-shell-nav-item span{{display:none}}
+          .cv-startup-shell-nav-item{{justify-content:center;padding:0}}
+          .cv-startup-shell-main{{padding:24px 16px}}
+          .cv-startup-shell-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        }}
         </style>
         <div class="cv-startup-shell" role="status" aria-live="polite">
-          <div class="cv-startup-shell-card">
-            <div class="cv-startup-shell-mark">C</div>
-            <h1>Cadivor</h1>
-            <p>{safe_message}</p>
+          <div class="cv-startup-shell-topbar">
+            <div class="cv-startup-shell-brand"><div class="cv-startup-shell-mark">C</div><span>Cadivor</span></div>
+            <div class="cv-startup-shell-status"><i></i><span>{safe_message}</span></div>
+          </div>
+          <div class="cv-startup-shell-body">
+            <aside class="cv-startup-shell-nav" aria-hidden="true">
+              <div class="cv-startup-shell-nav-title">Workspace</div>
+              <div class="cv-startup-shell-nav-item active"><b></b><span>Dashboard</span></div>
+              <div class="cv-startup-shell-nav-item"><b></b><span>BOM Analyzer</span></div>
+              <div class="cv-startup-shell-nav-item"><b></b><span>Alternative Finder</span></div>
+              <div class="cv-startup-shell-nav-item"><b></b><span>Design Impact</span></div>
+            </aside>
+            <main class="cv-startup-shell-main" aria-hidden="true">
+              <div class="cv-startup-shell-heading"></div>
+              <div class="cv-startup-shell-copy"></div>
+              <div class="cv-startup-shell-grid">
+                <div class="cv-startup-shell-tile"></div><div class="cv-startup-shell-tile"></div>
+                <div class="cv-startup-shell-tile"></div><div class="cv-startup-shell-tile"></div>
+              </div>
+              <div class="cv-startup-shell-panel"></div>
+            </main>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
 
 def _restore_copilot_workflow_snapshot() -> None:
     """Restore in-flight copilot workflow keys across reruns in the same session."""
