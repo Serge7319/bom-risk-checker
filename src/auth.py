@@ -146,12 +146,13 @@ def _request_manual_login_submit() -> None:
 
 
 def _install_login_pointerdown_bridge() -> None:
-    """Submit the existing Streamlit form before a password blur can eat a click.
+    """Commit the focused password widget, then submit the existing form once.
 
-    The bridge never reads, copies, stores, or transmits either credential. It
-    only converts a trusted primary pointer-down on the visible Login button
-    into that same button's click while the password input still owns focus.
-    Keyboard and ordinary Streamlit submit behavior remain unchanged.
+    A fresh Streamlit session can consume the first physical Login click while
+    committing the password widget. This credential-blind bridge records only
+    a short-lived submit intent on the parent window, blurs the password field,
+    and clicks the newly rendered Login button after that commit rerun. It
+    never reads, copies, stores, logs, or transmits either credential.
     """
     renderer = getattr(components, "html", None)
     if not callable(renderer):
@@ -160,31 +161,85 @@ def _install_login_pointerdown_bridge() -> None:
         """
 <script>
 (() => {
-  const doc = window.parent.document;
-  const marker = "cadivorPointerdownSubmit";
+  const parentWindow = window.parent;
+  const doc = parentWindow.document;
+  const marker = "cadivorCommitThenSubmit";
+  const intentKey = "__cadivorLoginCommitThenSubmit";
+
+  const loginButton = () => {
+    const card = doc.querySelector(".st-key-cadivor_auth_card");
+    if (!card) return null;
+    return [...card.querySelectorAll("button")].find(
+      (node) => (node.textContent || "").trim() === "Login"
+    ) || null;
+  };
+
+  const finishIntent = () => {
+    const intent = parentWindow[intentKey];
+    if (!intent) return;
+    const now = Date.now();
+    if (now > intent.deadline) {
+      delete parentWindow[intentKey];
+      return;
+    }
+
+    const button = loginButton();
+    if (!button) return;
+    const originalGone =
+      !intent.originalButton || !intent.originalButton.isConnected;
+    const passwordNoLongerFocused =
+      !doc.activeElement ||
+      doc.activeElement.getAttribute("type") !== "password";
+    const commitGraceElapsed = now - intent.startedAt >= 350;
+
+    if (originalGone || (passwordNoLongerFocused && commitGraceElapsed)) {
+      delete parentWindow[intentKey];
+      button.click();
+    }
+  };
 
   const bind = () => {
-    const card = doc.querySelector(".st-key-cadivor_auth_card");
-    if (!card) return;
-    const button = [...card.querySelectorAll("button")].find(
-      (node) => (node.textContent || "").trim() === "Login"
-    );
+    const button = loginButton();
     if (!button || button.dataset[marker] === "1") return;
     button.dataset[marker] = "1";
     button.addEventListener("pointerdown", (event) => {
       if (!event.isTrusted || event.button !== 0) return;
       const active = doc.activeElement;
       if (!active || active.getAttribute("type") !== "password") return;
+
+      // Suppress only this premature physical activation. The synthetic click
+      // happens after Streamlit has received the password widget commit.
       event.preventDefault();
       event.stopImmediatePropagation();
-      button.click();
+      if (!parentWindow[intentKey]) {
+        parentWindow[intentKey] = {
+          startedAt: Date.now(),
+          deadline: Date.now() + 5000,
+          originalButton: button,
+        };
+      }
+      active.dispatchEvent(new Event("change", {bubbles: true}));
+      active.blur();
+      window.setTimeout(finishIntent, 350);
     }, true);
   };
 
   bind();
-  const observer = new MutationObserver(bind);
+  finishIntent();
+  const observer = new MutationObserver(() => {
+    bind();
+    finishIntent();
+  });
   observer.observe(doc.body, {childList: true, subtree: true});
-  window.setTimeout(() => observer.disconnect(), 15000);
+  const poll = window.setInterval(finishIntent, 100);
+  window.setTimeout(() => {
+    window.clearInterval(poll);
+    observer.disconnect();
+    const intent = parentWindow[intentKey];
+    if (intent && Date.now() > intent.deadline) {
+      delete parentWindow[intentKey];
+    }
+  }, 6000);
 })();
 </script>
         """,
@@ -192,7 +247,6 @@ def _install_login_pointerdown_bridge() -> None:
         width=0,
         scrolling=False,
     )
-
 
 def _auth_css():
     st.markdown(
