@@ -534,6 +534,25 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
             },
         })
     except Exception as error:
+        error_code = str(
+            getattr(error, "code", "") or getattr(error, "error_code", "")
+        ).strip().lower()
+        error_message = str(error).strip().lower()
+        existing_account = error_code in {
+            "email_exists",
+            "user_already_exists",
+            "user_already_registered",
+        } or any(
+            phrase in error_message
+            for phrase in (
+                "already registered",
+                "already been registered",
+                "already exists",
+            )
+        )
+        if existing_account:
+            _enter_signup_confirmation_pending(email)
+            return
         finish_manual_login_failed(cookie_manager)
         st.session_state["cadivor_root_state"] = APP_LOGIN
         message = f"Account creation failed: {error}"
