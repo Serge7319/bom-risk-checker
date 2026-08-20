@@ -17,7 +17,7 @@ class ManualLoginPointerdownContractTests(unittest.TestCase):
         cls.tree = ast.parse(cls.source)
 
     def test_bridge_is_login_only_and_installed_after_form(self):
-        bridge_call = self.source.find("_install_login_pointerdown_bridge()")
+        bridge_call = self.source.find("\n        _install_login_pointerdown_bridge()", form_call)
         form_call = self.source.find('with st.form("cadivor_auth_form"')
         self.assertGreater(bridge_call, form_call)
         self.assertIn("if auth_mode == AUTH_MODE_LOGIN:", self.source)
