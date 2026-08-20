@@ -239,15 +239,17 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
         self.assertIn("position:fixed", rendered)
         self.assertIn("pointer-events:none", rendered)
 
-    def test_workspace_ready_marker_is_emitted_after_final_geometry(self):
-        runtime_source = (ROOT / "src" / "authenticated_runtime.py").read_text(
+    def test_workspace_ready_marker_is_emitted_at_runtime_boundary(self):
+        entrypoint_source = (ROOT / "streamlit_app.py").read_text(
             encoding="utf-8"
         )
-        geometry_index = runtime_source.rfind("inject_workspace_geometry_final()")
-        marker_index = runtime_source.rfind("cv-workspace-ready-marker")
-        self.assertGreater(geometry_index, -1)
-        self.assertGreater(marker_index, geometry_index)
-        self.assertEqual(runtime_source.count("cv-workspace-ready-marker"), 1)
+        runtime_call_index = entrypoint_source.rfind("run_authenticated_app()")
+        finally_index = entrypoint_source.rfind("finally:")
+        marker_index = entrypoint_source.rfind("cv-workspace-ready-marker")
+        self.assertGreater(runtime_call_index, -1)
+        self.assertGreater(finally_index, runtime_call_index)
+        self.assertGreater(marker_index, finally_index)
+        self.assertEqual(entrypoint_source.count("cv-workspace-ready-marker"), 1)
 
     def test_startup_overlay_does_not_retire_on_shell_chrome_alone(self):
         bootstrap_source = (ROOT / "src" / "auth_bootstrap.py").read_text(
