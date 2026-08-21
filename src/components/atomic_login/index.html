@@ -38,6 +38,8 @@
   const button = document.getElementById("submit");
   const status = document.getElementById("status");
   let submitted = false;
+  let streamlitRenderReady = false;
+  let pendingSubmitValue = null;
 
   function post(type, extra = {}) {
     window.parent.postMessage({isStreamlitMessage:true,type,...extra},"*");
@@ -49,12 +51,26 @@
     if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
     return Date.now().toString(36)+"-"+Math.random().toString(36).slice(2);
   }
+  function sendPendingSubmitWhenReady() {
+    // The card is intentionally visible while Streamlit initializes this
+    // iframe. A physical submit during that small window must survive until
+    // the component has received its first render handshake.
+    if (!streamlitRenderReady || !pendingSubmitValue) return;
+    post("streamlit:setComponentValue",{
+      value:pendingSubmitValue,
+      dataType:"json"
+    });
+    pendingSubmitValue = null;
+    password.value = "";
+  }
 
   window.addEventListener("message", (event) => {
     const data = event.data || {};
     if (data.type !== "streamlit:render") return;
     const args = data.args || {};
+    streamlitRenderReady = true;
     button.disabled = Boolean(args.disabled) || submitted;
+    sendPendingSubmitWhenReady();
     resize();
   });
 
@@ -72,11 +88,12 @@
     button.disabled = true;
     button.textContent = "Signing in…";
     status.textContent = "";
-    post("streamlit:setComponentValue",{
-      value:{email:emailValue,password:passwordValue,request_id:requestId()},
-      dataType:"json"
-    });
-    password.value = "";
+    pendingSubmitValue = {
+      email:emailValue,
+      password:passwordValue,
+      request_id:requestId()
+    };
+    sendPendingSubmitWhenReady();
     resize();
   });
 

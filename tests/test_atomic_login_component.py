@@ -21,9 +21,21 @@ class AtomicLoginComponentContractTests(unittest.TestCase):
     def test_native_browser_form_emits_one_atomic_payload(self):
         self.assertIn('<form id="login"', HTML)
         self.assertIn('form.addEventListener("submit"', HTML)
-        self.assertIn("email:emailValue,password:passwordValue,request_id:requestId()", HTML)
-        self.assertIn('type:"streamlit:setComponentValue"', HTML)
+        self.assertIn("email:emailValue", HTML)
+        self.assertIn("password:passwordValue", HTML)
+        self.assertIn("request_id:requestId()", HTML)
+        self.assertIn('post("streamlit:setComponentValue"', HTML)
         self.assertIn("if (submitted) return", HTML)
+
+    def test_first_submit_waits_for_streamlit_render_handshake(self):
+        self.assertIn("let streamlitRenderReady = false", HTML)
+        self.assertIn("let pendingSubmitValue = null", HTML)
+        self.assertIn("streamlitRenderReady = true", HTML)
+        self.assertIn("sendPendingSubmitWhenReady();", HTML)
+        self.assertIn("if (!streamlitRenderReady || !pendingSubmitValue) return", HTML)
+        self.assertIn("pendingSubmitValue = {", HTML)
+        self.assertIn("value:pendingSubmitValue", HTML)
+        self.assertIn("pendingSubmitValue = null", HTML)
 
     def test_password_manager_contract_is_native_and_no_browser_storage(self):
         self.assertIn('autocomplete="email"', HTML)
