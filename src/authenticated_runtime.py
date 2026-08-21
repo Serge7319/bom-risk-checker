@@ -51,6 +51,7 @@ import html
 import re
 import json
 import math
+import hashlib
 from datetime import datetime, timezone
 
 start_time = time.time()
@@ -4775,7 +4776,7 @@ def run_authenticated_app() -> None:
                 "Executive BOM Summary",
                 "Leadership-ready health, priority risks, decision brief, and recommended actions.",
                 "▤",
-                ["PDF", "Excel"],
+                ["PDF", "CSV"],
             ),
             (
                 "Engineering Risk Review",
@@ -4787,7 +4788,7 @@ def run_authenticated_app() -> None:
                 "Procurement & Sourcing",
                 "Supplier concentration, market stock, cost exposure, and secondary-source priorities.",
                 "⇄",
-                ["Excel", "CSV"],
+                ["PDF", "CSV"],
             ),
         ]
 
@@ -4820,13 +4821,13 @@ def run_authenticated_app() -> None:
                 "Lifecycle Exposure Report",
                 "Lifecycle states, obsolete or replacement-suggested components, and alert-oriented review data.",
                 "◷",
-                ["PDF", "Excel", "CSV"],
+                ["PDF", "CSV"],
             ),
             (
                 "Alternative Replacement Report",
                 "Components requiring alternatives, candidate availability, and saved replacement-readiness fields.",
                 "↔",
-                ["PDF", "Excel", "CSV"],
+                ["PDF", "CSV"],
             ),
         ]
 
@@ -5495,17 +5496,41 @@ def run_authenticated_app() -> None:
             )
             from src.role_report_generator import build_role_report_pdf
             from src.pdf_entitlements import add_student_edition_watermark
-            report_brief_key = decision_brief_cache_key(
-                analysis_id=_report_value(selected_analysis, "id", "analysis_id", default="")
+            # Every report derives from the same normalized, current evidence.
+            # An analysis-only cache key can otherwise reuse a decision brief
+            # generated before supplier inventory or the health score changed.
+            report_evidence_df = (
+                role_source.copy() if not selected_parts_df.empty else selected_parts_df.copy()
+            )
+            if not report_evidence_df.empty:
+                report_evidence_df["Stock Available"] = report_evidence_df["stock_available"]
+                report_evidence_df["Stock"] = report_evidence_df["stock_available"]
+                report_evidence_df["Supplier Count"] = report_evidence_df["supplier_count"]
+            report_health_score = _report_int(
+                _report_value(selected_analysis, "health_score", default=0)
+            )
+            evidence_columns = [
+                column for column in (
+                    "mpn", "risk_level", "risk_score", "lifecycle_status",
+                    "stock_available", "supplier_count",
+                ) if column in report_evidence_df.columns
+            ]
+            evidence_payload = report_evidence_df[evidence_columns].to_json(
+                orient="records", date_format="iso"
+            ) if evidence_columns else "[]"
+            evidence_fingerprint = hashlib.sha256(
+                f"{report_health_score}:{evidence_payload}".encode("utf-8")
+            ).hexdigest()[:16]
+            report_brief_key = (
+                f"{decision_brief_cache_key(analysis_id=_report_value(selected_analysis, 'id', 'analysis_id', default=''))}"
+                f":reports:{evidence_fingerprint}"
             )
             decision_brief = get_cached_decision_brief(report_brief_key)
             if decision_brief is None:
                 decision_brief = build_engineering_decision_brief(
-                    results_df=selected_parts_df,
+                    results_df=report_evidence_df,
                     analysis=dict(selected_analysis),
-                    health_score=_report_int(
-                        _report_value(selected_analysis, "health_score", default=0)
-                    ),
+                    health_score=report_health_score,
                 )
                 cache_decision_brief(report_brief_key, decision_brief)
 
@@ -5516,7 +5541,7 @@ def run_authenticated_app() -> None:
             )
             ai_report = build_ai_report_intelligence(
                 selected_analysis,
-                selected_parts_df,
+                report_evidence_df,
             )
             ai_executive_pdf = build_ai_executive_pdf(ai_report, decision_brief=decision_brief)
             ai_procurement_pdf = build_ai_procurement_pdf(ai_report)
@@ -5592,6 +5617,52 @@ def run_authenticated_app() -> None:
                 ]
             ).to_csv(index=False).encode("utf-8")
 
+            if "reports_session_history" not in st.session_state:
+                st.session_state["reports_session_history"] = []
+
+            def _record_session_report(report_type: str, file_name: str) -> None:
+                st.session_state["reports_session_history"].insert(
+                    0,
+                    {
+                        "Project": project_name,
+                        "Report": report_type,
+                        "File": file_name,
+                        "Generated": pd.Timestamp.utcnow().strftime(
+                            "%Y-%m-%d %H:%M UTC"
+                        ),
+                    },
+                )
+                st.session_state["reports_session_history"] = (
+                    st.session_state["reports_session_history"][:12]
+                )
+                if not st.session_state.get("onboarding_report_completed"):
+                    _mark_first_report_complete()
+
+            @st.fragment
+            def _tracked_report_download(
+                label: str,
+                *,
+                report_type: str,
+                data,
+                file_name: str,
+                mime: str,
+                key: str,
+                primary: bool = False,
+            ) -> None:
+                """Track an actual download without rerunning the Reports page."""
+                options = {
+                    "data": data,
+                    "file_name": file_name,
+                    "mime": mime,
+                    "key": key,
+                    "use_container_width": True,
+                    "on_click": _record_session_report,
+                    "args": (report_type, file_name),
+                }
+                if primary:
+                    options["type"] = "primary"
+                st.download_button(label, **options)
+
             preview_tabs = st.tabs(
                 [
                     "AI Executive Brief",
@@ -5660,22 +5731,22 @@ def run_authenticated_app() -> None:
                     )
                     risk_pdf_col, risk_csv_col = st.columns(2)
                     with risk_pdf_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Risk Review PDF",
+                            report_type="Engineering Risk Review",
                             data=risk_report_pdf,
                             key=f"tab_risk_pdf_{selected_analysis_id}",
                             file_name=f"{safe_project}_engineering_risk_review.pdf",
                             mime="application/pdf",
-                            use_container_width=True,
                         )
                     with risk_csv_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Risk Review CSV",
+                            report_type="Engineering Risk Review",
                             data=risk_report_csv,
                             key=f"tab_risk_csv_{selected_analysis_id}",
                             file_name=f"{safe_project}_engineering_risk_review.csv",
                             mime="text/csv",
-                            use_container_width=True,
                         )
 
             with preview_tabs[3]:
@@ -5696,22 +5767,22 @@ def run_authenticated_app() -> None:
                     )
                     sourcing_pdf_col, sourcing_csv_col = st.columns(2)
                     with sourcing_pdf_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Sourcing Review PDF",
+                            report_type="Procurement & Sourcing",
                             data=sourcing_report_pdf,
                             key=f"tab_sourcing_pdf_{selected_analysis_id}",
                             file_name=f"{safe_project}_procurement_sourcing_review.pdf",
                             mime="application/pdf",
-                            use_container_width=True,
                         )
                     with sourcing_csv_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Sourcing Review CSV",
+                            report_type="Procurement & Sourcing",
                             data=sourcing_report_csv,
                             key=f"tab_sourcing_csv_{selected_analysis_id}",
                             file_name=f"{safe_project}_procurement_sourcing_review.csv",
                             mime="text/csv",
-                            use_container_width=True,
                         )
 
             with preview_tabs[4]:
@@ -5726,22 +5797,22 @@ def run_authenticated_app() -> None:
                     cadivor_engineering_dataframe(lifecycle_df)
                     lifecycle_pdf_col, lifecycle_csv_col = st.columns(2)
                     with lifecycle_pdf_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Lifecycle Review PDF",
+                            report_type="Lifecycle Exposure Report",
                             data=lifecycle_report_pdf,
                             key=f"tab_lifecycle_pdf_{selected_analysis_id}",
                             file_name=f"{safe_project}_lifecycle_readiness_review.pdf",
                             mime="application/pdf",
-                            use_container_width=True,
                         )
                     with lifecycle_csv_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Lifecycle Review CSV",
+                            report_type="Lifecycle Exposure Report",
                             data=lifecycle_report_csv,
                             key=f"tab_lifecycle_csv_{selected_analysis_id}",
                             file_name=f"{safe_project}_lifecycle_readiness_review.csv",
                             mime="text/csv",
-                            use_container_width=True,
                         )
 
             with preview_tabs[5]:
@@ -5756,22 +5827,22 @@ def run_authenticated_app() -> None:
                     cadivor_engineering_dataframe(alternative_df)
                     alt_pdf_col, alt_csv_col = st.columns(2)
                     with alt_pdf_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Alternatives Review PDF",
+                            report_type="Alternative Replacement Report",
                             data=alternatives_report_pdf,
                             key=f"tab_alternatives_pdf_{selected_analysis_id}",
                             file_name=f"{safe_project}_alternative_readiness_review.pdf",
                             mime="application/pdf",
-                            use_container_width=True,
                         )
                     with alt_csv_col:
-                        st.download_button(
+                        _tracked_report_download(
                             "Download Alternatives Review CSV",
+                            report_type="Alternative Replacement Report",
                             data=alternatives_report_csv,
                             key=f"tab_alternatives_csv_{selected_analysis_id}",
                             file_name=f"{safe_project}_alternative_readiness_review.csv",
                             mime="text/csv",
-                            use_container_width=True,
                         )
 
             st.markdown(
@@ -5780,134 +5851,99 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-            if "reports_session_history" not in st.session_state:
-                st.session_state["reports_session_history"] = []
-
-            def _record_session_report(report_type: str, file_name: str) -> None:
-                st.session_state["reports_session_history"].insert(
-                    0,
-                    {
-                        "Project": project_name,
-                        "Report": report_type,
-                        "File": file_name,
-                        "Generated": pd.Timestamp.utcnow().strftime(
-                            "%Y-%m-%d %H:%M UTC"
-                        ),
-                    },
-                )
-                st.session_state["reports_session_history"] = (
-                    st.session_state["reports_session_history"][:12]
-                )
-
             with st.expander("Executive reports", expanded=True):
                 st.caption("Leadership-ready summaries for release, risk, and management review.")
                 ai_exec_col, executive_pdf_col, executive_csv_col = st.columns(3)
                 with ai_exec_col:
                     ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
-                    if st.download_button(
+                    _tracked_report_download(
                         "AI Executive Brief · PDF",
+                        report_type="AI Executive Brief",
                         key=f"shared_ai_executive_pdf_{selected_analysis_id}",
                         data=ai_executive_pdf,
                         file_name=ai_exec_name,
                         mime="application/pdf",
-                        use_container_width=True,
-                        type="primary",
-                        on_click="ignore",
-                    ):
-                        _record_session_report("AI Executive Brief", ai_exec_name)
+                        primary=True,
+                    )
                 with executive_pdf_col:
                     executive_pdf_name = f"{safe_project}_executive_summary.pdf"
-                    if st.download_button(
+                    _tracked_report_download(
                         "Executive Summary · PDF",
+                        report_type="Executive BOM Summary",
                         key=f"shared_executive_pdf_{selected_analysis_id}",
                         data=pdf_bytes,
                         file_name=executive_pdf_name,
                         mime="application/pdf",
-                        use_container_width=True,
-                        on_click="ignore",
-                    ):
-                        _record_session_report("Executive BOM Summary", executive_pdf_name)
+                    )
                 with executive_csv_col:
                     executive_csv_name = f"{safe_project}_executive_summary.csv"
-                    if st.download_button(
+                    _tracked_report_download(
                         "Executive Data · CSV",
+                        report_type="Executive BOM Summary",
                         key=f"shared_executive_csv_{selected_analysis_id}",
                         data=executive_csv,
                         file_name=executive_csv_name,
                         mime="text/csv",
-                        use_container_width=True,
-                        on_click="ignore",
-                    ):
-                        _record_session_report("Executive BOM Summary", executive_csv_name)
+                    )
 
             with st.expander("Engineering reports", expanded=False):
                 st.caption("Technical reviews for component risk, lifecycle readiness, and alternatives.")
                 risk_col, lifecycle_col, alternatives_col = st.columns(3)
                 with risk_col:
                     risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
-                    if st.download_button(
+                    _tracked_report_download(
                         "Risk Review · CSV",
+                        report_type="Engineering Risk Review",
                         key=f"shared_risk_csv_{selected_analysis_id}",
                         data=engineering_df.to_csv(index=False).encode("utf-8"),
                         file_name=risk_csv_name,
                         mime="text/csv",
-                        use_container_width=True,
-                        on_click="ignore",
-                    ):
-                        _record_session_report("Engineering Risk Review", risk_csv_name)
+                    )
                 with lifecycle_col:
                     lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
-                    if st.download_button(
+                    _tracked_report_download(
                         "Lifecycle Review · CSV",
+                        report_type="Lifecycle Exposure Report",
                         key=f"shared_lifecycle_csv_{selected_analysis_id}",
                         data=lifecycle_df.to_csv(index=False).encode("utf-8"),
                         file_name=lifecycle_csv_name,
                         mime="text/csv",
-                        use_container_width=True,
-                        on_click="ignore",
-                    ):
-                        _record_session_report("Lifecycle Exposure Report", lifecycle_csv_name)
+                    )
                 with alternatives_col:
                     alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
-                    if st.download_button(
+                    _tracked_report_download(
                         "Alternatives Review · CSV",
+                        report_type="Alternative Replacement Report",
                         key=f"shared_alternatives_csv_{selected_analysis_id}",
                         data=alternative_df.to_csv(index=False).encode("utf-8"),
                         file_name=alternatives_csv_name,
                         mime="text/csv",
-                        use_container_width=True,
-                        on_click="ignore",
-                    ):
-                        _record_session_report("Alternative Replacement Report", alternatives_csv_name)
+                    )
 
             with st.expander("Procurement reports", expanded=False):
                 st.caption("Purchasing and sourcing packages for procurement and supplier review.")
                 ai_proc_col, sourcing_col = st.columns(2)
                 with ai_proc_col:
                     ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
-                    if st.download_button(
+                    _tracked_report_download(
                         "AI Procurement Brief · PDF",
+                        report_type="AI Procurement Brief",
                         key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
                         data=ai_procurement_pdf,
                         file_name=ai_proc_name,
                         mime="application/pdf",
-                        use_container_width=True,
-                        type="primary",
-                        on_click="ignore",
-                    ):
-                        _record_session_report("AI Procurement Brief", ai_proc_name)
+                        primary=True,
+                    )
                 with sourcing_col:
                     sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
-                    if st.download_button(
+                    _tracked_report_download(
                         "Sourcing Review · CSV",
+                        report_type="Procurement & Sourcing",
                         key=f"shared_sourcing_csv_{selected_analysis_id}",
                         data=sourcing_df.to_csv(index=False).encode("utf-8"),
                         file_name=sourcing_csv_name,
                         mime="text/csv",
-                        use_container_width=True,
-                        on_click="ignore",
-                    ):
-                        _record_session_report("Procurement & Sourcing", sourcing_csv_name)
+                    )
 
             action_cols = st.columns(3)
             with action_cols[0]:
@@ -6200,8 +6236,8 @@ def run_authenticated_app() -> None:
                 "outcome": "Build better engineering habits before entering industry.",
                 "audience": "University students, technical colleges, engineering clubs, and capstone teams.",
                 "features": [
-                    "10 BOM analyses per month",
-                    "Up to 100 components per BOM",
+                    "5 BOM analyses per month",
+                    "Up to 50 components per BOM",
                     "Basic risk analysis and health score",
                     "Limited alternative search",
                     'PDF reports with "Student Edition" watermark',
@@ -6271,6 +6307,7 @@ def run_authenticated_app() -> None:
             {
                 "name": "Starter",
                 "price": "$29",
+                "annual_price": "$296",
                 "tag": "Individual",
                 "outcome": "Analyze prototype BOMs before production.",
                 "audience": "Hobbyists, freelancers, makers, and small prototype companies.",
@@ -6286,6 +6323,7 @@ def run_authenticated_app() -> None:
             {
                 "name": "Professional",
                 "price": "$99",
+                "annual_price": "$1,010",
                 "tag": "Most popular",
                 "outcome": "Make engineering decisions with confidence using AI-powered lifecycle intelligence.",
                 "audience": "Professional hardware engineers, startups, and small engineering companies.",
@@ -6304,6 +6342,7 @@ def run_authenticated_app() -> None:
             {
                 "name": "Business",
                 "price": "$299",
+                "annual_price": "$3,050",
                 "tag": "Teams",
                 "outcome": "Standardize engineering decisions across your organization.",
                 "audience": "Growing companies, electronics manufacturers, and cross-functional teams.",
@@ -6361,7 +6400,8 @@ def run_authenticated_app() -> None:
                             f'<div class="cv311-price">{plan["price"]}'
                             + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
                             + '</div>'
-                            f'<div class="cv311-outcome">{plan["outcome"]}</div>'
+                            + (f'<div class="cv311-info-note">{plan["annual_price"]} / year · Save 15%</div>' if plan.get("annual_price") else "")
+                            + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
                             f'<div class="cv311-for">{plan["audience"]}</div>'
                             '<div class="cv311-features">'
                             + "".join(

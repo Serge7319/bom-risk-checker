@@ -2262,6 +2262,13 @@
   $$('.billing-toggle button').forEach(b => b.onclick = () => {
     $$('.billing-toggle button').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
+    const annual = b.dataset.billing === 'annual';
+    $$('.pricing-grid [data-monthly-price][data-annual-price]').forEach(price => {
+      price.textContent = annual ? price.dataset.annualPrice : price.dataset.monthlyPrice;
+      const period = document.createElement('small');
+      period.textContent = annual ? '/year' : '/month';
+      price.appendChild(period);
+    });
   });
 
   if (launchAudit.enabled) {
