@@ -61,7 +61,14 @@ def _number(value: Any, default: float = 0.0) -> float:
 
 
 def _mpn(part: Mapping[str, Any]) -> str:
-    return _text(part.get("mpn") or part.get("MPN") or part.get("part_number"), "Component")
+    return _text(
+        part.get("mpn")
+        or part.get("MPN")
+        or part.get("part_number")
+        or part.get("manufacturer_part_number")
+        or part.get("Manufacturer Part Number"),
+        "Part number unavailable",
+    )
 
 
 def decision_brief_cache_key(*, analysis_id: Any = None, session_key: str = "") -> str:
@@ -119,10 +126,17 @@ def parts_to_results_df(parts: Iterable[Dict[str, Any]]) -> pd.DataFrame:
 def _results_to_parts(results_df: pd.DataFrame) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for _, row in results_df.iterrows():
+        part_number = _text(
+            row.get("MPN")
+            or row.get("mpn")
+            or row.get("part_number")
+            or row.get("Manufacturer Part Number"),
+            "Part number unavailable",
+        )
         rows.append(
             {
-                "mpn": _text(row.get("MPN"), "Component"),
-                "MPN": _text(row.get("MPN"), "Component"),
+                "mpn": part_number,
+                "MPN": part_number,
                 "manufacturer": _text(row.get("Manufacturer")),
                 "Manufacturer": _text(row.get("Manufacturer")),
                 "lifecycle_status": _text(row.get("Lifecycle Status"), "Unknown"),
@@ -1102,7 +1116,9 @@ def _html_readiness_panel(readiness: Mapping[str, Any], *, premium: bool) -> str
         f'<p class="cv671-readiness-copy">{escape(explanation)}</p>'
         f'<div class="cv671-readiness-meter" role="progressbar" aria-valuenow="{score}" '
         f'aria-valuemin="0" aria-valuemax="100"><i style="width:{score}%"></i></div>'
-        f'<small class="cv671-readiness-score">{score}/100 health basis</small>'
+        f'<small class="cv671-readiness-score">{score}/100 production-readiness evidence score</small>'
+        f'<small class="cv671-readiness-score">Includes evidence completeness, supply continuity, '
+        f'and release blockers; may differ from BOM Health.</small>'
         f"</article>"
     )
 

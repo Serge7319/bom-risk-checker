@@ -318,9 +318,8 @@ def render_cost_optimization(
         st.warning(
             "The build quantity is changing correctly, but all modeled values remain $0 because "
             "none of the saved component records currently contains a positive unit price. "
-            "Run the SQL migration included with Milestone 21.1, then re-analyze a BOM so Cadivor "
-            "can save quantity and supplier pricing. Existing saved BOMs do not automatically gain "
-            "historical prices."
+            "Re-analyze a BOM with current supplier pricing to populate cost estimates. "
+            "Previously saved BOMs do not automatically gain historical prices."
         )
     elif intelligence["pricing_coverage"] < 100:
         st.info(

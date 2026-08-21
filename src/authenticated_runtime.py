@@ -3208,8 +3208,11 @@ def run_authenticated_app() -> None:
                                     pass
                                 st.success("Monitoring workflow saved.")
                                 st.rerun()
-                            except Exception as exc:
-                                st.error(f"Could not save workflow. Run the Sprint 32.0 migration first. Details: {exc}")
+                            except Exception:
+                                st.error(
+                                    "Cadivor could not save this monitoring workflow. "
+                                    "Please try again or contact support if the problem continues."
+                                )
                         if a2.button("Find alternative", use_container_width=True, key=f"m32_alt_{alert_id}_{idx}"):
                             navigate_to_alternative_finder(
                                 mpn=str(row["Part Number"]),
@@ -5934,7 +5937,7 @@ def run_authenticated_app() -> None:
 
             st.markdown(
                 '<div class="cv-r9-section">Recent generated reports</div>'
-                '<div class="cv-r9-sub">Milestone 9A keeps a current-session download history. Persistent history arrives in Milestone 9B.</div>',
+                '<div class="cv-r9-sub">Reports downloaded during this session appear here.</div>',
                 unsafe_allow_html=True,
             )
 
@@ -6664,9 +6667,9 @@ def run_authenticated_app() -> None:
             or preferences_error == "migration_required"
         )
         if migration_required:
-            st.error(
-                "Milestone 11A.1 database tables are not available yet. "
-                "Run the included Supabase migration, then refresh this page."
+            st.warning(
+                "Some profile settings are temporarily unavailable. "
+                "Your saved engineering data is unaffected. Please try again later."
             )
 
         profile_tab, preferences_tab, workspace_tab, security_tab, billing_tab = st.tabs(
@@ -11325,7 +11328,7 @@ def run_authenticated_app() -> None:
         with st.container(key="bom81_saved_manager"):
             with st.expander(
                 "Manage saved analyses",
-                expanded=False,
+                expanded=bool(history_data),
             ):
 
                 if history_data:
@@ -11523,6 +11526,7 @@ def run_authenticated_app() -> None:
                         st.session_state["bom81_selected_analysis_ids"] = selected_ids
 
                         selected_count = len(selected_ids)
+                        selection_label = "analysis" if selected_count == 1 else "analyses"
 
                         selection_copy = (
                             "Select one checkbox to enable Open Analysis."
@@ -11535,7 +11539,7 @@ def run_authenticated_app() -> None:
                             f"""
                             <div class="bom81-selection-status">
                               <strong>{selected_count}</strong>
-                              analysis{"es" if selected_count != 1 else ""} selected
+                              {selection_label} selected
                               <span>{html.escape(selection_copy)}</span>
                             </div>
                             """,
@@ -11606,7 +11610,7 @@ def run_authenticated_app() -> None:
                             if remaining_names:
                                 name_lines += (
                                     f"<li>and {remaining_names} more "
-                                    f"analysis{'es' if remaining_names != 1 else ''}</li>"
+                                    f"{'analyses' if remaining_names != 1 else 'analysis'}</li>"
                                 )
 
                             st.markdown(
@@ -11615,7 +11619,7 @@ def run_authenticated_app() -> None:
                                   <div class="bom81-delete-icon">!</div>
                                   <div>
                                     <strong>Permanently delete {len(pending_delete_ids)}
-                                    saved BOM analysis{"es" if len(pending_delete_ids) != 1 else ""}?</strong>
+                                    saved BOM {"analyses" if len(pending_delete_ids) != 1 else "analysis"}?</strong>
                                     <p>
                                       All saved component records associated with these
                                       analyses will also be removed. This action cannot be undone.
@@ -11684,7 +11688,7 @@ def run_authenticated_app() -> None:
                                     else:
                                         st.success(
                                             f"{len(pending_delete_ids)} saved BOM "
-                                            f"analysis{'es' if len(pending_delete_ids) != 1 else ''} "
+                                            f"{'analyses' if len(pending_delete_ids) != 1 else 'analysis'} "
                                             "permanently deleted."
                                         )
                                         st.rerun()
@@ -11720,7 +11724,12 @@ def run_authenticated_app() -> None:
         cadivor_panel_end()
 
         if uploaded_file is None:
-            st.info("Upload a CSV or Excel BOM to begin.")
+            if history_data:
+                st.info(
+                    "Open a saved BOM analysis above, or upload a new CSV or Excel BOM."
+                )
+            else:
+                st.info("Upload a CSV or Excel BOM to begin.")
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
