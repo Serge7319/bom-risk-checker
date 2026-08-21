@@ -3084,7 +3084,7 @@ def run_authenticated_app() -> None:
         st.markdown(
             f"""
             <div class="cv123-monitor-hero cv123-monitor-hero--compact">
-              <span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">{monitoring_center['active_alerts']} active alert(s)</span>
+              <span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">{monitoring_center['active_alerts']} active {'alert' if monitoring_center['active_alerts'] == 1 else 'alerts'}</span>
             </div>
             <div class="cv320-limit"><div class="cv320-limitrow"><span>{html.escape(str(selected_plan_name))} monitoring usage</span><span>{monitored_count:,} / {monitor_limit_label}</span></div><div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div></div>
             """,
@@ -11203,122 +11203,6 @@ def run_authenticated_app() -> None:
             ]
         )
 
-        workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)
-
-        st.markdown(
-            """
-            <div class="bom8-section-head">
-              <div>
-                <h2>Start a new BOM analysis</h2>
-                <p>Prepare the project, confirm the expected columns, and upload the source file.</p>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        input_col, guidance_col = st.columns([0.64, 0.36], gap="large")
-
-        with input_col:
-            st.markdown(
-                """
-                <div class="bom8-upload-card">
-                  <div class="bom8-upload-title">Upload engineering BOM</div>
-                  <div class="bom8-upload-copy">
-                    Give the analysis a recognizable project or revision name, then select
-                    the CSV or Excel file used by your engineering or sourcing team.
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            project_name = st.text_input(
-                "Project / BOM Name",
-                placeholder="Example: Motor Controller Rev A",
-                key="bom8_project_name",
-            )
-
-            sample_bom = pd.DataFrame(
-                {
-                    "mpn": ["TPS5430DDAR", "LM555CN/NOPB"],
-                    "quantity": [5, 2],
-                }
-            )
-            sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
-
-            st.markdown(
-                """
-                <div class="bom8-column-example" aria-label="Recommended BOM columns">
-                  <span>Manufacturer Part Number</span><span>Quantity</span><span>Description (optional)</span>
-                </div>
-                <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.download_button(
-                label="Download Sample BOM Template",
-                data=sample_csv,
-                file_name="sample_bom_template.csv",
-                mime="text/csv",
-                key="bom8_sample",
-            )
-
-            uploaded_file = st.file_uploader(
-                "Upload your BOM file",
-                type=["csv", "xlsx"],
-                key="bom_file_uploader",
-                help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
-            )
-
-            st.markdown(
-                """
-                <div class="bom8-trust-strip">
-                  <div class="bom8-trust">CSV/XLSX files accepted</div>
-                  <div class="bom8-trust">Duplicate part numbers combined</div>
-                  <div class="bom8-trust">Lifecycle and sourcing risk scored</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with guidance_col:
-            st.markdown(
-                """
-                <div class="bom8-upload-card">
-                  <div class="bom8-upload-title">File readiness</div>
-                  <div class="bom8-upload-copy">
-                    A clean source file creates a stronger and more defensible analysis.
-                  </div>
-                  <div class="bom8-checklist">
-                    <div class="bom8-check">
-                      <div class="bom8-check-icon">1</div>
-                      <div>
-                        <strong>Manufacturer part number</strong>
-                        <span>Include an <b>mpn</b> column or a recognized part-number equivalent.</span>
-                      </div>
-                    </div>
-                    <div class="bom8-check">
-                      <div class="bom8-check-icon">2</div>
-                      <div>
-                        <strong>Quantity</strong>
-                        <span>Include a numeric <b>quantity</b> or <b>qty</b> column.</span>
-                      </div>
-                    </div>
-                    <div class="bom8-check">
-                      <div class="bom8-check-icon">3</div>
-                      <div>
-                        <strong>One BOM revision</strong>
-                        <span>Use a project name that identifies the board and revision.</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
         # Milestone 8.1 — Saved BOM Manager
         cadivor_panel(
             title=f"Saved BOM Manager ({saved_analysis_count})",
@@ -11722,6 +11606,123 @@ def run_authenticated_app() -> None:
                     )
 
         cadivor_panel_end()
+
+        workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)
+
+        st.markdown(
+            """
+            <div class="bom8-section-head">
+              <div>
+                <h2>Start a new BOM analysis</h2>
+                <p>Prepare the project, confirm the expected columns, and upload the source file.</p>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        input_col, guidance_col = st.columns([0.64, 0.36], gap="large")
+
+        with input_col:
+            st.markdown(
+                """
+                <div class="bom8-upload-card">
+                  <div class="bom8-upload-title">Upload engineering BOM</div>
+                  <div class="bom8-upload-copy">
+                    Give the analysis a recognizable project or revision name, then select
+                    the CSV or Excel file used by your engineering or sourcing team.
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            project_name = st.text_input(
+                "Project / BOM Name",
+                placeholder="Example: Motor Controller Rev A",
+                key="bom8_project_name",
+            )
+
+            sample_bom = pd.DataFrame(
+                {
+                    "mpn": ["TPS5430DDAR", "LM555CN/NOPB"],
+                    "quantity": [5, 2],
+                }
+            )
+            sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
+
+            st.markdown(
+                """
+                <div class="bom8-column-example" aria-label="Recommended BOM columns">
+                  <span>Manufacturer Part Number</span><span>Quantity</span><span>Description (optional)</span>
+                </div>
+                <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.download_button(
+                label="Download Sample BOM Template",
+                data=sample_csv,
+                file_name="sample_bom_template.csv",
+                mime="text/csv",
+                key="bom8_sample",
+            )
+
+            uploaded_file = st.file_uploader(
+                "Upload your BOM file",
+                type=["csv", "xlsx"],
+                key="bom_file_uploader",
+                help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
+            )
+
+            st.markdown(
+                """
+                <div class="bom8-trust-strip">
+                  <div class="bom8-trust">CSV/XLSX files accepted</div>
+                  <div class="bom8-trust">Duplicate part numbers combined</div>
+                  <div class="bom8-trust">Lifecycle and sourcing risk scored</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with guidance_col:
+            st.markdown(
+                """
+                <div class="bom8-upload-card">
+                  <div class="bom8-upload-title">File readiness</div>
+                  <div class="bom8-upload-copy">
+                    A clean source file creates a stronger and more defensible analysis.
+                  </div>
+                  <div class="bom8-checklist">
+                    <div class="bom8-check">
+                      <div class="bom8-check-icon">1</div>
+                      <div>
+                        <strong>Manufacturer part number</strong>
+                        <span>Include an <b>mpn</b> column or a recognized part-number equivalent.</span>
+                      </div>
+                    </div>
+                    <div class="bom8-check">
+                      <div class="bom8-check-icon">2</div>
+                      <div>
+                        <strong>Quantity</strong>
+                        <span>Include a numeric <b>quantity</b> or <b>qty</b> column.</span>
+                      </div>
+                    </div>
+                    <div class="bom8-check">
+                      <div class="bom8-check-icon">3</div>
+                      <div>
+                        <strong>One BOM revision</strong>
+                        <span>Use a project name that identifies the board and revision.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
 
         if uploaded_file is None:
             if history_data:

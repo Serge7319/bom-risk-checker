@@ -95,9 +95,16 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
     if actions:
         recommendations.append(actions[0]["title"])
     if lifecycle:
-        recommendations.append(f"Review {lifecycle} lifecycle change(s) and confirm replacement readiness.")
+        recommendations.append(
+            f"Review {lifecycle} lifecycle "
+            f"{'change' if lifecycle == 1 else 'changes'} and confirm replacement readiness."
+        )
     if procurement.get("second_source_count"):
-        recommendations.append(f"Add sourcing coverage for {procurement['second_source_count']} single-source component(s).")
+        second_source_count = procurement["second_source_count"]
+        recommendations.append(
+            f"Add sourcing coverage for {second_source_count} single-source "
+            f"{'component' if second_source_count == 1 else 'components'}."
+        )
     if not recommendations:
         recommendations.append("Continue routine monitoring; no urgent exception is recorded.")
 
@@ -123,7 +130,9 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
         "engineering_decisions": len(open_decisions),
         "estimated_hours": sum(int(_n(d.get("estimated_effort_hours"), 0)) for d in open_decisions),
         "summary": (
-            f"{len(actions)} action(s) need attention across engineering and procurement. "
-            f"{sum(1 for p in projects if p['status'] != 'Ready for Production')} project(s) still need review."
+            f"{len(actions)} {'action needs' if len(actions) == 1 else 'actions need'} "
+            "attention across engineering and procurement. "
+            f"{sum(1 for p in projects if p['status'] != 'Ready for Production')} "
+            f"{'project still needs' if sum(1 for p in projects if p['status'] != 'Ready for Production') == 1 else 'projects still need'} review."
         ),
     }

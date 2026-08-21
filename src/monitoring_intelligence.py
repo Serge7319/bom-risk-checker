@@ -68,7 +68,22 @@ def build_monitoring_action_center(alert_df: pd.DataFrame, monitor_df: pd.DataFr
     alerts = alert_df.copy() if isinstance(alert_df, pd.DataFrame) else pd.DataFrame()
     history = monitor_df.copy() if isinstance(monitor_df, pd.DataFrame) else pd.DataFrame()
     records: List[Dict[str, Any]] = []
+    seen_alerts = set()
     for raw in alerts.to_dict("records") if not alerts.empty else []:
+        alert_type = _text(raw.get("alert_type")).casefold()
+        alert_message = _text(raw.get("alert_message")).casefold()
+        if "test alert" in alert_type or "scheduled monitoring test alert" in alert_message:
+            continue
+        alert_identity = (
+            _text(raw.get("part_number")).casefold(),
+            _text(raw.get("analysis_id")).casefold(),
+            alert_type,
+            alert_message,
+            _text(raw.get("workflow_status"), "Open").casefold(),
+        )
+        if alert_identity in seen_alerts:
+            continue
+        seen_alerts.add(alert_identity)
         action = _recommended_action(raw)
         status = _text(raw.get("workflow_status"), "Open").title()
         records.append({
@@ -105,10 +120,18 @@ def build_monitoring_action_center(alert_df: pd.DataFrame, monitor_df: pd.DataFr
 
     if immediate:
         posture, tone = "Immediate Action Required", "bad"
-        summary = f"{immediate} monitoring exception(s) require urgent engineering or sourcing action. Address lifecycle and inventory exposure first."
+        exception_label = "exception requires" if immediate == 1 else "exceptions require"
+        summary = (
+            f"{immediate} monitoring {exception_label} urgent engineering or sourcing action. "
+            "Address lifecycle and inventory exposure first."
+        )
     elif active_count:
         posture, tone = "Controlled Review Required", "warn"
-        summary = f"{active_count} active change(s) are being tracked. Confirm owners, due dates, and next actions before release or purchasing decisions."
+        change_label = "change is" if active_count == 1 else "changes are"
+        summary = (
+            f"{active_count} active {change_label} being tracked. Confirm owners, due dates, "
+            "and next actions before release or purchasing decisions."
+        )
     else:
         posture, tone = "Monitoring Healthy", "good"
         summary = "No unresolved monitoring exception is recorded. Continue scheduled lifecycle, inventory, price, and supplier checks."
