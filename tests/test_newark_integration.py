@@ -288,6 +288,22 @@ class NewarkIntegrationTests(unittest.TestCase):
         self.assertIn('"Sources Available": part_data.get("sources_available", "")', source)
         self.assertIn("original_lookup = get_best_part_data(searched_part)", source)
 
+    def test_alternative_candidates_use_verified_exact_supplier_matches(self):
+        source = (ROOT / "src/authenticated_runtime.py").read_text()
+        self.assertIn("supplier_data = get_best_part_data(candidate_part)", source)
+        self.assertIn("matched_part.upper() != candidate_part.upper()", source)
+        self.assertIn('candidate["Sources Available"] = supplier_data.get("sources_available", "")', source)
+        self.assertIn('candidate["Stock"] = supplier_data.get("stock_total", 0)', source)
+
+    def test_original_component_shows_all_verified_suppliers(self):
+        source = (ROOT / "src/authenticated_runtime.py").read_text()
+        self.assertIn("Verified Suppliers", source)
+        self.assertIn('["sources_available", "source"]', source)
+
+    def test_unknown_replacement_price_is_not_reported_as_free(self):
+        source = (ROOT / "src/authenticated_runtime.py").read_text()
+        self.assertIn("if original_price > 0 and alternative_price > 0:", source)
+
 
 if __name__ == "__main__":
     unittest.main()
