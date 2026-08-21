@@ -16,8 +16,11 @@ from integrations.digikey_client import search_digikey_by_part_number
 
 try:
     from integrations.newark_client import search_newark_by_part_number
-except Exception:
-    search_newark_by_part_number = None
+except ImportError as newark_import_error:
+    _newark_import_error = newark_import_error
+
+    def search_newark_by_part_number(part_number):
+        raise RuntimeError("Newark supplier integration could not be loaded.") from _newark_import_error
 
 
 def _empty_supplier_result(source_name: str, *, provider_status: str, error: str = "") -> dict:

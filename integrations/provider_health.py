@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.secrets import ConfigurationError
+
 PROVIDER_AVAILABLE = "AVAILABLE"
 PROVIDER_PART_NOT_FOUND = "PART_NOT_FOUND"
 PROVIDER_NOT_CONFIGURED = "NOT_CONFIGURED"
@@ -19,6 +21,9 @@ _FAILURE_STATUSES = {
 
 
 def classify_provider_exception(error: Exception) -> str:
+    if isinstance(error, ConfigurationError):
+        return PROVIDER_NOT_CONFIGURED
+
     message = str(error or "").lower()
     if "timeout" in message or "timed out" in message:
         return PROVIDER_TIMEOUT
@@ -77,6 +82,7 @@ def summarize_provider_health(supplier_results: list[dict[str, Any]]) -> dict[st
     failed = [
         result for result in supplier_results
         if result.get("provider_status") in _FAILURE_STATUSES
+        and result.get("provider_status") != PROVIDER_NOT_CONFIGURED
     ]
     part_not_found = [
         result for result in supplier_results
@@ -93,6 +99,17 @@ def summarize_provider_health(supplier_results: list[dict[str, Any]]) -> dict[st
             for result in failed
             if str(result.get("source") or "").strip()
         }
+    )
+    available_sources = sorted(
+        str(result.get("source") or "Supplier").strip()
+        for result in available
+        if str(result.get("source") or "").strip()
+    )
+    not_configured_sources = sorted(
+        str(result.get("source") or "Supplier").strip()
+        for result in supplier_results
+        if result.get("provider_status") == PROVIDER_NOT_CONFIGURED
+        and str(result.get("source") or "").strip()
     )
 
     if configured_count == 0:
@@ -124,6 +141,8 @@ def summarize_provider_health(supplier_results: list[dict[str, Any]]) -> dict[st
         "failed_count": len(failed),
         "part_not_found_count": len(part_not_found),
         "failed_sources": failed_sources,
+        "available_sources": available_sources,
+        "not_configured_sources": not_configured_sources,
         "has_verified_data": has_verified_data,
         "summary_message": summary_message,
     }

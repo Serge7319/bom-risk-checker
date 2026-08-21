@@ -15,6 +15,10 @@ load_dotenv()
 
 
 def search_newark_by_part_number(part_number: str) -> dict:
+    requested_part_number = str(part_number or "").strip()
+    if not requested_part_number:
+        return default_newark_result(requested_part_number)
+
     api_key = get_secret("NEWARK_API_KEY", required=True)
 
     url = "https://api.element14.com/catalog/products"
@@ -24,9 +28,9 @@ def search_newark_by_part_number(part_number: str) -> dict:
         "callInfo.responseDataFormat": "json",
         "storeInfo.id": "www.newark.com",
         "resultsSettings.offset": 0,
-        "resultsSettings.numberOfResults": 1,
+        "resultsSettings.numberOfResults": 5,
         "resultsSettings.responseGroup": "medium",
-        "term": f"manuPartNum:{part_number}",
+        "term": f"manuPartNum:{requested_part_number}",
     }
 
     response = requests.get(url, params=params, timeout=15)
@@ -39,12 +43,28 @@ def search_newark_by_part_number(part_number: str) -> dict:
     if not products:
         products = data.get("keywordSearchReturn", {}).get("products", [])
 
-    if not products:
-        return default_newark_result(part_number)
+    requested_match = requested_part_number.casefold()
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        candidate_part_numbers = (
+            product.get("translatedManufacturerPartNumber"),
+            product.get("manufacturerPartNumber"),
+        )
+        matched_part_number = next(
+            (
+                str(candidate).strip()
+                for candidate in candidate_part_numbers
+                if str(candidate or "").strip().casefold() == requested_match
+            ),
+            None,
+        )
+        if matched_part_number is not None:
+            normalized_product = normalize_newark_product(product)
+            normalized_product["manufacturer_part_number"] = matched_part_number
+            return normalized_product
 
-    product = products[0]
-
-    return normalize_newark_product(product)
+    return default_newark_result(requested_part_number)
 
 
 def normalize_newark_product(product: dict) -> dict:
@@ -144,7 +164,6 @@ def infer_newark_lifecycle(product: dict) -> str:
     status_fields = [
         product.get("productStatus"),
         product.get("status"),
-        product.get("rohsStatusCode"),
     ]
 
     combined = " ".join(str(field).lower() for field in status_fields if field)
@@ -155,7 +174,13 @@ def infer_newark_lifecycle(product: dict) -> str:
     if "not recommended" in combined or "nrnd" in combined:
         return "NRND"
 
-    return "Active"
+    if any(
+        marker in combined
+        for marker in ("active", "available", "in production", "current")
+    ):
+        return "Active"
+
+    return "Unknown"
 
 
 def extract_package_from_text(text: str) -> str:
