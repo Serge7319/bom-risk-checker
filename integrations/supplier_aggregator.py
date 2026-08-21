@@ -13,6 +13,7 @@ from integrations.provider_health import (
 )
 from integrations.mouser_client import search_mouser_by_part_number
 from integrations.digikey_client import search_digikey_by_part_number
+from integrations.octopart_client import search_octopart_by_part_number
 
 try:
     from integrations.newark_client import search_newark_by_part_number
@@ -170,11 +171,12 @@ def get_supplier_results(part_number):
         ("Mouser", search_mouser_by_part_number),
         ("DigiKey", search_digikey_by_part_number),
         ("Newark", search_newark_by_part_number),
+        ("Octopart", search_octopart_by_part_number),
     ]
 
     results = []
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=len(suppliers)) as executor:
         future_to_supplier = {
             executor.submit(
                 _safe_supplier_lookup,
