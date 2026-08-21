@@ -224,6 +224,20 @@ def _auth_css():
             width:100%!important;
             max-width:100%!important;
         }
+        /* CookieManager hides zero-height component iframes globally. The
+           atomic Login iframe also begins at height zero, so explicitly keep
+           only its keyed container visible until its resize handshake lands. */
+        .st-key-cadivor_auth_card .st-key-cadivor_atomic_login{
+            display:block!important;
+            width:100%!important;
+            min-height:244px!important;
+        }
+        .st-key-cadivor_auth_card .st-key-cadivor_atomic_login
+        iframe[title="src.auth_atomic_login.cadivor_atomic_login"]{
+            display:block!important;
+            width:100%!important;
+            min-height:244px!important;
+        }
         .st-key-cadivor_auth_card .cadivor-back-home{
             display:flex!important;
             justify-content:center!important;
