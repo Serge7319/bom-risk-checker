@@ -142,6 +142,21 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         self.assertFalse(st.session_state.get("cadivor_force_signed_out"))
         self.assertIn("cadivor_auth", manager.cookies)
 
+    def test_successful_login_removes_marketing_auth_query_parameters(self):
+        manager = _FakeCookieManager()
+        st, _auth_cookies, auth_state = self._load({})
+        st.query_params = {"auth": "login", "source": "marketing", "page": "Reports"}
+
+        auth_state.mark_authenticated(
+            _FakeUser(),
+            types.SimpleNamespace(access_token="new-a", refresh_token="new-r"),
+            cookie_manager=manager,
+        )
+
+        self.assertNotIn("auth", st.query_params)
+        self.assertNotIn("source", st.query_params)
+        self.assertEqual(st.query_params["page"], "Reports")
+
     def test_failed_manual_login_rearms_signed_out_protection(self):
         manager = _FakeCookieManager()
         st, auth_cookies, auth_state = self._load({"cadivor_manual_login_in_progress": True})

@@ -4394,7 +4394,7 @@ def run_authenticated_app() -> None:
             from io import BytesIO
             from reportlab.lib.pagesizes import letter
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib import colors
             from src.engineering_decision_engine import (
                 format_decision_brief_for_report,
@@ -4409,6 +4409,23 @@ def run_authenticated_app() -> None:
                 bottomMargin=42,
             )
             styles = getSampleStyleSheet()
+            # Define compact, explicit typography instead of relying on
+            # environment-dependent sample-style metrics in customer exports.
+            styles.add(ParagraphStyle(
+                name="CadivorReportTitle", parent=styles["Title"],
+                fontName="Helvetica-Bold", fontSize=22, leading=27,
+                textColor=colors.HexColor("#0F172A"), spaceAfter=0,
+            ))
+            styles.add(ParagraphStyle(
+                name="CadivorReportHeading", parent=styles["Heading2"],
+                fontName="Helvetica-Bold", fontSize=14, leading=18,
+                textColor=colors.HexColor("#0F172A"), spaceBefore=0, spaceAfter=6,
+            ))
+            styles.add(ParagraphStyle(
+                name="CadivorReportBody", parent=styles["BodyText"],
+                fontName="Helvetica", fontSize=10, leading=14,
+                textColor=colors.HexColor("#334155"), spaceAfter=0,
+            ))
             story = []
 
             project = _report_value(analysis_row, "project_name", "name", default="Saved BOM")
@@ -4418,10 +4435,10 @@ def run_authenticated_app() -> None:
             medium_risk = _report_int(_report_value(analysis_row, "medium_risk_count", "medium_risk_parts", default=0))
             total_parts = _report_int(_report_value(analysis_row, "total_parts", "part_count", "parts_count", default=len(parts_df)))
 
-            story.append(Paragraph("Cadivor Executive BOM Report", styles["Title"]))
+            story.append(Paragraph("Cadivor Executive BOM Report", styles["CadivorReportTitle"]))
             story.append(Spacer(1, 12))
-            story.append(Paragraph(f"Project: {html.escape(str(project))}", styles["Heading2"]))
-            story.append(Paragraph(f"Source file: {html.escape(str(filename))}", styles["BodyText"]))
+            story.append(Paragraph(f"Project: {html.escape(str(project))}", styles["CadivorReportHeading"]))
+            story.append(Paragraph(f"Source file: {html.escape(str(filename))}", styles["CadivorReportBody"]))
             story.append(Spacer(1, 12))
 
             summary_table = Table(
@@ -4450,26 +4467,26 @@ def run_authenticated_app() -> None:
 
             if decision_brief:
                 report_sections = format_decision_brief_for_report(decision_brief)
-                story.append(Paragraph("Executive Engineering Summary", styles["Heading2"]))
-                story.append(Paragraph(report_sections["executive_summary"], styles["BodyText"]))
+                story.append(Paragraph("Executive Engineering Summary", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["executive_summary"], styles["CadivorReportBody"]))
                 story.append(Spacer(1, 12))
-                story.append(Paragraph("Production Readiness", styles["Heading2"]))
-                story.append(Paragraph(report_sections["production_readiness"], styles["BodyText"]))
+                story.append(Paragraph("Production Readiness", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["production_readiness"], styles["CadivorReportBody"]))
                 story.append(Spacer(1, 12))
-                story.append(Paragraph("Critical Findings", styles["Heading2"]))
-                story.append(Paragraph(report_sections["critical_findings"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Paragraph("Critical Findings", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["critical_findings"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
                 story.append(Spacer(1, 12))
-                story.append(Paragraph("Recommended Actions", styles["Heading2"]))
-                story.append(Paragraph(report_sections["recommended_actions"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Paragraph("Recommended Actions", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["recommended_actions"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
                 story.append(Spacer(1, 12))
-                story.append(Paragraph("Business Impact", styles["Heading2"]))
-                story.append(Paragraph(report_sections["business_impact"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Paragraph("Business Impact", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["business_impact"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
                 story.append(Spacer(1, 12))
-                story.append(Paragraph("Engineering Confidence", styles["Heading2"]))
-                story.append(Paragraph(report_sections["confidence"], styles["BodyText"]))
+                story.append(Paragraph("Engineering Confidence", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["confidence"], styles["CadivorReportBody"]))
                 story.append(Spacer(1, 12))
-                story.append(Paragraph("Supporting Evidence", styles["Heading2"]))
-                story.append(Paragraph(report_sections["supporting_evidence"].replace("\n", "<br/>"), styles["BodyText"]))
+                story.append(Paragraph("Supporting Evidence", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["supporting_evidence"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
                 story.append(Spacer(1, 16))
             else:
                 if health >= 80:
@@ -4479,13 +4496,13 @@ def run_authenticated_app() -> None:
                 else:
                     recommendation = "Immediate engineering and sourcing review is recommended before production release."
 
-                story.append(Paragraph("Recommended action", styles["Heading2"]))
-                story.append(Paragraph(recommendation, styles["BodyText"]))
+                story.append(Paragraph("Recommended action", styles["CadivorReportHeading"]))
+                story.append(Paragraph(recommendation, styles["CadivorReportBody"]))
                 story.append(Spacer(1, 16))
 
-            story.append(Paragraph("Priority component review", styles["Heading2"]))
+            story.append(Paragraph("Priority component review", styles["CadivorReportHeading"]))
             if parts_df.empty:
-                story.append(Paragraph("No component-level records were available for this saved analysis.", styles["BodyText"]))
+                story.append(Paragraph("No component-level records were available for this saved analysis.", styles["CadivorReportBody"]))
             else:
                 work = parts_df.copy()
                 risk_col = next((c for c in ["risk_level", "Risk Level", "risk"] if c in work.columns), None)
@@ -4748,9 +4765,9 @@ def run_authenticated_app() -> None:
                     icon="file-text",
                 ),
                 MetricCard(
-                    label="Downloads",
-                    value=str(len(st.session_state.get("reports_session_history", []))),
-                    detail="Generated this session",
+                    label="Formats",
+                    value="PDF + CSV",
+                    detail="Available for every report package",
                     tone="success",
                     icon="download",
                 ),
@@ -5617,28 +5634,7 @@ def run_authenticated_app() -> None:
                 ]
             ).to_csv(index=False).encode("utf-8")
 
-            if "reports_session_history" not in st.session_state:
-                st.session_state["reports_session_history"] = []
-
-            def _record_session_report(report_type: str, file_name: str) -> None:
-                st.session_state["reports_session_history"].insert(
-                    0,
-                    {
-                        "Project": project_name,
-                        "Report": report_type,
-                        "File": file_name,
-                        "Generated": pd.Timestamp.utcnow().strftime(
-                            "%Y-%m-%d %H:%M UTC"
-                        ),
-                    },
-                )
-                st.session_state["reports_session_history"] = (
-                    st.session_state["reports_session_history"][:12]
-                )
-                if not st.session_state.get("onboarding_report_completed"):
-                    _mark_first_report_complete()
-
-            def _tracked_report_download(
+            def _report_download_button(
                 label: str,
                 *,
                 report_type: str,
@@ -5648,7 +5644,7 @@ def run_authenticated_app() -> None:
                 key: str,
                 primary: bool = False,
             ) -> None:
-                """Track an actual download without rerunning the Reports page."""
+                """Deliver a report without a rerun that can interrupt the file response."""
                 options = {
                     "data": data,
                     "file_name": file_name,
@@ -5732,7 +5728,7 @@ def run_authenticated_app() -> None:
                     )
                     risk_pdf_col, risk_csv_col = st.columns(2)
                     with risk_pdf_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Risk Review PDF",
                             report_type="Engineering Risk Review",
                             data=risk_report_pdf,
@@ -5741,7 +5737,7 @@ def run_authenticated_app() -> None:
                             mime="application/pdf",
                         )
                     with risk_csv_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Risk Review CSV",
                             report_type="Engineering Risk Review",
                             data=risk_report_csv,
@@ -5768,7 +5764,7 @@ def run_authenticated_app() -> None:
                     )
                     sourcing_pdf_col, sourcing_csv_col = st.columns(2)
                     with sourcing_pdf_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Sourcing Review PDF",
                             report_type="Procurement & Sourcing",
                             data=sourcing_report_pdf,
@@ -5777,7 +5773,7 @@ def run_authenticated_app() -> None:
                             mime="application/pdf",
                         )
                     with sourcing_csv_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Sourcing Review CSV",
                             report_type="Procurement & Sourcing",
                             data=sourcing_report_csv,
@@ -5798,7 +5794,7 @@ def run_authenticated_app() -> None:
                     cadivor_engineering_dataframe(lifecycle_df)
                     lifecycle_pdf_col, lifecycle_csv_col = st.columns(2)
                     with lifecycle_pdf_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Lifecycle Review PDF",
                             report_type="Lifecycle Exposure Report",
                             data=lifecycle_report_pdf,
@@ -5807,7 +5803,7 @@ def run_authenticated_app() -> None:
                             mime="application/pdf",
                         )
                     with lifecycle_csv_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Lifecycle Review CSV",
                             report_type="Lifecycle Exposure Report",
                             data=lifecycle_report_csv,
@@ -5828,7 +5824,7 @@ def run_authenticated_app() -> None:
                     cadivor_engineering_dataframe(alternative_df)
                     alt_pdf_col, alt_csv_col = st.columns(2)
                     with alt_pdf_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Alternatives Review PDF",
                             report_type="Alternative Replacement Report",
                             data=alternatives_report_pdf,
@@ -5837,7 +5833,7 @@ def run_authenticated_app() -> None:
                             mime="application/pdf",
                         )
                     with alt_csv_col:
-                        _tracked_report_download(
+                        _report_download_button(
                             "Download Alternatives Review CSV",
                             report_type="Alternative Replacement Report",
                             data=alternatives_report_csv,
@@ -5857,7 +5853,7 @@ def run_authenticated_app() -> None:
                 ai_exec_col, executive_pdf_col, executive_csv_col = st.columns(3)
                 with ai_exec_col:
                     ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
-                    _tracked_report_download(
+                    _report_download_button(
                         "AI Executive Brief · PDF",
                         report_type="AI Executive Brief",
                         key=f"shared_ai_executive_pdf_{selected_analysis_id}",
@@ -5868,7 +5864,7 @@ def run_authenticated_app() -> None:
                     )
                 with executive_pdf_col:
                     executive_pdf_name = f"{safe_project}_executive_summary.pdf"
-                    _tracked_report_download(
+                    _report_download_button(
                         "Executive Summary · PDF",
                         report_type="Executive BOM Summary",
                         key=f"shared_executive_pdf_{selected_analysis_id}",
@@ -5878,7 +5874,7 @@ def run_authenticated_app() -> None:
                     )
                 with executive_csv_col:
                     executive_csv_name = f"{safe_project}_executive_summary.csv"
-                    _tracked_report_download(
+                    _report_download_button(
                         "Executive Data · CSV",
                         report_type="Executive BOM Summary",
                         key=f"shared_executive_csv_{selected_analysis_id}",
@@ -5892,7 +5888,7 @@ def run_authenticated_app() -> None:
                 risk_col, lifecycle_col, alternatives_col = st.columns(3)
                 with risk_col:
                     risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
-                    _tracked_report_download(
+                    _report_download_button(
                         "Risk Review · CSV",
                         report_type="Engineering Risk Review",
                         key=f"shared_risk_csv_{selected_analysis_id}",
@@ -5902,7 +5898,7 @@ def run_authenticated_app() -> None:
                     )
                 with lifecycle_col:
                     lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
-                    _tracked_report_download(
+                    _report_download_button(
                         "Lifecycle Review · CSV",
                         report_type="Lifecycle Exposure Report",
                         key=f"shared_lifecycle_csv_{selected_analysis_id}",
@@ -5912,7 +5908,7 @@ def run_authenticated_app() -> None:
                     )
                 with alternatives_col:
                     alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
-                    _tracked_report_download(
+                    _report_download_button(
                         "Alternatives Review · CSV",
                         report_type="Alternative Replacement Report",
                         key=f"shared_alternatives_csv_{selected_analysis_id}",
@@ -5926,7 +5922,7 @@ def run_authenticated_app() -> None:
                 ai_proc_col, sourcing_col = st.columns(2)
                 with ai_proc_col:
                     ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
-                    _tracked_report_download(
+                    _report_download_button(
                         "AI Procurement Brief · PDF",
                         report_type="AI Procurement Brief",
                         key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
@@ -5937,7 +5933,7 @@ def run_authenticated_app() -> None:
                     )
                 with sourcing_col:
                     sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
-                    _tracked_report_download(
+                    _report_download_button(
                         "Sourcing Review · CSV",
                         report_type="Procurement & Sourcing",
                         key=f"shared_sourcing_csv_{selected_analysis_id}",
@@ -5972,24 +5968,6 @@ def run_authenticated_app() -> None:
                     analysis_id=selected_analysis_id,
                     return_analysis_id=selected_analysis_id,
                     source_page="reports_center",
-                )
-
-            st.markdown(
-                '<div class="cv-r9-section">Recent generated reports</div>'
-                '<div class="cv-r9-sub">Reports downloaded during this session appear here.</div>',
-                unsafe_allow_html=True,
-            )
-
-            session_history = st.session_state.get(
-                "reports_session_history",
-                [],
-            )
-            if session_history:
-                cadivor_engineering_dataframe(pd.DataFrame(session_history))
-            else:
-                st.markdown(
-                    '<div class="cv-r9-empty">No reports have been downloaded during this session yet.</div>',
-                    unsafe_allow_html=True,
                 )
 
             with st.expander(

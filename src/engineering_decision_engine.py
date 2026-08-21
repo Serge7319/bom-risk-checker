@@ -819,8 +819,11 @@ def build_engineering_decision_brief(
     evidence = []
     if insufficient:
         evidence.append(INSUFFICIENT_EVIDENCE)
-    if intelligence_data.get("bom_health_score") is not None:
-        evidence.append(f"BOM health score: {intelligence_data['bom_health_score']}/100")
+    # The saved analysis score is the report's canonical score.  Intelligence
+    # can independently derive a score from enriched component data, but that
+    # derived value must never contradict the score shown on the BOM, Dashboard,
+    # or report header.
+    evidence.append(f"BOM health score: {health}/100")
     if metrics.get("lifecycle_concerns"):
         evidence.append(f"Lifecycle signals on {metrics['lifecycle_concerns']} component(s)")
     if metrics.get("no_stock"):

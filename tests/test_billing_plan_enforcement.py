@@ -28,6 +28,16 @@ class BillingPlanEnforcementTests(unittest.TestCase):
         allowed, _ = plans.validate_bom_against_plan([object()], plans.get_plan("Starter"), 10)
         self.assertFalse(allowed)
 
+    def test_launch_plan_matrix_is_explicit(self):
+        plans = load_plans()
+        self.assertEqual(plans.get_plan("Student")["price"], "$0")
+        self.assertEqual(plans.get_plan("Starter")["price"], "$29/mo")
+        self.assertEqual(plans.get_plan("Professional")["price"], "$99/mo")
+        self.assertEqual(plans.get_plan("Business")["price"], "$299/mo")
+        self.assertIsNone(plans.get_plan("Enterprise")["monthly_bom_limit"])
+        self.assertTrue(plans.get_plan("Business")["team_features"])
+        self.assertTrue(plans.get_plan("Business")["api_access"])
+
     def test_paid_plan_grants_require_checkout(self):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text()
         self.assertNotIn('"plan": "Pro"', source)
