@@ -9423,6 +9423,26 @@ def run_authenticated_app() -> None:
 
                     try:
                         candidates = suggest_alternatives_v2(searched_part) or []
+                        for candidate in candidates:
+                            candidate_part = str(candidate.get("Alternative Part", "") or "").strip()
+                            if not candidate_part:
+                                continue
+                            try:
+                                supplier_data = get_best_part_data(candidate_part) or {}
+                            except Exception:
+                                continue
+                            matched_part = str(supplier_data.get("manufacturer_part_number", "") or "").strip()
+                            if matched_part.upper() != candidate_part.upper():
+                                continue
+                            if not supplier_data.get("supplier_data_verified"):
+                                continue
+                            candidate["Supplier"] = supplier_data.get("source", "")
+                            candidate["Sources Available"] = supplier_data.get("sources_available", "")
+                            candidate["Supplier Count"] = supplier_data.get("supplier_count", 0)
+                            candidate["Stock"] = supplier_data.get("stock_total", 0)
+                            candidate["Unit Price"] = supplier_data.get("unit_price", 0)
+                            if supplier_data.get("lifecycle_status"):
+                                candidate["Lifecycle"] = supplier_data["lifecycle_status"]
                         st.session_state["suggested_alternatives"] = candidates
                         st.session_state["alternative_search_error"] = ""
                     except Exception:
@@ -9586,6 +9606,7 @@ def run_authenticated_app() -> None:
                       <div class="af62-field"><span>Lifecycle</span><strong>{lifecycle_display}</strong></div>
                       <div class="af62-field {risk_class}"><span>Risk</span><strong>{risk_display}</strong></div>
                       <div class="af62-field"><span>Package</span><strong>{package_display}</strong></div>
+                      <div class="af62-field"><span>Verified Suppliers</span><strong>{html.escape(_af62_first(original_summary_data, ["sources_available", "source"], fallback="Not available"))}</strong></div>
                       <div class="af62-field"><span>Datasheet / Source</span><strong>{datasheet_display}</strong></div>
                     </div>
                     <div class="af62-search-status {current_status_class}">{current_status}</div>
@@ -9698,7 +9719,7 @@ def run_authenticated_app() -> None:
             risk_value = _af62b_value(selected_row, ["Estimated Risk"], "Unknown")
             supplier_value = _af62b_value(
                 selected_row,
-                ["Supplier", "Best Source", "Source"],
+                ["Sources Available", "Supplier", "Best Source", "Source"],
                 "Supplier not listed",
             )
             stock_value = float(selected_row.get("Stock", 0) or 0)
@@ -9727,7 +9748,7 @@ def run_authenticated_app() -> None:
             else:
                 stock_delta = "N/A"
 
-            if original_price > 0:
+            if original_price > 0 and alternative_price > 0:
                 price_pct = (
                     (alternative_price - original_price) / original_price
                 ) * 100
