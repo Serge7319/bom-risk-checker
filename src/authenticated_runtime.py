@@ -12136,7 +12136,7 @@ def run_authenticated_app() -> None:
                         )
                     )
 
-        if st.session_state.get("show_upgrade_checkout"):
+        if st.session_state.get("show_upgrade_checkout") and not is_admin:
             upgrade_message = st.session_state.get(
                 "upgrade_message",
                 "Your current plan limit has been reached.",
@@ -12155,9 +12155,9 @@ def run_authenticated_app() -> None:
 
     Unlock more power:
 
-    - 🔍 Analyze up to **{next_plan['monthly_bom_limit']} BOMs/month**
-    - 📦 Handle up to **{next_plan['max_parts_per_bom']} parts per BOM**
-    - 🌐 Multi-supplier intelligence (Mouser + DigiKey)
+    - 🔍 **{format_limit(next_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')}** each month
+    - 📦 **{format_limit(next_plan['max_parts_per_bom'], 'component')}** per BOM
+    - 🌐 Verified multi-supplier intelligence
     - ⚡ Faster sourcing decisions
 
     👉 Upgrade now to continue your analysis
@@ -12167,8 +12167,14 @@ def run_authenticated_app() -> None:
 
                 if st.button(f"🚀 Upgrade to {upgrade_plan}", key="upgrade_button_main"):
                     try:
+                        price_secret = {
+                            "Professional": "STRIPE_PRO_PRICE_ID",
+                            "Business": "STRIPE_BUSINESS_PRICE_ID",
+                        }.get(upgrade_plan)
+                        if not price_secret:
+                            raise ValueError("Unsupported checkout plan")
                         checkout_url = create_checkout_session(
-                            get_secret("STRIPE_PRO_PRICE_ID", required=True),
+                            get_secret(price_secret, required=True),
                             current_user["email"],
                             current_user["id"],
                             success_url=app_checkout_url(checkout="success"),
@@ -12177,8 +12183,8 @@ def run_authenticated_app() -> None:
 
                         st.session_state["checkout_url"] = checkout_url
 
-                    except Exception as e:
-                        st.error(f"Unable to create checkout session: {e}")
+                    except Exception:
+                        st.error("Secure checkout could not be started. Please try again or contact support.")
 
                 if "checkout_url" in st.session_state:
                     st.link_button(
@@ -12584,63 +12590,13 @@ def run_authenticated_app() -> None:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
-            if st.session_state.get("show_upgrade_modal"):
+            if st.session_state.get("show_upgrade_modal") and not is_admin:
                 st.divider()
                 st.subheader("Upgrade Your Plan")
-
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    st.markdown("### Starter")
-                    st.write("$29/mo")
-                    st.write("5 BOMs/month")
-                    st.write("10 parts per BOM")
-
-                with col2:
-                    st.markdown("### Pro 🚀")
-                    st.write("$99/mo")
-                    st.write("10 BOMs/month")
-                    st.write("20 parts per BOM")
-                    if st.button("Select Pro", key="select_pro"):
-
-                        supabase.table("users").update(
-                            {
-                                "plan": "Pro",
-                                "monthly_upload_count": 0,
-                            }
-                        ).eq(
-                            "id",
-                            current_user["id"]
-                        ).execute()
-
-                        st.session_state["show_upgrade_modal"] = False
-
-                        st.success("🎉 You are now on the Pro plan!")
-
-                        st.rerun()
-
-                with col3:
-                    st.markdown("### Business")
-                    st.write("$299/mo")
-                    st.write("25 BOMs/month")
-                    st.write("100 parts per BOM")
-                    if st.button("Select Business", key="select_business"):
-
-                        supabase.table("users").update(
-                            {
-                                "plan": "Business",
-                                "monthly_upload_count": 0,
-                            }
-                        ).eq(
-                            "id",
-                            current_user["id"]
-                        ).execute()
-
-                        st.session_state["show_upgrade_modal"] = False
-
-                        st.success("🎉 You are now on the Business plan!")
-
-                        st.rerun()
+                st.info("Paid plans are activated through secure Stripe checkout.")
+                if st.button("Compare paid plans", key="secure_upgrade_view_plans"):
+                    st.session_state.pop("show_upgrade_modal", None)
+                    navigate_to("Pricing")
 
 
 
