@@ -65,6 +65,26 @@ class PricingLaunchAlignmentTests(unittest.TestCase):
         for annual_price in ("$296", "$1,010", "$3,050"):
             self.assertIn(f'"annual_price": "{annual_price}"', self.runtime)
 
+    def test_application_escapes_currency_before_markdown_rendering(self):
+        paid_rendering = self.runtime.split("paid_plans = [", 1)[1]
+        self.assertIn('display_price = html.escape(plan["price"]).replace("$", "&#36;")', self.runtime)
+        self.assertIn('display_annual_price = html.escape(plan.get("annual_price", "")).replace("$", "&#36;")', self.runtime)
+        self.assertIn('<div class="cv311-price">{display_price}', self.runtime)
+        self.assertIn('<div class="cv311-info-note">{display_annual_price}', self.runtime)
+        self.assertNotIn('<div class="cv311-price">{plan["price"]}', paid_rendering)
+
+    def test_higher_tiers_explicitly_include_lower_tiers(self):
+        self.assertIn('class="plan-includes">Everything in Starter, plus', self.marketing)
+        self.assertIn('class="plan-includes">Everything in Professional, plus', self.marketing)
+        self.assertIn('class="plan-includes">Everything in Business, plus', self.marketing)
+        self.assertIn('"Everything in Starter"', self.runtime)
+        self.assertIn('"Supplier intelligence and alternative search"', self.runtime)
+        self.assertIn('"PDF and CSV reports"', self.runtime)
+
+    def test_updated_pricing_stylesheet_bypasses_stale_browser_cache(self):
+        self.assertIn('styles.css?v=1.0-pricing-layout2', self.marketing)
+        self.assertIn('.pricing-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr))', self.styles)
+
     def test_annual_toggle_updates_displayed_prices(self):
         self.assertIn("b.dataset.billing === 'annual'", self.javascript)
         self.assertIn("price.dataset.annualPrice", self.javascript)

@@ -6314,8 +6314,8 @@ def run_authenticated_app() -> None:
                 "features": [
                     "10 BOM analyses per month",
                     "100 components per BOM",
-                    "Basic reports and alternative search",
-                    "PDF export",
+                    "Supplier intelligence and alternative search",
+                    "PDF and CSV reports",
                     "Email support",
                 ],
                 "exclusions": "No monitoring, AI engineering assistant, team collaboration, or API.",
@@ -6328,6 +6328,7 @@ def run_authenticated_app() -> None:
                 "outcome": "Make engineering decisions with confidence using AI-powered lifecycle intelligence.",
                 "audience": "Professional hardware engineers, startups, and small engineering companies.",
                 "features": [
+                    "Everything in Starter",
                     "Unlimited BOM analyses and components",
                     "Advanced AI recommendations and assistant",
                     "Engineering Decision Records",
@@ -6390,6 +6391,8 @@ def run_authenticated_app() -> None:
                 with column:
                     with st.container(border=True):
                         marker = " cv311-featured" if featured else ""
+                        display_price = html.escape(plan["price"]).replace("$", "&#36;")
+                        display_annual_price = html.escape(plan.get("annual_price", "")).replace("$", "&#36;")
                         st.markdown(
                             f'<span class="cv311-card{marker}"></span>'
                             '<div class="cv311-card-inner">'
@@ -6397,10 +6400,10 @@ def run_authenticated_app() -> None:
                             f'<div class="cv311-name">{plan["name"]}</div>'
                             f'<div class="cv311-tag">{plan["tag"]}</div>'
                             '</div>'
-                            f'<div class="cv311-price">{plan["price"]}'
+                            f'<div class="cv311-price">{display_price}'
                             + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
                             + '</div>'
-                            + (f'<div class="cv311-info-note">{plan["annual_price"]} / year · Save 15%</div>' if plan.get("annual_price") else "")
+                            + (f'<div class="cv311-info-note">{display_annual_price} / year · Save 15%</div>' if display_annual_price else "")
                             + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
                             f'<div class="cv311-for">{plan["audience"]}</div>'
                             '<div class="cv311-features">'
