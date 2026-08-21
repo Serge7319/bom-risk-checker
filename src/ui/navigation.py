@@ -33,6 +33,18 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
     still accepted for external/deep links, but ordinary clicks must not force
     CookieManager and Supabase authentication to hydrate again.
     """
+    current_page = str(st.session_state.get("cadivor_route", "") or "").strip()
+    if current_page == "BOM Analyzer" and page != "BOM Analyzer":
+        # The table widget is removed on other pages. Its row selections must
+        # leave with it; otherwise a return shows unchecked rows beside stale
+        # enabled Open/Delete actions from the previous editor instance.
+        if st.session_state.get("bom81_selected_analysis_ids"):
+            st.session_state["bom81_selected_analysis_ids"] = []
+            st.session_state["bom81_saved_analysis_editor_revision"] = int(
+                st.session_state.get("bom81_saved_analysis_editor_revision", 0)
+            ) + 1
+        st.session_state.pop("bom81_pending_delete_ids", None)
+
     st.session_state["cadivor_route"] = page
     st.session_state["app_mode"] = page
     nav_params = {"page": page}
