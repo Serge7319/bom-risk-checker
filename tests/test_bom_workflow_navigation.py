@@ -71,6 +71,90 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertIn("html.escape(selected_lead_time_label)", detail)
         self.assertNotIn("html.escape(selected_lead_time)} weeks", detail)
 
+    def test_internal_navigation_commits_destination_in_widget_callback(self):
+        reruns = []
+        self.streamlit.rerun = lambda: reruns.append(True)
+
+        def click_button(label, **kwargs):
+            self.assertEqual(label, "Reports Center")
+            kwargs["on_click"]()
+            return True
+
+        self.streamlit.button = click_button
+        clicked = self.navigation.internal_nav_button(
+            "Reports Center", "Reports", key="reports-test", analysis_id="bom-42"
+        )
+
+        self.assertTrue(clicked)
+        self.assertEqual(self.streamlit.session_state["cadivor_route"], "Reports")
+        self.assertEqual(self.streamlit.session_state["app_mode"], "Reports")
+        self.assertEqual(
+            self.streamlit.session_state["cadivor_nav_params"],
+            {"page": "Reports", "analysis_id": "bom-42"},
+        )
+        self.assertEqual(reruns, [])
+
+    def test_alternative_navigation_callback_preserves_return_context(self):
+        reruns = []
+        self.streamlit.rerun = lambda: reruns.append(True)
+        self.streamlit.session_state["cadivor_active_analysis_tab"] = "Components"
+
+        def click_button(label, **kwargs):
+            kwargs["on_click"]()
+            return True
+
+        self.streamlit.button = click_button
+        self.navigation.internal_nav_button(
+            "Find Alternatives",
+            self.navigation.ALTERNATIVE_FINDER_PAGE,
+            key="alternatives-test",
+            original_part="LM358N",
+            analysis_id="bom-42",
+            return_analysis_id="bom-42",
+        )
+
+        self.assertEqual(self.streamlit.session_state["cadivor_route"], "Alternative Finder")
+        self.assertEqual(
+            self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY],
+            "bom-42",
+        )
+        self.assertEqual(reruns, [])
+
+    def test_direct_navigation_still_requests_one_rerun(self):
+        reruns = []
+        self.streamlit.rerun = lambda: reruns.append(True)
+
+        self.navigation.navigate_to("Analysis Details", analysis_id="bom-42")
+
+        self.assertEqual(self.streamlit.session_state["cadivor_route"], "Analysis Details")
+        self.assertEqual(reruns, [True])
+
+    def test_saved_bom_editor_input_does_not_rebuild_from_selection(self):
+        source = (ROOT / "src/authenticated_runtime.py").read_text()
+        start = source.index('editor_df = pd.DataFrame(', source.index('key="bom81_manager_sort"'))
+        editor_input = source[start:source.index('edited_manager = st.data_editor(', start)]
+
+        self.assertIn('"Select": False', editor_input)
+        self.assertNotIn('.isin(current_selection)', editor_input)
+        self.assertIn('bom81_saved_analysis_editor_revision', editor_input)
+
+    def test_clear_selection_replaces_editor_widget_once(self):
+        source = (ROOT / "src/authenticated_runtime.py").read_text()
+        start = source.index('key="bom81_clear_selection"')
+        clear_handler = source[start:source.index('pending_delete_ids = [', start)]
+
+        self.assertIn('"bom81_selected_analysis_ids"] = []', clear_handler)
+        self.assertIn('"bom81_saved_analysis_editor_revision"]', clear_handler)
+        self.assertIn('editor_revision + 1', clear_handler)
+
+    def test_alternative_return_commits_in_widget_callback(self):
+        source = (ROOT / "src/authenticated_runtime.py").read_text()
+        start = source.index('def _return_to_saved_bom() -> None:')
+        handler = source[start:source.index('st.markdown(', start)]
+
+        self.assertIn('_rerun=False', handler)
+        self.assertIn('on_click=_return_to_saved_bom', handler)
+
 
 if __name__ == "__main__":
     unittest.main()
