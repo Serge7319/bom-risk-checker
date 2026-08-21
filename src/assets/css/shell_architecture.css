@@ -1,0 +1,96 @@
+/* Sprint 59 — single authoritative authenticated shell contract. */
+:root{
+  --cv-shell-top:64px;
+  --cv-shell-rail:236px;
+  --cv-shell-gutter:28px;
+  --cv-shell-canvas:1440px;
+  --cv-shell-bg:#f5f7fb;
+  --cv-shell-border:#e2e8f0;
+}
+html,body,.stApp,[data-testid="stAppViewContainer"]{
+  width:100%!important;max-width:100%!important;overflow-x:hidden!important;background:var(--cv-shell-bg)!important;
+}
+header[data-testid="stHeader"]{z-index:1!important;background:transparent!important;}
+
+/* Persistent shell chrome. */
+.cv55-topbar{
+  position:fixed!important;inset:0 0 auto 0!important;height:var(--cv-shell-top)!important;min-height:var(--cv-shell-top)!important;
+  display:grid!important;grid-template-columns:var(--cv-shell-rail) minmax(0,1fr) 220px!important;
+  align-items:center!important;padding:0 68px 0 16px!important;box-sizing:border-box!important;z-index:1000000!important;
+  background:#fff!important;border-bottom:1px solid var(--cv-shell-border)!important;box-shadow:none!important;
+}
+.st-key-cv552_profile_menu{position:fixed!important;top:12px!important;right:16px!important;width:40px!important;height:40px!important;z-index:1000002!important;}
+.st-key-cv55_navigation{
+  position:fixed!important;top:var(--cv-shell-top)!important;left:0!important;bottom:0!important;
+  width:var(--cv-shell-rail)!important;min-width:var(--cv-shell-rail)!important;max-width:var(--cv-shell-rail)!important;
+  padding:16px 12px 20px!important;box-sizing:border-box!important;overflow-y:auto!important;overflow-x:hidden!important;
+  z-index:999999!important;background:linear-gradient(180deg,#07152f,#0a1d3d)!important;border-right:1px solid rgba(148,163,184,.14)!important;
+}
+
+/* One workspace column. No page may own a left offset. */
+[data-testid="stAppViewContainer"] > section[data-testid="stMain"],
+section[data-testid="stMain"], [data-testid="stMain"], .main{
+  position:relative!important;left:auto!important;right:auto!important;
+  margin:0!important;padding:0 0 0 var(--cv-shell-rail)!important;
+  width:100%!important;max-width:100%!important;min-width:0!important;
+  box-sizing:border-box!important;overflow-x:hidden!important;background:var(--cv-shell-bg)!important;
+}
+[data-testid="stMainBlockContainer"],.main .block-container{
+  width:100%!important;max-width:var(--cv-shell-canvas)!important;min-width:0!important;
+  margin:0 auto!important;padding:calc(var(--cv-shell-top) + 20px) var(--cv-shell-gutter) 56px!important;
+  box-sizing:border-box!important;overflow:visible!important;
+}
+/* Neutralize every historical page-level geometry override. */
+[data-testid="stMainBlockContainer"] > div,
+[data-testid="stMainBlockContainer"] .block-container,
+.main .block-container .block-container{
+  min-width:0!important;max-width:100%!important;box-sizing:border-box!important;
+  margin-left:0!important;margin-right:0!important;
+}
+[data-testid="stMainBlockContainer"] .block-container,.main .block-container .block-container{
+  width:100%!important;padding-left:0!important;padding-right:0!important;
+}
+.cv-command-hero,.cv56-page-context,.cv57-command-center,.cadivor-page-header,.dashboard-hero,.premium-hero,
+.cv320-page-shell,.cv-page-shell,.page-shell,.content-shell{
+  margin-left:0!important;margin-right:0!important;transform:none!important;max-width:100%!important;
+}
+
+/* Purpose-built navigation rows. */
+.st-key-cv55_navigation .stButton{width:100%!important;margin:0 0 2px!important;}
+.st-key-cv55_navigation .stButton>button{
+  width:100%!important;height:40px!important;min-height:40px!important;display:flex!important;justify-content:flex-start!important;align-items:center!important;
+  padding:0 12px!important;margin:0!important;border:1px solid transparent!important;border-radius:8px!important;
+  background:transparent!important;color:#c7d3e5!important;box-shadow:none!important;font-size:13px!important;font-weight:650!important;
+  line-height:1!important;text-align:left!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+}
+.st-key-cv55_navigation .stButton>button p{margin:0!important;padding:0!important;line-height:1!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.st-key-cv55_navigation .stButton>button::before{display:none!important;content:none!important;}
+.st-key-cv55_navigation .stButton>button:hover{background:rgba(148,163,184,.10)!important;color:#fff!important;border-color:transparent!important;transform:none!important;}
+.st-key-cv55_navigation .stButton>button[kind="primary"]{
+  background:rgba(37,99,235,.17)!important;color:#fff!important;border-color:rgba(96,165,250,.12)!important;
+  box-shadow:inset 3px 0 0 #60a5fa!important;
+}
+.cv55-nav-group{margin:16px 10px 6px!important;color:#7f96b7!important;font-size:10px!important;letter-spacing:.11em!important;}
+.cv55-workspace{margin:0 1px 12px!important;}
+
+/* Data-dense content stays inside the workspace. */
+[data-testid="stHorizontalBlock"],[data-testid="column"],.stColumn{min-width:0!important;max-width:100%!important;}
+[data-testid="stDataFrame"],.stDataFrame,div[data-testid="stPlotlyChart"],div[data-testid="stVegaLiteChart"]{
+  width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;overflow-x:auto!important;
+}
+
+@media(max-width:1100px){
+  :root{--cv-shell-rail:208px;--cv-shell-gutter:18px;}
+  .cv55-topbar{grid-template-columns:var(--cv-shell-rail) minmax(0,1fr)!important;padding-right:64px!important;}
+  .cv552-profile-copy{display:none!important;}
+}
+@media(max-width:760px){
+  :root{--cv-shell-rail:0px;--cv-shell-gutter:14px;}
+  .st-key-cv55_navigation{display:none!important;}
+  [data-testid="stAppViewContainer"] > section[data-testid="stMain"],section[data-testid="stMain"],[data-testid="stMain"],.main{
+    margin-left:0!important;padding-left:0!important;width:100vw!important;max-width:100vw!important;
+  }
+  .cv55-topbar{grid-template-columns:minmax(0,1fr)!important;padding:0 62px 0 14px!important;}
+  .cv55-topbar-context,.cv552-profile-copy{display:none!important;}
+  [data-testid="stMainBlockContainer"],.main .block-container{padding-top:calc(var(--cv-shell-top) + 12px)!important;}
+}

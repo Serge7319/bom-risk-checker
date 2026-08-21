@@ -1,0 +1,271 @@
+/* Cadivor Core Premium Recovery — scoped polish (wrapper-only) */
+
+/* ------------------------------------------------------------------ */
+/* Premium KPI typography (cv64 + legacy dashboard classes)           */
+/* ------------------------------------------------------------------ */
+.cv64-metric-grid,
+.cv64-metric__label,
+.cv57-signal span,
+.cv-6b-kpi-copy > span,
+.cv-r9-metric span {
+  font-size: 14px !important;
+  font-weight: 650 !important;
+}
+
+.cv64-metric__value,
+.cv57-signal strong,
+.cv-6b-kpi-copy > strong,
+.cv-r9-metric strong {
+  font-size: clamp(30px, 2.6vw, 38px) !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.cv64-metric__detail,
+.cv64-metric__status,
+.cv64-metric__trend,
+.cv57-signal small,
+.cv-6b-kpi-copy > small,
+.cv-r9-metric small {
+  font-size: 13px !important;
+}
+
+.cv64-metric {
+  min-height: 132px !important;
+  padding: 22px !important;
+}
+
+.cv64-metric-grid {
+  display: grid !important;
+  gap: 16px !important;
+  margin: 0 0 24px !important;
+  grid-template-columns: repeat(var(--cv64-cols, 4), minmax(0, 1fr)) !important;
+}
+
+.cv-6b-kpi-strip {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+}
+
+.cv57-signal-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+@media (max-width: 1279px) {
+  .cv64-metric-grid,
+  .cv-6b-kpi-strip {
+    grid-template-columns: repeat(2, minmax(240px, 1fr)) !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .cv64-metric-grid,
+  .cv-6b-kpi-strip,
+  .cv57-signal-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons — scoped to explicit Cadivor wrappers only                   */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stFormSubmitButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 46px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #2563eb !important;
+  border: 1px solid #2563eb !important;
+  color: #ffffff !important;
+}
+
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stFormSubmitButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0b1f3a !important;
+}
+
+section[data-testid="stMain"] .cv64-btn-wrap--danger .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  background: #fef2f2 !important;
+  border: 1px solid #f87171 !important;
+  color: #b91c1c !important;
+}
+
+section[data-testid="stMain"] .st-key-dashboard_preview_onboarding .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0b1f3a !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tables — scoped to Cadivor table hosts only                          */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] .cv64-table-host [data-testid="stDataFrame"],
+section[data-testid="stMain"] .cv64-table-host [data-testid="stDataEditor"],
+section[data-testid="stMain"] .cv64-panel [data-testid="stDataFrame"],
+section[data-testid="stMain"] .cv64-panel [data-testid="stDataEditor"] {
+  width: 100% !important;
+  border: 1px solid #d7e2ef !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  box-shadow: 0 14px 34px rgba(11, 31, 58, 0.06) !important;
+  background: #ffffff !important;
+}
+
+section[data-testid="stMain"] .cv64-table-host [role="columnheader"],
+section[data-testid="stMain"] .cv64-panel [role="columnheader"] {
+  background: #e8eef7 !important;
+  color: #0b1f3a !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  min-height: 44px !important;
+}
+
+section[data-testid="stMain"] .cv64-table-host [role="gridcell"],
+section[data-testid="stMain"] .cv64-panel [role="gridcell"] {
+  font-size: 13px !important;
+  min-height: 44px !important;
+}
+
+section[data-testid="stMain"] .cv64-table-host [role="row"]:hover [role="gridcell"],
+section[data-testid="stMain"] .cv64-panel [role="row"]:hover [role="gridcell"] {
+  background: #f8fbff !important;
+}
+
+/* Reports HTML board */
+.cv-report-head {
+  background: #e8eef7 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  min-height: 44px !important;
+}
+
+.cv-report-row:not(.cv-report-head):hover {
+  background: #f8fbff !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Page action buttons — scoped wrappers only                         */
+/* ------------------------------------------------------------------ */
+section[data-testid="stMain"] .cv64-page-shell .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv-core-page-shell .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--primary .stFormSubmitButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 46px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #2563eb !important;
+  border: 1px solid #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2) !important;
+}
+
+section[data-testid="stMain"] .cv64-page-shell .stButton > button[kind="secondary"]:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:not([kind="primary"]):not(:disabled),
+section[data-testid="stMain"] .st-key-dashboard_preview_onboarding .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0b1f3a !important;
+}
+
+section[data-testid="stMain"] .cv64-btn-wrap--danger .stButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  background: #fef2f2 !important;
+  border: 1px solid #f87171 !important;
+  color: #b91c1c !important;
+}
+
+section[data-testid="stMain"] .cv64-page-shell .stDownloadButton > button:not(:disabled),
+section[data-testid="stMain"] .cv64-btn-wrap--secondary .stDownloadButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+  color: #0b1f3a !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+}
+
+section[data-testid="stMain"] .cv-help-shell .stButton > button:not(:disabled),
+section[data-testid="stMain"] .cv-help-shell .stDownloadButton > button:not(:disabled) {
+  opacity: 1 !important;
+  min-height: 44px !important;
+}
+
+section[data-testid="stMain"] .cv64-page-shell .stButton > button:disabled,
+section[data-testid="stMain"] .cv64-toolbar .stButton > button:disabled {
+  opacity: 0.55 !important;
+}
+
+/* Help / support page */
+.cv-help-shell {
+  max-width: 1180px;
+  margin: 0 auto 48px;
+}
+
+.cv-help-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.cv-help-card {
+  border: 1px solid #d7e2ef;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 20px 22px;
+  box-shadow: 0 12px 28px rgba(11, 31, 58, 0.06);
+  min-height: 148px;
+}
+
+.cv-help-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0b1f3a;
+}
+
+.cv-help-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #52647a;
+}
+
+@media (max-width: 1024px) {
+  .cv-help-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .cv-help-grid {
+    grid-template-columns: 1fr;
+  }
+}

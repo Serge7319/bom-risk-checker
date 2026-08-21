@@ -1,0 +1,9 @@
+{
+  "name": "cadivor-marketing-web",
+  "version": "64.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "python3 -m http.server 3000",
+    "start": "python3 -m http.server 3000"
+  }
+}

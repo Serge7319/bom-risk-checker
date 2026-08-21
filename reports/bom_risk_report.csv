@@ -1,0 +1,5 @@
+mpn,mpn_normalized,quantity,lifecycle_status,stock_total,supplier_count,lead_time_weeks,risk_score,risk_level,risk_reasons
+LM-555,LM555,10,Active,5000,5,4,0,Low,No major risk found
+NE 555,NE555,50,NRND,75,2,10,40,Medium,Part is not recommended for new designs; Lead time is between 8 and 16 weeks
+ABC-123,ABC123,5,Obsolete,0,1,24,100,High,Part is end-of-life or obsolete; No stock available; Single-source supply risk; Lead time is greater than 16 weeks; No alternate parts found
+XYZ-789,XYZ789,100,Active,20,1,18,80,High,Stock is below required BOM quantity; Single-source supply risk; Lead time is greater than 16 weeks; No alternate parts found
