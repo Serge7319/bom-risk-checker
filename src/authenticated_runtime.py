@@ -8161,11 +8161,7 @@ def run_authenticated_app() -> None:
             or ""
         ).strip()
         if return_analysis_id:
-            if st.button(
-                "← Back to Saved BOM",
-                key="alternative_back_to_saved_bom",
-                type="secondary",
-            ):
+            def _return_to_saved_bom() -> None:
                 return_section = str(
                     st.session_state.get("cadivor_alt_finder_return_analysis_section", "")
                     or "Components"
@@ -8177,9 +8173,17 @@ def run_authenticated_app() -> None:
                 st.session_state.pop("cadivor_alt_finder_return_analysis_section", None)
                 navigate_to(
                     "Analysis Details",
+                    _rerun=False,
                     analysis_id=return_analysis_id,
                     analysis_tab=return_section,
                 )
+
+            st.button(
+                "← Back to Saved BOM",
+                key="alternative_back_to_saved_bom",
+                type="secondary",
+                on_click=_return_to_saved_bom,
+            )
 
         st.markdown(
             """
@@ -11454,15 +11458,12 @@ def run_authenticated_app() -> None:
                     if manager_df.empty:
                         st.info("No saved analyses match the current search.")
                     else:
-                        current_selection = set(
-                            st.session_state.get("bom81_selected_analysis_ids", [])
-                        )
-
                         editor_df = pd.DataFrame(
                             {
-                                "Select": manager_df["id"]
-                                .astype(str)
-                                .isin(current_selection),
+                                # Keep the editor input stable: feeding its selected
+                                # rows back into the input remounts the widget and
+                                # loses the selection on the following interaction.
+                                "Select": False,
                                 "Project": manager_df["project_name"].astype(str),
                                 "Source File": manager_df["filename"].astype(str),
                                 "Health": manager_df["health_score"],
@@ -11472,6 +11473,13 @@ def run_authenticated_app() -> None:
                                 "_analysis_id": manager_df["id"].astype(str),
                             }
                         ).reset_index(drop=True)
+
+                        editor_revision = int(
+                            st.session_state.get("bom81_saved_analysis_editor_revision", 0)
+                        )
+                        editor_key = "bom81_saved_analysis_editor"
+                        if editor_revision:
+                            editor_key = f"{editor_key}_{editor_revision}"
 
                         edited_manager = st.data_editor(
                             editor_df,
@@ -11524,7 +11532,7 @@ def run_authenticated_app() -> None:
                                 ),
                                 "_analysis_id": None,
                             },
-                            key="bom81_saved_analysis_editor",
+                            key=editor_key,
                         )
 
                         selected_rows = edited_manager[
@@ -11592,6 +11600,9 @@ def run_authenticated_app() -> None:
                             ):
                                 st.session_state["bom81_selected_analysis_ids"] = []
                                 st.session_state.pop("bom81_pending_delete_ids", None)
+                                st.session_state["bom81_saved_analysis_editor_revision"] = (
+                                    editor_revision + 1
+                                )
                                 st.rerun()
 
                         pending_delete_ids = [
@@ -11683,6 +11694,9 @@ def run_authenticated_app() -> None:
                                             )
 
                                     st.session_state["bom81_selected_analysis_ids"] = []
+                                    st.session_state["bom81_saved_analysis_editor_revision"] = (
+                                        editor_revision + 1
+                                    )
                                     st.session_state.pop(
                                         "bom81_pending_delete_ids",
                                         None,

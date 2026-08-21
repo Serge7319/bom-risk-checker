@@ -26,7 +26,7 @@ _ALT_NAV_KEYS = (
 )
 
 
-def navigate_to(page: str, **params: Any) -> None:
+def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
     """Navigate without a browser reload or a new Streamlit session.
 
     Internal navigation is intentionally session-state driven. Query strings are
@@ -40,7 +40,8 @@ def navigate_to(page: str, **params: Any) -> None:
         if value is not None and str(value).strip() != "":
             nav_params[key] = str(value)
     st.session_state["cadivor_nav_params"] = nav_params
-    st.rerun()
+    if _rerun:
+        st.rerun()
 
 
 def build_alternative_finder_context(
@@ -76,6 +77,7 @@ def navigate_to_alternative_finder(
     part_id: str = "",
     source_page: str = "",
     return_analysis_id: str = "",
+    _rerun: bool = True,
 ) -> None:
     """Navigate to Alternative Finder with normalized, shared part context."""
     context = build_alternative_finder_context(
@@ -87,7 +89,7 @@ def navigate_to_alternative_finder(
         source_page=source_page,
     )
     if not context["mpn"]:
-        navigate_to(ALTERNATIVE_FINDER_PAGE)
+        navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun)
         return
 
     st.session_state[ALT_FINDER_CONTEXT_KEY] = context
@@ -116,7 +118,7 @@ def navigate_to_alternative_finder(
     if context["source_page"]:
         nav_kwargs["source_page"] = context["source_page"]
 
-    navigate_to(ALTERNATIVE_FINDER_PAGE, **nav_kwargs)
+    navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, **nav_kwargs)
 
 
 def consume_alternative_finder_context(
@@ -261,26 +263,31 @@ def internal_nav_button(
     clean_label = str(label or "").strip()
     if not clean_label:
         return False
+    def _commit_button_navigation() -> None:
+        # Widget callbacks run before Streamlit renders the next script pass.
+        # Committing here prevents the old page from consuming the first click.
+        if page == ALTERNATIVE_FINDER_PAGE:
+            navigate_to_alternative_finder(
+                mpn=str(params.get("original_part", "") or ""),
+                manufacturer=str(params.get("manufacturer", "") or ""),
+                description=str(params.get("description", "") or ""),
+                analysis_id=str(params.get("analysis_id", "") or ""),
+                part_id=str(params.get("part_id", "") or ""),
+                source_page=str(params.get("source_page", "") or ""),
+                return_analysis_id=str(params.get("return_analysis_id", "") or ""),
+                _rerun=False,
+            )
+        else:
+            navigate_to(page, _rerun=False, **params)
+
     clicked = st.button(
         clean_label,
         key=key,
         use_container_width=use_container_width,
         type=type,
         disabled=disabled,
+        on_click=_commit_button_navigation,
     )
-    if clicked:
-        if page == ALTERNATIVE_FINDER_PAGE:
-            navigate_to_alternative_finder(
-                mpn=str(params.pop("original_part", "") or ""),
-                manufacturer=str(params.pop("manufacturer", "") or ""),
-                description=str(params.pop("description", "") or ""),
-                analysis_id=str(params.pop("analysis_id", "") or ""),
-                part_id=str(params.pop("part_id", "") or ""),
-                source_page=str(params.pop("source_page", "") or ""),
-                return_analysis_id=str(params.pop("return_analysis_id", "") or ""),
-            )
-        else:
-            navigate_to(page, **params)
     return clicked
 
 
