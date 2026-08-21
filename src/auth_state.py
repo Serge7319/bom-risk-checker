@@ -253,6 +253,15 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     route = requested or "Dashboard"
     st.session_state["cadivor_route"] = route
     st.session_state["app_mode"] = route
+    # Marketing entry links use auth/source solely to select the signed-out
+    # surface.  Remove them after the handoff so an authenticated workspace
+    # never retains a misleading login URL.
+    try:
+        for query_key in ("auth", "source"):
+            if query_key in st.query_params:
+                del st.query_params[query_key]
+    except Exception:
+        pass
     _log("authenticated", page=st.session_state["app_mode"])
     try:
         from src.auth_cookies import get_auth_cookie_manager, persist_session_auth_cookie
