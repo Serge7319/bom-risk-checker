@@ -1,1 +1,0 @@
-"""Cadivor page modules."""

@@ -9171,6 +9171,104 @@ def run_authenticated_app() -> None:
                 border-radius:12px!important;
                 font-weight:900!important;
             }
+            /* Alternative Finder launch polish: readable, responsive evidence. */
+            .af62-field span,
+            .af62b-metric span,
+            .af62b-score span,
+            .af7-factor span,
+            .af63-decision-metric span,
+            .af122-metric span,
+            .af122-eyebrow,
+            .af122-list h4{
+                font-size:11px!important;
+                letter-spacing:.045em!important;
+                line-height:1.45!important;
+            }
+
+            .af62-field strong,
+            .af62b-metric strong,
+            .af7-factor strong,
+            .af63-decision-metric strong,
+            .af122-metric strong{
+                font-size:16px!important;
+                line-height:1.4!important;
+                overflow-wrap:anywhere;
+            }
+
+            .af62-card-subtitle,
+            .af62b-section-meta,
+            .af62b-compare-sub,
+            .af62b-analysis-item,
+            .af7-factor p,
+            .af7-explain-note,
+            .af122-copy,
+            .af122-list div,
+            .af63-action-help{
+                font-size:13px!important;
+                line-height:1.6!important;
+            }
+
+            .af62b-metrics,
+            .af7-factor-grid,
+            .af62b-analysis-grid,
+            .af63-decision-grid,
+            .af122-grid,
+            .af122-lists{
+                gap:14px!important;
+            }
+
+            .af62b-metric,
+            .af7-factor,
+            .af63-decision-metric,
+            .af122-metric{
+                padding:15px!important;
+                min-width:0;
+            }
+
+            .af62b-found-pill,
+            .af7-confidence-badge,
+            .af122-badge{
+                font-size:12px!important;
+            }
+
+            @media(max-width:1180px){
+                .af62b-metrics,
+                .af7-factor-grid{
+                    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+                }
+                .af62b-analysis-grid,
+                .af63-decision-grid{
+                    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                }
+            }
+
+            @media(max-width:720px){
+                .af62b-metrics,
+                .af7-factor-grid,
+                .af62b-analysis-grid,
+                .af63-decision-grid,
+                .af122-grid,
+                .af122-lists{
+                    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                }
+                .af7-intelligence-top,
+                .af62b-best-top,
+                .af62b-section-head,
+                .af62b-compare-head{
+                    flex-wrap:wrap;
+                }
+            }
+
+            @media(max-width:460px){
+                .af62b-metrics,
+                .af7-factor-grid,
+                .af62b-analysis-grid,
+                .af63-decision-grid,
+                .af122-grid,
+                .af122-lists{
+                    grid-template-columns:minmax(0,1fr)!important;
+                }
+            }
             </style>
             """,
             unsafe_allow_html=True,
@@ -9221,11 +9319,11 @@ def run_authenticated_app() -> None:
 
         with st.container(border=True, key="af62_hero"):
             cadivor_section_header(
-                "Find a stronger replacement path.",
+                "Choose a better replacement with confidence.",
                 eyebrow="Alternative Component Finder",
                 description=(
-                    "Search a manufacturer part number, compare sourcing intelligence, and prepare "
-                    "an engineering-compatible replacement workflow without leaving the Cadivor workspace."
+                    "Search the original part, compare compatibility, lifecycle, availability, and cost, "
+                    "then document a defensible engineering decision in one guided workflow."
                 ),
                 icon="arrow-right-left",
             )
@@ -9235,7 +9333,7 @@ def run_authenticated_app() -> None:
                 """
                 <div class="af62-card-head">
                   <div>
-                    <div class="af62-card-title">Search original component</div>
+                    <div class="af62-card-title">1. Search the original component</div>
                     <div class="af62-card-subtitle">Start with the complete manufacturer part number used in your design.</div>
                   </div>
                   <div class="af62-icon">
@@ -9289,24 +9387,24 @@ def run_authenticated_app() -> None:
                         st.session_state["alternative_original_risk"] = original_risk
                         st.session_state["alternative_original_lookup_part"] = searched_part
                         st.session_state["alternative_original_lookup_error"] = ""
-                    except Exception as lookup_error:
+                    except Exception:
                         st.session_state["alternative_original_data"] = {}
                         st.session_state["alternative_original_risk"] = {}
                         st.session_state["alternative_original_lookup_part"] = searched_part
                         st.session_state["alternative_original_lookup_error"] = (
-                            "Original-component intelligence is temporarily unavailable. "
-                            f"{type(lookup_error).__name__}"
+                            "Some original-component details are temporarily unavailable. "
+                            "You can still review the available replacement evidence."
                         )
 
                     try:
                         candidates = suggest_alternatives_v2(searched_part) or []
                         st.session_state["suggested_alternatives"] = candidates
                         st.session_state["alternative_search_error"] = ""
-                    except Exception as search_error:
+                    except Exception:
                         st.session_state["suggested_alternatives"] = []
                         st.session_state["alternative_search_error"] = (
-                            "Cadivor could not complete the supplier search. Your session is still active; "
-                            "please retry in a moment. " + type(search_error).__name__
+                            "Cadivor could not complete the supplier search right now. "
+                            "Please try again in a moment."
                         )
                     st.session_state["alternative_search_attempted"] = True
                 finally:
@@ -9518,7 +9616,7 @@ def run_authenticated_app() -> None:
                 f"""
                 <div class="af62b-section-head">
                   <div>
-                    <div class="af62b-section-title">Replacement intelligence</div>
+                    <div class="af62b-section-title">2. Review the recommended replacement</div>
                     <div class="af62b-section-meta">Cadivor ranked the strongest candidates using engineering compatibility, lifecycle, stock, supplier, and cost signals.</div>
                   </div>
                   <div class="af62b-found-pill">{len(alternatives_df)} candidates found</div>
@@ -9839,7 +9937,7 @@ def run_authenticated_app() -> None:
                   <div class="af7-intelligence-top">
                     <div>
                       <div class="af7-intelligence-eyebrow">Cadivor engineering intelligence</div>
-                      <div class="af7-intelligence-title">Why this recommendation?</div>
+                      <div class="af7-intelligence-title">Why Cadivor recommends this part</div>
                       <div class="af7-intelligence-summary">{html.escape(intelligence_summary)}</div>
                     </div>
                     <div class="af7-confidence-badge">{recommendation_score}/100 recommendation</div>
@@ -9879,8 +9977,8 @@ def run_authenticated_app() -> None:
                   </div>
 
                   <div class="af7-explain-note">
-                    These factor bars explain the evidence supporting Cadivor's recommendation.
-                    The official recommendation score remains the output of the ranking engine.
+                    Use these factors to understand the recommendation, then verify package, electrical
+                    specifications, lifecycle, and live supplier availability before approving a replacement.
                   </div>
                 </div>
                 """,
@@ -10064,7 +10162,7 @@ def run_authenticated_app() -> None:
                 """
                 <div class="af62b-compare-head">
                   <div>
-                    <div class="af62b-compare-title">Side-by-side engineering comparison</div>
+                    <div class="af62b-compare-title">3. Compare the original and replacement</div>
                     <div class="af62b-compare-sub">Review the selected recommendation against the original component.</div>
                   </div>
                 </div>
@@ -10078,7 +10176,7 @@ def run_authenticated_app() -> None:
             st.markdown(
                 """
                 <div style="margin:22px 0 10px;">
-                  <div class="af62b-compare-title">Engineering Review &amp; Approval</div>
+                  <div class="af62b-compare-title">4. Record the engineering decision</div>
                   <div class="af62b-compare-sub">Record the final disposition after reviewing compatibility evidence and the side-by-side comparison.</div>
                 </div>
                 """,
@@ -10433,9 +10531,8 @@ def run_authenticated_app() -> None:
 
             if db_error:
                 st.error(
-                    "The decision could not be saved to Supabase. Apply the included "
-                    "analysis_decisions migration, then try again. "
-                    f"Database message: {db_error}"
+                    "Cadivor could not save this engineering decision. Please try again "
+                    "or contact support if the problem continues."
                 )
 
             try:
@@ -10533,9 +10630,10 @@ def run_authenticated_app() -> None:
                                 )
                                 st.session_state["alternative_decision_db_error"] = ""
                                 st.rerun()
-                            except Exception as archive_error:
+                            except Exception:
                                 st.error(
-                                    f"Could not archive the decision: {archive_error}"
+                                    "Cadivor could not archive this decision. "
+                                    "Please try again or contact support if the problem continues."
                                 )
 
             with st.expander(
