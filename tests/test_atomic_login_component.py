@@ -39,6 +39,27 @@ class AtomicLoginComponentContractTests(unittest.TestCase):
         self.assertNotIn('st.session_state["cadivor_auth_password"] =', AUTH)
         self.assertIn("supabase.auth.sign_in_with_password", AUTH)
 
+    def test_login_component_remains_visible_while_frame_height_is_zero(self):
+        self.assertIn(
+            ".st-key-cadivor_auth_card .st-key-cadivor_atomic_login{",
+            AUTH,
+        )
+        self.assertIn("display:block!important;", AUTH)
+        self.assertIn("min-height:244px!important;", AUTH)
+        self.assertIn(
+            'iframe[title="src.auth_atomic_login.cadivor_atomic_login"]',
+            AUTH,
+        )
+
+    def test_visibility_override_does_not_unhide_cookie_manager(self):
+        css_start = AUTH.index(
+            ".st-key-cadivor_auth_card .st-key-cadivor_atomic_login{"
+        )
+        css_end = AUTH.index("        .st-key-cadivor_auth_card .cadivor-back-home", css_start)
+        override = AUTH[css_start:css_end]
+        self.assertNotIn("cadivor_auth_cookie_manager", override)
+        self.assertNotIn('.element-container:has(iframe[height="0"])', override)
+
     def test_component_is_local_and_requires_no_frontend_build(self):
         self.assertIn("declare_component(", BRIDGE)
         self.assertIn("path=str(_COMPONENT_DIR)", BRIDGE)
