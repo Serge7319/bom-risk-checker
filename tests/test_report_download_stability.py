@@ -15,6 +15,9 @@ class ReportDownloadStabilityTests(unittest.TestCase):
         report_source = source[start:]
         self.assertNotIn("on_click=_mark_first_report_complete", report_source)
         self.assertIn('"on_click": "ignore"', report_source)
+        helper_start = report_source.index("def _tracked_report_download(")
+        helper_prefix = report_source[max(0, helper_start - 80):helper_start]
+        self.assertNotIn("@st.fragment", helper_prefix)
 
     def test_report_download_controls_remain_download_buttons(self) -> None:
         source = RUNTIME_PATH.read_text(encoding="utf-8")
