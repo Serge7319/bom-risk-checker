@@ -5638,7 +5638,6 @@ def run_authenticated_app() -> None:
                 if not st.session_state.get("onboarding_report_completed"):
                     _mark_first_report_complete()
 
-            @st.fragment
             def _tracked_report_download(
                 label: str,
                 *,
@@ -5656,11 +5655,10 @@ def run_authenticated_app() -> None:
                     "mime": mime,
                     "key": key,
                     "use_container_width": True,
-                # A download callback reruns this fragment before the browser
-                # receives its payload.  In production that made every report
-                # control appear clickable while delivering no file.  Keep the
-                # interaction client-side so Streamlit can complete delivery.
-                "on_click": "ignore",
+                    # The report controls must stay ordinary download buttons.
+                    # Wrapping them in a fragment and running a server callback
+                    # during the click can interrupt Streamlit's file response.
+                    "on_click": "ignore",
                 }
                 if primary:
                     options["type"] = "primary"
