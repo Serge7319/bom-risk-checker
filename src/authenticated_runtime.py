@@ -5812,7 +5812,7 @@ def run_authenticated_app() -> None:
                         mime="application/pdf",
                         use_container_width=True,
                         type="primary",
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("AI Executive Brief", ai_exec_name)
                 with executive_pdf_col:
@@ -5824,7 +5824,7 @@ def run_authenticated_app() -> None:
                         file_name=executive_pdf_name,
                         mime="application/pdf",
                         use_container_width=True,
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("Executive BOM Summary", executive_pdf_name)
                 with executive_csv_col:
@@ -5836,7 +5836,7 @@ def run_authenticated_app() -> None:
                         file_name=executive_csv_name,
                         mime="text/csv",
                         use_container_width=True,
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("Executive BOM Summary", executive_csv_name)
 
@@ -5852,7 +5852,7 @@ def run_authenticated_app() -> None:
                         file_name=risk_csv_name,
                         mime="text/csv",
                         use_container_width=True,
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("Engineering Risk Review", risk_csv_name)
                 with lifecycle_col:
@@ -5864,7 +5864,7 @@ def run_authenticated_app() -> None:
                         file_name=lifecycle_csv_name,
                         mime="text/csv",
                         use_container_width=True,
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("Lifecycle Exposure Report", lifecycle_csv_name)
                 with alternatives_col:
@@ -5876,7 +5876,7 @@ def run_authenticated_app() -> None:
                         file_name=alternatives_csv_name,
                         mime="text/csv",
                         use_container_width=True,
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("Alternative Replacement Report", alternatives_csv_name)
 
@@ -5893,7 +5893,7 @@ def run_authenticated_app() -> None:
                         mime="application/pdf",
                         use_container_width=True,
                         type="primary",
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("AI Procurement Brief", ai_proc_name)
                 with sourcing_col:
@@ -5905,7 +5905,7 @@ def run_authenticated_app() -> None:
                         file_name=sourcing_csv_name,
                         mime="text/csv",
                         use_container_width=True,
-                        on_click=_mark_first_report_complete,
+                        on_click="ignore",
                     ):
                         _record_session_report("Procurement & Sourcing", sourcing_csv_name)
 
