@@ -14,7 +14,7 @@ class ReportDownloadStabilityTests(unittest.TestCase):
         start = source.index("# ---------- Reports ----------")
         report_source = source[start:]
         self.assertNotIn("on_click=_mark_first_report_complete", report_source)
-        self.assertEqual(report_source.count('on_click="ignore"'), 8)
+        self.assertIn('"on_click": "ignore"', report_source)
 
     def test_report_download_controls_remain_download_buttons(self) -> None:
         source = RUNTIME_PATH.read_text(encoding="utf-8")
@@ -31,8 +31,8 @@ class ReportDownloadStabilityTests(unittest.TestCase):
             "Sourcing Review · CSV",
         ):
             position = report_source.index(f'"{label}"')
-            window = report_source[max(0, position - 120): position + 320]
-            self.assertIn("st.download_button(", window)
+            window = report_source[max(0, position - 120): position + 420]
+            self.assertIn("_tracked_report_download(", window)
 
 
 if __name__ == "__main__":

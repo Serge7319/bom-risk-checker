@@ -5656,8 +5656,11 @@ def run_authenticated_app() -> None:
                     "mime": mime,
                     "key": key,
                     "use_container_width": True,
-                    "on_click": _record_session_report,
-                    "args": (report_type, file_name),
+                # A download callback reruns this fragment before the browser
+                # receives its payload.  In production that made every report
+                # control appear clickable while delivering no file.  Keep the
+                # interaction client-side so Streamlit can complete delivery.
+                "on_click": "ignore",
                 }
                 if primary:
                     options["type"] = "primary"
