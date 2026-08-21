@@ -9370,10 +9370,12 @@ def run_authenticated_app() -> None:
                 # Supplier/API failures are converted into an in-page result state;
                 # they must never fall through to authentication or public routing.
                 st.session_state["cadivor_operation"] = "alternative_search"
-                operation_status(
-                    "Searching component intelligence",
-                    "Checking supplier coverage, lifecycle evidence, and replacement candidates.",
-                )
+                search_status = st.empty()
+                with search_status.container():
+                    operation_status(
+                        "Searching component intelligence",
+                        "Checking supplier coverage, lifecycle evidence, and replacement candidates.",
+                    )
                 try:
                     try:
                         original_lookup = get_best_part_data(searched_part) or {}
@@ -9409,6 +9411,7 @@ def run_authenticated_app() -> None:
                     st.session_state["alternative_search_attempted"] = True
                 finally:
                     st.session_state.pop("cadivor_operation", None)
+                    search_status.empty()
 
         if st.session_state.get("alternative_search_error"):
             st.error(st.session_state["alternative_search_error"], icon="⚠️")
@@ -10285,8 +10288,8 @@ def run_authenticated_app() -> None:
                 "Decision note",
                 value=note_value,
                 placeholder=(
-                    "Example: Approve for prototype only. Package change requires PCB "
-                    "footprint revision before production release."
+                    "Example: Approve after reviewing the datasheet, compatibility "
+                    "evidence, and prototype validation results."
                 ),
                 height=88,
                 key=f"af63_note_{candidate_key}",
