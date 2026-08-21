@@ -10018,8 +10018,9 @@ def run_authenticated_app() -> None:
                       <strong>{alternative_reasoning['estimated_effort_hours']} hours</strong>
                     </div>
                     <div class="af122-metric">
-                      <span>Open Verification Items</span>
+                      <span>Open Review Items</span>
                       <strong>{alternative_reasoning['verification_count'] + alternative_reasoning['hard_blocker_count']}</strong>
+                      <div class="af122-copy">{alternative_reasoning['verification_count']} verification · {alternative_reasoning['hard_blocker_count']} blocker{'s' if alternative_reasoning['hard_blocker_count'] != 1 else ''}</div>
                     </div>
                   </div>
                 </section>
@@ -10031,7 +10032,7 @@ def run_authenticated_app() -> None:
                   </div>
                   <div class="af122-list warn">
                     <h4>Verification Required</h4>
-                    {_af122_items(alternative_reasoning['verification_required'], 'No additional verification items were identified.')}
+                    {_af122_items(alternative_reasoning['verification_required'], 'No additional verification is required.')}
                   </div>
                   <div class="af122-list bad">
                     <h4>Approval Blockers</h4>

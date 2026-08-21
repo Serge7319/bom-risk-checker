@@ -28,6 +28,26 @@ def _same_text(left: Any, right: Any) -> bool:
     return bool(left_value and right_value and left_value == right_value)
 
 
+def _normalize_package(value: Any) -> str:
+    """Match the ranking engine's canonical package compatibility contract."""
+    package = _text(value).upper().replace(" ", "-")
+    if not package:
+        return ""
+    if any(term in package for term in ("PDIP", "NPDIP", "DIP")):
+        for pin_count in ("16", "14", "8", "4"):
+            if pin_count in package:
+                return f"DIP-{pin_count}"
+    if "TO-220" in package:
+        return "TO-220"
+    if "SOT-223" in package:
+        return "SOT-223"
+    if "SOIC" in package and "8" in package:
+        return "SOIC-8"
+    if "SOIC" in package and "14" in package:
+        return "SOIC-14"
+    return package
+
+
 def _parse_voltage_range(value: Any) -> tuple[float | None, float | None]:
     text = _text(value).lower().replace("v", " ").replace("to", "-")
     numbers: List[float] = []
@@ -127,10 +147,19 @@ def build_alternative_reasoning(
     verification: List[str] = []
     confirmed: List[str] = []
 
-    package_match = _same_text(original_package, candidate_package)
+    original_package_normalized = _normalize_package(original_package)
+    candidate_package_normalized = _normalize_package(candidate_package)
+    package_match = bool(
+        original_package_normalized
+        and candidate_package_normalized
+        and original_package_normalized == candidate_package_normalized
+    )
     if original_package and candidate_package:
         if package_match:
-            confirmed.append(f"Package matches the original: {candidate_package}.")
+            confirmed.append(
+                f"Package matches the original: {candidate_package} "
+                f"({candidate_package_normalized})."
+            )
         else:
             blockers.append(
                 f"Package differs: original {original_package}, candidate {candidate_package}."
