@@ -129,6 +129,64 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertEqual(self.streamlit.session_state["cadivor_route"], "Analysis Details")
         self.assertEqual(reruns, [True])
 
+    def test_leaving_bom_analyzer_clears_transient_saved_bom_selection(self):
+        self.streamlit.session_state.update(
+            {
+                "cadivor_route": "BOM Analyzer",
+                "bom81_selected_analysis_ids": ["bom-42"],
+                "bom81_pending_delete_ids": ["bom-42"],
+                "bom81_saved_analysis_editor_revision": 2,
+            }
+        )
+
+        self.navigation.navigate_to("Analysis Details", analysis_id="bom-42")
+
+        self.assertEqual(self.streamlit.session_state["bom81_selected_analysis_ids"], [])
+        self.assertEqual(self.streamlit.session_state["bom81_saved_analysis_editor_revision"], 3)
+        self.assertNotIn("bom81_pending_delete_ids", self.streamlit.session_state)
+        self.assertEqual(
+            self.streamlit.session_state["cadivor_nav_params"]["analysis_id"], "bom-42"
+        )
+
+    def test_remaining_on_bom_analyzer_preserves_saved_bom_selection(self):
+        self.streamlit.session_state.update(
+            {
+                "cadivor_route": "BOM Analyzer",
+                "bom81_selected_analysis_ids": ["bom-42"],
+                "bom81_saved_analysis_editor_revision": 2,
+            }
+        )
+
+        self.navigation.navigate_to("BOM Analyzer", show_saved_analyses="1")
+
+        self.assertEqual(
+            self.streamlit.session_state["bom81_selected_analysis_ids"], ["bom-42"]
+        )
+        self.assertEqual(self.streamlit.session_state["bom81_saved_analysis_editor_revision"], 2)
+
+    def test_other_page_navigation_does_not_change_saved_bom_state(self):
+        self.streamlit.session_state.update(
+            {
+                "cadivor_route": "Reports",
+                "bom81_selected_analysis_ids": ["bom-42"],
+                "bom81_saved_analysis_editor_revision": 2,
+            }
+        )
+
+        self.navigation.navigate_to("Analysis Details", analysis_id="bom-42")
+
+        self.assertEqual(
+            self.streamlit.session_state["bom81_selected_analysis_ids"], ["bom-42"]
+        )
+        self.assertEqual(self.streamlit.session_state["bom81_saved_analysis_editor_revision"], 2)
+
+    def test_leaving_bom_analyzer_without_selection_does_not_remount_editor(self):
+        self.streamlit.session_state["cadivor_route"] = "BOM Analyzer"
+
+        self.navigation.navigate_to("Dashboard")
+
+        self.assertNotIn("bom81_saved_analysis_editor_revision", self.streamlit.session_state)
+
     def test_saved_bom_editor_input_does_not_rebuild_from_selection(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
         start = source.index('editor_df = pd.DataFrame(', source.index('key="bom81_manager_sort"'))
