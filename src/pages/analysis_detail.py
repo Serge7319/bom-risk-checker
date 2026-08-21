@@ -2192,6 +2192,8 @@ def render_analysis_detail(
                         primary_supplier = _safe(
                             _part_value(
                                 part,
+                                "sources_available",
+                                "Sources Available",
                                 "primary_supplier",
                                 "best_source",
                                 "Best Source",
