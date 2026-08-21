@@ -1059,6 +1059,7 @@ def render_analysis_detail(
                 key="analysis_hero_bom_analyzer",
                 use_container_width=True,
                 analysis_id=analysis_id,
+                show_saved_analyses="1",
             )
         with hero_actions[1]:
             internal_nav_button(
@@ -2289,6 +2290,11 @@ def render_analysis_detail(
                         ),
                         "Not available",
                     )
+                    selected_lead_time_label = (
+                        selected_lead_time
+                        if selected_lead_time.lower() in {"not available", "unknown", "—"}
+                        else f"{selected_lead_time} weeks"
+                    )
                     selected_source = _safe(
                         _part_value(
                             selected_part,
@@ -2332,7 +2338,7 @@ def render_analysis_detail(
                             <div><span>Lifecycle</span><strong>{html.escape(selected_lifecycle_value)}</strong></div>
                             <div><span>Available Stock</span><strong>{selected_stock:,}</strong></div>
                             <div><span>Suppliers</span><strong>{selected_suppliers}</strong></div>
-                            <div><span>Lead Time</span><strong>{html.escape(selected_lead_time)} weeks</strong></div>
+                            <div><span>Lead Time</span><strong>{html.escape(selected_lead_time_label)}</strong></div>
                             <div><span>Best Source</span><strong>{html.escape(selected_source)}</strong></div>
                             <div><span>Risk Score</span><strong>{selected_score}/100</strong></div>
                           </div>
@@ -3112,6 +3118,7 @@ def render_analysis_detail(
                 key=f"analysis_open_bom_{analysis_id}",
                 use_container_width=True,
                 analysis_id=analysis_id,
+                show_saved_analyses="1",
             )
 
     # Sprint 34.2.6 — run after every tab and section has rendered. This timing is

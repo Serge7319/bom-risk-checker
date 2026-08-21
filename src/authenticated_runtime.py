@@ -4864,7 +4864,9 @@ def run_authenticated_app() -> None:
             labels = [_analysis_label(row) for row in report_records]
 
             incoming_report_analysis_id = str(
-                st.query_params.get("analysis_id", "") or ""
+                _qp_value("analysis_id", "")
+                or st.session_state.get("cadivor_active_analysis_id", "")
+                or ""
             ).strip()
             report_route_token = (
                 f"reports::{incoming_report_analysis_id}"
@@ -8153,14 +8155,31 @@ def run_authenticated_app() -> None:
         from src.alternative_engine import suggest_alternatives_v2, compare_parts, rank_alternatives
         from src.alternative_reasoning import build_alternative_reasoning
         from src.risk_engine import calculate_risk
-        return_analysis_id = _qp_value("return_analysis_id")
+        return_analysis_id = str(
+            _qp_value("return_analysis_id")
+            or st.session_state.get("cadivor_alt_finder_return_analysis_id", "")
+            or ""
+        ).strip()
         if return_analysis_id:
             if st.button(
                 "← Back to Saved BOM",
                 key="alternative_back_to_saved_bom",
                 type="secondary",
             ):
-                navigate_to("Analysis Details", analysis_id=return_analysis_id)
+                return_section = str(
+                    st.session_state.get("cadivor_alt_finder_return_analysis_section", "")
+                    or "Components"
+                ).strip()
+                st.session_state["cadivor_active_analysis_id"] = return_analysis_id
+                st.session_state["cadivor_pending_analysis_section"] = return_section
+                st.session_state["cadivor_pending_analysis_section_id"] = return_analysis_id
+                st.session_state.pop("cadivor_alt_finder_return_analysis_id", None)
+                st.session_state.pop("cadivor_alt_finder_return_analysis_section", None)
+                navigate_to(
+                    "Analysis Details",
+                    analysis_id=return_analysis_id,
+                    analysis_tab=return_section,
+                )
 
         st.markdown(
             """
@@ -10824,7 +10843,10 @@ def run_authenticated_app() -> None:
             or st.session_state.get("analysis_id"),
             "",
         )
-        if _resume_analysis_id and not _new_analysis_requested:
+        _show_saved_analyses = _safe_text(_qp_value("show_saved_analyses", ""), "").lower() in {
+            "1", "true", "yes", "on"
+        }
+        if _resume_analysis_id and not _new_analysis_requested and not _show_saved_analyses:
             navigate_to("Analysis Details", analysis_id=_resume_analysis_id)
 
         st.markdown(

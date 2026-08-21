@@ -10,6 +10,8 @@ from src.urls import internal_app_href
 
 ALTERNATIVE_FINDER_PAGE = "Alternative Finder"
 ALT_FINDER_CONTEXT_KEY = "cadivor_alt_finder_pending_context"
+ALT_FINDER_RETURN_ANALYSIS_KEY = "cadivor_alt_finder_return_analysis_id"
+ALT_FINDER_RETURN_SECTION_KEY = "cadivor_alt_finder_return_analysis_section"
 ALT_FINDER_INTENT = "find_alternatives"
 
 _ALT_NAV_KEYS = (
@@ -96,8 +98,15 @@ def navigate_to_alternative_finder(
     }
     effective_analysis_id = return_analysis_id or context["analysis_id"]
     if effective_analysis_id:
+        st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = effective_analysis_id
+        active_section = str(st.session_state.get("cadivor_active_analysis_tab", "") or "").strip()
+        if active_section:
+            st.session_state[ALT_FINDER_RETURN_SECTION_KEY] = active_section
         nav_kwargs["analysis_id"] = effective_analysis_id
         nav_kwargs["return_analysis_id"] = effective_analysis_id
+    else:
+        st.session_state.pop(ALT_FINDER_RETURN_ANALYSIS_KEY, None)
+        st.session_state.pop(ALT_FINDER_RETURN_SECTION_KEY, None)
     if context["manufacturer"]:
         nav_kwargs["manufacturer"] = context["manufacturer"]
     if context["description"]:
@@ -116,6 +125,8 @@ def consume_alternative_finder_context(
     """Read Alternative Finder navigation context exactly once per navigation."""
     pending = st.session_state.pop(ALT_FINDER_CONTEXT_KEY, None)
     if isinstance(pending, dict) and pending.get("mpn"):
+        if pending.get("analysis_id"):
+            st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = pending["analysis_id"]
         _clear_consumed_alt_nav_params()
         _clear_alt_query_params()
         return pending
@@ -132,6 +143,9 @@ def consume_alternative_finder_context(
         part_id=str(qp_value("part_id", "") or ""),
         source_page=str(qp_value("source_page", "") or ""),
     )
+    return_analysis_id = str(qp_value("return_analysis_id", "") or context["analysis_id"]).strip()
+    if return_analysis_id:
+        st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = return_analysis_id
     _clear_consumed_alt_nav_params()
     _clear_alt_query_params()
     return context
