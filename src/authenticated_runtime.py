@@ -12394,6 +12394,7 @@ def run_authenticated_app() -> None:
                 "MPN",
                 "Manufacturer",
                 "Best Source",
+                "Sources Available",
                 "Supplier Count",
                 "Stock Available",
                 "Lifecycle Status",
@@ -12416,6 +12417,9 @@ def run_authenticated_app() -> None:
                     "MPN": st.column_config.TextColumn(width="medium"),
                     "Manufacturer": st.column_config.TextColumn(width="medium"),
                     "Best Source": st.column_config.TextColumn(width="small"),
+                    "Sources Available": st.column_config.TextColumn(
+                        "Available Suppliers", width="medium"
+                    ),
                     "Supplier Count": st.column_config.NumberColumn(width="small", format="%,d"),
                     "Stock Available": st.column_config.NumberColumn(width="small", format="%,d"),
                     "Lifecycle Status": st.column_config.TextColumn(width="medium"),
@@ -12475,6 +12479,10 @@ def run_authenticated_app() -> None:
                         st.write(f"**Lifecycle Status:** {row.get('Lifecycle Status', '')}")
                         st.write(f"**Stock Available:** {row.get('Stock Available', 0)}")
                         st.write(f"**Supplier Count:** {row.get('Supplier Count', 0)}")
+                        st.write(
+                            f"**Available Suppliers:** "
+                            f"{row.get('Sources Available', '') or 'Not available'}"
+                        )
 
                     with col2:
                         st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")

@@ -2189,6 +2189,16 @@ def render_analysis_detail(
                             ),
                             0,
                         )
+                        primary_supplier = _safe(
+                            _part_value(
+                                part,
+                                "primary_supplier",
+                                "best_source",
+                                "Best Source",
+                                "supplier",
+                            ),
+                            "Suppliers",
+                        )
                         rows.append(
                             (
                                 f'<div class="cv-analysis-component{" is-selected" if mpn_value.strip().lower() == selected_mpn_for_row else ""}{" is-command-focus" if component_focus_requested and requested_component and mpn_value.strip().lower() == requested_component.strip().lower() else ""}" data-component="{html.escape(mpn_value, quote=True)}">'
@@ -2206,7 +2216,7 @@ def render_analysis_detail(
                                 '</div>'
                                 '<div>'
                                 f'<div class="head">{supplier_count}</div>'
-                                '<div class="sub">Suppliers</div>'
+                                f'<div class="sub">{html.escape(primary_supplier)}</div>'
                                 '</div>'
                                 '<div class="cv-analysis-pills">'
                                 f'<span class="cv-analysis-pill {class_value}">'
@@ -2298,6 +2308,7 @@ def render_analysis_detail(
                     selected_source = _safe(
                         _part_value(
                             selected_part,
+                            "primary_supplier",
                             "best_source",
                             "Best Source",
                             "supplier",
@@ -3190,4 +3201,3 @@ def render_analysis_detail(
             height=0,
             width=0,
         )
-
