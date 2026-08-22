@@ -56,6 +56,10 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
             "CadivorReportBody",
         ):
             self.assertIn(style_name, pdf_source)
+        self.assertIn('fontName="CadivorVera-Bold"', pdf_source)
+        self.assertIn('fontName="CadivorVera"', pdf_source)
+        self.assertIn('TTFont("CadivorVera"', pdf_source)
+        self.assertNotIn('fontName="Helvetica"', pdf_source)
 
     def test_download_controls_prioritize_file_delivery_over_server_reruns(self):
         helpers = [

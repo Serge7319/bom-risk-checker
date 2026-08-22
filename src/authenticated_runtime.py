@@ -650,7 +650,7 @@ def generate_engineering_change_package_pdf(
         canvas.setFillColor(colors.HexColor("#2563EB"))
         canvas.rect(0, height - 12, width, 12, fill=1, stroke=0)
         canvas.setFillColor(colors.HexColor("#0F172A"))
-        canvas.setFont("Helvetica-Bold", 9)
+        canvas.setFont("CadivorVera-Bold", 9)
         canvas.drawString(42, height - 28, "CADIVOR")
         canvas.setFillColor(colors.HexColor("#64748B"))
         canvas.setFont("Helvetica", 7)
@@ -679,7 +679,7 @@ def generate_engineering_change_package_pdf(
 
     styles = getSampleStyleSheet()
     title_style = styles["Title"].clone("cadivor_pdf_title")
-    title_style.fontName = "Helvetica-Bold"
+    title_style.fontName = "CadivorVera-Bold"
     title_style.fontSize = 22
     title_style.leading = 26
     title_style.textColor = colors.HexColor("#0B1220")
@@ -692,7 +692,7 @@ def generate_engineering_change_package_pdf(
     subtitle_style.textColor = colors.HexColor("#475569")
 
     section_style = styles["Heading2"].clone("cadivor_pdf_section")
-    section_style.fontName = "Helvetica-Bold"
+    section_style.fontName = "CadivorVera-Bold"
     section_style.fontSize = 12
     section_style.leading = 15
     section_style.textColor = colors.HexColor("#0F172A")
@@ -721,14 +721,14 @@ def generate_engineering_change_package_pdf(
     small_style.wordWrap = "CJK"
 
     label_style = styles["BodyText"].clone("cadivor_pdf_label")
-    label_style.fontName = "Helvetica-Bold"
+    label_style.fontName = "CadivorVera-Bold"
     label_style.fontSize = 7.2
     label_style.leading = 9
     label_style.textColor = colors.HexColor("#0F172A")
     label_style.wordWrap = "CJK"
 
     header_cell_style = styles["BodyText"].clone("cadivor_pdf_header_cell")
-    header_cell_style.fontName = "Helvetica-Bold"
+    header_cell_style.fontName = "CadivorVera-Bold"
     header_cell_style.fontSize = 7.5
     header_cell_style.leading = 9
     header_cell_style.textColor = colors.white
@@ -1370,7 +1370,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                 [
                     ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTNAME", (0, 0), (-1, 0), "CadivorVera-Bold"),
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ]
             )
@@ -1432,7 +1432,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                     [
                         ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 0), (-1, 0), "CadivorVera-Bold"),
                         ("FONTSIZE", (0, 0), (-1, -1), 8),
                     ]
                 )
@@ -1481,7 +1481,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                         [
                             ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                            ("FONTNAME", (0, 0), (-1, 0), "CadivorVera-Bold"),
                             ("FONTSIZE", (0, 0), (-1, -1), 8),
                         ]
                     )
@@ -4392,10 +4392,14 @@ def run_authenticated_app() -> None:
 
         def _build_executive_pdf(analysis_row, parts_df, decision_brief=None):
             from io import BytesIO
+            from pathlib import Path
+            import reportlab
             from reportlab.lib.pagesizes import letter
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib import colors
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
             from src.engineering_decision_engine import (
                 format_decision_brief_for_report,
             )
@@ -4409,22 +4413,28 @@ def run_authenticated_app() -> None:
                 bottomMargin=42,
             )
             styles = getSampleStyleSheet()
-            # Define compact, explicit typography instead of relying on
-            # environment-dependent sample-style metrics in customer exports.
+            # Embed ReportLab's Vera fonts. The built-in PDF fonts can render
+            # with visibly spread glyphs in common viewers, while an embedded
+            # TrueType font keeps export typography consistent and legible.
+            reportlab_fonts = Path(reportlab.__file__).resolve().parent / "fonts"
+            if "CadivorVera" not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont("CadivorVera", str(reportlab_fonts / "Vera.ttf")))
+            if "CadivorVera-Bold" not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont("CadivorVera-Bold", str(reportlab_fonts / "VeraBd.ttf")))
             styles.add(ParagraphStyle(
                 name="CadivorReportTitle", parent=styles["Title"],
-                fontName="Helvetica-Bold", fontSize=22, leading=27,
-                textColor=colors.HexColor("#0F172A"), spaceAfter=0,
+                fontName="CadivorVera-Bold", fontSize=22, leading=27,
+                alignment=0, textColor=colors.HexColor("#0F172A"), spaceAfter=0,
             ))
             styles.add(ParagraphStyle(
                 name="CadivorReportHeading", parent=styles["Heading2"],
-                fontName="Helvetica-Bold", fontSize=14, leading=18,
-                textColor=colors.HexColor("#0F172A"), spaceBefore=0, spaceAfter=6,
+                fontName="CadivorVera-Bold", fontSize=14, leading=18,
+                alignment=0, textColor=colors.HexColor("#0F172A"), spaceBefore=0, spaceAfter=6,
             ))
             styles.add(ParagraphStyle(
                 name="CadivorReportBody", parent=styles["BodyText"],
-                fontName="Helvetica", fontSize=10, leading=14,
-                textColor=colors.HexColor("#334155"), spaceAfter=0,
+                fontName="CadivorVera", fontSize=10, leading=14,
+                alignment=0, textColor=colors.HexColor("#334155"), spaceAfter=0,
             ))
             story = []
 
@@ -4453,8 +4463,8 @@ def run_authenticated_app() -> None:
                     [
                         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFF6FF")),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 0), (-1, 0), "CadivorVera-Bold"),
+                        ("FONTNAME", (0, 1), (-1, 1), "CadivorVera-Bold"),
                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
                         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
@@ -4542,7 +4552,7 @@ def run_authenticated_app() -> None:
                         [
                             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
                             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                            ("FONTNAME", (0, 0), (-1, 0), "CadivorVera-Bold"),
                             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                             ("FONTSIZE", (0, 0), (-1, -1), 8),
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
