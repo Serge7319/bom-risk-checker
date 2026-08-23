@@ -2877,11 +2877,12 @@ def run_authenticated_app() -> None:
                     has_review=False,
                     has_report=False,
                 )
-                render_upgrade_prompt(
-                    plan_name=str(profile.get("plan") or current_user.get("plan") or "Starter"),
-                    monthly_used=len(real_overview_analyses),
-                    monthly_limit=5,
-                )
+                if not is_admin:
+                    render_upgrade_prompt(
+                        plan_name=selected_plan_name,
+                        monthly_used=len(real_overview_analyses),
+                        monthly_limit=selected_plan.get("monthly_bom_limit"),
+                    )
 
             render_engineering_overview_workspace(
                 overview=overview,
@@ -6206,8 +6207,11 @@ def run_authenticated_app() -> None:
                     )
                 except KeyError:
                     st.error(f"{plan_name} checkout is not configured in Streamlit secrets.")
-                except Exception as exc:
-                    st.error(f"Unable to create {plan_name} checkout: {exc}")
+                except Exception:
+                    st.error(
+                        f"Secure {plan_name} checkout could not be started. "
+                        "Please try again or contact support."
+                    )
 
             checkout_url = st.session_state.get(state_key)
             if checkout_url:

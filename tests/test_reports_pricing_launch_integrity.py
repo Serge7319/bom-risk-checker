@@ -45,6 +45,12 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
             DECISIONS,
         )
 
+    def test_pdf_export_uses_ascii_for_projected_health_direction(self):
+        start = DECISIONS.index("def format_decision_brief_for_report(")
+        report_formatter = DECISIONS[start:]
+        self.assertIn('Projected BOM health: {int(_number(health.get(\'before\'), 0))} to ', report_formatter)
+        self.assertNotIn('Projected BOM health: {int(_number(health.get(\'before\'), 0))} → ', report_formatter)
+
     def test_executive_pdf_uses_explicit_customer_typography(self):
         pdf_source = RUNTIME[
             RUNTIME.index("def _build_executive_pdf("):

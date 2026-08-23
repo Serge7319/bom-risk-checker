@@ -11,15 +11,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, MutableMapping
 
-from src.plans import normalize_plan_name
+from src.plans import PLANS, resolve_effective_plan
 
+# Keep AI access tied to the same entitlement source used by billing, BOM
+# limits, monitoring, and the Pricing page. A separate duplicate map let
+# Student and Starter accounts receive AI credits they had not purchased.
 AI_CREDITS_BY_PLAN = {
-    "Student": 20,
-    "Trial": 100,
-    "Starter": 30,
-    "Professional": 500,
-    "Business": 2500,
-    "Enterprise": 10000,
+    name: int(plan.get("ai_credits", 0) or 0)
+    for name, plan in PLANS.items()
 }
 
 ACTION_COSTS = {
@@ -58,7 +57,8 @@ def _is_admin(user: dict[str, Any]) -> bool:
 
 
 def _plan(user: dict[str, Any]) -> str:
-    return "Enterprise" if _is_admin(user) else normalize_plan_name(user.get("plan"))
+    plan, _trial_expired = resolve_effective_plan(user)
+    return plan
 
 
 def _warning(percent: int) -> str:

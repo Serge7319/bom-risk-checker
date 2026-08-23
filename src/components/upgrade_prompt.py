@@ -5,9 +5,9 @@ import html
 import streamlit as st
 
 
-def render_upgrade_prompt(*, plan_name: str, monthly_used: int, monthly_limit: int) -> None:
+def render_upgrade_prompt(*, plan_name: str, monthly_used: int, monthly_limit: int | None) -> None:
     plan = str(plan_name or "Starter")
-    if plan.lower() not in {"starter", "free", "trial", "student"}:
+    if plan.lower() not in {"starter", "free", "student"}:
         return
     limit = max(0, int(monthly_limit or 0))
     used = max(0, int(monthly_used or 0))
