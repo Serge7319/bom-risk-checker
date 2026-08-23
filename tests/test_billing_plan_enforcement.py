@@ -53,6 +53,14 @@ class BillingPlanEnforcementTests(unittest.TestCase):
     def test_checkout_errors_do_not_expose_provider_details(self):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text()
         self.assertNotIn('Unable to create checkout session: {e}', source)
+        self.assertNotIn('Unable to create {plan_name} checkout: {exc}', source)
+        self.assertIn('Secure {plan_name} checkout could not be started.', source)
+
+    def test_dashboard_upgrade_prompt_uses_effective_plan_and_skips_admins(self):
+        source = (ROOT / "src" / "authenticated_runtime.py").read_text()
+        self.assertIn('if not is_admin:\n                    render_upgrade_prompt(', source)
+        self.assertIn('plan_name=selected_plan_name', source)
+        self.assertIn('monthly_limit=selected_plan.get("monthly_bom_limit")', source)
 
 
 if __name__ == "__main__":

@@ -947,7 +947,7 @@ def format_decision_brief_for_report(brief: Mapping[str, Any]) -> Dict[str, Any]
                     f"  Change difficulty: {_text(dep.get('change_difficulty'))}\n"
                     f"  Schedule impact: {_text(dep.get('schedule_impact'))}\n"
                     f"  Engineering ROI: {_text(roi.get('label'))} ({_number(roi.get('score'), 0):g})\n"
-                    f"  Projected BOM health: {int(_number(health.get('before'), 0))} → "
+                    f"  Projected BOM health: {int(_number(health.get('before'), 0))} to "
                     f"{int(_number(health.get('after'), 0))} (+{int(_number(health.get('gain'), 0))})"
                 )
         else:
