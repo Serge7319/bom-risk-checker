@@ -23,8 +23,18 @@ returns table (
   trial_ends_at timestamptz, signup_at timestamptz, last_sign_in_at timestamptz
 )
 language sql stable security definer set search_path = public, auth as $$
-  select u.id, u.email, u.full_name, u.company_name, u.role, u.plan,
-         u.trial_ends_at, a.created_at, a.last_sign_in_at
+  -- `public.users` has evolved over time. The stable identity columns are
+  -- required, while profile fields are read defensively so this read-only
+  -- console remains compatible with older customer rows and schema versions.
+  select u.id,
+         to_jsonb(u) ->> 'email',
+         to_jsonb(u) ->> 'full_name',
+         to_jsonb(u) ->> 'company_name',
+         to_jsonb(u) ->> 'role',
+         to_jsonb(u) ->> 'plan',
+         nullif(to_jsonb(u) ->> 'trial_ends_at', '')::timestamptz,
+         a.created_at,
+         a.last_sign_in_at
   from public.users u join auth.users a on a.id = u.id
   where public.cadivor_is_admin()
   order by a.created_at desc;
@@ -39,5 +49,7 @@ $$;
 
 revoke all on function public.cadivor_admin_list_users() from public;
 revoke all on function public.cadivor_admin_audit_events() from public;
+revoke all on function public.cadivor_is_admin() from public;
 grant execute on function public.cadivor_admin_list_users() to authenticated;
 grant execute on function public.cadivor_admin_audit_events() to authenticated;
+grant execute on function public.cadivor_is_admin() to authenticated;
