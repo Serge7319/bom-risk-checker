@@ -24,6 +24,12 @@ class AdminConsoleV1ContractTests(unittest.TestCase):
         self.assertIn("revoke all on function public.cadivor_admin_list_users() from public", sql)
         self.assertIn("admin_audit_events", sql)
 
+    def test_migration_reads_optional_profile_columns_defensively(self):
+        sql = (ROOT / "supabase" / "migrations" / "20260825_admin_console_v1.sql").read_text()
+        self.assertIn("to_jsonb(u) ->> 'full_name'", sql)
+        self.assertIn("to_jsonb(u) ->> 'company_name'", sql)
+        self.assertIn("revoke all on function public.cadivor_is_admin() from public", sql)
+
 
 if __name__ == "__main__":
     unittest.main()
