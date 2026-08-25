@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 import unittest
 
@@ -16,6 +17,20 @@ class AdminConsoleV1ContractTests(unittest.TestCase):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text()
         self.assertIn('supabase.rpc("cadivor_admin_list_users")', source)
         self.assertIn('supabase.rpc("cadivor_admin_audit_events")', source)
+
+    def test_console_does_not_shadow_module_pandas_import(self):
+        source = (ROOT / "src" / "authenticated_runtime.py").read_text()
+        module = ast.parse(source)
+        runtime = next(
+            node for node in module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run_authenticated_app"
+        )
+        pandas_imports = [
+            node for node in ast.walk(runtime)
+            if isinstance(node, ast.Import)
+            and any(alias.name == "pandas" for alias in node.names)
+        ]
+        self.assertEqual(pandas_imports, [])
 
     def test_migration_gates_all_data_by_admin_role(self):
         sql = (ROOT / "supabase" / "migrations" / "20260825_admin_console_v1.sql").read_text()
