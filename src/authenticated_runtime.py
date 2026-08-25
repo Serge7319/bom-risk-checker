@@ -2165,6 +2165,8 @@ def run_authenticated_app() -> None:
         "Help",
         "About",
     ]
+    if is_admin:
+        NAV_OPTIONS.insert(NAV_OPTIONS.index("Settings"), "Admin Console")
 
     if _qp_value("action") == "clear":
         st.session_state.pop("results_df", None)
@@ -6468,6 +6470,41 @@ def run_authenticated_app() -> None:
         )
         stop_authenticated_page()
 
+
+    # ---------- Admin Console (admin-only; data is supplied by server-enforced RPCs) ----------
+    if app_mode == "Admin Console":
+        if not is_admin:
+            st.error("This page is available only to Cadivor administrators.")
+            stop_authenticated_page()
+        st.title("Admin Console")
+        st.caption("Operational visibility for Cadivor administrators. Account changes and maintenance controls are not enabled in v1.")
+        try:
+            user_rows = supabase.rpc("cadivor_admin_list_users").execute().data or []
+            audit_rows = supabase.rpc("cadivor_admin_audit_events").execute().data or []
+        except Exception:
+            st.warning("Admin Console is waiting for its approved Supabase migration. Existing customer workflows are unaffected.")
+            stop_authenticated_page()
+        st.metric("Registered users", len(user_rows))
+        if user_rows:
+            import pandas as pd
+            users_frame = pd.DataFrame(user_rows)
+            st.subheader("Users")
+            search_users = st.text_input("Search users", placeholder="Email, name, company, plan, or role")
+            if search_users.strip():
+                needle = search_users.strip().lower()
+                searchable_columns = [column for column in ("email", "full_name", "company_name", "plan", "role") if column in users_frame]
+                matching_rows = users_frame[searchable_columns].fillna("").astype(str).apply(
+                    lambda row: row.str.lower().str.contains(needle, regex=False).any(), axis=1
+                )
+                users_frame = users_frame[matching_rows]
+            st.dataframe(users_frame, use_container_width=True, hide_index=True)
+        st.subheader("Admin audit trail")
+        if audit_rows:
+            import pandas as pd
+            st.dataframe(pd.DataFrame(audit_rows), use_container_width=True, hide_index=True)
+        else:
+            st.caption("No administrative actions have been recorded yet.")
+        stop_authenticated_page()
 
     # ---------- Settings ----------
     if app_mode == "Settings":
