@@ -6486,7 +6486,6 @@ def run_authenticated_app() -> None:
             stop_authenticated_page()
         st.metric("Registered users", len(user_rows))
         if user_rows:
-            import pandas as pd
             users_frame = pd.DataFrame(user_rows)
             st.subheader("Users")
             search_users = st.text_input("Search users", placeholder="Email, name, company, plan, or role")
@@ -6500,7 +6499,6 @@ def run_authenticated_app() -> None:
             st.dataframe(users_frame, use_container_width=True, hide_index=True)
         st.subheader("Admin audit trail")
         if audit_rows:
-            import pandas as pd
             st.dataframe(pd.DataFrame(audit_rows), use_container_width=True, hide_index=True)
         else:
             st.caption("No administrative actions have been recorded yet.")
