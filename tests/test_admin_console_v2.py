@@ -29,6 +29,11 @@ class AdminConsoleV2ContractTests(unittest.TestCase):
         self.assertIn("ENABLE MAINTENANCE", self.runtime)
         self.assertIn("DISABLE MAINTENANCE", self.runtime)
 
+    def test_selected_user_details_are_human_readable_not_a_raw_dictionary(self):
+        self.assertIn("account_details = (", self.runtime)
+        self.assertIn("for detail_label, detail_value in account_details", self.runtime)
+        self.assertNotIn('st.write({\n                        "Email"', self.runtime)
+
     def test_migration_preserves_stripe_owned_paid_plan_activation(self):
         self.assertNotIn("cadivor_admin_set_plan", self.migration)
         self.assertIn("Paid-plan changes remain owned by Stripe/webhooks", self.migration)
