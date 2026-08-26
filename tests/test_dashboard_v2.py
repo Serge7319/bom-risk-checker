@@ -91,6 +91,19 @@ class DashboardV2Tests(unittest.TestCase):
         self.assertIn("_inject_dashboard_v2_styles", self.workspaces_source)
         self.assertIn("dashboard_v2.css", self.workspaces_source)
 
+    def test_workspace_tab_focus_is_keyboard_only(self) -> None:
+        design_css = (REPO_ROOT / "src" / "assets" / "css" / "cadivor_design_system.css").read_text(
+            encoding="utf-8"
+        )
+        workspace_focus_rule = design_css.split(
+            'div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:focus-visible)'
+        )[1].split('div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked)')[0]
+        self.assertIn("outline: 2px solid #2563eb", workspace_focus_rule)
+        self.assertNotIn(
+            'div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:focus-within',
+            design_css,
+        )
+
     def test_page_header_uses_ds_v2_primitives(self) -> None:
         for cls in ("cv-page", "cv-page-header", "cv-page-title", "cv-page-subtitle"):
             self.assertIn(cls, self.workspaces_source)
