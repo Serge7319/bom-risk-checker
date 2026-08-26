@@ -2433,6 +2433,7 @@ def run_authenticated_app() -> None:
         plan_name=selected_plan_name,
         usage_summary=f"{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month",
         saved_summary=f"{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')}",
+        is_admin=is_admin,
         navigate=navigate_to,
         clear_analysis=_s55_clear_analysis,
         request_logout=_s55_logout,

@@ -79,6 +79,7 @@ def render_unified_shell(
     plan_name: str,
     usage_summary: str,
     saved_summary: str,
+    is_admin: bool,
     navigate: Callable[..., None],
     clear_analysis: Callable[[], None],
     request_logout: Callable[[], None],
@@ -161,7 +162,10 @@ def render_unified_shell(
             unsafe_allow_html=True,
         )
 
-        for group_name, rows in NAV_GROUPS:
+        for group_name, configured_rows in NAV_GROUPS:
+            rows = configured_rows
+            if group_name == "Workspace" and is_admin:
+                rows = (("Admin Console", "admin", "Admin Console"),) + rows
             st.markdown(
                 f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
                 unsafe_allow_html=True,
