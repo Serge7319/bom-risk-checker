@@ -6571,15 +6571,18 @@ def run_authenticated_app() -> None:
                 details_column, actions_column = st.columns((1, 1.45))
                 with details_column:
                     st.markdown("**Account details**")
-                    st.write({
-                        "Email": selected_user.get("email") or "—",
-                        "Name": selected_user.get("full_name") or "—",
-                        "Company": selected_user.get("company_name") or "—",
-                        "Plan": selected_user.get("plan") or "Starter",
-                        "Role": selected_role,
-                        "Status": selected_status,
-                        "Last sign-in": selected_user.get("last_sign_in_at") or "Never",
-                    })
+                    account_details = (
+                        ("Email", selected_user.get("email") or "—"),
+                        ("Name", selected_user.get("full_name") or "—"),
+                        ("Company", selected_user.get("company_name") or "—"),
+                        ("Plan", selected_user.get("plan") or "Starter"),
+                        ("Role", selected_role),
+                        ("Status", selected_status),
+                        ("Last sign-in", selected_user.get("last_sign_in_at") or "Never"),
+                    )
+                    for detail_label, detail_value in account_details:
+                        st.caption(detail_label)
+                        st.write(detail_value)
                     if selected_user.get("suspended_reason"):
                         st.caption(f"Suspension reason: {selected_user['suspended_reason']}")
                 with actions_column:
