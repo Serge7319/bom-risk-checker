@@ -19,7 +19,7 @@ class AdminConsoleV1ContractTests(unittest.TestCase):
 
     def test_console_uses_server_enforced_rpcs(self):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text()
-        self.assertIn('supabase.rpc("cadivor_admin_list_users")', source)
+        self.assertIn('supabase.rpc("cadivor_admin_list_users_v2")', source)
         self.assertIn('supabase.rpc("cadivor_admin_audit_events")', source)
 
     def test_console_does_not_shadow_module_pandas_import(self):

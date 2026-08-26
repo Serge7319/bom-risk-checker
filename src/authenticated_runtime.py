@@ -1607,6 +1607,23 @@ def run_authenticated_app() -> None:
         current_user = load_user_data()
 
     is_admin = str(current_user.get("role", "")).lower() == "admin"
+    # Admin Console v2 keeps maintenance and account suspension decisions in
+    # server-enforced RPCs. If the migration is not present yet, normal product
+    # access continues exactly as before.
+    try:
+        runtime_access_rows = supabase.rpc("cadivor_admin_runtime_access").execute().data or []
+        runtime_access = runtime_access_rows[0] if runtime_access_rows else {}
+        if str(runtime_access.get("account_status", "active")).lower() == "suspended":
+            st.error("This Cadivor account has been suspended. Contact support if you need help.")
+            st.stop()
+        if bool(runtime_access.get("maintenance_mode")) and not is_admin:
+            st.warning(
+                runtime_access.get("maintenance_message")
+                or "Cadivor is undergoing scheduled maintenance. Please try again shortly."
+            )
+            st.stop()
+    except Exception:
+        pass
     with timed_phase("runtime.plan_resolve", operation="resolve"):
         effective_plan_name, trial_expired = resolve_effective_plan(current_user)
         if trial_expired:
@@ -6472,37 +6489,181 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
 
-    # ---------- Admin Console (admin-only; data is supplied by server-enforced RPCs) ----------
+    # ---------- Admin Console v2 (admin-only; all controls are server-enforced and audited) ----------
     if app_mode == "Admin Console":
         if not is_admin:
             st.error("This page is available only to Cadivor administrators.")
             stop_authenticated_page()
         st.title("Admin Console")
-        st.caption("Operational visibility for Cadivor administrators. Account changes and maintenance controls are not enabled in v1.")
+        st.caption("Operational control for Cadivor administrators. Every account and maintenance change is recorded in the audit trail.")
         try:
-            user_rows = supabase.rpc("cadivor_admin_list_users").execute().data or []
+            overview_rows = supabase.rpc("cadivor_admin_overview").execute().data or []
+            user_rows = supabase.rpc("cadivor_admin_list_users_v2").execute().data or []
             audit_rows = supabase.rpc("cadivor_admin_audit_events").execute().data or []
         except Exception:
-            st.warning("Admin Console is waiting for its approved Supabase migration. Existing customer workflows are unaffected.")
+            st.warning("Admin Console v2 is waiting for its approved Supabase migration. Existing customer workflows are unaffected.")
             stop_authenticated_page()
-        st.metric("Registered users", len(user_rows))
-        if user_rows:
+        overview = overview_rows[0] if overview_rows else {}
+        metric_columns = st.columns(4)
+        metric_columns[0].metric("Registered users", overview.get("registered_users", len(user_rows)))
+        metric_columns[1].metric("Active in 30 days", overview.get("active_last_30_days", 0))
+        metric_columns[2].metric("Suspended", overview.get("suspended_users", 0))
+        metric_columns[3].metric("Platform", "Maintenance" if overview.get("maintenance_mode") else "Operational")
+
+        overview_tab, users_tab, maintenance_tab, audit_tab = st.tabs(
+            ["Overview", "Users", "Maintenance", "Audit trail"]
+        )
+
+        with overview_tab:
+            st.subheader("Control center")
+            if overview.get("maintenance_mode"):
+                st.warning(overview.get("maintenance_message") or "Maintenance mode is enabled for non-admin users.")
+            else:
+                st.success("Cadivor is available to customers. Administrators retain access during maintenance.")
+            st.info("Plan changes are intentionally Stripe-controlled. Use the billing workflow for paid-plan activation.")
+
+        with users_tab:
+            st.subheader("User directory")
+            search_column, status_column, role_column = st.columns((2.2, 1, 1))
+            search_users = search_column.text_input("Search users", placeholder="Email, name, company, plan, or role")
+            status_filter = status_column.selectbox("Account status", ["All", "active", "suspended"])
+            role_filter = role_column.selectbox("Role", ["All", "user", "admin"])
             users_frame = pd.DataFrame(user_rows)
-            st.subheader("Users")
-            search_users = st.text_input("Search users", placeholder="Email, name, company, plan, or role")
-            if search_users.strip():
-                needle = search_users.strip().lower()
-                searchable_columns = [column for column in ("email", "full_name", "company_name", "plan", "role") if column in users_frame]
-                matching_rows = users_frame[searchable_columns].fillna("").astype(str).apply(
-                    lambda row: row.str.lower().str.contains(needle, regex=False).any(), axis=1
+            if not users_frame.empty:
+                if search_users.strip():
+                    needle = search_users.strip().lower()
+                    searchable_columns = [column for column in ("email", "full_name", "company_name", "plan", "role", "account_status") if column in users_frame]
+                    users_frame = users_frame[users_frame[searchable_columns].fillna("").astype(str).apply(
+                        lambda row: row.str.lower().str.contains(needle, regex=False).any(), axis=1
+                    )]
+                if status_filter != "All":
+                    users_frame = users_frame[users_frame["account_status"].fillna("active").str.lower() == status_filter]
+                if role_filter != "All":
+                    users_frame = users_frame[users_frame["role"].fillna("user").str.lower() == role_filter]
+                directory_columns = [
+                    column for column in ("email", "full_name", "company_name", "role", "plan", "account_status", "last_sign_in_at")
+                    if column in users_frame
+                ]
+                directory_frame = users_frame[directory_columns].rename(columns={
+                    "email": "Email", "full_name": "Name", "company_name": "Company",
+                    "role": "Role", "plan": "Plan", "account_status": "Account status",
+                    "last_sign_in_at": "Last sign-in",
+                })
+                st.dataframe(directory_frame, use_container_width=True, hide_index=True)
+            else:
+                st.info("No users match the selected filters.")
+
+            st.divider()
+            st.subheader("Manage a user")
+            if not user_rows:
+                st.caption("No user account is available to manage.")
+            else:
+                selected_user = st.selectbox(
+                    "Choose a user",
+                    user_rows,
+                    format_func=lambda row: f"{row.get('email', 'Unknown user')} · {row.get('account_status', 'active')} · {row.get('plan', 'Starter')}",
                 )
-                users_frame = users_frame[matching_rows]
-            st.dataframe(users_frame, use_container_width=True, hide_index=True)
-        st.subheader("Admin audit trail")
-        if audit_rows:
-            st.dataframe(pd.DataFrame(audit_rows), use_container_width=True, hide_index=True)
-        else:
-            st.caption("No administrative actions have been recorded yet.")
+                selected_user_id = selected_user.get("id")
+                selected_role = str(selected_user.get("role", "user")).lower()
+                selected_status = str(selected_user.get("account_status", "active")).lower()
+                is_self = str(selected_user_id) == str(current_user.get("id"))
+                is_target_admin = selected_role == "admin"
+                details_column, actions_column = st.columns((1, 1.45))
+                with details_column:
+                    st.markdown("**Account details**")
+                    st.write({
+                        "Email": selected_user.get("email") or "—",
+                        "Name": selected_user.get("full_name") or "—",
+                        "Company": selected_user.get("company_name") or "—",
+                        "Plan": selected_user.get("plan") or "Starter",
+                        "Role": selected_role,
+                        "Status": selected_status,
+                        "Last sign-in": selected_user.get("last_sign_in_at") or "Never",
+                    })
+                    if selected_user.get("suspended_reason"):
+                        st.caption(f"Suspension reason: {selected_user['suspended_reason']}")
+                with actions_column:
+                    if is_self:
+                        st.info("For safety, you cannot modify your own administrator account from this console.")
+                    elif is_target_admin:
+                        st.info("Administrator accounts cannot be suspended. Role changes are protected server-side to retain at least one administrator.")
+                    else:
+                        with st.form("admin_account_status_form"):
+                            next_status = st.selectbox("Account access", ["active", "suspended"], index=0 if selected_status == "active" else 1)
+                            status_reason = st.text_area("Reason for this change", max_chars=500)
+                            status_confirmed = st.checkbox("I understand this changes the user's access immediately.")
+                            apply_status = st.form_submit_button("Apply account status", type="primary")
+                            if apply_status:
+                                if not status_confirmed:
+                                    st.error("Confirm the access change before applying it.")
+                                else:
+                                    try:
+                                        supabase.rpc("cadivor_admin_set_account_status", {
+                                            "target_user_id": selected_user_id,
+                                            "next_status": next_status,
+                                            "reason": status_reason,
+                                        }).execute()
+                                        st.success("Account status updated and recorded in the audit trail.")
+                                        st.rerun()
+                                    except Exception:
+                                        st.error("Cadivor could not update this account. No change was confirmed.")
+                    if not is_self:
+                        with st.form("admin_role_form"):
+                            next_role = st.selectbox("Cadivor role", ["user", "admin"], index=0 if selected_role == "user" else 1)
+                            role_reason = st.text_input("Reason for role change", max_chars=500)
+                            role_confirmed = st.checkbox("I understand this changes administrator access.")
+                            apply_role = st.form_submit_button("Apply role change")
+                            if apply_role:
+                                if not role_confirmed:
+                                    st.error("Confirm the role change before applying it.")
+                                else:
+                                    try:
+                                        supabase.rpc("cadivor_admin_set_role", {
+                                            "target_user_id": selected_user_id,
+                                            "next_role": next_role,
+                                            "reason": role_reason,
+                                        }).execute()
+                                        st.success("Role updated and recorded in the audit trail.")
+                                        st.rerun()
+                                    except Exception:
+                                        st.error("Cadivor could not update this role. No change was confirmed.")
+
+        with maintenance_tab:
+            st.subheader("Maintenance mode")
+            st.caption("When enabled, non-admin users are blocked after authentication. Administrators retain access to restore service.")
+            maintenance_enabled = bool(overview.get("maintenance_mode"))
+            with st.form("admin_maintenance_form"):
+                next_maintenance_enabled = st.checkbox("Enable maintenance mode", value=maintenance_enabled)
+                next_maintenance_message = st.text_area(
+                    "Customer message",
+                    value=overview.get("maintenance_message") or "Cadivor is undergoing scheduled maintenance. Please try again shortly.",
+                    max_chars=280,
+                )
+                confirmation_phrase = "ENABLE MAINTENANCE" if next_maintenance_enabled else "DISABLE MAINTENANCE"
+                maintenance_confirmation = st.text_input(f"Type {confirmation_phrase} to confirm")
+                apply_maintenance = st.form_submit_button("Apply maintenance setting", type="primary")
+                if apply_maintenance:
+                    if maintenance_confirmation.strip() != confirmation_phrase:
+                        st.error(f"Type {confirmation_phrase} exactly to continue.")
+                    else:
+                        try:
+                            supabase.rpc("cadivor_admin_set_maintenance", {
+                                "next_enabled": next_maintenance_enabled,
+                                "next_message": next_maintenance_message,
+                            }).execute()
+                            st.success("Maintenance setting updated and recorded in the audit trail.")
+                            st.rerun()
+                        except Exception:
+                            st.error("Cadivor could not update maintenance mode. No change was confirmed.")
+
+        with audit_tab:
+            st.subheader("Recent administrator activity")
+            if audit_rows:
+                audit_frame = pd.DataFrame(audit_rows)
+                visible_audit_columns = [column for column in ("created_at", "action", "actor_id", "target_user_id", "metadata") if column in audit_frame]
+                st.dataframe(audit_frame[visible_audit_columns], use_container_width=True, hide_index=True)
+            else:
+                st.caption("No administrative actions have been recorded yet.")
         stop_authenticated_page()
 
     # ---------- Settings ----------
