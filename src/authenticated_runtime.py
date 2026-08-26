@@ -225,6 +225,144 @@ def _safe_text(value, fallback=""):
     return text if text else fallback
 
 
+def render_maintenance_mode_surface(message):
+    """Render the customer-facing maintenance screen for non-admin users."""
+    customer_message = _safe_text(
+        message,
+        "Cadivor is undergoing scheduled maintenance. Please try again shortly.",
+    )
+    safe_message = html.escape(customer_message)
+    st.markdown(
+        f"""
+        <style id="cadivor-maintenance-mode">
+        html, body, .stApp, [data-testid="stAppViewContainer"] {{
+            min-height: 100%;
+            background: #071b3d !important;
+        }}
+        [data-testid="stAppViewContainer"] > .main {{
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 84% 12%, rgba(51, 109, 232, .28), transparent 28rem),
+                radial-gradient(circle at 8% 92%, rgba(20, 184, 166, .12), transparent 25rem),
+                #071b3d;
+        }}
+        [data-testid="stAppViewContainer"] > .main .block-container {{
+            max-width: 900px;
+            min-height: 100vh;
+            padding: 48px 24px;
+            display: flex;
+            align-items: center;
+        }}
+        #cadivor-maintenance-screen {{
+            width: 100%;
+            color: #f8fbff;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }}
+        #cadivor-maintenance-screen .maintenance-card {{
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 42px;
+            border: 1px solid rgba(166, 194, 244, .24);
+            border-radius: 24px;
+            background: rgba(10, 33, 74, .78);
+            box-shadow: 0 28px 80px rgba(0, 0, 0, .28);
+        }}
+        #cadivor-maintenance-screen .maintenance-brand {{
+            display: inline-flex;
+            align-items: center;
+            gap: 11px;
+            margin-bottom: 42px;
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: 750;
+            letter-spacing: -.03em;
+        }}
+        #cadivor-maintenance-screen .maintenance-mark {{
+            display: grid;
+            width: 34px;
+            height: 34px;
+            place-items: center;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #4c8aff, #2857cb);
+            color: #ffffff;
+            font-size: 21px;
+            font-weight: 800;
+        }}
+        #cadivor-maintenance-screen .maintenance-eyebrow {{
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #a9c5ff;
+            font-size: 12px;
+            font-weight: 750;
+            letter-spacing: .11em;
+            text-transform: uppercase;
+        }}
+        #cadivor-maintenance-screen .maintenance-eyebrow::before {{
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: #72e1bd;
+            box-shadow: 0 0 0 5px rgba(114, 225, 189, .12);
+        }}
+        #cadivor-maintenance-screen h1 {{
+            max-width: 570px;
+            margin: 18px 0 16px;
+            color: #ffffff;
+            font-size: clamp(34px, 5vw, 54px);
+            line-height: 1.04;
+            letter-spacing: -.055em;
+        }}
+        #cadivor-maintenance-screen .maintenance-message {{
+            max-width: 590px;
+            margin: 0;
+            color: #d4e1f7;
+            font-size: 18px;
+            line-height: 1.6;
+        }}
+        #cadivor-maintenance-screen .maintenance-assurance {{
+            display: flex;
+            gap: 13px;
+            margin-top: 34px;
+            padding: 18px 20px;
+            border: 1px solid rgba(115, 171, 255, .22);
+            border-radius: 14px;
+            background: rgba(54, 112, 218, .13);
+            color: #dce9ff;
+            line-height: 1.5;
+        }}
+        #cadivor-maintenance-screen .maintenance-assurance strong {{ color: #ffffff; }}
+        #cadivor-maintenance-screen .maintenance-shield {{ color: #8eb6ff; font-size: 20px; }}
+        #cadivor-maintenance-screen .maintenance-footer {{
+            margin: 30px 0 0;
+            color: #a8bbda;
+            font-size: 14px;
+            line-height: 1.55;
+        }}
+        #cadivor-maintenance-screen .maintenance-footer a {{ color: #b9d0ff; }}
+        @media (max-width: 640px) {{
+            [data-testid="stAppViewContainer"] > .main .block-container {{ padding: 24px 16px; }}
+            #cadivor-maintenance-screen .maintenance-card {{ padding: 28px 24px; border-radius: 18px; }}
+            #cadivor-maintenance-screen .maintenance-brand {{ margin-bottom: 30px; }}
+            #cadivor-maintenance-screen .maintenance-message {{ font-size: 16px; }}
+        }}
+        </style>
+        <main id="cadivor-maintenance-screen" aria-labelledby="cadivor-maintenance-heading">
+          <section class="maintenance-card">
+            <div class="maintenance-brand"><span class="maintenance-mark">C</span><span>Cadivor</span></div>
+            <div class="maintenance-eyebrow">Scheduled maintenance</div>
+            <h1 id="cadivor-maintenance-heading">We’re improving Cadivor.</h1>
+            <p class="maintenance-message">{safe_message}</p>
+            <div class="maintenance-assurance"><span class="maintenance-shield">&#9670;</span><span><strong>Your engineering data is safe.</strong><br/>Your workspace and saved analyses will be available again when service is restored.</span></div>
+            <p class="maintenance-footer">Please check back shortly. For time-sensitive access support, contact <a href="mailto:beta@cadivor.com">beta@cadivor.com</a>.</p>
+          </section>
+        </main>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def get_user_profile(current_user):
     """Return user-facing profile fields without assuming optional DB columns exist."""
     if not isinstance(current_user, dict):
@@ -1617,10 +1755,7 @@ def run_authenticated_app() -> None:
             st.error("This Cadivor account has been suspended. Contact support if you need help.")
             st.stop()
         if bool(runtime_access.get("maintenance_mode")) and not is_admin:
-            st.warning(
-                runtime_access.get("maintenance_message")
-                or "Cadivor is undergoing scheduled maintenance. Please try again shortly."
-            )
+            render_maintenance_mode_surface(runtime_access.get("maintenance_message"))
             st.stop()
     except Exception:
         pass
