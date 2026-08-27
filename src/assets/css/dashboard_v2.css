@@ -540,3 +540,26 @@
     overflow-x: auto;
   }
 }
+
+/* Dashboard workspace tabs — final radio-control reset.
+   This stylesheet is injected with the Dashboard itself, so it remains stable
+   across Streamlit navigation reruns even when base widget CSS is refreshed. */
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label {
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:hover,
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
+  background: transparent !important;
+  border-bottom-color: #2563eb !important;
+  box-shadow: none !important;
+}
