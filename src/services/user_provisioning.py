@@ -8,6 +8,10 @@ from typing import Any
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
 
 TRIAL_DAYS = 14
+# A newly authenticated user can briefly authenticate before their profile is
+# visible through the public API. Keep this bounded so the normal profile path
+# remains immediate while a first sign-in recovers without an error screen.
+PROFILE_VISIBILITY_RETRY_DELAYS_SECONDS = (0.20, 0.40, 0.80, 1.00, 1.00, 1.00)
 
 
 class UserProvisioningError(Exception):
@@ -54,9 +58,9 @@ def _retry_select_user_profile(
     user_id: str,
     *,
     operation: str,
-    attempts: int = 3,
+    attempts: int = len(PROFILE_VISIBILITY_RETRY_DELAYS_SECONDS) + 1,
 ):
-    """Allow a just-created profile a brief moment to become readable.
+    """Allow a just-created profile time to become readable.
 
     Supabase Auth triggers and a browser's first authenticated request can race.
     This is intentionally limited to the post-create path, so ordinary page
@@ -72,7 +76,7 @@ def _retry_select_user_profile(
         if response.data:
             return response
         if attempt < attempts - 1:
-            time.sleep(0.15 * (attempt + 1))
+            time.sleep(PROFILE_VISIBILITY_RETRY_DELAYS_SECONDS[attempt])
     return response
 
 
