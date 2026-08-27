@@ -162,10 +162,14 @@ AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Loading your workspace…"
 
 
 def should_render_authenticated_startup_shell() -> bool:
-    """Render the full-screen startup shell only before the workspace first mounts."""
-    from src.ui.core_premium_ui import authenticated_surface_ready
+    """Keep an opaque shell through every authenticated Streamlit rerun.
 
-    return not authenticated_surface_ready()
+    Streamlit replaces the prior element tree before the next route has
+    finished rendering. Rendering this lightweight shell on every rerun keeps
+    the prior workspace from flashing blank until the new foundation shell is
+    mounted.
+    """
+    return True
 
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:

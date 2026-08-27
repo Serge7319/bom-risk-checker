@@ -1644,17 +1644,27 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
 div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] > div {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
-  row-gap: 8px;
+  gap: 0;
+  width: fit-content;
+  max-width: 100%;
+  border-bottom: 1px solid var(--cv64-border);
 }
 
 div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label {
-  min-height: 34px;
-  padding: 6px 12px;
-  border: 1px solid var(--cv64-border);
-  border-radius: 999px;
-  background: #fff;
+  min-height: 36px;
+  padding: 8px 14px 9px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
   margin-right: 0 !important;
+  color: #52647a;
+  font-weight: 700;
+}
+
+div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label > div:first-child,
+div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] input {
+  display: none !important;
 }
 
 div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label:focus-within {
@@ -1664,8 +1674,9 @@ div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRa
 
 div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label[data-checked="true"],
 div[data-testid="stVerticalBlock"]:has(.cv672-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
-  border-color: #2563eb;
-  background: #eff6ff;
+  border-bottom-color: #2563eb;
+  background: transparent;
+  color: #1d4ed8;
 }
 
 @media (max-width: 1023px) {
