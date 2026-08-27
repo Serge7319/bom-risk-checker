@@ -6843,12 +6843,29 @@ def run_authenticated_app() -> None:
             st.caption("Privacy-safe operational timeline. It records sign-in sessions and page transitions, not passwords, BOM contents, searches, chat messages, or form text.")
             if support_activity_rows:
                 support_frame = pd.DataFrame(support_activity_rows)
-                support_columns = [column for column in ("created_at", "email", "full_name", "event_type", "metadata") if column in support_frame]
+                event_labels = {
+                    "session_started": "Session started",
+                    "page_viewed": "Page viewed",
+                }
+                if "event_type" in support_frame:
+                    support_frame["Activity"] = support_frame["event_type"].map(event_labels).fillna("Other activity")
+                if "metadata" in support_frame:
+                    def _support_detail(metadata):
+                        detail = metadata if isinstance(metadata, dict) else {}
+                        page = _safe_text(detail.get("page"), "")
+                        return f"Visited {page}" if page else "—"
+                    support_frame["Safe details"] = support_frame["metadata"].apply(_support_detail)
+                if "created_at" in support_frame:
+                    support_frame["When"] = pd.to_datetime(
+                        support_frame["created_at"], utc=True, errors="coerce"
+                    ).dt.strftime("%b %d, %Y · %I:%M %p UTC").fillna("—")
+                if "email" in support_frame:
+                    support_frame["User"] = support_frame["email"].fillna("—")
+                if "full_name" in support_frame:
+                    support_frame["Name"] = support_frame["full_name"].fillna("—")
+                support_columns = [column for column in ("When", "User", "Name", "Activity", "Safe details") if column in support_frame]
                 st.dataframe(
-                    support_frame[support_columns].rename(columns={
-                        "created_at": "When", "email": "User", "full_name": "Name",
-                        "event_type": "Activity", "metadata": "Safe details",
-                    }),
+                    support_frame[support_columns],
                     use_container_width=True,
                     hide_index=True,
                 )
