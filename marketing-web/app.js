@@ -482,6 +482,8 @@
     { state: 'Active', outcomeHtml: 'Lifecycle and supply monitoring active', detail: 'Watching MPU6050 · LM35DN · TPS54331 across authorized sources', duration: 0 }
   ];
 
+  // Start with the complete upload-to-monitoring story. The hero copy makes
+  // the customer outcome clear while the product theater demonstrates it.
   let reviewStage = 0;
   let reviewTimer = null;
   let reviewAuto = true;
