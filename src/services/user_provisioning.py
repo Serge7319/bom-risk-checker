@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import time
 from typing import Any
 
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
@@ -48,6 +49,33 @@ def _select_user_profile(supabase: Any, user_id: str, *, operation: str):
     )
 
 
+def _retry_select_user_profile(
+    supabase: Any,
+    user_id: str,
+    *,
+    operation: str,
+    attempts: int = 3,
+):
+    """Allow a just-created profile a brief moment to become readable.
+
+    Supabase Auth triggers and a browser's first authenticated request can race.
+    This is intentionally limited to the post-create path, so ordinary page
+    loads do not wait and no profile data is ever overwritten.
+    """
+    response = None
+    for attempt in range(attempts):
+        response = _select_user_profile(
+            supabase,
+            user_id,
+            operation=f"{operation}_attempt_{attempt + 1}",
+        )
+        if response.data:
+            return response
+        if attempt < attempts - 1:
+            time.sleep(0.15 * (attempt + 1))
+    return response
+
+
 def ensure_user_profile(
     supabase: Any,
     auth_user: Any,
@@ -79,7 +107,7 @@ def ensure_user_profile(
     except Exception as exc:
         # Another login may have created the row concurrently; re-read once.
         try:
-            retry = _select_user_profile(
+            retry = _retry_select_user_profile(
                 supabase,
                 session_user_id,
                 operation=f"{operation}_after_insert_conflict",
@@ -95,7 +123,7 @@ def ensure_user_profile(
     if insert_response.data:
         return insert_response.data[0], True
 
-    created = _select_user_profile(
+    created = _retry_select_user_profile(
         supabase,
         session_user_id,
         operation=f"{operation}_after_insert",
