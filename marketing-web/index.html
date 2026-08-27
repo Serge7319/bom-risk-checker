@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Cadivor Engineering Decision Intelligence for hardware teams">
-<title>Cadivor — Engineering Decision Intelligence</title>
+<meta name="description" content="Find BOM risks before they delay production or increase cost.">
+<title>Cadivor — BOM Risk Analysis for Hardware Teams</title>
 <link rel="stylesheet" href="styles.css?v=1.0-pricing-layout2">
 <link rel="stylesheet" href="final-pass.css?v=1.0-freeze-v15">
 </head>
@@ -14,27 +14,27 @@
   <nav id="mainNav">
     <a class="route-link" href="#/product">Product</a><a class="route-link" href="#/solutions">Solutions</a><a class="route-link" href="#/pricing">Pricing</a><a class="route-link" href="#/resources">Resources</a><a class="route-link" href="#/company">Company</a>
     <a class="btn btn-ghost app-link mobile-nav-cta" data-auth="login">Sign in</a>
-    <a class="btn btn-primary app-link mobile-nav-cta" data-auth="signup">Start free trial</a>
+    <a class="btn btn-primary app-link mobile-nav-cta" data-auth="signup">Analyze a BOM free</a>
     <a class="btn btn-ghost route-link demo-link mobile-nav-cta" href="#/contact?intent=demo">Book a demo</a>
   </nav>
-  <div class="header-actions"><a class="btn btn-ghost app-link" data-auth="login">Sign in</a><a class="btn btn-primary app-link" data-auth="signup">Start free trial</a><a class="btn btn-ghost route-link desktop-demo demo-link" href="#/contact?intent=demo">Book a demo</a></div>
+  <div class="header-actions"><a class="btn btn-ghost app-link" data-auth="login">Sign in</a><a class="btn btn-primary app-link" data-auth="signup">Analyze a BOM free</a><a class="btn btn-ghost route-link desktop-demo demo-link" href="#/contact?intent=demo">Book a demo</a></div>
 </header>
 <main id="app">
 <section class="page active" data-page="home">
   <section class="hero experience-scene" data-experience-scene="0" data-scene-name="BOM received" data-scene-detail="Preparing engineering review">
     <div class="hero-glow"></div>
-    <div class="hero-copy reveal visible"><span class="eyebrow dark"><i></i>ENGINEERING DECISION INTELLIGENCE</span><h1>Turn BOM risk into <em>defensible engineering decisions.</em></h1><p>Cadivor connects component risk, supplier evidence, AI-assisted review, alternate qualification, and decision history in one release workflow.</p><div class="hero-actions"><a class="btn btn-primary btn-large app-link" data-auth="signup">Start 14-day free trial <span>→</span></a><a class="btn btn-ghost btn-large" href="#workflow">Watch the workflow</a></div><div class="trust-row"><span>✓ No credit card</span><span>✓ CSV and Excel BOMs</span><span>✓ Evidence-linked recommendations</span></div></div>
-    <div class="product-theater" id="productTheater" data-review-stage="0" data-focus="upload">
+    <div class="hero-copy reveal visible"><span class="eyebrow dark"><i></i>BOM RISK ANALYSIS</span><h1>Find BOM risks before they <em>delay production or increase cost.</em></h1><p>Upload your BOM to identify lifecycle, supply, sourcing, and component risks—then see exactly what needs attention.</p><div class="hero-actions"><a class="btn btn-primary btn-large app-link" data-auth="signup">Analyze a BOM free <span>→</span></a><a class="btn btn-ghost btn-large" href="#workflow">See how it works</a></div><div class="trust-row"><span>✓ No credit card required</span><span>✓ CSV and Excel BOMs</span><span>✓ Get your first analysis</span></div></div>
+    <div class="product-theater" id="productTheater" data-review-stage="3" data-focus="analyze">
       <div class="float-file" id="floatFile"><b>X</b><span><strong>motor_controller_rev_c.xlsx</strong><small>1,842 components · 36 suppliers</small></span></div>
       <div class="demo-cursor" id="demoCursor" aria-hidden="true"></div>
       <div class="app-window">
         <header class="product-header">
           <div class="product-header__brand"><b class="product-header__icon" aria-hidden="true">C</b><div><strong>Motor Controller Rev C</strong><small>Engineering Review</small></div></div>
-          <div class="product-header__status"><span id="heroProductStatus">BOM received</span><em class="live-indicator" id="heroLiveIndicator"><i aria-hidden="true"></i>Live review</em></div>
+          <div class="product-header__status"><span id="heroProductStatus" class="state-warn">Release blockers identified</span><em class="live-indicator" id="heroLiveIndicator"><i aria-hidden="true"></i>Live review</em></div>
         </header>
         <div class="window-layout">
           <aside><div class="mini-logo">C</div><button class="active" data-nav="overview">Overview</button><button data-nav="analyze">Analyze</button><button id="demoAskCadivor" data-nav="copilot">Ask Cadivor</button><button data-nav="alternates">Alternates</button><button data-nav="decisions">Decisions</button><button data-nav="monitor">Monitor</button></aside>
-          <div class="demo-main"><header><div><small>RELEASE REVIEW</small><h3>Motor Controller Rev C</h3><cite>motor_controller_rev_c.xlsx</cite></div><span id="analysisState">BOM received</span></header>
+          <div class="demo-main"><header><div><small>RELEASE REVIEW</small><h3>Motor Controller Rev C</h3><cite>motor_controller_rev_c.xlsx</cite></div><span id="analysisState" class="state-warn">Release blockers identified</span></header>
             <div class="theater-stage-rail" id="theaterStageRail" aria-label="Review progress"><span class="active">Received</span><span>Validating</span><span>Analyzing</span><span>Risks</span><span>Copilot</span><span>Evidence</span><span>Rec</span><span>Supplier</span><span>Decision</span><span>Approved</span><span>Monitor</span></div>
             <div class="phase-track"><div id="phaseFill"></div><span>Upload</span><span>Validate</span><span>Analyze</span><span>Decide</span><span>Monitor</span></div>
             <div class="theater-viewport" id="heroTheaterViewport"><div class="theater-canvas"><div class="upload-stack"><div class="upload-card" id="uploadCard"><div class="upload-symbol">▤</div><span><strong>motor_controller_rev_c.xlsx</strong><small id="uploadMeta">Awaiting upload · 36 suppliers</small></span><em id="uploadState">Waiting</em><div id="uploadProgress"></div></div><div class="import-workspace" id="importWorkspace"><small>SPREADSHEET PREVIEW</small><div class="import-cols"><span>Part Number</span><span>Manufacturer</span><span>Qty</span><span>Supplier</span></div><div class="import-row"><b>MPU6050</b><span>InvenSense</span><span>820</span><span>DigiKey</span></div><div class="import-row"><b>LM35DN</b><span>Texas Instruments</span><span>1,240</span><span>Mouser</span></div><div class="import-row"><b>TPS54331</b><span>Texas Instruments</span><span>560</span><span>Newark</span></div><div class="import-meta"><span id="importRowCount">1,842 rows mapped</span><span id="importColMap">4 required columns matched</span></div></div></div>
