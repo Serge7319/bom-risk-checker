@@ -54,6 +54,20 @@ class AdminConsoleV2ContractTests(unittest.TestCase):
         self.assertNotIn("password", support_migration.lower())
         self.assertNotIn("bom", support_migration.lower())
 
+    def test_support_timeline_uses_friendly_labels_and_deduplicates_sessions(self):
+        polish_migration = (ROOT / "supabase" / "migrations" / "20260827_admin_support_activity_polish.sql").read_text()
+        self.assertIn('"session_started": "Session started"', self.runtime)
+        self.assertIn('"page_viewed": "Page viewed"', self.runtime)
+        self.assertIn('return f"Visited {page}"', self.runtime)
+        self.assertIn("interval '10 minutes'", polish_migration)
+        self.assertIn("return;", polish_migration)
+
+    def test_beta_sample_bom_contains_a_realistic_ten_part_workflow(self):
+        self.assertIn('label="Download 10-Part Sample BOM"', self.runtime)
+        self.assertIn('"STM32F103C8T6"', self.runtime)
+        self.assertIn('"RC0603FR-0710KL"', self.runtime)
+        self.assertIn('"description": [', self.runtime)
+
     def test_selected_user_details_are_human_readable_not_a_raw_dictionary(self):
         self.assertIn("account_details = (", self.runtime)
         self.assertIn("for detail_label, detail_value in account_details", self.runtime)

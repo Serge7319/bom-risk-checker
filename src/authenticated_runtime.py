@@ -6843,12 +6843,29 @@ def run_authenticated_app() -> None:
             st.caption("Privacy-safe operational timeline. It records sign-in sessions and page transitions, not passwords, BOM contents, searches, chat messages, or form text.")
             if support_activity_rows:
                 support_frame = pd.DataFrame(support_activity_rows)
-                support_columns = [column for column in ("created_at", "email", "full_name", "event_type", "metadata") if column in support_frame]
+                event_labels = {
+                    "session_started": "Session started",
+                    "page_viewed": "Page viewed",
+                }
+                if "event_type" in support_frame:
+                    support_frame["Activity"] = support_frame["event_type"].map(event_labels).fillna("Other activity")
+                if "metadata" in support_frame:
+                    def _support_detail(metadata):
+                        detail = metadata if isinstance(metadata, dict) else {}
+                        page = _safe_text(detail.get("page"), "")
+                        return f"Visited {page}" if page else "—"
+                    support_frame["Safe details"] = support_frame["metadata"].apply(_support_detail)
+                if "created_at" in support_frame:
+                    support_frame["When"] = pd.to_datetime(
+                        support_frame["created_at"], utc=True, errors="coerce"
+                    ).dt.strftime("%b %d, %Y · %I:%M %p UTC").fillna("—")
+                if "email" in support_frame:
+                    support_frame["User"] = support_frame["email"].fillna("—")
+                if "full_name" in support_frame:
+                    support_frame["Name"] = support_frame["full_name"].fillna("—")
+                support_columns = [column for column in ("When", "User", "Name", "Activity", "Safe details") if column in support_frame]
                 st.dataframe(
-                    support_frame[support_columns].rename(columns={
-                        "created_at": "When", "email": "User", "full_name": "Name",
-                        "event_type": "Activity", "metadata": "Safe details",
-                    }),
+                    support_frame[support_columns],
                     use_container_width=True,
                     hide_index=True,
                 )
@@ -12236,8 +12253,31 @@ def run_authenticated_app() -> None:
 
             sample_bom = pd.DataFrame(
                 {
-                    "mpn": ["TPS5430DDAR", "LM555CN/NOPB"],
-                    "quantity": [5, 2],
+                    "mpn": [
+                        "STM32F103C8T6",
+                        "TPS5430DDAR",
+                        "MCP2551-I/SN",
+                        "BQ24074RGTR",
+                        "ADS1115IDGSR",
+                        "W25Q64JVSSIQ",
+                        "SN74LVC2T45DCUR",
+                        "PC817X2NSZ1F",
+                        "GRM188R71C104KA01D",
+                        "RC0603FR-0710KL",
+                    ],
+                    "quantity": [1, 2, 1, 1, 1, 1, 2, 4, 12, 8],
+                    "description": [
+                        "32-bit microcontroller",
+                        "3 A buck regulator",
+                        "CAN transceiver",
+                        "Li-ion battery charger",
+                        "16-bit ADC",
+                        "64 Mbit serial flash memory",
+                        "Dual-bit voltage-level translator",
+                        "Optocoupler",
+                        "0.1 uF ceramic capacitor",
+                        "10 kOhm resistor",
+                    ],
                 }
             )
             sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
@@ -12253,9 +12293,9 @@ def run_authenticated_app() -> None:
             )
 
             st.download_button(
-                label="Download Sample BOM Template",
+                label="Download 10-Part Sample BOM",
                 data=sample_csv,
-                file_name="sample_bom_template.csv",
+                file_name="cadivor_10_part_sample_bom.csv",
                 mime="text/csv",
                 key="bom8_sample",
             )
