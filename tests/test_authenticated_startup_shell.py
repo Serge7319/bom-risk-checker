@@ -162,13 +162,13 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
         self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
         self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
 
-    def test_second_authenticated_rerun_does_not_render_startup_shell(self):
+    def test_second_authenticated_rerun_keeps_startup_shell_for_visual_continuity(self):
         _st, bootstrap, *_rest = self._load_bootstrap(
             {"_cadivor_authenticated_surface_ready": True}
         )
-        self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
+        self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
 
-    def test_dashboard_interaction_rerun_does_not_render_startup_shell(self):
+    def test_dashboard_interaction_rerun_keeps_startup_shell_for_visual_continuity(self):
         _st, bootstrap, *_rest = self._load_bootstrap(
             {
                 "_cadivor_authenticated_surface_ready": True,
@@ -176,9 +176,9 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
                 "app_mode": "Dashboard",
             }
         )
-        self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
+        self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
 
-    def test_analysis_details_section_change_does_not_render_startup_shell(self):
+    def test_analysis_details_section_change_keeps_startup_shell_for_visual_continuity(self):
         _st, bootstrap, *_rest = self._load_bootstrap(
             {
                 "_cadivor_authenticated_surface_ready": True,
@@ -186,9 +186,9 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
                 "cadivor_active_analysis_tab": "Risk Overview",
             }
         )
-        self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
+        self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
 
-    def test_ask_cadivor_submit_rerun_does_not_render_startup_shell(self):
+    def test_ask_cadivor_submit_rerun_keeps_startup_shell_for_visual_continuity(self):
         _st, bootstrap, *_rest = self._load_bootstrap(
             {
                 "_cadivor_authenticated_surface_ready": True,
@@ -196,7 +196,7 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
                 "cv4801_followup_inflight": True,
             }
         )
-        self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
+        self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
 
     def test_authenticated_startup_shell_copy_is_not_auth_transition_copy(self):
         _st, bootstrap, *_rest = self._load_bootstrap({})

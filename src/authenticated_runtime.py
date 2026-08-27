@@ -186,6 +186,10 @@ def _init_runtime_clients() -> None:
 def load_user_data():
     user = st.session_state["user"]
     user_id = user.id
+    from src.services.authenticated_profile_cache import (
+        recent_verified_profile,
+        remember_verified_profile,
+    )
 
     try:
         response = execute_supabase_read(
@@ -195,6 +199,9 @@ def load_user_data():
             operation="load_user_data",
         )
     except SupabaseReadTransportError:
+        cached_profile = recent_verified_profile(st.session_state, user_id)
+        if cached_profile:
+            return cached_profile
         st.warning(
             "Cadivor could not reach the database right now. "
             "Please wait a moment and use **Rerun** or refresh the page."
@@ -202,13 +209,21 @@ def load_user_data():
         stop_authenticated_page()
 
     if response.data:
-        return response.data[0]
+        return remember_verified_profile(st.session_state, response.data[0]) or response.data[0]
+
+    # A profile that was successfully loaded earlier in this authenticated
+    # session must not be treated as missing because one later read is briefly
+    # empty. Provisioning is only for a genuinely fresh session with no
+    # verified profile yet.
+    cached_profile = recent_verified_profile(st.session_state, user_id)
+    if cached_profile:
+        return cached_profile
 
     from src.services.user_provisioning import UserProvisioningError, ensure_user_profile
 
     try:
         profile, _created = ensure_user_profile(supabase, user, operation="load_user_data")
-        return profile
+        return remember_verified_profile(st.session_state, profile) or profile
     except UserProvisioningError:
         st.error(
             "Cadivor could not initialize your workspace profile. "
@@ -2873,6 +2888,9 @@ def run_authenticated_app() -> None:
 
     # ---------- Dashboard ----------
     if app_mode == "Dashboard":
+        inject_dashboard_workspace_styles()
+        render_dashboard_page_heading()
+
         if (
             onboarding_progress
             and not onboarding_progress.get("dismissed")
@@ -3035,9 +3053,6 @@ def run_authenticated_app() -> None:
                 workspace_name=active_workspace_name,
             )
             stop_authenticated_page()
-
-        inject_dashboard_workspace_styles()
-        render_dashboard_page_heading()
 
         dashboard_nav_key = "cv672_dashboard_workspace_radio"
         if "dashboard_workspace_initialized" not in st.session_state:
