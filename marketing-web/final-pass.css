@@ -3846,9 +3846,31 @@ summary:focus-visible {
 }
 
 .page[data-page="home"] .product-theater .supplier-row {
-  gap: 6px;
+  /* The hero theater is intentionally compact. An eight-column supplier
+     grid becomes unreadable at the preview's accessible display size, so
+     show the decision-useful fields only: supplier, stock, lead time and
+     qualification status. */
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .8fr) minmax(0, .75fr) minmax(0, .95fr);
+  gap: 8px;
   padding: 9px 10px;
   font-size: 11px;
+}
+
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(2),
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(5),
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(6),
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(7) {
+  display: none;
+}
+
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(1),
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(3),
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(4),
+.page[data-page="home"] .product-theater .supplier-row > :nth-child(8) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page[data-page="home"] .product-theater .supplier-row em {
