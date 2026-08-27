@@ -6689,6 +6689,12 @@ def run_authenticated_app() -> None:
 
         with users_tab:
             st.subheader("User directory")
+            def _human_admin_timestamp(value):
+                parsed = pd.to_datetime(value, utc=True, errors="coerce")
+                if pd.isna(parsed):
+                    return "Never"
+                return parsed.strftime("%b %d, %Y · %I:%M %p UTC")
+
             search_column, status_column, presence_column, role_column = st.columns((2.2, 1, 1, 1))
             search_users = search_column.text_input("Search users", placeholder="Email, name, company, plan, or role")
             status_filter = status_column.selectbox("Account status", ["All", "active", "suspended"])
@@ -6726,6 +6732,9 @@ def run_authenticated_app() -> None:
                     directory_frame["Presence"] = directory_frame["Presence"].fillna("offline").astype(str).str.lower().map(
                         presence_labels
                     ).fillna("⚪ Offline")
+                for timestamp_column in ("Last active", "Last sign-in"):
+                    if timestamp_column in directory_frame:
+                        directory_frame[timestamp_column] = directory_frame[timestamp_column].apply(_human_admin_timestamp)
                 st.dataframe(directory_frame, use_container_width=True, hide_index=True)
             else:
                 st.info("No users match the selected filters.")
@@ -6754,10 +6763,10 @@ def run_authenticated_app() -> None:
                         ("Company", selected_user.get("company_name") or "—"),
                         ("Plan", selected_user.get("plan") or "Starter"),
                         ("Presence", {"active": "🟢 Active", "idle": "🟠 Idle", "offline": "⚪ Offline"}.get(str(selected_user.get("activity_status") or "offline").lower(), "⚪ Offline")),
-                        ("Last active", selected_user.get("last_active_at") or "Never"),
+                        ("Last active", _human_admin_timestamp(selected_user.get("last_active_at"))),
                         ("Role", selected_role),
                         ("Status", selected_status),
-                        ("Last sign-in", selected_user.get("last_sign_in_at") or "Never"),
+                        ("Last sign-in", _human_admin_timestamp(selected_user.get("last_sign_in_at"))),
                     )
                     for detail_label, detail_value in account_details:
                         st.caption(detail_label)

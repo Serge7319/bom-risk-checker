@@ -68,6 +68,11 @@ class AdminConsoleV2ContractTests(unittest.TestCase):
         self.assertIn('"RC0603FR-0710KL"', self.runtime)
         self.assertIn('"description": [', self.runtime)
 
+    def test_admin_dates_are_human_readable(self):
+        self.assertIn("def _human_admin_timestamp(value):", self.runtime)
+        self.assertIn('parsed.strftime("%b %d, %Y · %I:%M %p UTC")', self.runtime)
+        self.assertIn('directory_frame[timestamp_column].apply(_human_admin_timestamp)', self.runtime)
+
     def test_selected_user_details_are_human_readable_not_a_raw_dictionary(self):
         self.assertIn("account_details = (", self.runtime)
         self.assertIn("for detail_label, detail_value in account_details", self.runtime)
