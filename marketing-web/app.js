@@ -482,7 +482,9 @@
     { state: 'Active', outcomeHtml: 'Lifecycle and supply monitoring active', detail: 'Watching MPU6050 · LM35DN · TPS54331 across authorized sources', duration: 0 }
   ];
 
-  let reviewStage = 0;
+  // Show the outcome immediately. The visitor can see the risk result before
+  // the theater begins its full upload-to-monitoring walkthrough.
+  let reviewStage = 3;
   let reviewTimer = null;
   let reviewAuto = true;
   let theaterHoverPause = false;
