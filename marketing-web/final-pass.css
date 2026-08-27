@@ -3745,6 +3745,25 @@ summary:focus-visible {
   line-height: 1.35;
 }
 
+/* The final typography pass increased these navigation labels beyond the
+   original 64px rail. Reserve enough room for every destination so labels
+   remain readable throughout the animated product demonstration. */
+.page[data-page="home"] .product-theater .window-layout {
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+
+.page[data-page="home"] .product-theater .window-layout aside {
+  padding-inline: 10px;
+}
+
+.page[data-page="home"] .product-theater .window-layout aside button {
+  width: 100%;
+  padding-inline: 8px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
 .page[data-page="home"] .product-theater .demo-main > header small,
 .page[data-page="home"] .product-theater .demo-main cite {
   font-size: 11px;
