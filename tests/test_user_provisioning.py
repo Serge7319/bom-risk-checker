@@ -181,6 +181,25 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertEqual(profile, delayed_profile)
         self.assertEqual(sleep_mock.call_count, 2)
 
+    def test_profile_visibility_waits_through_extended_post_login_delay(self):
+        """A first browser session can need more than the original 0.45 seconds."""
+        supabase = MagicMock()
+        delayed_profile = {"id": "user-1", "email": "user@example.com", "plan": "Trial"}
+        supabase.table.return_value.insert.return_value.execute.return_value = types.SimpleNamespace(data=[])
+        empty_read = types.SimpleNamespace(data=[])
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            side_effect=[empty_read] * 7 + [types.SimpleNamespace(data=[delayed_profile])],
+        ), patch("src.services.user_provisioning.time.sleep") as sleep_mock:
+            profile, created = ensure_user_profile(supabase, self._auth_user())
+
+        self.assertTrue(created)
+        self.assertEqual(profile, delayed_profile)
+        self.assertEqual(
+            [call.args[0] for call in sleep_mock.call_args_list],
+            [0.20, 0.40, 0.80, 1.00, 1.00, 1.00],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
