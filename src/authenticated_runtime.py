@@ -1745,6 +1745,31 @@ def run_authenticated_app() -> None:
         current_user = load_user_data()
 
     is_admin = str(current_user.get("role", "")).lower() == "admin"
+    # Admin Console v2.1 records only a timestamped authenticated heartbeat.
+    # It deliberately stores no BOM content, page history, or client metadata.
+    # A short throttle avoids adding a database write to every Streamlit rerun.
+    heartbeat_key = "cadivor_last_activity_heartbeat"
+    if time.time() - float(st.session_state.get(heartbeat_key, 0.0)) >= 60:
+        try:
+            supabase.rpc("cadivor_record_user_activity").execute()
+            st.session_state[heartbeat_key] = time.time()
+        except Exception:
+            # The v2.1 migration is optional until approved; never block the app.
+            pass
+
+    def _record_support_activity(event_type, metadata=None):
+        """Write a minimal support event without interrupting product work."""
+        try:
+            supabase.rpc("cadivor_record_support_activity", {
+                "event_type": event_type,
+                "event_metadata": metadata or {},
+            }).execute()
+        except Exception:
+            pass
+
+    if not st.session_state.get("cadivor_support_session_recorded"):
+        _record_support_activity("session_started")
+        st.session_state["cadivor_support_session_recorded"] = True
     # Admin Console v2 keeps maintenance and account suspension decisions in
     # server-enforced RPCs. If the migration is not present yet, normal product
     # access continues exactly as before.
@@ -2447,6 +2472,9 @@ def run_authenticated_app() -> None:
         app_mode = "Dashboard"
     st.session_state["cadivor_route"] = app_mode
     st.session_state["app_mode"] = app_mode  # compatibility mirror
+    if st.session_state.get("cadivor_support_last_page") != app_mode:
+        _record_support_activity("page_viewed", {"page": app_mode})
+        st.session_state["cadivor_support_last_page"] = app_mode
 
     # Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
     # Query values are treated only as navigation inputs; the durable browser-session
@@ -6635,18 +6663,20 @@ def run_authenticated_app() -> None:
             overview_rows = supabase.rpc("cadivor_admin_overview").execute().data or []
             user_rows = supabase.rpc("cadivor_admin_list_users_v2").execute().data or []
             audit_rows = supabase.rpc("cadivor_admin_audit_events").execute().data or []
+            support_activity_rows = supabase.rpc("cadivor_admin_support_activity_events").execute().data or []
         except Exception:
             st.warning("Admin Console v2 is waiting for its approved Supabase migration. Existing customer workflows are unaffected.")
             stop_authenticated_page()
         overview = overview_rows[0] if overview_rows else {}
-        metric_columns = st.columns(4)
+        metric_columns = st.columns(5)
         metric_columns[0].metric("Registered users", overview.get("registered_users", len(user_rows)))
-        metric_columns[1].metric("Active in 30 days", overview.get("active_last_30_days", 0))
-        metric_columns[2].metric("Suspended", overview.get("suspended_users", 0))
-        metric_columns[3].metric("Platform", "Maintenance" if overview.get("maintenance_mode") else "Operational")
+        metric_columns[1].metric("Online now", overview.get("active_now", 0))
+        metric_columns[2].metric("Active in 30 days", overview.get("active_last_30_days", 0))
+        metric_columns[3].metric("Suspended", overview.get("suspended_users", 0))
+        metric_columns[4].metric("Platform", "Maintenance" if overview.get("maintenance_mode") else "Operational")
 
-        overview_tab, users_tab, maintenance_tab, audit_tab = st.tabs(
-            ["Overview", "Users", "Maintenance", "Audit trail"]
+        overview_tab, users_tab, maintenance_tab, support_tab, audit_tab = st.tabs(
+            ["Overview", "Users", "Maintenance", "Support activity", "Audit trail"]
         )
 
         with overview_tab:
@@ -6659,9 +6689,10 @@ def run_authenticated_app() -> None:
 
         with users_tab:
             st.subheader("User directory")
-            search_column, status_column, role_column = st.columns((2.2, 1, 1))
+            search_column, status_column, presence_column, role_column = st.columns((2.2, 1, 1, 1))
             search_users = search_column.text_input("Search users", placeholder="Email, name, company, plan, or role")
             status_filter = status_column.selectbox("Account status", ["All", "active", "suspended"])
+            presence_filter = presence_column.selectbox("Presence", ["All", "active", "idle", "offline"])
             role_filter = role_column.selectbox("Role", ["All", "user", "admin"])
             users_frame = pd.DataFrame(user_rows)
             if not users_frame.empty:
@@ -6673,17 +6704,28 @@ def run_authenticated_app() -> None:
                     )]
                 if status_filter != "All":
                     users_frame = users_frame[users_frame["account_status"].fillna("active").str.lower() == status_filter]
+                if presence_filter != "All" and "activity_status" in users_frame:
+                    users_frame = users_frame[users_frame["activity_status"].fillna("offline").str.lower() == presence_filter]
                 if role_filter != "All":
                     users_frame = users_frame[users_frame["role"].fillna("user").str.lower() == role_filter]
                 directory_columns = [
-                    column for column in ("email", "full_name", "company_name", "role", "plan", "account_status", "last_sign_in_at")
+                    column for column in ("email", "full_name", "company_name", "role", "plan", "activity_status", "last_active_at", "account_status", "last_sign_in_at")
                     if column in users_frame
                 ]
                 directory_frame = users_frame[directory_columns].rename(columns={
                     "email": "Email", "full_name": "Name", "company_name": "Company",
                     "role": "Role", "plan": "Plan", "account_status": "Account status",
-                    "last_sign_in_at": "Last sign-in",
+                    "activity_status": "Presence", "last_active_at": "Last active", "last_sign_in_at": "Last sign-in",
                 })
+                if "Presence" in directory_frame:
+                    presence_labels = {
+                        "active": "🟢 Active",
+                        "idle": "🟠 Idle",
+                        "offline": "⚪ Offline",
+                    }
+                    directory_frame["Presence"] = directory_frame["Presence"].fillna("offline").astype(str).str.lower().map(
+                        presence_labels
+                    ).fillna("⚪ Offline")
                 st.dataframe(directory_frame, use_container_width=True, hide_index=True)
             else:
                 st.info("No users match the selected filters.")
@@ -6696,7 +6738,7 @@ def run_authenticated_app() -> None:
                 selected_user = st.selectbox(
                     "Choose a user",
                     user_rows,
-                    format_func=lambda row: f"{row.get('email', 'Unknown user')} · {row.get('account_status', 'active')} · {row.get('plan', 'Starter')}",
+                    format_func=lambda row: f"{row.get('email', 'Unknown user')} · {row.get('activity_status', 'offline')} · {row.get('account_status', 'active')} · {row.get('plan', 'Starter')}",
                 )
                 selected_user_id = selected_user.get("id")
                 selected_role = str(selected_user.get("role", "user")).lower()
@@ -6711,6 +6753,8 @@ def run_authenticated_app() -> None:
                         ("Name", selected_user.get("full_name") or "—"),
                         ("Company", selected_user.get("company_name") or "—"),
                         ("Plan", selected_user.get("plan") or "Starter"),
+                        ("Presence", {"active": "🟢 Active", "idle": "🟠 Idle", "offline": "⚪ Offline"}.get(str(selected_user.get("activity_status") or "offline").lower(), "⚪ Offline")),
+                        ("Last active", selected_user.get("last_active_at") or "Never"),
                         ("Role", selected_role),
                         ("Status", selected_status),
                         ("Last sign-in", selected_user.get("last_sign_in_at") or "Never"),
@@ -6793,6 +6837,23 @@ def run_authenticated_app() -> None:
                             st.rerun()
                         except Exception:
                             st.error("Cadivor could not update maintenance mode. No change was confirmed.")
+
+        with support_tab:
+            st.subheader("Support activity")
+            st.caption("Privacy-safe operational timeline. It records sign-in sessions and page transitions, not passwords, BOM contents, searches, chat messages, or form text.")
+            if support_activity_rows:
+                support_frame = pd.DataFrame(support_activity_rows)
+                support_columns = [column for column in ("created_at", "email", "full_name", "event_type", "metadata") if column in support_frame]
+                st.dataframe(
+                    support_frame[support_columns].rename(columns={
+                        "created_at": "When", "email": "User", "full_name": "Name",
+                        "event_type": "Activity", "metadata": "Safe details",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.caption("No support activity has been recorded yet.")
 
         with audit_tab:
             st.subheader("Recent administrator activity")

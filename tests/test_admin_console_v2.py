@@ -29,6 +29,31 @@ class AdminConsoleV2ContractTests(unittest.TestCase):
         self.assertIn("ENABLE MAINTENANCE", self.runtime)
         self.assertIn("DISABLE MAINTENANCE", self.runtime)
 
+    def test_live_activity_is_privacy_safe_and_non_blocking(self):
+        activity_migration = (ROOT / "supabase" / "migrations" / "20260827_admin_live_activity.sql").read_text()
+        self.assertIn('supabase.rpc("cadivor_record_user_activity")', self.runtime)
+        self.assertIn('heartbeat_key = "cadivor_last_activity_heartbeat"', self.runtime)
+        self.assertIn("last_seen_at", activity_migration)
+        self.assertIn("interval '2 minutes'", activity_migration)
+        self.assertNotIn("page_name", activity_migration)
+        self.assertNotIn("bom", activity_migration.lower())
+
+    def test_console_exposes_presence_without_replacing_access_status(self):
+        self.assertIn('metric_columns[1].metric("Online now"', self.runtime)
+        self.assertIn('presence_filter = presence_column.selectbox("Presence"', self.runtime)
+        self.assertIn('"activity_status": "Presence"', self.runtime)
+        self.assertIn('"active": "🟢 Active"', self.runtime)
+
+    def test_support_timeline_is_admin_only_and_excludes_sensitive_content(self):
+        support_migration = (ROOT / "supabase" / "migrations" / "20260827_admin_support_activity.sql").read_text()
+        self.assertIn('supabase.rpc("cadivor_record_support_activity"', self.runtime)
+        self.assertIn('supabase.rpc("cadivor_admin_support_activity_events")', self.runtime)
+        self.assertIn('"Support activity"', self.runtime)
+        self.assertIn("where public.cadivor_is_admin()", support_migration)
+        self.assertIn("('session_started', 'page_viewed')", support_migration)
+        self.assertNotIn("password", support_migration.lower())
+        self.assertNotIn("bom", support_migration.lower())
+
     def test_selected_user_details_are_human_readable_not_a_raw_dictionary(self):
         self.assertIn("account_details = (", self.runtime)
         self.assertIn("for detail_label, detail_value in account_details", self.runtime)
