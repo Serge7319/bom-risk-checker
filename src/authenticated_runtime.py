@@ -12253,8 +12253,31 @@ def run_authenticated_app() -> None:
 
             sample_bom = pd.DataFrame(
                 {
-                    "mpn": ["TPS5430DDAR", "LM555CN/NOPB"],
-                    "quantity": [5, 2],
+                    "mpn": [
+                        "STM32F103C8T6",
+                        "TPS5430DDAR",
+                        "MCP2551-I/SN",
+                        "BQ24074RGTR",
+                        "ADS1115IDGSR",
+                        "W25Q64JVSSIQ",
+                        "SN74LVC2T45DCUR",
+                        "PC817X2NSZ1F",
+                        "GRM188R71C104KA01D",
+                        "RC0603FR-0710KL",
+                    ],
+                    "quantity": [1, 2, 1, 1, 1, 1, 2, 4, 12, 8],
+                    "description": [
+                        "32-bit microcontroller",
+                        "3 A buck regulator",
+                        "CAN transceiver",
+                        "Li-ion battery charger",
+                        "16-bit ADC",
+                        "64 Mbit serial flash memory",
+                        "Dual-bit voltage-level translator",
+                        "Optocoupler",
+                        "0.1 uF ceramic capacitor",
+                        "10 kOhm resistor",
+                    ],
                 }
             )
             sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
@@ -12270,9 +12293,9 @@ def run_authenticated_app() -> None:
             )
 
             st.download_button(
-                label="Download Sample BOM Template",
+                label="Download 10-Part Sample BOM",
                 data=sample_csv,
-                file_name="sample_bom_template.csv",
+                file_name="cadivor_10_part_sample_bom.csv",
                 mime="text/csv",
                 key="bom8_sample",
             )
