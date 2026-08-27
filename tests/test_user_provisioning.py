@@ -162,6 +162,25 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertEqual(read_mock.call_count, 2)
         supabase.table.return_value.update.assert_not_called()
 
+    def test_profile_visibility_is_retried_after_create(self):
+        supabase = MagicMock()
+        delayed_profile = {"id": "user-1", "email": "user@example.com", "plan": "Trial"}
+        supabase.table.return_value.insert.return_value.execute.return_value = types.SimpleNamespace(data=[])
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            side_effect=[
+                types.SimpleNamespace(data=[]),
+                types.SimpleNamespace(data=[]),
+                types.SimpleNamespace(data=[]),
+                types.SimpleNamespace(data=[delayed_profile]),
+            ],
+        ), patch("src.services.user_provisioning.time.sleep") as sleep_mock:
+            profile, created = ensure_user_profile(supabase, self._auth_user())
+
+        self.assertTrue(created)
+        self.assertEqual(profile, delayed_profile)
+        self.assertEqual(sleep_mock.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
