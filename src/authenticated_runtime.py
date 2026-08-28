@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 149041)
-Total output lines: 13147
-
 """Cadivor authenticated application runtime.
 
 Loaded only after the auth bootstrap succeeds. Heavy imports, workspace
@@ -3121,7 +3118,7279 @@ def run_authenticated_app() -> None:
                 ctx=st.session_state[portfolio_cache_key],
                 light_plotly_layout=light_plotly_layout,
             )
-        elif …89041 tokens truncated…        with st.container(border=True, key="af62b_best_card"):
+        elif workspace_category == "Monitoring":
+            render_dashboard_monitoring_workspace(
+                overview=overview,
+                parts=overview_parts,
+                alerts=overview_alerts,
+            )
+
+        # Existing customers can revisit the first-time experience without creating
+        # a disposable account. This is a preview only and never changes saved data.
+        st.html(
+            """
+            <p class="cv672-dashboard-preview-wrap">
+              <a class="cv6723-quick-action cv672-dashboard-preview-link"
+                 href="?page=Dashboard&amp;preview_onboarding=1"
+                 target="_self">
+                Preview onboarding
+              </a>
+            </p>
+            """
+        )
+
+        inject_workspace_consistency_css()
+        st.session_state.pop("cadivor_route_transition", None)
+        stop_authenticated_page()
+
+    if app_mode == "Analysis Details":
+        # Sprint 30.2: make persistence explicit on every saved-analysis page.
+        st.markdown(
+            """
+            <style id="cadivor-save-status-302">
+            .cv302-savebar{display:flex;align-items:center;justify-content:space-between;gap:14px;
+            border:1px solid #bbf7d0;background:linear-gradient(135deg,#ffffff,#f0fdf4);
+            border-radius:13px;padding:10px 13px;margin:0 0 12px;box-shadow:0 8px 22px rgba(5,150,105,.055)}
+            .cv302-saveleft{display:flex;align-items:center;gap:9px;min-width:0}
+            .cv302-saveicon{width:26px;height:26px;border-radius:9px;background:#dcfce7;border:1px solid #bbf7d0;
+            color:#15803d!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950}
+            .cv302-savetitle{font-size:11px;font-weight:900;color:#0f172a!important;line-height:1.25}
+            .cv302-savecopy{font-size:9px;font-weight:650;color:#64748b!important;margin-top:2px}
+            .cv302-savebadge{font-size:9px;font-weight:900;color:#047857!important;border:1px solid #a7f3d0;
+            background:#ecfdf5;border-radius:999px;padding:5px 8px;white-space:nowrap}
+            </style>
+            <div class="cv302-savebar">
+              <div class="cv302-saveleft">
+                <div class="cv302-saveicon">✓</div>
+                <div><div class="cv302-savetitle">Saved to your workspace</div>
+                <div class="cv302-savecopy">This analysis and its engineering activity are preserved automatically.</div></div>
+              </div>
+              <div class="cv302-savebadge">Autosave on</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        from src.pages.analysis_detail import render_analysis_detail
+        render_analysis_detail(
+            current_user=current_user,
+            supabase=supabase,
+            load_analysis_history=load_analysis_history,
+            light_plotly_layout=light_plotly_layout,
+            _qp_value=_qp_value,
+            workspace_id=active_workspace_id,
+            workspace_role=active_workspace_role,
+            workspace_members=(
+                list_members(supabase, active_workspace_id)[0]
+                if active_workspace_id
+                else []
+            ),
+        )
+        stop_authenticated_page()
+
+    st.markdown(
+        """
+        <style>
+          .cv130-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:21px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
+          .cv130-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv130-title{font-size:27px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-bottom:7px}.cv130-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.6;max-width:920px}
+          .cv130-decision-card,.cv130-packet{border:1px solid #dbe3ef;background:#fff;border-radius:20px;padding:16px;margin-bottom:11px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.cv130-decision-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cv130-decision-title{font-size:16px;font-weight:950;color:#0f172a;letter-spacing:-.02em}.cv130-packet-title{font-size:23px;font-weight:950;color:#0f172a;letter-spacing:-.035em}.cv130-reason{font-size:10px;font-weight:720;color:#52647a;line-height:1.5;margin-top:5px}
+          .cv130-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.cv130-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv130-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv130-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+          .cv130-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}.cv130-meta span{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#1d4ed8}
+          .cv130-impact{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:12px 0}.cv130-impact div{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:11px}.cv130-impact span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:5px}.cv130-impact strong{font-size:13px;font-weight:950;color:#0f172a}
+          .cv131-compact{padding:13px 15px;margin-bottom:7px}.cv131-card-main{min-width:0}.cv131-card-badges{display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end}.cv131-age{border-radius:999px;padding:6px 9px;font-size:8px;font-weight:950;border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8;white-space:nowrap}.cv131-age.watch{border-color:#fde68a;background:#fffbeb;color:#a16207}.cv131-age.warn{border-color:#fdba74;background:#fff7ed;color:#c2410c}.cv131-age.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+          .cv131-summary-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr .7fr .8fr;gap:8px;margin-top:10px}.cv131-summary-grid div{border-left:2px solid #dbeafe;padding-left:8px}.cv131-summary-grid span{display:block;font-size:7px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:#64748b}.cv131-summary-grid strong{font-size:10px;font-weight:900;color:#0f172a;line-height:1.3}.cv131-progress{height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:10px}.cv131-progress div{height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv131-progress.packet{height:8px;margin-top:14px}.cv131-next{font-size:9px;font-weight:750;color:#52647a;margin-top:6px}.cv131-breakdown{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.cv131-breakdown div{border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff}.cv131-breakdown span{display:block;font-size:8px;font-weight:950;color:#64748b;text-transform:uppercase}.cv131-breakdown strong{font-size:16px;font-weight:950;color:#0f172a}
+          @media(max-width:900px){.cv130-decision-head{display:block}.cv130-impact,.cv131-breakdown{grid-template-columns:1fr 1fr}.cv131-summary-grid{grid-template-columns:1fr 1fr}.cv130-badge{display:inline-block;margin-top:10px}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <style>
+          .cv123-monitor-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
+          .cv123-monitor-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv123-monitor-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv123-monitor-title{font-size:25px;font-weight:950;color:#0f172a;letter-spacing:-.035em;margin-bottom:6px}.cv123-monitor-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.55;max-width:900px}
+          .cv123-monitor-badge{border:1px solid #bfdbfe;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;background:#eff6ff;color:#1d4ed8}.cv123-monitor-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv123-monitor-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv123-monitor-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+          .cv123-alert-card{border:1px solid #dbe3ef;background:#fff;border-radius:18px;padding:15px;margin-bottom:10px;box-shadow:0 10px 28px rgba(15,23,42,.045)}.cv123-alert-head{display:flex;justify-content:space-between;gap:12px}.cv123-alert-part{font-size:14px;font-weight:950;color:#0f172a}.cv123-alert-type{font-size:9px;font-weight:950;color:#2563eb;text-transform:uppercase;letter-spacing:.07em}.cv123-alert-message{font-size:11px;font-weight:720;color:#475569;line-height:1.5;margin:8px 0}.cv123-alert-meta{display:flex;gap:7px;flex-wrap:wrap}.cv123-alert-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:900;color:#1d4ed8}.cv123-alert-action{border-top:1px solid #e2e8f0;margin-top:11px;padding-top:11px;font-size:11px;font-weight:780;color:#0f172a}
+          @media(max-width:900px){.cv123-monitor-top{display:block}.cv123-monitor-badge{display:inline-block;margin-top:10px}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if app_mode == "Monitoring":
+        monitoring_allowed = is_admin or selected_plan_name in {"Trial", "Professional", "Business", "Enterprise"}
+        monitoring_limit = selected_plan.get("monitored_parts_limit")
+        if not monitoring_allowed:
+            st.markdown(
+                """
+                <section class="cv123-monitor-hero">
+                  <div class="cv123-monitor-top"><div>
+                    <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
+                    <div class="cv123-monitor-title">Continuous component monitoring is not included in this plan</div>
+                    <div class="cv123-monitor-copy">Upgrade to Professional to monitor up to 2,500 components, receive lifecycle and inventory alerts, and turn supplier changes into engineering actions.</div>
+                  </div><span class="cv123-monitor-badge warn">Upgrade required</span></div>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("View Professional plan", type="primary", key="monitoring_upgrade_plan"):
+                navigate_to("Pricing")
+            stop_authenticated_page()
+
+        return_analysis_id = _qp_value("return_analysis_id")
+        if return_analysis_id and st.button("← Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
+            navigate_to("Analysis Details", analysis_id=return_analysis_id)
+
+        def _monitor_query(table_name, columns="*"):
+            return _workspace_query(supabase.table(table_name).select(columns)).eq("user_id", current_user["id"])
+
+        try:
+            alert_history = _monitor_query("monitor_alerts").order("created_at", desc=True).limit(500).execute()
+            alert_df = pd.DataFrame(alert_history.data or [])
+        except Exception as exc:
+            st.error(f"Monitoring alerts could not be loaded: {exc}")
+            alert_df = pd.DataFrame()
+
+        try:
+            monitor_history = _monitor_query("part_monitor_history").order("created_at", desc=True).limit(5000).execute()
+            monitor_df = pd.DataFrame(monitor_history.data or [])
+        except Exception as exc:
+            st.error(f"Monitoring history could not be loaded: {exc}")
+            monitor_df = pd.DataFrame()
+
+        from src.monitoring_intelligence import build_monitoring_action_center
+        monitoring_center = build_monitoring_action_center(alert_df, monitor_df)
+        monitored_count = monitoring_center["monitored_components"]
+        monitor_limit_label = "Unlimited" if monitoring_limit is None or is_admin else f"{int(monitoring_limit):,}"
+        monitor_usage = 0 if monitoring_limit in (None, 0) or is_admin else min(100, round(monitored_count / int(monitoring_limit) * 100))
+
+        cadivor_section_header(
+            str(monitoring_center["posture"]),
+            eyebrow="Monitoring Intelligence Center",
+            description=str(monitoring_center["summary"]),
+            icon="radar",
+        )
+
+        st.markdown(
+            """
+            <style>
+            .cv320-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:14px 0 22px}.cv320-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:15px 16px;box-shadow:0 10px 28px rgba(15,23,42,.045);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.cv320-kpi:hover{transform:translateY(-2px);border-color:#bfdbfe;box-shadow:0 16px 34px rgba(37,99,235,.09)}.cv320-kpi span{display:block;font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#64748b!important;margin-bottom:7px}.cv320-kpi strong{font-size:25px;font-weight:950;color:#0f172a!important}.cv320-kpi small{display:block;font-size:10px;font-weight:700;color:#64748b!important;margin-top:5px}
+            .cv320-card{--accent:#2563eb;border:1px solid #dbe3ef;border-left:5px solid var(--accent);background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05);transition:transform .18s ease,box-shadow .18s ease}.cv320-card:hover{transform:translateY(-1px);box-shadow:0 16px 36px rgba(15,23,42,.075)}.cv320-card.critical{--accent:#dc2626}.cv320-card.high{--accent:#f97316}.cv320-card.medium{--accent:#eab308}.cv320-card.low{--accent:#16a34a}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-recommendation{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff,#f8fbff);border-radius:14px;margin-top:13px;padding:13px 14px}.cv320-recicon{width:31px;height:31px;border-radius:10px;background:#dbeafe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-weight:950}.cv320-rectitle{font-size:10px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8!important}.cv320-reccopy{font-size:12px;font-weight:850;color:#0f172a!important;line-height:1.45;margin-top:3px}.cv320-impact{font-size:10px;font-weight:760;color:#52647a!important;line-height:1.4;margin-top:5px}.cv320-confidence{border-left:1px solid #bfdbfe;padding-left:12px;text-align:right;white-space:nowrap}.cv320-confidence span{display:block;font-size:8px;font-weight:900;text-transform:uppercase;color:#64748b!important}.cv320-confidence strong{font-size:15px;font-weight:950;color:#1d4ed8!important}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
+            .cv320-evidence{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:5px 0 13px}.cv320-evidence div{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv320-evidence span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#64748b!important}.cv320-evidence strong{display:block;font-size:11px;font-weight:900;color:#0f172a!important;margin-top:4px}.cv320-section-title{font-size:12px;font-weight:950;color:#0f172a!important;margin:4px 0 10px}.cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv321-timeline{position:relative;margin:8px 0 10px;padding-left:22px}.cv321-timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:2px;background:#dbeafe}.cv321-event{position:relative;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px 14px;margin:0 0 10px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.cv321-event:before{content:"";position:absolute;left:-20px;top:17px;width:10px;height:10px;border-radius:50%;background:#2563eb;border:3px solid #eff6ff}.cv321-eventtime{font-size:9px;font-weight:850;color:#64748b!important}.cv321-eventtitle{font-size:13px;font-weight:950;color:#0f172a!important;margin-top:3px}.cv321-eventcopy{font-size:11px;font-weight:700;color:#52647a!important;margin-top:4px;line-height:1.45}
+            [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
+            @media(max-width:1200px){.cv320-kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:800px){.cv320-kpis{grid-template-columns:repeat(2,1fr)}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"""
+            <div class="cv123-monitor-hero cv123-monitor-hero--compact">
+              <span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">{monitoring_center['active_alerts']} active {'alert' if monitoring_center['active_alerts'] == 1 else 'alerts'}</span>
+            </div>
+            <div class="cv320-limit"><div class="cv320-limitrow"><span>{html.escape(str(selected_plan_name))} monitoring usage</span><span>{monitored_count:,} / {monitor_limit_label}</span></div><div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div></div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        active_queue = monitoring_center.get("active_queue")
+        price_alerts = 0
+        if isinstance(active_queue, pd.DataFrame) and not active_queue.empty:
+            price_alerts = int(
+                active_queue["Alert Type"]
+                .astype(str)
+                .str.contains("price", case=False, regex=True)
+                .sum()
+            )
+
+        render_kpi_row_safe(
+            [
+                MetricCard(label="Monitored", value=f"{monitored_count:,}", detail="components", tone="info", icon="radar"),
+                MetricCard(label="Critical action", value=str(monitoring_center["immediate_actions"]), detail="priority ≥ 75", tone="danger", icon="octagon-alert"),
+                MetricCard(label="Lifecycle", value=str(monitoring_center["lifecycle_alerts"]), detail="active changes", tone="warning", icon="clock-3"),
+                MetricCard(label="Inventory", value=str(monitoring_center["inventory_alerts"]), detail="stock alerts", tone="monitoring", icon="boxes"),
+                MetricCard(label="Stock", value=f"{monitored_count:,}", detail="tracked components", tone="info", icon="package-search"),
+                MetricCard(label="Pricing", value=str(price_alerts), detail="price change alerts", tone="confidence", icon="dollar-sign"),
+            ],
+            columns=6,
+            compact=True,
+        )
+
+        def _monitor_display(value, fallback="—"):
+            if value is None:
+                return fallback
+            try:
+                if pd.isna(value):
+                    return fallback
+            except Exception:
+                pass
+            cleaned = str(value).strip()
+            return fallback if not cleaned or cleaned.lower() in {"nan", "none", "null", "nat"} else cleaned
+
+        def _monitor_date(value):
+            cleaned = _monitor_display(value, "")
+            if not cleaned:
+                return None
+            try:
+                return pd.to_datetime(cleaned).date()
+            except Exception:
+                return None
+
+        def _monitor_confidence(score):
+            return max(65, min(98, int(round(float(score or 0) * 0.92 + 8))))
+
+        queue_tab, components_tab, timeline_tab, export_tab = st.tabs(["Action Queue", "Monitored Components", "Timeline", "Export"])
+
+        with queue_tab:
+            queue = monitoring_center["prioritized_alerts"]
+            if queue.empty:
+                st.success("No monitoring exception requires action. Continue scheduled supplier and lifecycle checks.")
+            else:
+                f1, f2, f3, f4 = st.columns([1.1, 1.1, 1.1, 1.8])
+                severity_filter = f1.selectbox("Severity", ["All", "Critical", "High", "Medium", "Low"], key="m32_severity")
+                status_filter = f2.selectbox("Status", ["Active", "All", "Open", "In Review", "Resolved", "Dismissed", "Reopened"], key="m32_status")
+                type_filter = f3.selectbox("Change type", ["All", "Lifecycle", "Inventory", "Price", "Supplier"], key="m32_type")
+                search_filter = f4.text_input("Search", placeholder="Part number, owner, or alert text", key="m32_search")
+                filtered = queue.copy()
+                if severity_filter != "All": filtered = filtered[filtered["Severity"].str.lower() == severity_filter.lower()]
+                if status_filter == "Active": filtered = filtered[~filtered["Status"].isin(["Resolved", "Dismissed"])]
+                elif status_filter != "All": filtered = filtered[filtered["Status"] == status_filter]
+                if type_filter != "All":
+                    pattern = "stock|inventory" if type_filter == "Inventory" else type_filter.lower()
+                    filtered = filtered[filtered["Alert Type"].str.contains(pattern, case=False, regex=True)]
+                if search_filter.strip():
+                    q = search_filter.strip().lower()
+                    filtered = filtered[filtered.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
+                st.caption(f"Showing {len(filtered)} of {len(queue)} monitoring records.")
+
+                for idx, row in filtered.head(50).iterrows():
+                    score = int(row["Priority Score"])
+                    tone = "bad" if score >= 75 else "warn" if score >= 45 else "good"
+                    severity = _monitor_display(row.get("Severity"), "Medium")
+                    severity_class = severity.lower() if severity.lower() in {"critical", "high", "medium", "low"} else "medium"
+                    part_number = _monitor_display(row.get("Part Number"), "Unknown component")
+                    alert_type = _monitor_display(row.get("Alert Type"), "Monitoring change")
+                    status = _monitor_display(row.get("Status"), "Open")
+                    owner = _monitor_display(row.get("Owner"), "Unassigned")
+                    due_label = _monitor_display(row.get("Due Date"), "No due date")
+                    change = _monitor_display(row.get("Change"), "Monitoring evidence changed.")
+                    recommended_action = _monitor_display(row.get("Recommended Action"), "Review this change and document the engineering response.")
+                    expected_impact = _monitor_display(row.get("Expected Impact"), "Confirm whether redesign, sourcing, or qualification action is required.")
+                    confidence = _monitor_confidence(score)
+                    current_value = _monitor_display(row.get("Current Value", row.get("Current", row.get("New Value", ""))), "Latest evidence available")
+                    previous_value = _monitor_display(row.get("Previous Value", row.get("Previous", row.get("Old Value", ""))), "Earlier baseline")
+                    supplier = _monitor_display(row.get("Supplier", row.get("Primary Supplier", "")), "Supplier data pending")
+                    checked = _monitor_display(row.get("Last Checked", row.get("Created At", row.get("created_at", ""))), "Recently")
+                    st.markdown(f"""<section class="cv320-card {severity_class}"><div class="cv320-cardhead"><div><div class="cv320-type">{html.escape(alert_type)}</div><div class="cv320-part">{html.escape(part_number)}</div></div><span class="cv320-score {tone}">Priority {score}/100</span></div><div class="cv320-change">{html.escape(change)}</div><div class="cv320-pills"><span class="cv320-pill">Status: {html.escape(status)}</span><span class="cv320-pill">Owner: {html.escape(owner)}</span><span class="cv320-pill">Due: {html.escape(due_label)}</span><span class="cv320-pill">Severity: {html.escape(severity)}</span></div><div class="cv320-recommendation"><div class="cv320-recicon">i</div><div><div class="cv320-rectitle">Cadivor recommendation</div><div class="cv320-reccopy">{html.escape(recommended_action)}</div><div class="cv320-impact"><b>Why it matters:</b> {html.escape(expected_impact)}</div></div><div class="cv320-confidence"><span>Confidence</span><strong>{confidence}%</strong></div></div></section>""", unsafe_allow_html=True)
+
+                    alert_id = str(row.get("Alert ID", ""))
+                    with st.expander("Engineering evidence and workflow", expanded=False):
+                        st.markdown(f"""<div class="cv320-section-title">Engineering evidence</div><div class="cv320-evidence"><div><span>Previous state</span><strong>{html.escape(previous_value)}</strong></div><div><span>Current state</span><strong>{html.escape(current_value)}</strong></div><div><span>Supplier</span><strong>{html.escape(supplier)}</strong></div><div><span>Last checked</span><strong>{html.escape(checked)}</strong></div></div><div class="cv320-section-title">Engineering workflow</div>""", unsafe_allow_html=True)
+                        w1, w2, w3 = st.columns(3)
+                        status_options = ["Open", "In Review", "Resolved", "Dismissed", "Reopened"]
+                        priority_options = ["Low", "Normal", "High", "Urgent"]
+                        row_status = status if status in status_options else "Open"
+                        row_priority = _monitor_display(row.get("Priority"), "Normal")
+                        row_priority = row_priority if row_priority in priority_options else "Normal"
+                        new_status = w1.selectbox("Status", status_options, index=status_options.index(row_status), key=f"m32_status_{alert_id}_{idx}")
+                        new_priority = w2.selectbox("Priority", priority_options, index=priority_options.index(row_priority), key=f"m32_priority_{alert_id}_{idx}")
+                        existing_owner = "" if owner in {"Unassigned", "Engineering", "Procurement", "Supply Chain", "Component Engineering", "Engineering & Supply Chain"} else owner
+                        new_owner = w3.text_input("Assigned to", value=existing_owner, placeholder="Name or team", key=f"m32_owner_{alert_id}_{idx}")
+                        d1, d2 = st.columns([1, 2])
+                        due_value = d1.date_input("Due date", value=_monitor_date(row.get("Due Date")), key=f"m32_due_{alert_id}_{idx}")
+                        note_value = d2.text_area("Engineering note", value=_monitor_display(row.get("Note"), ""), placeholder="Document rationale, validation evidence, or next step...", key=f"m32_note_{alert_id}_{idx}")
+                        a1, a2, a3, a4 = st.columns(4)
+                        if a1.button("Save workflow", type="primary", use_container_width=True, key=f"m32_save_{alert_id}_{idx}"):
+                            try:
+                                payload = {"workflow_status": new_status, "priority": new_priority, "assigned_to": new_owner or None, "due_date": due_value.isoformat() if due_value else None, "review_note": note_value or None, "reviewed_at": datetime.now(timezone.utc).isoformat(), "resolved_at": datetime.now(timezone.utc).isoformat() if new_status == "Resolved" else None}
+                                supabase.table("monitor_alerts").update(payload).eq("id", alert_id).eq("user_id", current_user["id"]).execute()
+                                try:
+                                    supabase.table("monitoring_events").insert({"user_id": current_user["id"], "workspace_id": active_workspace_id or None, "alert_id": alert_id or None, "analysis_id": str(row.get("Analysis ID", "") or "") or None, "part_number": str(row["Part Number"]), "event_type": "Workflow Updated", "event_summary": f"Alert moved to {new_status}; priority {new_priority}.", "previous_value": str(row["Status"]), "current_value": new_status, "metadata": {"assigned_to": new_owner, "due_date": payload["due_date"]}}).execute()
+                                except Exception:
+                                    pass
+                                st.success("Monitoring workflow saved.")
+                                st.rerun()
+                            except Exception:
+                                st.error(
+                                    "Cadivor could not save this monitoring workflow. "
+                                    "Please try again or contact support if the problem continues."
+                                )
+                        if a2.button("Find alternative", use_container_width=True, key=f"m32_alt_{alert_id}_{idx}"):
+                            navigate_to_alternative_finder(
+                                mpn=str(row["Part Number"]),
+                                analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""),
+                                return_analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""),
+                                source_page="monitoring",
+                            )
+                        if a3.button("Open decisions", use_container_width=True, key=f"m32_decision_{alert_id}_{idx}"):
+                            navigate_to("Engineering Decisions", focus_part=str(row["Part Number"]))
+                        a4.download_button("Export evidence", data=pd.DataFrame([row]).to_csv(index=False).encode("utf-8"), file_name=f"{str(row['Part Number']).replace('/', '_')}_monitoring_evidence.csv", mime="text/csv", use_container_width=True, key=f"m32_export_{alert_id}_{idx}")
+
+        with components_tab:
+            components = monitoring_center["latest_components"]
+            if components.empty:
+                st.info("No monitored component snapshots are available yet.")
+            else:
+                component_search = st.text_input("Search monitored components", placeholder="Part number, supplier, lifecycle, or risk", key="m32_component_search")
+                visible = components.copy()
+                if component_search.strip():
+                    q = component_search.strip().lower()
+                    visible = visible[visible.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
+                cadivor_engineering_dataframe(visible)
+                if monitoring_limit is not None and not is_admin and monitored_count >= int(monitoring_limit):
+                    st.warning(f"Your {selected_plan_name} workspace has reached its {int(monitoring_limit):,}-part monitoring limit. Existing monitoring remains active; upgrade to Business for unlimited monitoring.")
+
+        with timeline_tab:
+            try:
+                events = _monitor_query("monitoring_events").order("created_at", desc=True).limit(250).execute()
+                event_df = pd.DataFrame(events.data or [])
+            except Exception:
+                event_df = pd.DataFrame()
+            timeline_source = event_df.copy()
+            if timeline_source.empty:
+                timeline_source = alert_df.copy()
+                if not timeline_source.empty:
+                    timeline_source = timeline_source.rename(columns={"alert_type": "event_type", "alert_message": "event_summary"})
+            if timeline_source.empty:
+                st.info("No monitoring timeline events are available yet.")
+            else:
+                st.markdown('<div class="cv321-timeline">', unsafe_allow_html=True)
+                for _, event in timeline_source.head(100).iterrows():
+                    event_time = _monitor_display(event.get("created_at"), "Recent")
+                    try:
+                        parsed = pd.to_datetime(event_time)
+                        event_time = parsed.strftime("%b %d, %Y · %I:%M %p")
+                    except Exception:
+                        pass
+                    event_part = _monitor_display(event.get("part_number"), "Workspace")
+                    event_type = _monitor_display(event.get("event_type"), "Monitoring update")
+                    event_summary = _monitor_display(event.get("event_summary"), "Monitoring evidence was updated.")
+                    previous = _monitor_display(event.get("previous_value"), "")
+                    current = _monitor_display(event.get("current_value"), "")
+                    transition = f" · {previous} → {current}" if previous and current else ""
+                    event_html = f'<div class="cv321-event"><div class="cv321-eventtime">{html.escape(event_time)}</div><div class="cv321-eventtitle">{html.escape(event_part)} · {html.escape(event_type)}</div><div class="cv321-eventcopy">{html.escape(event_summary + transition)}</div></div>'
+                    st.markdown(event_html, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+        with export_tab:
+            queue = monitoring_center["prioritized_alerts"]
+            components = monitoring_center["latest_components"]
+            e1, e2 = st.columns(2)
+            e1.download_button("Download monitoring action queue", data=queue.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitoring_action_queue.csv", mime="text/csv", type="primary", use_container_width=True, key="m32_queue_export")
+            e2.download_button("Download monitored component snapshot", data=components.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitored_components.csv", mime="text/csv", use_container_width=True, key="m32_components_export")
+
+        stop_authenticated_page()
+
+
+    # ---------- Supply Risk Scenario ----------
+    if app_mode == "Supply Risk Scenario":
+        try:
+            scenario_analyses = load_analysis_history(current_user["id"]) or []
+        except Exception:
+            scenario_analyses = []
+
+        try:
+            scenario_parts_response = (
+                _workspace_query(supabase.table("analysis_parts").select("*"))
+                .eq("user_id", current_user["id"])
+                .limit(10000)
+                .execute()
+            )
+            scenario_parts = scenario_parts_response.data or []
+        except Exception:
+            scenario_parts = []
+
+        st.markdown("### Scenario assumptions")
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            scenario_build_quantity = st.number_input(
+                "Planned builds",
+                min_value=1,
+                max_value=1_000_000,
+                value=int(st.session_state.get("scenario_build_quantity", 100)),
+                step=10,
+                key="scenario_build_quantity",
+            )
+        with s2:
+            stock_reduction_percent = st.slider(
+                "Stock reduction",
+                min_value=0,
+                max_value=100,
+                value=int(st.session_state.get("scenario_stock_reduction", 0)),
+                step=5,
+                key="scenario_stock_reduction",
+                help="Models a percentage loss of currently recorded market stock.",
+            )
+        with s3:
+            supplier_loss = st.number_input(
+                "Suppliers lost",
+                min_value=0,
+                max_value=10,
+                value=int(st.session_state.get("scenario_supplier_loss", 0)),
+                step=1,
+                key="scenario_supplier_loss",
+            )
+        with s4:
+            demand_growth_percent = st.slider(
+                "Demand growth",
+                min_value=0,
+                max_value=300,
+                value=int(st.session_state.get("scenario_demand_growth", 0)),
+                step=10,
+                key="scenario_demand_growth",
+            )
+
+        include_lifecycle_event = st.checkbox(
+            "Model a lifecycle disruption for components already showing moderate or higher risk",
+            value=bool(st.session_state.get("scenario_lifecycle_event", False)),
+            key="scenario_lifecycle_event",
+        )
+
+        from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
+        scenario_intelligence = build_supply_scenario(
+            scenario_analyses,
+            scenario_parts,
+            build_quantity=int(scenario_build_quantity),
+            stock_reduction_percent=int(stock_reduction_percent),
+            supplier_loss=int(supplier_loss),
+            demand_growth_percent=int(demand_growth_percent),
+            include_lifecycle_event=bool(include_lifecycle_event),
+        )
+
+        render_supply_scenario(
+            intelligence=scenario_intelligence,
+            internal_nav_button=internal_nav_button,
+        )
+        stop_authenticated_page()
+
+
+    # ---------- Cost Optimization ----------
+    if app_mode == "Cost Optimization":
+        try:
+            cost_analyses = load_analysis_history(current_user["id"]) or []
+        except Exception:
+            cost_analyses = []
+
+        try:
+            cost_parts_response = (
+                _workspace_query(supabase.table("analysis_parts").select("*"))
+                .eq("user_id", current_user["id"])
+                .limit(10000)
+                .execute()
+            )
+            cost_parts = cost_parts_response.data or []
+        except Exception:
+            cost_parts = []
+
+        st.markdown(
+            """
+            <section class="cv21-hero">
+              <div class="cv21-eyebrow">Engineering & Procurement Intelligence</div>
+              <div class="cv21-title">Cost Optimization</div>
+              <div class="cv21-copy">
+                Model production cost using supplier pricing saved during BOM analysis.
+                Change the build quantity to see total modeled spend and estimated savings update.
+              </div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("### Production scenario")
+        build_quantity = st.number_input(
+            "Number of builds to model",
+            min_value=1,
+            max_value=1_000_000,
+            value=int(st.session_state.get("cost_build_quantity", 100)),
+            step=10,
+            key="cost_build_quantity",
+            help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
+        )
+
+        from src.cost_optimization import build_cost_optimization, render_cost_optimization
+        cost_intelligence = build_cost_optimization(
+            cost_analyses,
+            cost_parts,
+            int(build_quantity),
+        )
+        render_cost_optimization(
+            intelligence=cost_intelligence,
+            internal_nav_button=internal_nav_button,
+        )
+        stop_authenticated_page()
+
+
+    # ---------- Design Impact Analyzer ----------
+    if app_mode == "Design Impact Analyzer":
+        try:
+            impact_analyses = load_analysis_history(current_user["id"]) or []
+        except Exception:
+            impact_analyses = []
+
+        try:
+            impact_parts_response = (
+                _workspace_query(supabase.table("analysis_parts").select("*"))
+                .eq("user_id", current_user["id"])
+                .limit(10000)
+                .execute()
+            )
+            impact_parts = impact_parts_response.data or []
+        except Exception:
+            impact_parts = []
+
+        requested_impact_mpn = (
+            st.session_state.get("design_impact_mpn")
+            or _qp_value("part")
+            or _qp_value("mpn")
+            or ""
+        )
+
+        from src.design_impact_analyzer import build_design_impact, render_design_impact
+        impact_intelligence = build_design_impact(
+            impact_analyses,
+            impact_parts,
+            requested_impact_mpn,
+        )
+        render_design_impact(
+            intelligence=impact_intelligence,
+            internal_nav_button=internal_nav_button,
+        )
+        stop_authenticated_page()
+
+
+    # ---------- Portfolio Intelligence ----------
+    if app_mode == "Portfolio Intelligence":
+        try:
+            portfolio_analyses = load_analysis_history(current_user["id"]) or []
+        except Exception:
+            portfolio_analyses = []
+
+        try:
+            portfolio_parts_response = (
+                _workspace_query(supabase.table("analysis_parts").select("*"))
+                .eq("user_id", current_user["id"])
+                .limit(10000)
+                .execute()
+            )
+            portfolio_parts = portfolio_parts_response.data or []
+        except Exception:
+            portfolio_parts = []
+
+        try:
+            portfolio_alert_response = (
+                _workspace_query(supabase.table("monitor_alerts").select("*"))
+                .eq("user_id", current_user["id"])
+                .order("created_at", desc=True)
+                .limit(500)
+                .execute()
+            )
+            portfolio_alerts = portfolio_alert_response.data or []
+        except Exception:
+            portfolio_alerts = []
+
+        from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
+        portfolio_intelligence = build_portfolio_intelligence(
+            portfolio_analyses,
+            portfolio_parts,
+            portfolio_alerts,
+        )
+        render_portfolio_intelligence(
+            intelligence=portfolio_intelligence,
+            internal_nav_button=internal_nav_button,
+        )
+        stop_authenticated_page()
+
+
+    # ---------- Procurement Advisor ----------
+    if app_mode == "Procurement Advisor":
+        try:
+            pa_analyses = load_analysis_history(current_user["id"]) or []
+            pa_parts_response = (
+                _workspace_query(supabase.table("analysis_parts").select("*"))
+                .eq("user_id", current_user["id"])
+                .limit(5000)
+                .execute()
+            )
+            pa_parts = pa_parts_response.data or []
+        except Exception:
+            pa_analyses, pa_parts = [], []
+
+        advisor = build_procurement_advisor(
+            analyses=pa_analyses,
+            parts=pa_parts,
+            alerts=[],
+        )
+        st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+        cadivor_section_header(
+            "Procurement Advisor",
+            eyebrow="Sourcing & Purchasing",
+            description=advisor["summary"],
+            icon="shopping-cart",
+        )
+
+        render_kpi_row_safe(
+            [
+                MetricCard(label="Action Needed", value=str(advisor["urgent_count"]), tone="danger", icon="shopping-cart"),
+                MetricCard(label="Monitor", value=str(advisor["monitor_count"]), tone="monitoring", icon="radar"),
+                MetricCard(label="Need Second Source", value=str(advisor["second_source_count"]), tone="warning", icon="git-branch"),
+                MetricCard(label="Replacement Needed", value=str(advisor["replace_count"]), tone="info", icon="arrow-right-left"),
+            ],
+            columns=4,
+        )
+
+        priority_tab, details_tab = st.tabs(
+            ["Action Needed", "All Components"]
+        )
+        with priority_tab:
+            urgent_rows = [
+                row for row in advisor["recommendations"]
+                if row["Recommendation"] != "No immediate action"
+            ][:10]
+            if not urgent_rows:
+                st.success("No immediate purchasing action is required.")
+            for index, row in enumerate(urgent_rows):
+                st.markdown(
+                    f"""
+                    <section class="cv151-card">
+                      <div class="cv151-card-title">{html.escape(row['Part Number'])}</div>
+                      <div class="cv151-card-copy">
+                        <b>Recommended action: {html.escape(row['Recommendation'])}</b><br>
+                        {html.escape(row['Next Step'])}
+                      </div>
+                      <div class="cv151-meta">
+                        <span>Priority {row['Priority Score']}/100</span>
+                        <span>Stock {row['Available Stock']:,}</span>
+                        <span>{row['Supplier Sources']} supplier(s)</span>
+                      </div>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                cols = st.columns(2)
+                with cols[0]:
+                    internal_nav_button(
+                        "Find Alternative",
+                        "Alternative Finder",
+                        key=f"pa_alt_{index}",
+                        use_container_width=True,
+                        original_part=row["Part Number"],
+                        source_page="procurement_advisor",
+                    )
+                with cols[1]:
+                    internal_nav_button(
+                        "Open Monitoring",
+                        "Monitoring",
+                        key=f"pa_monitor_{index}",
+                        use_container_width=True,
+                        mpn=row["Part Number"],
+                    )
+
+        with details_tab:
+            if advisor["recommendation_df"].empty:
+                st.info("No component purchasing data is available.")
+            else:
+                cadivor_engineering_dataframe(
+                    advisor["recommendation_df"],
+                    column_config={
+                        "Risk Level": st.column_config.TextColumn(width="small"),
+                        "Recommended Action": st.column_config.TextColumn(width="medium"),
+                    },
+                )
+                cadivor_button_wrap("secondary")
+                st.download_button(
+                    "Download Procurement Details",
+                    advisor["recommendation_df"].to_csv(index=False).encode("utf-8"),
+                    file_name="cadivor_procurement_details.csv",
+                    mime="text/csv",
+                    key="pa_export",
+                )
+                cadivor_button_wrap_end()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+        stop_authenticated_page()
+
+
+    # ---------- Engineering Decision Center ----------
+    if app_mode == "Engineering Decisions":
+        try:
+            decision_alert_response = (
+                _workspace_query(
+                    supabase.table("monitor_alerts").select("*")
+                )
+                .eq("user_id", current_user["id"])
+                .order("created_at", desc=True)
+                .limit(150)
+                .execute()
+            )
+            decision_alert_df = pd.DataFrame(decision_alert_response.data or [])
+        except Exception:
+            decision_alert_df = pd.DataFrame()
+
+        try:
+            decision_analyses = load_analysis_history(current_user["id"]) or []
+        except Exception:
+            decision_analyses = []
+
+        decision_scope_key = active_workspace_id or "personal"
+        decision_cache_key = (
+            f"engineering_decision_state_{current_user['id']}_{decision_scope_key}"
+        )
+
+        if decision_cache_key not in st.session_state:
+            persistent_decision_state, decision_load_error = load_decision_state(
+                supabase,
+                user_id=current_user["id"],
+                workspace_id=active_workspace_id or None,
+            )
+            st.session_state[decision_cache_key] = persistent_decision_state
+            st.session_state[
+                f"{decision_cache_key}_load_error"
+            ] = decision_load_error
+
+        decision_state = st.session_state[decision_cache_key]
+
+        decision_center = build_decision_center(
+            alert_df=decision_alert_df,
+            analyses=decision_analyses,
+            saved_state=decision_state,
+        )
+        all_decisions = decision_center["decisions"]
+
+        focus_decision_id = _qp_value("decision_id")
+        focus_part = _qp_value("focus_part")
+        selected_decision = None
+
+        if focus_decision_id:
+            selected_decision = next(
+                (
+                    decision
+                    for decision in all_decisions
+                    if decision["decision_id"] == focus_decision_id
+                ),
+                None,
+            )
+        elif focus_part:
+            selected_decision = next(
+                (
+                    decision
+                    for decision in all_decisions
+                    if str(decision["part_number"]).upper() == str(focus_part).upper()
+                ),
+                None,
+            )
+
+        st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+        cadivor_section_header(
+            "Turn component intelligence into approved engineering action",
+            eyebrow="Cadivor Engineering Decision Center",
+            description=(
+                "Review prioritized decisions, assign ownership, simulate expected impact, "
+                "document engineering notes, and move work from open review to production readiness."
+            ),
+            icon="clipboard-check",
+        )
+
+        decision_load_error = st.session_state.get(
+            f"{decision_cache_key}_load_error"
+        )
+        if decision_load_error:
+            st.warning(
+                "Persistent decision storage is not available yet. "
+                "Run the Milestone 13.2 SQL, then refresh this page."
+            )
+        else:
+            st.caption(
+                "Decision workflow, notes, and history are saved to your Cadivor account."
+            )
+
+        if selected_decision:
+            if st.button(
+                "← Back to Engineering Decisions",
+                key="decision_packet_back",
+                type="secondary",
+            ):
+                navigate_to("Engineering Decisions")
+
+            st.markdown(
+                packet_header_html(selected_decision),
+                unsafe_allow_html=True,
+            )
+
+            summary_tab, evidence_tab, notes_tab, history_tab = st.tabs(
+                ["Decision Summary", "Evidence", "Engineering Notes", "Decision History"]
+            )
+
+            decision_id = selected_decision["decision_id"]
+            state_record = decision_state.setdefault(
+                decision_id,
+                {
+                    "status": (
+                        "New"
+                        if selected_decision["status"] == "Open"
+                        else selected_decision["status"]
+                    ),
+                    "owner": selected_decision["assigned_owner"],
+                    "notes": selected_decision.get("notes", []),
+                    "history": [
+                        {
+                            "event": "Decision created",
+                            "time": selected_decision["detected_at"],
+                        }
+                    ],
+                },
+            )
+
+            with summary_tab:
+                render_kpi_row_safe(
+                    [
+                        MetricCard(label="Component / BOM", value=str(selected_decision["part_number"]), tone="info", icon="package"),
+                        MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="triangle-alert"),
+                        MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="gauge"),
+                        MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="clock-3"),
+                    ],
+                    columns=4,
+                )
+
+                st.markdown("### Cadivor Recommendation")
+                st.info(selected_decision["recommended_action"])
+                st.caption(selected_decision["expected_impact"])
+
+                st.markdown("### Decision Priority Matrix")
+                priority_breakdown = selected_decision.get("priority_breakdown", {})
+                st.markdown(
+                    """
+                    <div class="cv131-breakdown">
+                    """
+                    + "".join(
+                        f"<div><span>{html.escape(str(label))}</span><strong>{int(value)}</strong></div>"
+                        for label, value in priority_breakdown.items()
+                    )
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown("### AI Confidence")
+                confidence_cols = st.columns([1, 3])
+                confidence_cols[0].metric(
+                    "Decision Confidence",
+                    f"{selected_decision['confidence']}%",
+                )
+                with confidence_cols[1]:
+                    for reason in selected_decision.get("confidence_reasons", []):
+                        st.markdown(f"✓ {reason}")
+
+                impact = selected_decision
+                st.markdown(
+                    f"""
+                    <div class="cv130-impact">
+                      <div><span>Current Health</span><strong>{impact['current_health']}/100</strong></div>
+                      <div><span>Projected Health</span><strong>{impact['projected_health']}/100</strong></div>
+                      <div><span>Health Improvement</span><strong>+{impact['health_gain']}</strong></div>
+                      <div><span>Supply Risk Reduction</span><strong>-{impact['supply_risk_reduction']}</strong></div>
+                      <div><span>Lifecycle Issues Removed</span><strong>{impact['lifecycle_exposure_reduction']}</strong></div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                workflow_cols = st.columns(3)
+                with workflow_cols[0]:
+                    current_workflow_status = state_record.get("status", "New")
+                    if current_workflow_status == "Open":
+                        current_workflow_status = "New"
+                    elif current_workflow_status == "Awaiting Approval":
+                        current_workflow_status = "Manager Approval"
+                    elif current_workflow_status in ("Approved", "Production Ready"):
+                        current_workflow_status = "Production Approved"
+                    status_index = (
+                        STATUSES.index(current_workflow_status)
+                        if current_workflow_status in STATUSES
+                        else 0
+                    )
+                    new_status = st.selectbox(
+                        "Decision status",
+                        STATUSES,
+                        index=status_index,
+                        key=f"decision_status_{decision_id}",
+                    )
+                with workflow_cols[1]:
+                    new_owner = st.text_input(
+                        "Assigned owner",
+                        value=state_record.get("owner", selected_decision["owner"]),
+                        key=f"decision_owner_{decision_id}",
+                    )
+                with workflow_cols[2]:
+                    st.text_input(
+                        "Target date",
+                        value=selected_decision["due_date"],
+                        key=f"decision_due_{decision_id}",
+                        disabled=True,
+                    )
+
+                if st.button(
+                    "Save Decision Workflow",
+                    key=f"save_decision_{decision_id}",
+                    type="primary",
+                ):
+                    previous_status = state_record.get("status", "New")
+                    saved_owner = (
+                        new_owner.strip()
+                        or selected_decision["owner"]
+                    )
+                    save_error = save_decision_workflow(
+                        supabase,
+                        user_id=current_user["id"],
+                        workspace_id=active_workspace_id or None,
+                        decision=selected_decision,
+                        status=new_status,
+                        assigned_owner=saved_owner,
+                        due_date=selected_decision.get("due_date"),
+                        actor_name=(
+                            profile_for_shell.get("full_name")
+                            or shell_name
+                        ),
+                        previous_status=previous_status,
+                    )
+
+                    if save_error:
+                        st.error(
+                            "The decision could not be saved. "
+                            "Confirm the Milestone 13.2 SQL was applied."
+                        )
+                    else:
+                        refreshed_state, refresh_error = load_decision_state(
+                            supabase,
+                            user_id=current_user["id"],
+                            workspace_id=active_workspace_id or None,
+                        )
+                        if refresh_error:
+                            state_record["status"] = new_status
+                            state_record["owner"] = saved_owner
+                        else:
+                            st.session_state[decision_cache_key] = refreshed_state
+                        st.success("Decision workflow saved.")
+                        st.rerun()
+
+                navigation_cols = st.columns(4)
+                with navigation_cols[0]:
+                    internal_nav_button(
+                        "Find Alternative",
+                        "Alternative Finder",
+                        key=f"decision_find_alt_{decision_id}",
+                        use_container_width=True,
+                        original_part=selected_decision["part_number"],
+                        analysis_id=str(selected_decision.get("analysis_id") or ""),
+                        source_page="engineering_decisions",
+                    )
+                with navigation_cols[1]:
+                    internal_nav_button(
+                        "Open Monitoring",
+                        "Monitoring",
+                        key=f"decision_monitor_{decision_id}",
+                        use_container_width=True,
+                    )
+                with navigation_cols[2]:
+                    internal_nav_button(
+                        "Generate Report",
+                        "Reports",
+                        key=f"decision_report_{decision_id}",
+                        use_container_width=True,
+                    )
+                with navigation_cols[3]:
+                    if selected_decision.get("analysis_id"):
+                        internal_nav_button(
+                            "Open Saved BOM",
+                            "Analysis Details",
+                            key=f"decision_analysis_{decision_id}",
+                            use_container_width=True,
+                            analysis_id=selected_decision["analysis_id"],
+                        )
+                    else:
+                        st.caption("No saved BOM is linked to this decision.")
+
+            with evidence_tab:
+                st.markdown("### Evidence used by Cadivor")
+                for evidence in selected_decision.get("evidence", []):
+                    st.markdown(f"- {evidence}")
+                st.markdown("### Decision context")
+                context_df = pd.DataFrame(
+                    [
+                        {
+                            "Field": "Source",
+                            "Value": selected_decision["source"],
+                        },
+                        {
+                            "Field": "Decision Type",
+                            "Value": selected_decision["decision_type"],
+                        },
+                        {
+                            "Field": "Supporting Team",
+                            "Value": selected_decision["supporting_team"],
+                        },
+                        {
+                            "Field": "Estimated Cost Impact",
+                            "Value": selected_decision["estimated_cost_impact"],
+                        },
+                    ]
+                )
+                cadivor_engineering_dataframe(context_df)
+
+            with notes_tab:
+                note = st.text_area(
+                    "Add an engineering note",
+                    placeholder="Record validation findings, supplier feedback, approval conditions, or next steps.",
+                    key=f"decision_note_{decision_id}",
+                )
+                if st.button(
+                    "Add Note",
+                    key=f"decision_add_note_{decision_id}",
+                    type="primary",
+                ):
+                    if not note.strip():
+                        st.warning("Enter a note before saving.")
+                    else:
+                        note_author = (
+                            profile_for_shell.get("full_name")
+                            or shell_name
+                        )
+                        note_error = add_decision_note(
+                            supabase,
+                            user_id=current_user["id"],
+                            workspace_id=active_workspace_id or None,
+                            decision={
+                                **selected_decision,
+                                "status": state_record.get("status", "New"),
+                                "assigned_owner": state_record.get(
+                                    "owner",
+                                    selected_decision["owner"],
+                                ),
+                            },
+                            author_name=note_author,
+                            note_text=note.strip(),
+                        )
+
+                        if note_error:
+                            st.error(
+                                "The note could not be saved. "
+                                "Confirm the Milestone 13.2 SQL was applied."
+                            )
+                        else:
+                            refreshed_state, refresh_error = load_decision_state(
+                                supabase,
+                                user_id=current_user["id"],
+                                workspace_id=active_workspace_id or None,
+                            )
+                            if not refresh_error:
+                                st.session_state[
+                                    decision_cache_key
+                                ] = refreshed_state
+                            st.success("Engineering note saved.")
+                            st.rerun()
+
+                notes = state_record.get("notes", [])
+                if not notes:
+                    st.info("No engineering notes have been added yet.")
+                else:
+                    for item in reversed(notes):
+                        with st.container(border=True):
+                            st.markdown(f"**{item.get('author', 'Engineer')}**")
+                            st.caption(item.get("time", ""))
+                            st.write(item.get("text", ""))
+
+            with history_tab:
+                history = state_record.get("history", [])
+                if not history:
+                    st.info("No decision history is available.")
+                else:
+                    history_df = pd.DataFrame(history).rename(
+                        columns={"event": "Event", "time": "Time"}
+                    )
+                    cadivor_table(
+                        history_df.iloc[::-1],
+                        caption="Decision history",
+                    )
+
+        else:
+            rejected_count = sum(
+                1 for decision in all_decisions if str(decision.get("status")) == "Rejected"
+            )
+            cadivor_metric_row(
+                [
+                    MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
+                    MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
+                    MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
+                    MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
+                    MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
+                    MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
+                ],
+                columns=3,
+            )
+
+            refresh_decision_col, persistence_scope_col = st.columns([1, 3])
+            with refresh_decision_col:
+                cadivor_button_wrap("secondary")
+                if st.button(
+                    "Refresh Decisions",
+                    key="refresh_persistent_decisions",
+                    use_container_width=True,
+                ):
+                    st.session_state.pop(decision_cache_key, None)
+                    st.session_state.pop(
+                        f"{decision_cache_key}_load_error",
+                        None,
+                    )
+                    st.rerun()
+                cadivor_button_wrap_end()
+            with persistence_scope_col:
+                st.caption(
+                    f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
+                )
+
+            queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
+                [
+                    "Needs Review",
+                    "Team Workload",
+                    "Decision Analytics",
+                    "Completed",
+                ]
+            )
+
+            with queue_tab:
+                filter_cols = st.columns(3)
+                with filter_cols[0]:
+                    priority_filter = st.selectbox(
+                        "Priority",
+                        ["All", "Critical", "High", "Medium", "Routine"],
+                        key="decision_priority_filter",
+                    )
+                with filter_cols[1]:
+                    status_filter = st.selectbox(
+                        "Status",
+                        ["All"] + STATUSES,
+                        key="decision_status_filter",
+                    )
+                with filter_cols[2]:
+                    search_decisions = st.text_input(
+                        "Search decisions",
+                        placeholder="Component, project, owner, or action",
+                        key="decision_search",
+                    )
+
+                visible = all_decisions
+                if priority_filter != "All":
+                    visible = [
+                        decision
+                        for decision in visible
+                        if decision["priority"] == priority_filter
+                    ]
+                if status_filter != "All":
+                    visible = [
+                        decision
+                        for decision in visible
+                        if decision["status"] == status_filter
+                    ]
+                if search_decisions.strip():
+                    query = search_decisions.strip().lower()
+                    visible = [
+                        decision
+                        for decision in visible
+                        if query
+                        in " ".join(
+                            [
+                                str(decision["part_number"]),
+                                str(decision["title"]),
+                                str(decision["assigned_owner"]),
+                                str(decision["reason"]),
+                            ]
+                        ).lower()
+                    ]
+
+                st.caption(f"Showing {len(visible)} of {len(all_decisions)} engineering decision(s).")
+
+                if not visible:
+                    st.info("No engineering decisions match the selected filters.")
+                else:
+                    for decision in visible[:40]:
+                        st.markdown(
+                            decision_card_html(decision),
+                            unsafe_allow_html=True,
+                        )
+                        render_decision_card_actions(
+                            decision,
+                            navigate_to=navigate_to,
+                            internal_nav_button=internal_nav_button,
+                            key_prefix=f"queue_{decision['decision_id']}",
+                        )
+
+            with workload_tab:
+                st.markdown("### Team Workload")
+                active = [
+                    decision
+                    for decision in all_decisions
+                    if decision["status"] not in ("Closed", "Rejected")
+                ]
+                if not active:
+                    st.success("No open engineering workload remains.")
+                else:
+                    workload_rows = []
+                    owners = sorted(set(decision["assigned_owner"] for decision in active))
+                    for owner in owners:
+                        owner_decisions = [
+                            decision for decision in active if decision["assigned_owner"] == owner
+                        ]
+                        workload_rows.append(
+                            {
+                                "Owner": owner,
+                                "Open Decisions": len(owner_decisions),
+                                "Critical": sum(
+                                    1 for decision in owner_decisions
+                                    if decision["priority_score"] >= 85
+                                ),
+                                "Estimated Hours": sum(
+                                    decision["estimated_effort_hours"]
+                                    for decision in owner_decisions
+                                ),
+                                "Average Confidence": round(
+                                    sum(decision["confidence"] for decision in owner_decisions)
+                                    / len(owner_decisions)
+                                ),
+                            }
+                        )
+                    cadivor_table(
+                        pd.DataFrame(workload_rows),
+                        caption="Team workload by owner",
+                        numeric_columns=["Open Decisions", "Critical", "Estimated Hours", "Average Confidence"],
+                        align={
+                            "Open Decisions": "right",
+                            "Critical": "right",
+                            "Estimated Hours": "right",
+                            "Average Confidence": "right",
+                        },
+                    )
+
+            with analytics_tab:
+                cadivor_section_header(
+                    "Decision Analytics",
+                    description="Portfolio impact from open and closed engineering decisions.",
+                    icon="chart-no-axes-combined",
+                )
+                cadivor_metric_row(
+                    [
+                        MetricCard(
+                            label="Projected Health Gain",
+                            value=f"+{decision_center['projected_health_gain']}",
+                            tone="success",
+                            icon="gauge",
+                        ),
+                        MetricCard(
+                            label="Supply Risk Reduction",
+                            value=f"-{decision_center['projected_risk_reduction']}",
+                            tone="monitoring",
+                            icon="radar",
+                        ),
+                        MetricCard(
+                            label="Closed / Rejected",
+                            value=str(decision_center["closed_count"]),
+                            tone="neutral",
+                            icon="circle-x",
+                        ),
+                        MetricCard(
+                            label="Average Open Age",
+                            value=f"{decision_center['average_age_days']} days",
+                            tone="warning",
+                            icon="clock",
+                        ),
+                    ],
+                )
+
+                if all_decisions:
+                    status_counts = (
+                        pd.DataFrame(all_decisions)["status"]
+                        .value_counts()
+                        .rename_axis("Workflow Stage")
+                        .reset_index(name="Decisions")
+                    )
+                    owner_hours = (
+                        pd.DataFrame(
+                            [
+                                {
+                                    "Owner": decision["assigned_owner"],
+                                    "Estimated Hours": decision["estimated_effort_hours"],
+                                    "Priority Score": decision["priority_score"],
+                                }
+                                for decision in all_decisions
+                                if decision["status"] not in ("Closed", "Rejected")
+                            ]
+                        )
+                        .groupby("Owner", as_index=False)
+                        .agg(
+                            {
+                                "Estimated Hours": "sum",
+                                "Priority Score": "mean",
+                            }
+                        )
+                        .rename(columns={"Priority Score": "Average Priority"})
+                    )
+                    analytics_left, analytics_right = st.columns(2)
+                    with analytics_left:
+                        st.markdown("#### Decisions by Workflow Stage")
+                        cadivor_table(
+                            status_counts,
+                            badge_columns=["Workflow Stage"],
+                            numeric_columns=["Decisions"],
+                            align={"Decisions": "right"},
+                        )
+                    with analytics_right:
+                        st.markdown("#### Open Workload Impact")
+                        cadivor_table(
+                            owner_hours,
+                            numeric_columns=["Estimated Hours", "Average Priority"],
+                            align={"Estimated Hours": "right", "Average Priority": "right"},
+                        )
+
+            with archive_tab:
+                st.markdown("### Searchable Decision Archive")
+                archive_search = st.text_input(
+                    "Search archived decisions",
+                    placeholder="Project, component, owner, type, or outcome",
+                    key="decision_archive_search",
+                )
+                archived = [
+                    decision
+                    for decision in all_decisions
+                    if decision["status"] in ("Closed", "Rejected", "Production Approved")
+                ]
+                if archive_search.strip():
+                    archive_query = archive_search.strip().lower()
+                    archived = [
+                        decision
+                        for decision in archived
+                        if archive_query
+                        in " ".join(
+                            [
+                                str(decision["title"]),
+                                str(decision["part_number"]),
+                                str(decision["assigned_owner"]),
+                                str(decision["decision_type"]),
+                                str(decision["status"]),
+                            ]
+                        ).lower()
+                    ]
+
+                if not archived:
+                    st.info("No archived or production-approved decisions match the search.")
+                else:
+                    archive_df = pd.DataFrame(
+                        [
+                            {
+                                "Updated": decision["updated_at"],
+                                "Project / Component": decision["part_number"],
+                                "Decision": decision["title"],
+                                "Owner": decision["assigned_owner"],
+                                "Decision Type": decision["decision_type"],
+                                "Outcome": decision["status"],
+                                "Confidence": f"{decision['confidence']}%",
+                            }
+                            for decision in archived
+                        ]
+                    )
+                    cadivor_table(
+                        archive_df,
+                        caption="Archived and production-approved decisions",
+                        monospace_columns=["Project / Component"],
+                        badge_columns=["Outcome"],
+                        align={"Confidence": "right"},
+                    )
+                    st.download_button(
+                        "Export Decision Archive CSV",
+                        data=archive_df.to_csv(index=False).encode("utf-8"),
+                        file_name="cadivor_decision_archive.csv",
+                        mime="text/csv",
+                        key="decision_archive_csv",
+                        type="primary",
+                    )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+    def _mark_first_report_complete() -> None:
+        """Persist the first-report onboarding step as soon as a download is used."""
+        if not onboarding_user_id:
+            return
+        updated, error = update_onboarding_progress(
+            supabase,
+            onboarding_user_id,
+            {"first_report_completed": True, "welcome_seen": True},
+        )
+        if updated and not error:
+            st.session_state["onboarding_report_completed"] = True
+
+
+    # ---------- Reports ----------
+    if app_mode == "Reports":
+        # Milestone 5.5 — Functional Reports Center
+        try:
+            report_records = load_analysis_history(current_user["id"]) or []
+        except Exception:
+            report_records = []
+
+        def _report_int(value, default=0):
+            try:
+                if value is None or (isinstance(value, float) and pd.isna(value)):
+                    return default
+                return int(float(value))
+            except Exception:
+                return default
+
+        def _report_float(value, default=0.0):
+            try:
+                if value is None or (isinstance(value, float) and pd.isna(value)):
+                    return default
+                return float(value)
+            except Exception:
+                return default
+
+        def _report_value(row, *keys, default=None):
+            for key in keys:
+                value = row.get(key)
+                if value is not None and str(value).strip() not in ("", "nan", "None"):
+                    return value
+            return default
+
+        def _analysis_label(row):
+            project = _report_value(row, "project_name", "name", default="Saved BOM")
+            created = str(_report_value(row, "created_at", "date", default=""))
+            created_date = created.split("T")[0] if "T" in created else created[:10]
+            return f"{project} — {created_date or 'undated'}"
+
+        def _load_report_parts(analysis_id):
+            if not analysis_id:
+                return pd.DataFrame()
+            try:
+                response = (
+                    _workspace_query(
+                        supabase.table("analysis_parts")
+                        .select("*")
+                    )
+                    .eq("analysis_id", analysis_id)
+                    .eq("user_id", current_user["id"])
+                    .execute()
+                )
+                return pd.DataFrame(response.data or [])
+            except Exception:
+                try:
+                    response = (
+                        _workspace_query(
+                            supabase.table("analysis_parts")
+                            .select("*")
+                        )
+                        .eq("analysis_id", analysis_id)
+                        .execute()
+                    )
+                    return pd.DataFrame(response.data or [])
+                except Exception:
+                    return pd.DataFrame()
+
+        def _build_executive_pdf(analysis_row, parts_df, decision_brief=None):
+            from io import BytesIO
+            from pathlib import Path
+            import reportlab
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib import colors
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            from src.engineering_decision_engine import (
+                format_decision_brief_for_report,
+            )
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=letter,
+                rightMargin=42,
+                leftMargin=42,
+                topMargin=42,
+                bottomMargin=42,
+            )
+            styles = getSampleStyleSheet()
+            # Embed ReportLab's Vera fonts. The built-in PDF fonts can render
+            # with visibly spread glyphs in common viewers, while an embedded
+            # TrueType font keeps export typography consistent and legible.
+            reportlab_fonts = Path(reportlab.__file__).resolve().parent / "fonts"
+            if "CadivorVera" not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont("CadivorVera", str(reportlab_fonts / "Vera.ttf")))
+            if "CadivorVera-Bold" not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont("CadivorVera-Bold", str(reportlab_fonts / "VeraBd.ttf")))
+            styles.add(ParagraphStyle(
+                name="CadivorReportTitle", parent=styles["Title"],
+                fontName="CadivorVera-Bold", fontSize=22, leading=27,
+                alignment=0, textColor=colors.HexColor("#0F172A"), spaceAfter=0,
+            ))
+            styles.add(ParagraphStyle(
+                name="CadivorReportHeading", parent=styles["Heading2"],
+                fontName="CadivorVera-Bold", fontSize=14, leading=18,
+                alignment=0, textColor=colors.HexColor("#0F172A"), spaceBefore=0, spaceAfter=6,
+            ))
+            styles.add(ParagraphStyle(
+                name="CadivorReportBody", parent=styles["BodyText"],
+                fontName="CadivorVera", fontSize=10, leading=14,
+                alignment=0, textColor=colors.HexColor("#334155"), spaceAfter=0,
+            ))
+            story = []
+
+            project = _report_value(analysis_row, "project_name", "name", default="Saved BOM")
+            filename = _report_value(analysis_row, "filename", "uploaded_file", "file_name", default="—")
+            health = _report_int(_report_value(analysis_row, "health_score", default=0))
+            high_risk = _report_int(_report_value(analysis_row, "high_risk_count", "high_risk_parts", default=0))
+            medium_risk = _report_int(_report_value(analysis_row, "medium_risk_count", "medium_risk_parts", default=0))
+            total_parts = _report_int(_report_value(analysis_row, "total_parts", "part_count", "parts_count", default=len(parts_df)))
+
+            story.append(Paragraph("Cadivor Executive BOM Report", styles["CadivorReportTitle"]))
+            story.append(Spacer(1, 12))
+            story.append(Paragraph(f"Project: {html.escape(str(project))}", styles["CadivorReportHeading"]))
+            story.append(Paragraph(f"Source file: {html.escape(str(filename))}", styles["CadivorReportBody"]))
+            story.append(Spacer(1, 12))
+
+            summary_table = Table(
+                [
+                    ["Health Score", "Total Parts", "High Risk", "Medium Risk"],
+                    [str(health), str(total_parts), str(high_risk), str(medium_risk)],
+                ],
+                colWidths=[115, 115, 115, 115],
+            )
+            summary_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFF6FF")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+                        ("FONTNAME", (0, 0), (-1, 0), "CadivorVera-Bold"),
+                        ("FONTNAME", (0, 1), (-1, 1), "CadivorVera-Bold"),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                        ("TOPPADDING", (0, 0), (-1, -1), 10),
+                    ]
+                )
+            )
+            story.append(summary_table)
+            story.append(Spacer(1, 16))
+
+            if decision_brief:
+                report_sections = format_decision_brief_for_report(decision_brief)
+                story.append(Paragraph("Executive Engineering Summary", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["executive_summary"], styles["CadivorReportBody"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Production Readiness", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["production_readiness"], styles["CadivorReportBody"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Critical Findings", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["critical_findings"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Recommended Actions", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["recommended_actions"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Business Impact", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["business_impact"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Engineering Confidence", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["confidence"], styles["CadivorReportBody"]))
+                story.append(Spacer(1, 12))
+                story.append(Paragraph("Supporting Evidence", styles["CadivorReportHeading"]))
+                story.append(Paragraph(report_sections["supporting_evidence"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
+                story.append(Spacer(1, 16))
+            else:
+                if health >= 80:
+                    recommendation = "Portfolio health is strong. Continue lifecycle and supplier monitoring."
+                elif health >= 60:
+                    recommendation = "Review elevated-risk parts and validate supplier coverage before release."
+                else:
+                    recommendation = "Immediate engineering and sourcing review is recommended before production release."
+
+                story.append(Paragraph("Recommended action", styles["CadivorReportHeading"]))
+                story.append(Paragraph(recommendation, styles["CadivorReportBody"]))
+                story.append(Spacer(1, 16))
+
+            story.append(Paragraph("Priority component review", styles["CadivorReportHeading"]))
+            if parts_df.empty:
+                story.append(Paragraph("No component-level records were available for this saved analysis.", styles["CadivorReportBody"]))
+            else:
+                work = parts_df.copy()
+                risk_col = next((c for c in ["risk_level", "Risk Level", "risk"] if c in work.columns), None)
+                score_col = next((c for c in ["risk_score", "Risk Score"] if c in work.columns), None)
+
+                if score_col:
+                    work["_sort_score"] = pd.to_numeric(work[score_col], errors="coerce").fillna(0)
+                    work = work.sort_values("_sort_score", ascending=False)
+                elif risk_col:
+                    rank = {"High": 3, "Medium": 2, "Low": 1}
+                    work["_risk_rank"] = work[risk_col].astype(str).map(rank).fillna(0)
+                    work = work.sort_values("_risk_rank", ascending=False)
+
+                def first_col(candidates):
+                    return next((c for c in candidates if c in work.columns), None)
+
+                mpn_col = first_col(["mpn", "MPN", "part_number", "manufacturer_part_number"])
+                manufacturer_col = first_col(["manufacturer", "Manufacturer"])
+                lifecycle_col = first_col(["lifecycle_status", "Lifecycle Status"])
+                stock_col = first_col(["stock_available", "stock", "Stock Available", "total_market_stock"])
+
+                table_data = [["Part", "Manufacturer", "Risk", "Lifecycle", "Stock"]]
+                for _, row in work.head(12).iterrows():
+                    table_data.append(
+                        [
+                            str(row.get(mpn_col, "—")) if mpn_col else "—",
+                            str(row.get(manufacturer_col, "—")) if manufacturer_col else "—",
+                            str(row.get(risk_col, "—")) if risk_col else "—",
+                            str(row.get(lifecycle_col, "—")) if lifecycle_col else "—",
+                            str(row.get(stock_col, "—")) if stock_col else "—",
+                        ]
+                    )
+
+                parts_table = Table(table_data, repeatRows=1, colWidths=[105, 110, 65, 110, 70])
+                parts_table.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+                            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                            ("FONTNAME", (0, 0), (-1, 0), "CadivorVera-Bold"),
+                            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                            ("FONTSIZE", (0, 0), (-1, -1), 8),
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                            ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ]
+                    )
+                )
+                story.append(parts_table)
+
+            doc.build(story)
+            buffer.seek(0)
+            return buffer.getvalue()
+
+        total_reports = len(report_records)
+        total_parts = sum(
+            _report_int(
+                _report_value(
+                    row,
+                    "total_parts",
+                    "part_count",
+                    "parts_count",
+                    default=0,
+                )
+            )
+            for row in report_records
+        )
+        total_high_risk = sum(
+            _report_int(
+                _report_value(
+                    row,
+                    "high_risk_count",
+                    "high_risk_parts",
+                    default=0,
+                )
+            )
+            for row in report_records
+        )
+        health_values = [
+            _report_int(_report_value(row, "health_score", default=0))
+            for row in report_records
+            if _report_value(row, "health_score", default=None) is not None
+        ]
+        average_health = (
+            round(sum(health_values) / len(health_values))
+            if health_values
+            else 0
+        )
+
+        st.markdown(
+            """
+            <style id="cadivor-reports-professional-v9a">
+            .cv-r9-hero{
+                border:1px solid #BFDBFE;border-radius:26px;padding:30px 32px;
+                background:
+                    radial-gradient(circle at 88% 8%,rgba(37,99,235,.13),transparent 34%),
+                    linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 62%,#EEF5FF 100%);
+                box-shadow:0 22px 58px rgba(15,23,42,.07);margin-bottom:18px;
+            }
+            .cv-r9-eyebrow{
+                display:inline-flex;align-items:center;gap:7px;padding:7px 11px;
+                border:1px solid #BFDBFE;border-radius:999px;background:#EFF6FF;
+                color:#2563EB!important;font-size:10px;font-weight:950;
+                letter-spacing:.12em;text-transform:uppercase;margin-bottom:15px;
+            }
+            .cv-r9-title{
+                color:#0F172A!important;font-size:38px;line-height:1.05;font-weight:980;
+                letter-spacing:-.045em;margin:0 0 11px;
+            }
+            .cv-r9-copy{
+                color:#52647A!important;font-size:15px;line-height:1.62;font-weight:680;
+                max-width:880px;margin:0;
+            }
+            .cv-r9-metrics{
+                display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+                gap:12px;margin:18px 0 24px;
+            }
+            .cv-r9-metric{
+                border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;padding:17px;
+                box-shadow:0 14px 34px rgba(15,23,42,.05);
+            }
+            .cv-r9-metric span{
+                display:block;color:#64748B!important;font-size:9px;font-weight:950;
+                letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px;
+            }
+            .cv-r9-metric strong{
+                display:block;color:#0F172A!important;font-size:27px;font-weight:980;
+                letter-spacing:-.03em;
+            }
+            .cv-r9-metric small{
+                display:block;color:#64748B!important;font-size:10px;font-weight:760;
+                margin-top:6px;line-height:1.4;
+            }
+            .cv-r9-section{
+                color:#0F172A!important;font-size:22px;font-weight:980;
+                letter-spacing:-.03em;margin:25px 0 5px;
+            }
+            .cv-r9-sub{
+                color:#64748B!important;font-size:12px;font-weight:740;margin-bottom:12px;
+            }
+            .cv-r9-template-grid{
+                display:grid;
+                gap:16px;
+                align-items:stretch;
+                width:100%;
+                margin:0 0 16px;
+            }
+            .cv-r9-template-grid.three{
+                grid-template-columns:repeat(3,minmax(0,1fr));
+            }
+            .cv-r9-template-grid.two{
+                grid-template-columns:repeat(2,minmax(0,1fr));
+            }
+            .cv-r9-template{
+                box-sizing:border-box;
+                width:100%;
+                min-width:0;
+                min-height:195px;
+                height:100%;
+                border:1px solid #E2E8F0;
+                background:#FFFFFF;
+                border-radius:21px;
+                padding:19px;
+                box-shadow:0 15px 38px rgba(15,23,42,.05);
+            }
+            .cv-r9-template-icon{
+                width:42px;height:42px;border-radius:13px;display:flex;
+                align-items:center;justify-content:center;background:#EFF6FF;
+                border:1px solid #BFDBFE;color:#2563EB!important;font-size:19px;
+                font-weight:950;margin-bottom:13px;
+            }
+            .cv-r9-template h4{
+                margin:0 0 7px;color:#0F172A!important;font-size:15px;font-weight:970;
+            }
+            .cv-r9-template p{
+                margin:0;color:#52647A!important;font-size:11px;font-weight:720;
+                line-height:1.52;min-height:50px;
+            }
+            .cv-r9-formats{display:flex;gap:6px;flex-wrap:wrap;margin-top:13px}
+            .cv-r9-format{
+                display:inline-flex;border:1px solid #DBEAFE;background:#EFF6FF;
+                color:#1D4ED8!important;border-radius:999px;padding:5px 8px;
+                font-size:9px;font-weight:950;
+            }
+            .cv-r9-selected{
+                border:1px solid #BFDBFE;background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
+                border-radius:22px;padding:20px;box-shadow:0 17px 42px rgba(37,99,235,.07);
+                margin:12px 0 15px;
+            }
+            .cv-r9-selected-grid{
+                display:grid;grid-template-columns:1.35fr repeat(4,minmax(0,1fr));
+                gap:10px;
+            }
+            .cv-r9-selected-cell{
+                border:1px solid #DCE5F1;background:rgba(255,255,255,.9);
+                border-radius:14px;padding:12px;min-width:0;
+            }
+            .cv-r9-selected-cell span{
+                display:block;color:#64748B!important;font-size:8px;font-weight:950;
+                letter-spacing:.09em;text-transform:uppercase;margin-bottom:6px;
+            }
+            .cv-r9-selected-cell strong{
+                display:block;color:#0F172A!important;font-size:13px;font-weight:950;
+                overflow-wrap:anywhere;
+            }
+            .cv-r9-preview-card{
+                border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;
+                padding:17px;box-shadow:0 14px 34px rgba(15,23,42,.04);margin-bottom:12px;
+            }
+            .cv-r9-preview-title{
+                color:#0F172A!important;font-size:14px;font-weight:970;margin-bottom:7px;
+            }
+            .cv-r9-preview-copy{
+                color:#52647A!important;font-size:11px;font-weight:720;line-height:1.55;
+            }
+            .cv-r9-history{
+                border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;padding:16px;
+            }
+            .cv-r9-empty{
+                border:1px dashed #CBD5E1;background:#F8FAFC;border-radius:18px;
+                padding:22px;text-align:center;color:#64748B!important;font-size:12px;
+                font-weight:760;
+            }
+            @media(max-width:1050px){
+                .cv-r9-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+                .cv-r9-selected-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+                .cv-r9-template-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}
+            }
+            @media(max-width:760px){
+                .cv-r9-template-grid.three,
+                .cv-r9-template-grid.two{grid-template-columns:1fr}
+            }
+            @media(max-width:650px){
+                .cv-r9-metrics,.cv-r9-selected-grid{grid-template-columns:1fr}
+                .cv-r9-title{font-size:31px}
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        cadivor_section_header(
+            "Turn BOM intelligence into decisions.",
+            eyebrow="Cadivor Report Library",
+            description=(
+                "Select a saved BOM, preview the engineering story, and generate the right "
+                "deliverable for leadership, design review, sourcing, lifecycle management, "
+                "or replacement planning."
+            ),
+            icon="file-text",
+        )
+
+        render_kpi_row_safe(
+            [
+                MetricCard(
+                    label="Reports",
+                    value=str(total_reports),
+                    detail="Saved analyses ready to export",
+                    tone="info",
+                    icon="file-text",
+                ),
+                MetricCard(
+                    label="Formats",
+                    value="PDF + CSV",
+                    detail="Available for every report package",
+                    tone="success",
+                    icon="download",
+                ),
+                MetricCard(
+                    label="Exports",
+                    value=str(total_reports),
+                    detail="Report packages available",
+                    tone="monitoring",
+                    icon="file-spreadsheet",
+                ),
+            ],
+            columns=3,
+        )
+        st.markdown(
+            """
+            <style>
+              .cv-resource-tour{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:8px 0 18px}
+              .cv-resource-tour-card{border:1px solid #D9E3F2;border-radius:18px;background:#FFF;padding:16px;box-shadow:0 12px 30px rgba(15,35,70,.06)}
+              .cv-resource-tour-card h4{margin:0 0 6px;color:#11284B;font-size:16px}.cv-resource-tour-card p{margin:0;color:#58708F;font-size:13px;line-height:1.55;min-height:40px}
+              .cv-resource-demo{position:relative;overflow:hidden;margin-top:14px;height:138px;border:1px solid #DCE7F5;border-radius:13px;background:linear-gradient(145deg,#F7FAFF,#EFF5FF);padding:12px}
+              .cv-resource-demo-top{height:13px;width:58%;border-radius:5px;background:#C8D8F2}.cv-resource-demo-row{height:14px;margin-top:10px;border-radius:5px;background:#E1EAF7}.cv-resource-demo-row.active{background:#D8E8FF;animation:cv-resource-focus 6s ease-in-out infinite}.cv-resource-demo-row.short{width:62%}.cv-resource-demo-risk{position:absolute;right:12px;bottom:12px;border-radius:999px;background:#FFF0F0;color:#C2414A;font-weight:800;font-size:10px;padding:6px 8px;animation:cv-resource-pulse 2.2s ease-in-out infinite}.cv-resource-demo-check{position:absolute;right:12px;bottom:12px;border-radius:999px;background:#E9FBF2;color:#16734D;font-weight:800;font-size:10px;padding:6px 8px;animation:cv-resource-rise 6s ease-in-out infinite}.cv-resource-demo-line{position:absolute;left:12px;right:12px;bottom:12px;height:5px;border-radius:999px;background:#D7E4F7;overflow:hidden}.cv-resource-demo-line:after{content:'';display:block;width:42%;height:100%;background:#2865EB;border-radius:999px;animation:cv-resource-progress 6s ease-in-out infinite}.cv-resource-demo-node{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;border-radius:8px;background:#2865EB;color:#FFF;font-size:11px;font-weight:900;margin:12px 6px 0 0;animation:cv-resource-rise 6s ease-in-out infinite}.cv-resource-demo-node:nth-child(2){animation-delay:.45s}.cv-resource-demo-node:nth-child(3){animation-delay:.9s}
+              @keyframes cv-resource-focus{0%,22%{transform:translateX(0);background:#E1EAF7}38%,67%{transform:translateX(4px);background:#CFE3FF;box-shadow:0 0 0 2px rgba(40,101,235,.14)}100%{transform:translateX(0);background:#E1EAF7}}@keyframes cv-resource-progress{0%{transform:translateX(-115%)}42%,70%{transform:translateX(72%)}100%{transform:translateX(225%)}}@keyframes cv-resource-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06);box-shadow:0 0 0 5px rgba(194,65,74,.08)}}@keyframes cv-resource-rise{0%,20%{opacity:.35;transform:translateY(6px)}35%,78%{opacity:1;transform:translateY(0)}100%{opacity:.35;transform:translateY(6px)}}
+              @media(max-width:900px){.cv-resource-tour{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.cv-resource-tour *{animation:none!important}}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            '<div class="cv-r9-section">Professional report library</div>'
+            '<div class="cv-r9-sub">Portfolio context above shows the scale and overall risk behind the available report packages.</div>',
+            unsafe_allow_html=True,
+        )
+
+        first_template_data = [
+            (
+                "Executive BOM Summary",
+                "Leadership-ready health, priority risks, decision brief, and recommended actions.",
+                "▤",
+                ["PDF", "CSV"],
+            ),
+            (
+                "Engineering Risk Review",
+                "Component-level lifecycle, stock, supplier diversity, lead-time, and risk evidence.",
+                "△",
+                ["PDF", "CSV"],
+            ),
+            (
+                "Procurement & Sourcing",
+                "Supplier concentration, market stock, cost exposure, and secondary-source priorities.",
+                "⇄",
+                ["PDF", "CSV"],
+            ),
+        ]
+
+        first_template_cards = []
+        for title, copy, icon, formats in first_template_data:
+            format_html = "".join(
+                f'<span class="cv-r9-format">{fmt}</span>'
+                for fmt in formats
+            )
+            first_template_cards.append(
+                (
+                    f'<div class="cv-r9-template">'
+                    f'<div class="cv-r9-template-icon">{icon}</div>'
+                    f'<h4>{title}</h4>'
+                    f'<p>{copy}</p>'
+                    f'<div class="cv-r9-formats">{format_html}</div>'
+                    f'</div>'
+                )
+            )
+
+        st.markdown(
+            '<div class="cv-r9-template-grid three">'
+            + "".join(first_template_cards)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        second_template_data = [
+            (
+                "Lifecycle Exposure Report",
+                "Lifecycle states, obsolete or replacement-suggested components, and alert-oriented review data.",
+                "◷",
+                ["PDF", "CSV"],
+            ),
+            (
+                "Alternative Replacement Report",
+                "Components requiring alternatives, candidate availability, and saved replacement-readiness fields.",
+                "↔",
+                ["PDF", "CSV"],
+            ),
+        ]
+
+        second_template_cards = []
+        for title, copy, icon, formats in second_template_data:
+            format_html = "".join(
+                f'<span class="cv-r9-format">{fmt}</span>'
+                for fmt in formats
+            )
+            second_template_cards.append(
+                (
+                    f'<div class="cv-r9-template">'
+                    f'<div class="cv-r9-template-icon">{icon}</div>'
+                    f'<h4>{title}</h4>'
+                    f'<p>{copy}</p>'
+                    f'<div class="cv-r9-formats">{format_html}</div>'
+                    f'</div>'
+                )
+            )
+
+        st.markdown(
+            '<div class="cv-r9-template-grid two">'
+            + "".join(second_template_cards)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            '<div class="cv-r9-section">Build a report package</div>'
+            '<div class="cv-r9-sub">Search for a saved BOM, confirm the selected engineering record, preview the content, and download the required files.</div>',
+            unsafe_allow_html=True,
+        )
+
+        if report_records:
+            labels = [_analysis_label(row) for row in report_records]
+
+            incoming_report_analysis_id = str(
+                _qp_value("analysis_id", "")
+                or st.session_state.get("cadivor_active_analysis_id", "")
+                or ""
+            ).strip()
+            report_route_token = (
+                f"reports::{incoming_report_analysis_id}"
+                if incoming_report_analysis_id
+                else ""
+            )
+
+            if (
+                incoming_report_analysis_id
+                and st.session_state.get("reports_route_token") != report_route_token
+            ):
+                matching_label = None
+                for row, label in zip(report_records, labels):
+                    row_id = str(
+                        _report_value(
+                            row,
+                            "id",
+                            "analysis_id",
+                            default="",
+                        )
+                        or ""
+                    ).strip()
+                    if row_id == incoming_report_analysis_id:
+                        matching_label = label
+                        break
+
+                if matching_label:
+                    st.session_state["reports_selected_analysis"] = matching_label
+                    st.session_state["reports_route_token"] = report_route_token
+
+            search_col, select_col = st.columns([0.34, 0.66], gap="medium")
+            with search_col:
+                report_search = st.text_input(
+                    "Search saved analyses",
+                    placeholder="Project or source filename",
+                    key="reports_analysis_search",
+                )
+
+            filtered_labels = labels
+            if report_search.strip():
+                needle = report_search.strip().lower()
+                filtered_labels = [
+                    label
+                    for label in labels
+                    if needle in label.lower()
+                ]
+
+            if not filtered_labels:
+                st.warning("No saved analyses match that search.")
+                filtered_labels = labels
+
+            current_selected = st.session_state.get("reports_selected_analysis")
+            if current_selected not in filtered_labels:
+                st.session_state["reports_selected_analysis"] = filtered_labels[0]
+
+            with select_col:
+                selected_label = st.selectbox(
+                    "Saved BOM analysis",
+                    filtered_labels,
+                    key="reports_selected_analysis",
+                )
+
+            selected_index = labels.index(selected_label)
+            selected_analysis = report_records[selected_index]
+            selected_analysis_id = _report_value(
+                selected_analysis,
+                "id",
+                "analysis_id",
+                default=None,
+            )
+            selected_parts_df = _load_report_parts(selected_analysis_id)
+
+            project_name = str(
+                _report_value(
+                    selected_analysis,
+                    "project_name",
+                    "name",
+                    default="Saved BOM",
+                )
+            )
+            source_file = str(
+                _report_value(
+                    selected_analysis,
+                    "filename",
+                    "uploaded_file",
+                    "file_name",
+                    default="—",
+                )
+            )
+            health_score = _report_int(
+                _report_value(selected_analysis, "health_score", default=0)
+            )
+            high_risk = _report_int(
+                _report_value(
+                    selected_analysis,
+                    "high_risk_count",
+                    "high_risk_parts",
+                    default=0,
+                )
+            )
+            medium_risk = _report_int(
+                _report_value(
+                    selected_analysis,
+                    "medium_risk_count",
+                    "medium_risk_parts",
+                    default=0,
+                )
+            )
+            part_count = _report_int(
+                _report_value(
+                    selected_analysis,
+                    "total_parts",
+                    "part_count",
+                    "parts_count",
+                    default=len(selected_parts_df),
+                )
+            )
+            created_at = str(
+                _report_value(
+                    selected_analysis,
+                    "created_at",
+                    "updated_at",
+                    "date",
+                    default="",
+                )
+            )
+            created_date = (
+                created_at.split("T")[0]
+                if "T" in created_at
+                else created_at[:10]
+            ) or "—"
+
+            safe_project = (
+                re.sub(r"[^A-Za-z0-9_-]+", "_", project_name).strip("_")
+                or "saved_bom"
+            )
+
+            st.markdown(
+                f"""
+                <div class="cv-r9-selected">
+                  <div class="cv-r9-selected-grid">
+                    <div class="cv-r9-selected-cell">
+                      <span>Selected BOM</span>
+                      <strong>{html.escape(project_name)}</strong>
+                    </div>
+                    <div class="cv-r9-selected-cell">
+                      <span>Health</span>
+                      <strong>{health_score}/100</strong>
+                    </div>
+                    <div class="cv-r9-selected-cell">
+                      <span>Parts</span>
+                      <strong>{part_count}</strong>
+                    </div>
+                    <div class="cv-r9-selected-cell">
+                      <span>High / Medium Risk</span>
+                      <strong>{high_risk} / {medium_risk}</strong>
+                    </div>
+                    <div class="cv-r9-selected-cell">
+                      <span>Saved</span>
+                      <strong>{html.escape(created_date)}</strong>
+                    </div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            def _customer_report_table(
+                frame: pd.DataFrame,
+                preferred_columns: list[str] | None = None,
+            ) -> pd.DataFrame:
+                """Return a customer-facing report preview without database fields."""
+                if frame is None or frame.empty:
+                    return pd.DataFrame()
+
+                cleaned = frame.copy()
+
+                hidden_columns = {
+                    "id",
+                    "user_id",
+                    "analysis_id",
+                    "workspace_id",
+                    "organization_id",
+                    "created_at",
+                    "updated_at",
+                    "raw_data",
+                    "metadata",
+                }
+                cleaned = cleaned[
+                    [
+                        column
+                        for column in cleaned.columns
+                        if str(column).strip().lower() not in hidden_columns
+                    ]
+                ]
+
+                if preferred_columns:
+                    existing = [
+                        column
+                        for column in preferred_columns
+                        if column in cleaned.columns
+                    ]
+                    if existing:
+                        cleaned = cleaned[existing]
+
+                human_labels = {
+                    "project": "Project",
+                    "project_name": "Project",
+                    "source_file": "Source File",
+                    "filename": "Source File",
+                    "mpn": "Manufacturer Part Number",
+                    "MPN": "Manufacturer Part Number",
+                    "part_number": "Part Number",
+                    "manufacturer": "Manufacturer",
+                    "risk_score": "Risk Score",
+                    "risk_level": "Risk Level",
+                    "risk_reasons": "Risk Explanation",
+                    "lifecycle_status": "Lifecycle Status",
+                    "stock_available": "Available Stock",
+                    "stock": "Available Stock",
+                    "supplier_count": "Supplier Sources",
+                    "unit_price": "Unit Price",
+                    "lead_time": "Lead Time",
+                    "lead_time_weeks": "Lead Time (Weeks)",
+                    "has_alternates": "Alternatives Available",
+                    "alternate_count": "Alternative Count",
+                    "alternate_part_numbers": "Alternative Part Numbers",
+                    "health_score": "Health Score",
+                    "high_risk_parts": "High-Risk Components",
+                    "medium_risk_parts": "Medium-Risk Components",
+                    "message": "Status",
+                }
+
+                cleaned = cleaned.rename(
+                    columns={
+                        column: human_labels.get(
+                            column,
+                            str(column).replace("_", " ").strip().title(),
+                        )
+                        for column in cleaned.columns
+                    }
+                )
+                return cleaned
+
+            def _first_existing(frame: pd.DataFrame, names: list[str], default=None):
+                for name in names:
+                    if name in frame.columns:
+                        return frame[name]
+                return pd.Series([default] * len(frame), index=frame.index)
+
+            def _risk_action(row: pd.Series) -> str:
+                lifecycle = str(row.get("lifecycle_status", "")).lower()
+                stock = float(pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0)
+                suppliers = float(pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0)
+                score = float(pd.to_numeric(row.get("risk_score", 0), errors="coerce") or 0)
+                if any(term in lifecycle for term in ("obsolete", "eol", "replacement", "nrnd", "not recommended")):
+                    return "Qualify a replacement before production"
+                if stock <= 0:
+                    return "Resolve supply gap or approve substitute"
+                if suppliers <= 1:
+                    return "Approve a second source"
+                if score >= 60:
+                    return "Complete engineering review before release"
+                if score >= 30:
+                    return "Review during current design revision"
+                return "Continue controlled monitoring"
+
+            def _procurement_status(row: pd.Series) -> str:
+                stock = float(pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0)
+                suppliers = float(pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0)
+                lead = float(pd.to_numeric(row.get("lead_time_weeks", 0), errors="coerce") or 0)
+                if stock <= 0:
+                    return "Immediate sourcing action"
+                if suppliers <= 1:
+                    return "Single-source exposure"
+                if lead >= 16:
+                    return "Long lead time"
+                if stock < 500:
+                    return "Low stock coverage"
+                return "Purchasing ready"
+
+            def _lifecycle_priority(status: str) -> str:
+                value = str(status or "").lower()
+                if any(term in value for term in ("obsolete", "eol", "end of life")):
+                    return "Immediate replacement"
+                if any(term in value for term in ("replacement", "nrnd", "not recommended")):
+                    return "Qualification required"
+                if value in ("active", "new at mouser", "new"):
+                    return "Routine monitoring"
+                return "Status verification required"
+
+            lifecycle_columns = [
+                column
+                for column in [
+                    "mpn",
+                    "MPN",
+                    "part_number",
+                    "manufacturer",
+                    "lifecycle_status",
+                    "Lifecycle Status",
+                    "risk_level",
+                    "risk_score",
+                    "stock_available",
+                    "supplier_count",
+                ]
+                if column in selected_parts_df.columns
+            ]
+            lifecycle_df = (
+                selected_parts_df[lifecycle_columns].copy()
+                if lifecycle_columns
+                else selected_parts_df.copy()
+            )
+
+            alternative_columns = [
+                column
+                for column in [
+                    "mpn",
+                    "MPN",
+                    "part_number",
+                    "manufacturer",
+                    "risk_level",
+                    "risk_score",
+                    "has_alternates",
+                    "alternate_count",
+                    "alternate_part_numbers",
+                    "lifecycle_status",
+                    "stock_available",
+                ]
+                if column in selected_parts_df.columns
+            ]
+            alternative_df = (
+                selected_parts_df[alternative_columns].copy()
+                if alternative_columns
+                else selected_parts_df.copy()
+            )
+
+            sourcing_candidates = [
+                "mpn",
+                "part_number",
+                "manufacturer",
+                "lifecycle_status",
+                "stock_available",
+                "stock",
+                "supplier_count",
+                "unit_price",
+                "risk_level",
+                "risk_score",
+                "has_alternates",
+                "alternate_count",
+            ]
+            if selected_parts_df.empty:
+                engineering_df = pd.DataFrame()
+                sourcing_df = pd.DataFrame()
+                lifecycle_df = pd.DataFrame()
+                alternative_df = pd.DataFrame()
+            else:
+                role_source = selected_parts_df.copy()
+
+                role_source["mpn"] = _first_existing(
+                    role_source,
+                    ["mpn", "MPN", "part_number"],
+                    "Unknown",
+                )
+                role_source["manufacturer"] = _first_existing(
+                    role_source,
+                    ["manufacturer", "Manufacturer"],
+                    "Unknown",
+                )
+                role_source["risk_level"] = _first_existing(
+                    role_source,
+                    ["risk_level", "Risk Level"],
+                    "Unknown",
+                )
+                role_source["risk_score"] = pd.to_numeric(
+                    _first_existing(role_source, ["risk_score", "Risk Score"], 0),
+                    errors="coerce",
+                ).fillna(0)
+                role_source["risk_reasons"] = _first_existing(
+                    role_source,
+                    ["risk_reasons", "Risk Explanation"],
+                    "No specific exception recorded",
+                )
+                role_source["lifecycle_status"] = _first_existing(
+                    role_source,
+                    ["lifecycle_status", "Lifecycle Status"],
+                    "Unknown",
+                )
+                role_source["stock_available"] = pd.to_numeric(
+                    _first_existing(
+                        role_source,
+                        ["stock_available", "Stock Available", "stock"],
+                        0,
+                    ),
+                    errors="coerce",
+                ).fillna(0)
+                role_source["supplier_count"] = pd.to_numeric(
+                    _first_existing(
+                        role_source,
+                        ["supplier_count", "Supplier Count"],
+                        0,
+                    ),
+                    errors="coerce",
+                ).fillna(0)
+                role_source["primary_supplier"] = _first_existing(
+                    role_source,
+                    ["supplier", "primary_supplier", "best_source", "Supplier"],
+                    "Not recorded",
+                )
+                role_source["unit_price"] = pd.to_numeric(
+                    _first_existing(
+                        role_source,
+                        ["unit_price", "Unit Price"],
+                        0,
+                    ),
+                    errors="coerce",
+                ).fillna(0)
+                role_source["lead_time_weeks"] = pd.to_numeric(
+                    _first_existing(
+                        role_source,
+                        ["lead_time_weeks", "Lead Time Weeks", "lead_time"],
+                        0,
+                    ),
+                    errors="coerce",
+                ).fillna(0)
+
+                role_source["Engineering Priority"] = role_source["risk_score"].apply(
+                    lambda value: (
+                        "Immediate"
+                        if value >= 75
+                        else "High"
+                        if value >= 50
+                        else "Moderate"
+                        if value >= 25
+                        else "Routine"
+                    )
+                )
+                role_source["Recommended Action"] = role_source.apply(
+                    _risk_action,
+                    axis=1,
+                )
+
+                engineering_df = pd.DataFrame(
+                    {
+                        "Manufacturer Part Number": role_source["mpn"],
+                        "Manufacturer": role_source["manufacturer"],
+                        "Risk Level": role_source["risk_level"],
+                        "Risk Score": role_source["risk_score"],
+                        "Risk Explanation": role_source["risk_reasons"],
+                        "Engineering Priority": role_source["Engineering Priority"],
+                        "Recommended Action": role_source["Recommended Action"],
+                        "_sort_risk_score": role_source["risk_score"],
+                    }
+                ).sort_values(
+                    by="_sort_risk_score",
+                    ascending=False,
+                    kind="stable",
+                ).drop(columns=["_sort_risk_score"])
+
+                role_source["Procurement Status"] = role_source.apply(
+                    _procurement_status,
+                    axis=1,
+                )
+                sourcing_df = pd.DataFrame(
+                    {
+                        "Manufacturer Part Number": role_source["mpn"],
+                        "Manufacturer": role_source["manufacturer"],
+                        "Primary Supplier": role_source["primary_supplier"],
+                        "Available Stock": role_source["stock_available"],
+                        "Unit Price": role_source["unit_price"],
+                        "Lead Time (Weeks)": role_source["lead_time_weeks"],
+                        "Supplier Sources": role_source["supplier_count"],
+                        "Procurement Status": role_source["Procurement Status"],
+                        "_sort_stock": role_source["stock_available"],
+                        "_sort_sources": role_source["supplier_count"],
+                    }
+                ).sort_values(
+                    by=["_sort_stock", "_sort_sources"],
+                    ascending=[True, True],
+                    kind="stable",
+                ).drop(columns=["_sort_stock", "_sort_sources"])
+
+                role_source["Future Availability"] = role_source[
+                    "lifecycle_status"
+                ].apply(
+                    lambda status: (
+                        "At risk"
+                        if any(
+                            term in str(status).lower()
+                            for term in (
+                                "obsolete",
+                                "eol",
+                                "end of life",
+                                "replacement",
+                                "nrnd",
+                                "not recommended",
+                            )
+                        )
+                        else "Expected to continue"
+                        if str(status).lower() == "active"
+                        else "Needs verification"
+                    )
+                )
+                role_source["Replacement Readiness"] = role_source[
+                    "lifecycle_status"
+                ].apply(
+                    lambda status: (
+                        "Replacement required"
+                        if any(
+                            term in str(status).lower()
+                            for term in ("obsolete", "eol", "end of life")
+                        )
+                        else "Successor qualification advised"
+                        if any(
+                            term in str(status).lower()
+                            for term in ("replacement", "nrnd", "not recommended")
+                        )
+                        else "No immediate replacement"
+                    )
+                )
+                role_source["Review Priority"] = role_source[
+                    "lifecycle_status"
+                ].apply(_lifecycle_priority)
+
+                lifecycle_rank = {
+                    "Immediate replacement": 0,
+                    "Qualification required": 1,
+                    "Status verification required": 2,
+                    "Routine monitoring": 3,
+                }
+                role_source["_lifecycle_rank"] = role_source[
+                    "Review Priority"
+                ].map(lifecycle_rank).fillna(4)
+
+                lifecycle_df = pd.DataFrame(
+                    {
+                        "Manufacturer Part Number": role_source["mpn"],
+                        "Manufacturer": role_source["manufacturer"],
+                        "Lifecycle Status": role_source["lifecycle_status"],
+                        "Future Availability": role_source["Future Availability"],
+                        "Replacement Readiness": role_source["Replacement Readiness"],
+                        "Review Priority": role_source["Review Priority"],
+                        "_sort_lifecycle_rank": role_source["_lifecycle_rank"],
+                    }
+                ).sort_values(
+                    by="_sort_lifecycle_rank",
+                    ascending=True,
+                    kind="stable",
+                ).drop(columns=["_sort_lifecycle_rank"])
+
+                has_alternates = _first_existing(
+                    role_source,
+                    ["has_alternates", "alternatives_available"],
+                    False,
+                )
+                alternate_count = pd.to_numeric(
+                    _first_existing(
+                        role_source,
+                        ["alternate_count", "alternatives_count"],
+                        0,
+                    ),
+                    errors="coerce",
+                ).fillna(0)
+                alternate_parts = _first_existing(
+                    role_source,
+                    [
+                        "alternate_part_numbers",
+                        "recommended_alternative",
+                        "alternative_part",
+                    ],
+                    "Not yet qualified",
+                )
+
+                role_source["Replacement Status"] = [
+                    (
+                        "Candidates available"
+                        if bool(available) or count > 0
+                        else "Alternative search required"
+                    )
+                    for available, count in zip(has_alternates, alternate_count)
+                ]
+                role_source["Recommended Replacement"] = alternate_parts
+                role_source["Alternative Count"] = alternate_count.astype(int)
+                role_source["Next Engineering Step"] = role_source[
+                    "Replacement Status"
+                ].apply(
+                    lambda status: (
+                        "Review compatibility and approve candidate"
+                        if status == "Candidates available"
+                        else "Run Alternative Finder"
+                    )
+                )
+
+                alternative_df = pd.DataFrame(
+                    {
+                        "Original Component": role_source["mpn"],
+                        "Manufacturer": role_source["manufacturer"],
+                        "Current Lifecycle": role_source["lifecycle_status"],
+                        "Replacement Status": role_source["Replacement Status"],
+                        "Recommended Replacement": role_source["Recommended Replacement"],
+                        "Alternative Count": role_source["Alternative Count"],
+                        "Next Engineering Step": role_source["Next Engineering Step"],
+                        "_sort_alternative_count": role_source["Alternative Count"],
+                        "_sort_risk_score": role_source["risk_score"],
+                    }
+                ).sort_values(
+                    by=["_sort_alternative_count", "_sort_risk_score"],
+                    ascending=[False, False],
+                    kind="stable",
+                )
+
+                alternative_df = alternative_df.drop(
+                    columns=["_sort_alternative_count", "_sort_risk_score"]
+                )
+
+            from src.engineering_decision_engine import (
+                build_engineering_decision_brief,
+                get_cached_decision_brief,
+                decision_brief_cache_key,
+                cache_decision_brief,
+                format_decision_brief_for_report,
+            )
+            from src.ai_report_intelligence import (
+                build_ai_report_intelligence,
+                build_ai_executive_pdf,
+                build_ai_procurement_pdf,
+            )
+            from src.role_report_generator import build_role_report_pdf
+            from src.pdf_entitlements import add_student_edition_watermark
+            # Every report derives from the same normalized, current evidence.
+            # An analysis-only cache key can otherwise reuse a decision brief
+            # generated before supplier inventory or the health score changed.
+            report_evidence_df = (
+                role_source.copy() if not selected_parts_df.empty else selected_parts_df.copy()
+            )
+            if not report_evidence_df.empty:
+                report_evidence_df["Stock Available"] = report_evidence_df["stock_available"]
+                report_evidence_df["Stock"] = report_evidence_df["stock_available"]
+                report_evidence_df["Supplier Count"] = report_evidence_df["supplier_count"]
+            report_health_score = _report_int(
+                _report_value(selected_analysis, "health_score", default=0)
+            )
+            evidence_columns = [
+                column for column in (
+                    "mpn", "risk_level", "risk_score", "lifecycle_status",
+                    "stock_available", "supplier_count",
+                ) if column in report_evidence_df.columns
+            ]
+            evidence_payload = report_evidence_df[evidence_columns].to_json(
+                orient="records", date_format="iso"
+            ) if evidence_columns else "[]"
+            evidence_fingerprint = hashlib.sha256(
+                f"{report_health_score}:{evidence_payload}".encode("utf-8")
+            ).hexdigest()[:16]
+            report_brief_key = (
+                f"{decision_brief_cache_key(analysis_id=_report_value(selected_analysis, 'id', 'analysis_id', default=''))}"
+                f":reports:{evidence_fingerprint}"
+            )
+            decision_brief = get_cached_decision_brief(report_brief_key)
+            if decision_brief is None:
+                decision_brief = build_engineering_decision_brief(
+                    results_df=report_evidence_df,
+                    analysis=dict(selected_analysis),
+                    health_score=report_health_score,
+                )
+                cache_decision_brief(report_brief_key, decision_brief)
+
+            pdf_bytes = _build_executive_pdf(
+                selected_analysis,
+                selected_parts_df,
+                decision_brief=decision_brief,
+            )
+            ai_report = build_ai_report_intelligence(
+                selected_analysis,
+                report_evidence_df,
+            )
+            ai_executive_pdf = build_ai_executive_pdf(ai_report, decision_brief=decision_brief)
+            ai_procurement_pdf = build_ai_procurement_pdf(ai_report)
+            risk_report_pdf = build_role_report_pdf(
+                title="Cadivor Engineering Risk Review",
+                subtitle="Components ranked by technical risk requiring engineering attention.",
+                project_name=project_name,
+                dataframe=engineering_df,
+                summary_lines=[
+                    f"High-risk components: {high_risk}",
+                    f"Medium-risk components: {medium_risk}",
+                ],
+            )
+            sourcing_report_pdf = build_role_report_pdf(
+                title="Cadivor Procurement & Sourcing Review",
+                subtitle="Components ranked by purchasing availability and sourcing difficulty.",
+                project_name=project_name,
+                dataframe=sourcing_df,
+                summary_lines=[
+                    ai_report["procurement_summary"],
+                ],
+            )
+            lifecycle_report_pdf = build_role_report_pdf(
+                title="Cadivor Lifecycle Readiness Review",
+                subtitle="Manufacturer lifecycle status and future availability assessment.",
+                project_name=project_name,
+                dataframe=lifecycle_df,
+                summary_lines=[
+                    f"Lifecycle concerns identified: {ai_report['lifecycle_concerns']}",
+                ],
+            )
+            alternatives_report_pdf = build_role_report_pdf(
+                title="Cadivor Alternative Readiness Review",
+                subtitle="Replacement readiness and next qualification actions.",
+                project_name=project_name,
+                dataframe=alternative_df,
+                summary_lines=[
+                    "Use this report to identify components requiring an Alternative Finder review.",
+                ],
+            )
+
+            # Sprint 31.2: every PDF in the Reports workspace carries the
+            # Student Edition watermark when the active entitlement requires it.
+            student_pdf = bool(selected_plan.get("student_watermark"))
+            pdf_bytes = add_student_edition_watermark(pdf_bytes, student_pdf)
+            ai_executive_pdf = add_student_edition_watermark(ai_executive_pdf, student_pdf)
+            ai_procurement_pdf = add_student_edition_watermark(ai_procurement_pdf, student_pdf)
+            risk_report_pdf = add_student_edition_watermark(risk_report_pdf, student_pdf)
+            sourcing_report_pdf = add_student_edition_watermark(sourcing_report_pdf, student_pdf)
+            lifecycle_report_pdf = add_student_edition_watermark(lifecycle_report_pdf, student_pdf)
+            alternatives_report_pdf = add_student_edition_watermark(alternatives_report_pdf, student_pdf)
+
+            risk_report_csv = engineering_df.to_csv(index=False).encode("utf-8")
+            sourcing_report_csv = sourcing_df.to_csv(index=False).encode("utf-8")
+            lifecycle_report_csv = lifecycle_df.to_csv(index=False).encode("utf-8")
+            alternatives_report_csv = alternative_df.to_csv(index=False).encode("utf-8")
+            executive_csv = pd.DataFrame(
+                [
+                    {
+                        "project": project_name,
+                        "source_file": source_file,
+                        "health_score": health_score,
+                        "part_count": part_count,
+                        "high_risk_parts": high_risk,
+                        "medium_risk_parts": medium_risk,
+                        "saved_date": created_date,
+                        **(
+                            format_decision_brief_for_report(decision_brief)
+                            if decision_brief
+                            else {}
+                        ),
+                    }
+                ]
+            ).to_csv(index=False).encode("utf-8")
+
+            def _report_download_button(
+                label: str,
+                *,
+                report_type: str,
+                data,
+                file_name: str,
+                mime: str,
+                key: str,
+                primary: bool = False,
+            ) -> None:
+                """Deliver a report without a rerun that can interrupt the file response."""
+                options = {
+                    "data": data,
+                    "file_name": file_name,
+                    "mime": mime,
+                    "key": key,
+                    "use_container_width": True,
+                    # The report controls must stay ordinary download buttons.
+                    # Wrapping them in a fragment and running a server callback
+                    # during the click can interrupt Streamlit's file response.
+                    "on_click": "ignore",
+                }
+                if primary:
+                    options["type"] = "primary"
+                st.download_button(label, **options)
+
+            preview_tabs = st.tabs(
+                [
+                    "AI Executive Brief",
+                    "AI Procurement Brief",
+                    "Engineering Risk Review",
+                    "Procurement & Sourcing Review",
+                    "Lifecycle Readiness Review",
+                    "Alternative Readiness Review",
+                ]
+            )
+
+            with preview_tabs[0]:
+                st.markdown(
+                    f"""
+                    <div class="cv-r9-preview-card">
+                      <div class="cv-r9-preview-title">AI Executive Decision Brief</div>
+                      <div class="cv-r9-preview-copy">
+                        <b>Production readiness:</b> {html.escape(ai_report['readiness'])}
+                        <br><br>{html.escape(ai_report['executive_summary'])}
+                        <br><br><b>Management decision:</b>
+                        {html.escape(ai_report['executive_decision'])}
+                        <br><br><b>Projected health:</b>
+                        {ai_report['health']}/100 → {ai_report['projected_health']}/100
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with preview_tabs[1]:
+                procurement_items = "".join(
+                    f"<li>{html.escape(item)}</li>"
+                    for item in ai_report["procurement_actions"]
+                )
+                st.markdown(
+                    f"""
+                    <div class="cv-r9-preview-card">
+                      <div class="cv-r9-preview-title">AI Procurement Brief</div>
+                      <div class="cv-r9-preview-copy">
+                        {html.escape(ai_report['procurement_summary'])}
+                        <br><br><b>Priority actions</b>
+                        <ul>{procurement_items}</ul>
+                        <b>Estimated procurement effort:</b>
+                        {ai_report['procurement_hours']} hour(s)
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with preview_tabs[2]:
+                st.markdown("### Engineering Risk Review")
+                st.caption(
+                    "For design and component engineers: components ranked by technical risk, "
+                    "with the reason and recommended engineering action."
+                )
+                if engineering_df.empty:
+                    st.info("No component-level risk data is available.")
+                else:
+                    cadivor_engineering_dataframe(
+                        engineering_df,
+                        column_config={
+                            "MPN": st.column_config.TextColumn(width="medium"),
+                            "Risk Score": st.column_config.NumberColumn(format="%d"),
+                        },
+                    )
+                    risk_pdf_col, risk_csv_col = st.columns(2)
+                    with risk_pdf_col:
+                        _report_download_button(
+                            "Download Risk Review PDF",
+                            report_type="Engineering Risk Review",
+                            data=risk_report_pdf,
+                            key=f"tab_risk_pdf_{selected_analysis_id}",
+                            file_name=f"{safe_project}_engineering_risk_review.pdf",
+                            mime="application/pdf",
+                        )
+                    with risk_csv_col:
+                        _report_download_button(
+                            "Download Risk Review CSV",
+                            report_type="Engineering Risk Review",
+                            data=risk_report_csv,
+                            key=f"tab_risk_csv_{selected_analysis_id}",
+                            file_name=f"{safe_project}_engineering_risk_review.csv",
+                            mime="text/csv",
+                        )
+
+            with preview_tabs[3]:
+                st.markdown("### Procurement & Sourcing Review")
+                st.caption(
+                    "For procurement and supply chain: purchasing availability, supplier coverage, "
+                    "lead time, pricing, and the required sourcing response."
+                )
+                if sourcing_df.empty:
+                    st.info("No sourcing fields are available for this analysis.")
+                else:
+                    cadivor_engineering_dataframe(
+                        sourcing_df,
+                        column_config={
+                            "MPN": st.column_config.TextColumn(width="medium"),
+                            "Stock Available": st.column_config.NumberColumn(format="%,d"),
+                        },
+                    )
+                    sourcing_pdf_col, sourcing_csv_col = st.columns(2)
+                    with sourcing_pdf_col:
+                        _report_download_button(
+                            "Download Sourcing Review PDF",
+                            report_type="Procurement & Sourcing",
+                            data=sourcing_report_pdf,
+                            key=f"tab_sourcing_pdf_{selected_analysis_id}",
+                            file_name=f"{safe_project}_procurement_sourcing_review.pdf",
+                            mime="application/pdf",
+                        )
+                    with sourcing_csv_col:
+                        _report_download_button(
+                            "Download Sourcing Review CSV",
+                            report_type="Procurement & Sourcing",
+                            data=sourcing_report_csv,
+                            key=f"tab_sourcing_csv_{selected_analysis_id}",
+                            file_name=f"{safe_project}_procurement_sourcing_review.csv",
+                            mime="text/csv",
+                        )
+
+            with preview_tabs[4]:
+                st.markdown("### Lifecycle Readiness Review")
+                st.caption(
+                    "For component engineering: lifecycle continuity, future availability, "
+                    "replacement readiness, and review priority."
+                )
+                if lifecycle_df.empty:
+                    st.info("No lifecycle fields are available for this analysis.")
+                else:
+                    cadivor_engineering_dataframe(lifecycle_df)
+                    lifecycle_pdf_col, lifecycle_csv_col = st.columns(2)
+                    with lifecycle_pdf_col:
+                        _report_download_button(
+                            "Download Lifecycle Review PDF",
+                            report_type="Lifecycle Exposure Report",
+                            data=lifecycle_report_pdf,
+                            key=f"tab_lifecycle_pdf_{selected_analysis_id}",
+                            file_name=f"{safe_project}_lifecycle_readiness_review.pdf",
+                            mime="application/pdf",
+                        )
+                    with lifecycle_csv_col:
+                        _report_download_button(
+                            "Download Lifecycle Review CSV",
+                            report_type="Lifecycle Exposure Report",
+                            data=lifecycle_report_csv,
+                            key=f"tab_lifecycle_csv_{selected_analysis_id}",
+                            file_name=f"{safe_project}_lifecycle_readiness_review.csv",
+                            mime="text/csv",
+                        )
+
+            with preview_tabs[5]:
+                st.markdown("### Alternative Readiness Review")
+                st.caption(
+                    "For replacement qualification: which components already have candidates "
+                    "and which require an Alternative Finder search."
+                )
+                if alternative_df.empty:
+                    st.info("No alternative-readiness fields are available for this analysis.")
+                else:
+                    cadivor_engineering_dataframe(alternative_df)
+                    alt_pdf_col, alt_csv_col = st.columns(2)
+                    with alt_pdf_col:
+                        _report_download_button(
+                            "Download Alternatives Review PDF",
+                            report_type="Alternative Replacement Report",
+                            data=alternatives_report_pdf,
+                            key=f"tab_alternatives_pdf_{selected_analysis_id}",
+                            file_name=f"{safe_project}_alternative_readiness_review.pdf",
+                            mime="application/pdf",
+                        )
+                    with alt_csv_col:
+                        _report_download_button(
+                            "Download Alternatives Review CSV",
+                            report_type="Alternative Replacement Report",
+                            data=alternatives_report_csv,
+                            key=f"tab_alternatives_csv_{selected_analysis_id}",
+                            file_name=f"{safe_project}_alternative_readiness_review.csv",
+                            mime="text/csv",
+                        )
+
+            st.markdown(
+                '<div class="cv-r9-section">Report packages</div>'
+                '<div class="cv-r9-sub">Downloads are generated from the selected saved BOM analysis.</div>',
+                unsafe_allow_html=True,
+            )
+
+            with st.expander("Executive reports", expanded=True):
+                st.caption("Leadership-ready summaries for release, risk, and management review.")
+                ai_exec_col, executive_pdf_col, executive_csv_col = st.columns(3)
+                with ai_exec_col:
+                    ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
+                    _report_download_button(
+                        "AI Executive Brief · PDF",
+                        report_type="AI Executive Brief",
+                        key=f"shared_ai_executive_pdf_{selected_analysis_id}",
+                        data=ai_executive_pdf,
+                        file_name=ai_exec_name,
+                        mime="application/pdf",
+                        primary=True,
+                    )
+                with executive_pdf_col:
+                    executive_pdf_name = f"{safe_project}_executive_summary.pdf"
+                    _report_download_button(
+                        "Executive Summary · PDF",
+                        report_type="Executive BOM Summary",
+                        key=f"shared_executive_pdf_{selected_analysis_id}",
+                        data=pdf_bytes,
+                        file_name=executive_pdf_name,
+                        mime="application/pdf",
+                    )
+                with executive_csv_col:
+                    executive_csv_name = f"{safe_project}_executive_summary.csv"
+                    _report_download_button(
+                        "Executive Data · CSV",
+                        report_type="Executive BOM Summary",
+                        key=f"shared_executive_csv_{selected_analysis_id}",
+                        data=executive_csv,
+                        file_name=executive_csv_name,
+                        mime="text/csv",
+                    )
+
+            with st.expander("Engineering reports", expanded=False):
+                st.caption("Technical reviews for component risk, lifecycle readiness, and alternatives.")
+                risk_col, lifecycle_col, alternatives_col = st.columns(3)
+                with risk_col:
+                    risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
+                    _report_download_button(
+                        "Risk Review · CSV",
+                        report_type="Engineering Risk Review",
+                        key=f"shared_risk_csv_{selected_analysis_id}",
+                        data=engineering_df.to_csv(index=False).encode("utf-8"),
+                        file_name=risk_csv_name,
+                        mime="text/csv",
+                    )
+                with lifecycle_col:
+                    lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
+                    _report_download_button(
+                        "Lifecycle Review · CSV",
+                        report_type="Lifecycle Exposure Report",
+                        key=f"shared_lifecycle_csv_{selected_analysis_id}",
+                        data=lifecycle_df.to_csv(index=False).encode("utf-8"),
+                        file_name=lifecycle_csv_name,
+                        mime="text/csv",
+                    )
+                with alternatives_col:
+                    alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
+                    _report_download_button(
+                        "Alternatives Review · CSV",
+                        report_type="Alternative Replacement Report",
+                        key=f"shared_alternatives_csv_{selected_analysis_id}",
+                        data=alternative_df.to_csv(index=False).encode("utf-8"),
+                        file_name=alternatives_csv_name,
+                        mime="text/csv",
+                    )
+
+            with st.expander("Procurement reports", expanded=False):
+                st.caption("Purchasing and sourcing packages for procurement and supplier review.")
+                ai_proc_col, sourcing_col = st.columns(2)
+                with ai_proc_col:
+                    ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
+                    _report_download_button(
+                        "AI Procurement Brief · PDF",
+                        report_type="AI Procurement Brief",
+                        key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
+                        data=ai_procurement_pdf,
+                        file_name=ai_proc_name,
+                        mime="application/pdf",
+                        primary=True,
+                    )
+                with sourcing_col:
+                    sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
+                    _report_download_button(
+                        "Sourcing Review · CSV",
+                        report_type="Procurement & Sourcing",
+                        key=f"shared_sourcing_csv_{selected_analysis_id}",
+                        data=sourcing_df.to_csv(index=False).encode("utf-8"),
+                        file_name=sourcing_csv_name,
+                        mime="text/csv",
+                    )
+
+            action_cols = st.columns(3)
+            with action_cols[0]:
+                internal_nav_button(
+                    "Open Analysis Details",
+                    "Analysis Details",
+                    key="reports_open_analysis_details",
+                    use_container_width=True,
+                    analysis_id=selected_analysis_id,
+                )
+            with action_cols[1]:
+                internal_nav_button(
+                    "Open in BOM Analyzer",
+                    "BOM Analyzer",
+                    key="reports_open_bom_analyzer",
+                    use_container_width=True,
+                    analysis_id=selected_analysis_id,
+                )
+            with action_cols[2]:
+                internal_nav_button(
+                    "Open Alternative Finder",
+                    ALTERNATIVE_FINDER_PAGE,
+                    key="reports_open_alternative_finder",
+                    use_container_width=True,
+                    analysis_id=selected_analysis_id,
+                    return_analysis_id=selected_analysis_id,
+                    source_page="reports_center",
+                )
+
+            with st.expander(
+                f"Browse all {len(report_records)} report-ready analyses",
+                expanded=False,
+            ):
+                display_rows = []
+                for row in report_records:
+                    row_created_at = str(
+                        _report_value(
+                            row,
+                            "created_at",
+                            "date",
+                            default="",
+                        )
+                    )
+                    row_created_date = (
+                        row_created_at.split("T")[0]
+                        if "T" in row_created_at
+                        else row_created_at[:10]
+                    )
+                    display_rows.append(
+                        {
+                            "Project": _report_value(
+                                row,
+                                "project_name",
+                                "name",
+                                default="Saved BOM",
+                            ),
+                            "Source File": _report_value(
+                                row,
+                                "filename",
+                                "uploaded_file",
+                                "file_name",
+                                default="—",
+                            ),
+                            "Date": row_created_date or "—",
+                            "Health": _report_int(
+                                _report_value(
+                                    row,
+                                    "health_score",
+                                    default=0,
+                                )
+                            ),
+                            "High Risk": _report_int(
+                                _report_value(
+                                    row,
+                                    "high_risk_count",
+                                    "high_risk_parts",
+                                    default=0,
+                                )
+                            ),
+                            "Medium Risk": _report_int(
+                                _report_value(
+                                    row,
+                                    "medium_risk_count",
+                                    "medium_risk_parts",
+                                    default=0,
+                                )
+                            ),
+                            "Parts": _report_int(
+                                _report_value(
+                                    row,
+                                    "total_parts",
+                                    "part_count",
+                                    "parts_count",
+                                    default=0,
+                                )
+                            ),
+                        }
+                    )
+                cadivor_engineering_dataframe(pd.DataFrame(display_rows))
+        else:
+            st.markdown(
+                '<div class="cv-r9-empty">No saved BOM analyses are available. Analyze and save a BOM before generating reports.</div>',
+                unsafe_allow_html=True,
+            )
+
+        stop_authenticated_page()
+
+
+    # ---------- Pricing ----------
+    if app_mode == "Pricing":
+        # Sprint 31.3.1 — launch pricing polish patch.
+        current_plan_key = str(selected_plan_name or "Starter").strip().lower()
+        plan_aliases = {
+            "pro": "professional",
+            "professional": "professional",
+            "business": "business",
+            "enterprise": "enterprise",
+            "student": "student",
+            "trial": "free trial",
+            "free trial": "free trial",
+            "starter": "starter",
+            "free": "starter",
+        }
+        normalized_current_plan = plan_aliases.get(current_plan_key, current_plan_key)
+        used_boms = int(monthly_upload_count or 0)
+        included_boms = int(selected_plan.get("monthly_bom_limit", 0) or 0)
+        usage_percent = min(100, round((used_boms / included_boms) * 100)) if included_boms else 0
+        monitored_limit = selected_plan.get("monitored_parts_limit")
+        monitored_limit_text = "Unlimited" if monitored_limit is None else f"{int(monitored_limit):,}"
+        analysis_limit_text = "Unlimited" if not included_boms else f"{included_boms:,}"
+        component_limit = selected_plan.get("max_parts_per_bom")
+        component_limit_text = "Unlimited" if component_limit is None else f"{int(component_limit):,} per BOM"
+        reports_text = "Student Edition watermark" if selected_plan.get("student_watermark") else "Included"
+        checkout_state = str(_qp_value("checkout", "") or "").strip().lower()
+
+        if checkout_state == "success":
+            st.success(
+                "Payment completed. Your plan will update automatically after Stripe confirms the subscription."
+            )
+            st.caption(
+                "This normally happens within a few moments. Refresh Cadivor if the plan badge has not changed yet."
+            )
+        elif checkout_state == "cancel":
+            st.info("Checkout was canceled. Your current plan and saved work are unchanged.")
+
+        st.markdown(
+            """
+            <style id="cadivor-pricing-313">
+            .cv311-hero{border:1px solid #bfdbfe;background:
+            radial-gradient(circle at 91% 12%,rgba(37,99,235,.13),transparent 29%),
+            linear-gradient(135deg,#fff 0%,#f8fbff 64%,#eef5ff 100%);
+            border-radius:26px;padding:36px 40px;margin-bottom:26px;box-shadow:0 20px 52px rgba(37,99,235,.08)}
+            .cv311-eyebrow{font-size:clamp(13px,.82vw,16px);font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb!important;margin-bottom:10px}
+            .cv311-title{font-size:clamp(38px,2.55vw,54px);font-weight:950;letter-spacing:-.045em;color:#0f172a!important;line-height:1.06;margin-bottom:14px;max-width:1180px}
+            .cv311-copy{font-size:clamp(17px,1.05vw,21px);font-weight:680;color:#52647a!important;line-height:1.62;max-width:1080px}
+            .cv311-current{border:1px solid #dbeafe;background:linear-gradient(135deg,#fff 0%,#fbfdff 100%);border-radius:22px;padding:25px 28px;margin-bottom:26px;box-shadow:0 14px 38px rgba(15,23,42,.065)}
+            .cv311-current-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:20px}
+            .cv311-current-title{font-size:clamp(22px,1.35vw,28px);font-weight:950;color:#0f172a!important;line-height:1.2}
+            .cv311-current-copy{font-size:clamp(14px,.9vw,17px);font-weight:680;color:#64748b!important;margin-top:7px;line-height:1.5}
+            .cv311-plan-badge{border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:9px 14px;font-size:clamp(12px,.75vw,15px);font-weight:950;white-space:nowrap}
+            .cv311-usage-meta{display:flex;justify-content:space-between;gap:12px;font-size:clamp(13px,.82vw,16px);font-weight:850;color:#475569!important;margin:17px 0 9px}
+            .cv311-bar{height:11px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv311-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa);transition:width .45s ease}
+            .cv311-section-title{font-size:clamp(29px,1.75vw,38px);font-weight:950;color:#0f172a!important;margin:34px 0 8px;letter-spacing:-.025em;line-height:1.16}
+            .cv311-section-copy{font-size:clamp(15px,.98vw,19px);font-weight:650;color:#64748b!important;line-height:1.55;margin:0 0 20px}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card){padding:0!important;border-radius:23px!important;overflow:hidden!important;box-shadow:0 14px 38px rgba(15,23,42,.075)!important;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease!important;align-self:start!important}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card):hover{transform:translateY(-4px);box-shadow:0 22px 52px rgba(15,23,42,.12)!important}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-featured){border:2px solid #2563eb!important;background:linear-gradient(180deg,#f2f7ff 0%,#fff 42%)!important;box-shadow:0 22px 56px rgba(37,99,235,.20)!important}
+            .cv311-card-inner{padding:29px 32px 22px}
+            .cv311-card-top{display:flex;justify-content:space-between;align-items:center;gap:14px}
+            .cv311-name{font-size:clamp(25px,1.55vw,33px);font-weight:950;color:#0f172a!important;line-height:1.15;letter-spacing:-.025em}
+            .cv311-tag{border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:9px 14px;font-size:clamp(11px,.72vw,14px);font-weight:950;white-space:nowrap;box-shadow:0 5px 14px rgba(37,99,235,.10);transition:transform .2s ease,box-shadow .2s ease}
+            .cv311-tag.green{border-color:#6ee7b7;background:#ecfdf5;color:#047857!important}
+            .cv311-price{font-size:clamp(46px,3.2vw,68px);font-weight:950;letter-spacing:-.055em;color:#0f172a!important;margin:18px 0 4px;line-height:1}
+            .cv311-period{font-size:clamp(14px,.9vw,18px);font-weight:750;color:#64748b!important;letter-spacing:0;margin-left:4px}
+            .cv311-outcome{font-size:clamp(17px,1.05vw,21px);font-weight:850;color:#1e293b!important;line-height:1.42;margin:15px 0 6px}
+            .cv311-for{font-size:clamp(14px,.9vw,18px);font-weight:680;color:#64748b!important;line-height:1.5;margin:0 0 15px}
+            .cv311-features{border-top:1px solid #dbe4ef;padding-top:14px}
+            .cv311-feature{display:flex;align-items:flex-start;gap:10px;font-size:clamp(14px,.88vw,17px);font-weight:720;color:#334155!important;line-height:1.44;margin:8px 0}
+            .cv311-check{color:#059669!important;font-weight:950;font-size:1.08em;line-height:1.35}.cv311-muted{color:#94a3b8!important}
+            .cv311-current-note{border:1px solid #86efac;background:#ecfdf5;color:#047857!important;border-radius:12px;padding:13px 14px;font-size:clamp(13px,.82vw,16px);font-weight:900;text-align:center;margin:12px 12px 14px}
+            .cv311-info-note{border:1px solid #bfdbfe;background:#f8fbff;color:#475569!important;border-radius:12px;padding:12px 14px;font-size:clamp(13px,.82vw,16px);font-weight:720;line-height:1.45;margin-top:12px}
+            .cv311-compare{border:1px solid #dbe4ef;background:#fff;border-radius:22px;padding:28px;margin-top:30px;box-shadow:0 12px 34px rgba(15,23,42,.045)}
+            .cv311-compare h3{font-size:clamp(26px,1.6vw,34px)!important;line-height:1.2!important;margin:0 0 9px!important;color:#0f172a!important}.cv311-compare p{font-size:clamp(14px,.9vw,18px);line-height:1.55;color:#64748b!important;margin:0 0 18px}
+            .cv311-table{display:grid;grid-template-columns:minmax(210px,1.55fr) repeat(5,minmax(145px,1fr));border:1px solid #dbe4ef;border-radius:16px;overflow:auto;background:#fff}
+            .cv311-cell{padding:17px 14px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font-size:clamp(13px,.78vw,16px);font-weight:760;color:#334155!important;background:#fff;min-width:128px;line-height:1.35;text-align:center}
+            .cv311-cell:nth-child(6n+1){text-align:left;font-weight:900;position:sticky;left:0;z-index:2;background:#fff}.cv311-cell.head{font-size:clamp(13px,.82vw,17px);font-weight:950;color:#0f172a!important;background:#f8fafc;position:sticky;top:0;z-index:3}.cv311-cell.head:nth-child(6n+1){z-index:4;background:#f8fafc}.cv311-cell.pro{background:#f4f8ff;color:#1d4ed8!important}.cv311-cell:last-child{border-right:0}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) .stButton>button,
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) .stLinkButton>a{min-height:48px!important;font-size:16px!important;font-weight:850!important;border-radius:11px!important;padding:11px 18px!important;transition:transform .18s ease,box-shadow .18s ease!important}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) .stButton>button:hover,
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) .stLinkButton>a:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(37,99,235,.20)!important}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-featured) .cv311-tag{background:#2563eb;color:#fff!important;border-color:#2563eb;box-shadow:0 7px 18px rgba(37,99,235,.24)}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card):hover .cv311-tag{transform:translateY(-1px)}
+            .cv311-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+            .cv311-summary-item{border:1px solid #e2e8f0;background:#f8fafc;border-radius:14px;padding:14px 16px}
+            .cv311-summary-label{font-size:clamp(11px,.7vw,14px);font-weight:900;letter-spacing:.055em;text-transform:uppercase;color:#64748b!important;margin-bottom:6px}
+            .cv311-summary-value{font-size:clamp(15px,.95vw,19px);font-weight:950;color:#0f172a!important;line-height:1.25}
+            .cv311-active{display:inline-flex;align-items:center;gap:7px;color:#047857!important;font-weight:900;font-size:clamp(13px,.82vw,16px);margin-top:7px}
+            .cv311-active-dot{width:9px;height:9px;border-radius:999px;background:#10b981;box-shadow:0 0 0 4px rgba(16,185,129,.12)}
+            @media(max-width:1100px){.cv311-card-inner{padding:26px 25px 21px}.cv311-table{grid-template-columns:minmax(180px,1.4fr) repeat(5,minmax(130px,1fr))}}
+            @media(max-width:900px){.cv311-hero{padding:28px 24px}.cv311-current-head{display:block}.cv311-plan-badge{display:inline-block;margin-top:10px}.cv311-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv311-card-inner{padding:25px 22px}.cv311-compare{padding:20px 16px}.cv311-table{grid-template-columns:minmax(175px,1.4fr) repeat(5,minmax(125px,1fr))}}
+            @media(max-width:560px){.cv311-summary-grid{grid-template-columns:1fr}.cv311-current{padding:22px 20px}}
+            </style>
+            <section class="cv311-hero">
+              <div class="cv311-eyebrow">Cadivor plans</div>
+              <div class="cv311-title">Choose the engineering workflow your team is ready for.</div>
+              <div class="cv311-copy">Start with education or prototype work, unlock the full platform during a 14-day trial, then scale from individual engineering decisions to organization-wide lifecycle intelligence.</div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"""
+            <section class="cv311-current">
+              <div class="cv311-current-head">
+                <div>
+                  <div class="cv311-current-title">{html.escape(str(selected_plan_name))} Workspace</div>
+                  <div class="cv311-active"><span class="cv311-active-dot"></span>Active plan</div>
+                  <div class="cv311-current-copy">Your included Cadivor capabilities and current monthly usage.</div>
+                </div>
+                <div class="cv311-plan-badge">{html.escape(str(selected_plan_name))}</div>
+              </div>
+              <div class="cv311-summary-grid">
+                <div class="cv311-summary-item"><div class="cv311-summary-label">BOM analyses</div><div class="cv311-summary-value">{used_boms:,} / {analysis_limit_text}</div></div>
+                <div class="cv311-summary-item"><div class="cv311-summary-label">Components</div><div class="cv311-summary-value">{component_limit_text}</div></div>
+                <div class="cv311-summary-item"><div class="cv311-summary-label">Monitoring</div><div class="cv311-summary-value">{monitored_limit_text} parts</div></div>
+                <div class="cv311-summary-item"><div class="cv311-summary-label">PDF reports</div><div class="cv311-summary-value">{reports_text}</div></div>
+              </div>
+              <div class="cv311-usage-meta"><span>Monthly BOM usage</span><span>{usage_percent}%</span></div>
+              <div class="cv311-bar"><i style="width:{usage_percent}%"></i></div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        def _start_plan_checkout(plan_name: str, secret_key: str, button_key: str) -> None:
+            state_key = f"pricing_checkout_url_{plan_name.lower().replace(' ', '_')}"
+            if st.button(
+                f"Upgrade to {plan_name}",
+                key=button_key,
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    price_id = get_secret(secret_key, required=True)
+                    from src.stripe_helper import create_checkout_session
+                    st.session_state[state_key] = create_checkout_session(
+                        price_id,
+                        current_user["email"],
+                        current_user["id"],
+                        success_url=app_checkout_url(page="Pricing", checkout="success"),
+                        cancel_url=app_checkout_url(page="Pricing", checkout="cancel"),
+                    )
+                except KeyError:
+                    st.error(f"{plan_name} checkout is not configured in Streamlit secrets.")
+                except Exception:
+                    st.error(
+                        f"Secure {plan_name} checkout could not be started. "
+                        "Please try again or contact support."
+                    )
+
+            checkout_url = st.session_state.get(state_key)
+            if checkout_url:
+                st.link_button(
+                    "Continue to secure checkout →",
+                    checkout_url,
+                    use_container_width=True,
+                )
+
+        education_plans = [
+            {
+                "name": "Student",
+                "price": "Free",
+                "tag": "Education",
+                "outcome": "Build better engineering habits before entering industry.",
+                "audience": "University students, technical colleges, engineering clubs, and capstone teams.",
+                "features": [
+                    "5 BOM analyses per month",
+                    "Up to 50 components per BOM",
+                    "Basic risk analysis and health score",
+                    "Limited alternative search",
+                    'PDF reports with "Student Edition" watermark',
+                    "Community support only",
+                ],
+                "note": "No monitoring, API access, or team administration.",
+            },
+            {
+                "name": "Free Trial",
+                "price": "14 days",
+                "tag": "Full access",
+                "outcome": "Experience the complete Cadivor workflow before choosing a paid plan.",
+                "audience": "New professional and business customers evaluating Cadivor with real BOMs.",
+                "features": [
+                    "No feature restrictions during the trial",
+                    "Professional analysis and AI capabilities",
+                    "Monitoring, reports, and engineering decisions",
+                    "Team workflow evaluation",
+                    "Saved work remains available after trial",
+                ],
+                "note": "At trial end, upgrade or continue on Starter.",
+            },
+        ]
+
+        st.markdown('<div class="cv311-section-title">Start with Cadivor</div><div class="cv311-section-copy">Education access and a full-platform evaluation path.</div>', unsafe_allow_html=True)
+        education_columns = st.columns(2, gap="medium")
+        for column, plan in zip(education_columns, education_plans):
+            plan_key = plan["name"].lower()
+            is_current = normalized_current_plan == plan_key
+            with column:
+                with st.container(border=True):
+                    st.markdown(
+                        '<span class="cv311-card"></span>'
+                        '<div class="cv311-card-inner">'
+                        '<div class="cv311-card-top">'
+                        f'<div class="cv311-name">{plan["name"]}</div>'
+                        f'<div class="cv311-tag green">{plan["tag"]}</div>'
+                        '</div>'
+                        f'<div class="cv311-price">{plan["price"]}</div>'
+                        f'<div class="cv311-outcome">{plan["outcome"]}</div>'
+                        f'<div class="cv311-for">{plan["audience"]}</div>'
+                        '<div class="cv311-features">'
+                        + "".join(
+                            f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
+                            for feature in plan["features"]
+                        )
+                        + '</div>'
+                        f'<div class="cv311-info-note">{plan["note"]}</div>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+                    if is_current:
+                        st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
+                    elif plan_key == "student":
+                        st.link_button(
+                            "Request Student Access",
+                            "mailto:info@cadivor.com?subject=Cadivor%20Student%20Plan%20Request",
+                            use_container_width=True,
+                        )
+                    else:
+                        st.markdown(
+                            '<div class="cv311-info-note">The 14-day full-access trial is intended for new customer evaluations.</div>',
+                            unsafe_allow_html=True,
+                        )
+
+        paid_plans = [
+            {
+                "name": "Starter",
+                "price": "$29",
+                "annual_price": "$296",
+                "tag": "Individual",
+                "outcome": "Analyze prototype BOMs before production.",
+                "audience": "Hobbyists, freelancers, makers, and small prototype companies.",
+                "features": [
+                    "10 BOM analyses per month",
+                    "100 components per BOM",
+                    "Supplier intelligence and alternative search",
+                    "PDF and CSV reports",
+                    "Email support",
+                ],
+                "exclusions": "No monitoring, AI engineering assistant, team collaboration, or API.",
+            },
+            {
+                "name": "Professional",
+                "price": "$99",
+                "annual_price": "$1,010",
+                "tag": "Most popular",
+                "outcome": "Make engineering decisions with confidence using AI-powered lifecycle intelligence.",
+                "audience": "Professional hardware engineers, startups, and small engineering companies.",
+                "features": [
+                    "Everything in Starter",
+                    "Unlimited BOM analyses and components",
+                    "Advanced AI recommendations and assistant",
+                    "Engineering Decision Records",
+                    "Advanced reports and custom branding",
+                    "Component comparison and supplier intelligence",
+                    "Alternative recommendations and risk scoring",
+                    "Monitoring for 2,500 components",
+                    "Priority email support",
+                ],
+                "exclusions": "",
+            },
+            {
+                "name": "Business",
+                "price": "$299",
+                "annual_price": "$3,050",
+                "tag": "Teams",
+                "outcome": "Standardize engineering decisions across your organization.",
+                "audience": "Growing companies, electronics manufacturers, and cross-functional teams.",
+                "features": [
+                    "Everything in Professional",
+                    "10 users included",
+                    "Role-based permissions and approval workflows",
+                    "Unlimited monitoring",
+                    "Organization workspace and shared BOM library",
+                    "Audit logs, comments, and activity history",
+                    "Advanced analytics and usage dashboard",
+                    "API access and webhooks",
+                    "Priority support",
+                ],
+                "exclusions": "",
+            },
+            {
+                "name": "Enterprise",
+                "price": "Contact Sales",
+                "tag": "Custom",
+                "outcome": "Integrate Cadivor into your engineering infrastructure.",
+                "audience": "Larger deployments requiring security, integrations, support, and custom architecture.",
+                "features": [
+                    "Unlimited users, monitoring, and API",
+                    "SSO with SAML or OAuth",
+                    "Priority SLA and dedicated customer success",
+                    "ERP and PLM integrations",
+                    "Custom AI models and integrations",
+                    "Training and migration assistance",
+                    "Quarterly business reviews",
+                    "Dedicated infrastructure where required",
+                ],
+                "exclusions": "On-premises deployment is planned as a future option.",
+            },
+        ]
+
+        st.markdown('<div class="cv311-section-title">Plans for working engineering teams</div><div class="cv311-section-copy">Professional is the flagship plan; Business adds organization-wide collaboration and controls.</div>', unsafe_allow_html=True)
+        paid_rows = [paid_plans[:2], paid_plans[2:]]
+        for row_index, row_plans in enumerate(paid_rows):
+            paid_columns = st.columns(2, gap="medium")
+            for column, plan in zip(paid_columns, row_plans):
+                plan_key = plan["name"].lower()
+                is_current = normalized_current_plan == plan_key
+                featured = plan_key == "professional"
+                with column:
+                    with st.container(border=True):
+                        marker = " cv311-featured" if featured else ""
+                        display_price = html.escape(plan["price"]).replace("$", "&#36;")
+                        display_annual_price = html.escape(plan.get("annual_price", "")).replace("$", "&#36;")
+                        st.markdown(
+                            f'<span class="cv311-card{marker}"></span>'
+                            '<div class="cv311-card-inner">'
+                            '<div class="cv311-card-top">'
+                            f'<div class="cv311-name">{plan["name"]}</div>'
+                            f'<div class="cv311-tag">{plan["tag"]}</div>'
+                            '</div>'
+                            f'<div class="cv311-price">{display_price}'
+                            + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
+                            + '</div>'
+                            + (f'<div class="cv311-info-note">{display_annual_price} / year · Save 15%</div>' if display_annual_price else "")
+                            + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
+                            f'<div class="cv311-for">{plan["audience"]}</div>'
+                            '<div class="cv311-features">'
+                            + "".join(
+                                f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
+                                for feature in plan["features"]
+                            )
+                            + '</div>'
+                            + (f'<div class="cv311-info-note">{plan["exclusions"]}</div>' if plan["exclusions"] else "")
+                            + '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if is_current:
+                            st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
+                        elif plan_key == "professional" and normalized_current_plan not in {"professional", "business", "enterprise"}:
+                            _start_plan_checkout("Professional", "STRIPE_PRO_PRICE_ID", "pricing_311_upgrade_professional")
+                        elif plan_key == "business" and normalized_current_plan not in {"business", "enterprise"}:
+                            _start_plan_checkout("Business", "STRIPE_BUSINESS_PRICE_ID", "pricing_311_upgrade_business")
+                        elif plan_key == "enterprise":
+                            st.link_button(
+                                "Contact Sales",
+                                "mailto:info@cadivor.com?subject=Cadivor%20Enterprise%20Inquiry",
+                                use_container_width=True,
+                            )
+                        elif plan_key == "starter" and normalized_current_plan != "starter":
+                            st.markdown(
+                                '<div class="cv311-info-note">Contact support to move an existing paid subscription to Starter.</div>',
+                                unsafe_allow_html=True,
+                            )
+
+        feature_rows = [
+            ("BOM Analysis", "✓", "✓", "Unlimited", "Unlimited", "Unlimited"),
+            ("Alternative Search", "Limited", "✓", "Advanced", "Advanced", "Advanced"),
+            ("AI Recommendations", "—", "—", "✓", "✓", "✓"),
+            ("BOM Monitoring", "—", "—", "2,500 parts", "Unlimited", "Unlimited"),
+            ("Engineering Decision Records", "—", "—", "✓", "✓", "✓"),
+            ("Team Collaboration", "—", "—", "—", "✓", "✓"),
+            ("API Access", "—", "—", "—", "✓", "Unlimited"),
+            ("SSO", "—", "—", "—", "—", "✓"),
+            ("Custom Integrations", "—", "—", "—", "Limited", "✓"),
+            ("Dedicated Support", "Community", "Email", "Priority", "Priority", "Dedicated"),
+        ]
+        st.markdown(
+            '<section class="cv311-compare"><h3>Feature comparison</h3>'
+            '<p>Free Trial includes the complete platform for 14 days and is therefore not repeated in the long-term plan matrix.</p>'
+            '<div class="cv311-table">'
+            '<div class="cv311-cell head">Feature</div>'
+            '<div class="cv311-cell head">Student</div>'
+            '<div class="cv311-cell head">Starter</div>'
+            '<div class="cv311-cell head pro">Professional</div>'
+            '<div class="cv311-cell head">Business</div>'
+            '<div class="cv311-cell head">Enterprise</div>'
+            + "".join(
+                f'<div class="cv311-cell">{feature}</div>'
+                f'<div class="cv311-cell">{student}</div>'
+                f'<div class="cv311-cell">{starter}</div>'
+                f'<div class="cv311-cell pro">{professional}</div>'
+                f'<div class="cv311-cell">{business}</div>'
+                f'<div class="cv311-cell">{enterprise}</div>'
+                for feature, student, starter, professional, business, enterprise in feature_rows
+            )
+            + '</div></section>',
+            unsafe_allow_html=True,
+        )
+
+        st.caption(
+            "Stripe handles Professional and Business payments securely. Plan activation is applied through the existing Cadivor subscription webhook."
+        )
+        stop_authenticated_page()
+
+
+    # ---------- Admin Console v2 (admin-only; all controls are server-enforced and audited) ----------
+    if app_mode == "Admin Console":
+        if not is_admin:
+            st.error("This page is available only to Cadivor administrators.")
+            stop_authenticated_page()
+        st.title("Admin Console")
+        st.caption("Operational control for Cadivor administrators. Every account and maintenance change is recorded in the audit trail.")
+        try:
+            overview_rows = supabase.rpc("cadivor_admin_overview").execute().data or []
+            user_rows = supabase.rpc("cadivor_admin_list_users_v2").execute().data or []
+            audit_rows = supabase.rpc("cadivor_admin_audit_events").execute().data or []
+            support_activity_rows = supabase.rpc("cadivor_admin_support_activity_events").execute().data or []
+        except Exception:
+            st.warning("Admin Console v2 is waiting for its approved Supabase migration. Existing customer workflows are unaffected.")
+            stop_authenticated_page()
+        overview = overview_rows[0] if overview_rows else {}
+        metric_columns = st.columns(5)
+        metric_columns[0].metric("Registered users", overview.get("registered_users", len(user_rows)))
+        metric_columns[1].metric("Online now", overview.get("active_now", 0))
+        metric_columns[2].metric("Active in 30 days", overview.get("active_last_30_days", 0))
+        metric_columns[3].metric("Suspended", overview.get("suspended_users", 0))
+        metric_columns[4].metric("Platform", "Maintenance" if overview.get("maintenance_mode") else "Operational")
+
+        overview_tab, users_tab, maintenance_tab, support_tab, audit_tab = st.tabs(
+            ["Overview", "Users", "Maintenance", "Support activity", "Audit trail"]
+        )
+
+        with overview_tab:
+            st.subheader("Control center")
+            if overview.get("maintenance_mode"):
+                st.warning(overview.get("maintenance_message") or "Maintenance mode is enabled for non-admin users.")
+            else:
+                st.success("Cadivor is available to customers. Administrators retain access during maintenance.")
+            st.info("Plan changes are intentionally Stripe-controlled. Use the billing workflow for paid-plan activation.")
+
+        with users_tab:
+            st.subheader("User directory")
+            def _human_admin_timestamp(value):
+                parsed = pd.to_datetime(value, utc=True, errors="coerce")
+                if pd.isna(parsed):
+                    return "Never"
+                return parsed.strftime("%b %d, %Y · %I:%M %p UTC")
+
+            search_column, status_column, presence_column, role_column = st.columns((2.2, 1, 1, 1))
+            search_users = search_column.text_input("Search users", placeholder="Email, name, company, plan, or role")
+            status_filter = status_column.selectbox("Account status", ["All", "active", "suspended"])
+            presence_filter = presence_column.selectbox("Presence", ["All", "active", "idle", "offline"])
+            role_filter = role_column.selectbox("Role", ["All", "user", "admin"])
+            users_frame = pd.DataFrame(user_rows)
+            if not users_frame.empty:
+                if search_users.strip():
+                    needle = search_users.strip().lower()
+                    searchable_columns = [column for column in ("email", "full_name", "company_name", "plan", "role", "account_status") if column in users_frame]
+                    users_frame = users_frame[users_frame[searchable_columns].fillna("").astype(str).apply(
+                        lambda row: row.str.lower().str.contains(needle, regex=False).any(), axis=1
+                    )]
+                if status_filter != "All":
+                    users_frame = users_frame[users_frame["account_status"].fillna("active").str.lower() == status_filter]
+                if presence_filter != "All" and "activity_status" in users_frame:
+                    users_frame = users_frame[users_frame["activity_status"].fillna("offline").str.lower() == presence_filter]
+                if role_filter != "All":
+                    users_frame = users_frame[users_frame["role"].fillna("user").str.lower() == role_filter]
+                directory_columns = [
+                    column for column in ("email", "full_name", "company_name", "role", "plan", "activity_status", "last_active_at", "account_status", "last_sign_in_at")
+                    if column in users_frame
+                ]
+                directory_frame = users_frame[directory_columns].rename(columns={
+                    "email": "Email", "full_name": "Name", "company_name": "Company",
+                    "role": "Role", "plan": "Plan", "account_status": "Account status",
+                    "activity_status": "Presence", "last_active_at": "Last active", "last_sign_in_at": "Last sign-in",
+                })
+                if "Presence" in directory_frame:
+                    presence_labels = {
+                        "active": "🟢 Active",
+                        "idle": "🟠 Idle",
+                        "offline": "⚪ Offline",
+                    }
+                    directory_frame["Presence"] = directory_frame["Presence"].fillna("offline").astype(str).str.lower().map(
+                        presence_labels
+                    ).fillna("⚪ Offline")
+                for timestamp_column in ("Last active", "Last sign-in"):
+                    if timestamp_column in directory_frame:
+                        directory_frame[timestamp_column] = directory_frame[timestamp_column].apply(_human_admin_timestamp)
+                st.dataframe(directory_frame, use_container_width=True, hide_index=True)
+            else:
+                st.info("No users match the selected filters.")
+
+            st.divider()
+            st.subheader("Manage a user")
+            if not user_rows:
+                st.caption("No user account is available to manage.")
+            else:
+                selected_user = st.selectbox(
+                    "Choose a user",
+                    user_rows,
+                    format_func=lambda row: f"{row.get('email', 'Unknown user')} · {row.get('activity_status', 'offline')} · {row.get('account_status', 'active')} · {row.get('plan', 'Starter')}",
+                )
+                selected_user_id = selected_user.get("id")
+                selected_role = str(selected_user.get("role", "user")).lower()
+                selected_status = str(selected_user.get("account_status", "active")).lower()
+                is_self = str(selected_user_id) == str(current_user.get("id"))
+                is_target_admin = selected_role == "admin"
+                details_column, actions_column = st.columns((1, 1.45))
+                with details_column:
+                    st.markdown("**Account details**")
+                    account_details = (
+                        ("Email", selected_user.get("email") or "—"),
+                        ("Name", selected_user.get("full_name") or "—"),
+                        ("Company", selected_user.get("company_name") or "—"),
+                        ("Plan", selected_user.get("plan") or "Starter"),
+                        ("Presence", {"active": "🟢 Active", "idle": "🟠 Idle", "offline": "⚪ Offline"}.get(str(selected_user.get("activity_status") or "offline").lower(), "⚪ Offline")),
+                        ("Last active", _human_admin_timestamp(selected_user.get("last_active_at"))),
+                        ("Role", selected_role),
+                        ("Status", selected_status),
+                        ("Last sign-in", _human_admin_timestamp(selected_user.get("last_sign_in_at"))),
+                    )
+                    for detail_label, detail_value in account_details:
+                        st.caption(detail_label)
+                        st.write(detail_value)
+                    if selected_user.get("suspended_reason"):
+                        st.caption(f"Suspension reason: {selected_user['suspended_reason']}")
+                with actions_column:
+                    if is_self:
+                        st.info("For safety, you cannot modify your own administrator account from this console.")
+                    elif is_target_admin:
+                        st.info("Administrator accounts cannot be suspended. Role changes are protected server-side to retain at least one administrator.")
+                    else:
+                        with st.form("admin_account_status_form"):
+                            next_status = st.selectbox("Account access", ["active", "suspended"], index=0 if selected_status == "active" else 1)
+                            status_reason = st.text_area("Reason for this change", max_chars=500)
+                            status_confirmed = st.checkbox("I understand this changes the user's access immediately.")
+                            apply_status = st.form_submit_button("Apply account status", type="primary")
+                            if apply_status:
+                                if not status_confirmed:
+                                    st.error("Confirm the access change before applying it.")
+                                else:
+                                    try:
+                                        supabase.rpc("cadivor_admin_set_account_status", {
+                                            "target_user_id": selected_user_id,
+                                            "next_status": next_status,
+                                            "reason": status_reason,
+                                        }).execute()
+                                        st.success("Account status updated and recorded in the audit trail.")
+                                        st.rerun()
+                                    except Exception:
+                                        st.error("Cadivor could not update this account. No change was confirmed.")
+                    if not is_self:
+                        with st.form("admin_role_form"):
+                            next_role = st.selectbox("Cadivor role", ["user", "admin"], index=0 if selected_role == "user" else 1)
+                            role_reason = st.text_input("Reason for role change", max_chars=500)
+                            role_confirmed = st.checkbox("I understand this changes administrator access.")
+                            apply_role = st.form_submit_button("Apply role change")
+                            if apply_role:
+                                if not role_confirmed:
+                                    st.error("Confirm the role change before applying it.")
+                                else:
+                                    try:
+                                        supabase.rpc("cadivor_admin_set_role", {
+                                            "target_user_id": selected_user_id,
+                                            "next_role": next_role,
+                                            "reason": role_reason,
+                                        }).execute()
+                                        st.success("Role updated and recorded in the audit trail.")
+                                        st.rerun()
+                                    except Exception:
+                                        st.error("Cadivor could not update this role. No change was confirmed.")
+
+        with maintenance_tab:
+            st.subheader("Maintenance mode")
+            st.caption("When enabled, non-admin users are blocked after authentication. Administrators retain access to restore service.")
+            maintenance_enabled = bool(overview.get("maintenance_mode"))
+            with st.form("admin_maintenance_form"):
+                next_maintenance_enabled = st.checkbox("Enable maintenance mode", value=maintenance_enabled)
+                next_maintenance_message = st.text_area(
+                    "Customer message",
+                    value=overview.get("maintenance_message") or "Cadivor is undergoing scheduled maintenance. Please try again shortly.",
+                    max_chars=280,
+                )
+                confirmation_phrase = "ENABLE MAINTENANCE" if next_maintenance_enabled else "DISABLE MAINTENANCE"
+                maintenance_confirmation = st.text_input(f"Type {confirmation_phrase} to confirm")
+                apply_maintenance = st.form_submit_button("Apply maintenance setting", type="primary")
+                if apply_maintenance:
+                    if maintenance_confirmation.strip() != confirmation_phrase:
+                        st.error(f"Type {confirmation_phrase} exactly to continue.")
+                    else:
+                        try:
+                            supabase.rpc("cadivor_admin_set_maintenance", {
+                                "next_enabled": next_maintenance_enabled,
+                                "next_message": next_maintenance_message,
+                            }).execute()
+                            st.success("Maintenance setting updated and recorded in the audit trail.")
+                            st.rerun()
+                        except Exception:
+                            st.error("Cadivor could not update maintenance mode. No change was confirmed.")
+
+        with support_tab:
+            st.subheader("Support activity")
+            st.caption("Privacy-safe operational timeline. It records sign-in sessions and page transitions, not passwords, BOM contents, searches, chat messages, or form text.")
+            if support_activity_rows:
+                support_frame = pd.DataFrame(support_activity_rows)
+                event_labels = {
+                    "session_started": "Session started",
+                    "page_viewed": "Page viewed",
+                }
+                if "event_type" in support_frame:
+                    support_frame["Activity"] = support_frame["event_type"].map(event_labels).fillna("Other activity")
+                if "metadata" in support_frame:
+                    def _support_detail(metadata):
+                        detail = metadata if isinstance(metadata, dict) else {}
+                        page = _safe_text(detail.get("page"), "")
+                        return f"Visited {page}" if page else "—"
+                    support_frame["Safe details"] = support_frame["metadata"].apply(_support_detail)
+                if "created_at" in support_frame:
+                    support_frame["When"] = pd.to_datetime(
+                        support_frame["created_at"], utc=True, errors="coerce"
+                    ).dt.strftime("%b %d, %Y · %I:%M %p UTC").fillna("—")
+                if "email" in support_frame:
+                    support_frame["User"] = support_frame["email"].fillna("—")
+                if "full_name" in support_frame:
+                    support_frame["Name"] = support_frame["full_name"].fillna("—")
+                support_columns = [column for column in ("When", "User", "Name", "Activity", "Safe details") if column in support_frame]
+                st.dataframe(
+                    support_frame[support_columns],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.caption("No support activity has been recorded yet.")
+
+        with audit_tab:
+            st.subheader("Recent administrator activity")
+            if audit_rows:
+                audit_frame = pd.DataFrame(audit_rows)
+                visible_audit_columns = [column for column in ("created_at", "action", "actor_id", "target_user_id", "metadata") if column in audit_frame]
+                st.dataframe(audit_frame[visible_audit_columns], use_container_width=True, hide_index=True)
+            else:
+                st.caption("No administrative actions have been recorded yet.")
+        stop_authenticated_page()
+
+    # ---------- Settings ----------
+    if app_mode == "Settings":
+        profile = get_user_profile(current_user)
+        auth_user = st.session_state.get("user")
+        user_id = _safe_text(
+            getattr(auth_user, "id", ""),
+            _safe_text(current_user.get("id"), ""),
+        )
+        auth_email = _safe_text(
+            getattr(auth_user, "email", ""),
+            profile.get("email", ""),
+        )
+
+        customer_profile, profile_error = ensure_customer_profile(
+            supabase,
+            user_id,
+            auth_email,
+            profile.get("full_name", ""),
+        )
+        preferences, preferences_error = ensure_user_preferences(
+            supabase,
+            user_id,
+        )
+
+        customer_profile = customer_profile or {}
+        preferences = preferences or {}
+
+        st.markdown(
+            """
+            <style id="cadivor-customer-settings-v11a1">
+            .cv-customer-hero{
+                border:1px solid #BFDBFE;
+                border-radius:24px;
+                padding:26px 28px;
+                margin-bottom:18px;
+                background:
+                    radial-gradient(circle at 95% 5%,rgba(37,99,235,.13),transparent 34%),
+                    linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%);
+                box-shadow:0 18px 46px rgba(15,23,42,.065);
+            }
+            .cv-customer-kicker{
+                color:#2563EB;
+                font-size:10px;
+                font-weight:950;
+                letter-spacing:.11em;
+                text-transform:uppercase;
+                margin-bottom:9px;
+            }
+            .cv-customer-title{
+                color:#0F172A;
+                font-size:31px;
+                line-height:1.08;
+                font-weight:950;
+                letter-spacing:-.04em;
+                margin:0 0 8px;
+            }
+            .cv-customer-copy{
+                color:#52647A;
+                font-size:14px;
+                line-height:1.55;
+                font-weight:680;
+                margin:0;
+                max-width:900px;
+            }
+            .cv-profile-card{
+                border:1px solid #E2E8F0;
+                border-radius:20px;
+                background:#FFFFFF;
+                padding:20px;
+                box-shadow:0 14px 36px rgba(15,23,42,.05);
+            }
+            .cv-profile-top{
+                display:flex;
+                align-items:center;
+                gap:15px;
+                margin-bottom:16px;
+            }
+            .cv-profile-avatar{
+                width:72px;
+                height:72px;
+                flex:0 0 72px;
+                border-radius:20px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                overflow:hidden;
+                border:1px solid #BFDBFE;
+                background:#EFF6FF;
+                color:#1D4ED8;
+                font-size:22px;
+                font-weight:950;
+            }
+            .cv-profile-avatar img{
+                width:100%;
+                height:100%;
+                object-fit:cover;
+            }
+            .cv-profile-name{
+                color:#0F172A;
+                font-size:18px;
+                font-weight:950;
+                margin-bottom:4px;
+            }
+            .cv-profile-role{
+                color:#64748B;
+                font-size:12px;
+                font-weight:720;
+            }
+            .cv-profile-facts{
+                display:grid;
+                grid-template-columns:1fr;
+                gap:9px;
+            }
+            .cv-profile-fact{
+                border:1px solid #E2E8F0;
+                border-radius:13px;
+                padding:11px 12px;
+                background:#F8FAFC;
+            }
+            .cv-profile-fact span{
+                display:block;
+                color:#64748B;
+                font-size:9px;
+                font-weight:950;
+                letter-spacing:.09em;
+                text-transform:uppercase;
+                margin-bottom:5px;
+            }
+            .cv-profile-fact strong{
+                display:block;
+                color:#0F172A;
+                font-size:12px;
+                font-weight:900;
+                overflow-wrap:anywhere;
+            }
+            .cv-settings-note{
+                border:1px solid #DBEAFE;
+                border-radius:15px;
+                padding:13px 15px;
+                background:#EFF6FF;
+                color:#1E3A8A;
+                font-size:11px;
+                line-height:1.5;
+                font-weight:700;
+            }
+            .cv-security-row{
+                border:1px solid #E2E8F0;
+                border-radius:15px;
+                padding:14px;
+                background:#FFFFFF;
+                margin-bottom:10px;
+            }
+            .cv-security-row strong{
+                display:block;
+                color:#0F172A;
+                font-size:13px;
+                margin-bottom:4px;
+            }
+            .cv-security-row span{
+                display:block;
+                color:#64748B;
+                font-size:11px;
+                line-height:1.45;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            """
+            <section class="cv-customer-hero">
+              <div class="cv-customer-kicker">Customer account</div>
+              <h1 class="cv-customer-title">Profile & preferences</h1>
+              <p class="cv-customer-copy">
+                Manage the personal identity, display defaults, and notification
+                preferences Cadivor uses across engineering workspaces and reports.
+              </p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        settings_setup_done = completion_count(onboarding_progress or {})
+        settings_setup_percent = int((settings_setup_done / 5) * 100)
+        st.markdown(
+            f"""
+            <style id="cadivor-settings-setup-v11a3">
+            .cv-settings-setup{{
+                display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;
+                border:1px solid #DBEAFE;border-radius:17px;background:#FFFFFF;
+                padding:15px 17px;margin:0 0 14px;
+                box-shadow:0 12px 28px rgba(15,23,42,.05);
+            }}
+            .cv-settings-setup strong{{
+                display:block;color:#0F172A!important;font-size:13px;font-weight:950;
+                margin-bottom:4px;
+            }}
+            .cv-settings-setup span{{
+                color:#64748B!important;font-size:10px;font-weight:750;
+            }}
+            .cv-settings-setup b{{
+                color:#2563EB!important;font-size:12px;font-weight:950;
+            }}
+            .cv-settings-setup-bar{{
+                grid-column:1/-1;height:7px;border-radius:999px;background:#E2E8F0;
+                overflow:hidden;
+            }}
+            .cv-settings-setup-bar i{{
+                display:block;height:100%;width:{settings_setup_percent}%;
+                background:#2563EB;border-radius:999px;
+            }}
+            </style>
+            <section class="cv-settings-setup">
+              <div>
+                <strong>Customer setup</strong>
+                <span>Profile, workspace, BOM, replacement, and reporting readiness</span>
+              </div>
+              <b>{settings_setup_done}/5 complete</b>
+              <div class="cv-settings-setup-bar"><i></i></div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+        internal_nav_button(
+            "Continue Customer Setup",
+            "Onboarding",
+            key="settings_open_onboarding",
+            type="secondary",
+        )
+
+        migration_required = (
+            profile_error == "migration_required"
+            or preferences_error == "migration_required"
+        )
+        if migration_required:
+            st.warning(
+                "Some profile settings are temporarily unavailable. "
+                "Your saved engineering data is unaffected. Please try again later."
+            )
+
+        profile_tab, preferences_tab, workspace_tab, security_tab, billing_tab = st.tabs(
+            ["Profile", "Preferences", "Workspace", "Security", "Billing"]
+        )
+
+        with profile_tab:
+            summary_col, form_col = st.columns([0.36, 0.64], gap="large")
+
+            with summary_col:
+                avatar_url_value = _safe_text(
+                    customer_profile.get("avatar_url"),
+                    profile.get("avatar_url", ""),
+                )
+                initials_value = profile.get("initials", "C")
+                avatar_markup = (
+                    f'<img src="{html.escape(avatar_url_value, quote=True)}" alt="Profile photo">'
+                    if avatar_url_value
+                    else html.escape(initials_value)
+                )
+                display_name = _safe_text(
+                    customer_profile.get("full_name"),
+                    profile.get("full_name", "Cadivor user"),
+                )
+                display_job = _safe_text(
+                    customer_profile.get("job_title"),
+                    profile.get("role_title", "Cadivor workspace member"),
+                )
+                display_company = _safe_text(
+                    customer_profile.get("company_name"),
+                    profile.get("company", "Not set"),
+                )
+
+                st.markdown(
+                    f"""
+                    <div class="cv-profile-card">
+                      <div class="cv-profile-top">
+                        <div class="cv-profile-avatar">{avatar_markup}</div>
+                        <div>
+                          <div class="cv-profile-name">{html.escape(display_name)}</div>
+                          <div class="cv-profile-role">{html.escape(display_job)}</div>
+                        </div>
+                      </div>
+                      <div class="cv-profile-facts">
+                        <div class="cv-profile-fact">
+                          <span>Email</span>
+                          <strong>{html.escape(auth_email)}</strong>
+                        </div>
+                        <div class="cv-profile-fact">
+                          <span>Company</span>
+                          <strong>{html.escape(display_company)}</strong>
+                        </div>
+                        <div class="cv-profile-fact">
+                          <span>Plan</span>
+                          <strong>{html.escape(profile.get("plan", "Starter"))}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with form_col:
+                with st.container(border=True):
+                    st.subheader("Profile information")
+                    st.caption(
+                        "This information personalizes your account, team presence, "
+                        "workspace records, and future report attribution."
+                    )
+
+                    full_name_value = st.text_input(
+                        "Full name",
+                        value=_safe_text(
+                            customer_profile.get("full_name"),
+                            profile.get("full_name", ""),
+                        ),
+                        placeholder="Joshua Kashambala",
+                        key="customer_profile_full_name",
+                    )
+                    company_value = st.text_input(
+                        "Company / organization",
+                        value=_safe_text(
+                            customer_profile.get("company_name"),
+                            profile.get("company", ""),
+                        ),
+                        placeholder="Egres Technologies",
+                        key="customer_profile_company",
+                    )
+                    job_title_value = st.text_input(
+                        "Job title",
+                        value=_safe_text(
+                            customer_profile.get("job_title"),
+                            profile.get("role_title", ""),
+                        ),
+                        placeholder="Founder, Engineering Lead, Sourcing Manager",
+                        key="customer_profile_job_title",
+                    )
+
+                    phone_col, country_col = st.columns(2)
+                    with phone_col:
+                        phone_value = st.text_input(
+                            "Phone",
+                            value=_safe_text(
+                                customer_profile.get("phone"),
+                                profile.get("phone", ""),
+                            ),
+                            placeholder="+1 555 000 0000",
+                            key="customer_profile_phone",
+                        )
+                    with country_col:
+                        country_value = st.text_input(
+                            "Country",
+                            value=_safe_text(
+                                customer_profile.get("country"),
+                                profile.get("country", ""),
+                            ),
+                            placeholder="United States",
+                            key="customer_profile_country",
+                        )
+
+                    timezone_value = st.text_input(
+                        "Time zone",
+                        value=_safe_text(
+                            customer_profile.get("timezone"),
+                            profile.get("timezone", ""),
+                        ),
+                        placeholder="America/New_York",
+                        key="customer_profile_timezone",
+                    )
+                    avatar_value = st.text_input(
+                        "Profile image URL",
+                        value=_safe_text(
+                            customer_profile.get("avatar_url"),
+                            profile.get("avatar_url", ""),
+                        ),
+                        placeholder="https://example.com/profile.jpg",
+                        key="customer_profile_avatar",
+                    )
+                    bio_value = st.text_area(
+                        "Professional bio",
+                        value=_safe_text(customer_profile.get("bio"), ""),
+                        placeholder=(
+                            "Optional short description shown in future collaboration "
+                            "and approval workflows."
+                        ),
+                        height=110,
+                        key="customer_profile_bio",
+                    )
+
+                    cadivor_button_wrap("primary")
+                    if st.button(
+                        "Save Profile",
+                        type="primary",
+                        disabled=migration_required,
+                        key="save_customer_profile",
+                    ):
+                        saved_profile, save_error = update_customer_profile(
+                            supabase,
+                            user_id,
+                            {
+                                "full_name": full_name_value.strip(),
+                                "company_name": company_value.strip(),
+                                "job_title": job_title_value.strip(),
+                                "phone": phone_value.strip(),
+                                "country": country_value.strip(),
+                                "timezone": timezone_value.strip(),
+                                "avatar_url": avatar_value.strip(),
+                                "bio": bio_value.strip(),
+                            },
+                        )
+                        if save_error:
+                            st.error(f"Unable to save profile: {save_error}")
+                        else:
+                            st.success("Customer profile saved.")
+                            st.rerun()
+                    cadivor_button_wrap_end()
+
+        with preferences_tab:
+            with st.container(border=True):
+                st.subheader("Application preferences")
+                st.caption(
+                    "Set the defaults Cadivor should use when presenting engineering "
+                    "information and sending product notifications."
+                )
+
+                appearance_options = ["System", "Light", "Dark"]
+                saved_appearance = _safe_text(
+                    preferences.get("appearance"),
+                    "system",
+                ).title()
+                if saved_appearance not in appearance_options:
+                    saved_appearance = "System"
+
+                density_options = ["Comfortable", "Compact"]
+                saved_density = _safe_text(
+                    preferences.get("density"),
+                    "comfortable",
+                ).title()
+                if saved_density not in density_options:
+                    saved_density = "Comfortable"
+
+                units_options = ["Metric", "Imperial"]
+                saved_units = _safe_text(
+                    preferences.get("default_units"),
+                    "metric",
+                ).title()
+                if saved_units not in units_options:
+                    saved_units = "Metric"
+
+                currency_options = ["USD", "EUR", "GBP", "CAD"]
+                saved_currency = _safe_text(
+                    preferences.get("default_currency"),
+                    "USD",
+                ).upper()
+                if saved_currency not in currency_options:
+                    saved_currency = "USD"
+
+                display_col, default_col = st.columns(2, gap="large")
+                with display_col:
+                    appearance_value = st.selectbox(
+                        "Appearance",
+                        appearance_options,
+                        index=appearance_options.index(saved_appearance),
+                        key="customer_preference_appearance",
+                        help="Theme selection is stored now; full dark-theme support arrives in a later UI milestone.",
+                    )
+                    density_value = st.selectbox(
+                        "Interface density",
+                        density_options,
+                        index=density_options.index(saved_density),
+                        key="customer_preference_density",
+                    )
+
+                with default_col:
+                    units_value = st.selectbox(
+                        "Default units",
+                        units_options,
+                        index=units_options.index(saved_units),
+                        key="customer_preference_units",
+                    )
+                    currency_value = st.selectbox(
+                        "Default currency",
+                        currency_options,
+                        index=currency_options.index(saved_currency),
+                        key="customer_preference_currency",
+                    )
+
+                st.subheader("Notification preferences")
+                email_notifications = st.toggle(
+                    "Account and product email",
+                    value=bool(preferences.get("email_notifications", True)),
+                    key="customer_pref_email",
+                )
+                workspace_notifications = st.toggle(
+                    "Workspace collaboration updates",
+                    value=bool(preferences.get("workspace_notifications", True)),
+                    key="customer_pref_workspace",
+                )
+                monitoring_notifications = st.toggle(
+                    "Monitoring and lifecycle alerts",
+                    value=bool(preferences.get("monitoring_notifications", True)),
+                    key="customer_pref_monitoring",
+                )
+                report_notifications = st.toggle(
+                    "Report generation updates",
+                    value=bool(preferences.get("report_notifications", True)),
+                    key="customer_pref_reports",
+                )
+
+                cadivor_button_wrap("primary")
+                if st.button(
+                    "Save Preferences",
+                    type="primary",
+                    disabled=migration_required,
+                    key="save_customer_preferences",
+                ):
+                    saved_preferences, save_error = update_user_preferences(
+                        supabase,
+                        user_id,
+                        {
+                            "appearance": appearance_value.lower(),
+                            "density": density_value.lower(),
+                            "default_units": units_value.lower(),
+                            "default_currency": currency_value,
+                            "email_notifications": email_notifications,
+                            "workspace_notifications": workspace_notifications,
+                            "monitoring_notifications": monitoring_notifications,
+                            "report_notifications": report_notifications,
+                        },
+                    )
+                    if save_error:
+                        st.error(f"Unable to save preferences: {save_error}")
+                    else:
+                        st.success("Preferences saved.")
+                        st.rerun()
+                cadivor_button_wrap_end()
+
+            st.markdown(
+                """
+                <div class="cv-settings-note">
+                  Appearance and density preferences are now stored persistently.
+                  Their full application across every page will be introduced after
+                  the customer-settings foundation is stable.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with workspace_tab:
+            st.subheader("Workspace settings")
+            st.caption(
+                "Workspace identity, members, invitations, and engineering defaults "
+                "are managed from the collaboration workspace."
+            )
+            internal_nav_button(
+                "Open Workspace",
+                "Workspace",
+                key="settings_open_workspace",
+                use_container_width=True,
+            )
+
+        with security_tab:
+            st.subheader("Security")
+            st.markdown(
+                f"""
+                <div class="cv-security-row">
+                  <strong>Authenticated email</strong>
+                  <span>{html.escape(auth_email)}</span>
+                </div>
+                <div class="cv-security-row">
+                  <strong>Password management</strong>
+                  <span>Password reset and change-password controls will be connected
+                  in Milestone 11C using Supabase Auth.</span>
+                </div>
+                <div class="cv-security-row">
+                  <strong>Two-factor authentication</strong>
+                  <span>Planned for the security and authentication phase.</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with billing_tab:
+            st.subheader("Plan & billing")
+            st.caption(
+                "Review Cadivor plans and upgrade the current account when the team "
+                "requires higher BOM, monitoring, report, or member limits."
+            )
+            st.markdown(
+                f"""
+                <div class="cv-profile-card">
+                  <div class="cv-profile-fact">
+                    <span>Current plan</span>
+                    <strong>{html.escape(profile.get("plan", "Starter"))}</strong>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            internal_nav_button(
+                "View Plans",
+                "Pricing",
+                key="settings_view_plans",
+                use_container_width=True,
+            )
+
+        stop_authenticated_page()
+
+
+    # ---------- Workspace ----------
+    if app_mode == "Workspace":
+        profile = get_user_profile(current_user)
+        auth_user = st.session_state.get("user")
+        user_id = str(getattr(auth_user, "id", current_user.get("id", "")))
+        owner_email = profile.get("email") or _safe_text(current_user.get("email"), "")
+        owner_name = profile.get("full_name") or "Cadivor user"
+        proposed_workspace_name = profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace"
+
+        default_workspace, workspace_error = ensure_personal_workspace(
+            supabase,
+            user_id,
+            owner_email,
+            owner_name,
+            proposed_workspace_name,
+            selected_plan_name,
+        )
+
+        available_workspaces, organizations_error = list_user_workspaces(supabase, user_id)
+        preferred_workspace_id, preference_error = get_active_workspace_preference(
+            supabase,
+            user_id,
+        )
+
+        session_workspace_id = str(st.session_state.get("active_workspace_id") or "")
+        requested_workspace_id = session_workspace_id or str(preferred_workspace_id or "")
+        available_ids = {str(item.get("id")) for item in available_workspaces}
+
+        if requested_workspace_id and requested_workspace_id in available_ids:
+            workspace, active_workspace_error = get_workspace_by_id(
+                supabase,
+                user_id,
+                requested_workspace_id,
+            )
+            workspace_error = active_workspace_error
+        else:
+            workspace = default_workspace
+            if workspace and workspace.get("id"):
+                st.session_state["active_workspace_id"] = str(workspace.get("id"))
+
+        if not available_workspaces and workspace:
+            available_workspaces = [workspace]
+
+        st.markdown(
+            """
+            <style>
+            .cv-ws-hero{border:1px solid #BFDBFE;border-radius:24px;padding:26px 28px;background:linear-gradient(135deg,#FFFFFF 0%,#EFF6FF 100%);box-shadow:0 18px 45px rgba(15,23,42,.06);margin-bottom:18px}
+            .cv-ws-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#2563EB;margin-bottom:9px}
+            .cv-ws-hero h1{font-size:34px;line-height:1.05;margin:0 0 9px;color:#0F172A}
+            .cv-ws-hero p{max-width:780px;margin:0;color:#52647D;font-weight:600}
+            .cv-ws-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin:0 0 20px}
+            .cv-ws-metric,.cv-ws-card{box-sizing:border-box;border:1px solid #E2E8F0;border-radius:18px;background:#FFFFFF;box-shadow:0 12px 30px rgba(15,23,42,.045)}
+            .cv-ws-metric{padding:16px 18px;min-height:112px}
+            .cv-ws-label{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748B}
+            .cv-ws-value{font-size:27px;font-weight:850;color:#0F172A;margin:7px 0 2px}
+            .cv-ws-note{font-size:12px;color:#64748B;font-weight:600}
+            .cv-ws-card{padding:20px;margin-bottom:14px}
+            .cv-ws-card h3{margin:0 0 6px;font-size:18px;color:#0F172A}
+            .cv-ws-card p{margin:0;color:#64748B}
+            .cv-ws-member{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(100px,.6fr) minmax(110px,.6fr);gap:12px;align-items:center;border:1px solid #E2E8F0;border-radius:15px;padding:13px 15px;margin:9px 0;background:#FBFDFF}
+            .cv-ws-member strong{display:block;color:#0F172A}.cv-ws-member span{display:block;color:#64748B;font-size:12px;margin-top:2px}
+            .cv-ws-role{display:inline-flex!important;width:max-content;padding:5px 10px;border-radius:999px;background:#EFF6FF;color:#1D4ED8!important;font-weight:800;text-transform:capitalize}
+            .cv-ws-status{display:inline-flex!important;width:max-content;padding:5px 10px;border-radius:999px;background:#ECFDF5;color:#047857!important;font-weight:800;text-transform:capitalize}
+            .cv-ws-activity{border-left:3px solid #BFDBFE;padding:2px 0 16px 16px;margin-left:6px}
+            .cv-ws-activity strong{color:#0F172A}.cv-ws-activity span{display:block;color:#64748B;font-size:12px;margin-top:4px}
+            .cv-ws-warning{border:1px solid #FDE68A;background:#FFFBEB;border-radius:18px;padding:18px;color:#92400E;margin:16px 0}
+            .cv-org-card{border:1px solid #DBEAFE;border-radius:18px;background:#FFFFFF;padding:18px;box-shadow:0 12px 28px rgba(15,23,42,.045);margin-bottom:12px}
+            .cv-org-card strong{display:block;color:#0F172A;font-size:15px}.cv-org-card span{display:block;color:#64748B;font-size:11px;margin-top:4px}
+            .cv-org-active{display:inline-flex!important;width:max-content!important;margin-top:10px!important;padding:5px 9px;border-radius:999px;background:#ECFDF5;color:#047857!important;font-weight:850}
+            .cv-collab-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-bottom:14px}
+            .cv-presence-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #E2E8F0;border-radius:14px;padding:12px 13px;margin:8px 0;background:#FBFDFF}
+            .cv-presence-person{display:flex;align-items:center;gap:10px;min-width:0}
+            .cv-presence-dot{width:10px;height:10px;border-radius:999px;background:#22C55E;box-shadow:0 0 0 4px #DCFCE7}
+            .cv-presence-dot.idle{background:#F59E0B;box-shadow:0 0 0 4px #FEF3C7}
+            .cv-presence-dot.offline{background:#94A3B8;box-shadow:0 0 0 4px #F1F5F9}
+            .cv-presence-row strong{display:block;color:#0F172A;font-size:12px}.cv-presence-row span{display:block;color:#64748B;font-size:10px;margin-top:2px}
+            .cv-audit-row{display:grid;grid-template-columns:150px minmax(120px,.7fr) minmax(160px,1fr) minmax(0,1.7fr);gap:12px;align-items:center;border-bottom:1px solid #EEF2F7;padding:11px 4px}
+            .cv-audit-row.header{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;color:#64748B;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
+            .cv-audit-row strong{color:#0F172A;font-size:11px}.cv-audit-row span{color:#64748B;font-size:10px;overflow-wrap:anywhere}
+            @media(max-width:900px){.cv-collab-grid{grid-template-columns:1fr}.cv-audit-row{grid-template-columns:1fr 1fr}}
+            @media(max-width:900px){.cv-ws-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+            @media(max-width:620px){.cv-ws-metrics{grid-template-columns:1fr}.cv-ws-member{grid-template-columns:1fr}}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if workspace_error == "migration_required":
+            st.markdown(
+                f"""
+                <div class="cv-ws-hero">
+                  <div class="cv-ws-kicker">Workspace & Team Collaboration</div>
+                  <h1>{html.escape(proposed_workspace_name)}</h1>
+                  <p>The collaboration interface is installed. Apply the included Milestone 10B Supabase migration to activate persistent members, invitations, activity, and notifications.</p>
+                </div>
+                <div class="cv-ws-warning"><strong>Database setup required.</strong><br>Run <code>supabase_migrations/20260712_milestone_10b_workspace_collaboration.sql</code> in the Supabase SQL Editor, then reload this page.</div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.info("Your existing BOM analyses and engineering decisions are not changed by this migration.")
+            stop_authenticated_page()
+        if workspace_error or not workspace:
+            st.error(f"Unable to load the workspace: {workspace_error or 'Unknown workspace error'}")
+            stop_authenticated_page()
+
+        workspace_id = str(workspace.get("id"))
+        current_role = str(workspace.get("current_role") or "viewer").lower()
+
+        presence_error = touch_workspace_presence(
+            supabase,
+            workspace_id,
+            user_id,
+            owner_name,
+            owner_email,
+            "Workspace",
+            workspace.get("name") or proposed_workspace_name,
+        )
+        can_administer = current_role in {"owner", "admin"}
+        is_owner = current_role == "owner"
+
+        members, members_error = list_members(supabase, workspace_id)
+        invites, invites_error = list_invites(supabase, workspace_id)
+        activity_rows, activity_error = list_activity(supabase, workspace_id, 75)
+        presence_rows, presence_list_error = list_workspace_presence(
+            supabase,
+            workspace_id,
+            25,
+        )
+        audit_rows, audit_error = list_audit_log(
+            supabase,
+            workspace_id,
+            limit=250,
+        )
+        active_members = [row for row in members if row.get("status") == "active"]
+        pending_invites = [row for row in invites if row.get("status") == "pending"]
+
+        workspace_name = _safe_text(workspace.get("name"), proposed_workspace_name)
+        st.markdown(
+            f"""
+            <div class="cv-ws-hero">
+              <div class="cv-ws-kicker">Team Engineering Workspace</div>
+              <h1>{html.escape(workspace_name)}</h1>
+              <p>Manage workspace identity, engineering access, team invitations, collaboration activity, and notification readiness from one controlled workspace.</p>
+            </div>
+            <div class="cv-ws-metrics">
+              <div class="cv-ws-metric"><div class="cv-ws-label">Plan</div><div class="cv-ws-value">{html.escape(selected_plan_name)}</div><div class="cv-ws-note">Current subscription</div></div>
+              <div class="cv-ws-metric"><div class="cv-ws-label">Members</div><div class="cv-ws-value">{len(active_members)}</div><div class="cv-ws-note">Active workspace users</div></div>
+              <div class="cv-ws-metric"><div class="cv-ws-label">Pending Invites</div><div class="cv-ws-value">{len(pending_invites)}</div><div class="cv-ws-note">Awaiting acceptance</div></div>
+              <div class="cv-ws-metric"><div class="cv-ws-label">Saved Analyses</div><div class="cv-ws-value">{saved_bom_count}</div><div class="cv-ws-note">Shared engineering records</div></div>
+              <div class="cv-ws-metric"><div class="cv-ws-label">Organizations</div><div class="cv-ws-value">{len(available_workspaces)}</div><div class="cv-ws-note">Accessible workspaces</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        (
+            overview_tab,
+            collaboration_tab,
+            organizations_tab,
+            members_tab,
+            invitations_tab,
+            activity_tab,
+            audit_tab,
+            settings_tab,
+        ) = st.tabs(
+            [
+                "Overview",
+                "Team Activity",
+                "Organizations",
+                "Members",
+                "Invitations",
+                "Workspace History",
+                "Audit Log",
+                "Settings",
+            ]
+        )
+
+        with overview_tab:
+            left, right = st.columns([1.25, .75], gap="large")
+            with left:
+                st.markdown(
+                    f"""
+                    <div class="cv-ws-card">
+                      <h3>Workspace information</h3>
+                      <p>Persistent identity and collaboration boundaries for your engineering records.</p>
+                      <div class="cv-snapshot-grid" style="grid-template-columns:1fr 1fr;margin-top:15px">
+                        <div class="cv-snapshot-item"><span>Workspace</span><strong>{html.escape(workspace_name)}</strong></div>
+                        <div class="cv-snapshot-item"><span>Your role</span><strong>{html.escape(current_role.title())}</strong></div>
+                        <div class="cv-snapshot-item"><span>Owner</span><strong>{html.escape(owner_name)}</strong></div>
+                        <div class="cv-snapshot-item"><span>Created</span><strong>{html.escape(str(workspace.get('created_at',''))[:10] or 'Today')}</strong></div>
+                        <div class="cv-snapshot-item"><span>Time zone</span><strong>{html.escape(_safe_text(workspace.get('timezone'),'UTC'))}</strong></div>
+                        <div class="cv-snapshot-item"><span>Units</span><strong>{html.escape(_safe_text(workspace.get('unit_system'),'metric').title())}</strong></div>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    '<div class="cv-ws-card"><h3>Recent workspace activity</h3><p>Activity is collapsed by default so the overview remains compact. The complete audit timeline remains available in the Activity tab.</p></div>',
+                    unsafe_allow_html=True,
+                )
+                if activity_error:
+                    st.warning(f"Activity could not be loaded: {activity_error}")
+                elif not activity_rows:
+                    st.info("No workspace activity has been recorded yet.")
+                else:
+                    latest_activity = activity_rows[0]
+                    st.markdown(
+                        f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(latest_activity.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(latest_activity.get("actor_name"), "Cadivor"))} · {html.escape(str(latest_activity.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    with st.expander(f"View recent activity ({min(len(activity_rows), 6)} events)", expanded=False):
+                        for item in activity_rows[:6]:
+                            st.markdown(
+                                f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(item.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(item.get("actor_name"), "Cadivor"))} · {html.escape(str(item.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
+                                unsafe_allow_html=True,
+                            )
+                        st.caption("Open the Activity tab for the complete workspace audit timeline.")
+            with right:
+                st.markdown(
+                    f"""
+                    <div class="cv-ws-card">
+                      <h3>Collaboration readiness</h3>
+                      <p>Organization switching, member boundaries, invitations, and role controls are active.</p>
+                      <div class="cv-snapshot-grid" style="grid-template-columns:1fr;margin-top:15px">
+                        <div class="cv-snapshot-item"><span>Member directory</span><strong>Active</strong></div>
+                        <div class="cv-snapshot-item"><span>Invitation records</span><strong>Active</strong></div>
+                        <div class="cv-snapshot-item"><span>Role controls</span><strong>{'Owner enabled' if is_owner else 'Permission controlled'}</strong></div>
+                        <div class="cv-snapshot-item"><span>Email delivery</span><strong>Not connected yet</strong></div>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.caption("Organization membership is persistent. Saved BOM scoping and invitation acceptance links arrive in Milestone 11B.2.")
+
+        with collaboration_tab:
+            st.subheader("Team collaboration")
+            st.caption(
+                "See who is active, what the engineering team changed, and the "
+                "latest organization events without leaving the workspace."
+            )
+
+            if presence_error == "migration_required" or presence_list_error == "migration_required":
+                st.info(
+                    "Run the Milestone 11C.1 migration to activate team presence "
+                    "and the searchable audit log."
+                )
+            elif presence_list_error:
+                st.error(f"Team presence could not be loaded: {presence_list_error}")
+
+            now_utc = pd.Timestamp.utcnow()
+            online_members = []
+            idle_members = []
+            offline_members = []
+            for row in presence_rows:
+                seen = pd.to_datetime(row.get("last_seen_at"), utc=True, errors="coerce")
+                age_minutes = (
+                    (now_utc - seen).total_seconds() / 60
+                    if not pd.isna(seen)
+                    else 999999
+                )
+                if age_minutes <= 10:
+                    online_members.append(row)
+                elif age_minutes <= 60:
+                    idle_members.append(row)
+                else:
+                    offline_members.append(row)
+
+            collaboration_left, collaboration_right = st.columns([1.15, 0.85], gap="medium")
+            with collaboration_left:
+                st.markdown("#### Live team presence")
+                presence_display = online_members + idle_members + offline_members
+                if not presence_display:
+                    st.markdown(
+                        '<div class="cv-analysis-empty">No team presence has been recorded yet.</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    presence_html = []
+                    online_ids = {str(row.get("id")) for row in online_members}
+                    idle_ids = {str(row.get("id")) for row in idle_members}
+                    for row in presence_display[:12]:
+                        row_id = str(row.get("id"))
+                        state_class = "" if row_id in online_ids else "idle" if row_id in idle_ids else "offline"
+                        state_label = "Online" if row_id in online_ids else "Idle" if row_id in idle_ids else "Offline"
+                        presence_html.append(
+                            f'<div class="cv-presence-row">'
+                            f'<div class="cv-presence-person">'
+                            f'<i class="cv-presence-dot {state_class}"></i>'
+                            f'<div><strong>{html.escape(_safe_text(row.get("display_name"), row.get("email") or "Member"))}</strong>'
+                            f'<span>{html.escape(_safe_text(row.get("page_name"), "Cadivor"))}'
+                            f'{" · " + html.escape(_safe_text(row.get("object_label"), "")) if row.get("object_label") else ""}</span></div>'
+                            f'</div><span>{state_label}</span></div>'
+                        )
+                    st.markdown("".join(presence_html), unsafe_allow_html=True)
+
+            with collaboration_right:
+                st.markdown("#### Collaboration snapshot")
+                render_kpi_row_safe(
+                    [
+                        MetricCard(label="Online now", value=str(len(online_members)), tone="success", icon="radar"),
+                        MetricCard(label="Active this hour", value=str(len(online_members) + len(idle_members)), tone="info", icon="clock-3"),
+                        MetricCard(label="Activity events", value=str(len(activity_rows)), tone="monitoring", icon="clipboard-check"),
+                        MetricCard(label="Audit records", value=str(len(audit_rows)), tone="confidence", icon="file-text"),
+                    ],
+                    columns=4,
+                )
+
+                st.markdown("#### Latest team events")
+                if not activity_rows:
+                    st.caption("No collaboration activity has been recorded.")
+                else:
+                    for row in activity_rows[:5]:
+                        st.markdown(
+                            f"""
+                            <div class="cv-ws-activity">
+                              <strong>{html.escape(_safe_text(row.get('actor_name'), 'Cadivor'))}</strong>
+                              <span>{html.escape(_safe_text(row.get('summary'), row.get('action_type') or 'Workspace event'))}</span>
+                              <span>{html.escape(str(row.get('created_at',''))[:19].replace('T',' '))} UTC</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+        with organizations_tab:
+            st.subheader("Organizations")
+            st.caption(
+                "Switch between engineering organizations without signing out. "
+                "Each organization has its own members, invitations, activity, and settings."
+            )
+
+            if organizations_error:
+                st.error(f"Organizations could not be loaded: {organizations_error}")
+            else:
+                organization_lookup = {
+                    f"{_safe_text(item.get('name'), 'Cadivor Workspace')} — {_safe_text(item.get('current_role'), 'viewer').title()}": item
+                    for item in available_workspaces
+                }
+                current_label = next(
+                    (
+                        label
+                        for label, item in organization_lookup.items()
+                        if str(item.get("id")) == workspace_id
+                    ),
+                    next(iter(organization_lookup), ""),
+                )
+
+                if organization_lookup:
+                    selected_organization_label = st.selectbox(
+                        "Active organization",
+                        list(organization_lookup.keys()),
+                        index=list(organization_lookup.keys()).index(current_label)
+                        if current_label in organization_lookup
+                        else 0,
+                        key="workspace_organization_switcher",
+                    )
+                    selected_organization = organization_lookup[selected_organization_label]
+                    selected_organization_id = str(selected_organization.get("id"))
+
+                    switch_col, status_col = st.columns([0.35, 0.65])
+                    with switch_col:
+                        switch_disabled = selected_organization_id == workspace_id
+                        if st.button(
+                            "Switch Organization",
+                            type="primary",
+                            disabled=switch_disabled,
+                            use_container_width=True,
+                            key="switch_active_organization",
+                        ):
+                            preference_save_error = set_active_workspace_preference(
+                                supabase,
+                                user_id,
+                                selected_organization_id,
+                            )
+                            if preference_save_error:
+                                st.error(preference_save_error)
+                            else:
+                                st.session_state["active_workspace_id"] = selected_organization_id
+                                st.success("Active organization changed.")
+                                st.rerun()
+                    with status_col:
+                        if selected_organization_id == workspace_id:
+                            st.success(f"{workspace_name} is currently active.")
+                        else:
+                            st.info(
+                                "Switching changes the member directory, invitations, "
+                                "activity, and organization settings shown on this page."
+                            )
+
+                st.markdown("#### Organization directory")
+                org_columns = st.columns(2)
+                for index, item in enumerate(available_workspaces):
+                    with org_columns[index % 2]:
+                        is_active_org = str(item.get("id")) == workspace_id
+                        st.markdown(
+                            f"""
+                            <div class="cv-org-card">
+                              <strong>{html.escape(_safe_text(item.get('name'), 'Cadivor Workspace'))}</strong>
+                              <span>{html.escape(_safe_text(item.get('current_role'), 'viewer').title())} access · {html.escape(_safe_text(item.get('plan'), 'starter').title())} plan</span>
+                              {'<span class="cv-org-active">Active organization</span>' if is_active_org else ''}
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+            st.markdown("#### Create another organization")
+            st.caption(
+                "Use a separate organization for another company, business unit, "
+                "client environment, or engineering team."
+            )
+            new_org_name = st.text_input(
+                "Organization name",
+                placeholder="Example: Egres Engineering",
+                key="new_organization_name",
+            )
+            if st.button(
+                "Create Organization",
+                type="primary",
+                key="create_organization_workspace",
+            ):
+                created_org, create_org_error = create_organization_workspace(
+                    supabase,
+                    user_id,
+                    owner_email,
+                    owner_name,
+                    new_org_name,
+                    selected_plan_name,
+                )
+                if create_org_error:
+                    st.error(create_org_error)
+                elif created_org:
+                    created_id = str(created_org.get("id"))
+                    set_active_workspace_preference(supabase, user_id, created_id)
+                    st.session_state["active_workspace_id"] = created_id
+                    st.success(f"{_safe_text(created_org.get('name'), 'Organization')} was created.")
+                    st.rerun()
+
+            st.info(
+                "Milestone 11B.1 establishes organization switching and membership boundaries. "
+                "Saved BOM records will be assigned to organizations in Milestone 11B.2."
+            )
+
+        with members_tab:
+            st.subheader("Workspace members")
+            st.caption("Owners and admins manage access. Only the owner can change member roles in this foundation release.")
+            if members_error:
+                st.error(f"Members could not be loaded: {members_error}")
+            elif not active_members:
+                st.info("No active workspace members were found.")
+            else:
+                for member in active_members:
+                    member_name = _safe_text(member.get("display_name"), _safe_text(member.get("email"), "Workspace member"))
+                    member_email = _safe_text(member.get("email"), "")
+                    member_role = _safe_text(member.get("role"), "viewer").lower()
+                    st.markdown(
+                        f'<div class="cv-ws-member"><div><strong>{html.escape(member_name)}</strong><span>{html.escape(member_email)}</span></div><div><span class="cv-ws-role">{html.escape(member_role)}</span></div><div><span class="cv-ws-status">{html.escape(_safe_text(member.get("status"),"active"))}</span></div></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if is_owner and member_role != "owner":
+                        c1, c2, c3 = st.columns([1.1, .7, 2.2])
+                        role_options = ["admin", "engineer", "viewer"]
+                        with c1:
+                            selected_role = st.selectbox(
+                                "Role",
+                                role_options,
+                                index=role_options.index(member_role) if member_role in role_options else 2,
+                                key=f"member_role_{member.get('id')}",
+                                label_visibility="collapsed",
+                            )
+                        with c2:
+                            if st.button("Update role", key=f"update_member_{member.get('id')}", use_container_width=True):
+                                error = update_member_role(supabase, workspace_id, str(member.get("id")), selected_role, user_id, owner_name, member_email)
+                                if error:
+                                    st.error(error)
+                                else:
+                                    st.success(f"{member_email} is now {selected_role}.")
+                                    st.rerun()
+                        with c3:
+                            if st.button("Remove member", key=f"remove_member_{member.get('id')}"):
+                                st.session_state["workspace_remove_member"] = str(member.get("id"))
+                        if st.session_state.get("workspace_remove_member") == str(member.get("id")):
+                            st.warning(f"Remove {member_email} from this workspace? Their account will not be deleted.")
+                            yes_col, no_col = st.columns(2)
+                            with yes_col:
+                                if st.button("Yes, remove member", key=f"confirm_remove_{member.get('id')}", type="primary"):
+                                    error = remove_member(supabase, workspace_id, str(member.get("id")), user_id, owner_name, member_email)
+                                    st.session_state.pop("workspace_remove_member", None)
+                                    if error:
+                                        st.error(error)
+                                    else:
+                                        st.success("Member removed.")
+                                        st.rerun()
+                            with no_col:
+                                if st.button("Cancel", key=f"cancel_remove_{member.get('id')}"):
+                                    st.session_state.pop("workspace_remove_member", None)
+                                    st.rerun()
+
+        with invitations_tab:
+            st.subheader("Invite team members")
+            st.caption("Create persistent invitations for admins, engineers, or viewers. Email delivery is not connected in this release.")
+            if can_administer:
+                invite_email = st.text_input("Email address", placeholder="engineer@company.com", key="workspace_invite_email")
+                invite_role = st.selectbox("Workspace role", ["Engineer", "Viewer", "Admin"], key="workspace_invite_role")
+                if st.button("Create Invitation", type="primary", key="create_workspace_invite"):
+                    created, error = create_invite(supabase, workspace_id, invite_email, invite_role.lower(), user_id, owner_name)
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("Workspace invitation created. Email delivery will be connected in a later capability.")
+                        st.rerun()
+            else:
+                st.info("Only workspace owners and admins can create invitations.")
+
+            st.markdown("#### Pending invitations")
+            if invites_error:
+                st.error(f"Invitations could not be loaded: {invites_error}")
+            elif not pending_invites:
+                st.info("No invitations are waiting for acceptance.")
+            else:
+                invite_df = pd.DataFrame(
+                    [
+                        {
+                            "Email": row.get("email"),
+                            "Role": _safe_text(row.get("role"), "engineer").title(),
+                            "Status": _safe_text(row.get("status"), "pending").title(),
+                            "Invited By": _safe_text(row.get("invited_by_name"), owner_name),
+                            "Created": str(row.get("created_at", ""))[:10],
+                            "Expires": str(row.get("expires_at", ""))[:10],
+                        }
+                        for row in pending_invites
+                    ]
+                )
+                cadivor_engineering_dataframe(
+                    invite_df,
+                    column_config={
+                        "Email": st.column_config.TextColumn(width="medium"),
+                        "Role": st.column_config.TextColumn(width="small"),
+                        "Status": st.column_config.TextColumn(width="small"),
+                    },
+                )
+                if can_administer:
+                    invite_lookup = {f"{row.get('email')} — {str(row.get('created_at',''))[:10]}": row for row in pending_invites}
+                    selected_invite_label = st.selectbox("Select an invitation to cancel", list(invite_lookup.keys()))
+                    if st.button(
+                        "Cancel Selected Invitation",
+                        type="primary",
+                        use_container_width=False,
+                        key="cancel_selected_workspace_invitation",
+                    ):
+                        selected_invite = invite_lookup[selected_invite_label]
+                        error = cancel_invite(supabase, workspace_id, str(selected_invite.get("id")), user_id, owner_name, _safe_text(selected_invite.get("email"), ""))
+                        if error:
+                            st.error(error)
+                        else:
+                            st.success("Invitation cancelled.")
+                            st.rerun()
+
+        with activity_tab:
+            st.subheader("Workspace history")
+            st.caption(
+                "Review human-readable team and workspace administration events. "
+                "Technical database action names are intentionally hidden from this view."
+            )
+            if activity_error:
+                st.error(f"Workspace history could not be loaded: {activity_error}")
+            elif not activity_rows:
+                st.info("No workspace history has been recorded yet.")
+            else:
+                history_categories = sorted(
+                    {category_label(event_category(row.get("action"), row.get("object_type"))) for row in activity_rows}
+                )
+                hist_a, hist_b, hist_c = st.columns([0.28, 0.52, 0.20])
+                with hist_a:
+                    selected_history_category = st.selectbox(
+                        "Event category",
+                        ["All categories"] + history_categories,
+                        key="workspace_history_category",
+                    )
+                with hist_b:
+                    history_search = st.text_input(
+                        "Search workspace history",
+                        placeholder="Search person, action, or summary",
+                        key="workspace_history_search",
+                    ).strip().lower()
+                with hist_c:
+                    history_limit = st.selectbox(
+                        "Rows",
+                        [25, 50, 75],
+                        index=1,
+                        key="workspace_history_limit",
+                    )
+
+                filtered_history = []
+                for row in activity_rows:
+                    category = category_label(event_category(row.get("action"), row.get("object_type")))
+                    title = action_label(row.get("action"))
+                    summary = friendly_summary(row)
+                    actor = _safe_text(row.get("actor_name"), "Cadivor user")
+                    if selected_history_category != "All categories" and category != selected_history_category:
+                        continue
+                    if history_search and history_search not in " ".join([category, title, summary, actor]).lower():
+                        continue
+                    filtered_history.append(
+                        {
+                            "Date": display_time(row.get("created_at")),
+                            "Actor": actor,
+                            "Category": category,
+                            "Action": title,
+                            "Summary": summary,
+                        }
+                    )
+
+                st.caption(f"Showing {min(len(filtered_history), history_limit)} of {len(filtered_history)} matching events.")
+                if not filtered_history:
+                    st.info("No workspace events match the current filters.")
+                else:
+                    cadivor_engineering_dataframe(
+                        pd.DataFrame(filtered_history[:history_limit]),
+                        height=min(520, 75 + 36 * min(len(filtered_history), history_limit)),
+                    )
+
+        with audit_tab:
+            st.subheader("Engineering audit log")
+            st.caption(
+                "Search customer-friendly engineering events. Raw backend actions remain "
+                "available only inside the technical-details expander and CSV export."
+            )
+
+            if audit_error == "migration_required":
+                st.info("Run the Milestone 11C.1 migration to activate the audit log.")
+            elif audit_error:
+                st.error(f"Audit log could not be loaded: {audit_error}")
+            else:
+                categories = sorted(
+                    {category_label(event_category(row.get("action_type"), row.get("object_type"))) for row in audit_rows}
+                )
+                actor_names = sorted(
+                    {
+                        _safe_text(row.get("actor_name"), row.get("actor_email") or "System")
+                        for row in audit_rows
+                    }
+                )
+                filter_a, filter_b, filter_c, filter_d = st.columns([0.22, 0.22, 0.36, 0.20])
+                with filter_a:
+                    selected_category = st.selectbox(
+                        "Category",
+                        ["All categories"] + categories,
+                        key="audit_category_filter",
+                    )
+                with filter_b:
+                    selected_actor_label = st.selectbox(
+                        "Actor",
+                        ["All people"] + actor_names,
+                        key="audit_actor_filter_friendly",
+                    )
+                with filter_c:
+                    audit_search = st.text_input(
+                        "Search audit records",
+                        placeholder="BOM, component, report, teammate, or action",
+                        key="audit_search_filter_friendly",
+                    ).strip().lower()
+                with filter_d:
+                    audit_limit = st.selectbox(
+                        "Rows",
+                        [25, 50, 100],
+                        index=1,
+                        key="audit_display_limit",
+                    )
+
+                friendly_audit = []
+                for row in audit_rows:
+                    category = category_label(event_category(row.get("action_type"), row.get("object_type")))
+                    actor = _safe_text(row.get("actor_name"), row.get("actor_email") or "System")
+                    action_title = action_label(row.get("action_type"))
+                    summary = friendly_summary(row)
+                    searchable = " ".join(
+                        [category, actor, action_title, summary, _safe_text(row.get("object_label"), "")]
+                    ).lower()
+                    if selected_category != "All categories" and category != selected_category:
+                        continue
+                    if selected_actor_label != "All people" and actor != selected_actor_label:
+                        continue
+                    if audit_search and audit_search not in searchable:
+                        continue
+                    friendly_audit.append(
+                        {
+                            "Time": display_time(row.get("created_at")),
+                            "Actor": actor,
+                            "Category": category,
+                            "Action": action_title,
+                            "Details": summary,
+                            "Raw Action": _safe_text(row.get("action_type"), ""),
+                            "Object Type": _safe_text(row.get("object_type"), ""),
+                            "Object ID": _safe_text(row.get("object_id"), ""),
+                            "Object Label": _safe_text(row.get("object_label"), ""),
+                            "Raw Summary": _safe_text(row.get("summary"), ""),
+                        }
+                    )
+
+                st.caption(f"Showing {min(len(friendly_audit), audit_limit)} of {len(friendly_audit)} matching audit records.")
+                if not friendly_audit:
+                    st.info("No audit records match the current filters.")
+                else:
+                    display_columns = ["Time", "Actor", "Category", "Action", "Details"]
+                    cadivor_engineering_dataframe(
+                        pd.DataFrame(friendly_audit[:audit_limit])[display_columns],
+                        height=min(560, 75 + 36 * min(len(friendly_audit), audit_limit)),
+                    )
+
+                    record_options = {
+                        f"{row['Time']} — {row['Action']} — {row['Actor']}": row
+                        for row in friendly_audit[:audit_limit]
+                    }
+                    with st.expander("View technical details", expanded=False):
+                        selected_record_label = st.selectbox(
+                            "Audit record",
+                            list(record_options.keys()),
+                            key="audit_technical_record",
+                        )
+                        selected_record = record_options[selected_record_label]
+                        st.caption(
+                            "These identifiers are intended for support, troubleshooting, and API integrations."
+                        )
+                        technical_cols = st.columns(2)
+                        technical_cols[0].code(
+                            f"Raw action: {selected_record['Raw Action']}\n"
+                            f"Object type: {selected_record['Object Type']}"
+                        )
+                        technical_cols[1].code(
+                            f"Object ID: {selected_record['Object ID']}\n"
+                            f"Object label: {selected_record['Object Label']}"
+                        )
+
+                    audit_export = pd.DataFrame(friendly_audit).to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "Export Audit Log CSV",
+                        data=audit_export,
+                        file_name=f"{re.sub(r'[^A-Za-z0-9_-]+', '_', workspace_name)}_audit_log.csv",
+                        mime="text/csv",
+                        type="primary",
+                    )
+
+        with settings_tab:
+            st.subheader("Workspace settings")
+            st.caption("Workspace owners and admins control the shared identity and engineering defaults.")
+            if can_administer:
+                settings_name = st.text_input("Workspace name", value=workspace_name, key="workspace_settings_name")
+                settings_timezone = st.text_input("Time zone", value=_safe_text(workspace.get("timezone"), profile.get("timezone") or "UTC"), key="workspace_settings_timezone")
+                settings_units = st.selectbox("Default unit system", ["metric", "imperial"], index=0 if _safe_text(workspace.get("unit_system"), "metric") == "metric" else 1, key="workspace_settings_units")
+                if st.button("Save Workspace Settings", type="primary"):
+                    error = update_workspace(supabase, workspace_id, settings_name, settings_timezone, settings_units, user_id, owner_name)
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("Workspace settings saved.")
+                        st.rerun()
+            else:
+                st.info("Only workspace owners and admins can update workspace settings.")
+            st.markdown(
+                f"""
+                <div class="cv-ws-card">
+                  <h3>Workspace identifiers</h3>
+                  <p>Use these values when support or future API integrations need to identify this workspace.</p>
+                  <div class="cv-snapshot-grid" style="grid-template-columns:1fr;margin-top:15px">
+                    <div class="cv-snapshot-item"><span>Workspace ID</span><strong>{html.escape(workspace_id)}</strong></div>
+                    <div class="cv-snapshot-item"><span>Owner ID</span><strong>{html.escape(_safe_text(workspace.get('owner_id'), user_id))}</strong></div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        stop_authenticated_page()
+
+    # ---------- Notifications ----------
+    if app_mode == "Notifications":
+        profile = get_user_profile(current_user)
+        auth_user = st.session_state.get("user")
+        user_id = str(getattr(auth_user, "id", current_user.get("id", "")))
+        workspace = active_workspace
+        workspace_error = None if workspace else "Workspace unavailable"
+        st.markdown(
+            """
+            <div class="cv-dashboard-header">
+              <div>
+                <div class="cv-eyebrow">Notification Center</div>
+                <h1 class="cv-title">Workspace updates</h1>
+                <p class="cv-subtitle">Review collaboration events and workspace notifications alongside Cadivor monitoring alerts.</p>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if workspace_error == "migration_required":
+            st.info("Apply the Milestone 10B Supabase migration to activate workspace notifications.")
+            stop_authenticated_page()
+        if workspace_error or not workspace:
+            st.error(f"Unable to load notifications: {workspace_error or 'Workspace unavailable'}")
+            stop_authenticated_page()
+
+        notification_rows, notification_error = list_notifications(supabase, str(workspace.get("id")), user_id, 75)
+        unread_rows = [row for row in notification_rows if not row.get("is_read")]
+        n1, n2, n3 = st.columns(3)
+        n1.metric("Unread", len(unread_rows))
+        n2.metric("Workspace Updates", len(notification_rows))
+        n3.metric("Monitoring Alerts", int(active_alert_count if 'active_alert_count' in globals() else 0))
+
+        if unread_rows:
+            if st.button(
+                "Mark All Workspace Notifications Read",
+                type="primary",
+                key="mark_all_workspace_notifications_read",
+            ):
+                mark_all_error = mark_all_notifications_read(
+                    supabase,
+                    str(workspace.get("id")),
+                    user_id,
+                )
+                if mark_all_error:
+                    st.error(mark_all_error)
+                else:
+                    st.success("All workspace notifications were marked as read.")
+                    st.rerun()
+
+        workspace_updates_tab, monitoring_tab = st.tabs(["Workspace Updates", "Monitoring Alerts"])
+        with workspace_updates_tab:
+            if notification_error:
+                st.error(f"Notifications could not be loaded: {notification_error}")
+            elif not notification_rows:
+                empty_state("No workspace notifications", "Invitations, role changes, generated reports, and collaboration updates will appear here.", "Open Workspace", "?page=Workspace", "●")
+            else:
+                for row in notification_rows:
+                    state = "Unread" if not row.get("is_read") else "Read"
+                    st.markdown(
+                        f"""
+                        <div class="cv-panel" style="margin-bottom:10px">
+                          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                            <div><div class="cv-panel-title">{html.escape(_safe_text(row.get('title'),'Workspace update'))}</div><div class="cv-panel-copy">{html.escape(_safe_text(row.get('message'),''))}</div></div>
+                            <span class="cv-status-pill {'success' if state == 'Read' else 'warning'}">{state}</span>
+                          </div>
+                          <div class="cv-panel-copy" style="margin-top:8px">{html.escape(str(row.get('created_at',''))[:19].replace('T',' '))} UTC</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if not row.get("is_read") and st.button("Mark as read", key=f"read_notification_{row.get('id')}"):
+                        error = mark_notification_read(supabase, str(row.get("id")))
+                        if error:
+                            st.error(error)
+                        else:
+                            st.rerun()
+        with monitoring_tab:
+            st.info("Lifecycle, stock, and supplier events remain available in the Monitoring dashboard. Milestone 10B keeps them separate from team collaboration notifications to avoid duplicate records.")
+            if st.button("Open Monitoring Dashboard", type="primary"):
+                navigate_to("Monitoring")
+        stop_authenticated_page()
+
+    # ---------- Resources / Help ----------
+    if app_mode == "Help":
+        st.markdown('<div class="cv-help-shell cv64-page-shell">', unsafe_allow_html=True)
+        cadivor_section_header(
+            "Cadivor Resources",
+            eyebrow="Guidance Center",
+            description="Practical, in-app guidance for turning a BOM into a reviewed engineering decision.",
+            icon="clipboard",
+        )
+        render_kpi_row_safe(
+            [
+                MetricCard(label="Guided workflows", value="5", detail="From upload to monitoring", tone="info", icon="file-text"),
+                MetricCard(label="Response channel", value="Email", detail="support@cadivor.com", tone="info", icon="clipboard-check"),
+                MetricCard(label="Workspace", value="Secure", detail="Your saved analyses remain private", tone="success", icon="badge-check"),
+            ],
+            columns=3,
+        )
+        start_tab, workflows_tab, tutorials_tab, demo_tab, terms_tab = st.tabs(
+            ["Start here", "Workflows", "Tutorials", "Demo BOMs", "Terms"]
+        )
+        with start_tab:
+            st.subheader("New to Cadivor? Start with one BOM.")
+            st.write("Upload a CSV or Excel BOM, review the flagged parts, then record the decision your team makes. Cadivor keeps the evidence and next steps together.")
+            start_actions = st.columns(3)
+            with start_actions[0]:
+                if st.button("1. Upload a BOM", key="resources_start_bom", type="primary", use_container_width=True):
+                    navigate_to("BOM Analyzer")
+            with start_actions[1]:
+                if st.button("2. Review risks", key="resources_start_dashboard", use_container_width=True):
+                    navigate_to("Dashboard")
+            with start_actions[2]:
+                if st.button("3. Record a decision", key="resources_start_decision", use_container_width=True):
+                    navigate_to("Engineering Decisions")
+        with workflows_tab:
+            st.markdown("### From BOM to decision")
+            workflow_cols = st.columns(5)
+            for column, title, page, copy in zip(
+                workflow_cols,
+                ["Upload", "Analyze", "Investigate", "Decide", "Monitor"],
+                ["BOM Analyzer", "Dashboard", "Alternative Finder", "Engineering Decisions", "Monitoring"],
+                ["Validate your file and save the analysis.", "Find risk, lifecycle, supplier, and evidence gaps.", "Compare alternatives and qualification evidence.", "Capture approval, rejection, or risk acceptance.", "Watch components after the first review."],
+            ):
+                with column:
+                    st.markdown(f"**{title}**\n\n{copy}")
+                    if st.button(f"Open {title}", key=f"resources_workflow_{page}", use_container_width=True):
+                        navigate_to(page)
+        with tutorials_tab:
+            st.markdown("### Learn the core workflows")
+            st.caption("These short animations show the expected outcome before you enter the live workflow. They use no customer data.")
+            st.markdown(
+                """
+                <div class="cv-resource-tour">
+                  <article class="cv-resource-tour-card"><h4>1. Analyze a BOM</h4><p>Upload your CSV or Excel file. Cadivor validates rows and highlights the parts that deserve review.</p><div class="cv-resource-demo"><div class="cv-resource-demo-top"></div><div class="cv-resource-demo-row"></div><div class="cv-resource-demo-row active"></div><div class="cv-resource-demo-row short"></div><span class="cv-resource-demo-risk">Risk found</span></div></article>
+                  <article class="cv-resource-tour-card"><h4>2. Ask the engineering question</h4><p>Ask what to review first, whether release evidence is complete, or what could change the recommendation.</p><div class="cv-resource-demo"><div class="cv-resource-demo-top"></div><span class="cv-resource-demo-node">?</span><span class="cv-resource-demo-node">E</span><span class="cv-resource-demo-node">✓</span><div class="cv-resource-demo-line"></div></div></article>
+                  <article class="cv-resource-tour-card"><h4>3. Record the decision</h4><p>Review the evidence, complete the required checks, and capture an approval, rejection, or risk acceptance.</p><div class="cv-resource-demo"><div class="cv-resource-demo-top"></div><div class="cv-resource-demo-row active"></div><div class="cv-resource-demo-row short"></div><span class="cv-resource-demo-check">Decision recorded</span></div></article>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            tutorial_actions = st.columns(3)
+            with tutorial_actions[0]:
+                if st.button("Try BOM analysis", key="resources_tutorial_bom", type="primary", use_container_width=True):
+                    navigate_to("BOM Analyzer")
+            with tutorial_actions[1]:
+                if st.button("Try Ask Cadivor", key="resources_tutorial_ask", use_container_width=True):
+                    navigate_to("BOM Analyzer")
+            with tutorial_actions[2]:
+                if st.button("Record a decision", key="resources_tutorial_decision", use_container_width=True):
+                    navigate_to("Engineering Decisions")
+        with demo_tab:
+            st.markdown("### Practice with a sample BOM")
+            st.write("Use the built-in template BOM from the BOM Analyzer if you do not yet have a file ready. It is designed to demonstrate lifecycle, supplier, and lead-time review without changing any saved work.")
+            if st.button("Open template BOM", key="resources_demo_bom", type="primary"):
+                navigate_to("BOM Analyzer")
+        with terms_tab:
+            st.markdown("### Cadivor terms, in plain language")
+            st.dataframe(
+                [
+                    {"Term": "Risk", "Meaning": "A recorded lifecycle, supply, sourcing, cost, or engineering concern that needs review."},
+                    {"Term": "Data coverage", "Meaning": "How many BOM parts have a saved record for a particular evidence type; it is not a guarantee that data is current."},
+                    {"Term": "Confidence", "Meaning": "How strongly the available saved evidence supports a recommendation; engineer approval is still required."},
+                    {"Term": "Qualification", "Meaning": "The engineering and sourcing checks required before a replacement or alternate is approved."},
+                    {"Term": "Release readiness", "Meaning": "Whether the saved evidence supports a controlled release decision; unknown evidence is not treated as low risk."},
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+        st.markdown(
+            """
+            <div class="cv-help-grid">
+              <div class="cv-help-card"><h3>Upload and analyze a BOM</h3><p>Use CSV or Excel exports from your PLM or spreadsheet. Cadivor validates columns, scores risk, and preserves your saved analysis history.</p></div>
+              <div class="cv-help-card"><h3>Review engineering decisions</h3><p>Track approvals, replacements, and evidence in Engineering Decisions before release.</p></div>
+              <div class="cv-help-card"><h3>Monitor supplier change</h3><p>Monitoring alerts surface stock, lifecycle, and sourcing movement across saved component records.</p></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        action_row = st.columns([1, 1, 1, 1])
+        with action_row[0]:
+            cadivor_button_wrap("primary")
+            if st.button("Open BOM Analyzer", key="help_open_bom", use_container_width=True):
+                navigate_to("BOM Analyzer")
+            cadivor_button_wrap_end()
+        with action_row[1]:
+            cadivor_button_wrap("secondary")
+            if st.button("Open Monitoring", key="help_open_monitoring", use_container_width=True):
+                navigate_to("Monitoring")
+            cadivor_button_wrap_end()
+        with action_row[2]:
+            cadivor_button_wrap("secondary")
+            st.link_button(
+                "Email support",
+                "mailto:support@cadivor.com?subject=Cadivor%20Support%20Request",
+                use_container_width=True,
+            )
+            cadivor_button_wrap_end()
+        with action_row[3]:
+            cadivor_button_wrap("secondary")
+            if st.button("Back to Dashboard", key="help_back_dashboard", use_container_width=True):
+                navigate_to("Dashboard")
+            cadivor_button_wrap_end()
+        st.markdown(
+            """
+            <div class="cv-help-card" style="margin-top:18px;">
+              <h3>Common topics</h3>
+              <p>BOM formatting • alternative qualification • procurement recommendations • report exports • workspace roles • billing and plan limits</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        stop_authenticated_page()
+
+    # ---------- About ----------
+    if app_mode == "About":
+        st.subheader("About Cadivor")
+        st.caption("Engineering intelligence for electronics teams.")
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            st.markdown(
+                """
+                <div class="card">
+                    <div class="card-title">What We Do</div>
+                    <div class="card-text">
+                        Cadivor helps engineering and supply chain teams identify obsolete,
+                        unavailable, single-source, and high-risk components before they create production delays.
+                        <br><br>
+                        The platform combines supplier data, lifecycle signals, sourcing risk, and alternative
+                        component recommendations into one workflow.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                """
+                <div class="card">
+                    <div class="card-title">Core Capabilities</div>
+                    <div class="card-text">
+                        ✓ BOM risk analysis<br>
+                        ✓ Multi-supplier availability checks<br>
+                        ✓ Alternative component ranking<br>
+                        ✓ Executive-ready reports<br>
+                        ✓ Subscription-based usage controls
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with col2:
+            st.markdown(
+                """
+                <div class="card">
+                    <div class="card-title">Built For</div>
+                    <div class="card-text">
+                        • Electrical engineers<br>
+                        • Manufacturing engineers<br>
+                        • Supply chain teams<br>
+                        • Hardware startups<br>
+                        • Engineering managers
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        stop_authenticated_page()
+
+    if app_mode == "Admin":
+        st.subheader("Admin Dashboard")
+        st.caption("Platform usage, customer activity, and subscription oversight.")
+
+        users_response = (
+            supabase.table("users")
+            .select("*")
+            .execute()
+        )
+
+        users_data = users_response.data
+        total_users = len(users_data)
+
+        active_subscriptions = len(
+            [user for user in users_data if user.get("plan") != "Starter"]
+        )
+
+        analyses_response = (
+            supabase.table("analyses")
+            .select("*")
+            .execute()
+        )
+
+        analyses_data = analyses_response.data
+        total_boms_analyzed = len(analyses_data)
+
+        starter_count = len(
+            [user for user in users_data if user.get("plan") == "Starter"]
+        )
+        pro_count = len(
+            [user for user in users_data if user.get("plan") == "Pro"]
+        )
+        business_count = len(
+            [user for user in users_data if user.get("plan") == "Business"]
+        )
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">Total Users</div>
+                    <div class="kpi-value">{total_users}</div>
+                    <div class="kpi-note">+12 this month</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+        )
+
+        with col2:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">Active Subscriptions</div>
+                    <div class="kpi-value">{active_subscriptions}</div>
+                    <div class="kpi-note">82% retention</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with col3:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">BOMs Analyzed</div>
+                    <div class="kpi-value">{total_boms_analyzed}</div>
+                    <div class="kpi-note">↑ 18% growth</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with col4:
+            st.markdown(
+                """
+                <div class="kpi-card">
+                    <div class="kpi-label">Revenue</div>
+                    <div class="kpi-value">$4,920</div>
+                    <div class="kpi-note">Monthly recurring revenue</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.divider()
+
+        st.subheader("Plan Distribution")
+
+        plan_df = pd.DataFrame(
+            {
+                "Plan": ["Starter", "Pro", "Business"],
+                "Users": [starter_count, pro_count, business_count],
+            }
+        )
+
+        st.bar_chart(plan_df, x="Plan", y="Users")
+
+        st.subheader("Recent User Activity")
+
+        activity_df = pd.DataFrame(users_data)
+
+        if not activity_df.empty:
+            activity_df = activity_df.rename(
+                columns={
+                    "email": "User",
+                    "plan": "Plan",
+                    "monthly_upload_count": "BOMs Used",
+                    "created_at": "Created At",
+                }
+            )
+
+            display_cols = [
+                "User",
+                "Plan",
+                "BOMs Used",
+                "Created At",
+            ]
+
+            activity_display_df = activity_df[display_cols]
+
+            cadivor_engineering_dataframe(activity_display_df)
+
+        else:
+            st.info("No users found.")
+
+        stop_authenticated_page()
+
+    if app_mode == "Alternative Finder":
+
+        from integrations.supplier_aggregator import get_best_part_data
+        from src.alternative_engine import suggest_alternatives_v2, compare_parts, rank_alternatives
+        from src.alternative_reasoning import build_alternative_reasoning
+        from src.risk_engine import calculate_risk
+        return_analysis_id = str(
+            _qp_value("return_analysis_id")
+            or st.session_state.get("cadivor_alt_finder_return_analysis_id", "")
+            or ""
+        ).strip()
+        if return_analysis_id:
+            def _return_to_saved_bom() -> None:
+                return_section = str(
+                    st.session_state.get("cadivor_alt_finder_return_analysis_section", "")
+                    or "Components"
+                ).strip()
+                st.session_state["cadivor_active_analysis_id"] = return_analysis_id
+                st.session_state["cadivor_pending_analysis_section"] = return_section
+                st.session_state["cadivor_pending_analysis_section_id"] = return_analysis_id
+                st.session_state.pop("cadivor_alt_finder_return_analysis_id", None)
+                st.session_state.pop("cadivor_alt_finder_return_analysis_section", None)
+                navigate_to(
+                    "Analysis Details",
+                    _rerun=False,
+                    analysis_id=return_analysis_id,
+                    analysis_tab=return_section,
+                )
+
+            st.button(
+                "← Back to Saved BOM",
+                key="alternative_back_to_saved_bom",
+                type="secondary",
+                on_click=_return_to_saved_bom,
+            )
+
+        st.markdown(
+            """
+            <style id="cadivor-alternative-finder-62a1">
+            /* Milestone 6.2C.3 — safe Supabase snapshot serialization */
+            .st-key-af62_hero,
+            .st-key-af62_search,
+            .st-key-af62_summary,
+            .st-key-af62_tips {
+                background:#FFFFFF!important;
+                border:1px solid #E2E8F0!important;
+                border-radius:22px!important;
+                box-shadow:0 18px 46px rgba(15,23,42,.055)!important;
+            }
+
+            .st-key-af62_hero {
+                padding:28px 30px!important;
+                margin-bottom:18px!important;
+                background:
+                    radial-gradient(circle at 92% 10%,rgba(37,99,235,.10),transparent 30%),
+                    linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 65%,#EEF5FF 100%)!important;
+                border-color:#BFDBFE!important;
+            }
+
+            .st-key-af62_search,
+            .st-key-af62_summary,
+            .st-key-af62_tips {
+                padding:22px!important;
+            }
+
+            .st-key-af62_search {
+                margin-bottom:18px!important;
+            }
+
+            .af62-eyebrow {
+                display:inline-flex;
+                align-items:center;
+                gap:8px;
+                padding:7px 11px;
+                border-radius:999px;
+                background:#EFF6FF;
+                border:1px solid #BFDBFE;
+                color:#2563EB!important;
+                font-size:10px;
+                font-weight:950;
+                letter-spacing:.11em;
+                text-transform:uppercase;
+                margin-bottom:16px;
+            }
+
+            .af62-title {
+                color:#0B1220!important;
+                font-size:36px;
+                line-height:1.05;
+                font-weight:980;
+                letter-spacing:-.045em;
+                margin:0 0 10px;
+            }
+
+            .af62-copy {
+                color:#52647A!important;
+                font-size:15px;
+                line-height:1.65;
+                font-weight:680;
+                max-width:850px;
+                margin:0;
+            }
+
+            .af62-card-head {
+                display:flex;
+                align-items:flex-start;
+                justify-content:space-between;
+                gap:14px;
+                margin-bottom:16px;
+            }
+
+            .af62-card-title {
+                color:#0B1220!important;
+                font-size:19px;
+                line-height:1.15;
+                font-weight:960;
+                letter-spacing:-.035em;
+                margin:0;
+            }
+
+            .af62-card-subtitle {
+                color:#64748B!important;
+                font-size:12px;
+                line-height:1.45;
+                font-weight:720;
+                margin-top:5px;
+            }
+
+            .af62-icon {
+                width:42px;
+                height:42px;
+                border-radius:14px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                flex:0 0 auto;
+                background:#EFF6FF;
+                border:1px solid #BFDBFE;
+                color:#2563EB!important;
+            }
+
+            .af62-icon.green {
+                background:#ECFDF5;
+                border-color:#A7F3D0;
+                color:#059669!important;
+            }
+
+            .af62-icon.amber {
+                background:#FFFBEB;
+                border-color:#FDE68A;
+                color:#D97706!important;
+            }
+
+            .af62-search-label {
+                color:#334155!important;
+                font-size:12px;
+                font-weight:850;
+                margin-bottom:7px;
+            }
+
+            .st-key-af62_search [data-testid="stTextInput"] input {
+                min-height:50px!important;
+                border-radius:13px!important;
+                border:1px solid #CBD5E1!important;
+                background:#FFFFFF!important;
+                color:#0F172A!important;
+                font-size:14px!important;
+                font-weight:720!important;
+                padding-left:15px!important;
+            }
+
+            .st-key-af62_search [data-testid="stTextInput"] input:focus {
+                border-color:#60A5FA!important;
+                box-shadow:0 0 0 4px rgba(37,99,235,.12)!important;
+            }
+
+            .st-key-af62_search div.stButton > button {
+                width:100%!important;
+                min-height:50px!important;
+                border-radius:13px!important;
+                font-size:13px!important;
+                font-weight:900!important;
+            }
+
+            .af62-summary-grid {
+                display:grid;
+                grid-template-columns:repeat(2,minmax(0,1fr));
+                gap:10px;
+                margin-top:4px;
+            }
+
+            .af62-field {
+                padding:12px;
+                border-radius:14px;
+                background:#F8FAFC;
+                border:1px solid #E2E8F0;
+                min-height:72px;
+            }
+
+            .af62-field span {
+                display:block;
+                color:#64748B!important;
+                font-size:9px;
+                font-weight:950;
+                text-transform:uppercase;
+                letter-spacing:.09em;
+                margin-bottom:7px;
+            }
+
+            .af62-field strong {
+                display:block;
+                color:#0B1220!important;
+                font-size:13px;
+                font-weight:900;
+                line-height:1.35;
+                overflow-wrap:anywhere;
+            }
+
+            .af62-search-status {
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+                margin-top:14px;
+                padding:7px 10px;
+                border-radius:999px;
+                background:#EFF6FF;
+                border:1px solid #BFDBFE;
+                color:#2563EB!important;
+                font-size:10px;
+                font-weight:900;
+            }
+
+            .af62-search-status:before {
+                content:"";
+                width:7px;
+                height:7px;
+                border-radius:50%;
+                background:#2563EB;
+                box-shadow:0 0 0 3px rgba(37,99,235,.12);
+            }
+
+            .af62-search-status.success {
+                background:#ECFDF5;
+                border-color:#A7F3D0;
+                color:#047857!important;
+            }
+
+            .af62-search-status.success:before {
+                background:#10B981;
+                box-shadow:0 0 0 3px rgba(16,185,129,.12);
+            }
+
+            .af62-search-status.warning {
+                background:#FFFBEB;
+                border-color:#FDE68A;
+                color:#B45309!important;
+            }
+
+            .af62-search-status.warning:before {
+                background:#F59E0B;
+                box-shadow:0 0 0 3px rgba(245,158,11,.12);
+            }
+
+            .af62-data-link {
+                color:#2563EB!important;
+                text-decoration:none!important;
+                font-weight:900!important;
+            }
+
+            .af62-data-link:hover {
+                text-decoration:underline!important;
+            }
+
+            .af62-field.risk-low {
+                background:#F0FDF4;
+                border-color:#BBF7D0;
+            }
+
+            .af62-field.risk-medium {
+                background:#FFFBEB;
+                border-color:#FDE68A;
+            }
+
+            .af62-field.risk-high {
+                background:#FEF2F2;
+                border-color:#FECACA;
+            }
+
+            .af62-tips {
+                display:grid;
+                gap:11px;
+            }
+
+            .af62-tip {
+                display:grid;
+                grid-template-columns:28px minmax(0,1fr);
+                gap:10px;
+                align-items:start;
+                color:#52647A!important;
+                font-size:12px;
+                line-height:1.5;
+                font-weight:720;
+            }
+
+            .af62-tip-num {
+                width:26px;
+                height:26px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                border-radius:9px;
+                background:#EFF6FF;
+                border:1px solid #BFDBFE;
+                color:#2563EB!important;
+                font-size:10px;
+                font-weight:950;
+            }
+
+            .af62-examples {
+                display:flex;
+                flex-wrap:wrap;
+                gap:8px;
+                margin-top:14px;
+            }
+
+            .af62-chip {
+                display:inline-flex;
+                align-items:center;
+                padding:7px 9px;
+                border-radius:999px;
+                background:#F8FAFC;
+                border:1px solid #E2E8F0;
+                color:#334155!important;
+                font-size:10px;
+                font-weight:850;
+            }
+
+            @media(max-width:900px){
+                .af62-title{font-size:30px;}
+                .af62-summary-grid{grid-template-columns:1fr;}
+            }
+
+            /* Milestone 6.2B — Best Recommendation Experience */
+            .af62b-section-head{
+                display:flex;
+                align-items:flex-start;
+                justify-content:space-between;
+                gap:16px;
+                margin:28px 0 12px;
+            }
+
+            .af62b-section-title{
+                color:#0B1220!important;
+                font-size:22px;
+                font-weight:980;
+                letter-spacing:-.04em;
+                line-height:1.1;
+            }
+
+            .af62b-section-meta{
+                color:#64748B!important;
+                font-size:12px;
+                font-weight:760;
+                line-height:1.45;
+                margin-top:5px;
+            }
+
+            .af62b-found-pill{
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+                padding:7px 10px;
+                border-radius:999px;
+                background:#ECFDF5;
+                border:1px solid #A7F3D0;
+                color:#047857!important;
+                font-size:10px;
+                font-weight:950;
+                white-space:nowrap;
+            }
+
+            .af62b-found-pill:before{
+                content:"";
+                width:7px;
+                height:7px;
+                border-radius:50%;
+                background:#10B981;
+                box-shadow:0 0 0 3px rgba(16,185,129,.12);
+            }
+
+            .st-key-af62b_best_card{
+                padding:22px!important;
+                border:1px solid #BFDBFE!important;
+                border-radius:22px!important;
+                background:
+                    radial-gradient(circle at 95% 0%, rgba(37,99,235,.12), transparent 32%),
+                    linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 100%)!important;
+                box-shadow:0 20px 52px rgba(37,99,235,.10)!important;
+            }
+
+            .af62b-best-top{
+                display:flex;
+                align-items:flex-start;
+                justify-content:space-between;
+                gap:18px;
+                margin-bottom:18px;
+            }
+
+            .af62b-eyebrow{
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+                padding:7px 10px;
+                border-radius:999px;
+                background:#EFF6FF;
+                border:1px solid #BFDBFE;
+                color:#2563EB!important;
+                font-size:10px;
+                font-weight:950;
+                letter-spacing:.08em;
+                text-transform:uppercase;
+                margin-bottom:11px;
+            }
+
+            .af62b-best-part{
+                color:#0B1220!important;
+                font-size:30px;
+                font-weight:980;
+                line-height:1;
+                letter-spacing:-.05em;
+                margin-bottom:9px;
+            }
+
+            .af62b-best-copy{
+                color:#52647A!important;
+                font-size:13px;
+                line-height:1.55;
+                font-weight:750;
+                max-width:720px;
+            }
+
+            .af62b-score{
+                width:112px;
+                min-width:112px;
+                height:112px;
+                border-radius:24px;
+                display:flex;
+                flex-direction:column;
+                align-items:center;
+                justify-content:center;
+                background:#FFFFFF;
+                border:1px solid #BFDBFE;
+                box-shadow:0 14px 34px rgba(37,99,235,.10);
+            }
+
+            .af62b-score strong{
+                color:#2563EB!important;
+                font-size:31px;
+                line-height:1;
+                font-weight:980;
+            }
+
+            .af62b-score span{
+                color:#64748B!important;
+                font-size:9px;
+                font-weight:950;
+                text-transform:uppercase;
+                letter-spacing:.08em;
+                margin-top:7px;
+                text-align:center;
+            }
+
+            .af62b-metrics{
+                display:grid;
+                grid-template-columns:repeat(5,minmax(0,1fr));
+                gap:10px;
+                margin-top:4px;
+            }
+
+            .af62b-metric{
+                min-width:0;
+                padding:14px;
+                border-radius:16px;
+                background:#FFFFFF;
+                border:1px solid #E2E8F0;
+            }
+
+            .af62b-metric span{
+                display:block;
+                color:#64748B!important;
+                font-size:9px;
+                font-weight:950;
+                letter-spacing:.08em;
+                text-transform:uppercase;
+                margin-bottom:7px;
+            }
+
+            .af62b-metric strong{
+                display:block;
+                color:#0B1220!important;
+                font-size:16px;
+                line-height:1.25;
+                font-weight:950;
+                overflow-wrap:anywhere;
+            }
+
+            .af62b-metric.good{
+                background:#F0FDF4;
+                border-color:#BBF7D0;
+            }
+
+            .af62b-metric.warn{
+                background:#FFFBEB;
+                border-color:#FDE68A;
+            }
+
+            .af7-intelligence-card{
+                border:1px solid #cbdcfb;
+                border-radius:22px;
+                padding:22px 24px;
+                margin:18px 0 16px;
+                background:
+                    radial-gradient(circle at 100% 0%, rgba(37,99,235,.12), transparent 35%),
+                    linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);
+                box-shadow:0 18px 42px rgba(15,23,42,.07);
+            }
+            .af7-intelligence-top{
+                display:flex;
+                justify-content:space-between;
+                gap:18px;
+                align-items:flex-start;
+                margin-bottom:14px;
+            }
+            .af7-intelligence-eyebrow{
+                color:#2563eb;
+                font-size:11px;
+                font-weight:900;
+                letter-spacing:.11em;
+                text-transform:uppercase;
+                margin-bottom:7px;
+            }
+            .af7-intelligence-title{
+                color:#0f172a;
+                font-size:22px;
+                line-height:1.15;
+                font-weight:900;
+                margin-bottom:6px;
+            }
+            .af7-intelligence-summary{
+                color:#475569;
+                font-size:14px;
+                line-height:1.55;
+                max-width:980px;
+            }
+            .af7-confidence-badge{
+                flex:0 0 auto;
+                border:1px solid #bfdbfe;
+                border-radius:999px;
+                background:#eff6ff;
+                color:#1d4ed8;
+                padding:8px 12px;
+                font-size:12px;
+                font-weight:850;
+                white-space:nowrap;
+            }
+            .af7-factor-grid{
+                display:grid;
+                grid-template-columns:repeat(5,minmax(0,1fr));
+                gap:10px;
+                margin-top:16px;
+            }
+            .af7-factor{
+                border:1px solid #dbe3ef;
+                border-radius:16px;
+                background:rgba(255,255,255,.88);
+                padding:13px 14px;
+                min-height:104px;
+            }
+            .af7-factor span{
+                display:block;
+                color:#64748b;
+                font-size:9px;
+                font-weight:900;
+                letter-spacing:.10em;
+                text-transform:uppercase;
+                margin-bottom:7px;
+            }
+            .af7-factor strong{
+                display:block;
+                color:#0f172a;
+                font-size:16px;
+                line-height:1.25;
+                margin-bottom:8px;
+            }
+            .af7-factor p{
+                color:#64748b;
+                font-size:11px;
+                line-height:1.38;
+                margin:0;
+            }
+            .af7-meter{
+                height:6px;
+                border-radius:999px;
+                background:#e2e8f0;
+                overflow:hidden;
+                margin-top:10px;
+            }
+            .af7-meter > i{
+                display:block;
+                height:100%;
+                border-radius:999px;
+                background:#2563eb;
+            }
+            .af7-meter.good > i{background:#10b981;}
+            .af7-meter.warn > i{background:#f59e0b;}
+            .af7-meter.bad > i{background:#ef4444;}
+            .af122-decision{border:1px solid #bfdbfe;background:linear-gradient(135deg,#ffffff,#eff6ff);border-radius:22px;padding:18px;margin:14px 0;box-shadow:0 14px 36px rgba(37,99,235,.07)}
+            .af122-decision-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.af122-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:6px}.af122-title{font-size:20px;font-weight:950;color:#0f172a;letter-spacing:-.025em}.af122-copy{font-size:11px;font-weight:700;color:#52647a;line-height:1.55;margin-top:5px}
+            .af122-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.af122-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.af122-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.af122-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+            .af122-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}.af122-metric{border:1px solid #dbe3ef;background:#fff;border-radius:14px;padding:11px}.af122-metric span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:5px}.af122-metric strong{font-size:12px;font-weight:900;color:#0f172a;line-height:1.35}
+            .af122-lists{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.af122-list{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:13px}.af122-list.good{border-color:#bbf7d0;background:#f0fdf4}.af122-list.warn{border-color:#fde68a;background:#fffbeb}.af122-list.bad{border-color:#fecaca;background:#fef2f2}.af122-list h4{font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#0f172a;margin:0 0 8px}.af122-list div{font-size:10px;font-weight:700;color:#475569;line-height:1.5;margin:5px 0;padding-left:12px;position:relative}.af122-list div:before{content:"•";position:absolute;left:0;color:#2563eb}
+            @media(max-width:900px){.af122-grid,.af122-lists{grid-template-columns:1fr}.af122-decision-top{display:block}.af122-badge{display:inline-block;margin-top:10px}}
+            .af7-explain-note{
+                color:#64748b;
+                font-size:11px;
+                line-height:1.45;
+                margin-top:12px;
+            }
+
+            .af62b-analysis-grid{
+                display:grid;
+                grid-template-columns:repeat(4,minmax(0,1fr));
+                gap:12px;
+                margin:16px 0 6px;
+            }
+
+            .af62b-analysis-card{
+                min-height:126px;
+                padding:15px;
+                border-radius:17px;
+                background:#FFFFFF;
+                border:1px solid #E2E8F0;
+                box-shadow:0 10px 26px rgba(15,23,42,.035);
+            }
+
+            .af62b-analysis-card.good{
+                background:#F0FDF4;
+                border-color:#BBF7D0;
+            }
+
+            .af62b-analysis-card.warning{
+                background:#FFFBEB;
+                border-color:#FDE68A;
+            }
+
+            .af62b-analysis-card.tradeoff{
+                background:#FEF2F2;
+                border-color:#FECACA;
+            }
+
+            .af62b-analysis-title{
+                color:#0B1220!important;
+                font-size:12px;
+                font-weight:950;
+                margin-bottom:10px;
+            }
+
+            .af62b-analysis-list{
+                display:grid;
+                gap:7px;
+            }
+
+            .af62b-analysis-item{
+                color:#52647A!important;
+                font-size:11px;
+                font-weight:740;
+                line-height:1.4;
+            }
+
+            .af62b-analysis-empty{
+                color:#94A3B8!important;
+                font-size:11px;
+                font-weight:740;
+            }
+
+            .af62b-compare-head{
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:14px;
+                margin:18px 0 10px;
+            }
+
+            .af62b-compare-title{
+                color:#0B1220!important;
+                font-size:17px;
+                font-weight:970;
+                letter-spacing:-.025em;
+            }
+
+            .af62b-compare-sub{
+                color:#64748B!important;
+                font-size:11px;
+                font-weight:740;
+                margin-top:3px;
+            }
+
+            .af62b-compact-table [data-testid="stDataFrame"]{
+                border:1px solid #E2E8F0;
+                border-radius:16px;
+                overflow:hidden;
+            }
+
+            .af62b-reset-note{
+                color:#64748B!important;
+                font-size:11px;
+                font-weight:740;
+                margin-top:8px;
+            }
+
+            @media(max-width:1100px){
+                .af62b-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}
+                .af62b-analysis-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+                .af7-factor-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+            }
+
+            @media(max-width:760px){
+                .af62b-best-top{flex-direction:column;}
+                .af62b-score{width:100%;height:auto;min-height:88px;}
+                .af62b-metrics{grid-template-columns:1fr;}
+                .af62b-analysis-grid{grid-template-columns:1fr;}
+                .af7-factor-grid{grid-template-columns:1fr;}
+            }
+
+            /* Milestone 6.2B.1 — results cleanup and focused actions */
+            .af62b-action-note{
+                color:#64748B!important;
+                font-size:11px;
+                font-weight:760;
+                line-height:1.45;
+                padding-top:8px;
+            }
+            .af62b-shortlist-pill{
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+                padding:7px 10px;
+                border-radius:999px;
+                background:#ECFDF5;
+                border:1px solid #A7F3D0;
+                color:#047857!important;
+                font-size:10px;
+                font-weight:950;
+            }
+            .af62b-shortlist-pill:before{
+                content:"";
+                width:7px;
+                height:7px;
+                border-radius:50%;
+                background:#10B981;
+            }
+            .af62b-advanced-copy{
+                color:#64748B!important;
+                font-size:12px;
+                font-weight:740;
+                line-height:1.5;
+                margin:0 0 12px;
+            }
+            .st-key-af62b_compact_table [data-testid="stDataFrame"]{
+                max-height:430px!important;
+                overflow:auto!important;
+            }
+            .st-key-af62b_save_candidate button,
+            .st-key-af62b_advanced_compare button{
+                border-radius:12px!important;
+                font-weight:900!important;
+            }
+            @media(max-width:760px){
+                .af62b-action-note{padding-top:0;}
+            }
+
+            /* Milestone 6.3A — Engineering Decision Workspace */
+            .af63-score-label{
+                display:inline-flex;
+                align-items:center;
+                gap:6px;
+                margin-top:8px;
+                padding:5px 8px;
+                border-radius:999px;
+                background:#ECFDF5;
+                border:1px solid #A7F3D0;
+                color:#047857!important;
+                font-size:9px;
+                font-weight:950;
+                text-transform:uppercase;
+                letter-spacing:.06em;
+            }
+
+            .af63-score-label.medium{
+                background:#FFFBEB;
+                border-color:#FDE68A;
+                color:#B45309!important;
+            }
+
+            .af63-score-label.low{
+                background:#FEF2F2;
+                border-color:#FECACA;
+                color:#B91C1C!important;
+            }
+
+            .af63-decision-shell{
+                margin:18px 0 14px;
+                padding:18px;
+                border-radius:20px;
+                background:#FFFFFF;
+                border:1px solid #E2E8F0;
+                box-shadow:0 14px 34px rgba(15,23,42,.045);
+            }
+
+            .af63-decision-head{
+                display:flex;
+                align-items:flex-start;
+                justify-content:space-between;
+                gap:16px;
+                margin-bottom:15px;
+            }
+
+            .af63-decision-title{
+                color:#0B1220!important;
+                font-size:18px;
+                font-weight:980;
+                letter-spacing:-.035em;
+                line-height:1.1;
+            }
+
+            .af63-decision-copy{
+                color:#64748B!important;
+                font-size:11px;
+                font-weight:760;
+                line-height:1.45;
+                margin-top:5px;
+            }
+
+            .af63-decision-status{
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+                padding:7px 10px;
+                border-radius:999px;
+                background:#F8FAFC;
+                border:1px solid #CBD5E1;
+                color:#475569!important;
+                font-size:10px;
+                font-weight:950;
+                white-space:nowrap;
+            }
+
+            .af63-decision-status.approved{
+                background:#ECFDF5;
+                border-color:#A7F3D0;
+                color:#047857!important;
+            }
+
+            .af63-decision-status.rejected{
+                background:#FEF2F2;
+                border-color:#FECACA;
+                color:#B91C1C!important;
+            }
+
+            .af63-decision-status.saved{
+                background:#EFF6FF;
+                border-color:#BFDBFE;
+                color:#1D4ED8!important;
+            }
+
+            .af63-decision-grid{
+                display:grid;
+                grid-template-columns:repeat(4,minmax(0,1fr));
+                gap:10px;
+                margin-bottom:14px;
+            }
+
+            .af63-decision-metric{
+                padding:13px 14px;
+                border-radius:15px;
+                background:#F8FAFC;
+                border:1px solid #E2E8F0;
+            }
+
+            .af63-decision-metric span{
+                display:block;
+                color:#64748B!important;
+                font-size:9px;
+                font-weight:950;
+                letter-spacing:.08em;
+                text-transform:uppercase;
+                margin-bottom:7px;
+            }
+
+            .af63-decision-metric strong{
+                display:block;
+                color:#0B1220!important;
+                font-size:15px;
+                font-weight:950;
+                line-height:1.25;
+            }
+
+            .af63-action-help{
+                color:#64748B!important;
+                font-size:10px;
+                line-height:1.45;
+                font-weight:740;
+                padding-top:5px;
+            }
+
+            .st-key-af63_approve button{
+                background:#16A34A!important;
+                border-color:#16A34A!important;
+                color:#FFFFFF!important;
+                border-radius:12px!important;
+                font-weight:900!important;
+            }
+
+            .st-key-af63_reject button{
+                background:#FFFFFF!important;
+                border-color:#FCA5A5!important;
+                color:#B91C1C!important;
+                border-radius:12px!important;
+                font-weight:900!important;
+            }
+
+            .st-key-af63_save button,
+            .st-key-af63_download button{
+                border-radius:12px!important;
+                font-weight:900!important;
+            }
+
+            .af63-saved-message{
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+                min-height:42px;
+                padding:0 12px;
+                border-radius:12px;
+                background:#ECFDF5;
+                border:1px solid #A7F3D0;
+                color:#047857!important;
+                font-size:11px;
+                font-weight:950;
+            }
+
+            @media(max-width:1000px){
+                .af63-decision-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+            }
+
+            @media(max-width:700px){
+                .af63-decision-head{flex-direction:column;}
+                .af63-decision-grid{grid-template-columns:1fr;}
+            }
+
+            /* Milestone 6.2C — Persistent Engineering Decision Records */
+            .af62c-persist-note{
+                display:flex;
+                align-items:flex-start;
+                gap:9px;
+                padding:11px 12px;
+                border-radius:14px;
+                background:#EFF6FF;
+                border:1px solid #BFDBFE;
+                color:#1E40AF!important;
+                font-size:10px;
+                line-height:1.45;
+                font-weight:800;
+                margin:10px 0 0;
+            }
+
+            .af62c-persist-note:before{
+                content:"";
+                width:8px;
+                height:8px;
+                min-width:8px;
+                margin-top:3px;
+                border-radius:50%;
+                background:#2563EB;
+                box-shadow:0 0 0 3px rgba(37,99,235,.12);
+            }
+
+            .af62c-history-head{
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:12px;
+                margin-bottom:10px;
+            }
+
+            .af62c-history-count{
+                display:inline-flex;
+                align-items:center;
+                padding:6px 9px;
+                border-radius:999px;
+                background:#F8FAFC;
+                border:1px solid #CBD5E1;
+                color:#475569!important;
+                font-size:9px;
+                font-weight:950;
+            }
+
+            .af62c-db-success{
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+                min-height:42px;
+                padding:0 12px;
+                border-radius:12px;
+                background:#ECFDF5;
+                border:1px solid #A7F3D0;
+                color:#047857!important;
+                font-size:11px;
+                font-weight:950;
+            }
+
+            .af62c-db-warning{
+                padding:10px 12px;
+                border-radius:12px;
+                background:#FFFBEB;
+                border:1px solid #FDE68A;
+                color:#92400E!important;
+                font-size:10px;
+                line-height:1.45;
+                font-weight:800;
+            }
+
+            .st-key-af62c_archive button{
+                border-radius:10px!important;
+                border-color:#FCA5A5!important;
+                color:#B91C1C!important;
+                font-weight:900!important;
+            }
+
+            .st-key-af63_change_package button,
+            .st-key-af63_download button{
+                min-height:44px!important;
+                border-radius:12px!important;
+                font-weight:900!important;
+            }
+            /* Alternative Finder launch polish: readable, responsive evidence. */
+            .af62-field span,
+            .af62b-metric span,
+            .af62b-score span,
+            .af7-factor span,
+            .af63-decision-metric span,
+            .af122-metric span,
+            .af122-eyebrow,
+            .af122-list h4{
+                font-size:11px!important;
+                letter-spacing:.045em!important;
+                line-height:1.45!important;
+            }
+
+            .af62-field strong,
+            .af62b-metric strong,
+            .af7-factor strong,
+            .af63-decision-metric strong,
+            .af122-metric strong{
+                font-size:16px!important;
+                line-height:1.4!important;
+                overflow-wrap:anywhere;
+            }
+
+            .af62-card-subtitle,
+            .af62b-section-meta,
+            .af62b-compare-sub,
+            .af62b-analysis-item,
+            .af7-factor p,
+            .af7-explain-note,
+            .af122-copy,
+            .af122-list div,
+            .af63-action-help{
+                font-size:13px!important;
+                line-height:1.6!important;
+            }
+
+            .af62b-metrics,
+            .af7-factor-grid,
+            .af62b-analysis-grid,
+            .af63-decision-grid,
+            .af122-grid,
+            .af122-lists{
+                gap:14px!important;
+            }
+
+            .af62b-metric,
+            .af7-factor,
+            .af63-decision-metric,
+            .af122-metric{
+                padding:15px!important;
+                min-width:0;
+            }
+
+            .af62b-found-pill,
+            .af7-confidence-badge,
+            .af122-badge{
+                font-size:12px!important;
+            }
+
+            @media(max-width:1180px){
+                .af62b-metrics,
+                .af7-factor-grid{
+                    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+                }
+                .af62b-analysis-grid,
+                .af63-decision-grid{
+                    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                }
+            }
+
+            @media(max-width:720px){
+                .af62b-metrics,
+                .af7-factor-grid,
+                .af62b-analysis-grid,
+                .af63-decision-grid,
+                .af122-grid,
+                .af122-lists{
+                    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+                }
+                .af7-intelligence-top,
+                .af62b-best-top,
+                .af62b-section-head,
+                .af62b-compare-head{
+                    flex-wrap:wrap;
+                }
+            }
+
+            @media(max-width:460px){
+                .af62b-metrics,
+                .af7-factor-grid,
+                .af62b-analysis-grid,
+                .af63-decision-grid,
+                .af122-grid,
+                .af122-lists{
+                    grid-template-columns:minmax(0,1fr)!important;
+                }
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if "suggested_alternatives" not in st.session_state:
+            st.session_state["suggested_alternatives"] = []
+
+        if "alternative_search_attempted" not in st.session_state:
+            st.session_state["alternative_search_attempted"] = False
+
+        if "alternative_original_part" not in st.session_state:
+            st.session_state["alternative_original_part"] = ""
+
+        alt_nav_context = consume_alternative_finder_context(_qp_value)
+        if alt_nav_context:
+            apply_alternative_finder_prefill(alt_nav_context)
+
+        if "alternative_original_data" not in st.session_state:
+            st.session_state["alternative_original_data"] = {}
+
+        if "alternative_original_risk" not in st.session_state:
+            st.session_state["alternative_original_risk"] = {}
+
+        if "alternative_original_lookup_part" not in st.session_state:
+            st.session_state["alternative_original_lookup_part"] = ""
+
+        if "alternative_original_lookup_error" not in st.session_state:
+            st.session_state["alternative_original_lookup_error"] = ""
+
+        if "alternative_candidate_shortlist" not in st.session_state:
+            st.session_state["alternative_candidate_shortlist"] = []
+
+        if "alternative_engineering_decisions" not in st.session_state:
+            st.session_state["alternative_engineering_decisions"] = {}
+
+        if "alternative_decision_notes" not in st.session_state:
+            st.session_state["alternative_decision_notes"] = {}
+
+        if "alternative_decision_db_status" not in st.session_state:
+            st.session_state["alternative_decision_db_status"] = ""
+
+        if "alternative_decision_db_error" not in st.session_state:
+            st.session_state["alternative_decision_db_error"] = ""
+
+        if "alternative_decision_flash" not in st.session_state:
+            st.session_state["alternative_decision_flash"] = ""
+
+        with st.container(border=True, key="af62_hero"):
+            cadivor_section_header(
+                "Choose a better replacement with confidence.",
+                eyebrow="Alternative Component Finder",
+                description=(
+                    "Search the original part, compare compatibility, lifecycle, availability, and cost, "
+                    "then document a defensible engineering decision in one guided workflow."
+                ),
+                icon="arrow-right-left",
+            )
+
+        with st.container(border=True, key="af62_search"):
+            st.markdown(
+                """
+                <div class="af62-card-head">
+                  <div>
+                    <div class="af62-card-title">1. Search the original component</div>
+                    <div class="af62-card-subtitle">Start with the complete manufacturer part number used in your design.</div>
+                  </div>
+                  <div class="af62-icon">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            search_input_col, search_button_col = st.columns([4.5, 1.25], gap="medium")
+            with search_input_col:
+                original_part = st.text_input(
+                    "Manufacturer part number",
+                    key="alternative_original_part",
+                    placeholder="Example: ATMEGA328P-PU",
+                )
+            with search_button_col:
+                st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
+                find_alternatives_clicked = st.button(
+                    "Find Alternatives →",
+                    type="primary",
+                    use_container_width=True,
+                    key="alternative_find_button_62a",
+                )
+
+        if find_alternatives_clicked:
+            searched_part = (original_part or "").strip()
+
+            if not searched_part:
+                st.warning("Please enter an original part number.")
+            else:
+                # Keep this operation entirely inside the authenticated workspace.
+                # Supplier/API failures are converted into an in-page result state;
+                # they must never fall through to authentication or public routing.
+                st.session_state["cadivor_operation"] = "alternative_search"
+                search_status = st.empty()
+                with search_status.container():
+                    operation_status(
+                        "Searching component intelligence",
+                        "Checking supplier coverage, lifecycle evidence, and replacement candidates.",
+                    )
+                try:
+                    try:
+                        original_lookup = get_best_part_data(searched_part) or {}
+                        if not isinstance(original_lookup, dict):
+                            original_lookup = {}
+                        try:
+                            original_risk = calculate_risk(original_lookup) or {}
+                        except Exception:
+                            original_risk = {}
+                        st.session_state["alternative_original_data"] = original_lookup
+                        st.session_state["alternative_original_risk"] = original_risk
+                        st.session_state["alternative_original_lookup_part"] = searched_part
+                        st.session_state["alternative_original_lookup_error"] = ""
+                    except Exception:
+                        st.session_state["alternative_original_data"] = {}
+                        st.session_state["alternative_original_risk"] = {}
+                        st.session_state["alternative_original_lookup_part"] = searched_part
+                        st.session_state["alternative_original_lookup_error"] = (
+                            "Some original-component details are temporarily unavailable. "
+                            "You can still review the available replacement evidence."
+                        )
+
+                    try:
+                        candidates = suggest_alternatives_v2(searched_part) or []
+                        for candidate in candidates:
+                            candidate_part = str(candidate.get("Alternative Part", "") or "").strip()
+                            if not candidate_part:
+                                continue
+                            try:
+                                supplier_data = get_best_part_data(candidate_part) or {}
+                            except Exception:
+                                continue
+                            matched_part = str(supplier_data.get("manufacturer_part_number", "") or "").strip()
+                            if matched_part.upper() != candidate_part.upper():
+                                continue
+                            if not supplier_data.get("supplier_data_verified"):
+                                continue
+                            candidate["Supplier"] = supplier_data.get("source", "")
+                            candidate["Sources Available"] = supplier_data.get("sources_available", "")
+                            candidate["Supplier Count"] = supplier_data.get("supplier_count", 0)
+                            candidate["Stock"] = supplier_data.get("stock_total", 0)
+                            candidate["Unit Price"] = supplier_data.get("unit_price", 0)
+                            if supplier_data.get("lifecycle_status"):
+                                candidate["Lifecycle"] = supplier_data["lifecycle_status"]
+                        st.session_state["suggested_alternatives"] = candidates
+                        st.session_state["alternative_search_error"] = ""
+                    except Exception:
+                        st.session_state["suggested_alternatives"] = []
+                        st.session_state["alternative_search_error"] = (
+                            "Cadivor could not complete the supplier search right now. "
+                            "Please try again in a moment."
+                        )
+                    st.session_state["alternative_search_attempted"] = True
+                finally:
+                    st.session_state.pop("cadivor_operation", None)
+                    search_status.empty()
+
+        if st.session_state.get("alternative_search_error"):
+            st.error(st.session_state["alternative_search_error"], icon="⚠️")
+
+        summary_col, tips_col = st.columns([1.35, 0.85], gap="medium")
+
+        current_search = (original_part or "").strip()
+        current_display = (
+            html.escape(current_search) if current_search else "No component entered"
+        )
+
+        lookup_part = st.session_state.get("alternative_original_lookup_part", "")
+        lookup_matches_input = bool(
+            current_search
+            and lookup_part
+            and current_search.strip().upper() == lookup_part.strip().upper()
+        )
+
+        original_summary_data = (
+            st.session_state.get("alternative_original_data", {})
+            if lookup_matches_input
+            else {}
+        )
+        original_summary_risk = (
+            st.session_state.get("alternative_original_risk", {})
+            if lookup_matches_input
+            else {}
+        )
+        original_lookup_error = (
+            st.session_state.get("alternative_original_lookup_error", "")
+            if lookup_matches_input
+            else ""
+        )
+
+        def _af62_first(data, keys, fallback="—"):
+            if not isinstance(data, dict):
+                return fallback
+            for key in keys:
+                value = data.get(key)
+                if value is not None and str(value).strip() not in {"", "None", "nan"}:
+                    return str(value).strip()
+            return fallback
+
+        manufacturer_display = html.escape(
+            _af62_first(
+                original_summary_data,
+                [
+                    "manufacturer",
+                    "Manufacturer",
+                    "manufacturer_name",
+                    "brand",
+                ],
+            )
+        )
+
+        lifecycle_display = html.escape(
+            _af62_first(
+                original_summary_data,
+                [
+                    "lifecycle_status",
+                    "Lifecycle Status",
+                    "lifecycle",
+                    "status",
+                ],
+            )
+        )
+
+        package_display = html.escape(
+            _af62_first(
+                original_summary_data,
+                [
+                    "package",
+                    "Package",
+                    "package_type",
+                    "case_package",
+                ],
+            )
+        )
+
+        risk_display_raw = _af62_first(
+            original_summary_risk,
+            ["risk_level", "Risk Level"],
+            fallback=_af62_first(
+                original_summary_data,
+                ["risk_level", "Risk Level", "estimated_risk"],
+            ),
+        )
+        risk_display = html.escape(risk_display_raw)
+
+        risk_class = ""
+        if risk_display_raw.lower() == "low":
+            risk_class = "risk-low"
+        elif risk_display_raw.lower() == "medium":
+            risk_class = "risk-medium"
+        elif risk_display_raw.lower() == "high":
+            risk_class = "risk-high"
+
+        datasheet_url = _af62_first(
+            original_summary_data,
+            [
+                "datasheet_url",
+                "datasheet",
+                "Datasheet URL",
+                "product_detail_url",
+                "product_url",
+                "url",
+            ],
+            fallback="",
+        )
+
+        if datasheet_url.startswith(("https://", "http://")):
+            safe_datasheet_url = html.escape(datasheet_url, quote=True)
+            datasheet_display = (
+                f'<a class="af62-data-link" href="{safe_datasheet_url}" '
+                f'target="_blank" rel="noopener noreferrer">Open source page →</a>'
+            )
+        else:
+            datasheet_display = "Not available"
+
+        if original_lookup_error:
+            current_status = "Supplier lookup unavailable"
+            current_status_class = "warning"
+        elif lookup_matches_input and original_summary_data:
+            current_status = "Component intelligence loaded"
+            current_status_class = "success"
+        elif current_search:
+            current_status = "Ready to search"
+            current_status_class = ""
+        else:
+            current_status = "Waiting for a part number"
+            current_status_class = ""
+
+        with summary_col:
+            with st.container(border=True, key="af62_summary"):
+                st.markdown(
+                    f"""
+                    <div class="af62-card-head">
+                      <div>
+                        <div class="af62-card-title">Current search</div>
+                        <div class="af62-card-subtitle">The original component Cadivor will use as the comparison baseline.</div>
+                      </div>
+                      <div class="af62-icon green">
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>
+                      </div>
+                    </div>
+                    <div class="af62-summary-grid">
+                      <div class="af62-field"><span>Part Number</span><strong>{current_display}</strong></div>
+                      <div class="af62-field"><span>Manufacturer</span><strong>{manufacturer_display}</strong></div>
+                      <div class="af62-field"><span>Lifecycle</span><strong>{lifecycle_display}</strong></div>
+                      <div class="af62-field {risk_class}"><span>Risk</span><strong>{risk_display}</strong></div>
+                      <div class="af62-field"><span>Package</span><strong>{package_display}</strong></div>
+                      <div class="af62-field"><span>Verified Suppliers</span><strong>{html.escape(_af62_first(original_summary_data, ["sources_available", "source"], fallback="Not available"))}</strong></div>
+                      <div class="af62-field"><span>Datasheet / Source</span><strong>{datasheet_display}</strong></div>
+                    </div>
+                    <div class="af62-search-status {current_status_class}">{current_status}</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        with tips_col:
+            with st.container(border=True, key="af62_tips"):
+                st.markdown(
+                    """
+                    <div class="af62-card-head">
+                      <div>
+                        <div class="af62-card-title">Search tips</div>
+                        <div class="af62-card-subtitle">A precise part number produces the strongest comparison set.</div>
+                      </div>
+                      <div class="af62-icon amber">
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.69.66-1.19 1.15-1.75A6 6 0 1 0 7.76 12.25c.48.55.97 1.05 1.15 1.75"></path></svg>
+                      </div>
+                    </div>
+                    <div class="af62-tips">
+                      <div class="af62-tip"><div class="af62-tip-num">1</div><div>Enter the complete manufacturer part number, including package or suffix details.</div></div>
+                      <div class="af62-tip"><div class="af62-tip-num">2</div><div>Use the exact part used in the BOM so electrical and package comparisons remain meaningful.</div></div>
+                      <div class="af62-tip"><div class="af62-tip-num">3</div><div>Cadivor will rank candidates using compatibility, lifecycle, stock, supplier, and cost signals.</div></div>
+                    </div>
+                    <div class="af62-examples">
+                      <span class="af62-chip">ATMEGA328P-PU</span>
+                      <span class="af62-chip">STM32F103C8T6</span>
+                      <span class="af62-chip">TPS54331DR</span>
+                      <span class="af62-chip">LM358N</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        if st.session_state["suggested_alternatives"]:
+            alternatives_df = pd.DataFrame(
+                st.session_state["suggested_alternatives"]
+            )
+
+            best_alternative = max(
+                st.session_state["suggested_alternatives"],
+                key=lambda x: x.get("Recommendation Score", 0),
+            )
+
+            best_part_number = str(best_alternative.get("Alternative Part", "") or "")
+            alternative_options = alternatives_df["Alternative Part"].astype(str).tolist()
+            best_index = (
+                alternative_options.index(best_part_number)
+                if best_part_number in alternative_options
+                else 0
+            )
+
+            st.markdown(
+                f"""
+                <div class="af62b-section-head">
+                  <div>
+                    <div class="af62b-section-title">2. Review the recommended replacement</div>
+                    <div class="af62b-section-meta">Cadivor ranked the strongest candidates using engineering compatibility, lifecycle, stock, supplier, and cost signals.</div>
+                  </div>
+                  <div class="af62b-found-pill">{len(alternatives_df)} candidates found</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            selected_alternative = st.selectbox(
+                "Recommended candidate",
+                alternative_options,
+                index=best_index,
+                key="alternative_selected_candidate_62b",
+                help="Choose another candidate to refresh the recommendation and comparison workspace.",
+            )
+
+            selected_row = alternatives_df[
+                alternatives_df["Alternative Part"].astype(str) == selected_alternative
+            ].iloc[0]
+
+            stored_original_data = st.session_state.get(
+                "alternative_original_data", {}
+            )
+            stored_lookup_part = st.session_state.get(
+                "alternative_original_lookup_part", ""
+            )
+
+            if (
+                isinstance(stored_original_data, dict)
+                and stored_original_data
+                and str(stored_lookup_part).strip().upper()
+                == str(original_part).strip().upper()
+            ):
+                original_data = stored_original_data
+            else:
+                original_data = get_best_part_data(original_part) or {}
+                st.session_state["alternative_original_data"] = original_data
+                st.session_state["alternative_original_lookup_part"] = original_part
+
+            def _af62b_value(row, keys, fallback="—"):
+                for key in keys:
+                    try:
+                        value = row.get(key)
+                    except Exception:
+                        value = None
+                    if value is not None and str(value).strip() not in {"", "None", "nan"}:
+                        return str(value).strip()
+                return fallback
+
+            recommendation_score = int(float(selected_row.get("Recommendation Score", 0) or 0))
+            drop_in_confidence = int(float(selected_row.get("Drop-In Confidence", 0) or 0))
+            lifecycle_value = _af62b_value(selected_row, ["Lifecycle"], "Unknown")
+            risk_value = _af62b_value(selected_row, ["Estimated Risk"], "Unknown")
+            supplier_value = _af62b_value(
+                selected_row,
+                ["Sources Available", "Supplier", "Best Source", "Source"],
+                "Supplier not listed",
+            )
+            stock_value = float(selected_row.get("Stock", 0) or 0)
+            price_value = float(selected_row.get("Unit Price", 0) or 0)
+            package_value = _af62b_value(selected_row, ["Package"], "Not verified")
+            recommendation_copy = _af62b_value(
+                selected_row,
+                ["Recommendation"],
+                "Candidate identified from available engineering and sourcing signals.",
+            )
+
+            original_stock = float(original_data.get("stock_total", 0) or 0)
+            alternative_stock = stock_value
+
+            original_price = float(original_data.get("unit_price", 0.0) or 0.0)
+            alternative_price = price_value
+
+            if original_stock > 0 and alternative_stock > 0:
+                stock_ratio = alternative_stock / original_stock
+                if stock_ratio > 1:
+                    stock_delta = f"🟢 {stock_ratio:.0f}× more stock available"
+                else:
+                    stock_delta = f"🔴 {(1 / stock_ratio):.1f}× less stock available"
+            elif original_stock > 0 and alternative_stock == 0:
+                stock_delta = "🔴 No stock available"
+            else:
+                stock_delta = "N/A"
+
+            if original_price > 0 and alternative_price > 0:
+                price_pct = (
+                    (alternative_price - original_price) / original_price
+                ) * 100
+                if price_pct < 0:
+                    price_delta = f"🟢 {abs(price_pct):.1f}% lower cost"
+                else:
+                    price_delta = f"🔴 {price_pct:.1f}% higher cost"
+            else:
+                price_delta = "N/A"
+
+            drop_in_reasons = str(
+                selected_row.get("Drop-In Reasons", "") or ""
+            )
+            reason_list = [
+                reason.strip()
+                for reason in drop_in_reasons.split(";")
+                if reason.strip()
+            ]
+
+            recommendation_points = []
+            warning_points = []
+            advantage_points = []
+            tradeoff_points = []
+
+            for reason in reason_list:
+                lowered = reason.lower()
+                if "could not be verified" in lowered:
+                    warning_points.append(reason)
+                elif reason.startswith("⚠") or reason.startswith("ℹ"):
+                    warning_points.append(reason)
+                else:
+                    recommendation_points.append(reason)
+
+            if stock_delta != "N/A":
+                if "more stock" in stock_delta.lower():
+                    advantage_points.append(stock_delta)
+                else:
+                    tradeoff_points.append(stock_delta)
+
+            if price_delta != "N/A":
+                if "lower cost" in price_delta.lower():
+                    advantage_points.append(price_delta)
+                else:
+                    tradeoff_points.append(price_delta)
+
+            confidence_label = (
+                "High" if drop_in_confidence >= 75
+                else "Medium" if drop_in_confidence >= 50
+                else "Low"
+            )
+
+            recommendation_label = (
+                "Strong" if recommendation_score >= 75
+                else "Review" if recommendation_score >= 55
+                else "Weak"
+            )
+            recommendation_label_class = (
+                "" if recommendation_score >= 75
+                else "medium" if recommendation_score >= 55
+                else "low"
+            )
+            confidence_class = (
+                "good" if confidence_label == "High"
+                else "warn" if confidence_label == "Medium"
+                else ""
+            )
+            lifecycle_class = "good" if lifecycle_value.lower() == "active" else "warn"
+            risk_class_62b = "good" if risk_value.lower() == "low" else "warn"
+
+            alternative_reasoning = build_alternative_reasoning(
+                original_part=original_part,
+                original_data=original_data,
+                candidate=selected_row.to_dict(),
+                recommendation_score=recommendation_score,
+                compatibility_confidence=drop_in_confidence,
+                engineering_matches=recommendation_points,
+                warnings=warning_points,
+                stock_delta=stock_delta,
+                price_delta=price_delta,
+            )
+
+            with st.container(border=True, key="af62b_best_card"):
                 st.markdown(
                     f"""
                     <div class="af62b-best-top">
