@@ -916,6 +916,19 @@ section[data-testid="stMain"] .cv-assistant-shell [data-testid="stStatusWidget"]
   margin-bottom: 4px;
 }
 
+/* Recommendation Engine v2: an explicit, human-approved action record. */
+.cv722-recommendation-v2 {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #cfe0fb;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #f8fbff, #eef5ff);
+}
+.cv722-recommendation-v2__action { margin-top: 5px; color: #113f85; font-size: 22px; font-weight: 800; }
+.cv722-recommendation-v2__note { margin-top: 8px; color: #52647f; font-size: 13px; line-height: 1.5; }
+.cv722-recommendation-v2__label { margin-top: 14px; color: #37567f; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.cv722-recommendation-v2 ul { display: grid; gap: 6px; margin: 9px 0 0; padding: 0; list-style: none; color: #243d60; font-size: 13px; }
+
 .cv39-kpi-value,
 .cv39-impact-value,
 .cv46-driver-value,
