@@ -877,14 +877,14 @@ def generate_engineering_change_package_pdf(
     small_style.wordWrap = "CJK"
 
     label_style = styles["BodyText"].clone("cadivor_pdf_label")
-    label_style.fontName = "CadivorVera-Bold"
+    label_style.fontName = "Helvetica-Bold"
     label_style.fontSize = 7.2
     label_style.leading = 9
     label_style.textColor = colors.HexColor("#0F172A")
     label_style.wordWrap = "CJK"
 
     header_cell_style = styles["BodyText"].clone("cadivor_pdf_header_cell")
-    header_cell_style.fontName = "CadivorVera-Bold"
+    header_cell_style.fontName = "Helvetica-Bold"
     header_cell_style.fontSize = 7.5
     header_cell_style.leading = 9
     header_cell_style.textColor = colors.white
