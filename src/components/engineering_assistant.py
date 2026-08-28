@@ -996,7 +996,28 @@ def _decision_summary(context: dict[str, Any], assessment: str, confidence_score
     status = preferred_status or ("Action required" if high else "Review before release" if medium or lifecycle_exposed else "Ready for controlled release")
     tone = "critical" if high else "review" if medium or lifecycle_exposed else "ready"
     health = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
-    return {"status": status, "tone": tone, "risk": "High" if high else "Medium" if medium or lifecycle_exposed else "Low", "priority": priority_part or "No priority component", "confidence": f"{confidence_score}%", "health": f"{health}/100" if str(health).isdigit() else str(health), "assessment": _plain_markdown(assessment), "intent": intent}
+    recommendation = "Investigate"
+    if high:
+        recommendation = "Replace" if context.get("alternatives") or context.get("saved_alternatives") else "Qualify"
+    elif medium or lifecycle_exposed:
+        recommendation = "Qualify" if context.get("alternatives") or context.get("saved_alternatives") else "Monitor"
+    elif intent in {"procurement", "inventory"}:
+        recommendation = "Optimize"
+    else:
+        recommendation = "Keep"
+    return {"status": status, "tone": tone, "risk": "High" if high else "Medium" if medium or lifecycle_exposed else "Low", "priority": priority_part or "No priority component", "confidence": f"{confidence_score}%", "health": f"{health}/100" if str(health).isdigit() else str(health), "assessment": _plain_markdown(assessment), "intent": intent, "recommendation": recommendation}
+
+
+def _recommendation_checks(recommendation: str) -> list[str]:
+    checks = {
+        "Replace": ["Electrical and pin compatibility", "Package and PCB footprint", "Firmware or configuration impact", "Qualification testing"],
+        "Qualify": ["Manufacturer datasheet comparison", "Authorized sourcing", "Package and temperature range", "Prototype or qualification test"],
+        "Monitor": ["Lifecycle notices", "Lead-time and availability changes", "Approved-source coverage"],
+        "Optimize": ["Approved equivalent options", "Total landed cost", "No material design impact"],
+        "Keep": ["Continue normal lifecycle and supply monitoring"],
+        "Investigate": ["Obtain manufacturer, supplier, or internal approval evidence"],
+    }
+    return checks.get(recommendation, checks["Investigate"])
 
 def _projected_impact(context: dict[str, Any], priority_part: str, *, intent: str = "general") -> list[tuple[str, str, str]]:
     analysis = context.get("analysis") or {}; summary = context.get("summary") or {}
@@ -1327,6 +1348,18 @@ def _render_native_answer_column(
             reason_items=reason_items,
             action_items=action_items,
         ),
+        unsafe_allow_html=True,
+    )
+    recommendation = str(decision.get("recommendation") or "Investigate")
+    checks = _recommendation_checks(recommendation)
+    st.markdown(
+        "<div class='cv722-recommendation-v2'>"
+        "<div class='cv722-section-label'>Cadivor recommendation</div>"
+        f"<div class='cv722-recommendation-v2__action'>{html.escape(recommendation)}</div>"
+        "<div class='cv722-recommendation-v2__note'>AI-assisted, evidence-backed recommendation. Engineer approval is required before a substitution or release decision.</div>"
+        "<div class='cv722-recommendation-v2__label'>Engineering checks required</div>"
+        f"<ul>{''.join(f'<li>☐ {html.escape(check)}</li>' for check in checks)}</ul>"
+        "</div>",
         unsafe_allow_html=True,
     )
     _log_ask_runtime_surface("decision_summary_render")
