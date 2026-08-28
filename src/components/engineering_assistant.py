@@ -136,7 +136,7 @@ _COPILOT_WORKFLOW_KEYS = (
     "cadivor_active_analysis_tab",
 )
 
-_COPILOT_PROCESSING_LABEL = "Cadivor is reviewing the saved BOM evidence…"
+_COPILOT_PROCESSING_LABEL = "Cadivor is analyzing this BOM…"
 _CLEAR_PROMPT_ON_NEXT_RUN_KEY = "cv7144_clear_prompt_on_next_run"
 _DECISION_COLUMN_RATIO = [0.85, 1.15]
 _CONCISE_REASON_LIMIT = 3
@@ -408,7 +408,7 @@ def _arm_copilot_workflow_snapshot(*, reason: str) -> None:
 
 
 def _clear_review_state() -> None:
-    """Clear the prior copilot result for a newly started conversation."""
+    """Clear the prior copilot result when the user starts a new question."""
     for key in (
         "cv35_last_answer",
         "cv35_last_question",
@@ -896,15 +896,15 @@ def _confidence_drivers(context: dict[str, Any], evidence: str) -> list[tuple[st
     total = len(components)
     drivers: list[tuple[str, str, str]] = []
     if lifecycle_known:
-        drivers.append(("Verified", f"Lifecycle recorded for {lifecycle_known}/{total}", "Raises confidence in lifecycle-related recommendations"))
+        drivers.append(("Coverage", f"Lifecycle data coverage — {lifecycle_known} of {total} parts", "A lifecycle record is available; recency and engineering approval still require review"))
     if supplier_known:
-        drivers.append(("Verified", f"Supplier coverage for {supplier_known}/{total}", "Supports sourcing-diversity conclusions"))
+        drivers.append(("Coverage", f"Supplier data coverage — {supplier_known} of {total} parts", "A supplier record is available; sourcing approval still requires review"))
     if inventory_known:
-        drivers.append(("Verified", f"Inventory recorded for {inventory_known}/{total}", "Supports near-term availability assessment"))
+        drivers.append(("Coverage", f"Inventory data coverage — {inventory_known} of {total} parts", "An inventory record is available; it does not guarantee current availability"))
     if evidence_items:
-        drivers.append(("Verified", f"{len(evidence_items)} structured evidence signal(s)", "Directly supports the current recommendation"))
+        drivers.append(("Evidence", f"{len(evidence_items)} evidence type(s) support this recommendation", "These evidence types support the recommendation, but do not replace engineering validation"))
     if lead_known < total:
-        drivers.append(("Missing", f"Lead time missing for {max(0, total-lead_known)} component(s)", "Limits schedule-risk precision"))
+        drivers.append(("Needs data", f"Lead-time data coverage — {lead_known} of {total} parts", f"Lead time is missing for {max(0, total-lead_known)} parts, limiting schedule-risk precision"))
     if not decisions:
         drivers.append(("Missing", "No saved decision history", "No prior approval or risk-acceptance evidence"))
     if not alternatives:
@@ -996,31 +996,7 @@ def _decision_summary(context: dict[str, Any], assessment: str, confidence_score
     status = preferred_status or ("Action required" if high else "Review before release" if medium or lifecycle_exposed else "Ready for controlled release")
     tone = "critical" if high else "review" if medium or lifecycle_exposed else "ready"
     health = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
-    recommendation = "Investigate"
-    if high:
-        recommendation = "Replace" if context.get("alternatives") or context.get("saved_alternatives") else "Qualify"
-    elif medium or lifecycle_exposed:
-        # A medium-risk part, long lead time, or lifecycle exposure needs an
-        # active qualification path even when Cadivor has not yet saved a
-        # candidate alternative. Monitoring alone is not an adequate action.
-        recommendation = "Investigate" if confidence_score < 50 else "Qualify"
-    elif intent in {"procurement", "inventory"}:
-        recommendation = "Optimize"
-    else:
-        recommendation = "Keep"
-    return {"status": status, "tone": tone, "risk": "High" if high else "Medium" if medium or lifecycle_exposed else "Low", "priority": priority_part or "No priority component", "confidence": f"{confidence_score}%", "health": f"{health}/100" if str(health).isdigit() else str(health), "assessment": _plain_markdown(assessment), "intent": intent, "recommendation": recommendation}
-
-
-def _recommendation_checks(recommendation: str) -> list[str]:
-    checks = {
-        "Replace": ["Electrical and pin compatibility", "Package and PCB footprint", "Firmware or configuration impact", "Qualification testing"],
-        "Qualify": ["Manufacturer datasheet comparison", "Authorized sourcing", "Package and temperature range", "Prototype or qualification test"],
-        "Monitor": ["Lifecycle notices", "Lead-time and availability changes", "Approved-source coverage"],
-        "Optimize": ["Approved equivalent options", "Total landed cost", "No material design impact"],
-        "Keep": ["Continue normal lifecycle and supply monitoring"],
-        "Investigate": ["Obtain manufacturer, supplier, or internal approval evidence"],
-    }
-    return checks.get(recommendation, checks["Investigate"])
+    return {"status": status, "tone": tone, "risk": "High" if high else "Medium" if medium or lifecycle_exposed else "Low", "priority": priority_part or "No priority component", "confidence": f"{confidence_score}%", "health": f"{health}/100" if str(health).isdigit() else str(health), "assessment": _plain_markdown(assessment), "intent": intent}
 
 def _projected_impact(context: dict[str, Any], priority_part: str, *, intent: str = "general") -> list[tuple[str, str, str]]:
     analysis = context.get("analysis") or {}; summary = context.get("summary") or {}
@@ -1353,18 +1329,6 @@ def _render_native_answer_column(
         ),
         unsafe_allow_html=True,
     )
-    recommendation = str(decision.get("recommendation") or "Investigate")
-    checks = _recommendation_checks(recommendation)
-    st.markdown(
-        "<div class='cv722-recommendation-v2'>"
-        "<div class='cv722-section-label'>Cadivor recommendation</div>"
-        f"<div class='cv722-recommendation-v2__action'>{html.escape(recommendation)}</div>"
-        "<div class='cv722-recommendation-v2__note'>AI-assisted, evidence-backed recommendation. Engineer approval is required before a substitution or release decision.</div>"
-        "<div class='cv722-recommendation-v2__label'>Engineering checks required</div>"
-        f"<ul>{''.join(f'<li>☐ {html.escape(check)}</li>' for check in checks)}</ul>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
     _log_ask_runtime_surface("decision_summary_render")
     st.markdown(
         _build_decision_summary_html(
@@ -1446,6 +1410,8 @@ def _render_decision_workspace(
 ) -> None:
     headline = _conversational_headline(intent, assessment_body, priority_part)
     answer_text = _plain_markdown(assessment_body).strip() or "The saved evidence is not sufficient for a reliable conclusion."
+    if intent == "production_readiness":
+        answer_text = _production_readiness_caveat(context) + answer_text
     _log_ask_render(
         "workspace_shell_ready",
         left_html_len=0,
@@ -1581,7 +1547,11 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
 
 
 def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_id: str = "") -> None:
-    """Queue a copilot question behind auth snapshot protection and rerun."""
+    """Queue a copilot question behind auth snapshot protection.
+
+    The click or form submission already starts a Streamlit run. Triggering a
+    second rerun here creates a faded intermediate screen that looks missed.
+    """
     if _block_duplicate_submission(kind=submission_kind, analysis_id=analysis_id):
         return
 
@@ -1606,13 +1576,8 @@ def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_i
     _pin_ask_cadivor_tab(source=f"queue_{submission_kind}", analysis_id=analysis_id)
     _log_ask_cadivor("question_queued", kind=submission_kind, question_len=len(clean))
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
-    # Keep the last completed assessment visible while the next question is
-    # processed. Clearing it here made a normal one-click follow-up look as if
-    # Cadivor had stopped responding during Streamlit\'s rerun.
-    st.session_state.pop("cv35_last_error", None)
-    _clear_followup_ui_state()
-    _log_ask_cadivor("rerun_requested", kind=submission_kind, source="queue_copilot_submission")
-    st.rerun()
+    _clear_review_state()
+    _log_ask_cadivor("question_ready", kind=submission_kind, source="queue_copilot_submission")
 
 
 def _queue_follow_up(question: str, *, analysis_id: str = "") -> None:
@@ -1815,15 +1780,26 @@ def _direct_answer_body_html(headline: str, answer_text: str) -> str:
     return f'<p class="cv722-direct-answer-text cv-assistant-preline" style="{CV722_DIRECT_ANSWER_TEXT_STYLE}">{html.escape(supplementary)}</p>'
 
 
+def _production_readiness_caveat(context: dict[str, Any]) -> str:
+    """Do not treat missing release evidence as low risk."""
+    components = list(context.get("components") or [])
+    total = len(components)
+    lead_known = sum(float(row.get("lead_time_weeks") or 0) > 0 for row in components)
+    missing = max(0, total - lead_known)
+    if not total or not missing:
+        return ""
+    return f"Release approval should remain pending until lead-time evidence is reviewed for the remaining {missing} of {total} parts. "
+
+
 def _conversational_headline(intent: str, assessment: str, priority_part: str) -> str:
     plain = _plain_markdown(assessment).strip()
     lower = plain.lower()
     if intent == "production_readiness":
         if any(token in lower for token in ("not ready", "only after", "close", "blocker", "before release")):
-            return "Not ready yet."
+            return "Not ready for release approval yet."
         if "ready with" in lower or "conditional" in lower:
             return "Ready with conditions."
-        return "Production readiness requires review."
+        return "Release approval requires evidence closure."
     if intent == "supplier_qualification":
         if any(token in lower for token in ("cannot recommend", "no supplier", "no named", "missing")):
             return "No supplier can be recommended yet."
@@ -2318,10 +2294,6 @@ def render_engineering_assistant(
         followup_inflight_flag=bool(st.session_state.get("cv4801_followup_inflight")),
     )
     analysis_id = _analysis_id_from_context(context)
-    previous_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
-    previous_question = _normalize_submitted_question(
-        st.session_state.get("cv35_last_question") or "Engineering review"
-    )
     _log_ask_cadivor(
         "analysis_id_restored",
         analysis_id=analysis_id or "missing",
@@ -2373,6 +2345,16 @@ def render_engineering_assistant(
                 disabled=actions_disabled,
             )
 
+    # Suggested-question buttons queue their question during this same script
+    # run. Consume it immediately instead of requiring a second rerun.
+    if not auto_execute_followup:
+        pending_manual = st.session_state.get("cv41_pending_manual")
+        pending_followup = st.session_state.get("cv36_pending_followup")
+        if pending_manual or pending_followup:
+            queued_question = str(pending_manual or pending_followup)
+            st.session_state[prompt_key] = queued_question
+            auto_execute_followup = True
+
     # A form submits the browser's current text-area value and the button click
     # in one transaction. This prevents pasted text from requiring a first click
     # merely to synchronize the widget before the button becomes enabled.
@@ -2405,9 +2387,9 @@ def render_engineering_assistant(
     if manual_submit_requested:
         _log_copilot_workflow("manual_copilot_submission_received", question_len=len(cleaned_question))
         _queue_copilot_submission(cleaned_question, submission_kind="manual", analysis_id=analysis_id)
-        # The queue is consumed on the next Streamlit run. Trigger that run
-        # immediately so a user never has to submit the same question twice.
-        st.rerun()
+        queued_question = cleaned_question
+        auto_execute_followup = True
+        manual_submit_requested = False
 
     submitted_question = _normalize_submitted_question(queued_question or cleaned_question)
     submit_requested = bool(
@@ -2446,14 +2428,6 @@ def render_engineering_assistant(
         st.markdown('<div id="cv47-processing-anchor"></div>', unsafe_allow_html=True)
         if st.session_state.pop("cv47_scroll_pending", False):
             components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
-        if previous_answer:
-            _render_response(
-                question=previous_question,
-                answer=previous_answer,
-                context=context,
-                auto_scroll=False,
-            )
-            st.caption("Previous assessment remains visible while Cadivor reviews this follow-up.")
         with st.status(_COPILOT_PROCESSING_LABEL, expanded=True) as progress:
             try:
                 _log_ask_cadivor(

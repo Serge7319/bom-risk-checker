@@ -78,6 +78,16 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
         self.assertIn('class="cv46-driver-value"', html)
         self.assertIn('class="cv46-driver-note"', html)
 
+    def test_confidence_drivers_use_plain_data_coverage(self) -> None:
+        assistant = self._load_assistant()
+        drivers = assistant._confidence_drivers(
+            {"components": [{"lifecycle_status": "Active", "supplier_count": 2, "stock_available": 5, "lead_time_weeks": 4}, {"lifecycle_status": "Active", "supplier_count": 1, "stock_available": 0}]},
+            "- lifecycle evidence",
+        )
+        values = " ".join(value for _, value, _ in drivers)
+        self.assertIn("Lifecycle data coverage — 2 of 2 parts", values)
+        self.assertIn("Lead-time data coverage — 1 of 2 parts", values)
+
     def test_narrative_content_remains_escaped(self) -> None:
         assistant = self._load_assistant()
         evil = '<script>alert(1)</script>'
@@ -154,4 +164,3 @@ if __name__ == "__main__":
 def tearDownModule():
     from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
     restore_ask_cadivor_streamlit_modules()
-

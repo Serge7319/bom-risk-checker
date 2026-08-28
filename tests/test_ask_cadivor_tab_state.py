@@ -149,12 +149,11 @@ class AskCadivorTabStateTests(unittest.TestCase):
         st, assistant = self._load_assistant(
             session_state={"cadivor_analysis_section_a-1": "Engineering Intelligence"},
         )
-        with self.assertRaises(RuntimeError):
-            assistant._queue_copilot_submission(
-                "What should I review first?",
-                submission_kind="manual",
-                analysis_id="a-1",
-            )
+        assistant._queue_copilot_submission(
+            "What should I review first?",
+            submission_kind="manual",
+            analysis_id="a-1",
+        )
         self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
         self.assertEqual(
             st.session_state["cadivor_analysis_section_a-1"],
@@ -182,8 +181,7 @@ class AskCadivorTabStateTests(unittest.TestCase):
 
     def test_manual_submission_pins_ask_cadivor_tab(self):
         st, assistant = self._load_assistant()
-        with self.assertRaises(RuntimeError):
-            assistant._queue_copilot_submission("What should I review first?", submission_kind="manual")
+        assistant._queue_copilot_submission("What should I review first?", submission_kind="manual")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
         self.assertEqual(st.session_state["cv41_pending_manual"], "What should I review first?")
         self.assertEqual(st.query_params["analysis_tab"], "Ask Cadivor")
@@ -192,12 +190,7 @@ class AskCadivorTabStateTests(unittest.TestCase):
         st, assistant = self._load_assistant(
             session_state={"cadivor_active_analysis_tab": "Engineering Intelligence", "cv35_question": "old"},
         )
-        with self.assertRaises(RuntimeError):
-            assistant._select_initial_suggestion(
-                assistant.SUGGESTIONS[0],
-                index=0,
-                prompt_key="cv35_question",
-            )
+        assistant._select_initial_suggestion(assistant.SUGGESTIONS[0], index=0, prompt_key="cv35_question")
         self.assertEqual(st.session_state["cv41_pending_manual"], assistant.SUGGESTIONS[0])
         self.assertTrue(st.session_state.get("cv7142_ask_inflight"))
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
@@ -207,8 +200,7 @@ class AskCadivorTabStateTests(unittest.TestCase):
             session_state={"cv35_question": "stale"},
             query_params={"cv35_pick": "1", "analysis_tab": "Ask Cadivor"},
         )
-        with self.assertRaises(RuntimeError):
-            assistant._apply_copilot_query_picks(prompt_key="cv35_question")
+        assistant._apply_copilot_query_picks(prompt_key="cv35_question")
         self.assertEqual(st.session_state["cv41_pending_manual"], assistant.SUGGESTIONS[1])
         self.assertTrue(st.session_state.get("cv7142_ask_inflight"))
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
@@ -218,12 +210,7 @@ class AskCadivorTabStateTests(unittest.TestCase):
         st, assistant = self._load_assistant(
             session_state={"cadivor_active_analysis_tab": "Engineering Intelligence"},
         )
-        with self.assertRaises(RuntimeError):
-            assistant._select_initial_suggestion(
-                assistant.SUGGESTIONS[2],
-                index=2,
-                prompt_key="cv35_question",
-            )
+        assistant._select_initial_suggestion(assistant.SUGGESTIONS[2], index=2, prompt_key="cv35_question")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Ask Cadivor")
 
     def test_provider_completion_pins_ask_cadivor_tab(self):
@@ -290,13 +277,9 @@ class AskCadivorTabStateTests(unittest.TestCase):
                 "cadivor_active_analysis_tab": "Engineering Intelligence",
             },
         )
-        with self.assertRaises(RuntimeError):
-            assistant._select_initial_suggestion(
-                assistant.SUGGESTIONS[0],
-                index=0,
-                prompt_key="cv35_question",
-                analysis_id="a-1",
-            )
+        assistant._select_initial_suggestion(
+            assistant.SUGGESTIONS[0], index=0, prompt_key="cv35_question", analysis_id="a-1"
+        )
         self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
         self.assertEqual(
             st.session_state["cadivor_analysis_section_a-1"],
@@ -345,4 +328,3 @@ if __name__ == "__main__":
 def tearDownModule():
     from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
     restore_ask_cadivor_streamlit_modules()
-
