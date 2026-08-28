@@ -832,7 +832,10 @@ def generate_engineering_change_package_pdf(
 
     styles = getSampleStyleSheet()
     title_style = styles["Title"].clone("cadivor_pdf_title")
-    title_style.fontName = "CadivorVera-Bold"
+    # ReportLab's paragraph parser cannot derive the bold/italic family from
+    # this registered custom-font alias. Use the built-in mapped family for
+    # all paragraph styles; the canvas header may still use the brand font.
+    title_style.fontName = "Helvetica-Bold"
     title_style.fontSize = 22
     title_style.leading = 26
     title_style.textColor = colors.HexColor("#0B1220")
@@ -845,7 +848,7 @@ def generate_engineering_change_package_pdf(
     subtitle_style.textColor = colors.HexColor("#475569")
 
     section_style = styles["Heading2"].clone("cadivor_pdf_section")
-    section_style.fontName = "CadivorVera-Bold"
+    section_style.fontName = "Helvetica-Bold"
     section_style.fontSize = 12
     section_style.leading = 15
     section_style.textColor = colors.HexColor("#0F172A")

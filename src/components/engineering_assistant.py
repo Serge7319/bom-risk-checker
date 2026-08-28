@@ -1000,7 +1000,10 @@ def _decision_summary(context: dict[str, Any], assessment: str, confidence_score
     if high:
         recommendation = "Replace" if context.get("alternatives") or context.get("saved_alternatives") else "Qualify"
     elif medium or lifecycle_exposed:
-        recommendation = "Qualify" if context.get("alternatives") or context.get("saved_alternatives") else "Monitor"
+        # A medium-risk part, long lead time, or lifecycle exposure needs an
+        # active qualification path even when Cadivor has not yet saved a
+        # candidate alternative. Monitoring alone is not an adequate action.
+        recommendation = "Investigate" if confidence_score < 50 else "Qualify"
     elif intent in {"procurement", "inventory"}:
         recommendation = "Optimize"
     else:
@@ -2394,6 +2397,9 @@ def render_engineering_assistant(
     if manual_submit_requested:
         _log_copilot_workflow("manual_copilot_submission_received", question_len=len(cleaned_question))
         _queue_copilot_submission(cleaned_question, submission_kind="manual", analysis_id=analysis_id)
+        # The queue is consumed on the next Streamlit run. Trigger that run
+        # immediately so a user never has to submit the same question twice.
+        st.rerun()
 
     submitted_question = _normalize_submitted_question(queued_question or cleaned_question)
     submit_requested = bool(
