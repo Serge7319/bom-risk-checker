@@ -4993,6 +4993,20 @@ def run_authenticated_app() -> None:
             ],
             columns=3,
         )
+        st.markdown(
+            """
+            <style>
+              .cv-resource-tour{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:8px 0 18px}
+              .cv-resource-tour-card{border:1px solid #D9E3F2;border-radius:18px;background:#FFF;padding:16px;box-shadow:0 12px 30px rgba(15,35,70,.06)}
+              .cv-resource-tour-card h4{margin:0 0 6px;color:#11284B;font-size:16px}.cv-resource-tour-card p{margin:0;color:#58708F;font-size:13px;line-height:1.55;min-height:40px}
+              .cv-resource-demo{position:relative;overflow:hidden;margin-top:14px;height:138px;border:1px solid #DCE7F5;border-radius:13px;background:linear-gradient(145deg,#F7FAFF,#EFF5FF);padding:12px}
+              .cv-resource-demo-top{height:13px;width:58%;border-radius:5px;background:#C8D8F2}.cv-resource-demo-row{height:14px;margin-top:10px;border-radius:5px;background:#E1EAF7}.cv-resource-demo-row.active{background:#D8E8FF;animation:cv-resource-focus 6s ease-in-out infinite}.cv-resource-demo-row.short{width:62%}.cv-resource-demo-risk{position:absolute;right:12px;bottom:12px;border-radius:999px;background:#FFF0F0;color:#C2414A;font-weight:800;font-size:10px;padding:6px 8px;animation:cv-resource-pulse 2.2s ease-in-out infinite}.cv-resource-demo-check{position:absolute;right:12px;bottom:12px;border-radius:999px;background:#E9FBF2;color:#16734D;font-weight:800;font-size:10px;padding:6px 8px;animation:cv-resource-rise 6s ease-in-out infinite}.cv-resource-demo-line{position:absolute;left:12px;right:12px;bottom:12px;height:5px;border-radius:999px;background:#D7E4F7;overflow:hidden}.cv-resource-demo-line:after{content:'';display:block;width:42%;height:100%;background:#2865EB;border-radius:999px;animation:cv-resource-progress 6s ease-in-out infinite}.cv-resource-demo-node{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;border-radius:8px;background:#2865EB;color:#FFF;font-size:11px;font-weight:900;margin:12px 6px 0 0;animation:cv-resource-rise 6s ease-in-out infinite}.cv-resource-demo-node:nth-child(2){animation-delay:.45s}.cv-resource-demo-node:nth-child(3){animation-delay:.9s}
+              @keyframes cv-resource-focus{0%,22%{transform:translateX(0);background:#E1EAF7}38%,67%{transform:translateX(4px);background:#CFE3FF;box-shadow:0 0 0 2px rgba(40,101,235,.14)}100%{transform:translateX(0);background:#E1EAF7}}@keyframes cv-resource-progress{0%{transform:translateX(-115%)}42%,70%{transform:translateX(72%)}100%{transform:translateX(225%)}}@keyframes cv-resource-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06);box-shadow:0 0 0 5px rgba(194,65,74,.08)}}@keyframes cv-resource-rise{0%,20%{opacity:.35;transform:translateY(6px)}35%,78%{opacity:1;transform:translateY(0)}100%{opacity:.35;transform:translateY(6px)}}
+              @media(max-width:900px){.cv-resource-tour{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.cv-resource-tour *{animation:none!important}}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
         st.markdown(
             '<div class="cv-r9-section">Professional report library</div>'
@@ -8374,23 +8388,93 @@ def run_authenticated_app() -> None:
                 navigate_to("Monitoring")
         stop_authenticated_page()
 
-    # ---------- Help / Support ----------
+    # ---------- Resources / Help ----------
     if app_mode == "Help":
         st.markdown('<div class="cv-help-shell cv64-page-shell">', unsafe_allow_html=True)
         cadivor_section_header(
-            "Cadivor Support",
-            eyebrow="Help Center",
-            description="Get engineering workflow guidance, report an issue, or return to your workspace.",
+            "Cadivor Resources",
+            eyebrow="Guidance Center",
+            description="Practical, in-app guidance for turning a BOM into a reviewed engineering decision.",
             icon="clipboard",
         )
         render_kpi_row_safe(
             [
-                MetricCard(label="Workflow guides", value="3", detail="BOM, alternatives, monitoring", tone="info", icon="file-text"),
+                MetricCard(label="Guided workflows", value="5", detail="From upload to monitoring", tone="info", icon="file-text"),
                 MetricCard(label="Response channel", value="Email", detail="support@cadivor.com", tone="info", icon="clipboard-check"),
                 MetricCard(label="Workspace", value="Secure", detail="Your saved analyses remain private", tone="success", icon="badge-check"),
             ],
             columns=3,
         )
+        start_tab, workflows_tab, tutorials_tab, demo_tab, terms_tab = st.tabs(
+            ["Start here", "Workflows", "Tutorials", "Demo BOMs", "Terms"]
+        )
+        with start_tab:
+            st.subheader("New to Cadivor? Start with one BOM.")
+            st.write("Upload a CSV or Excel BOM, review the flagged parts, then record the decision your team makes. Cadivor keeps the evidence and next steps together.")
+            start_actions = st.columns(3)
+            with start_actions[0]:
+                if st.button("1. Upload a BOM", key="resources_start_bom", type="primary", use_container_width=True):
+                    navigate_to("BOM Analyzer")
+            with start_actions[1]:
+                if st.button("2. Review risks", key="resources_start_dashboard", use_container_width=True):
+                    navigate_to("Dashboard")
+            with start_actions[2]:
+                if st.button("3. Record a decision", key="resources_start_decision", use_container_width=True):
+                    navigate_to("Engineering Decisions")
+        with workflows_tab:
+            st.markdown("### From BOM to decision")
+            workflow_cols = st.columns(5)
+            for column, title, page, copy in zip(
+                workflow_cols,
+                ["Upload", "Analyze", "Investigate", "Decide", "Monitor"],
+                ["BOM Analyzer", "Dashboard", "Alternative Finder", "Engineering Decisions", "Monitoring"],
+                ["Validate your file and save the analysis.", "Find risk, lifecycle, supplier, and evidence gaps.", "Compare alternatives and qualification evidence.", "Capture approval, rejection, or risk acceptance.", "Watch components after the first review."],
+            ):
+                with column:
+                    st.markdown(f"**{title}**\n\n{copy}")
+                    if st.button(f"Open {title}", key=f"resources_workflow_{page}", use_container_width=True):
+                        navigate_to(page)
+        with tutorials_tab:
+            st.markdown("### Learn the core workflows")
+            st.caption("These short animations show the expected outcome before you enter the live workflow. They use no customer data.")
+            st.markdown(
+                """
+                <div class="cv-resource-tour">
+                  <article class="cv-resource-tour-card"><h4>1. Analyze a BOM</h4><p>Upload your CSV or Excel file. Cadivor validates rows and highlights the parts that deserve review.</p><div class="cv-resource-demo"><div class="cv-resource-demo-top"></div><div class="cv-resource-demo-row"></div><div class="cv-resource-demo-row active"></div><div class="cv-resource-demo-row short"></div><span class="cv-resource-demo-risk">Risk found</span></div></article>
+                  <article class="cv-resource-tour-card"><h4>2. Ask the engineering question</h4><p>Ask what to review first, whether release evidence is complete, or what could change the recommendation.</p><div class="cv-resource-demo"><div class="cv-resource-demo-top"></div><span class="cv-resource-demo-node">?</span><span class="cv-resource-demo-node">E</span><span class="cv-resource-demo-node">✓</span><div class="cv-resource-demo-line"></div></div></article>
+                  <article class="cv-resource-tour-card"><h4>3. Record the decision</h4><p>Review the evidence, complete the required checks, and capture an approval, rejection, or risk acceptance.</p><div class="cv-resource-demo"><div class="cv-resource-demo-top"></div><div class="cv-resource-demo-row active"></div><div class="cv-resource-demo-row short"></div><span class="cv-resource-demo-check">Decision recorded</span></div></article>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            tutorial_actions = st.columns(3)
+            with tutorial_actions[0]:
+                if st.button("Try BOM analysis", key="resources_tutorial_bom", type="primary", use_container_width=True):
+                    navigate_to("BOM Analyzer")
+            with tutorial_actions[1]:
+                if st.button("Try Ask Cadivor", key="resources_tutorial_ask", use_container_width=True):
+                    navigate_to("BOM Analyzer")
+            with tutorial_actions[2]:
+                if st.button("Record a decision", key="resources_tutorial_decision", use_container_width=True):
+                    navigate_to("Engineering Decisions")
+        with demo_tab:
+            st.markdown("### Practice with a sample BOM")
+            st.write("Use the built-in template BOM from the BOM Analyzer if you do not yet have a file ready. It is designed to demonstrate lifecycle, supplier, and lead-time review without changing any saved work.")
+            if st.button("Open template BOM", key="resources_demo_bom", type="primary"):
+                navigate_to("BOM Analyzer")
+        with terms_tab:
+            st.markdown("### Cadivor terms, in plain language")
+            st.dataframe(
+                [
+                    {"Term": "Risk", "Meaning": "A recorded lifecycle, supply, sourcing, cost, or engineering concern that needs review."},
+                    {"Term": "Data coverage", "Meaning": "How many BOM parts have a saved record for a particular evidence type; it is not a guarantee that data is current."},
+                    {"Term": "Confidence", "Meaning": "How strongly the available saved evidence supports a recommendation; engineer approval is still required."},
+                    {"Term": "Qualification", "Meaning": "The engineering and sourcing checks required before a replacement or alternate is approved."},
+                    {"Term": "Release readiness", "Meaning": "Whether the saved evidence supports a controlled release decision; unknown evidence is not treated as low risk."},
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
         st.markdown(
             """
             <div class="cv-help-grid">
