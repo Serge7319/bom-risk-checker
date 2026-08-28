@@ -136,7 +136,7 @@ _COPILOT_WORKFLOW_KEYS = (
     "cadivor_active_analysis_tab",
 )
 
-_COPILOT_PROCESSING_LABEL = "Cadivor is analyzing this BOM…"
+_COPILOT_PROCESSING_LABEL = "Cadivor is reviewing the saved BOM evidence…"
 _CLEAR_PROMPT_ON_NEXT_RUN_KEY = "cv7144_clear_prompt_on_next_run"
 _DECISION_COLUMN_RATIO = [0.85, 1.15]
 _CONCISE_REASON_LIMIT = 3
@@ -408,7 +408,7 @@ def _arm_copilot_workflow_snapshot(*, reason: str) -> None:
 
 
 def _clear_review_state() -> None:
-    """Clear the prior copilot result when the user starts a new question."""
+    """Clear the prior copilot result for a newly started conversation."""
     for key in (
         "cv35_last_answer",
         "cv35_last_question",
@@ -1606,7 +1606,11 @@ def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_i
     _pin_ask_cadivor_tab(source=f"queue_{submission_kind}", analysis_id=analysis_id)
     _log_ask_cadivor("question_queued", kind=submission_kind, question_len=len(clean))
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
-    _clear_review_state()
+    # Keep the last completed assessment visible while the next question is
+    # processed. Clearing it here made a normal one-click follow-up look as if
+    # Cadivor had stopped responding during Streamlit\'s rerun.
+    st.session_state.pop("cv35_last_error", None)
+    _clear_followup_ui_state()
     _log_ask_cadivor("rerun_requested", kind=submission_kind, source="queue_copilot_submission")
     st.rerun()
 
@@ -2314,6 +2318,10 @@ def render_engineering_assistant(
         followup_inflight_flag=bool(st.session_state.get("cv4801_followup_inflight")),
     )
     analysis_id = _analysis_id_from_context(context)
+    previous_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
+    previous_question = _normalize_submitted_question(
+        st.session_state.get("cv35_last_question") or "Engineering review"
+    )
     _log_ask_cadivor(
         "analysis_id_restored",
         analysis_id=analysis_id or "missing",
@@ -2438,6 +2446,14 @@ def render_engineering_assistant(
         st.markdown('<div id="cv47-processing-anchor"></div>', unsafe_allow_html=True)
         if st.session_state.pop("cv47_scroll_pending", False):
             components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
+        if previous_answer:
+            _render_response(
+                question=previous_question,
+                answer=previous_answer,
+                context=context,
+                auto_scroll=False,
+            )
+            st.caption("Previous assessment remains visible while Cadivor reviews this follow-up.")
         with st.status(_COPILOT_PROCESSING_LABEL, expanded=True) as progress:
             try:
                 _log_ask_cadivor(

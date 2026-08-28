@@ -199,6 +199,70 @@ class AskCadivorPendingPreservationTests(unittest.TestCase):
         self.assertNotIn("cv7142_ask_inflight", st.session_state)
 
 
+    def test_queue_retains_completed_review_while_followup_is_processing(self):
+        previous_question = "What should I review first?"
+        previous_answer = "Review STM32F103C8T6 first."
+        st, assistant = self._load_assistant(
+            {
+                "cv35_last_question": previous_question,
+                "cv35_last_answer": previous_answer,
+                "cv35_last_error": RuntimeError("stale error"),
+                "cv36_followup_options": ["Why?"],
+            }
+        )
+        st.rerun = MagicMock()
+
+        assistant._queue_follow_up("What evidence would change this recommendation?", analysis_id="a-1")
+
+        self.assertEqual(st.session_state.get("cv35_last_question"), previous_question)
+        self.assertEqual(st.session_state.get("cv35_last_answer"), previous_answer)
+        self.assertNotIn("cv35_last_error", st.session_state)
+        self.assertNotIn("cv36_followup_options", st.session_state)
+        self.assertTrue(st.session_state.get("cv7142_ask_inflight"))
+
+    def test_pending_followup_renders_completed_review_before_new_result(self):
+        previous_question = "What should I review first?"
+        previous_answer = "Review STM32F103C8T6 first."
+        followup = "What evidence would change this recommendation?"
+        st, assistant = self._load_assistant(
+            {
+                "cv36_pending_followup": followup,
+                "cv7142_ask_inflight": True,
+                "cv35_question": followup,
+                "cv35_last_question": previous_question,
+                "cv35_last_answer": previous_answer,
+                "cadivor_active_analysis_tab": "Ask Cadivor",
+            }
+        )
+
+        class _WorkingAI:
+            configured = True
+
+            def __init__(self, **kwargs):
+                pass
+
+            def ask(self, **kwargs):
+                return types.SimpleNamespace(answer="A shorter lead time would change it.", provider="openai")
+
+        rendered: list[dict] = []
+        with patch.object(assistant, "EngineeringAI", _WorkingAI):
+            with patch.object(assistant, "_usage_banner"):
+                with patch.object(assistant, "_render_prompt_chip_grid"):
+                    with patch.object(assistant, "_render_conversation_history"):
+                        with patch.object(assistant, "_render_response", side_effect=lambda **kwargs: rendered.append(kwargs)):
+                            assistant.render_engineering_assistant(
+                                current_user={"id": "user-1"},
+                                engineering_context={"analysis_id": "a-1", "analysis": {"analysis_id": "a-1"}},
+                            )
+
+        self.assertGreaterEqual(len(rendered), 2)
+        self.assertEqual(rendered[0]["question"], previous_question)
+        self.assertEqual(rendered[0]["answer"], previous_answer)
+        self.assertFalse(rendered[0]["auto_scroll"])
+        self.assertEqual(rendered[-1]["question"], followup)
+        self.assertEqual(rendered[-1]["answer"], "A shorter lead time would change it.")
+
+
 class AskCadivorStaleInflightRecoveryTests(unittest.TestCase):
     def setUp(self):
         for name in list(sys.modules):
