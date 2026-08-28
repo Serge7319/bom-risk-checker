@@ -32,7 +32,7 @@ NAV_GROUPS = (
     )),
     ("Workspace", (
         ("Settings", "settings", "Settings"),
-        ("Help", "help", "Help"),
+        ("Resources", "help", "Help"),
     )),
 )
 
