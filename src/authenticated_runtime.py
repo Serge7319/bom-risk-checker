@@ -803,7 +803,7 @@ def generate_engineering_change_package_pdf(
         canvas.setFillColor(colors.HexColor("#2563EB"))
         canvas.rect(0, height - 12, width, 12, fill=1, stroke=0)
         canvas.setFillColor(colors.HexColor("#0F172A"))
-        canvas.setFont("CadivorVera-Bold", 9)
+        # Keep the PDF independent of optional custom-font registration on\n        # production workers.\n        canvas.setFont("Helvetica-Bold", 9)
         canvas.drawString(42, height - 28, "CADIVOR")
         canvas.setFillColor(colors.HexColor("#64748B"))
         canvas.setFont("Helvetica", 7)
