@@ -296,6 +296,7 @@ def normalize_digikey_product(product: dict) -> dict:
         "manufacturer_part_number": product.get("ManufacturerProductNumber", ""),
         "digikey_part_number": product.get("DigiKeyProductNumber", ""),
         "product_detail_url": product.get("ProductUrl", ""),
+        "datasheet_url": product.get("DatasheetUrl", ""),
 
         "package": package,
         "pin_count": pin_count,
@@ -372,6 +373,7 @@ def default_digikey_result(part_number: str) -> dict:
         "manufacturer_part_number": "",
         "digikey_part_number": "",
         "product_detail_url": "",
+        "datasheet_url": "",
         "package": "",
         "pin_count": 0,
         "mounting_style": "",

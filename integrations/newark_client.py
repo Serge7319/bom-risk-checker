@@ -99,6 +99,7 @@ def normalize_newark_product(product: dict) -> dict:
         "manufacturer_part_number": product.get("translatedManufacturerPartNumber", "")
         or product.get("manufacturerPartNumber", ""),
         "product_detail_url": product.get("productUrl", ""),
+        "datasheet_url": product.get("datasheetUrl", "") or product.get("datasheet", ""),
         "package": package,
         "pin_count": pin_count,
         "mounting_style": mounting_style,

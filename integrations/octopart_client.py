@@ -87,6 +87,7 @@ def default_octopart_result(part_number: str = "") -> dict:
         "lead_time_weeks": None,
         "has_alternates": False,
         "product_detail_url": "",
+        "datasheet_url": "",
         "mouser_part_number": "",
         "package": "",
         "pin_count": 0,
