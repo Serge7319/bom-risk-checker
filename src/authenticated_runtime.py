@@ -8392,137 +8392,77 @@ def run_authenticated_app() -> None:
     # ---------- Resources / Help ----------
     if app_mode == "Help":
         st.markdown('<div class="cv-help-shell cv64-page-shell">', unsafe_allow_html=True)
-        cadivor_section_header(
-            "Cadivor Resources",
-            eyebrow="Guided learning center",
-            description="Step-by-step walkthroughs with real Cadivor screens. Learn the workflow before using it with your own BOM.",
-            icon="clipboard",
-        )
+        cadivor_section_header("Cadivor Resources", eyebrow="Training library", description="Choose a topic to open a practical, step-by-step Cadivor guide.", icon="clipboard")
         st.markdown(
             """
             <style>
-              .cv-guide-intro{display:grid;grid-template-columns:1.25fr .75fr;gap:18px;padding:24px;border:1px solid #D9E5F5;border-radius:20px;background:linear-gradient(135deg,#F7FAFF,#FFFFFF);margin:12px 0 22px}.cv-guide-intro h3{margin:0 0 8px;color:#11284B;font-size:22px}.cv-guide-intro p{margin:0;color:#526B8D;line-height:1.6}.cv-guide-meta{display:flex;gap:8px;align-items:flex-start;justify-content:flex-end;flex-wrap:wrap}.cv-guide-chip{font-size:12px;font-weight:800;color:#2459C5;background:#EAF2FF;border-radius:999px;padding:7px 10px}.cv-guide-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 4px}.cv-guide-step{border:1px solid #DCE7F5;border-radius:16px;background:#FFFFFF;padding:15px}.cv-guide-step-number{display:inline-flex;width:26px;height:26px;align-items:center;justify-content:center;border-radius:8px;background:#2865EB;color:white;font-size:12px;font-weight:900;margin-bottom:10px}.cv-guide-step h4{margin:0 0 5px;color:#11284B;font-size:15px}.cv-guide-step p{margin:0;color:#5B7190;font-size:13px;line-height:1.5}.cv-tutorial-title{margin:8px 0 4px;color:#11284B;font-size:23px}.cv-tutorial-lead{margin:0 0 16px;color:#58708F;line-height:1.6}.cv-tutorial-shot{border:1px solid #D6E2F1;border-radius:16px;overflow:hidden;box-shadow:0 14px 32px rgba(27,57,103,.10);margin-bottom:9px}.cv-tutorial-callout{border-left:3px solid #2865EB;background:#F5F8FF;border-radius:0 12px 12px 0;padding:12px 14px;margin:12px 0;color:#26496F;line-height:1.55}.cv-tutorial-callout strong{color:#11284B}.cv-tutorial-check{display:flex;gap:10px;align-items:flex-start;margin:9px 0;color:#324E73;line-height:1.45}.cv-tutorial-check b{display:inline-flex;align-items:center;justify-content:center;min-width:23px;height:23px;border-radius:50%;background:#E7F0FF;color:#2865EB;font-size:11px}.cv-resource-note{border:1px solid #D8EADF;background:#F6FFFA;border-radius:14px;padding:14px 16px;color:#276047;line-height:1.55;margin:16px 0}.cv-tutorial-progress{height:6px;border-radius:999px;background:#E2EAF6;overflow:hidden;margin:8px 0 20px}.cv-tutorial-progress span{display:block;height:100%;border-radius:inherit;background:#2865EB;animation:cv-tutorial-progress 4s ease-in-out infinite}@keyframes cv-tutorial-progress{0%,16%{width:20%}45%,78%{width:100%}100%{width:20%}}@media(max-width:900px){.cv-guide-intro{grid-template-columns:1fr}.cv-guide-meta{justify-content:flex-start}.cv-guide-steps{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.cv-tutorial-progress span{animation:none;width:66%}}
+              .cv-resource-library-card{min-height:144px;border:1px solid #D9E5F5;border-radius:16px;background:#fff;padding:16px;margin-bottom:12px;box-shadow:0 8px 24px rgba(26,58,104,.05)}.cv-resource-library-card h4{margin:0 0 7px;color:#11284B}.cv-resource-library-card p{margin:0;color:#58708F;font-size:13px;line-height:1.5}.cv-resource-category{margin:22px 0 10px;color:#3B5880;font-size:12px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}.cv-resource-detail-head{padding:22px;border:1px solid #D9E5F5;border-radius:18px;background:linear-gradient(135deg,#F7FAFF,#FFF);margin:8px 0 18px}.cv-resource-detail-head h2{margin:5px 0;color:#11284B}.cv-resource-detail-head p{margin:0;color:#58708F;line-height:1.55}.cv-resource-steps{border:1px solid #D9E5F5;border-radius:16px;background:#fff;padding:20px}.cv-resource-steps h3{margin:0 0 12px;color:#11284B}.cv-resource-step{display:flex;gap:12px;margin:14px 0;color:#395574;line-height:1.55}.cv-resource-step b{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:50%;background:#2865EB;color:#fff;font-size:12px}.cv-tutorial-shot{border:1px solid #D6E2F1;border-radius:16px;overflow:hidden;box-shadow:0 14px 32px rgba(27,57,103,.10)}.cv-resource-note{border:1px solid #D8EADF;background:#F6FFFA;border-radius:14px;padding:14px 16px;color:#276047;line-height:1.55;margin:16px 0}@media(max-width:900px){.cv-resource-library-card{min-height:0}}
             </style>
             """,
             unsafe_allow_html=True,
         )
-        st.markdown(
-            """
-            <section class="cv-guide-intro"><div><h3>Take the first-review walkthrough</h3><p>Use a sample BOM or your own file. In roughly 10 minutes, you will see how Cadivor identifies a priority component, explains the evidence, and turns that review into a documented next step.</p></div><div class="cv-guide-meta"><span class="cv-guide-chip">10 minutes</span><span class="cv-guide-chip">No customer data shown</span><span class="cv-guide-chip">Engineer approval required</span></div></section>
-            """,
-            unsafe_allow_html=True,
-        )
-        walkthrough_steps = ["1 · Start", "2 · Analyze", "3 · Ask Cadivor", "4 · Review & act", "Terms"]
-        selected_step = st.session_state.get("resources_walkthrough_step", walkthrough_steps[0])
-        nav_columns = st.columns(len(walkthrough_steps))
-        for nav_column, step in zip(nav_columns, walkthrough_steps):
-            with nav_column:
-                if st.button(step, key=f"resources_nav_{step}", type="primary" if step == selected_step else "secondary", use_container_width=True):
-                    st.session_state["resources_walkthrough_step"] = step
-                    st.rerun()
-        st.caption(f"Guided walkthrough · Step {walkthrough_steps.index(selected_step) + 1} of 4" if selected_step != "Terms" else "Reference guide")
         assets_dir = Path(__file__).resolve().parent / "assets" / "resources"
-        if selected_step == "1 · Start":
-            st.markdown("### Your first Cadivor review")
-            st.markdown("<div class='cv-tutorial-progress'><span></span></div>", unsafe_allow_html=True)
-            st.markdown(
-                """
-                <div class="cv-guide-steps">
-                  <article class="cv-guide-step"><span class="cv-guide-step-number">1</span><h4>Analyze</h4><p>Open BOM Analyzer and use the template BOM or upload a CSV/XLSX export.</p></article>
-                  <article class="cv-guide-step"><span class="cv-guide-step-number">2</span><h4>Ask</h4><p>Ask a practical question such as “What should we do about this BOM?”</p></article>
-                  <article class="cv-guide-step"><span class="cv-guide-step-number">3</span><h4>Act</h4><p>Review evidence, qualify an alternate if appropriate, and record the engineering disposition.</p></article>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.markdown("#### Begin with a safe sample")
-            st.caption("The template BOM is for practice. It does not replace an engineering review of your own parts.")
-            start_col, next_col = st.columns(2)
-            with start_col:
-                if st.button("Open BOM Analyzer", key="resources_walkthrough_start", type="primary", use_container_width=True):
-                    navigate_to("BOM Analyzer")
+        tutorials = [
+            ("profile", "Set up your profile & workspace", "Settings", "Configure your profile, workspace details, security, and billing.", ["Open Settings from the sidebar.", "Choose the Profile, Preferences, Workspace, Security, or Billing area.", "Save only the changes you want to apply."], "bom-analyzer-start.png"),
+            ("dashboard", "Use the Dashboard", "Dashboard", "Understand the workspace summary and continue an active review.", ["Open Dashboard.", "Review the health, priority risk, and saved-analysis summaries.", "Use a shortcut or open a saved analysis to continue work."], "bom-analyzer-start.png"),
+            ("bom", "Upload and analyze a BOM", "BOM Analyzer", "Create a saved engineering review from a CSV or Excel BOM.", ["Open BOM Analyzer and start a new analysis.", "Download the 10-part sample BOM or upload your own CSV/XLSX file.", "Review validation, name the project, and save the analysis."], "bom-analyzer-start.png"),
+            ("ask", "Ask Cadivor about a BOM", "BOM Analyzer", "Ask an evidence-backed engineering question about a saved analysis.", ["Open a saved analysis in BOM Analyzer.", "Enter one focused question in Ask Cadivor.", "Select Ask Cadivor once, then read the direct answer and evidence."], "ask-cadivor-question.png"),
+            ("alternatives", "Find and compare alternatives", "Alternative Finder", "Evaluate potential alternates without treating them as automatic replacements.", ["Open Alternative Finder from the sidebar.", "Search for the affected manufacturer part number.", "Compare compatibility, sourcing evidence, and required engineering checks."], "recommendation-actions.png"),
+            ("impact", "Use Design Impact", "Design Impact Analyzer", "Understand how component choices can affect the engineering review.", ["Open Design Impact Analyzer.", "Select the relevant part or saved analysis context.", "Use the result to identify what needs engineering attention."], "recommendation-result.png"),
+            ("decisions", "Record an engineering decision", "Engineering Decisions", "Capture approval, rejection, or risk acceptance with supporting evidence.", ["Open Engineering Decisions.", "Review the evidence and required checks before choosing a disposition.", "Save the decision record and export it when needed."], "recommendation-actions.png"),
+            ("procurement", "Use Procurement Advisor", "Procurement Advisor", "Prioritize the sourcing actions that deserve procurement attention.", ["Open Procurement Advisor.", "Review supplier coverage, availability, and risk signals.", "Use the recommended actions as a procurement review plan."], "recommendation-result.png"),
+            ("cost", "Use Cost Optimization", "Cost Optimization", "Identify defensible cost-review opportunities without compromising engineering approval.", ["Open Cost Optimization.", "Review the candidate parts and stated assumptions.", "Validate impact with engineering and procurement before acting."], "recommendation-result.png"),
+            ("supply", "Build a Supply Scenario", "Supply Risk Scenario", "Explore how supply conditions may affect the parts in a BOM.", ["Open Supply Risk Scenario from the sidebar.", "Choose the saved BOM or component context you want to review.", "Compare the scenario results and identify mitigation actions."], "recommendation-result.png"),
+            ("monitoring", "Monitor a component", "Monitoring", "Track saved component and supply signals after the initial review.", ["Open Monitoring.", "Select the component or BOM you want to follow.", "Review changes and return to the engineering decision when evidence changes."], "recommendation-actions.png"),
+            ("portfolio", "Use Portfolio Intelligence", "Portfolio Intelligence", "Review risk and readiness across saved engineering work.", ["Open Portfolio Intelligence.", "Review portfolio-level health and priority items.", "Open the underlying BOM when an item needs action."], "bom-analyzer-start.png"),
+            ("reports", "Create and export reports", "Reports", "Generate decision-ready summaries from saved analyses.", ["Open Reports.", "Select the saved BOM and report type.", "Preview the scope, then export the report package."], "recommendation-actions.png"),
+            ("admin", "Use the Admin Console", "Admin Console", "Manage operational controls and understand live account activity (administrators only).", ["Open Admin Console if your account has administrator access.", "Review users, support activity, maintenance controls, and the audit trail.", "Use operational controls carefully; they can affect other users."], "bom-analyzer-start.png"),
+        ]
+        selected_id = st.session_state.get("cadivor_resources_tutorial")
+        selected = next((tutorial for tutorial in tutorials if tutorial[0] == selected_id), None)
+        if not selected:
+            st.markdown("### Browse tutorials")
+            st.caption("Choose a feature to open its training page. Each guide includes steps, a screen example, and a direct link to the feature.")
+            for category, ids in (("Getting started", {"profile", "dashboard", "bom", "ask"}), ("Engineering & supply decisions", {"alternatives", "impact", "decisions", "procurement", "cost", "supply", "monitoring", "portfolio"}), ("Operations", {"reports", "admin"})):
+                st.markdown(f"<div class='cv-resource-category'>{category}</div>", unsafe_allow_html=True)
+                for row in range(0, len([tutorial for tutorial in tutorials if tutorial[0] in ids]), 2):
+                    row_tutorials = [tutorial for tutorial in tutorials if tutorial[0] in ids][row:row + 2]
+                    for column, tutorial in zip(st.columns(2), row_tutorials):
+                        with column:
+                            st.markdown(f"<div class='cv-resource-library-card'><h4>{tutorial[1]}</h4><p>{tutorial[3]}</p></div>", unsafe_allow_html=True)
+                            if st.button("Open tutorial →", key=f"resources_open_{tutorial[0]}", use_container_width=True):
+                                st.session_state["cadivor_resources_tutorial"] = tutorial[0]
+                                st.rerun()
+        else:
+            tutorial_index = tutorials.index(selected)
+            _, title, destination, summary, steps, image_name = selected
+            if st.button("← Back to all tutorials", key="resources_back_library"):
+                st.session_state.pop("cadivor_resources_tutorial", None)
+                st.rerun()
+            st.markdown(f"<section class='cv-resource-detail-head'><div class='cv-resource-category'>Cadivor training</div><h2>{title}</h2><p>{summary}</p></section>", unsafe_allow_html=True)
+            steps_column, image_column = st.columns([1, 1.25])
+            with steps_column:
+                st.markdown("<div class='cv-resource-steps'><h3>Steps</h3>", unsafe_allow_html=True)
+                for number, step in enumerate(steps, start=1):
+                    st.markdown(f"<div class='cv-resource-step'><b>{number}</b><span>{step}</span></div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+            with image_column:
+                st.markdown("<div class='cv-tutorial-shot'>", unsafe_allow_html=True)
+                st.image(str(assets_dir / image_name), caption="Screen example. Follow the numbered steps at left in your own Cadivor workspace.", use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("<div class='cv-resource-note'><strong>Training note:</strong> Cadivor recommendations and scenarios support engineering judgment. Review evidence and complete the required checks before approving a replacement, procurement action, or release decision.</div>", unsafe_allow_html=True)
+            previous_col, open_col, next_col = st.columns(3)
+            with previous_col:
+                if tutorial_index > 0 and st.button("← Previous tutorial", key="resources_previous", use_container_width=True):
+                    st.session_state["cadivor_resources_tutorial"] = tutorials[tutorial_index - 1][0]
+                    st.rerun()
+            with open_col:
+                if st.button(f"Open {destination}", key="resources_open_destination", type="primary", use_container_width=True):
+                    navigate_to(destination)
             with next_col:
-                if st.button("Next: Analyze a BOM", key="resources_start_next", use_container_width=True):
-                    st.session_state["resources_walkthrough_step"] = "2 · Analyze"
+                if tutorial_index < len(tutorials) - 1 and st.button("Next tutorial →", key="resources_next", use_container_width=True):
+                    st.session_state["cadivor_resources_tutorial"] = tutorials[tutorial_index + 1][0]
                     st.rerun()
-        if selected_step == "2 · Analyze":
-            st.markdown("<h3 class='cv-tutorial-title'>1. Analyze a BOM</h3>", unsafe_allow_html=True)
-            st.markdown("<p class='cv-tutorial-lead'>Start in BOM Analyzer. You can upload a CSV/XLSX BOM or choose the template BOM if you are testing Cadivor for the first time.</p>", unsafe_allow_html=True)
-            left, right = st.columns([1.35, 1])
-            with left:
-                st.markdown("<div class='cv-tutorial-shot'>", unsafe_allow_html=True)
-                st.image(str(assets_dir / "bom-analyzer-start.png"), caption="BOM Analyzer is where you begin. Your saved analyses appear above the new-analysis workspace.", use_container_width=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            with right:
-                st.markdown("#### What to do")
-                for number, copy in [("1", "Open BOM Analyzer and select **New BOM analysis**."), ("2", "Upload your BOM or select the template BOM to practice."), ("3", "Review the validation result and save the analysis before asking a question.")]:
-                    st.markdown(f"<div class='cv-tutorial-check'><b>{number}</b><span>{copy}</span></div>", unsafe_allow_html=True)
-                st.markdown("<div class='cv-tutorial-callout'><strong>What you should expect:</strong> Cadivor identifies data gaps and risk signals. It does not treat missing evidence as proof that a component is safe.</div>", unsafe_allow_html=True)
-                if st.button("Open BOM Analyzer", key="resources_analyze_open", type="primary", use_container_width=True):
-                    navigate_to("BOM Analyzer")
-                if st.button("Next: Ask Cadivor", key="resources_analyze_next", use_container_width=True):
-                    st.session_state["resources_walkthrough_step"] = "3 · Ask Cadivor"
-                    st.rerun()
-        if selected_step == "3 · Ask Cadivor":
-            st.markdown("<h3 class='cv-tutorial-title'>2. Ask a focused engineering question</h3>", unsafe_allow_html=True)
-            st.markdown("<p class='cv-tutorial-lead'>Ask Cadivor works best with a saved analysis and a clear question about risk, release readiness, evidence, or a component needing attention.</p>", unsafe_allow_html=True)
-            top_left, top_right = st.columns([1.25, 1])
-            with top_left:
-                st.markdown("<div class='cv-tutorial-shot'>", unsafe_allow_html=True)
-                st.image(str(assets_dir / "ask-cadivor-question.png"), caption="Type one practical question, then select Ask Cadivor once.", use_container_width=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            with top_right:
-                st.markdown("#### Good first questions")
-                st.markdown("- What should we review first in this BOM?\n- Is this BOM ready for production release?\n- Which components need alternate qualification?\n- What evidence would change this recommendation?")
-                st.markdown("<div class='cv-tutorial-callout'><strong>Tip:</strong> Ask one question at a time. Cadivor responds with saved evidence and clearly identifies what still needs engineering validation.</div>", unsafe_allow_html=True)
-            st.markdown("#### Read the answer in three parts")
-            answer_left, answer_right = st.columns([1.25, 1])
-            with answer_left:
-                st.markdown("<div class='cv-tutorial-shot'>", unsafe_allow_html=True)
-                st.image(str(assets_dir / "recommendation-result.png"), caption="The result gives a direct answer, the reasons behind it, and recommended actions.", use_container_width=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            with answer_right:
-                for number, copy in [("1", "Read the **direct answer** first: it identifies the component or decision that deserves attention."), ("2", "Check the **engineering reasons**: these are the saved lifecycle, supplier, inventory, or risk signals."), ("3", "Use **recommended actions** as a review plan—not as automatic approval to substitute a part.")]:
-                    st.markdown(f"<div class='cv-tutorial-check'><b>{number}</b><span>{copy}</span></div>", unsafe_allow_html=True)
-                if st.button("Open BOM Analyzer", key="resources_ask_open", type="primary", use_container_width=True):
-                    navigate_to("BOM Analyzer")
-                if st.button("Next: Review the answer", key="resources_ask_next", use_container_width=True):
-                    st.session_state["resources_walkthrough_step"] = "4 · Review & act"
-                    st.rerun()
-        if selected_step == "4 · Review & act":
-            st.markdown("<h3 class='cv-tutorial-title'>3. Turn the review into a controlled next step</h3>", unsafe_allow_html=True)
-            st.markdown("<p class='cv-tutorial-lead'>A recommendation is a starting point. Before release or substitution, complete the engineering checks and record the disposition your team makes.</p>", unsafe_allow_html=True)
-            decision_left, decision_right = st.columns([1.25, 1])
-            with decision_left:
-                st.markdown("<div class='cv-tutorial-shot'>", unsafe_allow_html=True)
-                st.image(str(assets_dir / "recommendation-actions.png"), caption="The workflow continues to alternate qualification, monitoring, or an engineering record.", use_container_width=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            with decision_right:
-                st.markdown("#### Before you approve")
-                st.markdown("- Confirm electrical, mechanical, thermal, and firmware implications.\n- Verify lifecycle, availability, and approved-source evidence.\n- Record approval, rejection, or risk acceptance in Engineering Decisions.\n- Monitor the affected part after the first review.")
-                st.markdown("<div class='cv-resource-note'><strong>Important:</strong> Cadivor supports an evidence-backed engineering decision. It does not automatically approve replacements or release decisions.</div>", unsafe_allow_html=True)
-                action_cols = st.columns(2)
-                with action_cols[0]:
-                    if st.button("Find an alternative", key="resources_decide_alternative", type="primary", use_container_width=True):
-                        navigate_to("Alternative Finder")
-                with action_cols[1]:
-                    if st.button("Open Decisions", key="resources_decide_record", use_container_width=True):
-                        navigate_to("Engineering Decisions")
-                if st.button("Open Monitoring", key="resources_decide_monitor", use_container_width=True):
-                    navigate_to("Monitoring")
-        if selected_step == "Terms":
-            st.markdown("### Cadivor terms, in plain language")
-            st.dataframe(
-                [
-                    {"Term": "Risk", "Meaning": "A recorded lifecycle, supply, sourcing, cost, or engineering concern that needs review."},
-                    {"Term": "Data coverage", "Meaning": "How many BOM parts have a saved record for a particular evidence type; it is not a guarantee that data is current."},
-                    {"Term": "Confidence", "Meaning": "How strongly the available saved evidence supports a recommendation; engineer approval is still required."},
-                    {"Term": "Qualification", "Meaning": "The engineering and sourcing checks required before a replacement or alternate is approved."},
-                    {"Term": "Release readiness", "Meaning": "Whether the saved evidence supports a controlled release decision; unknown evidence is not treated as low risk."},
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
         st.markdown("<div class='cv-resource-note'><strong>Need help with a real BOM?</strong> Email support@cadivor.com with the workflow step where you are blocked. Do not include confidential BOM details in email.</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         stop_authenticated_page()
