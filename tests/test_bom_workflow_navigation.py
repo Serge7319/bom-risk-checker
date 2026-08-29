@@ -111,6 +111,8 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             original_part="LM358N",
             analysis_id="bom-42",
             return_analysis_id="bom-42",
+            return_page="Design Impact Analyzer",
+            return_label="Design Impact Analyzer",
         )
 
         self.assertEqual(self.streamlit.session_state["cadivor_route"], "Alternative Finder")
@@ -118,7 +120,22 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY],
             "bom-42",
         )
+        self.assertEqual(
+            self.streamlit.session_state["cadivor_nav_params"]["return_page"],
+            "Design Impact Analyzer",
+        )
         self.assertEqual(reruns, [])
+
+    def test_design_impact_actions_preserve_focus_and_return_destination(self):
+        source = (ROOT / "src/design_impact_analyzer.py").read_text()
+        self.assertIn('focus_part=current', source)
+        self.assertIn('return_page="Design Impact Analyzer"', source)
+
+    def test_destination_pages_offer_contextual_back_navigation(self):
+        source = (ROOT / "src/authenticated_runtime.py").read_text()
+        self.assertIn('key="alternative_back_to_context"', source)
+        self.assertIn('key="monitoring_back_to_context"', source)
+        self.assertIn('key="decisions_back_to_context"', source)
 
     def test_direct_navigation_still_requests_one_rerun(self):
         reruns = []

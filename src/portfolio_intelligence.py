@@ -281,6 +281,33 @@ def render_portfolio_intelligence(
         ],
         columns=4,
     )
+    project_col, component_col, alert_col = st.columns(3)
+    with project_col:
+        if st.button("View saved projects", key="portfolio_view_projects", use_container_width=True):
+            st.session_state["cadivor_portfolio_drilldown"] = "projects"
+    with component_col:
+        if st.button("View critical components", key="portfolio_view_critical", use_container_width=True):
+            st.session_state["cadivor_portfolio_drilldown"] = "critical"
+    with alert_col:
+        if st.button("View portfolio alerts", key="portfolio_view_alerts", use_container_width=True):
+            st.session_state["cadivor_portfolio_drilldown"] = "alerts"
+
+    drilldown = st.session_state.get("cadivor_portfolio_drilldown")
+    if drilldown:
+        titles = {"projects": "Saved projects", "critical": "Critical components", "alerts": "Portfolio alerts"}
+        st.markdown(f"#### {titles[drilldown]}")
+        if st.button("Clear detail view", key="portfolio_clear_drilldown"):
+            st.session_state.pop("cadivor_portfolio_drilldown", None)
+            st.rerun()
+        rows = (
+            intelligence["project_health"] if drilldown == "projects"
+            else intelligence["high_risk"] if drilldown == "critical"
+            else intelligence["recurring_alerts"]
+        )
+        if rows:
+            cadivor_engineering_dataframe(pd.DataFrame(rows))
+        else:
+            st.info("No records match this view.")
 
     left, right = st.columns([1.45, 1])
 
