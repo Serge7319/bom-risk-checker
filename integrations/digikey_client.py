@@ -29,21 +29,19 @@ def get_digikey_access_token() -> str:
     return response.json()["access_token"]
 
 
-def search_digikey_by_part_number(part_number: str) -> dict:
-    client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
-
-    access_token = get_digikey_access_token()
-
-    encoded_part_number = quote(part_number, safe="")
-    url = "https://api.digikey.com/products/v4/search/keyword"
-
-    headers = {
+def _digikey_headers(client_id: str, access_token: str) -> dict:
+    return {
         "Authorization": f"Bearer {access_token}",
         "X-DIGIKEY-Client-Id": client_id,
         "X-DIGIKEY-Locale-Site": "US",
         "X-DIGIKEY-Locale-Language": "en",
         "X-DIGIKEY-Locale-Currency": "USD",
     }
+
+
+def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_token: str) -> dict:
+    url = "https://api.digikey.com/products/v4/search/keyword"
+    headers = _digikey_headers(client_id, access_token)
 
     payload = {
         "Keywords": part_number,
@@ -65,6 +63,61 @@ def search_digikey_by_part_number(part_number: str) -> dict:
 
 
     return normalize_digikey_product(product)
+
+
+def search_digikey_by_part_number(part_number: str) -> dict:
+    client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
+    return _search_digikey_by_part_number(
+        part_number, client_id=client_id, access_token=get_digikey_access_token()
+    )
+
+
+def _as_number(value, default=0):
+    try:
+        return float(str(value).replace("$", "").replace(",", "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def search_digikey_substitutions(part_number: str) -> list[dict]:
+    """Return genuine DigiKey substitute relationships for any product family."""
+    requested = str(part_number or "").strip()
+    if not requested:
+        return []
+    client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
+    access_token = get_digikey_access_token()
+    product = _search_digikey_by_part_number(
+        requested, client_id=client_id, access_token=access_token
+    )
+    product_number = str(product.get("digikey_part_number") or requested).strip()
+    response = requests.get(
+        "https://api.digikey.com/products/v4/search/"
+        f"{quote(product_number, safe='')}/substitutions",
+        headers=_digikey_headers(client_id, access_token),
+        timeout=15,
+    )
+    response.raise_for_status()
+    results = []
+    for item in (response.json() or {}).get("ProductSubstitutes") or []:
+        if not isinstance(item, dict):
+            continue
+        mpn = str(item.get("ManufacturerProductNumber") or "").strip()
+        if not mpn or mpn.casefold() == requested.casefold():
+            continue
+        manufacturer = item.get("Manufacturer") or {}
+        results.append({
+            "source": "DigiKey",
+            "evidence_type": "Distributor-listed substitute",
+            "substitute_type": str(item.get("SubstituteType") or "Candidate").strip(),
+            "manufacturer_part_number": mpn,
+            "manufacturer": str(manufacturer.get("Name") or "") if isinstance(manufacturer, dict) else str(manufacturer),
+            "description": str(item.get("Description") or "").strip(),
+            "stock_total": int(_as_number(item.get("QuantityAvailable"), 0)),
+            "unit_price": _as_number(item.get("UnitPrice"), 0.0),
+            "product_detail_url": str(item.get("ProductUrl") or "").strip(),
+            "digikey_part_number": str(item.get("DigiKeyProductNumber") or "").strip(),
+        })
+    return results
 
 
 def extract_digikey_parameter(product: dict, target_names: list) -> str:
@@ -197,6 +250,7 @@ def normalize_digikey_product(product: dict) -> dict:
 
         "mouser_part_number": "",
         "manufacturer_part_number": product.get("ManufacturerProductNumber", ""),
+        "digikey_part_number": product.get("DigiKeyProductNumber", ""),
         "product_detail_url": product.get("ProductUrl", ""),
 
         "package": package,
@@ -272,6 +326,7 @@ def default_digikey_result(part_number: str) -> dict:
         "description": "",
         "mouser_part_number": "",
         "manufacturer_part_number": "",
+        "digikey_part_number": "",
         "product_detail_url": "",
         "package": "",
         "pin_count": 0,
@@ -337,4 +392,3 @@ def extract_voltage_limits(voltage_text: str):
         return value, value
 
     return None, None
-

@@ -10047,6 +10047,25 @@ def run_authenticated_app() -> None:
                     return str(value).strip()
             return fallback
 
+        def _af62_provider_coverage(data):
+            if not isinstance(data, dict):
+                return "Not checked"
+            labels = {
+                "AVAILABLE": "available",
+                "PART_NOT_FOUND": "no exact match",
+                "NOT_CONFIGURED": "not configured",
+                "TIMEOUT": "timed out",
+                "RATE_LIMITED": "rate limited",
+                "PROVIDER_ERROR": "unavailable",
+            }
+            coverage = []
+            for row in data.get("all_supplier_results") or []:
+                if isinstance(row, dict) and row.get("source"):
+                    coverage.append(
+                        f"{row['source']}: {labels.get(str(row.get('provider_status') or ''), 'unknown')}"
+                    )
+            return " · ".join(coverage) if coverage else "Not checked"
+
         manufacturer_display = html.escape(
             _af62_first(
                 original_summary_data,
@@ -10156,6 +10175,7 @@ def run_authenticated_app() -> None:
                       <div class="af62-field {risk_class}"><span>Risk</span><strong>{risk_display}</strong></div>
                       <div class="af62-field"><span>Package</span><strong>{package_display}</strong></div>
                       <div class="af62-field"><span>Verified Suppliers</span><strong>{html.escape(_af62_first(original_summary_data, ["sources_available", "source"], fallback="Not available"))}</strong></div>
+                      <div class="af62-field"><span>Supplier coverage</span><strong>{html.escape(_af62_provider_coverage(original_summary_data))}</strong></div>
                       <div class="af62-field"><span>Datasheet / Source</span><strong>{datasheet_display}</strong></div>
                     </div>
                     <div class="af62-search-status {current_status_class}">{current_status}</div>
@@ -10212,8 +10232,8 @@ def run_authenticated_app() -> None:
                 f"""
                 <div class="af62b-section-head">
                   <div>
-                    <div class="af62b-section-title">2. Review the recommended replacement</div>
-                    <div class="af62b-section-meta">Cadivor ranked the strongest candidates using engineering compatibility, lifecycle, stock, supplier, and cost signals.</div>
+                    <div class="af62b-section-title">2. Review supplier-listed candidates</div>
+                    <div class="af62b-section-meta">Candidates are sourced from supplier substitute evidence. Cadivor ranks the available signals, but engineering approval remains required.</div>
                   </div>
                   <div class="af62b-found-pill">{len(alternatives_df)} candidates found</div>
                 </div>
@@ -10279,6 +10299,8 @@ def run_authenticated_app() -> None:
                 ["Recommendation"],
                 "Candidate identified from available engineering and sourcing signals.",
             )
+            evidence_type_value = _af62b_value(selected_row, ["Evidence Type"], "Supplier candidate")
+            substitute_type_value = _af62b_value(selected_row, ["Substitute Type"], "Not classified")
 
             original_stock = float(original_data.get("stock_total", 0) or 0)
             alternative_stock = stock_value
@@ -10384,7 +10406,7 @@ def run_authenticated_app() -> None:
                     f"""
                     <div class="af62b-best-top">
                       <div>
-                        <div class="af62b-eyebrow">★ Recommended replacement</div>
+                        <div class="af62b-eyebrow">★ Supplier-listed candidate</div>
                         <div class="af62b-best-part">{html.escape(selected_alternative)}</div>
                         <div class="af62b-best-copy">{html.escape(recommendation_copy)}</div>
                       </div>
@@ -10428,8 +10450,8 @@ def run_authenticated_app() -> None:
                         <strong>{"$" + format(price_value, ".4g") if price_value > 0 else "Not available"}</strong>
                       </div>
                       <div class="af62b-metric">
-                        <span>Recommendation Rank</span>
-                        <strong>{"Best match" if selected_alternative == best_part_number else "Alternative candidate"}</strong>
+                        <span>Source evidence</span>
+                        <strong>{html.escape(evidence_type_value)} · {html.escape(substitute_type_value)}</strong>
                       </div>
                     </div>
                     """,
@@ -11392,7 +11414,13 @@ def run_authenticated_app() -> None:
                 )
 
         elif st.session_state["alternative_search_attempted"]:
-            st.warning("No suggested alternatives found.")
+            st.warning(
+                "No supplier-listed alternative candidates were retrieved from the configured sources. "
+                "This does not mean that no market alternatives exist."
+            )
+            st.caption(
+                "Cadivor will show the source and evidence type whenever a candidate is retrieved."
+            )
 
         stop_authenticated_page()
     if app_mode == "BOM Analyzer":
