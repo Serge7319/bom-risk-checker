@@ -125,6 +125,38 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     return {"family": family, "rows": rows, "counts": counts}
 
 
+def apply_comparison_evidence_to_scores(
+    recommendation_score: int,
+    compatibility_confidence: int,
+    counts: dict,
+    *,
+    is_explicit_substitute: bool,
+) -> tuple[int, int]:
+    """Apply retrieved comparison evidence to a candidate's displayed scores.
+
+    The sourcing score remains useful, but cannot outweigh evidence that the
+    engineering fields differ or are unavailable.  Catalog matches are capped
+    below 100% because a distributor search result is not a certified drop-in
+    substitute.
+    """
+    matches = int(counts.get("Match", 0) or 0)
+    differences = int(counts.get("Different", 0) or 0)
+    needs_data = int(counts.get("Needs data", 0) or 0)
+
+    adjusted_recommendation = int(recommendation_score) + min(matches, 10)
+    adjusted_recommendation -= differences * 8
+    adjusted_recommendation -= needs_data * 4
+
+    evidence_confidence = 100 - (differences * 12) - (needs_data * 6)
+    if not is_explicit_substitute:
+        evidence_confidence = min(evidence_confidence, 95)
+
+    return (
+        max(0, min(adjusted_recommendation, 98)),
+        max(0, min(int(compatibility_confidence), evidence_confidence)),
+    )
+
+
 def extract_datasheet_text(url: str) -> dict:
     """Retrieve an official PDF and return page-addressable text evidence.
 

@@ -10328,6 +10328,11 @@ def run_authenticated_app() -> None:
             )
             evidence_type_value = _af62b_value(selected_row, ["Evidence Type"], "Supplier candidate")
             substitute_type_value = _af62b_value(selected_row, ["Substitute Type"], "Not classified")
+            candidate_label = (
+                "★ Supplier-listed substitute"
+                if evidence_type_value.strip().casefold() == "distributor-listed substitute"
+                else "★ Distributor catalog candidate"
+            )
 
             original_stock = float(original_data.get("stock_total", 0) or 0)
             alternative_stock = stock_value
@@ -10433,7 +10438,7 @@ def run_authenticated_app() -> None:
                     f"""
                     <div class="af62b-best-top">
                       <div>
-                        <div class="af62b-eyebrow">★ Supplier-listed candidate</div>
+                        <div class="af62b-eyebrow">{html.escape(candidate_label)}</div>
                         <div class="af62b-best-part">{html.escape(selected_alternative)}</div>
                         <div class="af62b-best-copy">{html.escape(recommendation_copy)}</div>
                       </div>
@@ -10853,6 +10858,28 @@ def run_authenticated_app() -> None:
                     f"{str(original_part).strip().upper()}::"
                     f"{str(selected_alternative).strip().upper()}"
                 )
+                st.markdown("**Official supplier datasheets**")
+                datasheet_link_columns = st.columns(2)
+                if original_datasheet_url.startswith(("https://", "http://")):
+                    datasheet_link_columns[0].link_button(
+                        "Open original datasheet ↗",
+                        original_datasheet_url,
+                        use_container_width=True,
+                    )
+                else:
+                    datasheet_link_columns[0].caption(
+                        "Original official datasheet link is unavailable."
+                    )
+                if candidate_datasheet_url.startswith(("https://", "http://")):
+                    datasheet_link_columns[1].link_button(
+                        "Open candidate datasheet ↗",
+                        candidate_datasheet_url,
+                        use_container_width=True,
+                    )
+                else:
+                    datasheet_link_columns[1].caption(
+                        "Candidate official datasheet link is unavailable."
+                    )
                 if st.button(
                     "Analyze official datasheet evidence",
                     key=f"datasheet_evidence_{evidence_comparison_key}",

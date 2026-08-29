@@ -6,6 +6,7 @@ import unittest
 sys.modules.setdefault("requests", types.SimpleNamespace())
 
 from src.datasheet_comparison import (
+    apply_comparison_evidence_to_scores,
     build_datasheet_comparison,
     build_pdf_field_evidence,
     infer_component_family,
@@ -61,6 +62,22 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertFalse(get_plan("Starter")["datasheet_comparison"])
         self.assertTrue(get_plan("Professional")["datasheet_comparison"])
         self.assertTrue(get_plan("Business")["datasheet_comparison"])
+
+    def test_differences_and_missing_data_lower_catalog_scores(self):
+        exact_score, exact_confidence = apply_comparison_evidence_to_scores(
+            69,
+            100,
+            {"Match": 10, "Different": 0, "Needs data": 0},
+            is_explicit_substitute=False,
+        )
+        different_score, different_confidence = apply_comparison_evidence_to_scores(
+            69,
+            100,
+            {"Match": 7, "Different": 2, "Needs data": 1},
+            is_explicit_substitute=False,
+        )
+        self.assertEqual((exact_score, exact_confidence), (79, 95))
+        self.assertEqual((different_score, different_confidence), (56, 70))
 
 
 if __name__ == "__main__":
