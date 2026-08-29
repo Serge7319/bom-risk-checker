@@ -30,17 +30,23 @@ def test_resources_cover_every_cadivor_feature_with_a_tutorial() -> None:
     assert "Back to all tutorials" in RUNTIME
     assert "Open tutorial →" in RUNTIME
     assert "Next tutorial →" in RUNTIME
+    assert 'internal_app_href("Help", tutorial=tutorial[0])' in RUNTIME
+    assert 'requested_tutorial = _safe_text(_qp_value("tutorial", ""), "")' in RUNTIME
     assert '"Design Impact Analyzer"' in RUNTIME
     assert '"Supply Risk Scenario"' in RUNTIME
 
 
-def test_resources_ship_real_product_tutorial_screens() -> None:
+def test_resources_ship_valid_annotated_tutorial_screens() -> None:
     for filename in (
-        "ask-cadivor-question.png",
-        "bom-analyzer-start.png",
-        "recommendation-result.png",
-        "recommendation-actions.png",
+        "tutorial-dashboard.jpg",
+        "tutorial-analysis.jpg",
+        "tutorial-admin.jpg",
+        "tutorial-supply.jpg",
     ):
         asset = ASSETS / filename
         assert asset.is_file()
-        assert asset.stat().st_size > 10_000
+        assert asset.stat().st_size > 50_000
+
+    assert "cv-tutorial-marker" in RUNTIME
+    assert "matching numbered markers" in RUNTIME
+    assert "st.image(" not in RUNTIME[RUNTIME.index("# ---------- Resources / Help ----------"):RUNTIME.index("# ---------- About ----------")]

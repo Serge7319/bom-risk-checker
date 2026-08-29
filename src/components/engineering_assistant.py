@@ -1549,8 +1549,11 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
 def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_id: str = "") -> None:
     """Queue a copilot question behind auth snapshot protection.
 
-    The click or form submission already starts a Streamlit run. Triggering a
-    second rerun here creates a faded intermediate screen that looks missed.
+    The first click stores the complete question, then deliberately reruns the
+    app.  The next render consumes that durable queued value and executes the
+    assessment.  This avoids a form-event timing edge case where Streamlit can
+    render the clicked form before its bound text-area value is fully available.
+    One physical click must always be enough to submit a question.
     """
     if _block_duplicate_submission(kind=submission_kind, analysis_id=analysis_id):
         return
@@ -1578,6 +1581,7 @@ def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_i
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
     _clear_review_state()
     _log_ask_cadivor("question_ready", kind=submission_kind, source="queue_copilot_submission")
+    st.rerun()
 
 
 def _queue_follow_up(question: str, *, analysis_id: str = "") -> None:
