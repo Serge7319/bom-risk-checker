@@ -9849,6 +9849,27 @@ def run_authenticated_app() -> None:
         if "suggested_alternatives" not in st.session_state:
             st.session_state["suggested_alternatives"] = []
 
+        # Search candidates are derived from live supplier evidence.  Do not
+        # carry results produced by a previous ranking/discovery algorithm into
+        # this UI after a deployment, because their labels and evidence rules
+        # may no longer be valid.
+        alternative_result_algorithm_version = "supplier-substitute-v2"
+        if (
+            st.session_state.get("alternative_result_algorithm_version")
+            != alternative_result_algorithm_version
+        ):
+            st.session_state["suggested_alternatives"] = []
+            st.session_state["alternative_search_attempted"] = False
+            st.session_state["alternative_original_data"] = {}
+            st.session_state["alternative_original_risk"] = {}
+            st.session_state["alternative_original_lookup_part"] = ""
+            st.session_state["alternative_original_lookup_error"] = ""
+            st.session_state["alternative_search_error"] = ""
+            st.session_state["alternative_candidate_shortlist"] = []
+            st.session_state["alternative_result_algorithm_version"] = (
+                alternative_result_algorithm_version
+            )
+
         if "alternative_search_attempted" not in st.session_state:
             st.session_state["alternative_search_attempted"] = False
 
