@@ -3,6 +3,10 @@ import pandas as pd
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
 from integrations.supplier_aggregator import search_supplier_alternatives
+from src.datasheet_comparison import (
+    build_datasheet_comparison,
+    build_recommendation_score_breakdown,
+)
 import streamlit as st
 
 ELECTRICAL_FIELDS = {
@@ -2562,6 +2566,43 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         )
 
         candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
+
+        # Make the recommendation score primarily reflect the retrieved
+        # engineering comparison, rather than allowing broad sourcing signals
+        # to make clearly different candidates look equally close.
+        candidate_comparison_data = dict(candidate_supplier_data or {})
+        candidate_comparison_data.update({
+            "description": candidate_comparison_data.get("description", ""),
+            "architecture": candidate.get("Architecture", candidate_comparison_data.get("architecture", "")),
+            "package": candidate.get("Package", candidate_comparison_data.get("package", "")),
+            "pin_count": candidate.get("Pin Count", candidate_comparison_data.get("pin_count")),
+            "mounting_style": candidate.get("Mounting", candidate_comparison_data.get("mounting_style", "")),
+            "voltage_range": candidate.get("Voltage Range", candidate_comparison_data.get("voltage_range", "")),
+            "channel_count": candidate.get("Channel Count", candidate_comparison_data.get("channel_count")),
+        })
+        for field_name, config in ELECTRICAL_FIELDS.items():
+            candidate_comparison_data[field_name] = candidate.get(
+                config["display_key"], candidate_comparison_data.get(field_name)
+            )
+        comparison_counts = build_datasheet_comparison(
+            original_data, candidate_comparison_data
+        )["counts"]
+        score_evidence = build_recommendation_score_breakdown(
+            candidate["Recommendation Score"],
+            candidate["Drop-In Confidence"],
+            comparison_counts,
+            is_explicit_substitute=(
+                str(candidate.get("Evidence Type", "")).strip().casefold()
+                == "distributor-listed substitute"
+            ),
+        )
+        candidate["Recommendation Score"] = score_evidence["recommendation_score"]
+        candidate["Drop-In Confidence"] = score_evidence["compatibility_confidence"]
+        candidate["Drop-In Rating"] = get_drop_in_rating(candidate["Drop-In Confidence"])
+        candidate["Datasheet Match Count"] = score_evidence["matches"]
+        candidate["Datasheet Difference Count"] = score_evidence["differences"]
+        candidate["Datasheet Needs Data Count"] = score_evidence["needs_data"]
+        candidate["Recommendation Score Evidence"] = score_evidence
 
         normalized_candidates.append(candidate)
 

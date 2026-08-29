@@ -125,6 +125,57 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     return {"family": family, "rows": rows, "counts": counts}
 
 
+def build_recommendation_score_breakdown(
+    sourcing_score: int,
+    compatibility_confidence: int,
+    counts: dict,
+    *,
+    is_explicit_substitute: bool,
+) -> dict:
+    """Calculate an explainable, engineering-first recommendation score.
+
+    Engineering compatibility carries 55% of the result, retrieved comparison
+    evidence 30%, and sourcing signals 15%. This prevents a generic catalog
+    candidate from tying a closely matched alternative simply because both
+    have similar lifecycle or stock signals.
+    """
+    matches = max(0, int(counts.get("Match", 0) or 0))
+    differences = max(0, int(counts.get("Different", 0) or 0))
+    needs_data = max(0, int(counts.get("Needs data", 0) or 0))
+
+    # A recorded difference has more impact than an unknown. Matches improve
+    # quality, but do not erase a documented conflict.
+    evidence_quality = 100 - (differences * 16) - (needs_data * 7)
+    evidence_quality += min(matches, 8) * 2
+    evidence_quality = max(0, min(evidence_quality, 100))
+
+    evidence_cap = 100 - (differences * 12) - (needs_data * 6)
+    if not is_explicit_substitute:
+        evidence_cap = min(evidence_cap, 95)
+    adjusted_confidence = max(
+        0,
+        min(int(compatibility_confidence or 0), evidence_cap),
+    )
+    normalized_sourcing = max(0, min(int(sourcing_score or 0), 100))
+    recommendation = round(
+        (adjusted_confidence * 0.55)
+        + (evidence_quality * 0.30)
+        + (normalized_sourcing * 0.15)
+    )
+    recommendation = max(0, min(recommendation, 98 if is_explicit_substitute else 95))
+
+    return {
+        "recommendation_score": recommendation,
+        "compatibility_confidence": adjusted_confidence,
+        "engineering_compatibility": adjusted_confidence,
+        "evidence_quality": evidence_quality,
+        "sourcing_signal": normalized_sourcing,
+        "matches": matches,
+        "differences": differences,
+        "needs_data": needs_data,
+    }
+
+
 def extract_datasheet_text(url: str) -> dict:
     """Retrieve an official PDF and return page-addressable text evidence.
 

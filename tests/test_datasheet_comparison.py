@@ -6,6 +6,7 @@ import unittest
 sys.modules.setdefault("requests", types.SimpleNamespace())
 
 from src.datasheet_comparison import (
+    build_recommendation_score_breakdown,
     build_datasheet_comparison,
     build_pdf_field_evidence,
     infer_component_family,
@@ -61,6 +62,19 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertFalse(get_plan("Starter")["datasheet_comparison"])
         self.assertTrue(get_plan("Professional")["datasheet_comparison"])
         self.assertTrue(get_plan("Business")["datasheet_comparison"])
+
+    def test_close_match_scores_above_candidate_with_documented_differences(self):
+        close = build_recommendation_score_breakdown(
+            69, 95, {"Match": 8, "Different": 0, "Needs data": 1},
+            is_explicit_substitute=False,
+        )
+        different = build_recommendation_score_breakdown(
+            69, 70, {"Match": 4, "Different": 3, "Needs data": 2},
+            is_explicit_substitute=False,
+        )
+        self.assertGreater(close["recommendation_score"], different["recommendation_score"])
+        self.assertEqual(close["matches"], 8)
+        self.assertEqual(different["differences"], 3)
 
 
 if __name__ == "__main__":

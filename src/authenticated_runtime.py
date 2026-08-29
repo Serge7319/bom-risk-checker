@@ -10311,6 +10311,9 @@ def run_authenticated_app() -> None:
 
             recommendation_score = int(float(selected_row.get("Recommendation Score", 0) or 0))
             drop_in_confidence = int(float(selected_row.get("Drop-In Confidence", 0) or 0))
+            recommendation_evidence = selected_row.get("Recommendation Score Evidence", {})
+            if not isinstance(recommendation_evidence, dict):
+                recommendation_evidence = {}
             lifecycle_value = _af62b_value(selected_row, ["Lifecycle"], "Unknown")
             risk_value = _af62b_value(selected_row, ["Estimated Risk"], "Unknown")
             supplier_value = _af62b_value(
@@ -10622,8 +10625,7 @@ def run_authenticated_app() -> None:
                   </div>
 
                   <div class="af7-explain-note">
-                    Use these factors to understand the recommendation, then verify package, electrical
-                    specifications, lifecycle, and live supplier availability before approving a replacement.
+                    Score basis: {drop_in_confidence}% engineering compatibility, {int(recommendation_evidence.get('evidence_quality', 0) or 0)}% retrieved-evidence quality, and {int(recommendation_evidence.get('sourcing_signal', 0) or 0)}% sourcing signal. Documented differences and missing evidence lower the result.
                   </div>
                 </div>
                 """,
@@ -10893,6 +10895,24 @@ def run_authenticated_app() -> None:
                         },
                     ])
                     cadivor_engineering_dataframe(pdf_evidence_df)
+                    st.markdown("**Official source documents**")
+                    analyzed_link_columns = st.columns(2)
+                    if original_datasheet_url.startswith(("https://", "http://")):
+                        analyzed_link_columns[0].link_button(
+                            "Open original datasheet used in analysis ↗",
+                            original_datasheet_url,
+                            use_container_width=True,
+                        )
+                    else:
+                        analyzed_link_columns[0].caption("Original datasheet link is unavailable.")
+                    if candidate_datasheet_url.startswith(("https://", "http://")):
+                        analyzed_link_columns[1].link_button(
+                            "Open candidate datasheet used in analysis ↗",
+                            candidate_datasheet_url,
+                            use_container_width=True,
+                        )
+                    else:
+                        analyzed_link_columns[1].caption("Candidate datasheet link is unavailable.")
                     if original_pdf.get("available") and candidate_pdf.get("available"):
                         st.markdown(
                             '<div class="af62b-compare-sub" style="margin-top:12px;">Official PDF evidence extracted for the engineering-relevant fields below. Page citations point to the text Cadivor retrieved; confirm the original tables and drawings before approval.</div>',
