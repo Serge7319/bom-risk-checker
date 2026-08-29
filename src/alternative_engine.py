@@ -909,24 +909,34 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate_part = str(result.get("manufacturer_part_number") or "").strip()
         if not candidate_part:
             continue
+        evidence_type = str(result.get("evidence_type") or "Supplier candidate").strip()
         substitute_type = str(result.get("substitute_type") or "Candidate").strip()
+        is_explicit_substitute = evidence_type.casefold() == "distributor-listed substitute"
         supplier_candidates.append(
             {
                 "Alternative Part": candidate_part,
-                "Category": "Distributor-listed substitute",
+                "Category": (
+                    "Distributor-listed substitute"
+                    if is_explicit_substitute
+                    else "Distributor catalog candidate"
+                ),
                 "Supplier": str(result.get("source") or "DigiKey"),
                 "Manufacturer": str(result.get("manufacturer") or ""),
                 "Stock": result.get("stock_total", 0),
                 "Unit Price": result.get("unit_price", 0.0),
                 "Lifecycle": "Unknown",
                 "Estimated Risk": "Unknown",
-                "Evidence Type": str(result.get("evidence_type") or "Distributor-listed substitute"),
+                "Evidence Type": evidence_type,
                 "Substitute Type": substitute_type,
                 "Product URL": str(result.get("product_detail_url") or ""),
                 "Recommendation": (
                     f"DigiKey lists this as a {substitute_type.lower()} substitute; engineering review required"
+                    if is_explicit_substitute
+                    else "DigiKey catalog match; verify functional, electrical, footprint, and qualification compatibility before approval"
                 ),
-                "Recommendation Score": 78 if substitute_type.casefold() == "direct" else 62,
+                "Recommendation Score": (
+                    78 if substitute_type.casefold() == "direct" else 62
+                ) if is_explicit_substitute else 45,
                 "Compatibility Notes": (
                     "Supplier-listed candidate only. Verify electrical characteristics, footprint, "
                     "dimensions/height, temperature range, qualification, and datasheet compatibility before approval."
