@@ -8396,7 +8396,7 @@ def run_authenticated_app() -> None:
         st.markdown(
             """
             <style>
-              .cv-resource-category{margin:22px 0 10px;color:#3B5880;font-size:12px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}.cv-resource-detail-head{padding:22px;border:1px solid #D9E5F5;border-radius:18px;background:linear-gradient(135deg,#F7FAFF,#FFF);margin:8px 0 18px}.cv-resource-detail-head h2{margin:5px 0;color:#11284B}.cv-resource-detail-head p{margin:0;color:#58708F;line-height:1.55}.cv-resource-steps{border:1px solid #D9E5F5;border-radius:16px;background:#fff;padding:20px}.cv-resource-steps h3{margin:0 0 12px;color:#11284B}.cv-resource-step{display:flex;gap:12px;margin:14px 0;color:#395574;line-height:1.55}.cv-resource-step b{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:50%;background:#2865EB;color:#fff;font-size:12px}.cv-resource-guide-screen{overflow:hidden;border:1px solid #D6E2F1;border-radius:16px;background:#F8FBFF;box-shadow:0 14px 32px rgba(27,57,103,.10)}.cv-resource-guide-top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #DCE6F3;background:#fff;color:#11284B;font-size:13px;font-weight:850}.cv-resource-guide-top small{color:#627896;font-weight:700}.cv-resource-guide-body{display:grid;grid-template-columns:112px 1fr;min-height:270px}.cv-resource-guide-nav{padding:16px 10px;background:#102C55;color:#C5D9F7;font-size:11px;line-height:2.4}.cv-resource-guide-nav strong{display:block;padding:3px 8px;border-radius:7px;background:#2865EB;color:#fff;line-height:1.5;margin:6px 0}.cv-resource-guide-content{padding:26px;background:linear-gradient(135deg,#FBFDFF,#F2F7FF)}.cv-resource-guide-content small{color:#567093;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.cv-resource-guide-content h4{margin:7px 0 18px;color:#11284B;font-size:22px}.cv-resource-guide-focus{position:relative;border:2px solid #8DB3FF;border-radius:14px;background:#fff;padding:22px 18px 18px 58px;color:#314F73;line-height:1.5;box-shadow:0 8px 18px rgba(49,89,147,.09)}.cv-resource-guide-focus b{display:block;margin-bottom:5px;color:#11284B}.cv-resource-guide-marker{position:absolute;left:18px;top:18px;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#2865EB;color:#fff;font-size:12px;font-weight:900}.cv-resource-guide-details{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}.cv-resource-guide-details span{padding:10px;border:1px solid #D9E5F5;border-radius:10px;background:#fff;color:#5C7392;font-size:12px}.cv-resource-note{border:1px solid #D8EADF;background:#F6FFFA;border-radius:14px;padding:14px 16px;color:#276047;line-height:1.55;margin:16px 0}@media(max-width:900px){.cv-resource-guide-body{grid-template-columns:82px 1fr}.cv-resource-guide-nav{font-size:10px}.cv-resource-guide-content{padding:18px}}
+              .cv-resource-category{margin:22px 0 10px;color:#3B5880;font-size:12px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}.cv-resource-detail-head{padding:22px;border:1px solid #D9E5F5;border-radius:18px;background:linear-gradient(135deg,#F7FAFF,#FFF);margin:8px 0 18px}.cv-resource-detail-head h2{margin:5px 0;color:#11284B}.cv-resource-detail-head p{margin:0;color:#58708F;line-height:1.55}.cv-resource-steps{border:1px solid #D9E5F5;border-radius:16px;background:#fff;padding:20px}.cv-resource-steps h3{margin:0 0 12px;color:#11284B}.cv-resource-step{display:flex;gap:12px;margin:14px 0;color:#395574;line-height:1.55}.cv-resource-step b{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:50%;background:#2865EB;color:#fff;font-size:12px}.cv-resource-screen-caption{border:1px solid #D8EADF;background:#F6FFFA;border-radius:12px;padding:12px 14px;color:#276047;line-height:1.55;margin-top:10px}.cv-resource-note{border:1px solid #D8EADF;background:#F6FFFA;border-radius:14px;padding:14px 16px;color:#276047;line-height:1.55;margin:16px 0}
             </style>
             """,
             unsafe_allow_html=True,
@@ -8417,6 +8417,23 @@ def run_authenticated_app() -> None:
             ("reports", "Create and export reports", "Reports", "Generate decision-ready summaries from saved analyses.", ["Open Reports.", "Select the saved BOM and report type.", "Preview the scope, then export the report package."]),
             ("admin", "Use the Admin Console", "Admin Console", "Manage operational controls and understand live account activity (administrators only).", ["Open Admin Console if your account has administrator access.", "Review users, support activity, maintenance controls, and the audit trail.", "Use operational controls carefully; they can affect other users."]),
         ]
+        tutorial_image_root = Path(__file__).resolve().parent / "assets" / "resources" / "tutorials"
+        tutorial_screens = {
+            "alternatives": [
+                {
+                    "image": "alternative-finder-01-enter-part.jpg",
+                    "caption": "Step 1: Enter the complete manufacturer part number used in the BOM.",
+                },
+                {
+                    "image": "alternative-finder-02-run-search.jpg",
+                    "caption": "Step 2: Select Find Alternatives once to start the comparison.",
+                },
+                {
+                    "image": "alternative-finder-03-review-baseline.jpg",
+                    "caption": "Step 3: Review Cadivor's baseline before comparing candidates and recording a decision.",
+                },
+            ],
+        }
         selected_id = st.session_state.get("cadivor_resources_tutorial")
         selected = next((tutorial for tutorial in tutorials if tutorial[0] == selected_id), None)
         if not selected:
@@ -8458,30 +8475,24 @@ def run_authenticated_app() -> None:
                         if st.button(f"Step {number}", key=f"resources_step_{tutorial_id}_{number}", use_container_width=True):
                             st.session_state[step_key] = number - 1
                             st.rerun()
-                current_instruction = steps[current_step]
-                secondary = [
-                    "Use the highlighted Cadivor area.",
-                    "Review the saved evidence before acting.",
-                ]
-                guide_nav = html.escape(destination)
-                st.markdown(
-                    f"""
-                    <div class='cv-resource-guide-screen'>
-                      <div class='cv-resource-guide-top'><span>Cadivor</span><small>{guide_nav}</small></div>
-                      <div class='cv-resource-guide-body'>
-                        <div class='cv-resource-guide-nav'>Dashboard<br>BOM Analyzer<br>Alternative Finder<br><strong>{guide_nav}</strong>Monitoring<br>Reports<br>Settings</div>
-                        <div class='cv-resource-guide-content'>
-                          <small>Step {current_step + 1} of {len(steps)}</small>
-                          <h4>{html.escape(title)}</h4>
-                          <div class='cv-resource-guide-focus'><span class='cv-resource-guide-marker'>{current_step + 1}</span><b>Complete this action</b>{html.escape(current_instruction)}</div>
-                          <div class='cv-resource-guide-details'><span>{html.escape(secondary[0])}</span><span>{html.escape(secondary[1])}</span></div>
-                        </div>
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                st.caption("Select each step to see its matching highlighted Cadivor screen guide.")
+                screens = tutorial_screens.get(tutorial_id, [])
+                if len(screens) == len(steps):
+                    screen = screens[current_step]
+                    screen_path = tutorial_image_root / screen["image"]
+                    st.image(
+                        str(screen_path),
+                        caption=f"Screen {current_step + 1} of {len(screens)} — {screen['caption']}",
+                        use_container_width=True,
+                    )
+                    st.markdown(
+                        f"<div class='cv-resource-screen-caption'><strong>What to do now:</strong> {html.escape(steps[current_step])}</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.info(
+                        "This lesson's action-specific screenshot sequence is being prepared. "
+                        "The written steps remain available, but Cadivor will not show a generic or unrelated image in its place."
+                    )
             st.markdown("<div class='cv-resource-note'><strong>Training note:</strong> Cadivor recommendations and scenarios support engineering judgment. Review evidence and complete the required checks before approving a replacement, procurement action, or release decision.</div>", unsafe_allow_html=True)
             previous_col, open_col, next_col = st.columns(3)
             with previous_col:

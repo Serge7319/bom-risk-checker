@@ -35,9 +35,30 @@ def test_resources_cover_every_cadivor_feature_with_a_tutorial() -> None:
     assert '"Supply Risk Scenario"' in RUNTIME
 
 
-def test_resources_show_step_matched_screen_guides_without_image_dependency() -> None:
-    assert "cv-resource-guide-screen" in RUNTIME
-    assert "cv-resource-guide-marker" in RUNTIME
-    assert "Complete this action" in RUNTIME
-    assert "Select each step to see its matching highlighted Cadivor screen guide." in RUNTIME
-    assert "st.image(" not in RUNTIME[RUNTIME.index("# ---------- Resources / Help ----------"):RUNTIME.index("# ---------- About ----------")]
+def test_resources_use_distinct_real_screens_for_each_alternative_finder_step() -> None:
+    resources_block = RUNTIME[RUNTIME.index("# ---------- Resources / Help ----------"):RUNTIME.index("# ---------- About ----------")]
+    assert '"alternative-finder-01-enter-part.jpg"' in resources_block
+    assert '"alternative-finder-02-run-search.jpg"' in resources_block
+    assert '"alternative-finder-03-review-baseline.jpg"' in resources_block
+    assert "tutorial_screens" in resources_block
+    assert "len(screens) == len(steps)" in resources_block
+    assert "st.image(" in resources_block
+    assert "generic or unrelated image" in resources_block
+    assert "cv-resource-guide-screen" not in resources_block
+    assert "cv-resource-guide-marker" not in resources_block
+
+
+def test_resources_tutorial_images_are_valid_image_files() -> None:
+    from PIL import Image
+
+    tutorial_root = ROOT / "src" / "assets" / "resources" / "tutorials"
+    expected = (
+        "alternative-finder-01-enter-part.jpg",
+        "alternative-finder-02-run-search.jpg",
+        "alternative-finder-03-review-baseline.jpg",
+    )
+    for filename in expected:
+        image_path = tutorial_root / filename
+        assert image_path.is_file()
+        with Image.open(image_path) as image:
+            image.verify()
