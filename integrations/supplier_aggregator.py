@@ -14,9 +14,15 @@ from integrations.provider_health import (
 from integrations.mouser_client import search_mouser_by_part_number
 from integrations.digikey_client import search_digikey_by_part_number
 try:
-    from integrations.digikey_client import search_digikey_substitutions
+    from integrations.digikey_client import (
+        search_digikey_catalog_candidates,
+        search_digikey_substitutions,
+    )
 except ImportError:
     def search_digikey_substitutions(part_number: str) -> list[dict]:
+        return []
+
+    def search_digikey_catalog_candidates(part_number: str) -> list[dict]:
         return []
 from integrations.octopart_client import search_octopart_by_part_number
 
@@ -341,8 +347,11 @@ def get_best_part_data(part_number: str) -> dict:
 
 @st.cache_data(ttl=900, show_spinner=False)
 def search_supplier_alternatives(part_number: str) -> list[dict]:
-    """Return actual supplier substitute evidence, never repeated exact MPNs."""
-    return search_digikey_substitutions(part_number)
+    """Return ranked supplier evidence without treating catalog matches as direct substitutes."""
+    explicit_substitutes = search_digikey_substitutions(part_number)
+    if explicit_substitutes:
+        return explicit_substitutes
+    return search_digikey_catalog_candidates(part_number)
 
 
 def default_aggregated_result(part_number: str, supplier_results: list) -> dict:

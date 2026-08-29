@@ -52,6 +52,23 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(results[0]["substitute_type"], "Direct")
         self.assertIn("399-C0603C104K5RACTUCT-ND/substitutions", requested_urls[0])
 
+    def test_catalog_matches_are_not_claimed_as_direct_substitutes(self):
+        self.client.requests.post = lambda *_args, **_kwargs: _Response({"Products": [{
+            "ManufacturerProductNumber": "LM358DT",
+            "DigiKeyProductNumber": "497-1257-1-ND",
+            "Manufacturer": {"Name": "STMicroelectronics"},
+            "Description": {"ProductDescription": "IC OPAMP GP 2 CIRCUIT 8SO"},
+            "QuantityAvailable": 100,
+        }]})
+        self.client.get_secret = lambda *_args, **_kwargs: "client-id"
+        self.client.get_digikey_access_token = lambda: "access-token"
+
+        results = self.client.search_digikey_catalog_candidates("LM358")
+
+        self.assertEqual(results[0]["manufacturer_part_number"], "LM358DT")
+        self.assertEqual(results[0]["evidence_type"], "Distributor catalog match")
+        self.assertEqual(results[0]["substitute_type"], "Similar")
+
 
 if __name__ == "__main__":
     unittest.main()

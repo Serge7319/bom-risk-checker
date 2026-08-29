@@ -61,6 +61,18 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
         self.engine.search_supplier_alternatives = lambda _part: []
         self.assertEqual(self.engine.suggest_alternatives_v2("LM358"), [])
 
+    def test_catalog_candidate_is_visible_but_not_labeled_as_a_direct_substitute(self):
+        self.engine.search_supplier_alternatives = lambda _part: [{
+            "manufacturer_part_number": "LM358DT",
+            "source": "DigiKey",
+            "substitute_type": "Similar",
+            "evidence_type": "Distributor catalog match",
+        }]
+        result = self.engine.suggest_alternatives_v2("LM358")[0]
+        self.assertEqual(result["Category"], "Distributor catalog candidate")
+        self.assertEqual(result["Evidence Type"], "Distributor catalog match")
+        self.assertIn("catalog match", result["Recommendation"])
+
 
 if __name__ == "__main__":
     unittest.main()

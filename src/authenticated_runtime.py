@@ -9853,7 +9853,7 @@ def run_authenticated_app() -> None:
         # carry results produced by a previous ranking/discovery algorithm into
         # this UI after a deployment, because their labels and evidence rules
         # may no longer be valid.
-        alternative_result_algorithm_version = "supplier-substitute-v2"
+        alternative_result_algorithm_version = "supplier-evidence-v3"
         if (
             st.session_state.get("alternative_result_algorithm_version")
             != alternative_result_algorithm_version
@@ -10253,8 +10253,8 @@ def run_authenticated_app() -> None:
                 f"""
                 <div class="af62b-section-head">
                   <div>
-                    <div class="af62b-section-title">2. Review supplier-listed candidates</div>
-                    <div class="af62b-section-meta">Candidates are sourced from supplier substitute evidence. Cadivor ranks the available signals, but engineering approval remains required.</div>
+                    <div class="af62b-section-title">2. Review evidence-backed candidates</div>
+                    <div class="af62b-section-meta">Direct supplier substitutes are shown first. When none are published, Cadivor can show clearly labelled catalog candidates for engineering review.</div>
                   </div>
                   <div class="af62b-found-pill">{len(alternatives_df)} candidates found</div>
                 </div>
