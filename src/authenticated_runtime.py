@@ -2363,6 +2363,11 @@ def run_authenticated_app() -> None:
     ]
     if is_admin:
         NAV_OPTIONS.insert(NAV_OPTIONS.index("Settings"), "Admin Console")
+    else:
+        # Resources is undergoing an administrator-only rebuild. Keeping it out of
+        # the navigation and route allow-list prevents beta users from reaching an
+        # incomplete tutorial through either the sidebar or a saved deep link.
+        NAV_OPTIONS.remove("Help")
 
     if _qp_value("action") == "clear":
         st.session_state.pop("results_df", None)

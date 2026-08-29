@@ -7,6 +7,11 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
 
 
+def test_resources_is_hidden_from_non_admin_navigation_during_rebuild() -> None:
+    assert 'NAV_OPTIONS.remove("Help")' in RUNTIME
+    assert "Resources is undergoing an administrator-only rebuild" in RUNTIME
+
+
 def test_resources_cover_every_cadivor_feature_with_a_tutorial() -> None:
     for tutorial_title in (
         "Set up your profile & workspace",
