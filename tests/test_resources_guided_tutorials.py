@@ -5,7 +5,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
-ASSETS = ROOT / "src" / "assets" / "resources"
 
 
 def test_resources_cover_every_cadivor_feature_with_a_tutorial() -> None:
@@ -30,23 +29,15 @@ def test_resources_cover_every_cadivor_feature_with_a_tutorial() -> None:
     assert "Back to all tutorials" in RUNTIME
     assert "Open tutorial →" in RUNTIME
     assert "Next tutorial →" in RUNTIME
-    assert 'internal_app_href("Help", tutorial=tutorial[0])' in RUNTIME
-    assert 'requested_tutorial = _safe_text(_qp_value("tutorial", ""), "")' in RUNTIME
+    assert 'st.session_state["cadivor_resources_tutorial"] = tutorial[0]' in RUNTIME
+    assert "resources_open_" in RUNTIME
     assert '"Design Impact Analyzer"' in RUNTIME
     assert '"Supply Risk Scenario"' in RUNTIME
 
 
-def test_resources_ship_valid_annotated_tutorial_screens() -> None:
-    for filename in (
-        "tutorial-dashboard.jpg",
-        "tutorial-analysis.jpg",
-        "tutorial-admin.jpg",
-        "tutorial-supply.jpg",
-    ):
-        asset = ASSETS / filename
-        assert asset.is_file()
-        assert asset.stat().st_size > 50_000
-
-    assert "cv-tutorial-marker" in RUNTIME
-    assert "matching numbered markers" in RUNTIME
+def test_resources_show_step_matched_screen_guides_without_image_dependency() -> None:
+    assert "cv-resource-guide-screen" in RUNTIME
+    assert "cv-resource-guide-marker" in RUNTIME
+    assert "Complete this action" in RUNTIME
+    assert "Select each step to see its matching highlighted Cadivor screen guide." in RUNTIME
     assert "st.image(" not in RUNTIME[RUNTIME.index("# ---------- Resources / Help ----------"):RUNTIME.index("# ---------- About ----------")]
