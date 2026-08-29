@@ -8412,11 +8412,17 @@ def run_authenticated_app() -> None:
             """,
             unsafe_allow_html=True,
         )
-        overview_tab, analyze_tab, ask_tab, decide_tab, terms_tab = st.tabs(
-            ["Start the walkthrough", "1 · Analyze a BOM", "2 · Ask Cadivor", "3 · Decide & monitor", "Terms"]
-        )
+        walkthrough_steps = ["1 · Start", "2 · Analyze", "3 · Ask Cadivor", "4 · Review & act", "Terms"]
+        selected_step = st.session_state.get("resources_walkthrough_step", walkthrough_steps[0])
+        nav_columns = st.columns(len(walkthrough_steps))
+        for nav_column, step in zip(nav_columns, walkthrough_steps):
+            with nav_column:
+                if st.button(step, key=f"resources_nav_{step}", type="primary" if step == selected_step else "secondary", use_container_width=True):
+                    st.session_state["resources_walkthrough_step"] = step
+                    st.rerun()
+        st.caption(f"Guided walkthrough · Step {walkthrough_steps.index(selected_step) + 1} of 4" if selected_step != "Terms" else "Reference guide")
         assets_dir = Path(__file__).resolve().parent / "assets" / "resources"
-        with overview_tab:
+        if selected_step == "1 · Start":
             st.markdown("### Your first Cadivor review")
             st.markdown("<div class='cv-tutorial-progress'><span></span></div>", unsafe_allow_html=True)
             st.markdown(
@@ -8431,15 +8437,21 @@ def run_authenticated_app() -> None:
             )
             st.markdown("#### Begin with a safe sample")
             st.caption("The template BOM is for practice. It does not replace an engineering review of your own parts.")
-            if st.button("Open BOM Analyzer", key="resources_walkthrough_start", type="primary"):
-                navigate_to("BOM Analyzer")
-        with analyze_tab:
+            start_col, next_col = st.columns(2)
+            with start_col:
+                if st.button("Open BOM Analyzer", key="resources_walkthrough_start", type="primary", use_container_width=True):
+                    navigate_to("BOM Analyzer")
+            with next_col:
+                if st.button("Next: Analyze a BOM", key="resources_start_next", use_container_width=True):
+                    st.session_state["resources_walkthrough_step"] = "2 · Analyze"
+                    st.rerun()
+        if selected_step == "2 · Analyze":
             st.markdown("<h3 class='cv-tutorial-title'>1. Analyze a BOM</h3>", unsafe_allow_html=True)
             st.markdown("<p class='cv-tutorial-lead'>Start in BOM Analyzer. You can upload a CSV/XLSX BOM or choose the template BOM if you are testing Cadivor for the first time.</p>", unsafe_allow_html=True)
             left, right = st.columns([1.35, 1])
             with left:
                 st.markdown("<div class='cv-tutorial-shot'>", unsafe_allow_html=True)
-                st.image(str(assets_dir / "ask-cadivor-question.png"), caption="After an analysis is saved, the Ask Cadivor panel is available in Analysis Details.", use_container_width=True)
+                st.image(str(assets_dir / "bom-analyzer-start.png"), caption="BOM Analyzer is where you begin. Your saved analyses appear above the new-analysis workspace.", use_container_width=True)
                 st.markdown("</div>", unsafe_allow_html=True)
             with right:
                 st.markdown("#### What to do")
@@ -8448,7 +8460,10 @@ def run_authenticated_app() -> None:
                 st.markdown("<div class='cv-tutorial-callout'><strong>What you should expect:</strong> Cadivor identifies data gaps and risk signals. It does not treat missing evidence as proof that a component is safe.</div>", unsafe_allow_html=True)
                 if st.button("Open BOM Analyzer", key="resources_analyze_open", type="primary", use_container_width=True):
                     navigate_to("BOM Analyzer")
-        with ask_tab:
+                if st.button("Next: Ask Cadivor", key="resources_analyze_next", use_container_width=True):
+                    st.session_state["resources_walkthrough_step"] = "3 · Ask Cadivor"
+                    st.rerun()
+        if selected_step == "3 · Ask Cadivor":
             st.markdown("<h3 class='cv-tutorial-title'>2. Ask a focused engineering question</h3>", unsafe_allow_html=True)
             st.markdown("<p class='cv-tutorial-lead'>Ask Cadivor works best with a saved analysis and a clear question about risk, release readiness, evidence, or a component needing attention.</p>", unsafe_allow_html=True)
             top_left, top_right = st.columns([1.25, 1])
@@ -8469,9 +8484,12 @@ def run_authenticated_app() -> None:
             with answer_right:
                 for number, copy in [("1", "Read the **direct answer** first: it identifies the component or decision that deserves attention."), ("2", "Check the **engineering reasons**: these are the saved lifecycle, supplier, inventory, or risk signals."), ("3", "Use **recommended actions** as a review plan—not as automatic approval to substitute a part.")]:
                     st.markdown(f"<div class='cv-tutorial-check'><b>{number}</b><span>{copy}</span></div>", unsafe_allow_html=True)
-                if st.button("Open a saved analysis", key="resources_ask_open", type="primary", use_container_width=True):
+                if st.button("Open BOM Analyzer", key="resources_ask_open", type="primary", use_container_width=True):
                     navigate_to("BOM Analyzer")
-        with decide_tab:
+                if st.button("Next: Review the answer", key="resources_ask_next", use_container_width=True):
+                    st.session_state["resources_walkthrough_step"] = "4 · Review & act"
+                    st.rerun()
+        if selected_step == "4 · Review & act":
             st.markdown("<h3 class='cv-tutorial-title'>3. Turn the review into a controlled next step</h3>", unsafe_allow_html=True)
             st.markdown("<p class='cv-tutorial-lead'>A recommendation is a starting point. Before release or substitution, complete the engineering checks and record the disposition your team makes.</p>", unsafe_allow_html=True)
             decision_left, decision_right = st.columns([1.25, 1])
@@ -8492,7 +8510,7 @@ def run_authenticated_app() -> None:
                         navigate_to("Engineering Decisions")
                 if st.button("Open Monitoring", key="resources_decide_monitor", use_container_width=True):
                     navigate_to("Monitoring")
-        with terms_tab:
+        if selected_step == "Terms":
             st.markdown("### Cadivor terms, in plain language")
             st.dataframe(
                 [

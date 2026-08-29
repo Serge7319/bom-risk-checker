@@ -9,9 +9,10 @@ ASSETS = ROOT / "src" / "assets" / "resources"
 
 
 def test_resources_use_step_by_step_tutorial_content() -> None:
-    assert '"1 · Analyze a BOM"' in RUNTIME
-    assert '"2 · Ask Cadivor"' in RUNTIME
-    assert '"3 · Decide & monitor"' in RUNTIME
+    assert '"1 · Start"' in RUNTIME
+    assert '"2 · Analyze"' in RUNTIME
+    assert '"3 · Ask Cadivor"' in RUNTIME
+    assert '"4 · Review & act"' in RUNTIME
     assert "Take the first-review walkthrough" in RUNTIME
     assert "Good first questions" in RUNTIME
     assert "Before you approve" in RUNTIME
@@ -20,6 +21,7 @@ def test_resources_use_step_by_step_tutorial_content() -> None:
 def test_resources_ship_real_product_tutorial_screens() -> None:
     for filename in (
         "ask-cadivor-question.png",
+        "bom-analyzer-start.png",
         "recommendation-result.png",
         "recommendation-actions.png",
     ):
