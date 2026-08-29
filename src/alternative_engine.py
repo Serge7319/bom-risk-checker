@@ -2447,6 +2447,16 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             candidate["Unit Price"] = exact_supplier_data.get("unit_price", candidate.get("Unit Price", 0.0))
             if exact_supplier_data.get("lifecycle_status"):
                 candidate["Lifecycle"] = exact_supplier_data.get("lifecycle_status")
+            for candidate_key, supplier_key in (
+                ("Package", "package"),
+                ("Pin Count", "pin_count"),
+                ("Mounting Style", "mounting_style"),
+                ("Architecture", "architecture"),
+                ("Channel Count", "channel_count"),
+                ("Datasheet URL", "datasheet_url"),
+            ):
+                if exact_supplier_data.get(supplier_key) not in (None, "", 0):
+                    candidate[candidate_key] = exact_supplier_data.get(supplier_key)
 
 
     normalized_candidates = []
@@ -2487,6 +2497,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate["Supply Voltage Min"] = candidate.get("Supply Voltage Min") or candidate_supplier_data.get("supply_voltage_min")
         candidate["Supply Voltage Max"] = candidate.get("Supply Voltage Max") or candidate_supplier_data.get("supply_voltage_max")
         candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
+        candidate["Datasheet URL"] = candidate.get("Datasheet URL") or candidate_supplier_data.get("datasheet_url", "")
 
         for field_name, config in ELECTRICAL_FIELDS.items():
             candidate[config["display_key"]] = (

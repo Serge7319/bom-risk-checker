@@ -118,6 +118,7 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "mouser_part_number": part.get("MouserPartNumber", ""),
         "manufacturer_part_number": part.get("ManufacturerPartNumber", ""),
         "product_detail_url": part.get("ProductDetailUrl", ""),
+        "datasheet_url": part.get("DataSheetUrl", ""),
         "package": package,
         "pin_count": pin_count,
         "mounting_style": mounting_style,
@@ -149,6 +150,7 @@ def default_part_result() -> dict:
         "mouser_part_number": "",
         "manufacturer_part_number": "",
         "product_detail_url": "",
+        "datasheet_url": "",
         "package": "",
         "pin_count": 0,
         "mounting_style": "",
@@ -458,4 +460,3 @@ def extract_current_ma(text: str):
         return float(match.group(1)) / 1_000_000
 
     return None
-

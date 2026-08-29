@@ -51,6 +51,7 @@ def _empty_supplier_result(source_name: str, *, provider_status: str, error: str
         "mouser_part_number": "",
         "manufacturer_part_number": "",
         "product_detail_url": "",
+        "datasheet_url": "",
         "package": "",
         "pin_count": 0,
         "mounting_style": "",
@@ -113,6 +114,7 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         result.setdefault("package", "")
         result.setdefault("pin_count", 0)
         result.setdefault("mounting_style", "")
+        result.setdefault("datasheet_url", "")
         result.setdefault("voltage_range", "")
         result.setdefault("architecture", "")
         result.setdefault("channel_count", 0)
@@ -262,6 +264,12 @@ def get_best_part_data(part_number: str) -> dict:
                 best_result["mounting_style"] = result.get("mounting_style")
                 break
 
+    if not best_result.get("datasheet_url"):
+        for result in valid_results:
+            if result.get("datasheet_url"):
+                best_result["datasheet_url"] = result.get("datasheet_url")
+                break
+
     if not best_result.get("voltage_range"):
         for result in valid_results:
             if result.get("voltage_range"):
@@ -331,6 +339,7 @@ def get_best_part_data(part_number: str) -> dict:
     best_result.setdefault("package", "")
     best_result.setdefault("pin_count", 0)
     best_result.setdefault("mounting_style", "")
+    best_result.setdefault("datasheet_url", "")
     best_result.setdefault("voltage_range", "")
     best_result.setdefault("architecture", "")
     best_result.setdefault("channel_count", 0)

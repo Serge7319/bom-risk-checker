@@ -6541,6 +6541,7 @@ def run_authenticated_app() -> None:
                     "Unlimited BOM analyses and components",
                     "Advanced AI recommendations and assistant",
                     "Engineering Decision Records",
+                    "Official datasheet comparison with cited PDF evidence",
                     "Advanced reports and custom branding",
                     "Component comparison and supplier intelligence",
                     "Alternative recommendations and risk scoring",
@@ -8702,6 +8703,11 @@ def run_authenticated_app() -> None:
 
         from integrations.supplier_aggregator import get_best_part_data
         from src.alternative_engine import suggest_alternatives_v2, compare_parts, rank_alternatives
+        from src.datasheet_comparison import (
+            build_datasheet_comparison,
+            build_pdf_field_evidence,
+            extract_datasheet_text,
+        )
         from src.alternative_reasoning import build_alternative_reasoning
         from src.risk_engine import calculate_risk
         return_analysis_id = str(
@@ -10812,6 +10818,95 @@ def run_authenticated_app() -> None:
 
             with st.container(key="af62b_compact_table"):
                 cadivor_engineering_dataframe(comparison_df)
+
+            candidate_evidence_data = get_best_part_data(selected_alternative) or {}
+            datasheet_comparison = build_datasheet_comparison(
+                original_data,
+                candidate_evidence_data,
+            )
+            comparison_counts = datasheet_comparison["counts"]
+            st.markdown(
+                f"""
+                <div style="margin:24px 0 10px;">
+                  <div class="af62b-compare-title">Datasheet comparison evidence</div>
+                  <div class="af62b-compare-sub">{html.escape(datasheet_comparison['family'])} checks use retrieved supplier fields. Match means the retrieved values agree; it is not an automatic approval.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            evidence_columns = st.columns(3)
+            evidence_columns[0].metric("Matches", comparison_counts["Match"])
+            evidence_columns[1].metric("Differences", comparison_counts["Different"])
+            evidence_columns[2].metric("Needs data", comparison_counts["Needs data"])
+            cadivor_engineering_dataframe(pd.DataFrame(datasheet_comparison["rows"]))
+
+            datasheet_enabled = is_admin or bool(selected_plan.get("datasheet_comparison"))
+            original_datasheet_url = str(original_data.get("datasheet_url") or "").strip()
+            candidate_datasheet_url = str(candidate_evidence_data.get("datasheet_url") or selected_row.get("Datasheet URL") or "").strip()
+            if not datasheet_enabled:
+                st.info(
+                    "Official PDF extraction and saved datasheet comparison evidence are included with Professional and above. "
+                    "The field comparison remains visible so you can see what is missing."
+                )
+            else:
+                evidence_comparison_key = (
+                    f"{str(original_part).strip().upper()}::"
+                    f"{str(selected_alternative).strip().upper()}"
+                )
+                if st.button(
+                    "Analyze official datasheet evidence",
+                    key=f"datasheet_evidence_{evidence_comparison_key}",
+                    type="secondary",
+                ):
+                    st.session_state["datasheet_evidence_result"] = {
+                        "comparison_key": evidence_comparison_key,
+                        "original": extract_datasheet_text(original_datasheet_url),
+                        "candidate": extract_datasheet_text(candidate_datasheet_url),
+                        "original_url": original_datasheet_url,
+                        "candidate_url": candidate_datasheet_url,
+                    }
+                evidence_result = st.session_state.get("datasheet_evidence_result")
+                if (
+                    isinstance(evidence_result, dict)
+                    and evidence_result.get("comparison_key") == evidence_comparison_key
+                ):
+                    original_pdf = evidence_result.get("original") or {}
+                    candidate_pdf = evidence_result.get("candidate") or {}
+                    st.caption(
+                        "PDF text is retrieved from supplier-provided official datasheet links. "
+                        "Cadivor records availability and requires engineering review of every difference."
+                    )
+                    pdf_evidence_df = pd.DataFrame([
+                        {
+                            "Document": "Original part",
+                            "Official URL": evidence_result.get("original_url") or "Not available",
+                            "Readable PDF": "Yes" if original_pdf.get("available") else "No",
+                            "Pages extracted": len(original_pdf.get("pages") or []),
+                            "Status": original_pdf.get("reason") or "Official datasheet text available",
+                        },
+                        {
+                            "Document": "Selected candidate",
+                            "Official URL": evidence_result.get("candidate_url") or "Not available",
+                            "Readable PDF": "Yes" if candidate_pdf.get("available") else "No",
+                            "Pages extracted": len(candidate_pdf.get("pages") or []),
+                            "Status": candidate_pdf.get("reason") or "Official datasheet text available",
+                        },
+                    ])
+                    cadivor_engineering_dataframe(pdf_evidence_df)
+                    if original_pdf.get("available") and candidate_pdf.get("available"):
+                        st.markdown(
+                            '<div class="af62b-compare-sub" style="margin-top:12px;">Official PDF evidence extracted for the engineering-relevant fields below. Page citations point to the text Cadivor retrieved; confirm the original tables and drawings before approval.</div>',
+                            unsafe_allow_html=True,
+                        )
+                        cadivor_engineering_dataframe(
+                            pd.DataFrame(
+                                build_pdf_field_evidence(
+                                    original_pdf,
+                                    candidate_pdf,
+                                    datasheet_comparison["family"],
+                                )
+                            )
+                        )
 
             st.markdown(
                 """
