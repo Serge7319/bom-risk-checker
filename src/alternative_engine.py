@@ -904,6 +904,35 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     candidates = []
 
     supplier_results = search_supplier_alternatives(original_part_number)
+    supplier_candidates = []
+    for result in supplier_results:
+        candidate_part = str(result.get("manufacturer_part_number") or "").strip()
+        if not candidate_part:
+            continue
+        substitute_type = str(result.get("substitute_type") or "Candidate").strip()
+        supplier_candidates.append(
+            {
+                "Alternative Part": candidate_part,
+                "Category": "Distributor-listed substitute",
+                "Supplier": str(result.get("source") or "DigiKey"),
+                "Manufacturer": str(result.get("manufacturer") or ""),
+                "Stock": result.get("stock_total", 0),
+                "Unit Price": result.get("unit_price", 0.0),
+                "Lifecycle": "Unknown",
+                "Estimated Risk": "Unknown",
+                "Evidence Type": str(result.get("evidence_type") or "Distributor-listed substitute"),
+                "Substitute Type": substitute_type,
+                "Product URL": str(result.get("product_detail_url") or ""),
+                "Recommendation": (
+                    f"DigiKey lists this as a {substitute_type.lower()} substitute; engineering review required"
+                ),
+                "Recommendation Score": 78 if substitute_type.casefold() == "direct" else 62,
+                "Compatibility Notes": (
+                    "Supplier-listed candidate only. Verify electrical characteristics, footprint, "
+                    "dimensions/height, temperature range, qualification, and datasheet compatibility before approval."
+                ),
+            }
+        )
 
     # Timer family detection
     if "timer" in description or "555" in original_part_number.upper():
@@ -2374,49 +2403,12 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             },
         ]
 
-    if supplier_results:
-        for result in supplier_results:
-            result_part_number = result.get("Part Number", "")
-            
-            normalized_result = result_part_number.strip().upper()
-            normalized_original = original_part_number.strip().upper()
+    # Do not expose hard-coded family examples as market alternatives. All
+    # user-facing candidates must come from a supplier relationship and retain
+    # its evidence and classification regardless of component category.
+    candidates = supplier_candidates
 
-            if normalized_result == normalized_original:
-                continue
-
-            if normalized_original not in normalized_result and normalized_result not in normalized_original:
-                continue
-
-            if (
-                len(normalized_original) >= 5
-                and len(normalized_result) > len(normalized_original) * 3
-            ):
-                continue
-
-            candidates.append(
-                {
-                    "Alternative Part": result.get("Part Number", ""),
-                    "Category": "Live Supplier Verification",
-                    "Supplier": result.get("Supplier", ""),
-                    "Stock": result.get("Stock", 0),
-                    "Lifecycle": result.get("Lifecycle", "Unknown"),
-                    "Estimated Risk": (
-                        "Low"
-                        if result.get("Stock", 0) > 1000
-                        else "Medium"
-                    ),
-                    "Recommendation": "Current part verified through supplier data",
-                    "Recommendation Score": (
-                        65
-                        if result.get("Stock", 0) > 1000
-                        else 55
-                    ),
-                }
-            )
-    # Future: add more families here
-    # e.g., op-amps, regulators, microcontrollers
-
-    MAX_LIVE_SUPPLIER_LOOKUPS = 2
+    MAX_LIVE_SUPPLIER_LOOKUPS = 5
 
     for index, candidate in enumerate(candidates):
 
@@ -2435,25 +2427,21 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         if not alt_part_number:
             continue
 
-        supplier_matches = search_supplier_alternatives(alt_part_number)
-
-        if supplier_matches:
-            best_match = max(
-                supplier_matches,
-                key=lambda x: x.get("Stock", 0)
-            )
-
-            candidate["Supplier"] = best_match.get("Supplier", "")
-            candidate["Stock"] = best_match.get("Stock", 0)
-            candidate["Unit Price"] = best_match.get("Unit Price", 0.0)
-
-            if best_match.get("Lifecycle"):
-                candidate["Lifecycle"] = best_match.get("Lifecycle")
+        try:
+            exact_supplier_data = get_best_part_data(alt_part_number) or {}
+        except Exception:
+            exact_supplier_data = {}
+        if exact_supplier_data.get("supplier_data_verified"):
+            candidate["Supplier"] = exact_supplier_data.get("source") or candidate.get("Supplier", "")
+            candidate["Stock"] = exact_supplier_data.get("stock_total", candidate.get("Stock", 0))
+            candidate["Unit Price"] = exact_supplier_data.get("unit_price", candidate.get("Unit Price", 0.0))
+            if exact_supplier_data.get("lifecycle_status"):
+                candidate["Lifecycle"] = exact_supplier_data.get("lifecycle_status")
 
 
     normalized_candidates = []
 
-    for candidate in candidates:
+    for candidate_index, candidate in enumerate(candidates):
         if isinstance(candidate, str):
             candidate = {
                 "Alternative Part": candidate,
@@ -2481,7 +2469,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
         candidate_part_number = candidate.get("Alternative Part", "")
 
-        if index < MAX_LIVE_SUPPLIER_LOOKUPS:
+        if candidate_index < MAX_LIVE_SUPPLIER_LOOKUPS:
             candidate_supplier_data = get_best_part_data(candidate_part_number)
         else:
             candidate_supplier_data = {}

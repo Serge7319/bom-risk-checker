@@ -13,6 +13,11 @@ from integrations.provider_health import (
 )
 from integrations.mouser_client import search_mouser_by_part_number
 from integrations.digikey_client import search_digikey_by_part_number
+try:
+    from integrations.digikey_client import search_digikey_substitutions
+except ImportError:
+    def search_digikey_substitutions(part_number: str) -> list[dict]:
+        return []
 from integrations.octopart_client import search_octopart_by_part_number
 
 try:
@@ -334,34 +339,10 @@ def get_best_part_data(part_number: str) -> dict:
 
     return best_result
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def search_supplier_alternatives(part_number):
-    supplier_results = get_supplier_results(part_number)
-
-    results = []
-
-    for supplier_data in supplier_results:
-        if supplier_data.get("provider_status") != PROVIDER_AVAILABLE:
-            continue
-
-        if supplier_data.get("manufacturer_part_number"):
-            results.append(
-                {
-                    "Supplier": supplier_data.get("source", ""),
-                    "Part Number": supplier_data.get("manufacturer_part_number", ""),
-                    "Manufacturer": supplier_data.get("manufacturer", ""),
-                    "Lifecycle": supplier_data.get("lifecycle_status", "Unknown"),
-                    "Stock": supplier_data.get("stock_total", 0),
-                    "Unit Price": supplier_data.get("unit_price", 0.0),
-                    "Description": supplier_data.get("description", ""),
-                    "Product URL": supplier_data.get("product_detail_url", ""),
-                    "Package": supplier_data.get("package", ""),
-                    "Pin Count": supplier_data.get("pin_count", 0),
-                    "Mounting Style": supplier_data.get("mounting_style", ""),
-                }
-            )
-
-    return results
+@st.cache_data(ttl=900, show_spinner=False)
+def search_supplier_alternatives(part_number: str) -> list[dict]:
+    """Return actual supplier substitute evidence, never repeated exact MPNs."""
+    return search_digikey_substitutions(part_number)
 
 
 def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
