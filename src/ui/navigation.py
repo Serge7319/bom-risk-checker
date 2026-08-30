@@ -12,6 +12,8 @@ ALTERNATIVE_FINDER_PAGE = "Alternative Finder"
 ALT_FINDER_CONTEXT_KEY = "cadivor_alt_finder_pending_context"
 ALT_FINDER_RETURN_ANALYSIS_KEY = "cadivor_alt_finder_return_analysis_id"
 ALT_FINDER_RETURN_SECTION_KEY = "cadivor_alt_finder_return_analysis_section"
+ALT_FINDER_RETURN_PAGE_KEY = "cadivor_alt_finder_return_page"
+ALT_FINDER_RETURN_MPN_KEY = "cadivor_alt_finder_return_mpn"
 ALT_FINDER_INTENT = "find_alternatives"
 
 _ALT_NAV_KEYS = (
@@ -22,6 +24,8 @@ _ALT_NAV_KEYS = (
     "return_analysis_id",
     "part_id",
     "source_page",
+    "return_page",
+    "return_mpn",
     "intent",
 )
 
@@ -89,6 +93,8 @@ def navigate_to_alternative_finder(
     part_id: str = "",
     source_page: str = "",
     return_analysis_id: str = "",
+    return_page: str = "",
+    return_mpn: str = "",
     _rerun: bool = True,
 ) -> None:
     """Navigate to Alternative Finder with normalized, shared part context."""
@@ -121,6 +127,14 @@ def navigate_to_alternative_finder(
     else:
         st.session_state.pop(ALT_FINDER_RETURN_ANALYSIS_KEY, None)
         st.session_state.pop(ALT_FINDER_RETURN_SECTION_KEY, None)
+    if return_page:
+        st.session_state[ALT_FINDER_RETURN_PAGE_KEY] = return_page
+        st.session_state[ALT_FINDER_RETURN_MPN_KEY] = return_mpn or context["mpn"]
+        nav_kwargs["return_page"] = return_page
+        nav_kwargs["return_mpn"] = return_mpn or context["mpn"]
+    else:
+        st.session_state.pop(ALT_FINDER_RETURN_PAGE_KEY, None)
+        st.session_state.pop(ALT_FINDER_RETURN_MPN_KEY, None)
     if context["manufacturer"]:
         nav_kwargs["manufacturer"] = context["manufacturer"]
     if context["description"]:
@@ -287,6 +301,8 @@ def internal_nav_button(
                 part_id=str(params.get("part_id", "") or ""),
                 source_page=str(params.get("source_page", "") or ""),
                 return_analysis_id=str(params.get("return_analysis_id", "") or ""),
+                return_page=str(params.get("return_page", "") or ""),
+                return_mpn=str(params.get("return_mpn", "") or ""),
                 _rerun=False,
             )
         else:
