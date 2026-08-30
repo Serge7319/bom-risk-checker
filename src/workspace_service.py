@@ -17,6 +17,16 @@ WORKSPACE_TABLES = {
     "workspace_notifications",
 }
 
+# These describe the work a member is accountable for. They are separate from
+# access roles (owner/admin/engineer/viewer), so one person can cover several
+# disciplines without receiving broader workspace permissions.
+FUNCTIONAL_ROLES = (
+    "Supply Chain Manager",
+    "Electrical Engineer",
+    "Procurement Specialist",
+    "Component Engineer",
+)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -115,14 +125,77 @@ def list_members(supabase: Any, workspace_id: str) -> Tuple[List[Dict[str, Any]]
     try:
         rows = _data(
             supabase.table("workspace_members")
-            .select("id,user_id,email,display_name,role,status,joined_at")
+            .select("id,user_id,email,display_name,role,functional_roles,status,joined_at")
             .eq("workspace_id", workspace_id)
             .order("joined_at", desc=False)
             .execute()
         )
         return rows, None
     except Exception as exc:
+        # Keep collaboration available until the additive migration is applied.
+        # The responsibility-role editor will then show no selections rather
+        # than preventing members or assignments from loading.
+        if "functional_roles" in _message(exc).lower():
+            try:
+                rows = _data(
+                    supabase.table("workspace_members")
+                    .select("id,user_id,email,display_name,role,status,joined_at")
+                    .eq("workspace_id", workspace_id)
+                    .order("joined_at", desc=False)
+                    .execute()
+                )
+                for row in rows:
+                    row["functional_roles"] = []
+                return rows, None
+            except Exception as fallback_exc:
+                return [], _message(fallback_exc)
         return [], _message(exc)
+
+
+def update_member_functional_roles(
+    supabase: Any,
+    workspace_id: str,
+    member_id: str,
+    functional_roles: List[str],
+    actor_id: str,
+    actor_name: str,
+    member_email: str,
+) -> Optional[str]:
+    """Save responsibility roles without changing access control."""
+    roles = [role for role in functional_roles if role in FUNCTIONAL_ROLES]
+    try:
+        supabase.table("workspace_members").update(
+            {"functional_roles": roles, "updated_at": _now_iso()}
+        ).eq("workspace_id", workspace_id).eq("id", member_id).execute()
+        record_activity(
+            supabase,
+            workspace_id,
+            actor_id,
+            actor_name,
+            "member.functional_roles_changed",
+            f"Updated responsibility roles for {member_email}",
+            {"email": member_email, "functional_roles": roles},
+        )
+        return None
+    except Exception as exc:
+        return _message(exc)
+
+
+def set_my_functional_roles(
+    supabase: Any,
+    workspace_id: str,
+    functional_roles: List[str],
+) -> Optional[str]:
+    """Allow an active member to maintain their own responsibility profile."""
+    roles = [role for role in functional_roles if role in FUNCTIONAL_ROLES]
+    try:
+        supabase.rpc(
+            "cadivor_set_my_workspace_functional_roles",
+            {"target_workspace_id": workspace_id, "next_roles": roles},
+        ).execute()
+        return None
+    except Exception as exc:
+        return _message(exc)
 
 
 def list_invites(supabase: Any, workspace_id: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
