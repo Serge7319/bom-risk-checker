@@ -213,6 +213,15 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertIn('_rerun=False', handler)
         self.assertIn('on_click=_return_to_saved_bom', handler)
 
+    def test_dashboard_drilldowns_use_navigation_links_not_widget_state(self):
+        workspace = (ROOT / "src/living_workspace.py").read_text()
+        runtime = (ROOT / "src/authenticated_runtime.py").read_text()
+        self.assertIn('dashboard_view=ready', workspace)
+        self.assertIn('dashboard_view=actions', workspace)
+        self.assertIn('dashboard_view=blocked', workspace)
+        self.assertNotIn('cadivor_dashboard_drilldown', workspace)
+        self.assertIn('_qp_value("dashboard_view", "")', runtime)
+
 
 if __name__ == "__main__":
     unittest.main()
