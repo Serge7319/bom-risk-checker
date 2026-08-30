@@ -2358,11 +2358,11 @@ def run_authenticated_app() -> None:
         "Settings",
         "Workspace",
         "Notifications",
-        "Help",
         "About",
     ]
     if is_admin:
         NAV_OPTIONS.insert(NAV_OPTIONS.index("Settings"), "Admin Console")
+        NAV_OPTIONS.append("Help")
 
     if _qp_value("action") == "clear":
         st.session_state.pop("results_df", None)

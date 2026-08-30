@@ -124,7 +124,8 @@ def render_unified_shell(
             st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
             st.markdown('<div class="cv-profile-menu-group">Workspace</div>', unsafe_allow_html=True)
             st.button("Workspace settings", key="cv_foundation_workspace", use_container_width=True, on_click=_commit_navigation, args=("Settings",))
-            st.button("Help center", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
+            if is_admin:
+                st.button("Resources", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
             st.divider()
             def _commit_signout() -> None:
                 # Streamlit runs on_click callbacks before the widget rerun.  By
@@ -166,6 +167,8 @@ def render_unified_shell(
             rows = configured_rows
             if group_name == "Workspace" and is_admin:
                 rows = (("Admin Console", "admin", "Admin Console"),) + rows
+            elif group_name == "Workspace":
+                rows = tuple(row for row in rows if row[2] != "Help")
             st.markdown(
                 f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
                 unsafe_allow_html=True,
