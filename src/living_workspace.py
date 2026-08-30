@@ -395,6 +395,7 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
         ),
         icon="briefcase-business",
     )
+    selected_drilldown = _dashboard_detail_view()
     render_kpi_row_safe(
         [
             MetricCard(
@@ -410,6 +411,9 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
                 detail="Projects cleared for release",
                 tone="success",
                 icon="badge-check",
+                href="?page=Dashboard&dashboard_view=ready",
+                action_label="Showing details" if selected_drilldown == "ready" else "View ready projects",
+                active=selected_drilldown == "ready",
             ),
             MetricCard(
                 label="Action Today",
@@ -417,6 +421,9 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
                 detail="Prioritized engineering tasks",
                 tone="info",
                 icon="clipboard-list",
+                href="?page=Dashboard&dashboard_view=actions",
+                action_label="Showing details" if selected_drilldown == "actions" else "View today's actions",
+                active=selected_drilldown == "actions",
             ),
             MetricCard(
                 label="Blocked Projects",
@@ -424,21 +431,13 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
                 detail="Require immediate review" if metrics["blocked_projects"] else "No blockers recorded",
                 tone="danger" if metrics["blocked_projects"] else "success",
                 icon="octagon-alert",
+                href="?page=Dashboard&dashboard_view=blocked",
+                action_label="Showing details" if selected_drilldown == "blocked" else "View blocked projects",
+                active=selected_drilldown == "blocked",
             ),
         ],
         columns=4,
     )
-    st.html(
-        """
-        <nav class="cv6723-action-toolbar cv-dashboard-kpi-actions" aria-label="Dashboard detail views">
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard&amp;dashboard_view=ready" target="_self">View ready projects</a>
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard&amp;dashboard_view=actions" target="_self">View today's actions</a>
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard&amp;dashboard_view=blocked" target="_self">View blocked projects</a>
-        </nav>
-        """
-    )
-
-
 def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
     """Backward-compatible alias — Engineering Overview only."""
     render_engineering_overview_brief_and_kpis(overview=overview, metrics=metrics)
@@ -469,7 +468,7 @@ def render_engineering_overview_workspace(
             "blocked": "Blocked projects",
         }
         st.markdown(
-            f'<section class="cv6723-section"><div class="cv6723-section-head">'
+            f'<section class="cv6723-section cv6723-dashboard-detail-panel"><div class="cv6723-section-head">'
             f'<div><div class="cv6723-section-title">{detail_titles[selected_drilldown]}</div>'
             f'<div class="cv6723-section-copy">Directly related records from your workspace.</div></div>'
             f'<a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard" target="_self">Clear detail view</a>'

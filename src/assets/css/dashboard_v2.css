@@ -558,6 +558,60 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
   box-shadow: none !important;
 }
 
+/* The radio wrapper is keyed by Streamlit; this catches the rendered widget
+   even when its sentinel element is not a sibling in the same vertical block. */
+.st-key-cv672_dashboard_workspace_radio [data-testid="stRadio"] label,
+.st-key-cv672_dashboard_workspace_radio label {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.st-key-cv672_dashboard_workspace_radio label:has(input:checked) {
+  color: #1d4ed8 !important;
+  font-weight: 800 !important;
+  background: transparent !important;
+  border-bottom: 2px solid #2563eb !important;
+  box-shadow: none !important;
+}
+
+/* Dashboard KPI drill-downs are cards, not a detached set of controls. */
+.cv672-dashboard-workspace .cv64-metric-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.cv672-dashboard-workspace .cv64-metric-link .cv64-metric {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.cv672-dashboard-workspace .cv64-metric-link:hover .cv64-metric {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.10);
+}
+
+.cv672-dashboard-workspace .cv64-metric-link:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+  border-radius: 14px;
+}
+
+.cv672-dashboard-workspace .cv64-metric--active {
+  border-color: #2563eb;
+  background: #f8fbff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
+}
+
+.cv672-dashboard-workspace .cv64-metric__action {
+  margin-top: 10px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 750;
+}
+
 div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
   background: transparent !important;
   border-bottom-color: #2563eb !important;

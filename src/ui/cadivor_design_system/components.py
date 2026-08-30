@@ -82,6 +82,9 @@ class MetricCard:
     trend_label: str = ""
     tone: Tone = "info"
     icon: str = "chart"
+    href: str = ""
+    action_label: str = ""
+    active: bool = False
 
 
 _ALLOWED_TONES = frozenset(
@@ -109,6 +112,9 @@ def _sanitize_metric(metric: MetricCard) -> MetricCard:
         trend_label=str(metric.trend_label or ""),
         tone=_normalize_tone(metric.tone),
         icon=str(metric.icon or "chart"),
+        href=str(metric.href or ""),
+        action_label=str(metric.action_label or ""),
+        active=bool(metric.active),
     )
 
 
@@ -161,14 +167,28 @@ def _render_premium_metric_html(
 
         icon_html = _metric_icon_html(metric.icon, compact=compact)
         header_inner = icon_html + f'<span class="cv64-metric__label">{escape(metric.label)}</span>'
-        cards.append(
-            f'<article class="cv64-metric cv64-metric--{escape(metric.tone)} cv64-metric--{density}">'
+        active_class = " cv64-metric--active" if metric.active else ""
+        action_html = (
+            f'<div class="cv64-metric__action">{escape(metric.action_label)}</div>'
+            if metric.action_label
+            else ""
+        )
+        card = (
+            f'<article class="cv64-metric cv64-metric--{escape(metric.tone)} cv64-metric--{density}{active_class}">'
             f'<div class="cv64-metric__accent"></div>'
             f'<div class="cv64-metric__header">{header_inner}</div>'
             f'<div class="cv64-metric__value">{escape(metric.value)}</div>'
             f"{footer_html}"
-            f"</article>"
+            f"{action_html}"
         )
+        card += "</article>"
+        if metric.href:
+            cards.append(
+                f'<a class="cv64-metric-link" href="{escape(metric.href, quote=True)}" target="_self"'
+                f'{" aria-current=\"page\"" if metric.active else ""}>{card}</a>'
+            )
+        else:
+            cards.append(card)
     grid_class = f"cv64-metric-grid cv64-metric-grid--{density}"
     _render_html(
         f'<div class="{grid_class}" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>'
