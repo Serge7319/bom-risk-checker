@@ -2500,11 +2500,20 @@ def run_authenticated_app() -> None:
     # context lives in st.session_state and is never written to the database.
     _incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
     _incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "").replace("+", " ")
+    _incoming_risk_filter = _safe_text(_qp_value("risk_filter", ""), "").strip().title()
     if _incoming_analysis_id:
         st.session_state["cadivor_active_analysis_id"] = _incoming_analysis_id
         st.session_state["analysis_id"] = _incoming_analysis_id
     if _incoming_analysis_tab:
         st.session_state["cadivor_active_analysis_tab"] = _incoming_analysis_tab
+    if _incoming_risk_filter in {"All", "High", "Medium", "Low"}:
+        # KPI deep links should take the user directly to the corresponding
+        # engineering review, while leaving the selectbox usable afterwards.
+        st.session_state["bom81_detailed_risk_filter"] = _incoming_risk_filter
+        try:
+            st.query_params.pop("risk_filter", None)
+        except Exception:
+            pass
 
     _new_analysis_requested = _safe_text(_qp_value("new_analysis", ""), "").lower() in {
         "1", "true", "yes"
@@ -12055,7 +12064,7 @@ def run_authenticated_app() -> None:
                     detail="Components requiring engineering review",
                     tone="danger" if total_high_risk else "success",
                     icon="triangle-alert",
-                    href="?page=BOM%20Analyzer&risk_filter=high",
+                    href="?page=BOM%20Analyzer&risk_filter=high#detailed-risk-report",
                     action_label="Review high-risk findings",
                 ),
                 MetricCard(
@@ -13134,11 +13143,13 @@ def run_authenticated_app() -> None:
             results_df["Risk Level Display"] = results_df["Risk Level"].apply(risk_badge)
 
         
+            st.markdown('<div id="detailed-risk-report"></div>', unsafe_allow_html=True)
             st.subheader("Detailed Risk Report")
 
             risk_filter = st.selectbox(
                 "Filter by risk level",
                 ["All", "High", "Medium", "Low"],
+                key="bom81_detailed_risk_filter",
             )
 
             search_term = st.text_input("Search by part number")

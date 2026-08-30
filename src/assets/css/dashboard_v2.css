@@ -595,11 +595,11 @@
   align-items: center;
   width: fit-content;
   margin-top: 12px;
-  padding: 5px 9px;
-  border: 1px solid #bfdbfe;
+  padding: 8px 11px;
+  border: 1px solid #1d4ed8;
   border-radius: 8px;
-  background: #ffffff;
-  color: #2563eb;
+  background: #2563eb;
+  color: #ffffff !important;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.01em;
@@ -609,8 +609,9 @@
 }
 
 a.cv64-metric__action:hover {
-  border-color: #60a5fa;
-  background: #eff6ff;
+  border-color: #1e40af;
+  background: #1d4ed8;
+  color: #ffffff !important;
 }
 
 .cv64-metric--active .cv64-metric__action::after {
