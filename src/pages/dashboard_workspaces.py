@@ -56,17 +56,28 @@ def render_dashboard_page_heading() -> None:
 
 
 def render_dashboard_workspace_navigation(*, radio_key: str) -> str:
-    """Segmented workspace navigation — must render before workspace content."""
-    st.markdown('<div class="cv672-dashboard-shell">', unsafe_allow_html=True)
-    st.markdown('<div class="cv672-dashboard-workspace-root"></div>', unsafe_allow_html=True)
-    workspace = st.radio(
-        "Workspace navigation",
-        DASHBOARD_WORKSPACES,
-        horizontal=True,
-        key=radio_key,
-        label_visibility="visible",
+    """Clean, URL-backed workspace navigation without Streamlit radio chrome."""
+    raw_workspace = str(st.query_params.get("dashboard_workspace", "")).strip()
+    workspace = raw_workspace if raw_workspace in DASHBOARD_WORKSPACES else st.session_state.get(
+        radio_key, DASHBOARD_WORKSPACES[0]
     )
-    st.markdown("</div>", unsafe_allow_html=True)
+    if workspace not in DASHBOARD_WORKSPACES:
+        workspace = DASHBOARD_WORKSPACES[0]
+    st.session_state[radio_key] = workspace
+    nav_items = []
+    for item in DASHBOARD_WORKSPACES:
+        active = " cv672-dashboard-nav__link--active" if item == workspace else ""
+        current = ' aria-current="page"' if item == workspace else ""
+        nav_items.append(
+            f'<a class="cv672-dashboard-nav__link{active}" href="?page=Dashboard&amp;dashboard_workspace='
+            f'{html.escape(item, quote=True)}" target="_self"{current}>{html.escape(item)}</a>'
+        )
+    st.markdown(
+        '<nav class="cv672-dashboard-nav" aria-label="Workspace navigation">'
+        + "".join(nav_items)
+        + "</nav>",
+        unsafe_allow_html=True,
+    )
     return workspace
 
 

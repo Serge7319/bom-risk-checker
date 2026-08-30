@@ -104,13 +104,11 @@ class DashboardV2Tests(unittest.TestCase):
             design_css,
         )
 
-    def test_workspace_tabs_override_streamlit_radio_fallback(self) -> None:
-        checked_rule = self.dashboard_v2_css.split(
-            'div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked) {'
-        )[-1].split("}", 1)[0]
-        self.assertIn("background: transparent !important", checked_rule)
-        self.assertIn("border-bottom-color: #2563eb !important", checked_rule)
-        self.assertIn("box-shadow: none !important", checked_rule)
+    def test_workspace_navigation_uses_clean_underline_links(self) -> None:
+        self.assertIn(".cv672-dashboard-nav__link", self.dashboard_v2_css)
+        active_rule = self.dashboard_v2_css.split(".cv672-dashboard-nav__link--active {")[1].split("}", 1)[0]
+        self.assertIn("border-bottom-color: #2563eb", active_rule)
+        self.assertNotIn("background:", active_rule)
 
     def test_page_header_uses_ds_v2_primitives(self) -> None:
         for cls in ("cv-page", "cv-page-header", "cv-page-title", "cv-page-subtitle"):

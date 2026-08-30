@@ -168,11 +168,16 @@ def _render_premium_metric_html(
         icon_html = _metric_icon_html(metric.icon, compact=compact)
         header_inner = icon_html + f'<span class="cv64-metric__label">{escape(metric.label)}</span>'
         active_class = " cv64-metric--active" if metric.active else ""
-        action_html = (
-            f'<div class="cv64-metric__action">{escape(metric.action_label)}</div>'
-            if metric.action_label
-            else ""
-        )
+        action_html = ""
+        if metric.action_label:
+            action_label = escape(metric.action_label)
+            if metric.href:
+                action_html = (
+                    f'<a class="cv64-metric__action" href="{escape(metric.href, quote=True)}" '
+                    f'target="_self">{action_label}</a>'
+                )
+            else:
+                action_html = f'<div class="cv64-metric__action">{action_label}</div>'
         card = (
             f'<article class="cv64-metric cv64-metric--{escape(metric.tone)} cv64-metric--{density}{active_class}">'
             f'<div class="cv64-metric__accent"></div>'
@@ -182,14 +187,7 @@ def _render_premium_metric_html(
             f"{action_html}"
         )
         card += "</article>"
-        if metric.href:
-            active_attribute = ' aria-current="page"' if metric.active else ""
-            cards.append(
-                f'<a class="cv64-metric-link" href="{escape(metric.href, quote=True)}" target="_self"'
-                f"{active_attribute}>{card}</a>"
-            )
-        else:
-            cards.append(card)
+        cards.append(card)
     grid_class = f"cv64-metric-grid cv64-metric-grid--{density}"
     _render_html(
         f'<div class="{grid_class}" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>'
