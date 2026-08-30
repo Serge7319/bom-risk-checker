@@ -13,6 +13,17 @@ toolbarMode = "minimal"
 [server]
 headless = true
 address = "0.0.0.0"
+# Railway terminates TLS before Streamlit. Explicitly preserve the public
+# origin so Streamlit's XSRF-protected upload endpoint accepts browser uploads
+# from app.cadivor.com without weakening XSRF protection.
+enableCORS = true
+corsAllowedOrigins = ["https://app.cadivor.com"]
+enableXsrfProtection = true
+xsrfCookieSameSite = "lax"
+maxUploadSize = 200
+maxMessageSize = 200
 
 [browser]
+serverAddress = "app.cadivor.com"
+serverPort = 443
 gatherUsageStats = false
