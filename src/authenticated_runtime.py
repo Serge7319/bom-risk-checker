@@ -12106,7 +12106,7 @@ def run_authenticated_app() -> None:
                     detail="Components requiring engineering review",
                     tone="danger" if total_high_risk else "success",
                     icon="triangle-alert",
-                    href="?page=BOM%20Analyzer&high_risk_review=1#saved-bom-manager",
+                    href="?page=BOM%20Analyzer&high_risk_review=1#high-risk-components",
                     action_label="Review high-risk components",
                 ),
                 MetricCard(
@@ -12118,6 +12118,68 @@ def run_authenticated_app() -> None:
                 ),
             ]
         )
+
+        if st.session_state.get("bom81_high_risk_review"):
+            st.markdown('<div id="high-risk-components"></div>', unsafe_allow_html=True)
+            st.markdown("### High-risk components")
+            st.caption(
+                f"{total_high_risk} component{'s' if total_high_risk != 1 else ''} requiring engineering review across your saved BOMs."
+            )
+            try:
+                high_risk_parts_response = (
+                    _workspace_query(supabase.table("analysis_parts").select("*"))
+                    .eq("user_id", current_user["id"])
+                    .limit(5000)
+                    .execute()
+                )
+                high_risk_parts = high_risk_parts_response.data or []
+            except Exception:
+                high_risk_parts = []
+
+            high_risk_rows = [
+                row for row in high_risk_parts
+                if str(row.get("risk_level") or row.get("Risk Level") or "").strip().lower() == "high"
+            ]
+            analysis_labels = {
+                str(row.get("id") or ""): str(row.get("project_name") or row.get("filename") or "Saved BOM analysis")
+                for row in history_data
+            }
+            if not high_risk_rows:
+                st.info("No saved high-risk component records are currently available to review.")
+            else:
+                for index, part in enumerate(high_risk_rows):
+                    part_number = str(
+                        part.get("mpn") or part.get("part_number") or part.get("manufacturer_part_number") or "Component"
+                    )
+                    analysis_id_value = str(part.get("analysis_id") or "")
+                    manufacturer = str(part.get("manufacturer") or "Unknown manufacturer")
+                    risk_score = part.get("risk_score") or part.get("Risk Score") or "—"
+                    project_label = analysis_labels.get(analysis_id_value, "Saved BOM analysis")
+                    details_col, action_col = st.columns([0.78, 0.22], gap="medium")
+                    with details_col:
+                        st.markdown(
+                            f"**{html.escape(part_number)}** · {html.escape(manufacturer)}  \\\n+Saved BOM: {html.escape(project_label)} · Risk score: {html.escape(str(risk_score))}",
+                            unsafe_allow_html=True,
+                        )
+                    with action_col:
+                        if st.button(
+                            "Open component",
+                            key=f"bom81_open_high_risk_{analysis_id_value}_{part_number}_{index}",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["cadivor_active_analysis_id"] = analysis_id_value
+                            st.session_state["analysis_id"] = analysis_id_value
+                            st.session_state["cadivor_pending_analysis_section"] = "Components"
+                            st.session_state["cadivor_pending_analysis_section_id"] = analysis_id_value
+                            navigate_to(
+                                "Analysis Details",
+                                analysis_id=analysis_id_value,
+                                tab="components",
+                                component=part_number,
+                                focus="component-risk",
+                            )
+                    st.divider()
 
         # Milestone 8.1 — Saved BOM Manager
         st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
