@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from src.services.customer_progress import build_activation_progress, next_activation_action
+from src.ui.navigation import navigate_to
 
 
 def _first_name(current_user: dict[str, Any] | None) -> str:
@@ -48,12 +49,13 @@ def _first_name(current_user: dict[str, Any] | None) -> str:
 
 
 def _go_to(page: str) -> None:
-    """Navigate through Cadivor's query-parameter router."""
-    try:
-        st.query_params["page"] = page
-    except Exception:
-        st.experimental_set_query_params(page=page)
-    st.rerun()
+    """Use Cadivor's session router for authenticated navigation.
+
+    Query-string navigation is deliberately consumed only once after sign-in.
+    The onboarding buttons must therefore use the same state-driven router as
+    the sidebar; otherwise subsequent clicks leave the user on Dashboard.
+    """
+    navigate_to(page)
 
 
 def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False, has_report: bool = False) -> None:
