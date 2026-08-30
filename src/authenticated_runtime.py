@@ -12057,7 +12057,23 @@ def run_authenticated_app() -> None:
             total_high_risk = 0
             best_health = 0
 
-        st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <style>
+            .cv64-metric-grid a.cv64-metric__action {
+              display:inline-flex!important;width:auto!important;max-width:max-content!important;
+              margin-top:10px!important;padding:5px 9px!important;border:1px solid #1d4ed8!important;
+              border-radius:7px!important;background:#2563eb!important;color:#ffffff!important;
+              font-size:12px!important;font-weight:800!important;line-height:1.2!important;
+              text-decoration:none!important;
+            }
+            .cv64-metric-grid a.cv64-metric__action:hover,
+            .cv64-metric-grid a.cv64-metric__action:focus,
+            .cv64-metric-grid a.cv64-metric__action:visited {color:#ffffff!important;text-decoration:none!important;}
+            </style><div class="cv64-page-shell">
+            """,
+            unsafe_allow_html=True,
+        )
         cadivor_section_header(
             "Turn a parts list into an engineering risk decision",
             eyebrow="BOM intelligence workspace",
