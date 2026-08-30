@@ -3049,6 +3049,7 @@ def run_authenticated_app() -> None:
                         use_container_width=True,
                     ):
                         st.session_state.pop("preview_onboarding", None)
+                        st.query_params.pop("preview_onboarding", None)
                         navigate_to("Dashboard")
             # Sprint 30.4: use the normalized, persistent customer profile so
             # onboarding and onboarding preview match the shell/dashboard identity.
@@ -12054,6 +12055,8 @@ def run_authenticated_app() -> None:
                     detail="Components requiring engineering review",
                     tone="danger" if total_high_risk else "success",
                     icon="triangle-alert",
+                    href="?page=BOM%20Analyzer&risk_filter=high",
+                    action_label="Review high-risk findings",
                 ),
                 MetricCard(
                     label="Best recorded health",
