@@ -2501,6 +2501,9 @@ def run_authenticated_app() -> None:
     _incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
     _incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "").replace("+", " ")
     _incoming_risk_filter = _safe_text(_qp_value("risk_filter", ""), "").strip().title()
+    _incoming_high_risk_review = _safe_text(_qp_value("high_risk_review", ""), "").lower() in {
+        "1", "true", "yes", "on"
+    }
     if _incoming_analysis_id:
         st.session_state["cadivor_active_analysis_id"] = _incoming_analysis_id
         st.session_state["analysis_id"] = _incoming_analysis_id
@@ -2512,6 +2515,12 @@ def run_authenticated_app() -> None:
         st.session_state["bom81_detailed_risk_filter"] = _incoming_risk_filter
         try:
             st.query_params.pop("risk_filter", None)
+        except Exception:
+            pass
+    if _incoming_high_risk_review:
+        st.session_state["bom81_high_risk_review"] = True
+        try:
+            st.query_params.pop("high_risk_review", None)
         except Exception:
             pass
 
@@ -12081,8 +12090,8 @@ def run_authenticated_app() -> None:
                     detail="Components requiring engineering review",
                     tone="danger" if total_high_risk else "success",
                     icon="triangle-alert",
-                    href="?page=BOM%20Analyzer&risk_filter=high#detailed-risk-report",
-                    action_label="Review high-risk findings",
+                    href="?page=BOM%20Analyzer&high_risk_review=1#saved-bom-manager",
+                    action_label="Review high-risk components",
                 ),
                 MetricCard(
                     label="Best recorded health",
@@ -12095,11 +12104,24 @@ def run_authenticated_app() -> None:
         )
 
         # Milestone 8.1 — Saved BOM Manager
+        st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
         cadivor_panel(
             title=f"Saved BOM Manager ({saved_analysis_count})",
-            subtitle="Search, sort, open, or select multiple analyses for bulk deletion.",
+            subtitle=(
+                "Showing saved analyses with high-risk components."
+                if st.session_state.get("bom81_high_risk_review")
+                else "Search, sort, open, or select multiple analyses for bulk deletion."
+            ),
             tone="soft",
         )
+        if st.session_state.get("bom81_high_risk_review"):
+            if st.button(
+                "Show all saved analyses",
+                key="bom81_clear_high_risk_review",
+                type="secondary",
+            ):
+                st.session_state.pop("bom81_high_risk_review", None)
+                st.rerun()
         with st.container(key="bom81_saved_manager"):
             with st.expander(
                 "Manage saved analyses",
@@ -12139,6 +12161,9 @@ def run_authenticated_app() -> None:
                             manager_df[numeric_column],
                             errors="coerce",
                         ).fillna(0).astype(int)
+
+                    if st.session_state.get("bom81_high_risk_review"):
+                        manager_df = manager_df[manager_df["high_risk_count"] > 0]
 
                     manager_df["created_at_sort"] = pd.to_datetime(
                         manager_df["created_at"],
