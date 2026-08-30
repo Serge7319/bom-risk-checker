@@ -1774,14 +1774,38 @@ def render_analysis_detail(
             st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Timeline</div><div class="cv26-card-meta">A practical sequence for closing release risk.</div><div class="cv26-timeline">{phase_html}</div></section>''', unsafe_allow_html=True)
 
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-            action_html=[]
-            for index,action in enumerate((advisor.get("priority_actions") or [])[:6],1):
+            priority_actions = (advisor.get("priority_actions") or [])[:6]
+            st.markdown('''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Each item has an accountable role. Open a task to assign a workspace member, set the due date, record the decision, and retain its review history.</div></section>''', unsafe_allow_html=True)
+            if not priority_actions:
+                st.markdown('<div class="cv-analysis-empty">No priority actions are currently available.</div>', unsafe_allow_html=True)
+            for index, action in enumerate(priority_actions, 1):
                 bucket = _safe(action.get("priority_bucket"), _safe(action.get("schedule"), "Can Wait"))
-                pc = "high" if bucket == "Do Now" or index <= 2 else "medium" if bucket in ("Do This Week", "Do Before Production") else "low"
                 reason = _safe(action.get("why"), _safe((action.get("engineering_reasoning") or [""])[0], "Risk signal detected."))
-                action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{html.escape(bucket.upper())}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(reason)}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
-            if not action_html: action_html.append('<div class="cv-analysis-empty">No priority actions are currently available.</div>')
-            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Cadivor-ranked recommendations with decision priority buckets.</div>{"".join(action_html)}</section>''', unsafe_allow_html=True)
+                accountable_role = _safe(action.get("owner"), "Component Engineer")
+                supporting_role = _safe(action.get("support_owner"), "")
+                part_number = _safe(action.get("part_number"), "")
+                with st.container(border=True):
+                    st.markdown(
+                        f'''<div class="cv26-action"><span class="cv26-priority {"high" if index <= 2 else "medium"}">{html.escape(bucket.upper())}</span><div><strong>{html.escape(_safe(action.get("title"), "Review BOM risk"))}</strong><small>{html.escape(reason)}</small></div></div>''',
+                        unsafe_allow_html=True,
+                    )
+                    role_col, status_col, due_col = st.columns(3)
+                    role_col.caption(f"**Accountable role:** {accountable_role}" + (f"  \n**Supporting role:** {supporting_role}" if supporting_role else ""))
+                    status_col.caption("**Status:** Not started\n\nOpen the task to assign it or record a review decision.")
+                    due_col.caption(f"**Due:** {bucket}\n\n**Component:** {part_number or 'BOM-level action'}")
+                    task_col, route_col = st.columns(2)
+                    with task_col:
+                        def _open_recommended_actions() -> None:
+                            st.session_state[workspace_radio_key] = "Recommended Actions"
+                        st.button("Open task", key=f"cv26_open_task_{analysis_id}_{index}", use_container_width=True, type="primary", on_click=_open_recommended_actions)
+                    with route_col:
+                        route = _safe(action.get("action_route"), "component")
+                        if route == "alternative" and part_number:
+                            internal_nav_button("Find alternatives", ALTERNATIVE_FINDER_PAGE, key=f"cv26_action_alt_{analysis_id}_{index}", use_container_width=True, original_part=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id, source_page="risk_analytics")
+                        elif route == "monitor" and part_number:
+                            internal_nav_button("Open monitoring", "Monitoring", key=f"cv26_action_monitor_{analysis_id}_{index}", use_container_width=True, mpn=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id)
+                        else:
+                            internal_nav_button("Review component", "Analysis Details", key=f"cv26_action_component_{analysis_id}_{index}", use_container_width=True, analysis_id=analysis_id, analysis_tab="Components", component=part_number, focus="component-risk")
     if active_tab == "Overview":
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
         context_score = context_coverage.score
