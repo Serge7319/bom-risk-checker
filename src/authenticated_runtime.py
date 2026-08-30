@@ -12054,6 +12054,8 @@ def run_authenticated_app() -> None:
                     detail="Components requiring engineering review",
                     tone="danger" if total_high_risk else "success",
                     icon="triangle-alert",
+                    href="?page=BOM%20Analyzer&risk_filter=high",
+                    action_label="Review high-risk findings",
                 ),
                 MetricCard(
                     label="Best recorded health",
