@@ -175,8 +175,7 @@ def _render_premium_metric_html(
                 action_html = (
                     f'<a class="cv64-metric__action" href="{escape(metric.href, quote=True)}" '
                     'target="_self" style="display:inline-flex;align-items:center;justify-content:center;'
-                    'width:auto!important;max-width:max-content;margin-top:10px;padding:5px 9px;'
-                    'border:1px solid #1d4ed8;border-radius:7px;'
+                    'margin-top:12px;padding:8px 11px;border:1px solid #1d4ed8;border-radius:8px;'
                     'background:#2563eb;color:#ffffff!important;font-size:12px;font-weight:800;'
                     'line-height:1.2;text-decoration:none!important">'
                     f'{action_label}</a>'
@@ -195,15 +194,6 @@ def _render_premium_metric_html(
         cards.append(card)
     grid_class = f"cv64-metric-grid cv64-metric-grid--{density}"
     _render_html(
-        "<style>"
-        ".cv64-metric .cv64-metric__action{display:inline-flex!important;width:auto!important;"
-        "max-width:max-content!important;align-items:center!important;justify-content:center!important;"
-        "margin-top:10px!important;padding:5px 9px!important;border:1px solid #1d4ed8!important;"
-        "border-radius:7px!important;background:#2563eb!important;color:#fff!important;"
-        "font-size:12px!important;font-weight:800!important;line-height:1.2!important;"
-        "text-decoration:none!important}.cv64-metric .cv64-metric__action:hover,"
-        ".cv64-metric .cv64-metric__action:focus{background:#1d4ed8!important;color:#fff!important;"
-        "text-decoration:none!important}</style>"
         f'<div class="{grid_class}" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>'
     )
 
