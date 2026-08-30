@@ -162,14 +162,13 @@ AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Loading your workspace…"
 
 
 def should_render_authenticated_startup_shell() -> bool:
-    """Keep an opaque shell through every authenticated Streamlit rerun.
+    """Avoid masking an authenticated render failure with a permanent loader.
 
-    Streamlit replaces the prior element tree before the next route has
-    finished rendering. Rendering this lightweight shell on every rerun keeps
-    the prior workspace from flashing blank until the new foundation shell is
-    mounted.
+    The prior opaque shell improved visual continuity, but it also obscured a
+    server-side exception by leaving users on an indefinite loading screen.
+    Customer access takes priority over that cosmetic transition.
     """
-    return True
+    return False
 
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
