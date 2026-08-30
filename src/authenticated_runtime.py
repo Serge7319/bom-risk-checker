@@ -12147,6 +12147,17 @@ def run_authenticated_app() -> None:
             if not high_risk_rows:
                 st.info("No saved high-risk component records are currently available to review.")
             else:
+                st.markdown(
+                    """
+                    <style>
+                    .bom81-risk-kicker{color:#dc2626;font-size:11px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+                    .bom81-risk-title{margin:5px 0 3px;color:#0f172a;font-size:18px;font-weight:850}
+                    .bom81-risk-meta{color:#64748b;font-size:13px;line-height:1.5}
+                    .bom81-risk-meta strong{color:#334155}
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
                 for index, part in enumerate(high_risk_rows):
                     part_number = str(
                         part.get("mpn") or part.get("part_number") or part.get("manufacturer_part_number") or "Component"
@@ -12158,7 +12169,9 @@ def run_authenticated_app() -> None:
                     details_col, action_col = st.columns([0.78, 0.22], gap="medium")
                     with details_col:
                         st.markdown(
-                            f"**{html.escape(part_number)}** · {html.escape(manufacturer)}  \\\n+Saved BOM: {html.escape(project_label)} · Risk score: {html.escape(str(risk_score))}",
+                            f'<div class="bom81-risk-kicker">High-risk component · score {html.escape(str(risk_score))}</div>'
+                            f'<div class="bom81-risk-title">{html.escape(part_number)}</div>'
+                            f'<div class="bom81-risk-meta">{html.escape(manufacturer)} · <strong>Saved BOM:</strong> {html.escape(project_label)}</div>',
                             unsafe_allow_html=True,
                         )
                     with action_col:
