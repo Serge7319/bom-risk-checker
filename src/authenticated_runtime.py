@@ -11845,6 +11845,15 @@ def run_authenticated_app() -> None:
                 font-weight:800;
                 text-align:center;
             }
+            .bom8-path-label{margin:16px 0 7px;color:#0f172a;font-size:12px;font-weight:900}
+            .bom8-path-label span{display:block;margin-top:3px;color:#64748b;font-size:10.5px;font-weight:650;line-height:1.45}
+            .bom8-path-guide{border:1px solid #bfdbfe;background:#f8fbff;border-radius:16px;padding:14px;margin-bottom:12px}
+            .bom8-path-guide-title{color:#0f172a;font-size:13px;font-weight:900;margin-bottom:9px}
+            .bom8-path-choice{display:flex;gap:9px;align-items:flex-start;padding:9px 0;border-top:1px solid #dbeafe}
+            .bom8-path-choice:first-of-type{border-top:0;padding-top:0}
+            .bom8-path-choice strong{display:block;color:#0f172a;font-size:11px;font-weight:900}
+            .bom8-path-choice span{display:block;color:#64748b;font-size:10px;line-height:1.4;margin-top:2px}
+            .bom8-path-icon{flex:0 0 22px;width:22px;height:22px;border-radius:8px;background:#dbeafe;color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
             .bom8-history-note{
                 border:1px solid #dbe3ef;
                 border-radius:16px;
@@ -12761,6 +12770,10 @@ def run_authenticated_app() -> None:
                 st.session_state.pop("bom8_sample_mode", None)
                 st.session_state.pop("bom8_sample_auto_analyze", None)
 
+            st.markdown(
+                '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
+                unsafe_allow_html=True,
+            )
             st.button(
                 "Analyze the 10-Part Sample BOM",
                 key="bom8_try_sample",
@@ -12769,6 +12782,10 @@ def run_authenticated_app() -> None:
                 on_click=_start_sample_bom,
             )
 
+            st.markdown(
+                '<div class="bom8-path-label">Option 2 — Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
+                unsafe_allow_html=True,
+            )
             uploaded_file = st.file_uploader(
                 "Upload your BOM file",
                 type=["csv", "xlsx"],
@@ -12789,6 +12806,16 @@ def run_authenticated_app() -> None:
             )
 
         with guidance_col:
+            st.markdown(
+                """
+                <div class="bom8-path-guide">
+                  <div class="bom8-path-guide-title">Choose how to begin</div>
+                  <div class="bom8-path-choice"><div class="bom8-path-icon">1</div><div><strong>Explore with the sample</strong><span>Use the included 10-part BOM to see Cadivor's analysis without sharing your own data.</span></div></div>
+                  <div class="bom8-path-choice"><div class="bom8-path-icon">2</div><div><strong>Analyze your own BOM</strong><span>Upload a CSV or XLSX when you are ready to review a real project.</span></div></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.markdown(
                 """
                 <div class="bom8-upload-card">
