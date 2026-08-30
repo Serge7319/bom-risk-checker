@@ -560,13 +560,14 @@
   color: #64748b;
   font-size: 13px;
   font-weight: 650;
-  text-decoration: none;
+  text-decoration: none !important;
   transition: color 0.15s ease, background 0.15s ease;
 }
 
 .cv672-dashboard-nav__link:hover {
   color: #334155;
   background: #f8fafc;
+  text-decoration: none !important;
 }
 
 .cv672-dashboard-nav__link--active {
