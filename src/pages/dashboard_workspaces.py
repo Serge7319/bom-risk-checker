@@ -170,7 +170,7 @@ def _render_trend_chart_panel(
 
 
 def inject_dashboard_workspace_styles() -> None:
-    """Inject dashboard page styles once per Dashboard visit."""
+    """Inject Dashboard styles for every rendered Dashboard view."""
     from src.pages.dashboard import inject_dashboard_page_styles
 
     inject_dashboard_page_styles()
@@ -178,9 +178,7 @@ def inject_dashboard_workspace_styles() -> None:
 
 
 def _inject_dashboard_v2_styles() -> None:
-    if st.session_state.get("_cadivor_dashboard_v2_styles"):
-        return
-    st.session_state["_cadivor_dashboard_v2_styles"] = True
+    """Render the style block every time; browser history rebuilds page DOM."""
     css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "dashboard_v2.css"
     try:
         css = css_path.read_text(encoding="utf-8")
