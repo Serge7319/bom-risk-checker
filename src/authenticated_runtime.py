@@ -12053,12 +12053,13 @@ def run_authenticated_app() -> None:
             @media(max-width:620px){
                 .bom8-saved-summary{grid-template-columns:1fr;}
             }
-            .st-key-bom8_sample button{
-                border:1px solid #bfdbfe!important;
-                background:#eff6ff!important;
-                color:#1d4ed8!important;
+            .st-key-bom8_try_sample button{
+                border:1px solid #2563eb!important;
+                background:#2563eb!important;
+                color:#fff!important;
                 font-weight:800!important;
             }
+            .st-key-bom8_try_sample button *{color:#fff!important;}
             .st-key-bom_file_uploader [data-testid="stFileUploader"]{
                 border-radius:16px!important;
             }
@@ -12738,9 +12739,6 @@ def run_authenticated_app() -> None:
             )
             st.markdown(
                 """
-                <div class="bom8-column-example" aria-label="Recommended BOM columns">
-                  <span>Manufacturer Part Number</span><span>Quantity</span><span>Description (optional)</span>
-                </div>
                 <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
                 """,
                 unsafe_allow_html=True,
@@ -12764,7 +12762,7 @@ def run_authenticated_app() -> None:
                 st.session_state.pop("bom8_sample_auto_analyze", None)
 
             st.button(
-                "Try the 10-Part Sample BOM",
+                "Analyze the 10-Part Sample BOM",
                 key="bom8_try_sample",
                 type="primary",
                 help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
