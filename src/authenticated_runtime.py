@@ -3049,6 +3049,7 @@ def run_authenticated_app() -> None:
                         use_container_width=True,
                     ):
                         st.session_state.pop("preview_onboarding", None)
+                        st.query_params.pop("preview_onboarding", None)
                         navigate_to("Dashboard")
             # Sprint 30.4: use the normalized, persistent customer profile so
             # onboarding and onboarding preview match the shell/dashboard identity.
