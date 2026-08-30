@@ -416,16 +416,6 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
         ],
         columns=4,
     )
-    ready_col, action_col, blocked_col = st.columns(3)
-    with ready_col:
-        if st.button("View ready projects", key="dashboard_view_ready_projects", use_container_width=True):
-            st.session_state["cadivor_dashboard_drilldown"] = "ready"
-    with action_col:
-        if st.button("View today's actions", key="dashboard_view_action_today", use_container_width=True):
-            st.session_state["cadivor_dashboard_drilldown"] = "actions"
-    with blocked_col:
-        if st.button("View blocked projects", key="dashboard_view_blocked_projects", use_container_width=True):
-            st.session_state["cadivor_dashboard_drilldown"] = "blocked"
 
 
 def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
@@ -449,31 +439,6 @@ def render_engineering_overview_workspace(
     actions = overview.get("all_actions", [])
     recommendations = overview.get("recommendations", [])
     top_actions = list(overview.get("top_actions", []))
-
-    drilldown = st.session_state.get("cadivor_dashboard_drilldown")
-    if drilldown:
-        labels = {"ready": "Ready for production", "actions": "Action today", "blocked": "Blocked projects"}
-        st.markdown(f"#### {labels.get(drilldown, 'Engineering')} details")
-        if st.button("Clear detail view", key="dashboard_clear_drilldown"):
-            st.session_state.pop("cadivor_dashboard_drilldown", None)
-            st.rerun()
-        if drilldown == "actions":
-            st.html(_full_work_queue_table_html(overview.get("action_today", []) or actions))
-        else:
-            projects = list(overview.get("projects", []))
-            if drilldown == "ready":
-                projects = [
-                    project for project in projects
-                    if int(_number(project.get("health"), 0)) >= 85
-                    and int(_number(project.get("high"), 0)) == 0
-                ]
-            else:
-                projects = [
-                    project for project in projects
-                    if int(_number(project.get("health"), 0)) < 70
-                    or int(_number(project.get("high"), 0)) >= 3
-                ]
-            render_portfolio_project_summaries(projects=projects)
 
     st.markdown(
         f'<section class="cv6723-section">{_compact_release_posture_html(metrics)}</section>',

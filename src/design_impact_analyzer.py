@@ -472,8 +472,6 @@ def render_design_impact(
             use_container_width=True,
             original_part=current,
             source_page="design_impact",
-            return_page="Design Impact Analyzer",
-            return_label="Design Impact Analyzer",
         )
     with actions[1]:
         internal_nav_button(
@@ -481,9 +479,6 @@ def render_design_impact(
             "Monitoring",
             key="impact_monitoring",
             use_container_width=True,
-            focus_part=current,
-            return_page="Design Impact Analyzer",
-            return_label="Design Impact Analyzer",
         )
     with actions[2]:
         internal_nav_button(
@@ -491,9 +486,6 @@ def render_design_impact(
             "Engineering Decisions",
             key="impact_decisions",
             use_container_width=True,
-            focus_part=current,
-            return_page="Design Impact Analyzer",
-            return_label="Design Impact Analyzer",
         )
     with actions[3]:
         internal_nav_button(

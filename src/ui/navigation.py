@@ -22,8 +22,6 @@ _ALT_NAV_KEYS = (
     "return_analysis_id",
     "part_id",
     "source_page",
-    "return_page",
-    "return_label",
     "intent",
 )
 
@@ -91,8 +89,6 @@ def navigate_to_alternative_finder(
     part_id: str = "",
     source_page: str = "",
     return_analysis_id: str = "",
-    return_page: str = "",
-    return_label: str = "",
     _rerun: bool = True,
 ) -> None:
     """Navigate to Alternative Finder with normalized, shared part context."""
@@ -133,10 +129,6 @@ def navigate_to_alternative_finder(
         nav_kwargs["part_id"] = context["part_id"]
     if context["source_page"]:
         nav_kwargs["source_page"] = context["source_page"]
-    if return_page:
-        nav_kwargs["return_page"] = str(return_page).strip()
-    if return_label:
-        nav_kwargs["return_label"] = str(return_label).strip()
 
     navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, **nav_kwargs)
 
@@ -240,8 +232,6 @@ def alternative_finder_href(
     part_id: str = "",
     source_page: str = "",
     return_analysis_id: str = "",
-    return_page: str = "",
-    return_label: str = "",
 ) -> str:
     """Build a query-string link to Alternative Finder using the shared context."""
     context = build_alternative_finder_context(
@@ -268,10 +258,6 @@ def alternative_finder_href(
         params["part_id"] = context["part_id"]
     if context["source_page"]:
         params["source_page"] = context["source_page"]
-    if return_page:
-        params["return_page"] = str(return_page).strip()
-    if return_label:
-        params["return_label"] = str(return_label).strip()
     return internal_app_href(ALTERNATIVE_FINDER_PAGE, **params)
 
 
@@ -301,8 +287,6 @@ def internal_nav_button(
                 part_id=str(params.get("part_id", "") or ""),
                 source_page=str(params.get("source_page", "") or ""),
                 return_analysis_id=str(params.get("return_analysis_id", "") or ""),
-                return_page=str(params.get("return_page", "") or ""),
-                return_label=str(params.get("return_label", "") or ""),
                 _rerun=False,
             )
         else:
