@@ -1231,6 +1231,17 @@ def render_analysis_detail(
 
         elif workspace_category == "Recommended Actions":
             render_engineering_workspace_actions(decision_brief)
+            if st.session_state.get("cv26_priority_action_return_analysis") == analysis_id:
+                def _return_to_risk_analytics() -> None:
+                    st.session_state[workspace_radio_key] = "Risk Analytics"
+                    st.session_state.pop("cv26_priority_action_return_analysis", None)
+
+                st.button(
+                    "← Back to Risk Analytics",
+                    key=f"cv26_back_to_risk_analytics_{analysis_id}",
+                    type="secondary",
+                    on_click=_return_to_risk_analytics,
+                )
             st.markdown(
                 '<div class="cv672-review-divider">Engineering review workflow</div>',
                 unsafe_allow_html=True,
@@ -1797,6 +1808,7 @@ def render_analysis_detail(
                     with task_col:
                         def _open_recommended_actions() -> None:
                             st.session_state[workspace_radio_key] = "Recommended Actions"
+                            st.session_state["cv26_priority_action_return_analysis"] = analysis_id
                         st.button("Open task", key=f"cv26_open_task_{analysis_id}_{index}", use_container_width=True, type="primary", on_click=_open_recommended_actions)
                     with route_col:
                         route = _safe(action.get("action_route"), "component")
