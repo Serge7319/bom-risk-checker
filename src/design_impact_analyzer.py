@@ -313,6 +313,10 @@ def render_design_impact(
     *,
     intelligence: Dict[str, Any],
     internal_nav_button: Callable[..., Any],
+    return_analysis_id: str = "",
+    return_section: str = "Components",
+    has_monitoring: bool = False,
+    has_decision: bool = False,
 ) -> None:
     _css()
 
@@ -326,6 +330,18 @@ def render_design_impact(
         ),
         icon="git-compare-arrows",
     )
+
+    if return_analysis_id:
+        internal_nav_button(
+            "← Back to Analysis Details",
+            "Analysis Details",
+            key="impact_back_to_analysis_details",
+            type="secondary",
+            analysis_id=return_analysis_id,
+            analysis_tab=return_section,
+            component=intelligence.get("selected_mpn", ""),
+            focus="component-risk",
+        )
 
     options = intelligence["available_mpns"]
     if not options:
@@ -415,6 +431,7 @@ def render_design_impact(
                 Cadivor calculated an impact score of {intelligence['impact_score']}/100 using
                 cross-project usage, risk, lifecycle, stock, and supplier coverage.
               </div>
+              <div class="cv20-card-copy"><b>What this means:</b> higher scores indicate a change is more likely to affect release readiness, because more projects are exposed or the component has weaker lifecycle, inventory, or supplier evidence.</div>
             </section>
             """,
             unsafe_allow_html=True,
@@ -472,21 +489,19 @@ def render_design_impact(
             use_container_width=True,
             original_part=current,
             source_page="design_impact",
+            return_page="Design Impact Analyzer",
+            return_mpn=current,
         )
     with actions[1]:
-        internal_nav_button(
-            "Open Monitoring",
-            "Monitoring",
-            key="impact_monitoring",
-            use_container_width=True,
-        )
+        if has_monitoring:
+            internal_nav_button("Open Monitoring", "Monitoring", key="impact_monitoring", use_container_width=True, mpn=current)
+        else:
+            st.caption("No monitoring record exists for this component yet.")
     with actions[2]:
-        internal_nav_button(
-            "Engineering Decisions",
-            "Engineering Decisions",
-            key="impact_decisions",
-            use_container_width=True,
-        )
+        if has_decision:
+            internal_nav_button("Engineering Decisions", "Engineering Decisions", key="impact_decisions", use_container_width=True, focus_part=current)
+        else:
+            st.caption("No engineering decision exists for this component yet.")
     with actions[3]:
         internal_nav_button(
             "Portfolio Intelligence",

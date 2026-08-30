@@ -496,11 +496,11 @@ def render_analysis_detail(
         button[data-baseweb="tab"][aria-selected="true"]{background:#eff6ff!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:inset 0 -3px 0 #2563eb!important}
         button[data-baseweb="tab"][aria-selected="true"] p{color:#1d4ed8!important}
         div[data-baseweb="tab-highlight"]{display:none!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:6px;border:1px solid #dbe3ef;background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);border-radius:14px;padding:6px;margin:0 0 14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.85)}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:1px solid transparent;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;color:#475569;background:transparent;margin:0;transition:background .15s ease,color .15s ease,box-shadow .15s ease,border-color .15s ease;cursor:pointer}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){background:#2563eb;color:#fff!important;border-color:#2563eb;box-shadow:0 6px 16px rgba(37,99,235,.28)}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) span{color:#fff!important}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid #dbe3ef;background:transparent;padding:0;margin:0 0 18px}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:0;border-bottom:3px solid transparent;border-radius:0;padding:10px 14px 9px;font-size:12px;font-weight:800;color:#64748b;background:transparent;margin:0;transition:color .15s ease,border-color .15s ease;cursor:pointer}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:transparent;color:#1d4ed8;border-color:#bfdbfe}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){background:transparent;color:#1d4ed8!important;border-color:#2563eb;box-shadow:none}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) span{color:#1d4ed8!important}
         div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] input{display:none}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
         .cv-status-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}
@@ -2369,6 +2369,16 @@ def render_analysis_detail(
                         manufacturer=selected_mfg,
                         analysis_id=analysis_id,
                         source_page="analysis_detail",
+                    )
+                    internal_nav_button(
+                        "View Design Impact",
+                        "Design Impact Analyzer",
+                        key=f"analysis_design_impact_{analysis_id}_{selected_mpn}",
+                        use_container_width=True,
+                        mpn=selected_mpn,
+                        analysis_id=analysis_id,
+                        return_page="Analysis Details",
+                        return_section="Components",
                     )
                     internal_nav_button(
                         "Monitor Component",

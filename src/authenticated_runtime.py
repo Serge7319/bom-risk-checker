@@ -3666,15 +3666,39 @@ def run_authenticated_app() -> None:
             or ""
         )
 
+        impact_return_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
+        impact_return_section = _safe_text(_qp_value("return_section", "Components"), "Components")
+
         from src.design_impact_analyzer import build_design_impact, render_design_impact
         impact_intelligence = build_design_impact(
             impact_analyses,
             impact_parts,
             requested_impact_mpn,
         )
+        impact_mpn = impact_intelligence.get("selected_mpn", "")
+        impact_monitoring_rows = []
+        try:
+            impact_monitoring_rows = (
+                _workspace_query(supabase.table("monitor_alerts").select("part_number,mpn"))
+                .eq("user_id", current_user["id"])
+                .limit(1000)
+                .execute()
+                .data
+                or []
+            )
+        except Exception:
+            pass
+        has_impact_monitoring = any(
+            _safe_text(row.get("part_number") or row.get("mpn"), "").upper() == str(impact_mpn).upper()
+            for row in impact_monitoring_rows
+        )
         render_design_impact(
             intelligence=impact_intelligence,
             internal_nav_button=internal_nav_button,
+            return_analysis_id=impact_return_analysis_id,
+            return_section=impact_return_section,
+            has_monitoring=has_impact_monitoring,
+            has_decision=has_impact_monitoring,
         )
         stop_authenticated_page()
 
@@ -8734,7 +8758,30 @@ def run_authenticated_app() -> None:
             or st.session_state.get("cadivor_alt_finder_return_analysis_id", "")
             or ""
         ).strip()
-        if return_analysis_id:
+        return_page = str(
+            _qp_value("return_page")
+            or st.session_state.get("cadivor_alt_finder_return_page", "")
+            or ""
+        ).strip()
+        return_mpn = str(
+            _qp_value("return_mpn")
+            or st.session_state.get("cadivor_alt_finder_return_mpn", "")
+            or ""
+        ).strip()
+        if return_page == "Design Impact Analyzer":
+            def _return_to_design_impact() -> None:
+                st.session_state["design_impact_mpn"] = return_mpn
+                st.session_state.pop("cadivor_alt_finder_return_page", None)
+                st.session_state.pop("cadivor_alt_finder_return_mpn", None)
+                navigate_to("Design Impact Analyzer", _rerun=False, mpn=return_mpn)
+
+            st.button(
+                "← Back to Design Impact",
+                key="alternative_back_to_design_impact",
+                type="secondary",
+                on_click=_return_to_design_impact,
+            )
+        elif return_analysis_id:
             def _return_to_saved_bom() -> None:
                 return_section = str(
                     st.session_state.get("cadivor_alt_finder_return_analysis_section", "")
