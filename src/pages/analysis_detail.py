@@ -185,18 +185,17 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
         )
 
     with st.container(key="cv_analysis_section_nav"):
-        st.markdown(
-            '<div class="cv719-analysis-section-nav cv-analysis-section-nav-shell"></div>',
-            unsafe_allow_html=True,
-        )
-        selected = st.radio(
+        selected = st.pills(
             "Analysis section",
             ANALYSIS_SECTIONS,
-            horizontal=True,
+            selection_mode="single",
             key=nav_key,
             label_visibility="collapsed",
         )
-    return _commit_analysis_section_selection(analysis_id=analysis_id, selected=selected)
+    return _commit_analysis_section_selection(
+        analysis_id=analysis_id,
+        selected=selected or _safe(st.session_state.get("cadivor_active_analysis_tab"), "Engineering Intelligence"),
+    )
 
 
 def _num(value: Any, default: int = 0) -> int:
@@ -496,15 +495,11 @@ def render_analysis_detail(
         button[data-baseweb="tab"][aria-selected="true"]{background:#eff6ff!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:inset 0 -3px 0 #2563eb!important}
         button[data-baseweb="tab"][aria-selected="true"] p{color:#1d4ed8!important}
         div[data-baseweb="tab-highlight"]{display:none!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid #dbe3ef;background:transparent;padding:0;margin:0 0 18px}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:0;border-bottom:3px solid transparent;border-radius:0;padding:10px 14px 9px;font-size:12px;font-weight:800;color:#64748b;background:transparent;margin:0;transition:color .15s ease,border-color .15s ease;cursor:pointer}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:transparent;color:#1d4ed8;border-color:#bfdbfe}
-        /* BaseWeb places its visual radio inside the first label wrapper. */
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child{display:none!important;width:0!important;margin:0!important;padding:0!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] [role="radio"]{display:none!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked),div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has([aria-checked="true"]){background:transparent;color:#1d4ed8!important;border-color:#2563eb;box-shadow:none}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has([aria-checked="true"]) p{color:#1d4ed8!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] input{display:none!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"]{border-bottom:1px solid #dbe3ef;padding:0;margin:0 0 18px}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] > div{gap:0!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button{border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;padding:10px 14px 9px!important;font-size:12px!important;font-weight:800!important;color:#64748b!important;background:transparent!important;box-shadow:none!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button:hover{color:#1d4ed8!important;background:transparent!important;border-bottom-color:#bfdbfe!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button[aria-pressed="true"],.st-key-cv_analysis_section_nav div[data-testid="stPills"] button[aria-selected="true"]{color:#1d4ed8!important;background:transparent!important;border-bottom-color:#2563eb!important}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
         .cv-status-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}
         .cv-status-card span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
