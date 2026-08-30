@@ -9986,6 +9986,7 @@ def run_authenticated_app() -> None:
                         "Checking supplier coverage, lifecycle evidence, and replacement candidates.",
                     )
                 try:
+                    original_lookup = {}
                     try:
                         original_lookup = get_best_part_data(searched_part) or {}
                         if not isinstance(original_lookup, dict):
@@ -9997,7 +9998,13 @@ def run_authenticated_app() -> None:
                         st.session_state["alternative_original_data"] = original_lookup
                         st.session_state["alternative_original_risk"] = original_risk
                         st.session_state["alternative_original_lookup_part"] = searched_part
-                        st.session_state["alternative_original_lookup_error"] = ""
+                        if original_lookup.get("supplier_data_verified"):
+                            st.session_state["alternative_original_lookup_error"] = ""
+                        else:
+                            st.session_state["alternative_original_lookup_error"] = (
+                                f'No exact supplier match was found for "{searched_part}". '
+                                "Enter the complete manufacturer part number, including package or suffix where applicable."
+                            )
                     except Exception:
                         st.session_state["alternative_original_data"] = {}
                         st.session_state["alternative_original_risk"] = {}
@@ -10008,7 +10015,13 @@ def run_authenticated_app() -> None:
                         )
 
                     try:
-                        candidates = suggest_alternatives_v2(searched_part) or []
+                        # A replacement recommendation needs a verified original part as
+                        # its comparison baseline. Do not turn a normal no-match into an
+                        # apparent supplier outage by calling the candidate engine anyway.
+                        if not original_lookup.get("supplier_data_verified"):
+                            candidates = []
+                        else:
+                            candidates = suggest_alternatives_v2(searched_part) or []
                         for candidate in candidates:
                             candidate_part = str(candidate.get("Alternative Part", "") or "").strip()
                             if not candidate_part:
@@ -10180,7 +10193,11 @@ def run_authenticated_app() -> None:
             datasheet_display = "Not available"
 
         if original_lookup_error:
-            current_status = "Supplier lookup unavailable"
+            current_status = (
+                "Supplier lookup unavailable"
+                if original_summary_data.get("supplier_data_verified")
+                else "No exact supplier match"
+            )
             current_status_class = "warning"
         elif lookup_matches_input and original_summary_data:
             current_status = "Component intelligence loaded"
