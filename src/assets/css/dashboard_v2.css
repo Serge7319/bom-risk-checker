@@ -576,40 +576,97 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
   box-shadow: none !important;
 }
 
-/* Dashboard KPI drill-downs are cards, not a detached set of controls. */
-.cv672-dashboard-workspace .cv64-metric-link {
+/* Dashboard KPI drill-downs are cards, not a detached set of controls.
+   Streamlit renders HTML blocks as siblings, so these selectors deliberately
+   target the card classes themselves instead of relying on a wrapper parent. */
+.cv64-metric-link {
   display: block;
   color: inherit;
   text-decoration: none;
 }
 
-.cv672-dashboard-workspace .cv64-metric-link .cv64-metric {
+.cv64-metric-link .cv64-metric {
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.cv672-dashboard-workspace .cv64-metric-link:hover .cv64-metric {
+.cv64-metric-link:hover .cv64-metric {
   border-color: #93c5fd;
   box-shadow: 0 8px 18px rgba(37, 99, 235, 0.10);
+  transform: translateY(-1px);
 }
 
-.cv672-dashboard-workspace .cv64-metric-link:focus-visible {
+.cv64-metric-link:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 3px;
   border-radius: 14px;
 }
 
-.cv672-dashboard-workspace .cv64-metric--active {
+.cv64-metric--active {
   border-color: #2563eb;
-  background: #f8fbff;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
+  background: linear-gradient(180deg, #ffffff 0%, #f2f7ff 100%);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16), 0 10px 22px rgba(37, 99, 235, 0.10);
 }
 
-.cv672-dashboard-workspace .cv64-metric__action {
-  margin-top: 10px;
+.cv64-metric__action {
+  margin-top: 12px;
   color: #2563eb;
   font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.cv64-metric--active .cv64-metric__action::after {
+  content: " ✓";
+}
+
+.cv6723-dashboard-detail-panel {
+  margin: 6px 0 22px;
+  padding: 18px 20px 20px;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #2563eb;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8fbff 0%, #ffffff 72%);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.cv6723-dashboard-detail-panel .cv6723-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.cv6723-dashboard-detail-panel .cv6723-section-title {
+  color: #0f2d52;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.cv6723-dashboard-detail-panel .cv6723-section-copy {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.cv6723-dashboard-detail-panel .cv6723-quick-action {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 8px 11px;
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 12px;
   font-weight: 750;
+  text-decoration: none;
+}
+
+.cv6723-dashboard-detail-panel .cv6723-quick-action:hover {
+  border-color: #60a5fa;
+  background: #eff6ff;
 }
 
 div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-testid="stRadio"] label:has(input:checked) {
