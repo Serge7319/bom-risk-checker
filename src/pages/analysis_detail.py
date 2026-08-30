@@ -499,10 +499,11 @@ def render_analysis_detail(
         div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid #dbe3ef;background:transparent;padding:0;margin:0 0 18px}
         div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:0;border-bottom:3px solid transparent;border-radius:0;padding:10px 14px 9px;font-size:12px;font-weight:800;color:#64748b;background:transparent;margin:0;transition:color .15s ease,border-color .15s ease;cursor:pointer}
         div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:transparent;color:#1d4ed8;border-color:#bfdbfe}
-        /* Streamlit renders the visible control as [role=radio], not the input. */
+        /* BaseWeb places its visual radio inside the first label wrapper. */
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child{display:none!important;width:0!important;margin:0!important;padding:0!important}
         div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] [role="radio"]{display:none!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has([role="radio"][aria-checked="true"]){background:transparent;color:#1d4ed8!important;border-color:#2563eb;box-shadow:none}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has([role="radio"][aria-checked="true"]) p,div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has([role="radio"][aria-checked="true"]) span{color:#1d4ed8!important}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked),div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has([aria-checked="true"]){background:transparent;color:#1d4ed8!important;border-color:#2563eb;box-shadow:none}
+        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has([aria-checked="true"]) p{color:#1d4ed8!important}
         div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] input{display:none!important}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
         .cv-status-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}
