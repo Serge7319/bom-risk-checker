@@ -12736,8 +12736,6 @@ def run_authenticated_app() -> None:
                     ],
                 }
             )
-            sample_csv = sample_bom.to_csv(index=False).encode("utf-8")
-
             st.markdown(
                 """
                 <div class="bom8-column-example" aria-label="Recommended BOM columns">
@@ -12748,12 +12746,29 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-            st.download_button(
-                label="Download 10-Part Sample BOM",
-                data=sample_csv,
-                file_name="cadivor_10_part_sample_bom.csv",
-                mime="text/csv",
-                key="bom8_sample",
+            def _start_sample_bom() -> None:
+                st.session_state["bom8_sample_mode"] = True
+                st.session_state["bom8_sample_auto_analyze"] = True
+                st.session_state["bom8_project_name"] = "Cadivor 10-Part Sample BOM"
+                for state_key in (
+                    "results_df",
+                    "analysis_saved",
+                    "analysis_id",
+                    "health_score",
+                    "health_status",
+                ):
+                    st.session_state.pop(state_key, None)
+
+            def _use_uploaded_bom() -> None:
+                st.session_state.pop("bom8_sample_mode", None)
+                st.session_state.pop("bom8_sample_auto_analyze", None)
+
+            st.button(
+                "Try the 10-Part Sample BOM",
+                key="bom8_try_sample",
+                type="primary",
+                help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
+                on_click=_start_sample_bom,
             )
 
             uploaded_file = st.file_uploader(
@@ -12761,6 +12776,7 @@ def run_authenticated_app() -> None:
                 type=["csv", "xlsx"],
                 key="bom_file_uploader",
                 help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
+                on_change=_use_uploaded_bom,
             )
 
             st.markdown(
@@ -12811,7 +12827,12 @@ def run_authenticated_app() -> None:
             )
 
 
-        if uploaded_file is None:
+        sample_mode = bool(st.session_state.get("bom8_sample_mode"))
+        source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
+            uploaded_file.name if uploaded_file is not None else ""
+        )
+
+        if uploaded_file is None and not sample_mode:
             if history_data:
                 st.info(
                     "Open a saved BOM analysis above, or upload a new CSV or Excel BOM."
@@ -12827,7 +12848,9 @@ def run_authenticated_app() -> None:
             stop_authenticated_page()
 
         try:
-            if uploaded_file.name.endswith(".csv"):
+            if sample_mode:
+                bom_df = sample_bom.copy()
+            elif uploaded_file.name.endswith(".csv"):
                 bom_df = pd.read_csv(uploaded_file)
             else:
                 bom_df = pd.read_excel(uploaded_file)
@@ -12887,9 +12910,10 @@ def run_authenticated_app() -> None:
     
 
 
-        if st.session_state.get("uploaded_filename") != uploaded_file.name:
+        if st.session_state.get("uploaded_filename") != source_filename:
             st.session_state.pop("results_df", None)
-            st.session_state["uploaded_filename"] = uploaded_file.name
+            st.session_state.pop("analysis_saved", None)
+            st.session_state["uploaded_filename"] = source_filename
 
     
         original_row_count = len(bom_df)
@@ -12924,12 +12948,12 @@ def run_authenticated_app() -> None:
             stop_authenticated_page()
 
         render_upload_detected(
-            filename=uploaded_file.name,
+            filename=source_filename,
             component_count=original_row_count,
             deduplicated_count=deduped_row_count,
         )
 
-        st.subheader("Uploaded BOM Preview")
+        st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
         st.data_editor(
             bom_df,
             use_container_width=True,
@@ -12937,7 +12961,14 @@ def run_authenticated_app() -> None:
         )
 
 
-        if st.button("Analyze BOM", type="primary"):
+        analyze_requested = st.button(
+            "Analyze Sample BOM" if sample_mode else "Analyze BOM",
+            type="primary",
+        )
+        if st.session_state.pop("bom8_sample_auto_analyze", False):
+            analyze_requested = True
+
+        if analyze_requested:
             with st.spinner("Analyzing lifecycle, supplier, inventory, sourcing, and engineering risk…"):
                 # A new analysis should be saved as a new database record.
                 # These flags prevent old session state from blocking the new save.
@@ -13111,8 +13142,8 @@ def run_authenticated_app() -> None:
                         _workspace_payload(
                             {
                                 "user_id": current_user["id"],
-                                "project_name": project_name or uploaded_file.name,
-                                "filename": uploaded_file.name,
+                                "project_name": project_name or source_filename,
+                                "filename": source_filename,
                                 "total_parts": total_parts,
                                 "high_risk_count": high_count,
                                 "medium_risk_count": medium_count,
@@ -13139,7 +13170,7 @@ def run_authenticated_app() -> None:
                             "analysis_id": analysis_id,
                             "user_id": current_user["id"],
                             "workspace_id": active_workspace_id,
-                            "project_name": project_name or uploaded_file.name,
+                            "project_name": project_name or source_filename,
                             "mpn": part_row.get("MPN", ""),
                             "manufacturer": part_row.get("Manufacturer", ""),
                             "risk_score": part_row.get("Risk Score", 0),
@@ -13291,7 +13322,7 @@ def run_authenticated_app() -> None:
                 _high = len(results_df[results_df["Risk Level"] == "High"])
                 _medium = len(results_df[results_df["Risk Level"] == "Medium"])
                 render_analysis_success(
-                    project_name=project_name or (uploaded_file.name if uploaded_file else "BOM analysis"),
+                    project_name=project_name or source_filename or "BOM analysis",
                     total_parts=len(results_df),
                     high_count=_high,
                     medium_count=_medium,
@@ -13303,7 +13334,7 @@ def run_authenticated_app() -> None:
                 results_df,
                 health_score=int(st.session_state.get("health_score", 0) or 0),
                 analysis_id=str(st.session_state.get("analysis_id") or "") or None,
-                project_name=project_name or (uploaded_file.name if uploaded_file else "BOM analysis"),
+                project_name=project_name or source_filename or "BOM analysis",
             )
 
             decision_cache_key = decision_brief_cache_key(
