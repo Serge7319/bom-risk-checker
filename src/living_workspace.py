@@ -416,15 +416,6 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
         ],
         columns=4,
     )
-    st.html(
-        """
-        <nav class="cv6723-action-toolbar cv-dashboard-kpi-actions" aria-label="Dashboard detail views">
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard&amp;dashboard_view=ready" target="_self">View ready projects</a>
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard&amp;dashboard_view=actions" target="_self">View today's actions</a>
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard&amp;dashboard_view=blocked" target="_self">View blocked projects</a>
-        </nav>
-        """
-    )
 
 
 def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
@@ -436,7 +427,6 @@ def render_engineering_overview_workspace(
     *,
     overview: Dict[str, Any],
     metrics: Dict[str, Any],
-    drilldown: str = "",
     after_brief_hook: Optional[Callable[[], None]] = None,
     activation_hook: Optional[Callable[[], None]] = None,
 ) -> None:
@@ -449,39 +439,6 @@ def render_engineering_overview_workspace(
     actions = overview.get("all_actions", [])
     recommendations = overview.get("recommendations", [])
     top_actions = list(overview.get("top_actions", []))
-
-    selected_drilldown = str(drilldown or "").strip().lower()
-    if selected_drilldown in {"ready", "actions", "blocked"}:
-        detail_titles = {
-            "ready": "Ready for production",
-            "actions": "Action today",
-            "blocked": "Blocked projects",
-        }
-        st.markdown(
-            f'<section class="cv6723-section"><div class="cv6723-section-head">'
-            f'<div><div class="cv6723-section-title">{detail_titles[selected_drilldown]}</div>'
-            f'<div class="cv6723-section-copy">Directly related records from your workspace.</div></div>'
-            f'<a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard" target="_self">Clear detail view</a>'
-            f'</div></section>',
-            unsafe_allow_html=True,
-        )
-        if selected_drilldown == "actions":
-            st.html(_full_work_queue_table_html(overview.get("action_today", []) or actions))
-        else:
-            projects = list(overview.get("projects", []))
-            if selected_drilldown == "ready":
-                projects = [
-                    project for project in projects
-                    if int(_number(project.get("health"), 0)) >= 85
-                    and int(_number(project.get("high"), 0)) == 0
-                ]
-            else:
-                projects = [
-                    project for project in projects
-                    if int(_number(project.get("health"), 0)) < 70
-                    or int(_number(project.get("high"), 0)) >= 3
-                ]
-            render_portfolio_project_summaries(projects=projects)
 
     st.markdown(
         f'<section class="cv6723-section">{_compact_release_posture_html(metrics)}</section>',
