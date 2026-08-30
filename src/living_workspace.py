@@ -504,6 +504,14 @@ def render_engineering_overview_workspace(
         icon="sparkles",
     )
     st.markdown(
+        '<div class="cv6723-recommendations-route">'
+        '<a class="cv6723-quick-action" href="?page=Engineering%20Decisions" target="_self">'
+        'Open Engineering Decisions</a>'
+        '<span>Review and record the decision behind each recommendation.</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
         f'<div class="cv6723-section">{_compact_recommendations_html(recommendations)}</div>',
         unsafe_allow_html=True,
     )

@@ -661,6 +661,8 @@ def render_portfolio_intelligence_workspace(
                 detail="Saved engineering analyses",
                 tone="info",
                 icon="folder-archive",
+                href="?page=BOM%20Analyzer",
+                action_label="Open saved projects",
             ),
             MetricCard(
                 label="Critical Components",
@@ -668,6 +670,8 @@ def render_portfolio_intelligence_workspace(
                 detail="Require engineering review",
                 tone="danger" if ctx.get("total_high_risk") else "success",
                 icon="triangle-alert",
+                href="?page=Portfolio%20Intelligence",
+                action_label="Review critical components",
             ),
             MetricCard(
                 label="Portfolio Alerts",
@@ -675,6 +679,8 @@ def render_portfolio_intelligence_workspace(
                 detail=f"{ctx.get('high_alert_count')} high severity",
                 tone="warning" if ctx.get("alert_count") else "neutral",
                 icon="calendar-clock",
+                href="?page=Monitoring",
+                action_label="Open portfolio alerts",
             ),
         ],
         columns=4,
