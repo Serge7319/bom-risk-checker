@@ -183,9 +183,10 @@ def _render_premium_metric_html(
         )
         card += "</article>"
         if metric.href:
+            active_attribute = ' aria-current="page"' if metric.active else ""
             cards.append(
                 f'<a class="cv64-metric-link" href="{escape(metric.href, quote=True)}" target="_self"'
-                f'{" aria-current=\"page\"" if metric.active else ""}>{card}</a>'
+                f"{active_attribute}>{card}</a>"
             )
         else:
             cards.append(card)
