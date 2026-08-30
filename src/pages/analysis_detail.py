@@ -67,6 +67,7 @@ from src.discussion_service import (
     set_comment_pinned,
     unfollow_analysis,
 )
+from src.workspace_service import set_my_functional_roles
 
 
 def _safe(value: Any, fallback: str = "—") -> str:
@@ -92,6 +93,29 @@ ANALYSIS_SECTIONS = (
     "Reports",
     "Ask Cadivor",
 )
+
+FUNCTIONAL_WORK_ROLES = (
+    "Supply Chain Manager",
+    "Electrical Engineer",
+    "Procurement Specialist",
+    "Component Engineer",
+)
+
+
+def _member_functional_roles(workspace_members: list[dict], user_id: str, user_email: str) -> list[str]:
+    """Return the signed-in member's declared responsibility roles."""
+    user_id = _safe(user_id, "")
+    user_email = _safe(user_email, "").lower()
+    for member in workspace_members or []:
+        member_id = _safe(member.get("user_id"), "")
+        member_email = _safe(member.get("email"), "").lower()
+        if (user_id and member_id == user_id) or (user_email and member_email == user_email):
+            roles = member.get("functional_roles") or []
+            if isinstance(roles, str):
+                roles = [roles]
+            if isinstance(roles, (list, tuple)):
+                return [str(role) for role in roles if str(role) in FUNCTIONAL_WORK_ROLES]
+    return []
 
 
 def _analysis_section_nav_key(analysis_id: str) -> str:
@@ -1412,8 +1436,18 @@ def render_analysis_detail(
                     help="Includes open, investigation, rejected, unassigned, and overdue items.",
                 )
                 filtered_review_parts = []
+                priority_target_mpn = _safe(st.session_state.get(f"cv26_priority_action_target_{analysis_id}"), "")
+                if priority_target_mpn:
+                    target_controls, target_clear = st.columns([4, 1])
+                    target_controls.info(f"Priority Action task open for **{priority_target_mpn}**. Assign a workspace member, set due context, and save the review decision below.")
+                    with target_clear:
+                        if st.button("Show all tasks", key=f"cv26_clear_priority_target_{analysis_id}"):
+                            st.session_state.pop(f"cv26_priority_action_target_{analysis_id}", None)
+                            st.rerun()
                 for candidate in review_parts:
                     c_mpn = _safe(candidate.get("mpn"), "Unknown MPN")
+                    if priority_target_mpn and c_mpn != priority_target_mpn:
+                        continue
                     c_saved = decision_map.get(c_mpn, {})
                     c_decision = c_saved.get("decision") or "Not reviewed"
                     c_due = parse_due_date(c_saved, today=today)
@@ -1786,9 +1820,58 @@ def render_analysis_detail(
 
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
             priority_actions = (advisor.get("priority_actions") or [])[:6]
-            st.markdown('''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Each item has an accountable role. Open a task to assign a workspace member, set the due date, record the decision, and retain its review history.</div></section>''', unsafe_allow_html=True)
+            current_user_id = _safe(getattr(current_user, "id", ""), _safe(current_user.get("id") if isinstance(current_user, dict) else "", ""))
+            current_user_email = _safe(getattr(current_user, "email", ""), _safe(current_user.get("email") if isinstance(current_user, dict) else "", ""))
+            my_functional_roles = _member_functional_roles(workspace_members, current_user_id, current_user_email)
+            st.markdown('''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Each item names the accountable role and due context. Open its task to assign a workspace member, set the due date, record the decision, and retain its review history.</div></section>''', unsafe_allow_html=True)
+            scope_col, role_col = st.columns([1, 2])
+            action_scope = scope_col.radio(
+                "Priority Actions view",
+                ["All actions", "My roles"],
+                horizontal=True,
+                key=f"cv26_priority_scope_{analysis_id}",
+                label_visibility="collapsed",
+            )
+            role_col.caption(
+                "**Your responsibility roles:** " + (", ".join(my_functional_roles) if my_functional_roles else "Not set — choose them below to match work to you.")
+            )
+            current_member = next(
+                (
+                    member for member in workspace_members
+                    if (current_user_id and _safe(member.get("user_id"), "") == current_user_id)
+                    or (current_user_email and _safe(member.get("email"), "").lower() == current_user_email.lower())
+                ),
+                None,
+            )
+            if current_member:
+                with st.expander("Set my responsibility roles", expanded=not my_functional_roles):
+                    st.caption("Choose every discipline you cover. These responsibilities filter Priority Actions only; they do not change your workspace access.")
+                    chosen_roles = st.multiselect(
+                        "My responsibility roles",
+                        list(FUNCTIONAL_WORK_ROLES),
+                        default=my_functional_roles,
+                        key=f"cv26_my_functional_roles_{analysis_id}",
+                    )
+                    if st.button("Save my responsibility roles", key=f"cv26_save_my_functional_roles_{analysis_id}"):
+                        roles_error = set_my_functional_roles(
+                            supabase,
+                            str(workspace_id or ""),
+                            chosen_roles,
+                        )
+                        if roles_error:
+                            st.error("Cadivor could not save your responsibility roles. Please ask a workspace owner to update them.")
+                        else:
+                            st.success("Your responsibility roles were saved.")
+                            st.rerun()
+            if action_scope == "My roles":
+                priority_actions = [
+                    action for action in priority_actions
+                    if _safe(action.get("owner"), "Component Engineer") in my_functional_roles
+                    or _safe(action.get("support_owner"), "") in my_functional_roles
+                ]
             if not priority_actions:
-                st.markdown('<div class="cv-analysis-empty">No priority actions are currently available.</div>', unsafe_allow_html=True)
+                empty_copy = "No priority actions match your responsibility roles." if action_scope == "My roles" else "No priority actions are currently available."
+                st.markdown(f'<div class="cv-analysis-empty">{html.escape(empty_copy)}</div>', unsafe_allow_html=True)
             for index, action in enumerate(priority_actions, 1):
                 bucket = _safe(action.get("priority_bucket"), _safe(action.get("schedule"), "Can Wait"))
                 reason = _safe(action.get("why"), _safe((action.get("engineering_reasoning") or [""])[0], "Risk signal detected."))
@@ -1809,7 +1892,8 @@ def render_analysis_detail(
                         def _open_recommended_actions() -> None:
                             st.session_state[workspace_radio_key] = "Recommended Actions"
                             st.session_state["cv26_priority_action_return_analysis"] = analysis_id
-                        st.button("Open task", key=f"cv26_open_task_{analysis_id}_{index}", use_container_width=True, type="primary", on_click=_open_recommended_actions)
+                            st.session_state[f"cv26_priority_action_target_{analysis_id}"] = part_number
+                        st.button("Assign or open task", key=f"cv26_open_task_{analysis_id}_{index}", use_container_width=True, type="primary", on_click=_open_recommended_actions)
                     with route_col:
                         route = _safe(action.get("action_route"), "component")
                         if route == "alternative" and part_number:
