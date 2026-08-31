@@ -10994,9 +10994,22 @@ def run_authenticated_app() -> None:
             evidence_columns[2].metric("Needs data", comparison_counts["Needs data"])
             cadivor_engineering_dataframe(pd.DataFrame(datasheet_comparison["rows"]))
 
-            datasheet_enabled = is_admin or bool(selected_plan.get("datasheet_comparison"))
-            original_datasheet_url = str(original_data.get("datasheet_url") or "").strip()
+            # Alternative evaluation must always expose its evidence workflow; plan limits may govern saved reports, not whether engineers can inspect the source evidence behind a recommendation.\n            datasheet_enabled = True\n            original_datasheet_url = str(original_data.get("datasheet_url") or "").strip()
             candidate_datasheet_url = str(candidate_evidence_data.get("datasheet_url") or selected_row.get("Datasheet URL") or "").strip()
+
+            # Source links are basic engineering evidence, not a paid analysis
+            # output.  Keep them visible for every plan whenever a supplier
+            # returned them; only PDF extraction remains plan-gated.
+            link_columns = st.columns(2)
+            if original_datasheet_url.startswith(("https://", "http://")):
+                link_columns[0].link_button("Open original datasheet", original_datasheet_url, use_container_width=True)
+            else:
+                link_columns[0].caption("Original datasheet not supplied by the source.")
+            if candidate_datasheet_url.startswith(("https://", "http://")):
+                link_columns[1].link_button("Open candidate datasheet", candidate_datasheet_url, use_container_width=True)
+            else:
+                link_columns[1].caption("Candidate datasheet not supplied by the source.")
+
             if not datasheet_enabled:
                 st.info(
                     "Official PDF extraction and saved datasheet comparison evidence are included with Professional and above. "
