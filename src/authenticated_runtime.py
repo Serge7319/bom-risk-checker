@@ -10994,8 +10994,7 @@ def run_authenticated_app() -> None:
             evidence_columns[2].metric("Needs data", comparison_counts["Needs data"])
             cadivor_engineering_dataframe(pd.DataFrame(datasheet_comparison["rows"]))
 
-            datasheet_enabled = is_admin or bool(selected_plan.get("datasheet_comparison"))
-            original_datasheet_url = str(original_data.get("datasheet_url") or "").strip()
+            # Alternative evaluation must always expose its evidence workflow; plan limits may govern saved reports, not whether engineers can inspect the source evidence behind a recommendation.\n            datasheet_enabled = True\n            original_datasheet_url = str(original_data.get("datasheet_url") or "").strip()
             candidate_datasheet_url = str(candidate_evidence_data.get("datasheet_url") or selected_row.get("Datasheet URL") or "").strip()
 
             # Source links are basic engineering evidence, not a paid analysis
