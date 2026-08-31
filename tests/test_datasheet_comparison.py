@@ -85,5 +85,15 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertGreaterEqual(score["recommendation_score"], 85)
 
 
+    def test_capacitor_uses_rated_voltage_not_ic_supply_voltage(self):
+        result = build_datasheet_comparison(
+            {"description": "Ceramic capacitor", "package": "0603", "rated_voltage": "50V"},
+            {"description": "Ceramic capacitor", "package": "0603", "rated_voltage": "50V"},
+        )
+        fields = {row["Attribute"]: row for row in result["rows"]}
+        self.assertEqual(fields["Rated voltage"]["Status"], "Match")
+        self.assertNotIn("Supply voltage", fields)
+
+
 if __name__ == "__main__":
     unittest.main()
