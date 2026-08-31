@@ -164,6 +164,12 @@ def build_recommendation_score_breakdown(
     )
     recommendation = max(0, min(recommendation, 98 if is_explicit_substitute else 95))
 
+    # DigiKey's explicit Direct relationship is meaningful evidence. It must
+    # not be demoted solely because a distributor did not expose every field;
+    # a documented electrical conflict still wins and prevents this floor.
+    if is_explicit_substitute and differences == 0:
+        recommendation = max(recommendation, 85)
+
     return {
         "recommendation_score": recommendation,
         "compatibility_confidence": adjusted_confidence,
