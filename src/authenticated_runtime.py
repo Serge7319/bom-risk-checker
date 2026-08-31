@@ -2466,9 +2466,9 @@ def run_authenticated_app() -> None:
         except SupabaseReadTransportError:
             saved_bom_count = 0
 
-    # Single-route authority. Query parameters are consumed only as an initial deep
-    # link; internal navigation writes cadivor_route directly. Every shell and page
-    # renderer below reads this same committed value.
+    # Route state is mirrored to the address bar by navigate_to.  Treat a changed
+    # URL page as an intentional route transition so browser Back/Forward restores
+    # the visible Cadivor page instead of only changing an obsolete query string.
     try:
         _raw_external_page = st.query_params.get("page", "")
         if isinstance(_raw_external_page, list):
@@ -2483,9 +2483,13 @@ def run_authenticated_app() -> None:
         or "Dashboard",
         "Dashboard",
     )
-    if _external_page and not st.session_state.get("cadivor_external_route_consumed"):
+    _last_url_page = _safe_text(
+        st.session_state.get("cadivor_last_url_page", ""),
+        "",
+    )
+    if _external_page and _external_page != _last_url_page:
         app_mode = _external_page
-        st.session_state["cadivor_external_route_consumed"] = True
+    st.session_state["cadivor_last_url_page"] = _external_page or app_mode
 
     if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
         app_mode = "Dashboard"
@@ -3808,15 +3812,6 @@ def run_authenticated_app() -> None:
             ],
             columns=4,
         )
-
-        if advisor["urgent_count"]:
-            internal_nav_button(
-                "View action-needed components",
-                "Procurement Advisor",
-                key="pa_action_needed_link",
-                focus="action-needed",
-            )
-            st.caption("Shows the components included in the Action Needed count above.")
 
         priority_tab, details_tab = st.tabs(
             ["Action Needed", "All Components"]
