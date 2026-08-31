@@ -11,6 +11,8 @@ from typing import Callable
 
 import streamlit as st
 
+from src.ui.navigation import navigate_to
+
 
 NAV_GROUPS = (
     ("Analyze", (
@@ -64,9 +66,7 @@ def _commit_navigation(page: str) -> None:
     Using a widget callback avoids the former click -> rerun -> explicit rerun
     sequence that could briefly expose an incomplete/public render.
     """
-    st.session_state["cadivor_route"] = page
-    st.session_state["app_mode"] = page  # compatibility mirror
-    st.session_state["cadivor_nav_params"] = {"page": page}
+    navigate_to(page, _rerun=False)
     st.session_state.pop("cadivor_route_transition", None)
     st.session_state["cadivor_profile_menu_open"] = False
 
