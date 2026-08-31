@@ -330,6 +330,20 @@ def get_best_part_data(part_number: str) -> dict:
                 best_result["input_bias_na"] = result.get("input_bias_na")
                 break
 
+    # Passive-component specifications must survive supplier selection. The
+    # highest-stock supplier often has less parametric data than DigiKey; copy
+    # verified values instead of presenting them as unavailable downstream.
+    for field_name in (
+        "capacitance", "resistance", "inductance", "tolerance", "rated_voltage",
+        "dielectric", "power_rating", "temperature_coefficient", "esr", "dcr",
+        "rated_current", "saturation_current",
+    ):
+        if not best_result.get(field_name):
+            for result in valid_results:
+                if result.get(field_name):
+                    best_result[field_name] = result.get(field_name)
+                    break
+
     if best_result.get("gbw_mhz") is None:
         for result in valid_results:
             if result.get("gbw_mhz") is not None:
@@ -351,6 +365,8 @@ def get_best_part_data(part_number: str) -> dict:
     best_result.setdefault("quiescent_current_ma", None)
     best_result.setdefault("input_bias_na", None)
     best_result.setdefault("gbw_mhz", None)
+    for field_name in ("capacitance", "resistance", "inductance", "tolerance", "rated_voltage", "dielectric", "power_rating", "temperature_coefficient", "esr", "dcr", "rated_current", "saturation_current"):
+        best_result.setdefault(field_name, "")
 
     return best_result
 
