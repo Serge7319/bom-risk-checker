@@ -72,6 +72,12 @@ class OctopartIntegrationTests(unittest.TestCase):
             result = self.client.search_octopart_by_part_number(" LM358N ")
         self.assertEqual(result["manufacturer_part_number"], "lm358n")
 
+    def test_format_only_mpn_difference_is_an_exact_match(self):
+        self._responses([self._part("C0603C104K5RAC-TU")])
+        with patch.object(self.client, "get_secret", side_effect=self._secrets):
+            result = self.client.search_octopart_by_part_number("C0603C104K5RACTU")
+        self.assertEqual(result["manufacturer_part_number"], "C0603C104K5RAC-TU")
+
     def test_similar_part_is_rejected(self):
         self._responses([self._part("LM358P")])
         with patch.object(self.client, "get_secret", side_effect=self._secrets):

@@ -354,7 +354,7 @@ def get_best_part_data(part_number: str) -> dict:
 
     return best_result
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def search_supplier_alternatives(part_number: str) -> list[dict]:
     """Return ranked supplier evidence without treating catalog matches as direct substitutes."""
     explicit_substitutes = search_digikey_substitutions(part_number)
