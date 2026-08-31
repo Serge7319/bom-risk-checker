@@ -3258,6 +3258,10 @@ def run_authenticated_app() -> None:
             stop_authenticated_page()
 
         return_analysis_id = _qp_value("return_analysis_id")
+        focused_monitor_part = _safe_text(
+            _qp_value("mpn") or _qp_value("part"),
+            "",
+        )
         if return_analysis_id and st.button("← Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
             navigate_to("Analysis Details", analysis_id=return_analysis_id)
 
@@ -3371,7 +3375,12 @@ def run_authenticated_app() -> None:
                 severity_filter = f1.selectbox("Severity", ["All", "Critical", "High", "Medium", "Low"], key="m32_severity")
                 status_filter = f2.selectbox("Status", ["Active", "All", "Open", "In Review", "Resolved", "Dismissed", "Reopened"], key="m32_status")
                 type_filter = f3.selectbox("Change type", ["All", "Lifecycle", "Inventory", "Price", "Supplier"], key="m32_type")
-                search_filter = f4.text_input("Search", placeholder="Part number, owner, or alert text", key="m32_search")
+                search_filter = f4.text_input(
+                    "Search",
+                    value=focused_monitor_part,
+                    placeholder="Part number, owner, or alert text",
+                    key="m32_search",
+                )
                 filtered = queue.copy()
                 if severity_filter != "All": filtered = filtered[filtered["Severity"].str.lower() == severity_filter.lower()]
                 if status_filter == "Active": filtered = filtered[~filtered["Status"].isin(["Resolved", "Dismissed"])]
@@ -3692,13 +3701,30 @@ def run_authenticated_app() -> None:
             _safe_text(row.get("part_number") or row.get("mpn"), "").upper() == str(impact_mpn).upper()
             for row in impact_monitoring_rows
         )
+        impact_decision_rows = []
+        try:
+            impact_decision_rows = (
+                _workspace_query(supabase.table("engineering_decisions").select("part_number"))
+                .eq("user_id", current_user["id"])
+                .eq("scope_key", active_workspace_id or "personal")
+                .limit(1000)
+                .execute()
+                .data
+                or []
+            )
+        except Exception:
+            pass
+        has_impact_decision = any(
+            _safe_text(row.get("part_number"), "").upper() == str(impact_mpn).upper()
+            for row in impact_decision_rows
+        )
         render_design_impact(
             intelligence=impact_intelligence,
             internal_nav_button=internal_nav_button,
             return_analysis_id=impact_return_analysis_id,
             return_section=impact_return_section,
             has_monitoring=has_impact_monitoring,
-            has_decision=has_impact_monitoring,
+            has_decision=has_impact_decision,
         )
         stop_authenticated_page()
 
@@ -3783,16 +3809,29 @@ def run_authenticated_app() -> None:
             columns=4,
         )
 
+        if advisor["urgent_count"]:
+            internal_nav_button(
+                "View action-needed components",
+                "Procurement Advisor",
+                key="pa_action_needed_link",
+                focus="action-needed",
+            )
+            st.caption("Shows the components included in the Action Needed count above.")
+
         priority_tab, details_tab = st.tabs(
             ["Action Needed", "All Components"]
         )
         with priority_tab:
             urgent_rows = [
                 row for row in advisor["recommendations"]
-                if row["Recommendation"] != "No immediate action"
+                if row["Priority Score"] >= 75
             ][:10]
             if not urgent_rows:
                 st.success("No immediate purchasing action is required.")
+            else:
+                st.caption(
+                    f"Showing {len(urgent_rows)} component(s) with a priority score of 75 or higher."
+                )
             for index, row in enumerate(urgent_rows):
                 st.markdown(
                     f"""
