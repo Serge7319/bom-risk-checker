@@ -138,10 +138,6 @@ def _consume_pending_analysis_section(*, analysis_id: str) -> None:
     nav_key = _analysis_section_nav_key(analysis_id)
     st.session_state["cadivor_active_analysis_tab"] = pending
     st.session_state[nav_key] = pending
-    try:
-        st.query_params["analysis_tab"] = pending
-    except Exception:
-        pass
     st.session_state.pop(PENDING_ANALYSIS_SECTION_KEY, None)
     st.session_state.pop(PENDING_ANALYSIS_SECTION_ID_KEY, None)
 
@@ -186,15 +182,11 @@ def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
 
 
 def _commit_analysis_section_selection(*, analysis_id: str, selected: str) -> str:
-    """Persist the authoritative section after the navigation widget resolves."""
+    """Persist the authoritative section without creating browser-history noise."""
     clean = _safe(selected, "Engineering Intelligence")
     if clean not in ANALYSIS_SECTIONS:
         clean = "Engineering Intelligence"
     st.session_state["cadivor_active_analysis_tab"] = clean
-    try:
-        st.query_params["analysis_tab"] = clean
-    except Exception:
-        pass
     return clean
 
 
