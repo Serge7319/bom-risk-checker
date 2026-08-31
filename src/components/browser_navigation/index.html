@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>html,body{display:none;margin:0;padding:0}</style>
+</head>
+<body>
+<script>
+(() => {
+  let ready = false;
+  let attached = false;
+  let lastHref = "";
+
+  function post(type, extra = {}) {
+    window.parent.postMessage({isStreamlitMessage:true,type,...extra}, "*");
+  }
+
+  function hostHref() {
+    try {
+      return window.parent.location.href || "";
+    } catch (_) {
+     // Streamlit custom components normally share the app origin.  Keeping
+      // this defensive makes the bridge inert rather than breaking the page
+      // if a host later changes that embedding policy.
+      return "";
+    }
+  }
+
+  function emitIfChanged(reason) {
+    if (!ready) return;
+    const href = hostHref();
+    if (!href || href === lastHref) return;
+    lastHref = href;
+    post("streamlit:setComponentValue", {
+      value: {href, reason, event_id: `${Date.now()}-${Math.random()}`},
+      dataType: "json"
+    });
+  }
+
+  function attach() {
+    if (attached) return;
+    attached = true;
+    lastHref = hostHref();
+    try {
+      window.parent.addEventListener("popstate", () => {
+        window.setTimeout(() => emitIfChanged("popstate"), 0);
+      });
+      window.parent.addEventListener("hashchange", () => {
+        window.setTimeout(() => emitIfChanged("hashchange"), 0);
+      });
+    } catch (_) {}
+    // Some browser restoration paths do not deliver popstate to an embedded
+    // frame.  Polling only compares the URL and emits no work while unchanged.
+    window.setInterval(() => emitIfChanged("url-change"), 350);
+  }
+
+  window.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.type !== "streamlit:render") return;
+    ready = true;
+    attach();
+  });
+
+  post("streamlit:componentReady", {apiVersion:1});
+  post("streamlit:setFrameHeight", {height:0});
+})();
+</script>
+</body>
+</html>
