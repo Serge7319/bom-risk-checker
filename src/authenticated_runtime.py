@@ -54,6 +54,7 @@ import math
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 start_time = time.time()
 from src.ui.milestone10a import apply_milestone10a_design_system
@@ -82,6 +83,7 @@ from src.ui.navigation import (
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
 )
+from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
 from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.ui.premium_interaction_repair import inject_premium_interaction_css
@@ -2469,13 +2471,46 @@ def run_authenticated_app() -> None:
     # Route state is mirrored to the address bar by navigate_to.  Treat a changed
     # URL page as an intentional route transition so browser Back/Forward restores
     # the visible Cadivor page instead of only changing an obsolete query string.
+    _browser_navigation_event = consume_browser_navigation_event()
+    _browser_navigation_params = {}
+    _browser_navigation_event_id = ""
+    if _browser_navigation_event:
+        _browser_navigation_event_id = _safe_text(
+            _browser_navigation_event.get("event_id"), ""
+        )
+        _browser_navigation_href = _safe_text(
+            _browser_navigation_event.get("href"), ""
+        )
+        if (
+            _browser_navigation_event_id
+            and _browser_navigation_event_id
+            != st.session_state.get("cadivor_last_browser_navigation_event_id")
+            and _browser_navigation_href
+        ):
+            try:
+                _browser_navigation_params = {
+                    key: values[-1]
+                    for key, values in parse_qs(
+                        urlparse(_browser_navigation_href).query,
+                        keep_blank_values=True,
+                    ).items()
+                    if values
+                }
+            except Exception:
+                _browser_navigation_params = {}
+            st.session_state["cadivor_last_browser_navigation_event_id"] = (
+                _browser_navigation_event_id
+            )
+
     try:
         _raw_external_page = st.query_params.get("page", "")
         if isinstance(_raw_external_page, list):
             _raw_external_page = _raw_external_page[0] if _raw_external_page else ""
     except Exception:
         _raw_external_page = ""
-    _external_page = _safe_text(_raw_external_page, "")
+    _external_page = _safe_text(
+        _browser_navigation_params.get("page", _raw_external_page), ""
+    )
 
     app_mode = _safe_text(
         st.session_state.get("cadivor_route")
