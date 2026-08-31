@@ -11,6 +11,7 @@ from typing import Callable
 
 import streamlit as st
 
+from src.urls import internal_app_href
 from src.ui.navigation import navigate_to
 
 
@@ -54,6 +55,16 @@ def inject_unified_shell_css() -> None:
             f"<style id='cadivor-foundation-repair-css'>{css}</style>",
             unsafe_allow_html=True,
         )
+    st.markdown(
+        """
+        <style id="cadivor-native-navigation-links">
+        .cv-native-nav-button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:0 14px;border-radius:8px;background:#2563eb;color:#fff!important;font:700 13px/1.1 Inter,system-ui,sans-serif;text-decoration:none!important;box-shadow:0 7px 16px rgba(37,99,235,.18)}
+        .cv-native-nav-button:hover{background:#1d4ed8;color:#fff!important;text-decoration:none!important}.cv-native-nav-button--wide{display:flex;width:100%}.cv-native-nav-button--secondary{background:#fff;color:#1e3a5f!important;border:1px solid #b8c8df;box-shadow:none}.cv-native-nav-button--secondary:hover{background:#f4f8ff;color:#1e3a5f!important}
+        .cv-foundation-nav-link{display:flex;align-items:center;width:100%;min-height:36px;padding:0 12px;border-radius:8px;color:#dbeafe!important;font:650 13px/1.1 Inter,system-ui,sans-serif;text-decoration:none!important}.cv-foundation-nav-link:hover{background:rgba(71,112,190,.28);color:#fff!important;text-decoration:none!important}.cv-foundation-nav-link.is-active{background:#173c81;color:#fff!important}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _escape(value: object) -> str:
@@ -174,14 +185,11 @@ def render_unified_shell(
                 unsafe_allow_html=True,
             )
             for label, slug, destination in rows:
-                button_type = "primary" if destination == current_page else "secondary"
-                st.button(
-                    label,
-                    key=f"cv_foundation_nav_{slug}",
-                    type=button_type,
-                    use_container_width=True,
-                    on_click=_commit_navigation,
-                    args=(destination,),
+                active_class = " is-active" if destination == current_page else ""
+                st.html(
+                    f'<a class="cv-foundation-nav-link{active_class}" '
+                    f'href="{html.escape(internal_app_href(destination), quote=True)}" '
+                    f'target="_self">{_escape(label)}</a>'
                 )
 
         st.markdown(
