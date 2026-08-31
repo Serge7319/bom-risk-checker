@@ -531,6 +531,7 @@ def render_analysis_detail(
         .cv-report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.cv-report-card{border:1px solid #e2e8f0;background:#fff;border-radius:20px;padding:17px;box-shadow:0 14px 34px rgba(15,23,42,.045)}.cv-report-card h4{margin:0 0 6px;color:#0f172a!important;font-size:15px;font-weight:980}.cv-report-card p{margin:0 0 12px;color:#64748b!important;font-size:11px;font-weight:750;line-height:1.5}.cv-report-formats{display:flex;gap:7px;flex-wrap:wrap}.cv-format{border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:950}
         .cv-discussion-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:14px}
         .cv-discussion-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:17px;padding:14px}.cv-discussion-kpi span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-discussion-kpi strong{display:block;color:#0f172a!important;font-size:22px;font-weight:980}
+        .cv-discussion-compose-callout{border:1px solid #93c5fd;background:linear-gradient(135deg,#eff6ff,#fff);border-radius:18px;padding:15px 17px;margin:0 0 12px}.cv-discussion-compose-callout strong{display:block;color:#0f172a!important;font-size:15px;font-weight:980}.cv-discussion-compose-callout span{display:block;color:#475569!important;font-size:11px;font-weight:750;line-height:1.5;margin-top:4px}
         .cv-comment{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:15px 16px;margin-bottom:11px;box-shadow:0 10px 26px rgba(15,23,42,.04)}
         .cv-comment.pinned{border-color:#fcd34d;background:#fffbeb}.cv-comment-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:9px}.cv-comment-author{color:#0f172a!important;font-size:13px;font-weight:980}.cv-comment-meta{color:#64748b!important;font-size:10px;font-weight:800;margin-top:3px}.cv-comment-body{color:#334155!important;font-size:12px;font-weight:700;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.cv-comment-badge{display:inline-flex;border-radius:999px;padding:5px 8px;border:1px solid #fde68a;background:#fef3c7;color:#92400e!important;font-size:9px;font-weight:950}
         .cv-follow-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:20px;padding:17px;margin-bottom:14px}
@@ -2676,60 +2677,14 @@ def render_analysis_detail(
         )
 
         st.markdown(
-            f"""
-            <div class="cv-follow-card">
-              <div class="cv-analysis-card-title">
-                <span>Follow this BOM</span>
-                <span class="cv-analysis-pill {'good' if is_following else ''}">
-                  {'Following' if is_following else 'Not following'}
-                </span>
-              </div>
-              <div class="cv-analysis-row-meta">
-                Followers receive collaboration notifications when new comments or mentions are added.
-              </div>
+            """
+            <div class="cv-discussion-compose-callout">
+              <strong>Write a comment</strong>
+              <span>Ask a question, record engineering context, or mention a teammate. Your comment is saved to this BOM's review history.</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        follow_left, follow_right = st.columns([0.25, 0.75])
-        with follow_left:
-            if is_following:
-                if st.button(
-                    "Unfollow BOM",
-                    key=f"analysis_unfollow_{analysis_id}",
-                    use_container_width=True,
-                ):
-                    error = unfollow_analysis(
-                        supabase,
-                        workspace_id=workspace_id or "",
-                        analysis_id=analysis_id,
-                        user_id=user_id,
-                    )
-                    if error:
-                        st.error(error)
-                    else:
-                        st.success("You are no longer following this BOM.")
-                        st.rerun()
-            else:
-                if st.button(
-                    "Follow BOM",
-                    type="primary",
-                    key=f"analysis_follow_{analysis_id}",
-                    use_container_width=True,
-                ):
-                    error = follow_analysis(
-                        supabase,
-                        workspace_id=workspace_id or "",
-                        analysis_id=analysis_id,
-                        user_id=user_id,
-                    )
-                    if error:
-                        st.error(error)
-                    else:
-                        st.success("You are now following this BOM.")
-                        st.rerun()
-
-        st.markdown("#### Add an engineering comment")
         comment_kind = st.selectbox(
             "Comment type",
             ["Discussion", "Engineering Note", "Decision Rationale", "Procurement Note"],
@@ -2853,6 +2808,60 @@ def render_analysis_detail(
                 st.success("Engineering comment posted.")
                 st.session_state[comment_reset_key] = True
                 st.rerun()
+
+        st.markdown(
+            f"""
+            <div class="cv-follow-card">
+              <div class="cv-analysis-card-title">
+                <span>Follow this BOM</span>
+                <span class="cv-analysis-pill {'good' if is_following else ''}">
+                  {'Following' if is_following else 'Not following'}
+                </span>
+              </div>
+              <div class="cv-analysis-row-meta">
+                Followers receive collaboration notifications when new comments or mentions are added.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        follow_left, follow_right = st.columns([0.25, 0.75])
+        with follow_left:
+            if is_following:
+                if st.button(
+                    "Unfollow BOM",
+                    key=f"analysis_unfollow_{analysis_id}",
+                    use_container_width=True,
+                ):
+                    error = unfollow_analysis(
+                        supabase,
+                        workspace_id=workspace_id or "",
+                        analysis_id=analysis_id,
+                        user_id=user_id,
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("You are no longer following this BOM.")
+                        st.rerun()
+            else:
+                if st.button(
+                    "Follow BOM",
+                    type="primary",
+                    key=f"analysis_follow_{analysis_id}",
+                    use_container_width=True,
+                ):
+                    error = follow_analysis(
+                        supabase,
+                        workspace_id=workspace_id or "",
+                        analysis_id=analysis_id,
+                        user_id=user_id,
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("You are now following this BOM.")
+                        st.rerun()
 
         st.markdown("#### Discussion history")
 
