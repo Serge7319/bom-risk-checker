@@ -2548,6 +2548,18 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Quiescent Current mA": original_data.get("quiescent_current_ma"),
             "Input Bias nA": original_data.get("input_bias_na"),
             "GBW MHz": original_data.get("gbw_mhz"),
+            "capacitance": original_data.get("capacitance", ""),
+            "resistance": original_data.get("resistance", ""),
+            "inductance": original_data.get("inductance", ""),
+            "tolerance": original_data.get("tolerance", ""),
+            "rated_voltage": original_data.get("rated_voltage", ""),
+            "dielectric": original_data.get("dielectric", ""),
+            "power_rating": original_data.get("power_rating", ""),
+            "temperature_coefficient": original_data.get("temperature_coefficient", ""),
+            "esr": original_data.get("esr", ""),
+            "dcr": original_data.get("dcr", ""),
+            "rated_current": original_data.get("rated_current", ""),
+            "saturation_current": original_data.get("saturation_current", ""),
             "Feature Tags": original_data.get("Feature Tags", set()),
            }
 
