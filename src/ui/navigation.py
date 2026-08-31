@@ -31,11 +31,12 @@ _ALT_NAV_KEYS = (
 
 
 def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
-    """Navigate without a browser reload or a new Streamlit session.
+    """Navigate in-app while keeping the address bar and browser history truthful.
 
-    Internal navigation is intentionally session-state driven. Query strings are
-    still accepted for external/deep links, but ordinary clicks must not force
-    CookieManager and Supabase authentication to hydrate again.
+    Streamlit query-parameter updates are client-side state changes, so they do
+    not reload the browser or rehydrate authentication. Keeping this compact URL
+    state is important: it gives browser Back/Forward a real route to restore
+    instead of leaving the previous page name in the address bar.
     """
     current_page = str(st.session_state.get("cadivor_route", "") or "").strip()
     if current_page == "BOM Analyzer" and page != "BOM Analyzer":
@@ -56,6 +57,14 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
         if value is not None and str(value).strip() != "":
             nav_params[key] = str(value)
     st.session_state["cadivor_nav_params"] = nav_params
+    try:
+        st.query_params.clear()
+        for key, value in nav_params.items():
+            st.query_params[key] = value
+    except Exception:
+        # Navigation must remain usable if a deployed Streamlit version does
+        # not expose mutable query parameters.
+        pass
     if _rerun:
         st.rerun()
 
