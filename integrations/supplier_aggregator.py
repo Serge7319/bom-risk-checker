@@ -373,10 +373,18 @@ def get_best_part_data(part_number: str) -> dict:
 @st.cache_data(ttl=300, show_spinner=False)
 def search_supplier_alternatives(part_number: str) -> list[dict]:
     """Return ranked supplier evidence without treating catalog matches as direct substitutes."""
+    # Never stop discovery after the first distributor relationship. A valid
+    # direct substitute may coexist with catalog/family candidates that reveal
+    # ordering-code variants the substitutions endpoint did not return.
     explicit_substitutes = search_digikey_substitutions(part_number)
-    if explicit_substitutes:
-        return explicit_substitutes
-    return search_digikey_catalog_candidates(part_number)
+    catalog_candidates = search_digikey_catalog_candidates(part_number)
+    merged, seen = [], set()
+    for candidate in explicit_substitutes + catalog_candidates:
+        key = str(candidate.get("manufacturer_part_number") or "").strip().casefold()
+        if key and key not in seen:
+            seen.add(key)
+            merged.append(candidate)
+    return merged
 
 
 def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
