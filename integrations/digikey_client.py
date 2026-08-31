@@ -65,6 +65,23 @@ def _exact_keyword_product(products: list, part_number: str) -> dict | None:
 
 
 def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_token: str) -> dict:
+    product = _search_digikey_exact_product(
+        part_number, client_id=client_id, access_token=access_token
+    )
+    if not product:
+        return default_digikey_result(part_number)
+    return normalize_digikey_product(product)
+
+
+def _search_digikey_exact_product(part_number: str, *, client_id: str, access_token: str) -> dict | None:
+    """Return the raw exact keyword product so callers retain package variants.
+
+    DigiKey can associate the same manufacturer MPN with multiple purchasing
+    package numbers (TR, CT, and DKR).  The substitutions endpoint is keyed by
+    a DigiKey product number, so keeping these variants lets us ask every
+    authoritative representation instead of silently falling back when the
+    first variant does not expose the relationship.
+    """
     url = "https://api.digikey.com/products/v4/search/keyword"
     headers = _digikey_headers(client_id, access_token)
 
@@ -83,11 +100,28 @@ def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_t
 
     products = data.get("Products", [])
 
-    product = _exact_keyword_product(products, part_number)
-    if not product:
-        return default_digikey_result(part_number)
+    return _exact_keyword_product(products, part_number)
 
-    return normalize_digikey_product(product)
+
+def _digikey_product_numbers(product: dict) -> list[str]:
+    """Collect all distributor product numbers for an exact MPN, in order."""
+    numbers = []
+    if not isinstance(product, dict):
+        return numbers
+
+    primary = str(product.get("DigiKeyProductNumber") or "").strip()
+    if primary:
+        numbers.append(primary)
+
+    for variation in product.get("ProductVariations") or []:
+        if not isinstance(variation, dict):
+            continue
+        value = str(variation.get("DigiKeyProductNumber") or "").strip()
+        if value:
+            numbers.append(value)
+
+    seen = set()
+    return [value for value in numbers if not (value.casefold() in seen or seen.add(value.casefold()))]
 
 
 def search_digikey_by_part_number(part_number: str) -> dict:
@@ -111,49 +145,53 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
         return []
     client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
     access_token = get_digikey_access_token()
-    product = _search_digikey_by_part_number(
+    product = _search_digikey_exact_product(
         requested, client_id=client_id, access_token=access_token
     )
-    product_number = str(product.get("digikey_part_number") or "").strip()
-    if not product_number:
+    product_numbers = _digikey_product_numbers(product or {})
+    if not product_numbers:
         # Do not call the substitutions endpoint for an unverified keyword
         # match. A catalog search below can still provide clearly-labelled
         # candidates, but it must not look like substitute evidence.
         return []
-    response = requests.get(
-        "https://api.digikey.com/products/v4/search/"
-        f"{quote(product_number, safe='')}/substitutions",
-        headers=_digikey_headers(client_id, access_token),
-        timeout=15,
-    )
-    response.raise_for_status()
     results = []
-    payload = response.json() or {}
-    substitute_rows = (
-        payload.get("ProductSubstitutes")
-        or payload.get("Substitutions")
-        or payload.get("Products")
-        or []
-    )
-    for item in substitute_rows:
-        if not isinstance(item, dict):
-            continue
-        mpn = str(item.get("ManufacturerProductNumber") or "").strip()
-        if not mpn or mpn.casefold() == requested.casefold():
-            continue
-        manufacturer = item.get("Manufacturer") or {}
-        results.append({
-            "source": "DigiKey",
-            "evidence_type": "Distributor-listed substitute",
-            "substitute_type": str(item.get("SubstituteType") or "Candidate").strip(),
-            "manufacturer_part_number": mpn,
-            "manufacturer": str(manufacturer.get("Name") or "") if isinstance(manufacturer, dict) else str(manufacturer),
-            "description": str(item.get("Description") or "").strip(),
-            "stock_total": int(_as_number(item.get("QuantityAvailable"), 0)),
-            "unit_price": _as_number(item.get("UnitPrice"), 0.0),
-            "product_detail_url": str(item.get("ProductUrl") or "").strip(),
-            "digikey_part_number": str(item.get("DigiKeyProductNumber") or "").strip(),
-        })
+    seen_mpns = set()
+    for product_number in product_numbers:
+        response = requests.get(
+            "https://api.digikey.com/products/v4/search/"
+            f"{quote(product_number, safe='')}/substitutions",
+            headers=_digikey_headers(client_id, access_token),
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json() or {}
+        substitute_rows = (
+            payload.get("ProductSubstitutes")
+            or payload.get("Substitutions")
+            or payload.get("Products")
+            or []
+        )
+        for item in substitute_rows:
+            if not isinstance(item, dict):
+                continue
+            mpn = str(item.get("ManufacturerProductNumber") or "").strip()
+            mpn_key = _mpn_key(mpn)
+            if not mpn or mpn_key == _mpn_key(requested) or mpn_key in seen_mpns:
+                continue
+            seen_mpns.add(mpn_key)
+            manufacturer = item.get("Manufacturer") or {}
+            results.append({
+                "source": "DigiKey",
+                "evidence_type": "Distributor-listed substitute",
+                "substitute_type": str(item.get("SubstituteType") or "Candidate").strip(),
+                "manufacturer_part_number": mpn,
+                "manufacturer": str(manufacturer.get("Name") or "") if isinstance(manufacturer, dict) else str(manufacturer),
+                "description": str(item.get("Description") or "").strip(),
+                "stock_total": int(_as_number(item.get("QuantityAvailable"), 0)),
+                "unit_price": _as_number(item.get("UnitPrice"), 0.0),
+                "product_detail_url": str(item.get("ProductUrl") or "").strip(),
+                "digikey_part_number": str(item.get("DigiKeyProductNumber") or "").strip(),
+            })
     return results
 
 
