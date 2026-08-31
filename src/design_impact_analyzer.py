@@ -146,14 +146,46 @@ def build_design_impact(
     package_variants = len({row["Package"] for row in affected if row["Package"]})
     pin_variants = len({row["Pin Count"] for row in affected if row["Pin Count"] > 0})
 
-    impact_score = min(
-        100,
-        maximum_risk
-        + min(25, max(0, project_count - 1) * 10)
-        + (20 if minimum_stock <= 0 else 0)
-        + (15 if minimum_sources <= 1 else 0)
-        + (15 if lifecycle_exposed else 0),
-    )
+    impact_score_drivers = [
+        {
+            "label": "Component risk",
+            "points": maximum_risk,
+            "detail": f"Highest recorded component risk is {maximum_risk}/100.",
+        },
+        {
+            "label": "Cross-project exposure",
+            "points": min(25, max(0, project_count - 1) * 10),
+            "detail": (
+                f"Used in {project_count} saved project(s)."
+                if project_count > 1
+                else "Used in one saved project."
+            ),
+        },
+        {
+            "label": "Inventory evidence",
+            "points": 20 if minimum_stock <= 0 else 0,
+            "detail": (
+                "No available stock is recorded."
+                if minimum_stock <= 0
+                else f"{minimum_stock:,} units are recorded as available."
+            ),
+        },
+        {
+            "label": "Supplier coverage",
+            "points": 15 if minimum_sources <= 1 else 0,
+            "detail": f"Minimum recorded coverage is {minimum_sources} source(s).",
+        },
+        {
+            "label": "Lifecycle exposure",
+            "points": 15 if lifecycle_exposed else 0,
+            "detail": (
+                "Lifecycle exposure is recorded."
+                if lifecycle_exposed
+                else "No lifecycle exposure is recorded."
+            ),
+        },
+    ]
+    impact_score = min(100, sum(driver["points"] for driver in impact_score_drivers))
 
     engineering_hours = max(
         1,
@@ -251,6 +283,7 @@ def build_design_impact(
         "minimum_sources": minimum_sources,
         "maximum_risk": maximum_risk,
         "impact_score": impact_score,
+        "impact_score_drivers": impact_score_drivers,
         "impact_level": _impact_level(impact_score),
         "engineering_hours": engineering_hours,
         "manufacturer": _text(reference.get("Manufacturer"), "Unknown"),
@@ -436,6 +469,18 @@ def render_design_impact(
             """,
             unsafe_allow_html=True,
         )
+
+        st.markdown('<div class="cv20-section">Impact score drivers</div>', unsafe_allow_html=True)
+        for driver in intelligence["impact_score_drivers"]:
+            st.markdown(
+                f"""
+                <div class="cv20-impact">
+                  <strong>{html.escape(driver['label'])} · +{int(driver['points'])} points</strong>
+                  <p>{html.escape(driver['detail'])}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         for item in intelligence["impact_categories"]:
             st.markdown(
