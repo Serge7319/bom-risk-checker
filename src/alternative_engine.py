@@ -2621,7 +2621,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         reverse=True,
     )
 
-    return sorted_candidates[:5]
+    # Keep the review set manageable without hiding a complete distributor
+    # substitute list such as DigiKey's nine results for C0603C104K5RACTU.
+    return sorted_candidates[:10]
 
 def rank_alternatives(alternative_part_numbers: list) -> pd.DataFrame:
     """
