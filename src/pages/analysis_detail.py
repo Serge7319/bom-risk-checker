@@ -532,6 +532,7 @@ def render_analysis_detail(
         .cv-discussion-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:14px}
         .cv-discussion-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:17px;padding:14px}.cv-discussion-kpi span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-discussion-kpi strong{display:block;color:#0f172a!important;font-size:22px;font-weight:980}
         .cv-discussion-compose-callout{border:1px solid #93c5fd;background:linear-gradient(135deg,#eff6ff,#fff);border-radius:18px;padding:15px 17px;margin:0 0 12px}.cv-discussion-compose-callout strong{display:block;color:#0f172a!important;font-size:15px;font-weight:980}.cv-discussion-compose-callout span{display:block;color:#475569!important;font-size:11px;font-weight:750;line-height:1.5;margin-top:4px}
+        section[data-testid="stMain"] [data-testid="stForm"] [data-testid="stTextArea"]{display:block!important;visibility:visible!important;opacity:1!important}section[data-testid="stMain"] [data-testid="stForm"] [data-testid="stTextArea"] textarea{display:block!important;visibility:visible!important;opacity:1!important;min-height:120px!important;height:120px!important}
         .cv-comment{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:15px 16px;margin-bottom:11px;box-shadow:0 10px 26px rgba(15,23,42,.04)}
         .cv-comment.pinned{border-color:#fcd34d;background:#fffbeb}.cv-comment-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:9px}.cv-comment-author{color:#0f172a!important;font-size:13px;font-weight:980}.cv-comment-meta{color:#64748b!important;font-size:10px;font-weight:800;margin-top:3px}.cv-comment-body{color:#334155!important;font-size:12px;font-weight:700;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.cv-comment-badge{display:inline-flex;border-radius:999px;padding:5px 8px;border:1px solid #fde68a;background:#fef3c7;color:#92400e!important;font-size:9px;font-weight:950}
         .cv-follow-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:20px;padding:17px;margin-bottom:14px}
@@ -2713,41 +2714,33 @@ def render_analysis_detail(
             else ""
         )
 
-        comment_body_key = f"analysis_comment_body_{analysis_id}"
-        comment_reset_key = f"analysis_comment_reset_{analysis_id}"
+        with st.form(f"analysis_comment_form_{analysis_id}", clear_on_submit=True):
+            comment_text = st.text_area(
+                "Your comment",
+                placeholder=(
+                    "Write your comment here. You can mention a teammate with "
+                    "@emailhandle or @firstname."
+                ),
+                height=120,
+                key=f"analysis_comment_body_{analysis_id}",
+            )
+            if workspace_members:
+                mention_examples = []
+                for member in workspace_members[:8]:
+                    email_value = _safe(member.get("email"), "")
+                    name_value = _safe(member.get("display_name"), "")
+                    handle = email_value.split("@", 1)[0] if "@" in email_value else ""
+                    if handle:
+                        mention_examples.append(f"@{handle}")
+                    elif name_value:
+                        mention_examples.append(
+                            "@" + re.sub(r"[^A-Za-z0-9._+-]+", ".", name_value).strip(".")
+                        )
+                if mention_examples:
+                    st.caption("Mention examples: " + ", ".join(mention_examples))
+            submitted_comment = st.form_submit_button("Post Comment", type="primary")
 
-        if st.session_state.pop(comment_reset_key, False):
-            st.session_state[comment_body_key] = ""
-
-        comment_text = st.text_area(
-            "Comment",
-            placeholder=(
-                "Record engineering context or mention a teammate with "
-                "@emailhandle or @firstname."
-            ),
-            height=120,
-            key=comment_body_key,
-        )
-        if workspace_members:
-            mention_examples = []
-            for member in workspace_members[:8]:
-                email_value = _safe(member.get("email"), "")
-                name_value = _safe(member.get("display_name"), "")
-                handle = email_value.split("@", 1)[0] if "@" in email_value else ""
-                if handle:
-                    mention_examples.append(f"@{handle}")
-                elif name_value:
-                    mention_examples.append(
-                        "@" + re.sub(r"[^A-Za-z0-9._+-]+", ".", name_value).strip(".")
-                    )
-            if mention_examples:
-                st.caption("Mention examples: " + ", ".join(mention_examples))
-
-        if st.button(
-            "Post Comment",
-            type="primary",
-            key=f"analysis_post_comment_{analysis_id}",
-        ):
+        if submitted_comment:
             created_comment, comment_error = add_analysis_comment(
                 supabase,
                 workspace_id=workspace_id or "",
@@ -2806,7 +2799,6 @@ def render_analysis_detail(
                             notification_type="analysis_comment",
                         )
                 st.success("Engineering comment posted.")
-                st.session_state[comment_reset_key] = True
                 st.rerun()
 
         st.markdown(
