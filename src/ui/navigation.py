@@ -58,9 +58,10 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
             nav_params[key] = str(value)
     st.session_state["cadivor_nav_params"] = nav_params
     try:
-        st.query_params.clear()
-        for key, value in nav_params.items():
-            st.query_params[key] = value
+        # This must be a single operation. Clearing first and then assigning
+        # ``page`` and ``analysis_id`` individually creates intermediate browser
+        # history entries, so one Back press lands on a half-formed route.
+        st.query_params.from_dict(nav_params)
     except Exception:
         # Navigation must remain usable if a deployed Streamlit version does
         # not expose mutable query parameters.
