@@ -879,7 +879,7 @@ def package_family(package: str) -> str:
     return "Unknown"
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
