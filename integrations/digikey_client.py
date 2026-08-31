@@ -195,6 +195,22 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
     return results
 
 
+def _catalog_search_terms(part_number: str) -> list[str]:
+    """Return conservative MPN-family searches without treating them as proof.
+
+    Distributor substitutions are authoritative when present.  These terms only
+    broaden discovery for ordering/package suffixes such as CT, TR, TU and DKR.
+    """
+    requested = str(part_number or "").strip()
+    terms = [requested]
+    upper = requested.upper()
+    for suffix in ("CT", "TR", "TU", "DKR"):
+        if upper.endswith(suffix) and len(requested) > len(suffix) + 6:
+            terms.append(requested[:-len(suffix)])
+    seen = set()
+    return [term for term in terms if term and not (term.casefold() in seen or seen.add(term.casefold()))]
+
+
 def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> list[dict]:
     """Return catalog candidates when DigiKey has no explicit substitute mapping.
 
@@ -207,35 +223,36 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
         return []
     client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
     access_token = get_digikey_access_token()
-    response = requests.post(
-        "https://api.digikey.com/products/v4/search/keyword",
-        headers=_digikey_headers(client_id, access_token),
-        json={"Keywords": requested, "Limit": max(1, min(int(limit), 25)), "Offset": 0},
-        timeout=15,
-    )
-    response.raise_for_status()
     candidates = []
     seen_part_numbers = set()
-    for product in (response.json() or {}).get("Products") or []:
-        if not isinstance(product, dict):
-            continue
-        normalized = normalize_digikey_product(product)
-        mpn = str(normalized.get("manufacturer_part_number") or "").strip()
-        if not mpn or mpn.casefold() == requested.casefold() or mpn.casefold() in seen_part_numbers:
-            continue
-        seen_part_numbers.add(mpn.casefold())
-        candidates.append({
-            "source": "DigiKey",
-            "evidence_type": "Distributor catalog match",
-            "substitute_type": "Similar",
-            "manufacturer_part_number": mpn,
-            "manufacturer": normalized.get("manufacturer", ""),
-            "description": normalized.get("description", ""),
-            "stock_total": normalized.get("stock_total", 0),
-            "unit_price": normalized.get("unit_price", 0.0),
-            "product_detail_url": normalized.get("product_detail_url", ""),
-            "digikey_part_number": normalized.get("digikey_part_number", ""),
-        })
+    for search_term in _catalog_search_terms(requested):
+        response = requests.post(
+            "https://api.digikey.com/products/v4/search/keyword",
+            headers=_digikey_headers(client_id, access_token),
+            json={"Keywords": search_term, "Limit": max(1, min(int(limit), 25)), "Offset": 0},
+            timeout=15,
+        )
+        response.raise_for_status()
+        for product in (response.json() or {}).get("Products") or []:
+            if not isinstance(product, dict):
+                continue
+            normalized = normalize_digikey_product(product)
+            mpn = str(normalized.get("manufacturer_part_number") or "").strip()
+            if not mpn or mpn.casefold() == requested.casefold() or mpn.casefold() in seen_part_numbers:
+                continue
+            seen_part_numbers.add(mpn.casefold())
+            candidates.append({
+                "source": "DigiKey",
+                "evidence_type": "Distributor catalog match",
+                "substitute_type": "Similar",
+                "manufacturer_part_number": mpn,
+                "manufacturer": normalized.get("manufacturer", ""),
+                "description": normalized.get("description", ""),
+                "stock_total": normalized.get("stock_total", 0),
+                "unit_price": normalized.get("unit_price", 0.0),
+                "product_detail_url": normalized.get("product_detail_url", ""),
+                "digikey_part_number": normalized.get("digikey_part_number", ""),
+            })
     return candidates
 
 
