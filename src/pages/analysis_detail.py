@@ -1232,16 +1232,23 @@ def render_analysis_detail(
 
         st.markdown('<div class="cv672-workspace-root"></div>', unsafe_allow_html=True)
         render_engineering_workspace_strip(decision_brief)
-        workspace_radio_key = f"cv672_workspace_radio_{analysis_id}"
+        workspace_nav_key = f"cv672_workspace_pills_{analysis_id}"
         ws_state_key = f"engineering_workspace_tab_{analysis_id}"
 
-        workspace_category = st.radio(
+        # Migrate an in-session selection from the earlier radio control while
+        # rendering the same underline-style pills used elsewhere in Cadivor.
+        prior_radio_key = f"cv672_workspace_radio_{analysis_id}"
+        if workspace_nav_key not in st.session_state and prior_radio_key in st.session_state:
+            st.session_state[workspace_nav_key] = st.session_state[prior_radio_key]
+
+        workspace_category = st.pills(
             "Engineering workspace category",
             WORKSPACE_CATEGORIES,
-            horizontal=True,
-            key=workspace_radio_key,
+            selection_mode="single",
+            key=workspace_nav_key,
             label_visibility="collapsed",
         )
+        workspace_category = workspace_category or "Decision Overview"
         st.session_state[ws_state_key] = workspace_category
 
         if workspace_category == "Decision Overview":
@@ -1257,7 +1264,7 @@ def render_analysis_detail(
             render_engineering_workspace_actions(decision_brief)
             if st.session_state.get("cv26_priority_action_return_analysis") == analysis_id:
                 def _return_to_risk_analytics() -> None:
-                    st.session_state[workspace_radio_key] = "Risk Analytics"
+                    st.session_state[workspace_nav_key] = "Risk Analytics"
                     st.session_state.pop("cv26_priority_action_return_analysis", None)
 
                 st.button(

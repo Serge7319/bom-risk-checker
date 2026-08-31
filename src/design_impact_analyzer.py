@@ -185,7 +185,8 @@ def build_design_impact(
             ),
         },
     ]
-    impact_score = min(100, sum(driver["points"] for driver in impact_score_drivers))
+    impact_score_raw = sum(driver["points"] for driver in impact_score_drivers)
+    impact_score = min(100, impact_score_raw)
 
     engineering_hours = max(
         1,
@@ -283,6 +284,8 @@ def build_design_impact(
         "minimum_sources": minimum_sources,
         "maximum_risk": maximum_risk,
         "impact_score": impact_score,
+        "impact_score_raw": impact_score_raw,
+        "impact_score_capped": impact_score_raw > 100,
         "impact_score_drivers": impact_score_drivers,
         "impact_level": _impact_level(impact_score),
         "engineering_hours": engineering_hours,
@@ -471,6 +474,11 @@ def render_design_impact(
         )
 
         st.markdown('<div class="cv20-section">Impact score drivers</div>', unsafe_allow_html=True)
+        if intelligence.get("impact_score_capped"):
+            st.caption(
+                f"The evidence signals total {intelligence['impact_score_raw']} points; "
+                "Cadivor caps the reported Impact Score at 100/100."
+            )
         for driver in intelligence["impact_score_drivers"]:
             st.markdown(
                 f"""
