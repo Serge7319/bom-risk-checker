@@ -30,7 +30,10 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         requested_urls = []
 
         def post(*_args, **_kwargs):
-            return _Response({"Products": [{"DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND"}]})
+            return _Response({"Products": [{
+                "ManufacturerProductNumber": "C0603C104K5RACTU",
+                "DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND",
+            }]})
 
         def get(url, **_kwargs):
             requested_urls.append(url)
@@ -51,6 +54,41 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(results[0]["manufacturer_part_number"], "C0603C104K5RAC3121")
         self.assertEqual(results[0]["substitute_type"], "Direct")
         self.assertIn("399-C0603C104K5RACTUCT-ND/substitutions", requested_urls[0])
+
+    def test_substitutions_use_exact_mpn_not_first_keyword_result(self):
+        requested_urls = []
+
+        def post(*_args, **_kwargs):
+            return _Response({"Products": [
+                {
+                    "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                    "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                },
+                {
+                    "ManufacturerProductNumber": "C0603C104K5RACTU",
+                    "DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND",
+                },
+            ]})
+
+        def get(url, **_kwargs):
+            requested_urls.append(url)
+            return _Response({"ProductSubstitutes": []})
+
+        self.client.requests.post = post
+        self.client.requests.get = get
+        self.client.search_digikey_substitutions("C0603C104K5RACTU")
+
+        self.assertIn("399-C0603C104K5RACTUCT-ND/substitutions", requested_urls[0])
+
+    def test_non_exact_keyword_result_is_not_treated_as_verified_part(self):
+        self.client.requests.post = lambda *_args, **_kwargs: _Response({"Products": [{
+            "ManufacturerProductNumber": "C0603C104K5RAC3121",
+            "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+        }]})
+
+        result = self.client.search_digikey_by_part_number("C0603C104K5RACTU")
+
+        self.assertEqual(result["manufacturer_part_number"], "")
 
     def test_catalog_matches_are_not_claimed_as_direct_substitutes(self):
         self.client.requests.post = lambda *_args, **_kwargs: _Response({"Products": [{

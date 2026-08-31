@@ -1,4 +1,5 @@
 import requests
+import re
 from urllib.parse import quote
 
 from src.secrets import get_secret
@@ -39,13 +40,39 @@ def _digikey_headers(client_id: str, access_token: str) -> dict:
     }
 
 
+def _mpn_key(value: object) -> str:
+    """Return a conservative comparison key for manufacturer part numbers."""
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
+def _exact_keyword_product(products: list, part_number: str) -> dict | None:
+    """Select the exact MPN from a DigiKey keyword response.
+
+    Keyword search is ranked, not an exact-MPN endpoint. Using its first result
+    can attach a substitution lookup to a neighboring package, tape/reel
+    variant, or unrelated prefix match. Only an exact manufacturer MPN is a
+    safe baseline for a replacement recommendation.
+    """
+    requested_key = _mpn_key(part_number)
+    if not requested_key:
+        return None
+    for product in products or []:
+        if not isinstance(product, dict):
+            continue
+        if _mpn_key(product.get("ManufacturerProductNumber")) == requested_key:
+            return product
+    return None
+
+
 def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_token: str) -> dict:
     url = "https://api.digikey.com/products/v4/search/keyword"
     headers = _digikey_headers(client_id, access_token)
 
     payload = {
         "Keywords": part_number,
-        "Limit": 1,
+        # A keyword search is not guaranteed to put the exact MPN first.
+        # Keep this bounded, then explicitly select the exact product below.
+        "Limit": 12,
         "Offset": 0,
     }
 
@@ -56,11 +83,9 @@ def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_t
 
     products = data.get("Products", [])
 
-    if not products:
+    product = _exact_keyword_product(products, part_number)
+    if not product:
         return default_digikey_result(part_number)
-
-    product = products[0]
-
 
     return normalize_digikey_product(product)
 
@@ -89,7 +114,12 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
     product = _search_digikey_by_part_number(
         requested, client_id=client_id, access_token=access_token
     )
-    product_number = str(product.get("digikey_part_number") or requested).strip()
+    product_number = str(product.get("digikey_part_number") or "").strip()
+    if not product_number:
+        # Do not call the substitutions endpoint for an unverified keyword
+        # match. A catalog search below can still provide clearly-labelled
+        # candidates, but it must not look like substitute evidence.
+        return []
     response = requests.get(
         "https://api.digikey.com/products/v4/search/"
         f"{quote(product_number, safe='')}/substitutions",
@@ -98,7 +128,14 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
     )
     response.raise_for_status()
     results = []
-    for item in (response.json() or {}).get("ProductSubstitutes") or []:
+    payload = response.json() or {}
+    substitute_rows = (
+        payload.get("ProductSubstitutes")
+        or payload.get("Substitutions")
+        or payload.get("Products")
+        or []
+    )
+    for item in substitute_rows:
         if not isinstance(item, dict):
             continue
         mpn = str(item.get("ManufacturerProductNumber") or "").strip()
