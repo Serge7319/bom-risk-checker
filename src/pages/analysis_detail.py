@@ -1068,7 +1068,7 @@ def render_analysis_detail(
         hero_actions = st.columns(4, gap="small")
         with hero_actions[0]:
             internal_nav_button(
-                "Open in BOM Analyzer →",
+                "Open BOM Analyzer",
                 "BOM Analyzer",
                 key="analysis_hero_bom_analyzer",
                 use_container_width=True,
