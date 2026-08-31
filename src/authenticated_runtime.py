@@ -54,6 +54,7 @@ import math
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 start_time = time.time()
 from src.ui.milestone10a import apply_milestone10a_design_system
@@ -82,6 +83,7 @@ from src.ui.navigation import (
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
 )
+from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
 from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.ui.premium_interaction_repair import inject_premium_interaction_css
@@ -368,7 +370,7 @@ def render_maintenance_mode_surface(message):
           <section class="maintenance-card">
             <div class="maintenance-brand"><span class="maintenance-mark">C</span><span>Cadivor</span></div>
             <div class="maintenance-eyebrow">Scheduled maintenance</div>
-            <h1 id="cadivor-maintenance-heading">We’re improving Cadivor.</h1>
+            <h1 id="cadivor-maintenance-heading">Weâre improving Cadivor.</h1>
             <p class="maintenance-message">{safe_message}</p>
             <div class="maintenance-assurance"><span class="maintenance-shield">&#9670;</span><span><strong>Your engineering data is safe.</strong><br/>Your workspace and saved analyses will be available again when service is restored.</span></div>
             <p class="maintenance-footer">Please check back shortly. For time-sensitive access support, contact <a href="mailto:beta@cadivor.com">beta@cadivor.com</a>.</p>
@@ -894,18 +896,18 @@ def generate_engineering_change_package_pdf(
     def _clean_text(value):
         text_value = str(value if value is not None else "-")
         replacements = {
-            "✓": "",
-            "⚠": "",
-            "ℹ": "",
-            "●": "",
-            "🔴": "",
-            "🟢": "",
-            "🟡": "",
-            "■": "",
-            "▪": "",
-            "□": "-",
-            "→": "to",
-            "•": "-",
+            "â": "",
+            "â ": "",
+            "â¹": "",
+            "â": "",
+            "ð´": "",
+            "ð¢": "",
+            "ð¡": "",
+            "â ": "",
+            "âª": "",
+            "â¡": "-",
+            "â": "to",
+            "â¢": "-",
         }
         for old, new in replacements.items():
             text_value = text_value.replace(old, new)
@@ -941,11 +943,11 @@ def generate_engineering_change_package_pdf(
                 str(item),
                 flags=re.IGNORECASE,
             )
-            cleaned_item = cleaned_item.replace("■", "").replace("▪", "").strip()
+            cleaned_item = cleaned_item.replace("â ", "").replace("âª", "").strip()
 
             if prefix == "ADVANTAGE:":
                 stock_match = re.search(
-                    r"([0-9]+(?:\.[0-9]+)?)\s*[x×]\s*more stock",
+                    r"([0-9]+(?:\.[0-9]+)?)\s*[xÃ]\s*more stock",
                     cleaned_item,
                     flags=re.IGNORECASE,
                 )
@@ -1277,7 +1279,7 @@ def run_global_search(user_id, query, limit=8):
                 results.append({
                     "type": "BOM Analysis",
                     "title": item.get("project_name") or item.get("filename") or "Saved analysis",
-                    "meta": f"{item.get('total_parts', 0)} parts • Health {item.get('health_score', '—')} • {item.get('created_at', '')}",
+                    "meta": f"{item.get('total_parts', 0)} parts â¢ Health {item.get('health_score', 'â')} â¢ {item.get('created_at', '')}",
                     "page": "Dashboard",
                 })
     except Exception:
@@ -1302,7 +1304,7 @@ def run_global_search(user_id, query, limit=8):
                 results.append({
                     "type": "Component",
                     "title": part.get("mpn") or "Component",
-                    "meta": f"{part.get('manufacturer', 'Unknown manufacturer')} • {part.get('risk_level', 'Unknown risk')} • {part.get('lifecycle_status', 'Unknown lifecycle')}",
+                    "meta": f"{part.get('manufacturer', 'Unknown manufacturer')} â¢ {part.get('risk_level', 'Unknown risk')} â¢ {part.get('lifecycle_status', 'Unknown lifecycle')}",
                     "page": "BOM Analyzer",
                 })
     except Exception:
@@ -1320,8 +1322,8 @@ def run_global_search(user_id, query, limit=8):
             if q in haystack:
                 results.append({
                     "type": "Alternative",
-                    "title": f"{alt.get('original_part', '')} → {alt.get('alternative_part', '')}",
-                    "meta": f"{alt.get('supplier', 'Unknown supplier')} • Score {alt.get('recommendation_score', '—')} • Stock {alt.get('stock', '—')}",
+                    "title": f"{alt.get('original_part', '')} â {alt.get('alternative_part', '')}",
+                    "meta": f"{alt.get('supplier', 'Unknown supplier')} â¢ Score {alt.get('recommendation_score', 'â')} â¢ Stock {alt.get('stock', 'â')}",
                     "page": "Alternative Finder",
                 })
     except Exception:
@@ -1367,7 +1369,7 @@ def render_global_search_panel(user_id):
                 "Cadivor searched saved analyses, parts, alternatives, and suppliers but did not find a match.",
                 "Analyze a BOM",
                 "?page=BOM%20Analyzer",
-                "⌕",
+                "â",
             )
         else:
             for result in results:
@@ -1377,7 +1379,7 @@ def render_global_search_panel(user_id):
                     <div class="cv-result-card">
                       <div>
                         <div class="cv-result-title">{result.get('title', '')}</div>
-                        <div class="cv-result-meta">{result.get('type', '')} • {result.get('meta', '')}</div>
+                        <div class="cv-result-meta">{result.get('type', '')} â¢ {result.get('meta', '')}</div>
                       </div>
                       <a class="cv-status-pill" href="?page={page_href}" target="_self">Open</a>
                     </div>
@@ -1697,7 +1699,7 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                             (
                                 f"<b>Best Value Alternative:</b> "
                                 f"{best_value_row['alternative_part']} "
-                                f"— ${float(best_value_row['unit_price']):.2f} "
+                                f"â ${float(best_value_row['unit_price']):.2f} "
                                 f"with available stock of {best_value_row['stock']} units."
                             ),
                             styles["BodyText"],
@@ -2019,7 +2021,7 @@ def run_authenticated_app() -> None:
         return results_df
 
     def show_dashboard_summary(results_df):
-        st.subheader("📊 BOM Risk Dashboard")
+        st.subheader("ð BOM Risk Dashboard")
 
         total_parts = len(results_df)
         high_risk = (results_df["Risk Level"] == "High").sum()
@@ -2032,15 +2034,15 @@ def run_authenticated_app() -> None:
         health_score = bom_health_score
 
         if health_score >= 90:
-            health_status = "🟢 Excellent"
+            health_status = "ð¢ Excellent"
         elif health_score >= 75:
-            health_status = "🟢 Healthy"
+            health_status = "ð¢ Healthy"
         elif health_score >= 60:
-            health_status = "🟡 Moderate Risk"
+            health_status = "ð¡ Moderate Risk"
         elif health_score >= 40:
-            health_status = "🟠 High Risk"
+            health_status = "ð  High Risk"
         else:
-            health_status = "🔴 Critical"
+            health_status = "ð´ Critical"
 
         col1, col2, col3, col4 = st.columns(4)
 
@@ -2121,7 +2123,7 @@ def run_authenticated_app() -> None:
 
         st.divider()
 
-        st.subheader("🚨 Top Critical Parts")
+        st.subheader("ð¨ Top Critical Parts")
 
         top_risks = results_df.sort_values(
             by="Risk Score",
@@ -2149,7 +2151,7 @@ def run_authenticated_app() -> None:
         )
         st.divider()
 
-        st.subheader("✅ Recommended Actions")
+        st.subheader("â Recommended Actions")
 
         recommended_actions = []
 
@@ -2179,32 +2181,32 @@ def run_authenticated_app() -> None:
 
         if high_risk > 0:
             recommended_actions.append(
-                f"🔴 Immediate review required for {high_risk} high-risk parts before production release."
+                f"ð´ Immediate review required for {high_risk} high-risk parts before production release."
             )
 
         if no_stock_count > 0:
             recommended_actions.append(
-                f"📦 {no_stock_count} parts currently have no available stock. Procurement escalation recommended."
+                f"ð¦ {no_stock_count} parts currently have no available stock. Procurement escalation recommended."
             )
 
         if single_source_count > 0:
             recommended_actions.append(
-                f"⚠️ {single_source_count} parts rely on a single supplier. Evaluate secondary sourcing options."
+                f"â ï¸ {single_source_count} parts rely on a single supplier. Evaluate secondary sourcing options."
             )
 
         if unknown_lifecycle_count > 0:
             recommended_actions.append(
-                f"❓ {unknown_lifecycle_count} parts have unknown lifecycle status and require manufacturer verification."
+                f"â {unknown_lifecycle_count} parts have unknown lifecycle status and require manufacturer verification."
             )
 
         if replacement_suggested_count > 0:
             recommended_actions.append(
-                f"🔄 Replacement candidates were identified for {replacement_suggested_count} components."
+                f"ð Replacement candidates were identified for {replacement_suggested_count} components."
             )
 
         if not recommended_actions:
             recommended_actions.append(
-                "✅ No immediate sourcing risks detected. Continue periodic monitoring of lifecycle and stock availability."
+                "â No immediate sourcing risks detected. Continue periodic monitoring of lifecycle and stock availability."
             )
 
         st.markdown(
@@ -2214,7 +2216,7 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
     
-        st.subheader("🧾 Executive Summary")
+        st.subheader("ð§¾ Executive Summary")
 
         summary_parts = []
 
@@ -2252,12 +2254,12 @@ def run_authenticated_app() -> None:
 
     def risk_badge(level):
         if level == "High":
-            return "🔴 High"
+            return "ð´ High"
         elif level == "Medium":
-            return "🟡 Medium"
+            return "ð¡ Medium"
         elif level == "Low":
-            return "🟢 Low"
-        return "⚪ Unknown"
+            return "ð¢ Low"
+        return "âª Unknown"
 
 
     def use_chart_dark_layout(fig, height=360):
@@ -2378,7 +2380,7 @@ def run_authenticated_app() -> None:
     selected_plan = get_plan(selected_plan_name)
     monthly_upload_count = current_user["monthly_upload_count"]
 
-    # Milestone 11B.2 — active organization data context.
+    # Milestone 11B.2 â active organization data context.
     _context_user_id = _safe_text(current_user.get("id"), "")
     _context_email = _safe_text(current_user.get("email"), "")
     _context_name = _safe_text(
@@ -2469,13 +2471,46 @@ def run_authenticated_app() -> None:
     # Route state is mirrored to the address bar by navigate_to.  Treat a changed
     # URL page as an intentional route transition so browser Back/Forward restores
     # the visible Cadivor page instead of only changing an obsolete query string.
+    _browser_navigation_event = consume_browser_navigation_event()
+    _browser_navigation_params = {}
+    _browser_navigation_event_id = ""
+    if _browser_navigation_event:
+        _browser_navigation_event_id = _safe_text(
+            _browser_navigation_event.get("event_id"), ""
+        )
+        _browser_navigation_href = _safe_text(
+            _browser_navigation_event.get("href"), ""
+        )
+        if (
+            _browser_navigation_event_id
+            and _browser_navigation_event_id
+            != st.session_state.get("cadivor_last_browser_navigation_event_id")
+            and _browser_navigation_href
+        ):
+            try:
+                _browser_navigation_params = {
+                    key: values[-1]
+                    for key, values in parse_qs(
+                        urlparse(_browser_navigation_href).query,
+                        keep_blank_values=True,
+                    ).items()
+                    if values
+                }
+            except Exception:
+                _browser_navigation_params = {}
+            st.session_state["cadivor_last_browser_navigation_event_id"] = (
+                _browser_navigation_event_id
+            )
+
     try:
         _raw_external_page = st.query_params.get("page", "")
         if isinstance(_raw_external_page, list):
             _raw_external_page = _raw_external_page[0] if _raw_external_page else ""
     except Exception:
         _raw_external_page = ""
-    _external_page = _safe_text(_raw_external_page, "")
+    _external_page = _safe_text(
+        _browser_navigation_params.get("page", _raw_external_page), ""
+    )
 
     app_mode = _safe_text(
         st.session_state.get("cadivor_route")
@@ -2499,7 +2534,7 @@ def run_authenticated_app() -> None:
         _record_support_activity("page_viewed", {"page": app_mode})
         st.session_state["cadivor_support_last_page"] = app_mode
 
-    # Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
+    # Sprint 50.1.2 â session-only analysis continuity across Cadivor pages.
     # Query values are treated only as navigation inputs; the durable browser-session
     # context lives in st.session_state and is never written to the database.
     _incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
@@ -2780,7 +2815,7 @@ def run_authenticated_app() -> None:
               </p>
               <div class="cv-onboard-progress"><i style="width:{percent_complete}%"></i></div>
               <div class="cv-onboard-progress-copy">
-                {completed_steps} of {total_steps} steps complete · {percent_complete}%
+                {completed_steps} of {total_steps} steps complete Â· {percent_complete}%
               </div>
             </section>
             """,
@@ -3028,7 +3063,7 @@ def run_authenticated_app() -> None:
             procurement=overview_procurement,
         )
 
-        # Launch Sprint 29.0D — new-account activation must be decided before
+        # Launch Sprint 29.0D â new-account activation must be decided before
         # rendering the default Engineering Overview tab. Previously, onboarding
         # existed only inside Portfolio Dashboard, so brand-new users always saw
         # the empty overview because Streamlit opens the first tab by default.
@@ -3185,7 +3220,7 @@ def run_authenticated_app() -> None:
             </style>
             <div class="cv302-savebar">
               <div class="cv302-saveleft">
-                <div class="cv302-saveicon">✓</div>
+                <div class="cv302-saveicon">â</div>
                 <div><div class="cv302-savetitle">Saved to your workspace</div>
                 <div class="cv302-savecopy">This analysis and its engineering activity are preserved automatically.</div></div>
               </div>
@@ -3266,7 +3301,7 @@ def run_authenticated_app() -> None:
             _qp_value("mpn") or _qp_value("part"),
             "",
         )
-        if return_analysis_id and st.button("← Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
+        if return_analysis_id and st.button("â Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
             navigate_to("Analysis Details", analysis_id=return_analysis_id)
 
         def _monitor_query(table_name, columns="*"):
@@ -3335,7 +3370,7 @@ def run_authenticated_app() -> None:
         render_kpi_row_safe(
             [
                 MetricCard(label="Monitored", value=f"{monitored_count:,}", detail="components", tone="info", icon="radar"),
-                MetricCard(label="Critical action", value=str(monitoring_center["immediate_actions"]), detail="priority ≥ 75", tone="danger", icon="octagon-alert"),
+                MetricCard(label="Critical action", value=str(monitoring_center["immediate_actions"]), detail="priority â¥ 75", tone="danger", icon="octagon-alert"),
                 MetricCard(label="Lifecycle", value=str(monitoring_center["lifecycle_alerts"]), detail="active changes", tone="warning", icon="clock-3"),
                 MetricCard(label="Inventory", value=str(monitoring_center["inventory_alerts"]), detail="stock alerts", tone="monitoring", icon="boxes"),
                 MetricCard(label="Stock", value=f"{monitored_count:,}", detail="tracked components", tone="info", icon="package-search"),
@@ -3345,7 +3380,7 @@ def run_authenticated_app() -> None:
             compact=True,
         )
 
-        def _monitor_display(value, fallback="—"):
+        def _monitor_display(value, fallback="â"):
             if value is None:
                 return fallback
             try:
@@ -3493,7 +3528,7 @@ def run_authenticated_app() -> None:
                     event_time = _monitor_display(event.get("created_at"), "Recent")
                     try:
                         parsed = pd.to_datetime(event_time)
-                        event_time = parsed.strftime("%b %d, %Y · %I:%M %p")
+                        event_time = parsed.strftime("%b %d, %Y Â· %I:%M %p")
                     except Exception:
                         pass
                     event_part = _monitor_display(event.get("part_number"), "Workspace")
@@ -3501,8 +3536,8 @@ def run_authenticated_app() -> None:
                     event_summary = _monitor_display(event.get("event_summary"), "Monitoring evidence was updated.")
                     previous = _monitor_display(event.get("previous_value"), "")
                     current = _monitor_display(event.get("current_value"), "")
-                    transition = f" · {previous} → {current}" if previous and current else ""
-                    event_html = f'<div class="cv321-event"><div class="cv321-eventtime">{html.escape(event_time)}</div><div class="cv321-eventtitle">{html.escape(event_part)} · {html.escape(event_type)}</div><div class="cv321-eventcopy">{html.escape(event_summary + transition)}</div></div>'
+                    transition = f" Â· {previous} â {current}" if previous and current else ""
+                    event_html = f'<div class="cv321-event"><div class="cv321-eventtime">{html.escape(event_time)}</div><div class="cv321-eventtitle">{html.escape(event_part)} Â· {html.escape(event_type)}</div><div class="cv321-eventcopy">{html.escape(event_summary + transition)}</div></div>'
                     st.markdown(event_html, unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -3984,7 +4019,7 @@ def run_authenticated_app() -> None:
 
         if selected_decision:
             if st.button(
-                "← Back to Engineering Decisions",
+                "â Back to Engineering Decisions",
                 key="decision_packet_back",
                 type="secondary",
             ):
@@ -4056,7 +4091,7 @@ def run_authenticated_app() -> None:
                 )
                 with confidence_cols[1]:
                     for reason in selected_decision.get("confidence_reasons", []):
-                        st.markdown(f"✓ {reason}")
+                        st.markdown(f"â {reason}")
 
                 impact = selected_decision
                 st.markdown(
@@ -4607,7 +4642,7 @@ def run_authenticated_app() -> None:
 
     # ---------- Reports ----------
     if app_mode == "Reports":
-        # Milestone 5.5 — Functional Reports Center
+        # Milestone 5.5 â Functional Reports Center
         try:
             report_records = load_analysis_history(current_user["id"]) or []
         except Exception:
@@ -4640,7 +4675,7 @@ def run_authenticated_app() -> None:
             project = _report_value(row, "project_name", "name", default="Saved BOM")
             created = str(_report_value(row, "created_at", "date", default=""))
             created_date = created.split("T")[0] if "T" in created else created[:10]
-            return f"{project} — {created_date or 'undated'}"
+            return f"{project} â {created_date or 'undated'}"
 
         def _load_report_parts(analysis_id):
             if not analysis_id:
@@ -4719,7 +4754,7 @@ def run_authenticated_app() -> None:
             story = []
 
             project = _report_value(analysis_row, "project_name", "name", default="Saved BOM")
-            filename = _report_value(analysis_row, "filename", "uploaded_file", "file_name", default="—")
+            filename = _report_value(analysis_row, "filename", "uploaded_file", "file_name", default="â")
             health = _report_int(_report_value(analysis_row, "health_score", default=0))
             high_risk = _report_int(_report_value(analysis_row, "high_risk_count", "high_risk_parts", default=0))
             medium_risk = _report_int(_report_value(analysis_row, "medium_risk_count", "medium_risk_parts", default=0))
@@ -4818,11 +4853,11 @@ def run_authenticated_app() -> None:
                 for _, row in work.head(12).iterrows():
                     table_data.append(
                         [
-                            str(row.get(mpn_col, "—")) if mpn_col else "—",
-                            str(row.get(manufacturer_col, "—")) if manufacturer_col else "—",
-                            str(row.get(risk_col, "—")) if risk_col else "—",
-                            str(row.get(lifecycle_col, "—")) if lifecycle_col else "—",
-                            str(row.get(stock_col, "—")) if stock_col else "—",
+                            str(row.get(mpn_col, "â")) if mpn_col else "â",
+                            str(row.get(manufacturer_col, "â")) if manufacturer_col else "â",
+                            str(row.get(risk_col, "â")) if risk_col else "â",
+                            str(row.get(lifecycle_col, "â")) if lifecycle_col else "â",
+                            str(row.get(stock_col, "â")) if stock_col else "â",
                         ]
                     )
 
@@ -5096,19 +5131,19 @@ def run_authenticated_app() -> None:
             (
                 "Executive BOM Summary",
                 "Leadership-ready health, priority risks, decision brief, and recommended actions.",
-                "▤",
+                "â¤",
                 ["PDF", "CSV"],
             ),
             (
                 "Engineering Risk Review",
                 "Component-level lifecycle, stock, supplier diversity, lead-time, and risk evidence.",
-                "△",
+                "â³",
                 ["PDF", "CSV"],
             ),
             (
                 "Procurement & Sourcing",
                 "Supplier concentration, market stock, cost exposure, and secondary-source priorities.",
-                "⇄",
+                "â",
                 ["PDF", "CSV"],
             ),
         ]
@@ -5141,13 +5176,13 @@ def run_authenticated_app() -> None:
             (
                 "Lifecycle Exposure Report",
                 "Lifecycle states, obsolete or replacement-suggested components, and alert-oriented review data.",
-                "◷",
+                "â·",
                 ["PDF", "CSV"],
             ),
             (
                 "Alternative Replacement Report",
                 "Components requiring alternatives, candidate availability, and saved replacement-readiness fields.",
-                "↔",
+                "â",
                 ["PDF", "CSV"],
             ),
         ]
@@ -5275,7 +5310,7 @@ def run_authenticated_app() -> None:
                     "filename",
                     "uploaded_file",
                     "file_name",
-                    default="—",
+                    default="â",
                 )
             )
             health_score = _report_int(
@@ -5319,7 +5354,7 @@ def run_authenticated_app() -> None:
                 created_at.split("T")[0]
                 if "T" in created_at
                 else created_at[:10]
-            ) or "—"
+            ) or "â"
 
             safe_project = (
                 re.sub(r"[^A-Za-z0-9_-]+", "_", project_name).strip("_")
@@ -5986,7 +6021,7 @@ def run_authenticated_app() -> None:
                         <br><br><b>Management decision:</b>
                         {html.escape(ai_report['executive_decision'])}
                         <br><br><b>Projected health:</b>
-                        {ai_report['health']}/100 → {ai_report['projected_health']}/100
+                        {ai_report['health']}/100 â {ai_report['projected_health']}/100
                       </div>
                     </div>
                     """,
@@ -6158,7 +6193,7 @@ def run_authenticated_app() -> None:
                 with ai_exec_col:
                     ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
                     _report_download_button(
-                        "AI Executive Brief · PDF",
+                        "AI Executive Brief Â· PDF",
                         report_type="AI Executive Brief",
                         key=f"shared_ai_executive_pdf_{selected_analysis_id}",
                         data=ai_executive_pdf,
@@ -6169,7 +6204,7 @@ def run_authenticated_app() -> None:
                 with executive_pdf_col:
                     executive_pdf_name = f"{safe_project}_executive_summary.pdf"
                     _report_download_button(
-                        "Executive Summary · PDF",
+                        "Executive Summary Â· PDF",
                         report_type="Executive BOM Summary",
                         key=f"shared_executive_pdf_{selected_analysis_id}",
                         data=pdf_bytes,
@@ -6179,7 +6214,7 @@ def run_authenticated_app() -> None:
                 with executive_csv_col:
                     executive_csv_name = f"{safe_project}_executive_summary.csv"
                     _report_download_button(
-                        "Executive Data · CSV",
+                        "Executive Data Â· CSV",
                         report_type="Executive BOM Summary",
                         key=f"shared_executive_csv_{selected_analysis_id}",
                         data=executive_csv,
@@ -6193,7 +6228,7 @@ def run_authenticated_app() -> None:
                 with risk_col:
                     risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
                     _report_download_button(
-                        "Risk Review · CSV",
+                        "Risk Review Â· CSV",
                         report_type="Engineering Risk Review",
                         key=f"shared_risk_csv_{selected_analysis_id}",
                         data=engineering_df.to_csv(index=False).encode("utf-8"),
@@ -6203,7 +6238,7 @@ def run_authenticated_app() -> None:
                 with lifecycle_col:
                     lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
                     _report_download_button(
-                        "Lifecycle Review · CSV",
+                        "Lifecycle Review Â· CSV",
                         report_type="Lifecycle Exposure Report",
                         key=f"shared_lifecycle_csv_{selected_analysis_id}",
                         data=lifecycle_df.to_csv(index=False).encode("utf-8"),
@@ -6213,7 +6248,7 @@ def run_authenticated_app() -> None:
                 with alternatives_col:
                     alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
                     _report_download_button(
-                        "Alternatives Review · CSV",
+                        "Alternatives Review Â· CSV",
                         report_type="Alternative Replacement Report",
                         key=f"shared_alternatives_csv_{selected_analysis_id}",
                         data=alternative_df.to_csv(index=False).encode("utf-8"),
@@ -6227,7 +6262,7 @@ def run_authenticated_app() -> None:
                 with ai_proc_col:
                     ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
                     _report_download_button(
-                        "AI Procurement Brief · PDF",
+                        "AI Procurement Brief Â· PDF",
                         report_type="AI Procurement Brief",
                         key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
                         data=ai_procurement_pdf,
@@ -6238,7 +6273,7 @@ def run_authenticated_app() -> None:
                 with sourcing_col:
                     sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
                     _report_download_button(
-                        "Sourcing Review · CSV",
+                        "Sourcing Review Â· CSV",
                         report_type="Procurement & Sourcing",
                         key=f"shared_sourcing_csv_{selected_analysis_id}",
                         data=sourcing_df.to_csv(index=False).encode("utf-8"),
@@ -6306,9 +6341,9 @@ def run_authenticated_app() -> None:
                                 "filename",
                                 "uploaded_file",
                                 "file_name",
-                                default="—",
+                                default="â",
                             ),
-                            "Date": row_created_date or "—",
+                            "Date": row_created_date or "â",
                             "Health": _report_int(
                                 _report_value(
                                     row,
@@ -6355,7 +6390,7 @@ def run_authenticated_app() -> None:
 
     # ---------- Pricing ----------
     if app_mode == "Pricing":
-        # Sprint 31.3.1 — launch pricing polish patch.
+        # Sprint 31.3.1 â launch pricing polish patch.
         current_plan_key = str(selected_plan_name or "Starter").strip().lower()
         plan_aliases = {
             "pro": "professional",
@@ -6509,7 +6544,7 @@ def run_authenticated_app() -> None:
             checkout_url = st.session_state.get(state_key)
             if checkout_url:
                 st.link_button(
-                    "Continue to secure checkout →",
+                    "Continue to secure checkout â",
                     checkout_url,
                     use_container_width=True,
                 )
@@ -6567,7 +6602,7 @@ def run_authenticated_app() -> None:
                         f'<div class="cv311-for">{plan["audience"]}</div>'
                         '<div class="cv311-features">'
                         + "".join(
-                            f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
+                            f'<div class="cv311-feature"><span class="cv311-check">â</span><span>{feature}</span></div>'
                             for feature in plan["features"]
                         )
                         + '</div>'
@@ -6690,12 +6725,12 @@ def run_authenticated_app() -> None:
                             f'<div class="cv311-price">{display_price}'
                             + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
                             + '</div>'
-                            + (f'<div class="cv311-info-note">{display_annual_price} / year · Save 15%</div>' if display_annual_price else "")
+                            + (f'<div class="cv311-info-note">{display_annual_price} / year Â· Save 15%</div>' if display_annual_price else "")
                             + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
                             f'<div class="cv311-for">{plan["audience"]}</div>'
                             '<div class="cv311-features">'
                             + "".join(
-                                f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
+                                f'<div class="cv311-feature"><span class="cv311-check">â</span><span>{feature}</span></div>'
                                 for feature in plan["features"]
                             )
                             + '</div>'
@@ -6723,15 +6758,15 @@ def run_authenticated_app() -> None:
                             )
 
         feature_rows = [
-            ("BOM Analysis", "✓", "✓", "Unlimited", "Unlimited", "Unlimited"),
-            ("Alternative Search", "Limited", "✓", "Advanced", "Advanced", "Advanced"),
-            ("AI Recommendations", "—", "—", "✓", "✓", "✓"),
-            ("BOM Monitoring", "—", "—", "2,500 parts", "Unlimited", "Unlimited"),
-            ("Engineering Decision Records", "—", "—", "✓", "✓", "✓"),
-            ("Team Collaboration", "—", "—", "—", "✓", "✓"),
-            ("API Access", "—", "—", "—", "✓", "Unlimited"),
-            ("SSO", "—", "—", "—", "—", "✓"),
-            ("Custom Integrations", "—", "—", "—", "Limited", "✓"),
+            ("BOM Analysis", "â", "â", "Unlimited", "Unlimited", "Unlimited"),
+            ("Alternative Search", "Limited", "â", "Advanced", "Advanced", "Advanced"),
+            ("AI Recommendations", "â", "â", "â", "â", "â"),
+            ("BOM Monitoring", "â", "â", "2,500 parts", "Unlimited", "Unlimited"),
+            ("Engineering Decision Records", "â", "â", "â", "â", "â"),
+            ("Team Collaboration", "â", "â", "â", "â", "â"),
+            ("API Access", "â", "â", "â", "â", "Unlimited"),
+            ("SSO", "â", "â", "â", "â", "â"),
+            ("Custom Integrations", "â", "â", "â", "Limited", "â"),
             ("Dedicated Support", "Community", "Email", "Priority", "Priority", "Dedicated"),
         ]
         st.markdown(
@@ -6804,7 +6839,7 @@ def run_authenticated_app() -> None:
                 parsed = pd.to_datetime(value, utc=True, errors="coerce")
                 if pd.isna(parsed):
                     return "Never"
-                return parsed.strftime("%b %d, %Y · %I:%M %p UTC")
+                return parsed.strftime("%b %d, %Y Â· %I:%M %p UTC")
 
             search_column, status_column, presence_column, role_column = st.columns((2.2, 1, 1, 1))
             search_users = search_column.text_input("Search users", placeholder="Email, name, company, plan, or role")
@@ -6836,13 +6871,13 @@ def run_authenticated_app() -> None:
                 })
                 if "Presence" in directory_frame:
                     presence_labels = {
-                        "active": "🟢 Active",
-                        "idle": "🟠 Idle",
-                        "offline": "⚪ Offline",
+                        "active": "ð¢ Active",
+                        "idle": "ð  Idle",
+                        "offline": "âª Offline",
                     }
                     directory_frame["Presence"] = directory_frame["Presence"].fillna("offline").astype(str).str.lower().map(
                         presence_labels
-                    ).fillna("⚪ Offline")
+                    ).fillna("âª Offline")
                 for timestamp_column in ("Last active", "Last sign-in"):
                     if timestamp_column in directory_frame:
                         directory_frame[timestamp_column] = directory_frame[timestamp_column].apply(_human_admin_timestamp)
@@ -6858,7 +6893,7 @@ def run_authenticated_app() -> None:
                 selected_user = st.selectbox(
                     "Choose a user",
                     user_rows,
-                    format_func=lambda row: f"{row.get('email', 'Unknown user')} · {row.get('activity_status', 'offline')} · {row.get('account_status', 'active')} · {row.get('plan', 'Starter')}",
+                    format_func=lambda row: f"{row.get('email', 'Unknown user')} Â· {row.get('activity_status', 'offline')} Â· {row.get('account_status', 'active')} Â· {row.get('plan', 'Starter')}",
                 )
                 selected_user_id = selected_user.get("id")
                 selected_role = str(selected_user.get("role", "user")).lower()
@@ -6869,11 +6904,11 @@ def run_authenticated_app() -> None:
                 with details_column:
                     st.markdown("**Account details**")
                     account_details = (
-                        ("Email", selected_user.get("email") or "—"),
-                        ("Name", selected_user.get("full_name") or "—"),
-                        ("Company", selected_user.get("company_name") or "—"),
+                        ("Email", selected_user.get("email") or "â"),
+                        ("Name", selected_user.get("full_name") or "â"),
+                        ("Company", selected_user.get("company_name") or "â"),
                         ("Plan", selected_user.get("plan") or "Starter"),
-                        ("Presence", {"active": "🟢 Active", "idle": "🟠 Idle", "offline": "⚪ Offline"}.get(str(selected_user.get("activity_status") or "offline").lower(), "⚪ Offline")),
+                        ("Presence", {"active": "ð¢ Active", "idle": "ð  Idle", "offline": "âª Offline"}.get(str(selected_user.get("activity_status") or "offline").lower(), "âª Offline")),
                         ("Last active", _human_admin_timestamp(selected_user.get("last_active_at"))),
                         ("Role", selected_role),
                         ("Status", selected_status),
@@ -6973,16 +7008,16 @@ def run_authenticated_app() -> None:
                     def _support_detail(metadata):
                         detail = metadata if isinstance(metadata, dict) else {}
                         page = _safe_text(detail.get("page"), "")
-                        return f"Visited {page}" if page else "—"
+                        return f"Visited {page}" if page else "â"
                     support_frame["Safe details"] = support_frame["metadata"].apply(_support_detail)
                 if "created_at" in support_frame:
                     support_frame["When"] = pd.to_datetime(
                         support_frame["created_at"], utc=True, errors="coerce"
-                    ).dt.strftime("%b %d, %Y · %I:%M %p UTC").fillna("—")
+                    ).dt.strftime("%b %d, %Y Â· %I:%M %p UTC").fillna("â")
                 if "email" in support_frame:
-                    support_frame["User"] = support_frame["email"].fillna("—")
+                    support_frame["User"] = support_frame["email"].fillna("â")
                 if "full_name" in support_frame:
-                    support_frame["Name"] = support_frame["full_name"].fillna("—")
+                    support_frame["Name"] = support_frame["full_name"].fillna("â")
                 support_columns = [column for column in ("When", "User", "Name", "Activity", "Safe details") if column in support_frame]
                 st.dataframe(
                     support_frame[support_columns],
@@ -7818,13 +7853,13 @@ def run_authenticated_app() -> None:
                 else:
                     latest_activity = activity_rows[0]
                     st.markdown(
-                        f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(latest_activity.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(latest_activity.get("actor_name"), "Cadivor"))} · {html.escape(str(latest_activity.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
+                        f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(latest_activity.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(latest_activity.get("actor_name"), "Cadivor"))} Â· {html.escape(str(latest_activity.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
                         unsafe_allow_html=True,
                     )
                     with st.expander(f"View recent activity ({min(len(activity_rows), 6)} events)", expanded=False):
                         for item in activity_rows[:6]:
                             st.markdown(
-                                f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(item.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(item.get("actor_name"), "Cadivor"))} · {html.escape(str(item.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
+                                f'<div class="cv-ws-activity"><strong>{html.escape(_safe_text(item.get("summary"), "Workspace activity"))}</strong><span>{html.escape(_safe_text(item.get("actor_name"), "Cadivor"))} Â· {html.escape(str(item.get("created_at", ""))[:19].replace("T", " "))} UTC</span></div>',
                                 unsafe_allow_html=True,
                             )
                         st.caption("Open the Activity tab for the complete workspace audit timeline.")
@@ -7902,7 +7937,7 @@ def run_authenticated_app() -> None:
                             f'<i class="cv-presence-dot {state_class}"></i>'
                             f'<div><strong>{html.escape(_safe_text(row.get("display_name"), row.get("email") or "Member"))}</strong>'
                             f'<span>{html.escape(_safe_text(row.get("page_name"), "Cadivor"))}'
-                            f'{" · " + html.escape(_safe_text(row.get("object_label"), "")) if row.get("object_label") else ""}</span></div>'
+                            f'{" Â· " + html.escape(_safe_text(row.get("object_label"), "")) if row.get("object_label") else ""}</span></div>'
                             f'</div><span>{state_label}</span></div>'
                         )
                     st.markdown("".join(presence_html), unsafe_allow_html=True)
@@ -7946,7 +7981,7 @@ def run_authenticated_app() -> None:
                 st.error(f"Organizations could not be loaded: {organizations_error}")
             else:
                 organization_lookup = {
-                    f"{_safe_text(item.get('name'), 'Cadivor Workspace')} — {_safe_text(item.get('current_role'), 'viewer').title()}": item
+                    f"{_safe_text(item.get('name'), 'Cadivor Workspace')} â {_safe_text(item.get('current_role'), 'viewer').title()}": item
                     for item in available_workspaces
                 }
                 current_label = next(
@@ -8009,7 +8044,7 @@ def run_authenticated_app() -> None:
                             f"""
                             <div class="cv-org-card">
                               <strong>{html.escape(_safe_text(item.get('name'), 'Cadivor Workspace'))}</strong>
-                              <span>{html.escape(_safe_text(item.get('current_role'), 'viewer').title())} access · {html.escape(_safe_text(item.get('plan'), 'starter').title())} plan</span>
+                              <span>{html.escape(_safe_text(item.get('current_role'), 'viewer').title())} access Â· {html.escape(_safe_text(item.get('plan'), 'starter').title())} plan</span>
                               {'<span class="cv-org-active">Active organization</span>' if is_active_org else ''}
                             </div>
                             """,
@@ -8152,7 +8187,7 @@ def run_authenticated_app() -> None:
                     },
                 )
                 if can_administer:
-                    invite_lookup = {f"{row.get('email')} — {str(row.get('created_at',''))[:10]}": row for row in pending_invites}
+                    invite_lookup = {f"{row.get('email')} â {str(row.get('created_at',''))[:10]}": row for row in pending_invites}
                     selected_invite_label = st.selectbox("Select an invitation to cancel", list(invite_lookup.keys()))
                     if st.button(
                         "Cancel Selected Invitation",
@@ -8321,7 +8356,7 @@ def run_authenticated_app() -> None:
                     )
 
                     record_options = {
-                        f"{row['Time']} — {row['Action']} — {row['Actor']}": row
+                        f"{row['Time']} â {row['Action']} â {row['Actor']}": row
                         for row in friendly_audit[:audit_limit]
                     }
                     with st.expander("View technical details", expanded=False):
@@ -8439,7 +8474,7 @@ def run_authenticated_app() -> None:
             if notification_error:
                 st.error(f"Notifications could not be loaded: {notification_error}")
             elif not notification_rows:
-                empty_state("No workspace notifications", "Invitations, role changes, generated reports, and collaboration updates will appear here.", "Open Workspace", "?page=Workspace", "●")
+                empty_state("No workspace notifications", "Invitations, role changes, generated reports, and collaboration updates will appear here.", "Open Workspace", "?page=Workspace", "â")
             else:
                 for row in notification_rows:
                     state = "Unread" if not row.get("is_read") else "Read"
@@ -8526,13 +8561,13 @@ def run_authenticated_app() -> None:
                             with st.container(border=True):
                                 st.markdown(f"#### {tutorial[1]}")
                                 st.caption(tutorial[3])
-                                if st.button("Open tutorial →", key=f"resources_open_{tutorial[0]}", use_container_width=True):
+                                if st.button("Open tutorial â", key=f"resources_open_{tutorial[0]}", use_container_width=True):
                                     st.session_state["cadivor_resources_tutorial"] = tutorial[0]
                                     st.rerun()
         else:
             tutorial_index = tutorials.index(selected)
             tutorial_id, title, destination, summary, steps = selected
-            if st.button("← Back to all tutorials", key="resources_back_library"):
+            if st.button("â Back to all tutorials", key="resources_back_library"):
                 st.session_state.pop("cadivor_resources_tutorial", None)
                 st.rerun()
             st.markdown(f"<section class='cv-resource-detail-head'><div class='cv-resource-category'>Cadivor training</div><h2>{title}</h2><p>{summary}</p></section>", unsafe_allow_html=True)
@@ -8559,7 +8594,7 @@ def run_authenticated_app() -> None:
                     screen_path = tutorial_image_root / screen["image"]
                     st.image(
                         str(screen_path),
-                        caption=f"Screen {current_step + 1} of {len(screens)} — {screen['caption']}",
+                        caption=f"Screen {current_step + 1} of {len(screens)} â {screen['caption']}",
                         use_container_width=True,
                     )
                     st.markdown(
@@ -8574,14 +8609,14 @@ def run_authenticated_app() -> None:
             st.markdown("<div class='cv-resource-note'><strong>Training note:</strong> Cadivor recommendations and scenarios support engineering judgment. Review evidence and complete the required checks before approving a replacement, procurement action, or release decision.</div>", unsafe_allow_html=True)
             previous_col, open_col, next_col = st.columns(3)
             with previous_col:
-                if tutorial_index > 0 and st.button("← Previous tutorial", key="resources_previous", use_container_width=True):
+                if tutorial_index > 0 and st.button("â Previous tutorial", key="resources_previous", use_container_width=True):
                     st.session_state["cadivor_resources_tutorial"] = tutorials[tutorial_index - 1][0]
                     st.rerun()
             with open_col:
                 if st.button(f"Open {destination}", key="resources_open_destination", type="primary", use_container_width=True):
                     navigate_to(destination)
             with next_col:
-                if tutorial_index < len(tutorials) - 1 and st.button("Next tutorial →", key="resources_next", use_container_width=True):
+                if tutorial_index < len(tutorials) - 1 and st.button("Next tutorial â", key="resources_next", use_container_width=True):
                     st.session_state["cadivor_resources_tutorial"] = tutorials[tutorial_index + 1][0]
                     st.rerun()
         st.markdown("<div class='cv-resource-note'><strong>Need help with a real BOM?</strong> Email support@cadivor.com with the workflow step where you are blocked. Do not include confidential BOM details in email.</div>", unsafe_allow_html=True)
@@ -8617,11 +8652,11 @@ def run_authenticated_app() -> None:
                 <div class="card">
                     <div class="card-title">Core Capabilities</div>
                     <div class="card-text">
-                        ✓ BOM risk analysis<br>
-                        ✓ Multi-supplier availability checks<br>
-                        ✓ Alternative component ranking<br>
-                        ✓ Executive-ready reports<br>
-                        ✓ Subscription-based usage controls
+                        â BOM risk analysis<br>
+                        â Multi-supplier availability checks<br>
+                        â Alternative component ranking<br>
+                        â Executive-ready reports<br>
+                        â Subscription-based usage controls
                     </div>
                 </div>
                 """,
@@ -8634,11 +8669,11 @@ def run_authenticated_app() -> None:
                 <div class="card">
                     <div class="card-title">Built For</div>
                     <div class="card-text">
-                        • Electrical engineers<br>
-                        • Manufacturing engineers<br>
-                        • Supply chain teams<br>
-                        • Hardware startups<br>
-                        • Engineering managers
+                        â¢ Electrical engineers<br>
+                        â¢ Manufacturing engineers<br>
+                        â¢ Supply chain teams<br>
+                        â¢ Hardware startups<br>
+                        â¢ Engineering managers
                     </div>
                 </div>
                 """,
@@ -8715,7 +8750,7 @@ def run_authenticated_app() -> None:
                 <div class="kpi-card">
                     <div class="kpi-label">BOMs Analyzed</div>
                     <div class="kpi-value">{total_boms_analyzed}</div>
-                    <div class="kpi-note">↑ 18% growth</div>
+                    <div class="kpi-note">â 18% growth</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -8810,7 +8845,7 @@ def run_authenticated_app() -> None:
                 navigate_to("Design Impact Analyzer", _rerun=False, mpn=return_mpn)
 
             st.button(
-                "← Back to Design Impact",
+                "â Back to Design Impact",
                 key="alternative_back_to_design_impact",
                 type="secondary",
                 on_click=_return_to_design_impact,
@@ -8834,7 +8869,7 @@ def run_authenticated_app() -> None:
                 )
 
             st.button(
-                "← Back to Saved BOM",
+                "â Back to Saved BOM",
                 key="alternative_back_to_saved_bom",
                 type="secondary",
                 on_click=_return_to_saved_bom,
@@ -8843,7 +8878,7 @@ def run_authenticated_app() -> None:
         st.markdown(
             """
             <style id="cadivor-alternative-finder-62a1">
-            /* Milestone 6.2C.3 — safe Supabase snapshot serialization */
+            /* Milestone 6.2C.3 â safe Supabase snapshot serialization */
             .st-key-af62_hero,
             .st-key-af62_search,
             .st-key-af62_summary,
@@ -9146,7 +9181,7 @@ def run_authenticated_app() -> None:
                 .af62-summary-grid{grid-template-columns:1fr;}
             }
 
-            /* Milestone 6.2B — Best Recommendation Experience */
+            /* Milestone 6.2B â Best Recommendation Experience */
             .af62b-section-head{
                 display:flex;
                 align-items:flex-start;
@@ -9424,7 +9459,7 @@ def run_authenticated_app() -> None:
             .af122-decision-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.af122-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:6px}.af122-title{font-size:20px;font-weight:950;color:#0f172a;letter-spacing:-.025em}.af122-copy{font-size:11px;font-weight:700;color:#52647a;line-height:1.55;margin-top:5px}
             .af122-badge{border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8}.af122-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.af122-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.af122-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
             .af122-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}.af122-metric{border:1px solid #dbe3ef;background:#fff;border-radius:14px;padding:11px}.af122-metric span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:5px}.af122-metric strong{font-size:12px;font-weight:900;color:#0f172a;line-height:1.35}
-            .af122-lists{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.af122-list{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:13px}.af122-list.good{border-color:#bbf7d0;background:#f0fdf4}.af122-list.warn{border-color:#fde68a;background:#fffbeb}.af122-list.bad{border-color:#fecaca;background:#fef2f2}.af122-list h4{font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#0f172a;margin:0 0 8px}.af122-list div{font-size:10px;font-weight:700;color:#475569;line-height:1.5;margin:5px 0;padding-left:12px;position:relative}.af122-list div:before{content:"•";position:absolute;left:0;color:#2563eb}
+            .af122-lists{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.af122-list{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:13px}.af122-list.good{border-color:#bbf7d0;background:#f0fdf4}.af122-list.warn{border-color:#fde68a;background:#fffbeb}.af122-list.bad{border-color:#fecaca;background:#fef2f2}.af122-list h4{font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.07em;color:#0f172a;margin:0 0 8px}.af122-list div{font-size:10px;font-weight:700;color:#475569;line-height:1.5;margin:5px 0;padding-left:12px;position:relative}.af122-list div:before{content:"â¢";position:absolute;left:0;color:#2563eb}
             @media(max-width:900px){.af122-grid,.af122-lists{grid-template-columns:1fr}.af122-decision-top{display:block}.af122-badge{display:inline-block;margin-top:10px}}
             .af7-explain-note{
                 color:#64748b;
@@ -9538,7 +9573,7 @@ def run_authenticated_app() -> None:
                 .af7-factor-grid{grid-template-columns:1fr;}
             }
 
-            /* Milestone 6.2B.1 — results cleanup and focused actions */
+            /* Milestone 6.2B.1 â results cleanup and focused actions */
             .af62b-action-note{
                 color:#64748B!important;
                 font-size:11px;
@@ -9585,7 +9620,7 @@ def run_authenticated_app() -> None:
                 .af62b-action-note{padding-top:0;}
             }
 
-            /* Milestone 6.3A — Engineering Decision Workspace */
+            /* Milestone 6.3A â Engineering Decision Workspace */
             .af63-score-label{
                 display:inline-flex;
                 align-items:center;
@@ -9764,7 +9799,7 @@ def run_authenticated_app() -> None:
                 .af63-decision-grid{grid-template-columns:1fr;}
             }
 
-            /* Milestone 6.2C — Persistent Engineering Decision Records */
+            /* Milestone 6.2C â Persistent Engineering Decision Records */
             .af62c-persist-note{
                 display:flex;
                 align-items:flex-start;
@@ -10053,7 +10088,7 @@ def run_authenticated_app() -> None:
             with search_button_col:
                 st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
                 find_alternatives_clicked = st.button(
-                    "Find Alternatives →",
+                    "Find Alternatives â",
                     type="primary",
                     use_container_width=True,
                     key="alternative_find_button_62a",
@@ -10146,7 +10181,7 @@ def run_authenticated_app() -> None:
                     search_status.empty()
 
         if st.session_state.get("alternative_search_error"):
-            st.error(st.session_state["alternative_search_error"], icon="⚠️")
+            st.error(st.session_state["alternative_search_error"], icon="â ï¸")
 
         summary_col, tips_col = st.columns([1.35, 0.85], gap="medium")
 
@@ -10178,7 +10213,7 @@ def run_authenticated_app() -> None:
             else ""
         )
 
-        def _af62_first(data, keys, fallback="—"):
+        def _af62_first(data, keys, fallback="â"):
             if not isinstance(data, dict):
                 return fallback
             for key in keys:
@@ -10204,7 +10239,7 @@ def run_authenticated_app() -> None:
                     coverage.append(
                         f"{row['source']}: {labels.get(str(row.get('provider_status') or ''), 'unknown')}"
                     )
-            return " · ".join(coverage) if coverage else "Not checked"
+            return " Â· ".join(coverage) if coverage else "Not checked"
 
         manufacturer_display = html.escape(
             _af62_first(
@@ -10277,7 +10312,7 @@ def run_authenticated_app() -> None:
             safe_datasheet_url = html.escape(datasheet_url, quote=True)
             datasheet_display = (
                 f'<a class="af62-data-link" href="{safe_datasheet_url}" '
-                f'target="_blank" rel="noopener noreferrer">Open source page →</a>'
+                f'target="_blank" rel="noopener noreferrer">Open source page â</a>'
             )
         else:
             datasheet_display = "Not available"
@@ -10416,7 +10451,7 @@ def run_authenticated_app() -> None:
                 st.session_state["alternative_original_data"] = original_data
                 st.session_state["alternative_original_lookup_part"] = original_part
 
-            def _af62b_value(row, keys, fallback="—"):
+            def _af62b_value(row, keys, fallback="â"):
                 for key in keys:
                     try:
                         value = row.get(key)
@@ -10458,11 +10493,11 @@ def run_authenticated_app() -> None:
             if original_stock > 0 and alternative_stock > 0:
                 stock_ratio = alternative_stock / original_stock
                 if stock_ratio > 1:
-                    stock_delta = f"🟢 {stock_ratio:.0f}× more stock available"
+                    stock_delta = f"ð¢ {stock_ratio:.0f}Ã more stock available"
                 else:
-                    stock_delta = f"🔴 {(1 / stock_ratio):.1f}× less stock available"
+                    stock_delta = f"ð´ {(1 / stock_ratio):.1f}Ã less stock available"
             elif original_stock > 0 and alternative_stock == 0:
-                stock_delta = "🔴 No stock available"
+                stock_delta = "ð´ No stock available"
             else:
                 stock_delta = "N/A"
 
@@ -10471,9 +10506,9 @@ def run_authenticated_app() -> None:
                     (alternative_price - original_price) / original_price
                 ) * 100
                 if price_pct < 0:
-                    price_delta = f"🟢 {abs(price_pct):.1f}% lower cost"
+                    price_delta = f"ð¢ {abs(price_pct):.1f}% lower cost"
                 else:
-                    price_delta = f"🔴 {price_pct:.1f}% higher cost"
+                    price_delta = f"ð´ {price_pct:.1f}% higher cost"
             else:
                 price_delta = "N/A"
 
@@ -10495,7 +10530,7 @@ def run_authenticated_app() -> None:
                 lowered = reason.lower()
                 if "could not be verified" in lowered:
                     warning_points.append(reason)
-                elif reason.startswith("⚠") or reason.startswith("ℹ"):
+                elif reason.startswith("â ") or reason.startswith("â¹"):
                     warning_points.append(reason)
                 else:
                     recommendation_points.append(reason)
@@ -10553,7 +10588,7 @@ def run_authenticated_app() -> None:
                     f"""
                     <div class="af62b-best-top">
                       <div>
-                        <div class="af62b-eyebrow">★ Supplier-listed candidate</div>
+                        <div class="af62b-eyebrow">â Supplier-listed candidate</div>
                         <div class="af62b-best-part">{html.escape(selected_alternative)}</div>
                         <div class="af62b-best-copy">{html.escape(recommendation_copy)}</div>
                       </div>
@@ -10583,7 +10618,7 @@ def run_authenticated_app() -> None:
                       </div>
                       <div class="af62b-metric {confidence_class}">
                         <span>Compatibility Confidence</span>
-                        <strong>{drop_in_confidence}% · {confidence_label}</strong>
+                        <strong>{drop_in_confidence}% Â· {confidence_label}</strong>
                       </div>
                     </div>
 
@@ -10598,13 +10633,13 @@ def run_authenticated_app() -> None:
                       </div>
                       <div class="af62b-metric">
                         <span>Source evidence</span>
-                        <strong>{html.escape(evidence_type_value)} · {html.escape(substitute_type_value)}</strong>
+                        <strong>{html.escape(evidence_type_value)} Â· {html.escape(substitute_type_value)}</strong>
                       </div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
-            # Milestone 7.0 — Explainable Engineering Intelligence
+            # Milestone 7.0 â Explainable Engineering Intelligence
             lifecycle_strength = (
                 100 if lifecycle_value.lower() == "active"
                 else 55 if lifecycle_value.lower() in {"nrnd", "not recommended for new designs"}
@@ -10684,7 +10719,7 @@ def run_authenticated_app() -> None:
                 else "Inventory was not confirmed."
             )
             cost_detail = (
-                price_delta.replace("🟢", "").replace("🔴", "").strip()
+                price_delta.replace("ð¢", "").replace("ð´", "").strip()
                 if price_delta != "N/A"
                 else "Cost comparison unavailable."
             )
@@ -10784,7 +10819,7 @@ def run_authenticated_app() -> None:
                     <div class="af122-metric">
                       <span>Open Review Items</span>
                       <strong>{alternative_reasoning['verification_count'] + alternative_reasoning['hard_blocker_count']}</strong>
-                      <div class="af122-copy">{alternative_reasoning['verification_count']} verification · {alternative_reasoning['hard_blocker_count']} blocker{'s' if alternative_reasoning['hard_blocker_count'] != 1 else ''}</div>
+                      <div class="af122-copy">{alternative_reasoning['verification_count']} verification Â· {alternative_reasoning['hard_blocker_count']} blocker{'s' if alternative_reasoning['hard_blocker_count'] != 1 else ''}</div>
                     </div>
                   </div>
                 </section>
@@ -10883,12 +10918,12 @@ def run_authenticated_app() -> None:
                     },
                     {
                         "Attribute": "Stock Delta",
-                        "Original": "—",
+                        "Original": "â",
                         "Selected Alternative": stock_delta,
                     },
                     {
                         "Attribute": "Price Delta",
-                        "Original": "—",
+                        "Original": "â",
                         "Selected Alternative": price_delta,
                     },
                     {
@@ -10912,12 +10947,12 @@ def run_authenticated_app() -> None:
                     },
                     {
                         "Attribute": "Drop-In Confidence",
-                        "Original": "—",
+                        "Original": "â",
                         "Selected Alternative": selected_row.get("Drop-In Confidence", ""),
                     },
                     {
                         "Attribute": "Drop-In Rating",
-                        "Original": "—",
+                        "Original": "â",
                         "Selected Alternative": selected_row.get("Drop-In Rating", ""),
                     },
                 ]
@@ -11016,7 +11051,7 @@ def run_authenticated_app() -> None:
                     analyzed_link_columns = st.columns(2)
                     if original_datasheet_url.startswith(("https://", "http://")):
                         analyzed_link_columns[0].link_button(
-                            "Open original datasheet used in analysis ↗",
+                            "Open original datasheet used in analysis â",
                             original_datasheet_url,
                             use_container_width=True,
                         )
@@ -11024,7 +11059,7 @@ def run_authenticated_app() -> None:
                         analyzed_link_columns[0].caption("Original datasheet link is unavailable.")
                     if candidate_datasheet_url.startswith(("https://", "http://")):
                         analyzed_link_columns[1].link_button(
-                            "Open candidate datasheet used in analysis ↗",
+                            "Open candidate datasheet used in analysis â",
                             candidate_datasheet_url,
                             use_container_width=True,
                         )
@@ -11135,7 +11170,7 @@ def run_authenticated_app() -> None:
                     </div>
                     <div class="af63-decision-metric">
                       <span>Compatibility</span>
-                      <strong>{drop_in_confidence}% · {confidence_label}</strong>
+                      <strong>{drop_in_confidence}% Â· {confidence_label}</strong>
                     </div>
                     <div class="af63-decision-metric">
                       <span>Engineering Risk</span>
@@ -11268,7 +11303,7 @@ def run_authenticated_app() -> None:
             with save_col:
                 if already_saved:
                     st.markdown(
-                        '<div class="af62c-db-success">✓ Saved permanently</div>',
+                        '<div class="af62c-db-success">â Saved permanently</div>',
                         unsafe_allow_html=True,
                     )
                 elif st.button(
@@ -11398,7 +11433,7 @@ def run_authenticated_app() -> None:
             decision_flash = st.session_state.get("alternative_decision_flash", "")
 
             if decision_flash:
-                st.toast(decision_flash, icon="✅")
+                st.toast(decision_flash, icon="â")
                 st.session_state["alternative_decision_flash"] = ""
 
             if db_error:
@@ -11473,8 +11508,8 @@ def run_authenticated_app() -> None:
 
                     decision_options = {
                         (
-                            f'{record.get("alternative_part", "Unknown")} — '
-                            f'{record.get("decision", "Saved")} — '
+                            f'{record.get("alternative_part", "Unknown")} â '
+                            f'{record.get("decision", "Saved")} â '
                             f'{record.get("updated_at") or record.get("created_at", "")}'
                         ): record.get("id")
                         for record in part_decision_history
@@ -11559,10 +11594,10 @@ def run_authenticated_app() -> None:
                         else:
                             def _af62b_risk_badge(level):
                                 if level == "High":
-                                    return "🔴 High"
+                                    return "ð´ High"
                                 if level == "Medium":
-                                    return "🟡 Medium"
-                                return "🟢 Low"
+                                    return "ð¡ Medium"
+                                return "ð¢ Low"
 
                             if "Risk Level" in advanced_df.columns:
                                 advanced_df["Risk Level Display"] = (
@@ -11625,7 +11660,7 @@ def run_authenticated_app() -> None:
                                 key="af62b_advanced_download",
                             )
 
-            # Milestone 7.0.1 — safe Alternative Finder reset callback
+            # Milestone 7.0.1 â safe Alternative Finder reset callback
             def _reset_alternative_search():
                 """Clear the Alternative Finder before its widgets are recreated."""
                 st.session_state["suggested_alternatives"] = []
@@ -11690,7 +11725,7 @@ def run_authenticated_app() -> None:
         )
         from src.report_generator import save_results_to_excel
         from src.stripe_helper import create_checkout_session
-        # Sprint 50.1.2 — returning through navigation resumes the active engineering
+        # Sprint 50.1.2 â returning through navigation resumes the active engineering
         # analysis instead of reopening the Saved BOM selector. A deliberate New
         # Analysis request clears this context above and continues to the selector.
         _resume_analysis_id = _safe_text(
@@ -12255,14 +12290,14 @@ def run_authenticated_app() -> None:
                     )
                     analysis_id_value = str(part.get("analysis_id") or "")
                     manufacturer = str(part.get("manufacturer") or "Unknown manufacturer")
-                    risk_score = part.get("risk_score") or part.get("Risk Score") or "—"
+                    risk_score = part.get("risk_score") or part.get("Risk Score") or "â"
                     project_label = analysis_labels.get(analysis_id_value, "Saved BOM analysis")
                     details_col, action_col = st.columns([0.78, 0.22], gap="medium")
                     with details_col:
                         st.markdown(
-                            f'<div class="bom81-risk-kicker">High-risk component · score {html.escape(str(risk_score))}</div>'
+                            f'<div class="bom81-risk-kicker">High-risk component Â· score {html.escape(str(risk_score))}</div>'
                             f'<div class="bom81-risk-title">{html.escape(part_number)}</div>'
-                            f'<div class="bom81-risk-meta">{html.escape(manufacturer)} · <strong>Saved BOM:</strong> {html.escape(project_label)}</div>',
+                            f'<div class="bom81-risk-meta">{html.escape(manufacturer)} Â· <strong>Saved BOM:</strong> {html.escape(project_label)}</div>',
                             unsafe_allow_html=True,
                         )
                     with action_col:
@@ -12285,7 +12320,7 @@ def run_authenticated_app() -> None:
                             )
                     st.divider()
 
-        # Milestone 8.1 — Saved BOM Manager
+        # Milestone 8.1 â Saved BOM Manager
         st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
         cadivor_panel(
             title=f"Saved BOM Manager ({saved_analysis_count})",
@@ -12316,7 +12351,7 @@ def run_authenticated_app() -> None:
                     required_defaults = {
                         "id": "",
                         "project_name": "Saved BOM analysis",
-                        "filename": "—",
+                        "filename": "â",
                         "health_score": 0,
                         "high_risk_count": 0,
                         "medium_risk_count": 0,
@@ -12332,7 +12367,7 @@ def run_authenticated_app() -> None:
                     manager_df["project_name"] = manager_df["project_name"].fillna(
                         "Saved BOM analysis"
                     )
-                    manager_df["filename"] = manager_df["filename"].fillna("—")
+                    manager_df["filename"] = manager_df["filename"].fillna("â")
 
                     for numeric_column in (
                         "health_score",
@@ -12354,7 +12389,7 @@ def run_authenticated_app() -> None:
                     )
                     manager_df["Date"] = manager_df["created_at_sort"].dt.strftime(
                         "%Y-%m-%d"
-                    ).fillna("—")
+                    ).fillna("â")
 
                     filter_col, sort_col = st.columns([0.68, 0.32], gap="medium")
 
@@ -12805,19 +12840,19 @@ def run_authenticated_app() -> None:
                 st.session_state.pop("bom8_sample_auto_analyze", None)
 
             st.markdown(
-                '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
+                '<div class="bom8-path-label">Option 1 â Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
                 unsafe_allow_html=True,
             )
             st.button(
                 "Analyze the 10-Part Sample BOM",
                 key="bom8_try_sample",
                 type="primary",
-                help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
+                help="Load and analyze Cadivor's sample BOM in this workspaceâno download or re-upload required.",
                 on_click=_start_sample_bom,
             )
 
             st.markdown(
-                '<div class="bom8-path-label">Option 2 — Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
+                '<div class="bom8-path-label">Option 2 â Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
                 unsafe_allow_html=True,
             )
             uploaded_file = st.file_uploader(
@@ -13028,7 +13063,7 @@ def run_authenticated_app() -> None:
             analyze_requested = True
 
         if analyze_requested:
-            with st.spinner("Analyzing lifecycle, supplier, inventory, sourcing, and engineering risk…"):
+            with st.spinner("Analyzing lifecycle, supplier, inventory, sourcing, and engineering riskâ¦"):
                 # A new analysis should be saved as a new database record.
                 # These flags prevent old session state from blocking the new save.
                 st.session_state.pop("analysis_saved", None)
@@ -13126,21 +13161,21 @@ def run_authenticated_app() -> None:
                 st.markdown(
                     f"""
     ---
-    ### 🚀 Upgrade to **{upgrade_plan}** ({next_plan['price']})
+    ### ð Upgrade to **{upgrade_plan}** ({next_plan['price']})
 
     Unlock more power:
 
-    - 🔍 **{format_limit(next_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')}** each month
-    - 📦 **{format_limit(next_plan['max_parts_per_bom'], 'component')}** per BOM
-    - 🌐 Verified multi-supplier intelligence
-    - ⚡ Faster sourcing decisions
+    - ð **{format_limit(next_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')}** each month
+    - ð¦ **{format_limit(next_plan['max_parts_per_bom'], 'component')}** per BOM
+    - ð Verified multi-supplier intelligence
+    - â¡ Faster sourcing decisions
 
-    👉 Upgrade now to continue your analysis
+    ð Upgrade now to continue your analysis
     ---
     """
                 )
 
-                if st.button(f"🚀 Upgrade to {upgrade_plan}", key="upgrade_button_main"):
+                if st.button(f"ð Upgrade to {upgrade_plan}", key="upgrade_button_main"):
                     try:
                         price_secret = {
                             "Professional": "STRIPE_PRO_PRICE_ID",
@@ -13183,15 +13218,15 @@ def run_authenticated_app() -> None:
                 health_score = health_data["health_score"]
 
                 if health_score >= 90:
-                    health_status = "🟢 Excellent"
+                    health_status = "ð¢ Excellent"
                 elif health_score >= 75:
-                    health_status = "🟢 Healthy"
+                    health_status = "ð¢ Healthy"
                 elif health_score >= 60:
-                    health_status = "🟡 Moderate Risk"
+                    health_status = "ð¡ Moderate Risk"
                 elif health_score >= 40:
-                    health_status = "🟠 High Risk"
+                    health_status = "ð  High Risk"
                 else:
-                    health_status = "🔴 Critical"
+                    health_status = "ð´ Critical"
 
                 st.session_state["health_score"] = health_score
                 st.session_state["health_status"] = health_status
@@ -13365,7 +13400,7 @@ def run_authenticated_app() -> None:
                 st.session_state["show_analysis_success_29b"] = True
                 st.session_state["last_saved_analysis_id"] = analysis_id
                 st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
-                st.toast("Analysis saved to your workspace.", icon="✅")
+                st.toast("Analysis saved to your workspace.", icon="â")
                 # The Saved BOM Manager was rendered earlier in this script run
                 # from pre-save history. Rebuild once after persistence so the
                 # new analysis appears immediately. analysis_saved prevents a
@@ -13452,9 +13487,9 @@ def run_authenticated_app() -> None:
 
             filtered_df["Risk Level Display"] = filtered_df["Risk Level"].replace(
                 {
-                    "High": "🔴 High",
-                    "Medium": "🟡 Medium",
-                    "Low": "🟢 Low",
+                    "High": "ð´ High",
+                    "Medium": "ð¡ Medium",
+                    "Low": "ð¢ Low",
                 }
             )
 
@@ -13505,11 +13540,11 @@ def run_authenticated_app() -> None:
                     risk_reasons.append("Replacement suggested")
 
                 with st.expander(
-                    f"{row['MPN']} — {row['Risk Level']} Risk"
+                    f"{row['MPN']} â {row['Risk Level']} Risk"
                 ):
 
                     if risk_reasons:
-                        st.markdown("### ⚠️ Risk Drivers")
+                        st.markdown("### â ï¸ Risk Drivers")
 
                         st.markdown(
                             '<div class="cv-action-list">'
@@ -13536,7 +13571,7 @@ def run_authenticated_app() -> None:
                         st.write(f"**Risk Level:** {row.get('Risk Level', '')}")
                         has_alternates = row.get("Has Alternates", False)
                         st.write(
-                            f"**Has Alternates:** {'✅ Yes' if has_alternates else '❌ No'}"
+                            f"**Has Alternates:** {'â Yes' if has_alternates else 'â No'}"
                         )
 
                     st.write("**Risk Reasons:**")
@@ -13549,7 +13584,7 @@ def run_authenticated_app() -> None:
                         st.write("**Candidate Alternatives:** None found")
 
                     if row.get("Product URL", ""):
-                        st.markdown(f"[🔗 Open supplier product page]({row.get('Product URL')})")
+                        st.markdown(f"[ð Open supplier product page]({row.get('Product URL')})")
 
 
             output_path = "reports/bom_risk_report.xlsx"
