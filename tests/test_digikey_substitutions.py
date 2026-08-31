@@ -161,5 +161,12 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(result["tolerance"], "±10%")
 
 
+    def test_catalog_search_expands_packaging_suffix_to_mpn_family(self):
+        self.assertEqual(
+            self.client._catalog_search_terms("C0603C104K5RACTU"),
+            ["C0603C104K5RACTU", "C0603C104K5RAC"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
