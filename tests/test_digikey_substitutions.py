@@ -80,6 +80,39 @@ class DigiKeySubstitutionTests(unittest.TestCase):
 
         self.assertIn("399-C0603C104K5RACTUCT-ND/substitutions", requested_urls[0])
 
+    def test_substitutions_query_each_exact_product_package_variant(self):
+        requested_urls = []
+
+        def post(*_args, **_kwargs):
+            return _Response({"Products": [{
+                "ManufacturerProductNumber": "C0603C104K5RACTU",
+                "DigiKeyProductNumber": "399-C0603C104K5RACTUTR-ND",
+                "ProductVariations": [
+                    {"DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND"},
+                    {"DigiKeyProductNumber": "399-C0603C104K5RACTUDKR-ND"},
+                ],
+            }]})
+
+        def get(url, **_kwargs):
+            requested_urls.append(url)
+            if "RACTUCT" in url:
+                return _Response({"ProductSubstitutes": [{
+                    "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                    "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                    "Manufacturer": {"Name": "KEMET"},
+                    "SubstituteType": "Direct",
+                }]})
+            return _Response({"ProductSubstitutes": []})
+
+        self.client.requests.post = post
+        self.client.requests.get = get
+
+        results = self.client.search_digikey_substitutions("C0603C104K5RACTU")
+
+        self.assertEqual([row["manufacturer_part_number"] for row in results], ["C0603C104K5RAC3121"])
+        self.assertEqual(len(requested_urls), 3)
+        self.assertTrue(any("RACTUCT" in url for url in requested_urls))
+
     def test_non_exact_keyword_result_is_not_treated_as_verified_part(self):
         self.client.requests.post = lambda *_args, **_kwargs: _Response({"Products": [{
             "ManufacturerProductNumber": "C0603C104K5RAC3121",
