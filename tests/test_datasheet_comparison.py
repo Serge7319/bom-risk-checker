@@ -77,5 +77,13 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertEqual(different["differences"], 3)
 
 
+    def test_supplier_listed_direct_substitute_is_not_penalized_for_missing_fields(self):
+        score = build_recommendation_score_breakdown(
+            60, 55, {"Match": 2, "Different": 0, "Needs data": 7},
+            is_explicit_substitute=True,
+        )
+        self.assertGreaterEqual(score["recommendation_score"], 85)
+
+
 if __name__ == "__main__":
     unittest.main()

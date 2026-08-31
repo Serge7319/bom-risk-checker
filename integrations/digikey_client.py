@@ -353,6 +353,23 @@ def normalize_digikey_product(product: dict) -> dict:
 
     gbw_mhz = extract_frequency_mhz(gbw_text)
 
+    # Preserve the distributor's parametric evidence. Alternative Finder used
+    # to retain only IC-oriented fields, which made a fully specified capacitor
+    # look "unknown" during comparison even when DigiKey had the values.
+    parametric_fields = {
+        "capacitance": ["Capacitance"], "resistance": ["Resistance"],
+        "inductance": ["Inductance"], "tolerance": ["Tolerance"],
+        "rated_voltage": ["Voltage - Rated", "Voltage Rating"],
+        "dielectric": ["Temperature Coefficient", "Dielectric"],
+        "power_rating": ["Power (Watts)", "Power Rating"],
+        "temperature_coefficient": ["Temperature Coefficient"],
+        "esr": ["ESR (Equivalent Series Resistance)", "ESR"],
+        "rated_current": ["Current - Rated", "Current Rating"],
+        "saturation_current": ["Current - Saturation"],
+        "dcr": ["DC Resistance (DCR)"],
+    }
+    parametric = {key: extract_digikey_parameter(product, names) for key, names in parametric_fields.items()}
+
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
         "stock_total": int(stock_total),
@@ -387,6 +404,7 @@ def normalize_digikey_product(product: dict) -> dict:
         "input_bias_na": input_bias_na,
         "quiescent_current_ma": quiescent_current_ma,
         "gbw_mhz": gbw_mhz,
+        **parametric,
     }
 
 def extract_digikey_price(product: dict) -> float:

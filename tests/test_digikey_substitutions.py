@@ -141,5 +141,25 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(results[0]["substitute_type"], "Similar")
 
 
+    def test_normalizes_capacitor_parametric_evidence(self):
+        product = {
+            "Manufacturer": {"Name": "KEMET"},
+            "ManufacturerProductNumber": "C0603C104K5RACTU",
+            "Description": {"ProductDescription": "CAP CER 0.1UF 50V X7R 0603"},
+            "Parameters": [
+                {"ParameterText": "Capacitance", "ValueText": "0.1 µF"},
+                {"ParameterText": "Voltage - Rated", "ValueText": "50V"},
+                {"ParameterText": "Temperature Coefficient", "ValueText": "X7R"},
+                {"ParameterText": "Tolerance", "ValueText": "±10%"},
+                {"ParameterText": "Package / Case", "ValueText": "0603 (1608 Metric)"},
+            ],
+        }
+        result = self.client.normalize_digikey_product(product)
+        self.assertEqual(result["capacitance"], "0.1 µF")
+        self.assertEqual(result["rated_voltage"], "50V")
+        self.assertEqual(result["dielectric"], "X7R")
+        self.assertEqual(result["tolerance"], "±10%")
+
+
 if __name__ == "__main__":
     unittest.main()
