@@ -12951,11 +12951,6 @@ def run_authenticated_app() -> None:
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
-        if not project_name.strip():
-            st.warning("Please enter a Project / BOM Name before analyzing")
-            st.markdown("</div>", unsafe_allow_html=True)
-            stop_authenticated_page()
-
         try:
             if sample_mode:
                 bom_df = sample_bom.copy()
@@ -13070,10 +13065,14 @@ def run_authenticated_app() -> None:
         )
 
 
+        project_name_missing = not project_name.strip() and not sample_mode
         analyze_requested = st.button(
             "Analyze Sample BOM" if sample_mode else "Analyze BOM",
             type="primary",
+            disabled=project_name_missing,
         )
+        if project_name_missing:
+            st.warning("Add a Project / BOM Name above to enable analysis.")
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
 
