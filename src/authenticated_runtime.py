@@ -1947,40 +1947,34 @@ def run_authenticated_app() -> None:
             "Risk Reasons": "; ".join(risk_reasons) or "No major risk found",
         }
 
-    def analyze_bom(df, progress_status=None, progress_bar=None):
+    def analyze_bom(df, progress_queue=None, cancel_event=None):
+        """Analyze a BOM in a worker thread without touching Streamlit state."""
         from src.bom_parser import normalize_bom_columns, validate_bom, clean_bom_data
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
         df = normalize_bom_columns(df)
         df = validate_bom(df)
         df = clean_bom_data(df)
-
-        results = []
-        total_parts = len(df)
-
         rows = [row for _, row in df.iterrows()]
-        completed = 0
+        total_parts = len(rows)
+        results = []
+        executor = ThreadPoolExecutor(max_workers=5)
+        future_to_row = {
+            executor.submit(analyze_single_part, row): row
+            for row in rows
+        }
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_row = {
-                executor.submit(analyze_single_part, row): row
-                for row in rows
-            }
-
+        try:
             for future in as_completed(future_to_row):
+                if cancel_event is not None and cancel_event.is_set():
+                    for pending_future in future_to_row:
+                        pending_future.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return None
+
                 row = future_to_row[future]
-                completed += 1
-
-                if progress_status:
-                    progress_status.info(
-                        f"Completed {completed} of {total_parts}: {row.get('mpn', '')}"
-                    )
-
-                if progress_bar:
-                    progress_bar.progress(completed / total_parts)
-
                 try:
                     results.append(future.result(timeout=30))
-
                 except Exception as e:
                     results.append(
                         {
@@ -2007,18 +2001,20 @@ def run_authenticated_app() -> None:
                         }
                     )
 
+                if progress_queue is not None:
+                    progress_queue.put((len(results), total_parts, row.get("mpn", "")))
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if cancel_event is not None and cancel_event.is_set():
+            return None
+
         results_df = pd.DataFrame(results)
-        if "Supplier Data Verified" in results_df.columns:
-            degraded = not bool(results_df["Supplier Data Verified"].all())
-        else:
-            degraded = False
-        st.session_state["cadivor_supplier_degraded"] = degraded
-        st.session_state["cadivor_supplier_degraded_message"] = (
-            "Some supplier data could not be verified during this analysis."
-            if degraded
-            else ""
+        degraded = (
+            "Supplier Data Verified" in results_df.columns
+            and not bool(results_df["Supplier Data Verified"].all())
         )
-        return results_df
+        return results_df, degraded
 
     def show_dashboard_summary(results_df):
         st.subheader("📊 BOM Risk Dashboard")
@@ -12779,7 +12775,11 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
-        analysis_in_progress = bool(st.session_state.get("bom8_analysis_in_progress"))
+        analysis_in_progress = bool(
+            st.session_state.get("bom8_analysis_future")
+            or st.session_state.get("bom8_analysis_pending")
+            or st.session_state.get("bom8_sample_auto_analyze")
+        )
         input_col, guidance_col = st.columns([0.64, 0.36], gap="large")
 
         with input_col:
@@ -12797,12 +12797,21 @@ def run_authenticated_app() -> None:
             )
 
             project_name = st.text_input(
-                "Project / BOM Name",
-                placeholder="Example: Motor Controller Rev A",
+                "Project Name (optional)",
+                placeholder="Example: Motor Controller",
                 key="bom8_project_name",
+                disabled=analysis_in_progress,
+                help="Use a project to group multiple BOM revisions or assemblies.",
             )
-            if not project_name.strip():
-                st.info("Required for uploaded BOMs: add a board or revision name here to enable analysis. The 10-part sample is named automatically.")
+            bom_name = st.text_input(
+                "BOM Name",
+                placeholder="Example: Motor Controller Rev A",
+                key="bom8_bom_name",
+                disabled=analysis_in_progress,
+                help="Required. Name this specific BOM, revision, or assembly.",
+            )
+            if not bom_name.strip() and not st.session_state.get("bom8_sample_auto_analyze"):
+                st.info("BOM Name is required before Cadivor can analyze an uploaded BOM. Project Name is optional; use it to group related BOMs.")
 
             sample_bom = pd.DataFrame(
                 {
@@ -12843,7 +12852,8 @@ def run_authenticated_app() -> None:
             def _start_sample_bom() -> None:
                 st.session_state["bom8_sample_mode"] = True
                 st.session_state["bom8_sample_auto_analyze"] = True
-                st.session_state["bom8_project_name"] = "Cadivor 10-Part Sample BOM"
+                st.session_state["bom8_project_name"] = "Cadivor sample"
+                st.session_state["bom8_bom_name"] = "10-Part Sample BOM"
                 for state_key in (
                     "results_df",
                     "analysis_saved",
@@ -13070,11 +13080,16 @@ def run_authenticated_app() -> None:
         )
 
 
-        project_name_missing = not project_name.strip() and not sample_mode
+        bom_name_missing = not bom_name.strip() and not sample_mode
+        analysis_name = (
+            f"{project_name.strip()} — {bom_name.strip()}"
+            if project_name.strip() and bom_name.strip()
+            else bom_name.strip() or source_filename
+        )
         analyze_clicked = st.button(
             "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
             type="primary",
-            disabled=project_name_missing or analysis_in_progress,
+            disabled=bom_name_missing or analysis_in_progress,
         )
         if analyze_clicked:
             # Render the busy state before the long-running supplier and risk analysis.
@@ -13082,97 +13097,152 @@ def run_authenticated_app() -> None:
             st.session_state["bom8_analysis_pending"] = True
             st.rerun()
 
+        analysis_future = st.session_state.get("bom8_analysis_future")
+        if analysis_future is not None:
+            progress_queue = st.session_state.get("bom8_analysis_progress_queue")
+            completed = 0
+            total_parts = len(bom_df)
+            current_mpn = ""
+            while progress_queue is not None and not progress_queue.empty():
+                completed, total_parts, current_mpn = progress_queue.get_nowait()
+                st.session_state["bom8_analysis_progress"] = (completed, total_parts, current_mpn)
+
+            completed, total_parts, current_mpn = st.session_state.get(
+                "bom8_analysis_progress",
+                (0, total_parts, ""),
+            )
+
+            if st.button("Cancel analysis", key="bom8_cancel_analysis"):
+                cancel_event = st.session_state.get("bom8_analysis_cancel_event")
+                if cancel_event is not None:
+                    cancel_event.set()
+                st.session_state["bom8_analysis_cancelled"] = True
+                st.rerun()
+
+            if st.session_state.get("bom8_analysis_cancelled"):
+                cancel_event = st.session_state.get("bom8_analysis_cancel_event")
+                if cancel_event is not None:
+                    cancel_event.set()
+                st.session_state.pop("bom8_analysis_future", None)
+                st.session_state.pop("bom8_analysis_executor", None)
+                st.session_state.pop("bom8_analysis_progress_queue", None)
+                st.session_state.pop("bom8_analysis_cancel_event", None)
+                st.session_state.pop("bom8_analysis_progress", None)
+                st.session_state.pop("bom8_analysis_cancelled", None)
+                st.info("Analysis canceled. No BOM analysis was saved.")
+                st.stop()
+
+            if not analysis_future.done():
+                st.info(
+                    f"Analyzing {completed} of {total_parts} components"
+                    + (f": {current_mpn}" if current_mpn else "…")
+                )
+                st.progress(completed / total_parts if total_parts else 0)
+                time.sleep(0.6)
+                st.rerun()
+
+            try:
+                analysis_result = analysis_future.result()
+            except Exception as e:
+                st.session_state.pop("bom8_analysis_future", None)
+                st.session_state.pop("bom8_analysis_executor", None)
+                st.session_state.pop("bom8_analysis_progress_queue", None)
+                st.session_state.pop("bom8_analysis_cancel_event", None)
+                st.session_state.pop("bom8_analysis_progress", None)
+                st.error(f"BOM analysis failed unexpectedly: {e}")
+                stop_authenticated_page()
+
+            st.session_state.pop("bom8_analysis_future", None)
+            executor = st.session_state.pop("bom8_analysis_executor", None)
+            if executor is not None:
+                executor.shutdown(wait=False, cancel_futures=True)
+            st.session_state.pop("bom8_analysis_progress_queue", None)
+            st.session_state.pop("bom8_analysis_cancel_event", None)
+            st.session_state.pop("bom8_analysis_progress", None)
+
+            if analysis_result is None:
+                st.info("Analysis canceled. No BOM analysis was saved.")
+                st.stop()
+
+            results_df, degraded = analysis_result
+            st.session_state["results_df"] = results_df
+            st.session_state["cadivor_supplier_degraded"] = degraded
+            st.session_state["cadivor_supplier_degraded_message"] = (
+                "Some supplier data could not be verified during this analysis."
+                if degraded
+                else ""
+            )
+            st.success("BOM analysis completed successfully.")
+            if degraded:
+                st.info(st.session_state["cadivor_supplier_degraded_message"])
+
         analyze_requested = bool(st.session_state.pop("bom8_analysis_pending", False))
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
 
         if analyze_requested:
-            with st.spinner("Analyzing lifecycle, supplier, inventory, sourcing, and engineering risk…"):
-                # A new analysis should be saved as a new database record.
-                # These flags prevent old session state from blocking the new save.
-                st.session_state.pop("analysis_saved", None)
-                st.session_state.pop("analysis_id", None)
-                st.session_state.pop("health_score", None)
-                st.session_state.pop("health_status", None)
+            # A new analysis should be saved as a new database record.
+            # These flags prevent old session state from blocking the new save.
+            st.session_state.pop("analysis_saved", None)
+            st.session_state.pop("analysis_id", None)
+            st.session_state.pop("health_score", None)
+            st.session_state.pop("health_status", None)
 
-                if is_admin:
-                    allowed = True
-                    message = "Admin account: plan limits bypassed."
-                else:
-                    allowed, message = validate_bom_against_plan(
-                        bom_df,
-                        selected_plan,
-                        monthly_upload_count,
-                        is_admin=is_admin,
-                    )
-
-                if not allowed:
-                    upgrade_plan = selected_plan.get("upgrade_to")
-
-                    st.session_state["show_upgrade_checkout"] = True
-                    st.session_state["upgrade_message"] = message
-                    st.session_state["upgrade_plan_name"] = upgrade_plan
-
-                    # Release the busy state before showing the plan-limit action.
-                    st.session_state.pop("bom8_analysis_in_progress", None)
-                    # Rerun so the persistent upgrade checkout section below can render.
-                    # Using stop_authenticated_page() here would show the text but prevent the button from appearing.
-                    st.rerun()
-
-                saved_analysis_count = (
-                    _workspace_query(
-                        supabase.table("analyses")
-                        .select("id", count="exact")
-                    )
-                    .eq("user_id", current_user["id"])
-                    .execute()
+            if is_admin:
+                allowed = True
+                message = "Admin account: plan limits bypassed."
+            else:
+                allowed, message = validate_bom_against_plan(
+                    bom_df,
+                    selected_plan,
+                    monthly_upload_count,
+                    is_admin=is_admin,
                 )
 
-                saved_analysis_total = saved_analysis_count.count or 0
-                max_saved_boms = selected_plan.get("max_saved_boms", 0)
+            if not allowed:
+                upgrade_plan = selected_plan.get("upgrade_to")
+                st.session_state["show_upgrade_checkout"] = True
+                st.session_state["upgrade_message"] = message
+                st.session_state["upgrade_plan_name"] = upgrade_plan
+                st.rerun()
 
-                if not is_admin and max_saved_boms is not None and saved_analysis_total >= max_saved_boms:
-                    st.error(
-                        f"Your {selected_plan_name} workspace includes {max_saved_boms:,} saved BOMs and that storage allowance is full. "
-                        "Your existing work is safe. Delete an older analysis or upgrade to continue saving new results."
-                    )
-                    st.session_state.pop("bom8_analysis_in_progress", None)
-                    stop_authenticated_page()
+            saved_analysis_count = (
+                _workspace_query(
+                    supabase.table("analyses")
+                    .select("id", count="exact")
+                )
+                .eq("user_id", current_user["id"])
+                .execute()
+            )
+            saved_analysis_total = saved_analysis_count.count or 0
+            max_saved_boms = selected_plan.get("max_saved_boms", 0)
 
-                st.success(message)
+            if not is_admin and max_saved_boms is not None and saved_analysis_total >= max_saved_boms:
+                st.error(
+                    f"Your {selected_plan_name} workspace includes {max_saved_boms:,} saved BOMs and that storage allowance is full. "
+                    "Your existing work is safe. Delete an older analysis or upgrade to continue saving new results."
+                )
+                stop_authenticated_page()
 
-                try:
-                    progress_status = st.empty()
-                    progress_bar = st.progress(0)
+            from concurrent.futures import ThreadPoolExecutor
+            import queue
+            import threading
 
-                    st.session_state["results_df"] = analyze_bom(
-                        bom_df,
-                        progress_status=progress_status,
-                        progress_bar=progress_bar,
-                    )
-
-                    progress_status.success("BOM analysis completed successfully.")
-                    progress_bar.progress(1.0)
-
-                    # If analysis succeeds, hide any old checkout prompt from a previous blocked attempt.
-                    st.session_state.pop("show_upgrade_checkout", None)
-                    st.session_state.pop("checkout_url", None)
-                    st.session_state.pop("upgrade_message", None)
-                    st.session_state.pop("upgrade_plan_name", None)
-
-                except Exception as e:
-                    st.session_state.pop("bom8_analysis_in_progress", None)
-                    st.error(f"BOM analysis failed unexpectedly: {e}")
-                    stop_authenticated_page()
-
-                results_df = st.session_state["results_df"]
-                if st.session_state.get("cadivor_supplier_degraded"):
-                    st.info(
-                        st.session_state.get(
-                            "cadivor_supplier_degraded_message",
-                            "Some supplier data could not be verified during this analysis.",
-                        )
-                    )
+            progress_queue = queue.Queue()
+            cancel_event = threading.Event()
+            executor = ThreadPoolExecutor(max_workers=1)
+            st.session_state["bom8_analysis_progress_queue"] = progress_queue
+            st.session_state["bom8_analysis_cancel_event"] = cancel_event
+            st.session_state["bom8_analysis_executor"] = executor
+            st.session_state["bom8_analysis_future"] = executor.submit(
+                analyze_bom,
+                bom_df.copy(deep=True),
+                progress_queue,
+                cancel_event,
+            )
+            st.session_state["bom8_analysis_progress"] = (0, len(bom_df), "")
+            st.success(message)
+            st.rerun()
 
         if st.session_state.get("show_upgrade_checkout") and not is_admin:
             upgrade_message = st.session_state.get(
@@ -13264,7 +13334,7 @@ def run_authenticated_app() -> None:
                         _workspace_payload(
                             {
                                 "user_id": current_user["id"],
-                                "project_name": project_name or source_filename,
+                                "project_name": analysis_name,
                                 "filename": source_filename,
                                 "total_parts": total_parts,
                                 "high_risk_count": high_count,
@@ -13292,7 +13362,7 @@ def run_authenticated_app() -> None:
                             "analysis_id": analysis_id,
                             "user_id": current_user["id"],
                             "workspace_id": active_workspace_id,
-                            "project_name": project_name or source_filename,
+                            "project_name": analysis_name,
                             "mpn": part_row.get("MPN", ""),
                             "manufacturer": part_row.get("Manufacturer", ""),
                             "risk_score": part_row.get("Risk Score", 0),
@@ -13449,7 +13519,7 @@ def run_authenticated_app() -> None:
                 _high = len(results_df[results_df["Risk Level"] == "High"])
                 _medium = len(results_df[results_df["Risk Level"] == "Medium"])
                 render_analysis_success(
-                    project_name=project_name or source_filename or "BOM analysis",
+                    project_name=analysis_name or "BOM analysis",
                     total_parts=len(results_df),
                     high_count=_high,
                     medium_count=_medium,
@@ -13461,7 +13531,7 @@ def run_authenticated_app() -> None:
                 results_df,
                 health_score=int(st.session_state.get("health_score", 0) or 0),
                 analysis_id=str(st.session_state.get("analysis_id") or "") or None,
-                project_name=project_name or source_filename or "BOM analysis",
+                project_name=analysis_name or "BOM analysis",
             )
 
             decision_cache_key = decision_brief_cache_key(
