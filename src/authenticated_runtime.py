@@ -12940,8 +12940,8 @@ def run_authenticated_app() -> None:
                     <div class="bom8-check">
                       <div class="bom8-check-icon">3</div>
                       <div>
-                        <strong>One BOM revision</strong>
-                        <span>Use a project name that identifies the board and revision.</span>
+                        <strong>Clear BOM identity</strong>
+                        <span>BOM Name is required; Project Name is optional for grouping related BOMs.</span>
                       </div>
                     </div>
                   </div>
