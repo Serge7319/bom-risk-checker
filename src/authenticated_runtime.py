@@ -12801,6 +12801,8 @@ def run_authenticated_app() -> None:
                 key="bom8_project_name",
                 help="Required for your uploaded BOM. The 10-part sample names itself automatically.",
             )
+            if not project_name.strip():
+                st.caption("Required for your uploaded BOM. The sample BOM is named automatically.")
 
             sample_bom = pd.DataFrame(
                 {
@@ -12952,8 +12954,9 @@ def run_authenticated_app() -> None:
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
-        if not project_name.strip():
-            st.warning("Please enter a Project / BOM Name before analyzing")
+        if not project_name.strip() and not sample_mode:
+            # The requirement is communicated beside the field above; avoid a
+            # duplicate bottom-of-page warning that hides the next action.
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
