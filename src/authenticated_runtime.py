@@ -12799,6 +12799,7 @@ def run_authenticated_app() -> None:
                 "Project / BOM Name",
                 placeholder="Example: Motor Controller Rev A",
                 key="bom8_project_name",
+                help="Required for your uploaded BOM. The 10-part sample names itself automatically.",
             )
 
             sample_bom = pd.DataFrame(
