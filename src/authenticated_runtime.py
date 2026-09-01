@@ -13070,14 +13070,18 @@ def run_authenticated_app() -> None:
         )
 
 
+        analysis_in_progress = bool(st.session_state.get("bom_analysis_in_progress"))
         analyze_requested = st.button(
-            "Analyze Sample BOM" if sample_mode else "Analyze BOM",
+            "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
             type="primary",
+            disabled=analysis_in_progress,
+            help="Cadivor is analyzing this BOM. This action is unavailable until the current analysis finishes." if analysis_in_progress else None,
         )
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
 
         if analyze_requested:
+            st.session_state["bom_analysis_in_progress"] = True
             with st.spinner("Analyzing lifecycle, supplier, inventory, sourcing, and engineering risk…"):
                 # A new analysis should be saved as a new database record.
                 # These flags prevent old session state from blocking the new save.
@@ -13149,6 +13153,7 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("upgrade_plan_name", None)
 
                 except Exception as e:
+                    st.session_state["bom_analysis_in_progress"] = False
                     st.error(f"BOM analysis failed unexpectedly: {e}")
                     stop_authenticated_page()
 
@@ -13411,6 +13416,7 @@ def run_authenticated_app() -> None:
                 except Exception as e:
                     st.warning(f"Analysis completed, but upload count could not be updated: {e}")
 
+                st.session_state["bom_analysis_in_progress"] = False
                 st.session_state["analysis_saved"] = True
                 st.session_state["show_analysis_success_29b"] = True
                 st.session_state["last_saved_analysis_id"] = analysis_id
