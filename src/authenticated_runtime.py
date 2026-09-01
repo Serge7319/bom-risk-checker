@@ -12954,9 +12954,9 @@ def run_authenticated_app() -> None:
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
-        if not project_name.strip() and not sample_mode:
-            # The requirement is communicated beside the field above; avoid a
-            # duplicate bottom-of-page warning that hides the next action.
+        if not project_name.strip():
+            # The sample callback supplies its project name before this check;
+            # uploaded BOMs remain blocked until the name field is completed.
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
