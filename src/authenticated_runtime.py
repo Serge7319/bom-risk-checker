@@ -13081,7 +13081,14 @@ def run_authenticated_app() -> None:
             analyze_requested = True
 
         if analyze_requested:
+            # First render the locked state. The heavy supplier work starts on
+            # the following Streamlit run so the user cannot click again.
             st.session_state["bom_analysis_in_progress"] = True
+            st.session_state["bom_analysis_queued"] = True
+            st.rerun()
+
+        if st.session_state.get("bom_analysis_queued"):
+            st.session_state["bom_analysis_queued"] = False
             with st.spinner("Analyzing lifecycle, supplier, inventory, sourcing, and engineering risk…"):
                 # A new analysis should be saved as a new database record.
                 # These flags prevent old session state from blocking the new save.
