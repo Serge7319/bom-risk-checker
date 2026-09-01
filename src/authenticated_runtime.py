@@ -12779,6 +12779,7 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
+        analysis_in_progress = bool(st.session_state.get("bom8_analysis_in_progress"))
         input_col, guidance_col = st.columns([0.64, 0.36], gap="large")
 
         with input_col:
@@ -12866,6 +12867,7 @@ def run_authenticated_app() -> None:
                 type="primary",
                 help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
                 on_click=_start_sample_bom,
+                disabled=analysis_in_progress,
             )
 
             st.markdown(
@@ -12878,6 +12880,7 @@ def run_authenticated_app() -> None:
                 key="bom_file_uploader",
                 help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
                 on_change=_use_uploaded_bom,
+                disabled=analysis_in_progress,
             )
 
             st.markdown(
@@ -13068,11 +13071,18 @@ def run_authenticated_app() -> None:
 
 
         project_name_missing = not project_name.strip() and not sample_mode
-        analyze_requested = st.button(
-            "Analyze Sample BOM" if sample_mode else "Analyze BOM",
+        analyze_clicked = st.button(
+            "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
             type="primary",
-            disabled=project_name_missing,
+            disabled=project_name_missing or analysis_in_progress,
         )
+        if analyze_clicked:
+            # Render the busy state before the long-running supplier and risk analysis.
+            st.session_state["bom8_analysis_in_progress"] = True
+            st.session_state["bom8_analysis_pending"] = True
+            st.rerun()
+
+        analyze_requested = bool(st.session_state.pop("bom8_analysis_pending", False))
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
 
@@ -13103,6 +13113,8 @@ def run_authenticated_app() -> None:
                     st.session_state["upgrade_message"] = message
                     st.session_state["upgrade_plan_name"] = upgrade_plan
 
+                    # Release the busy state before showing the plan-limit action.
+                    st.session_state.pop("bom8_analysis_in_progress", None)
                     # Rerun so the persistent upgrade checkout section below can render.
                     # Using stop_authenticated_page() here would show the text but prevent the button from appearing.
                     st.rerun()
@@ -13124,6 +13136,7 @@ def run_authenticated_app() -> None:
                         f"Your {selected_plan_name} workspace includes {max_saved_boms:,} saved BOMs and that storage allowance is full. "
                         "Your existing work is safe. Delete an older analysis or upgrade to continue saving new results."
                     )
+                    st.session_state.pop("bom8_analysis_in_progress", None)
                     stop_authenticated_page()
 
                 st.success(message)
@@ -13148,6 +13161,7 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("upgrade_plan_name", None)
 
                 except Exception as e:
+                    st.session_state.pop("bom8_analysis_in_progress", None)
                     st.error(f"BOM analysis failed unexpectedly: {e}")
                     stop_authenticated_page()
 
@@ -13414,6 +13428,7 @@ def run_authenticated_app() -> None:
                 st.session_state["show_analysis_success_29b"] = True
                 st.session_state["last_saved_analysis_id"] = analysis_id
                 st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
+                st.session_state.pop("bom8_analysis_in_progress", None)
                 # First-run completion must hand the engineer directly to the
                 # result they just created; never require hunting through saved BOMs.
                 st.session_state["pending_app_mode"] = "BOM Analyzer"
