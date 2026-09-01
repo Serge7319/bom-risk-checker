@@ -12780,6 +12780,8 @@ def run_authenticated_app() -> None:
             or st.session_state.get("bom8_analysis_pending")
             or st.session_state.get("bom8_sample_auto_analyze")
         )
+        if st.session_state.pop("bom8_analysis_cancelled_notice", False):
+            st.success("Analysis canceled. No BOM analysis was saved.")
         input_col, guidance_col = st.columns([0.64, 0.36], gap="large")
 
         with input_col:
@@ -13099,82 +13101,86 @@ def run_authenticated_app() -> None:
 
         analysis_future = st.session_state.get("bom8_analysis_future")
         if analysis_future is not None:
-            progress_queue = st.session_state.get("bom8_analysis_progress_queue")
-            completed = 0
-            total_parts = len(bom_df)
-            current_mpn = ""
-            while progress_queue is not None and not progress_queue.empty():
-                completed, total_parts, current_mpn = progress_queue.get_nowait()
-                st.session_state["bom8_analysis_progress"] = (completed, total_parts, current_mpn)
+            @st.fragment(run_every=1.0)
+            def _render_active_bom_analysis():
+                current_future = st.session_state.get("bom8_analysis_future")
+                if current_future is None:
+                    return
 
-            completed, total_parts, current_mpn = st.session_state.get(
-                "bom8_analysis_progress",
-                (0, total_parts, ""),
-            )
-
-            if st.button("Cancel analysis", key="bom8_cancel_analysis"):
-                cancel_event = st.session_state.get("bom8_analysis_cancel_event")
-                if cancel_event is not None:
-                    cancel_event.set()
-                st.session_state["bom8_analysis_cancelled"] = True
-                st.rerun()
-
-            if st.session_state.get("bom8_analysis_cancelled"):
-                cancel_event = st.session_state.get("bom8_analysis_cancel_event")
-                if cancel_event is not None:
-                    cancel_event.set()
-                st.session_state.pop("bom8_analysis_future", None)
-                st.session_state.pop("bom8_analysis_executor", None)
-                st.session_state.pop("bom8_analysis_progress_queue", None)
-                st.session_state.pop("bom8_analysis_cancel_event", None)
-                st.session_state.pop("bom8_analysis_progress", None)
-                st.session_state.pop("bom8_analysis_cancelled", None)
-                st.info("Analysis canceled. No BOM analysis was saved.")
-                st.stop()
-
-            if not analysis_future.done():
-                st.info(
-                    f"Analyzing {completed} of {total_parts} components"
-                    + (f": {current_mpn}" if current_mpn else "…")
+                progress_queue = st.session_state.get("bom8_analysis_progress_queue")
+                completed, total_parts, current_mpn = st.session_state.get(
+                    "bom8_analysis_progress",
+                    (0, len(bom_df), ""),
                 )
-                st.progress(completed / total_parts if total_parts else 0)
-                time.sleep(0.6)
-                st.rerun()
+                while progress_queue is not None and not progress_queue.empty():
+                    completed, total_parts, current_mpn = progress_queue.get_nowait()
+                    st.session_state["bom8_analysis_progress"] = (
+                        completed,
+                        total_parts,
+                        current_mpn,
+                    )
 
-            try:
-                analysis_result = analysis_future.result()
-            except Exception as e:
+                if st.button(
+                    "Cancel analysis",
+                    key="bom8_cancel_analysis",
+                    type="secondary",
+                ):
+                    cancel_event = st.session_state.get("bom8_analysis_cancel_event")
+                    if cancel_event is not None:
+                        cancel_event.set()
+                    executor = st.session_state.pop("bom8_analysis_executor", None)
+                    if executor is not None:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    st.session_state.pop("bom8_analysis_future", None)
+                    st.session_state.pop("bom8_analysis_progress_queue", None)
+                    st.session_state.pop("bom8_analysis_cancel_event", None)
+                    st.session_state.pop("bom8_analysis_progress", None)
+                    st.session_state["bom8_analysis_cancelled_notice"] = True
+                    st.rerun()
+
+                if not current_future.done():
+                    st.info(
+                        f"Analyzing {completed} of {total_parts} components"
+                        + (f": {current_mpn}" if current_mpn else "…")
+                    )
+                    st.progress(completed / total_parts if total_parts else 0)
+                    return
+
+                try:
+                    analysis_result = current_future.result()
+                except Exception as e:
+                    st.session_state.pop("bom8_analysis_future", None)
+                    st.session_state.pop("bom8_analysis_executor", None)
+                    st.session_state.pop("bom8_analysis_progress_queue", None)
+                    st.session_state.pop("bom8_analysis_cancel_event", None)
+                    st.session_state.pop("bom8_analysis_progress", None)
+                    st.error(f"BOM analysis failed unexpectedly: {e}")
+                    return
+
                 st.session_state.pop("bom8_analysis_future", None)
-                st.session_state.pop("bom8_analysis_executor", None)
+                executor = st.session_state.pop("bom8_analysis_executor", None)
+                if executor is not None:
+                    executor.shutdown(wait=False, cancel_futures=True)
                 st.session_state.pop("bom8_analysis_progress_queue", None)
                 st.session_state.pop("bom8_analysis_cancel_event", None)
                 st.session_state.pop("bom8_analysis_progress", None)
-                st.error(f"BOM analysis failed unexpectedly: {e}")
-                stop_authenticated_page()
 
-            st.session_state.pop("bom8_analysis_future", None)
-            executor = st.session_state.pop("bom8_analysis_executor", None)
-            if executor is not None:
-                executor.shutdown(wait=False, cancel_futures=True)
-            st.session_state.pop("bom8_analysis_progress_queue", None)
-            st.session_state.pop("bom8_analysis_cancel_event", None)
-            st.session_state.pop("bom8_analysis_progress", None)
+                if analysis_result is None:
+                    st.session_state["bom8_analysis_cancelled_notice"] = True
+                    st.rerun()
 
-            if analysis_result is None:
-                st.info("Analysis canceled. No BOM analysis was saved.")
-                st.stop()
+                results_df, degraded = analysis_result
+                st.session_state["results_df"] = results_df
+                st.session_state["cadivor_supplier_degraded"] = degraded
+                st.session_state["cadivor_supplier_degraded_message"] = (
+                    "Some supplier data could not be verified during this analysis."
+                    if degraded
+                    else ""
+                )
+                st.rerun()
 
-            results_df, degraded = analysis_result
-            st.session_state["results_df"] = results_df
-            st.session_state["cadivor_supplier_degraded"] = degraded
-            st.session_state["cadivor_supplier_degraded_message"] = (
-                "Some supplier data could not be verified during this analysis."
-                if degraded
-                else ""
-            )
-            st.success("BOM analysis completed successfully.")
-            if degraded:
-                st.info(st.session_state["cadivor_supplier_degraded_message"])
+            _render_active_bom_analysis()
+            st.stop()
 
         analyze_requested = bool(st.session_state.pop("bom8_analysis_pending", False))
         if st.session_state.pop("bom8_sample_auto_analyze", False):
