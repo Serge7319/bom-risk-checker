@@ -12800,6 +12800,8 @@ def run_authenticated_app() -> None:
                 placeholder="Example: Motor Controller Rev A",
                 key="bom8_project_name",
             )
+            if not project_name.strip():
+                st.info("Required for uploaded BOMs: add a board or revision name here to enable analysis. The 10-part sample is named automatically.")
 
             sample_bom = pd.DataFrame(
                 {
@@ -13071,8 +13073,6 @@ def run_authenticated_app() -> None:
             type="primary",
             disabled=project_name_missing,
         )
-        if project_name_missing:
-            st.warning("Add a Project / BOM Name above to enable analysis.")
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
 
