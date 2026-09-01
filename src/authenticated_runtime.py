@@ -13415,7 +13415,11 @@ def run_authenticated_app() -> None:
                 st.session_state["show_analysis_success_29b"] = True
                 st.session_state["last_saved_analysis_id"] = analysis_id
                 st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
-                st.toast("Analysis saved to your workspace.", icon="✅")
+                # First-run completion must hand the engineer directly to the
+                # result they just created; never require hunting through saved BOMs.
+                st.session_state["pending_app_mode"] = "BOM Analyzer"
+                st.session_state["app_mode"] = "BOM Analyzer"
+                st.toast("Analysis complete. Opening your BOM analysis…", icon="✅")
                 # The Saved BOM Manager was rendered earlier in this script run
                 # from pre-save history. Rebuild once after persistence so the
                 # new analysis appears immediately. analysis_saved prevents a
