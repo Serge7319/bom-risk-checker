@@ -6,6 +6,7 @@ from integrations.supplier_aggregator import (
     discover_alternative_candidates,
     search_supplier_alternatives,
 )
+from integrations.digikey_client import resolve_engineering_part_identity
 from src.datasheet_comparison import (
     build_datasheet_comparison,
     build_recommendation_score_breakdown,
@@ -909,8 +910,13 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     """
     global _LAST_ALTERNATIVE_DISCOVERY
 
+    identity = resolve_engineering_part_identity(original_part_number)
+    canonical_part_number = str(
+        identity.get("manufacturer_part_number") or original_part_number
+    ).strip()
+
     original_data = get_best_part_data(original_part_number)
-    discovery = discover_alternative_candidates(original_part_number)
+    discovery = discover_alternative_candidates(canonical_part_number)
     _LAST_ALTERNATIVE_DISCOVERY = discovery
     supplier_results = list(discovery.get("candidates") or [])
 
@@ -933,7 +939,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         substitute_type = str(result.get("substitute_type") or "Candidate").strip()
         classification = classify_from_supplier_evidence(
             result,
-            original_mpn=original_part_number,
+            original_mpn=canonical_part_number,
             original_manufacturer=str(original_data.get("manufacturer") or ""),
         )
         is_explicit_substitute = classification == CLASS_VERIFIED_DIRECT
@@ -1073,7 +1079,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         
 
         original_candidate = {
-            "Alternative Part": original_part_number,
+            "Alternative Part": canonical_part_number,
             "Architecture": original_data.get("architecture", ""),
             "Package": original_data.get("package", "")
             or (
@@ -1203,6 +1209,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate
         for candidate in candidates
         if candidate.get("Alternative Part", "").strip().lower()
+        != canonical_part_number.strip().lower()
+        and candidate.get("Alternative Part", "").strip().lower()
         != original_part_number.strip().lower()
     ]
 

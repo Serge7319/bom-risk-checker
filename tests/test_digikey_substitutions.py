@@ -208,6 +208,29 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(result["rated_voltage"], "50V")
         self.assertEqual(result["dielectric"], "X7R")
         self.assertEqual(result["tolerance"], "±10%")
+        self.assertEqual(result["pin_count"], 0)
+
+    def test_digikey_distributor_number_resolves_to_manufacturer_mpn(self):
+        distributor_number = "399-C0603C104K5RAC3121DKR-ND"
+
+        def post(*_args, **_kwargs):
+            return _Response({"Products": [{
+                "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                "ProductVariations": [
+                    {"DigiKeyProductNumber": distributor_number},
+                ],
+            }]})
+
+        self.client.requests.post = post
+        result = self.client.search_digikey_by_part_number(distributor_number)
+
+        self.assertEqual(result["manufacturer_part_number"], "C0603C104K5RAC3121")
+        self.assertEqual(result["order_part_number"], distributor_number)
+        self.assertEqual(result["digikey_part_number"], distributor_number)
+
+        identity = self.client.resolve_engineering_part_identity(distributor_number)
+        self.assertEqual(identity["manufacturer_part_number"], "C0603C104K5RAC3121")
 
 
     def test_catalog_search_expands_packaging_suffix_to_mpn_family(self):

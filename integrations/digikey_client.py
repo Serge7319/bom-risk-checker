@@ -48,6 +48,59 @@ def _mpn_key(value: object) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
 
 
+_DIGIKEY_DISTRIBUTOR_PART_RE = re.compile(r"^\d+-.+?-ND$", re.IGNORECASE)
+_PASSIVE_PACKAGE_CODE_RE = re.compile(r"^(?:0\d{3}|\d{4})$")
+
+
+def is_digikey_distributor_part_number(part_number: str) -> bool:
+    """True when the input looks like a DigiKey distributor/order number."""
+    text = str(part_number or "").strip()
+    return bool(text and _DIGIKEY_DISTRIBUTOR_PART_RE.match(text))
+
+
+def _digikey_product_number_key(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _product_matches_digikey_number(product: dict, distributor_number: str) -> bool:
+    requested = _digikey_product_number_key(distributor_number)
+    if not requested or not isinstance(product, dict):
+        return False
+    if _digikey_product_number_key(product.get("DigiKeyProductNumber")) == requested:
+        return True
+    for variation in product.get("ProductVariations") or []:
+        if not isinstance(variation, dict):
+            continue
+        if _digikey_product_number_key(variation.get("DigiKeyProductNumber")) == requested:
+            return True
+    return False
+
+
+def resolve_engineering_part_identity(part_number: str) -> dict:
+    """Resolve a user-entered part to canonical manufacturer identity."""
+    requested = str(part_number or "").strip()
+    identity = {
+        "requested_part_number": requested,
+        "manufacturer_part_number": requested,
+        "digikey_part_number": "",
+        "order_part_number": "",
+    }
+    if not requested:
+        return identity
+    if not is_digikey_distributor_part_number(requested):
+        return identity
+    supplier_data = search_digikey_by_part_number(requested)
+    mpn = str(supplier_data.get("manufacturer_part_number") or "").strip()
+    if mpn:
+        identity["manufacturer_part_number"] = mpn
+    identity["digikey_part_number"] = str(
+        supplier_data.get("digikey_part_number") or requested
+    ).strip()
+    identity["order_part_number"] = requested
+    identity["supplier_data"] = supplier_data
+    return identity
+
+
 def _exact_keyword_product(products: list, part_number: str) -> Optional[dict]:
     """Select the exact MPN from a DigiKey keyword response.
 
@@ -65,6 +118,19 @@ def _exact_keyword_product(products: list, part_number: str) -> Optional[dict]:
         if _mpn_key(product.get("ManufacturerProductNumber")) == requested_key:
             return product
     return None
+
+
+def _select_exact_digikey_product(products: list, part_number: str) -> Optional[dict]:
+    """Select an exact MPN match or a DigiKey distributor/order-number match."""
+    requested = str(part_number or "").strip()
+    if not requested:
+        return None
+    if is_digikey_distributor_part_number(requested):
+        for product in products or []:
+            if isinstance(product, dict) and _product_matches_digikey_number(product, requested):
+                return product
+        return None
+    return _exact_keyword_product(products, part_number)
 
 
 def _search_digikey_exact_product(part_number: str, *, client_id: str, access_token: str) -> Optional[dict]:
@@ -88,16 +154,22 @@ def _search_digikey_exact_product(part_number: str, *, client_id: str, access_to
     response = requests.post(url, headers=headers, json=payload, timeout=15)
     response.raise_for_status()
     products = (response.json() or {}).get("Products") or []
-    return _exact_keyword_product(products, part_number)
+    return _select_exact_digikey_product(products, part_number)
 
 
 def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_token: str) -> dict:
+    requested = str(part_number or "").strip()
     product = _search_digikey_exact_product(
-        part_number, client_id=client_id, access_token=access_token
+        requested, client_id=client_id, access_token=access_token
     )
     if not product:
-        return default_digikey_result(part_number)
-    return normalize_digikey_product(product)
+        return default_digikey_result(requested)
+    normalized = normalize_digikey_product(product)
+    normalized["searched_part_number"] = requested
+    if is_digikey_distributor_part_number(requested):
+        normalized["order_part_number"] = requested
+        normalized["digikey_part_number"] = requested
+    return normalized
 
 
 def _digikey_product_numbers(product: dict) -> list[str]:
@@ -288,14 +360,18 @@ def extract_digikey_parameter(product: dict, target_names: list) -> str:
 
 
 def extract_pin_count(text: str) -> int:
-    import re
-
-    match = re.search(r"\b(\d+)\b", str(text))
-
-    if match:
-        return int(match.group(1))
-
-    return 0
+    raw = str(text or "").strip()
+    if not raw:
+        return 0
+    if re.search(r"\b0\d{3}\b|\b1\d{3}\b", raw):
+        return 0
+    compact = re.sub(r"[^0-9]", "", raw)
+    if _PASSIVE_PACKAGE_CODE_RE.match(compact):
+        return 0
+    match = re.search(r"\b(\d{1,4})\b", raw)
+    if not match:
+        return 0
+    return int(match.group(1))
 
 
 def normalize_digikey_product(product: dict) -> dict:
@@ -320,8 +396,15 @@ def normalize_digikey_product(product: dict) -> dict:
 
     pin_count_text = extract_digikey_parameter(
         product,
-        ["Number of Pins", "Supplier Device Package", "Package / Case"],
+        ["Number of Pins"],
     )
+    if not pin_count_text:
+        package_text = extract_digikey_parameter(
+            product,
+            ["Supplier Device Package", "Package / Case"],
+        )
+        if package_text and not re.search(r"\b0\d{3}\b|\b1\d{3}\b", package_text):
+            pin_count_text = package_text
 
     pin_count = extract_pin_count(pin_count_text)
 

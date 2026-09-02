@@ -10,6 +10,7 @@ from src.datasheet_comparison import (
     build_datasheet_comparison,
     build_pdf_field_evidence,
     infer_component_family,
+    normalize_mounting_style,
 )
 from src.plans import get_plan
 
@@ -93,6 +94,43 @@ class DatasheetComparisonTests(unittest.TestCase):
         fields = {row["Attribute"]: row for row in result["rows"]}
         self.assertEqual(fields["Rated voltage"]["Status"], "Match")
         self.assertNotIn("Supply voltage", fields)
+
+    def test_surface_mount_mlcc_and_smd_mounting_values_match(self):
+        result = build_datasheet_comparison(
+            {
+                "description": "Ceramic capacitor",
+                "mounting_style": "Surface Mount, MLCC",
+            },
+            {
+                "description": "Ceramic capacitor",
+                "mounting_style": "SMD",
+            },
+        )
+        statuses = {row["Attribute"]: row["Status"] for row in result["rows"]}
+        self.assertEqual(statuses["Mounting"], "Match")
+        self.assertEqual(normalize_mounting_style("Surface Mount, MLCC"), "smd")
+        self.assertEqual(normalize_mounting_style("SMT"), "smd")
+
+    def test_through_hole_versus_smd_mounting_remains_different(self):
+        result = build_datasheet_comparison(
+            {"description": "Ceramic capacitor", "mounting_style": "Through Hole"},
+            {"description": "Ceramic capacitor", "mounting_style": "SMD"},
+        )
+        statuses = {row["Attribute"]: row["Status"] for row in result["rows"]}
+        self.assertEqual(statuses["Mounting"], "Different")
+
+    def test_passive_families_do_not_include_pin_count_rows(self):
+        cases = (
+            {"description": "Ceramic capacitor 0.1uF", "package": "0603", "pin_count": 603},
+            {"description": "Thick film resistor 10k", "package": "0603", "pin_count": 603},
+            {"description": "Power inductor 10uH", "package": "6x6mm", "pin_count": 603},
+        )
+        for original in cases:
+            with self.subTest(description=original["description"]):
+                rows = build_datasheet_comparison(original, dict(original))["rows"]
+                attributes = {row["Attribute"] for row in rows}
+                self.assertNotIn("Pin count", attributes)
+                self.assertIn("Package", attributes)
 
 
 if __name__ == "__main__":

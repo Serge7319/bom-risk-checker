@@ -92,6 +92,48 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
         for index in range(11):
             self.assertIn(f"DIRECT-SUB-{index:02d}", parts)
 
+    def test_digikey_distributor_sku_retains_verified_direct_substitute(self):
+        distributor_number = "399-C0603C104K5RAC3121DKR-ND"
+        digikey = importlib.import_module("integrations.digikey_client")
+
+        def post(*_args, **_kwargs):
+            payload = {"Products": [{
+                "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                "ProductVariations": [{"DigiKeyProductNumber": distributor_number}],
+            }]}
+
+            class _Response:
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return payload
+
+            return _Response()
+
+        digikey.requests.post = post
+        digikey.get_secret = lambda *_args, **_kwargs: "client-id"
+        digikey.get_digikey_access_token = lambda: "access-token"
+        identity = digikey.resolve_engineering_part_identity(distributor_number)
+        self.assertEqual(identity["manufacturer_part_number"], "C0603C104K5RAC3121")
+
+        explicit = [{
+            "manufacturer_part_number": "C0603C104K5RAC3121",
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+        }]
+        self._mock_discovery(explicit, [])
+        results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
+        target = [
+            row for row in results
+            if row["Alternative Part"] == "C0603C104K5RAC3121"
+        ]
+        self.assertEqual(len(target), 1)
+        self.assertEqual(target[0]["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
+
     def test_c0603_direct_substitute_is_verified_and_ranked_first(self):
         explicit = [
             {

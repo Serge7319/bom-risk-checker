@@ -10159,8 +10159,21 @@ def run_authenticated_app() -> None:
                                 supplier_data = get_best_part_data(candidate_part) or {}
                             except Exception:
                                 continue
-                            matched_part = str(supplier_data.get("manufacturer_part_number", "") or "").strip()
-                            if matched_part.upper() != candidate_part.upper():
+                            from integrations.digikey_client import resolve_engineering_part_identity
+                            from src.alternative_classification import normalize_mpn_for_comparison
+
+                            matched_part = str(
+                                supplier_data.get("manufacturer_part_number", "") or ""
+                            ).strip()
+                            candidate_keys = {
+                                normalize_mpn_for_comparison(candidate_part),
+                                normalize_mpn_for_comparison(
+                                    resolve_engineering_part_identity(candidate_part).get(
+                                        "manufacturer_part_number", ""
+                                    )
+                                ),
+                            }
+                            if normalize_mpn_for_comparison(matched_part) not in candidate_keys:
                                 continue
                             if not supplier_data.get("supplier_data_verified"):
                                 continue

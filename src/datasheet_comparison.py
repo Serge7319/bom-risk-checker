@@ -89,6 +89,21 @@ PDF_LABEL_ALIASES = {
 }
 
 
+PASSIVE_FAMILIES = frozenset({"Capacitor", "Resistor", "Inductor"})
+
+
+def normalize_mounting_style(value: str) -> str:
+    """Normalize mounting values for comparison without hiding genuine TH vs SMD differences."""
+    text = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+    if not text:
+        return ""
+    if text in {"smd", "smt"} or text.startswith("surfacemount"):
+        return "smd"
+    if "throughhole" in text or text in {"th", "tht"}:
+        return "throughhole"
+    return text
+
+
 def infer_component_family(part: dict) -> str:
     text = " ".join(
         str(part.get(key) or "")
@@ -124,9 +139,16 @@ def _normalize(value: str) -> str:
     return re.sub(r"[^a-z0-9.+-]", "", value.casefold())
 
 
-def _field_status(original_value: str, candidate_value: str) -> tuple[str, str]:
+def _field_status(original_value: str, candidate_value: str, *, attribute: str = "") -> tuple[str, str]:
     if not original_value or not candidate_value:
         return "Needs data", "One or both values were not available from the retrieved evidence."
+    if attribute == "Mounting":
+        original_norm = normalize_mounting_style(original_value)
+        candidate_norm = normalize_mounting_style(candidate_value)
+        if original_norm and candidate_norm:
+            if original_norm == candidate_norm:
+                return "Match", "The retrieved mounting styles are equivalent for surface-mount comparison."
+            return "Different", "The retrieved mounting styles differ; engineer review is required."
     if _normalize(original_value) == _normalize(candidate_value):
         return "Match", "The retrieved values match exactly."
     return "Different", "The retrieved values differ; engineer review is required."
@@ -139,6 +161,8 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     # voltage, which is both electrically meaningful and present in their
     # supplier/datasheet evidence.
     common_fields = list(COMMON_FIELDS)
+    if family in PASSIVE_FAMILIES:
+        common_fields = [field for field in common_fields if field[1] != "pin_count"]
     if family in {"Capacitor", "Resistor", "Inductor", "Transformer", "Diode / protection", "Transistor / MOSFET"}:
         common_fields = [field for field in common_fields if field[1] != "voltage_range"]
     fields = common_fields + list(FAMILY_FIELDS.get(family, ()))
@@ -146,7 +170,7 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     for label, key in fields:
         original_value = _display_value(original.get(key))
         candidate_value = _display_value(candidate.get(key))
-        status, note = _field_status(original_value, candidate_value)
+        status, note = _field_status(original_value, candidate_value, attribute=label)
         counts[status] += 1
         rows.append({
             "Attribute": label,
