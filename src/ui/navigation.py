@@ -171,6 +171,16 @@ def consume_alternative_finder_context(
     if not original_part:
         return None
 
+    nav_token = (
+        f"{str(qp_value('analysis_id', '') or '').strip()}::"
+        f"{normalize_part_number(original_part) or original_part.upper()}"
+    )
+    from src.alternative_finder_state import alternative_finder_nav_already_consumed
+
+    if alternative_finder_nav_already_consumed(st.session_state, token=nav_token):
+        _clear_consumed_alt_nav_params()
+        return None
+
     context = build_alternative_finder_context(
         mpn=original_part,
         manufacturer=str(qp_value("manufacturer", "") or ""),
@@ -217,11 +227,29 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         f"{context.get('analysis_id', '')}::"
         f"{context.get('normalized_mpn') or str(context.get('mpn', '')).upper()}"
     )
-    if st.session_state.get("alternative_prefill_token") == prefill_token:
+    from src.alternative_finder_state import (
+        clear_alternative_finder_search,
+        get_active_alternative_finder_result,
+        mark_alternative_finder_nav_consumed,
+        should_apply_alternative_finder_prefill,
+    )
+
+    if not should_apply_alternative_finder_prefill(
+        st.session_state,
+        mpn=context["mpn"],
+        analysis_id=str(context.get("analysis_id") or ""),
+    ):
+        mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)
         return
 
+    if st.session_state.get("alternative_prefill_token") == prefill_token:
+        mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)
+        return
+
+    clear_alternative_finder_search(st.session_state, clear_widget=False)
     st.session_state["alternative_original_part"] = context["mpn"]
     st.session_state["alternative_prefill_token"] = prefill_token
+    mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)
     if context.get("manufacturer"):
         st.session_state["alternative_original_manufacturer"] = context["manufacturer"]
     else:
@@ -229,14 +257,6 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
     if context.get("analysis_id"):
         st.session_state["cadivor_active_analysis_id"] = context["analysis_id"]
         st.session_state["analysis_id"] = context["analysis_id"]
-
-    st.session_state["alternative_search_attempted"] = False
-    st.session_state["suggested_alternatives"] = []
-    st.session_state["alternative_original_data"] = {}
-    st.session_state["alternative_original_risk"] = {}
-    st.session_state["alternative_original_lookup_part"] = ""
-    st.session_state["alternative_original_lookup_error"] = ""
-    st.session_state["alternative_search_error"] = ""
 
 
 def reset_alternative_finder_prefill() -> None:

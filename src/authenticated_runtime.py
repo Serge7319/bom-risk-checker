@@ -8822,6 +8822,22 @@ def run_authenticated_app() -> None:
             extract_datasheet_text,
         )
         from src.alternative_reasoning import build_alternative_reasoning
+        from src.alternative_finder_state import (
+            clear_alternative_finder_search,
+            complete_alternative_finder_search,
+            fail_alternative_finder_search,
+            get_active_alternative_finder_result,
+            get_alternative_finder_candidates,
+            get_alternative_finder_display_mpn,
+            get_alternative_finder_lookup_error,
+            get_alternative_finder_original_data,
+            get_alternative_finder_original_risk,
+            get_alternative_finder_selected_candidate,
+            init_alternative_finder_state,
+            mark_alternative_finder_running,
+            set_alternative_finder_selected_candidate,
+            should_start_new_alternative_search,
+        )
         from src.risk_engine import calculate_risk
         return_analysis_id = str(
             _qp_value("return_analysis_id")
@@ -9988,69 +10004,11 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
-        if "suggested_alternatives" not in st.session_state:
-            st.session_state["suggested_alternatives"] = []
-
-        # Search candidates are derived from live supplier evidence.  Do not
-        # carry results produced by a previous ranking/discovery algorithm into
-        # this UI after a deployment, because their labels and evidence rules
-        # may no longer be valid.
-        alternative_result_algorithm_version = "supplier-evidence-v3"
-        if (
-            st.session_state.get("alternative_result_algorithm_version")
-            != alternative_result_algorithm_version
-        ):
-            st.session_state["suggested_alternatives"] = []
-            st.session_state["alternative_search_attempted"] = False
-            st.session_state["alternative_original_data"] = {}
-            st.session_state["alternative_original_risk"] = {}
-            st.session_state["alternative_original_lookup_part"] = ""
-            st.session_state["alternative_original_lookup_error"] = ""
-            st.session_state["alternative_search_error"] = ""
-            st.session_state["alternative_candidate_shortlist"] = []
-            st.session_state["alternative_result_algorithm_version"] = (
-                alternative_result_algorithm_version
-            )
-
-        if "alternative_search_attempted" not in st.session_state:
-            st.session_state["alternative_search_attempted"] = False
-
-        if "alternative_original_part" not in st.session_state:
-            st.session_state["alternative_original_part"] = ""
+        init_alternative_finder_state(st.session_state)
 
         alt_nav_context = consume_alternative_finder_context(_qp_value)
         if alt_nav_context:
             apply_alternative_finder_prefill(alt_nav_context)
-
-        if "alternative_original_data" not in st.session_state:
-            st.session_state["alternative_original_data"] = {}
-
-        if "alternative_original_risk" not in st.session_state:
-            st.session_state["alternative_original_risk"] = {}
-
-        if "alternative_original_lookup_part" not in st.session_state:
-            st.session_state["alternative_original_lookup_part"] = ""
-
-        if "alternative_original_lookup_error" not in st.session_state:
-            st.session_state["alternative_original_lookup_error"] = ""
-
-        if "alternative_candidate_shortlist" not in st.session_state:
-            st.session_state["alternative_candidate_shortlist"] = []
-
-        if "alternative_engineering_decisions" not in st.session_state:
-            st.session_state["alternative_engineering_decisions"] = {}
-
-        if "alternative_decision_notes" not in st.session_state:
-            st.session_state["alternative_decision_notes"] = {}
-
-        if "alternative_decision_db_status" not in st.session_state:
-            st.session_state["alternative_decision_db_status"] = ""
-
-        if "alternative_decision_db_error" not in st.session_state:
-            st.session_state["alternative_decision_db_error"] = ""
-
-        if "alternative_decision_flash" not in st.session_state:
-            st.session_state["alternative_decision_flash"] = ""
 
         with st.container(border=True, key="af62_hero"):
             cadivor_section_header(
@@ -10101,6 +10059,18 @@ def run_authenticated_app() -> None:
             if not searched_part:
                 st.warning("Please enter an original part number.")
             else:
+                if should_start_new_alternative_search(
+                    st.session_state,
+                    searched_part,
+                ):
+                    clear_alternative_finder_search(
+                        st.session_state,
+                        clear_widget=False,
+                    )
+                mark_alternative_finder_running(
+                    st.session_state,
+                    entered_mpn=searched_part,
+                )
                 # Keep this operation entirely inside the authenticated workspace.
                 # Supplier/API failures are converted into an in-page result state;
                 # they must never fall through to authentication or public routing.
@@ -10112,7 +10082,9 @@ def run_authenticated_app() -> None:
                         "Checking supplier coverage, lifecycle evidence, and replacement candidates.",
                     )
                 try:
-                    original_lookup = {}
+                    original_lookup: dict = {}
+                    original_risk: dict = {}
+                    lookup_error = ""
                     try:
                         original_lookup = get_best_part_data(searched_part) or {}
                         if not isinstance(original_lookup, dict):
@@ -10121,21 +10093,15 @@ def run_authenticated_app() -> None:
                             original_risk = calculate_risk(original_lookup) or {}
                         except Exception:
                             original_risk = {}
-                        st.session_state["alternative_original_data"] = original_lookup
-                        st.session_state["alternative_original_risk"] = original_risk
-                        st.session_state["alternative_original_lookup_part"] = searched_part
-                        if original_lookup.get("supplier_data_verified"):
-                            st.session_state["alternative_original_lookup_error"] = ""
-                        else:
-                            st.session_state["alternative_original_lookup_error"] = (
+                        if not original_lookup.get("supplier_data_verified"):
+                            lookup_error = (
                                 f'No exact supplier match was found for "{searched_part}". '
                                 "Enter the complete manufacturer part number, including package or suffix where applicable."
                             )
                     except Exception:
-                        st.session_state["alternative_original_data"] = {}
-                        st.session_state["alternative_original_risk"] = {}
-                        st.session_state["alternative_original_lookup_part"] = searched_part
-                        st.session_state["alternative_original_lookup_error"] = (
+                        original_lookup = {}
+                        original_risk = {}
+                        lookup_error = (
                             "Some original-component details are temporarily unavailable. "
                             "You can still review the available replacement evidence."
                         )
@@ -10148,9 +10114,7 @@ def run_authenticated_app() -> None:
                             candidates = []
                         else:
                             candidates = suggest_alternatives_v2(searched_part) or []
-                        st.session_state["alternative_discovery_metadata"] = (
-                            get_alternative_discovery_metadata()
-                        )
+                        discovery = get_alternative_discovery_metadata() or {}
                         for candidate in candidates:
                             candidate_part = str(candidate.get("Alternative Part", "") or "").strip()
                             if not candidate_part:
@@ -10184,15 +10148,32 @@ def run_authenticated_app() -> None:
                             candidate["Unit Price"] = supplier_data.get("unit_price", 0)
                             if supplier_data.get("lifecycle_status"):
                                 candidate["Lifecycle"] = supplier_data["lifecycle_status"]
-                        st.session_state["suggested_alternatives"] = candidates
-                        st.session_state["alternative_search_error"] = ""
-                    except Exception:
-                        st.session_state["suggested_alternatives"] = []
-                        st.session_state["alternative_search_error"] = (
-                            "Cadivor could not complete the supplier search right now. "
-                            "Please try again in a moment."
+                        canonical_mpn = str(
+                            original_lookup.get("manufacturer_part_number") or searched_part
+                        ).strip()
+                        complete_alternative_finder_search(
+                            st.session_state,
+                            entered_mpn=searched_part,
+                            canonical_mpn=canonical_mpn,
+                            original_data=original_lookup,
+                            original_risk=original_risk,
+                            candidates=candidates,
+                            discovery_metadata=discovery,
+                            lookup_error=lookup_error,
+                            search_error="",
                         )
-                    st.session_state["alternative_search_attempted"] = True
+                    except Exception:
+                        fail_alternative_finder_search(
+                            st.session_state,
+                            entered_mpn=searched_part,
+                            search_error=(
+                                "Cadivor could not complete the supplier search right now. "
+                                "Please try again in a moment."
+                            ),
+                            lookup_error=lookup_error,
+                            original_data=original_lookup,
+                            original_risk=original_risk,
+                        )
                 finally:
                     st.session_state.pop("cadivor_operation", None)
                     search_status.empty()
@@ -10202,33 +10183,18 @@ def run_authenticated_app() -> None:
 
         summary_col, tips_col = st.columns([1.35, 0.85], gap="medium")
 
-        current_search = (original_part or "").strip()
+        current_search = get_alternative_finder_display_mpn(
+            st.session_state,
+            original_part,
+        )
         current_display = (
             html.escape(current_search) if current_search else "No component entered"
         )
 
-        lookup_part = st.session_state.get("alternative_original_lookup_part", "")
-        lookup_matches_input = bool(
-            current_search
-            and lookup_part
-            and current_search.strip().upper() == lookup_part.strip().upper()
-        )
-
-        original_summary_data = (
-            st.session_state.get("alternative_original_data", {})
-            if lookup_matches_input
-            else {}
-        )
-        original_summary_risk = (
-            st.session_state.get("alternative_original_risk", {})
-            if lookup_matches_input
-            else {}
-        )
-        original_lookup_error = (
-            st.session_state.get("alternative_original_lookup_error", "")
-            if lookup_matches_input
-            else ""
-        )
+        original_summary_data = get_alternative_finder_original_data(st.session_state)
+        original_summary_risk = get_alternative_finder_original_risk(st.session_state)
+        original_lookup_error = get_alternative_finder_lookup_error(st.session_state)
+        active_finder_result = get_active_alternative_finder_result(st.session_state)
 
         def _af62_first(data, keys, fallback="—"):
             if not isinstance(data, dict):
@@ -10341,7 +10307,7 @@ def run_authenticated_app() -> None:
                 else "No exact supplier match"
             )
             current_status_class = "warning"
-        elif lookup_matches_input and original_summary_data:
+        elif active_finder_result and original_summary_data:
             current_status = "Component intelligence loaded"
             current_status_class = "success"
         elif current_search:
@@ -10406,13 +10372,12 @@ def run_authenticated_app() -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-        if st.session_state["suggested_alternatives"]:
-            alternatives_df = pd.DataFrame(
-                st.session_state["suggested_alternatives"]
-            )
+        stored_candidates = get_alternative_finder_candidates(st.session_state)
+        if stored_candidates:
+            alternatives_df = pd.DataFrame(stored_candidates)
 
             best_alternative = max(
-                st.session_state["suggested_alternatives"],
+                stored_candidates,
                 key=lambda x: x.get("Recommendation Score", 0),
             )
 
@@ -10423,6 +10388,12 @@ def run_authenticated_app() -> None:
                 if best_part_number in alternative_options
                 else 0
             )
+            stored_selected = get_alternative_finder_selected_candidate(
+                st.session_state,
+                fallback=best_part_number,
+            )
+            if stored_selected in alternative_options:
+                best_index = alternative_options.index(stored_selected)
 
             st.markdown(
                 f"""
@@ -10444,29 +10415,21 @@ def run_authenticated_app() -> None:
                 key="alternative_selected_candidate_62b",
                 help="Choose another candidate to refresh the recommendation and comparison workspace.",
             )
+            set_alternative_finder_selected_candidate(
+                st.session_state,
+                selected_alternative,
+            )
 
             selected_row = alternatives_df[
                 alternatives_df["Alternative Part"].astype(str) == selected_alternative
             ].iloc[0]
 
-            stored_original_data = st.session_state.get(
-                "alternative_original_data", {}
-            )
-            stored_lookup_part = st.session_state.get(
-                "alternative_original_lookup_part", ""
-            )
-
-            if (
-                isinstance(stored_original_data, dict)
-                and stored_original_data
-                and str(stored_lookup_part).strip().upper()
-                == str(original_part).strip().upper()
-            ):
-                original_data = stored_original_data
-            else:
-                original_data = get_best_part_data(original_part) or {}
-                st.session_state["alternative_original_data"] = original_data
-                st.session_state["alternative_original_lookup_part"] = original_part
+            original_data = get_alternative_finder_original_data(st.session_state)
+            if not original_data:
+                original_data = get_best_part_data(current_search) or {}
+                if active_finder_result:
+                    active_finder_result["original_data"] = original_data
+                    st.session_state["alternative_original_data"] = original_data
 
             def _af62b_value(row, keys, fallback="—"):
                 for key in keys:
@@ -11781,22 +11744,13 @@ def run_authenticated_app() -> None:
             # Milestone 7.0.1 — safe Alternative Finder reset callback
             def _reset_alternative_search():
                 """Clear the Alternative Finder before its widgets are recreated."""
-                st.session_state["suggested_alternatives"] = []
-                st.session_state["alternative_search_attempted"] = False
-                st.session_state["alternative_original_data"] = {}
-                st.session_state["alternative_original_risk"] = {}
-                st.session_state["alternative_original_lookup_part"] = ""
-                st.session_state["alternative_original_lookup_error"] = ""
-                st.session_state["alternative_search_error"] = ""
-                st.session_state["alternative_discovery_metadata"] = {}
-                st.session_state["alternative_original_part"] = ""
+                clear_alternative_finder_search(st.session_state)
                 reset_alternative_finder_prefill()
                 st.session_state["alternative_engineering_decisions"] = {}
                 st.session_state["alternative_decision_notes"] = {}
 
                 # Clear selection and comparison state from the previous result set.
                 for state_key in (
-                    "alternative_selected_candidate",
                     "alternative_compare_parts",
                     "alternative_advanced_parts",
                     "alternative_decision_db_status",
