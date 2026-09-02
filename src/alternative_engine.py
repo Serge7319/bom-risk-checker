@@ -9,7 +9,12 @@ from integrations.supplier_aggregator import (
 from integrations.digikey_client import resolve_engineering_part_identity
 from src.datasheet_comparison import (
     build_datasheet_comparison,
+    build_engineering_evidence_assessment,
     build_recommendation_score_breakdown,
+    infer_component_family,
+    PASSIVE_FAMILIES,
+    PASSIVE_PARAMETRIC_KEYS,
+    normalize_mounting_style,
 )
 from src.alternative_classification import (
     CLASS_CATALOG_INSUFFICIENT,
@@ -373,7 +378,74 @@ def calculate_recommendation_score(candidate: dict) -> int:
     return score
 
 
+def _enrich_part_data_from_suppliers(part_data: dict) -> dict:
+    """Preserve passive parametrics from any configured supplier response."""
+    enriched = dict(part_data or {})
+    valid_results = [
+        result
+        for result in (enriched.get("all_supplier_results") or [])
+        if result.get("provider_status") == "available"
+    ]
+    for field_name in PASSIVE_PARAMETRIC_KEYS:
+        if enriched.get(field_name) not in (None, "", 0):
+            continue
+        for result in valid_results:
+            value = result.get(field_name)
+            if value not in (None, "", 0):
+                enriched[field_name] = value
+                break
+    return enriched
+
+
+def _merge_supplier_part_data(*sources: dict) -> dict:
+    merged: dict = {}
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        for key, value in source.items():
+            if value not in (None, "", 0):
+                merged[key] = value
+    return _enrich_part_data_from_suppliers(merged)
+
+
+def _passive_compatibility_confidence(counts: dict, *, classification: str = "", substitute_type: str = "") -> int:
+    assessment = build_engineering_evidence_assessment(
+        counts,
+        classification=classification,
+        substitute_type=substitute_type,
+    )
+    return int(assessment["engineering_comparison_confidence"])
+
+
+def _passive_drop_in_reasons(rows: list) -> str:
+    parts = []
+    for row in rows or []:
+        attribute = str(row.get("Attribute") or "").strip()
+        status = str(row.get("Status") or "").strip()
+        if not attribute:
+            continue
+        if status == "Match":
+            parts.append(f"✓ {attribute} matches")
+        elif status == "Different":
+            parts.append(f"⚠ {attribute} differs")
+        elif status == "Needs data":
+            parts.append(f"ℹ {attribute} needs verification from retrieved evidence")
+    return "; ".join(parts)
+
+
 def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
+    family = str(
+        candidate.get("Comparison Family")
+        or infer_component_family(original)
+    )
+    if family in PASSIVE_FAMILIES:
+        counts = candidate.get("Comparison Counts")
+        if isinstance(counts, dict) and counts:
+            return _passive_compatibility_confidence(
+                counts,
+                classification=str(candidate.get("Classification") or ""),
+                substitute_type=str(candidate.get("Substitute Type") or ""),
+            )
     score = 0
 
     original_architecture = str(
@@ -580,6 +652,14 @@ def get_drop_in_rating(confidence: int) -> str:
 
 
 def get_drop_in_reasons(original: dict, candidate: dict) -> str:
+    family = str(
+        candidate.get("Comparison Family")
+        or infer_component_family(original)
+    )
+    comparison_rows = candidate.get("Comparison Rows")
+    if family in PASSIVE_FAMILIES and isinstance(comparison_rows, list) and comparison_rows:
+        return _passive_drop_in_reasons(comparison_rows)
+
     reasons = []
 
 
@@ -915,7 +995,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         identity.get("manufacturer_part_number") or original_part_number
     ).strip()
 
-    original_data = get_best_part_data(original_part_number)
+    original_data = _enrich_part_data_from_suppliers(get_best_part_data(original_part_number))
     discovery = discover_alternative_candidates(canonical_part_number)
     _LAST_ALTERNATIVE_DISCOVERY = discovery
     supplier_results = list(discovery.get("candidates") or [])
@@ -997,9 +1077,12 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             continue
 
         try:
-            exact_supplier_data = get_best_part_data(alt_part_number) or {}
+            exact_supplier_data = _enrich_part_data_from_suppliers(
+                get_best_part_data(alt_part_number) or {}
+            )
         except Exception:
             exact_supplier_data = {}
+        candidate["Enriched Supplier Data"] = exact_supplier_data
         if exact_supplier_data.get("supplier_data_verified"):
             candidate["Supplier"] = exact_supplier_data.get("source") or candidate.get("Supplier", "")
             candidate["Stock"] = exact_supplier_data.get("stock_total", candidate.get("Stock", 0))
@@ -1016,6 +1099,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             ):
                 if exact_supplier_data.get(supplier_key) not in (None, "", 0):
                     candidate[candidate_key] = exact_supplier_data.get(supplier_key)
+            for supplier_key in PASSIVE_PARAMETRIC_KEYS:
+                if exact_supplier_data.get(supplier_key) in (None, "", 0):
+                    continue
+                candidate[supplier_key] = exact_supplier_data.get(supplier_key)
 
 
     normalized_candidates = []
@@ -1049,9 +1136,15 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         candidate_part_number = candidate.get("Alternative Part", "")
 
         if candidate_index < MAX_LIVE_SUPPLIER_LOOKUPS:
-            candidate_supplier_data = get_best_part_data(candidate_part_number)
+            fresh_supplier_data = _enrich_part_data_from_suppliers(
+                get_best_part_data(candidate_part_number) or {}
+            )
         else:
-            candidate_supplier_data = {}
+            fresh_supplier_data = {}
+        candidate_supplier_data = _merge_supplier_part_data(
+            candidate.get("Enriched Supplier Data") or {},
+            fresh_supplier_data,
+        )
 
         candidate["Supply Voltage Min"] = candidate.get("Supply Voltage Min") or candidate_supplier_data.get("supply_voltage_min")
         candidate["Supply Voltage Max"] = candidate.get("Supply Voltage Max") or candidate_supplier_data.get("supply_voltage_max")
@@ -1118,22 +1211,6 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Feature Tags": original_data.get("Feature Tags", set()),
            }
 
-        candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
-            original_candidate,
-            candidate,
-        )
-
-        candidate["Drop-In Rating"] = get_drop_in_rating(
-            candidate["Drop-In Confidence"]
-        )
-
-        candidate["Drop-In Reasons"] = get_drop_in_reasons(
-            original_candidate,
-            candidate,
-        )
-
-        candidate["Recommendation Score"] = calculate_recommendation_score(candidate)
-
         # Make the recommendation score primarily reflect the retrieved
         # engineering comparison, rather than allowing broad sourcing signals
         # to make clearly different candidates look equally close.
@@ -1176,13 +1253,37 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             original_data, candidate_comparison_data
         )
         comparison_counts = comparison_result["counts"]
+        candidate["Comparison Family"] = comparison_result.get("family", "")
+        candidate["Comparison Rows"] = comparison_result.get("rows", [])
+        candidate["Comparison Counts"] = comparison_counts
         classification = refine_classification_after_comparison(
             str(candidate.get("Classification") or CLASS_CATALOG_INSUFFICIENT),
             comparison_counts,
         )
         candidate["Classification"] = classification
         candidate["Category"] = classification
-        candidate["Comparison Family"] = comparison_result.get("family", "")
+        evidence_assessment = build_engineering_evidence_assessment(
+            comparison_counts,
+            classification=classification,
+            substitute_type=str(candidate.get("Substitute Type") or ""),
+        )
+        candidate["Engineering Evidence Assessment"] = evidence_assessment
+        candidate["Engineering Evidence Summary"] = evidence_assessment["engineering_evidence_summary"]
+        candidate["Engineering Comparison Confidence"] = evidence_assessment[
+            "engineering_comparison_confidence"
+        ]
+        candidate["Supplier Relationship Confidence"] = evidence_assessment[
+            "supplier_relationship_confidence"
+        ]
+        candidate["Supplier Relationship Summary"] = evidence_assessment[
+            "supplier_relationship_summary"
+        ]
+        candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
+            original_candidate,
+            candidate,
+        )
+        candidate["Drop-In Rating"] = get_drop_in_rating(candidate["Drop-In Confidence"])
+        candidate["Drop-In Reasons"] = get_drop_in_reasons(original_candidate, candidate)
         score_evidence = build_recommendation_score_breakdown(
             candidate["Recommendation Score"],
             candidate["Drop-In Confidence"],
@@ -1191,6 +1292,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         )
         candidate["Recommendation Score"] = score_evidence["recommendation_score"]
         candidate["Drop-In Confidence"] = score_evidence["compatibility_confidence"]
+        if str(candidate.get("Comparison Family") or "") in PASSIVE_FAMILIES:
+            candidate["Drop-In Confidence"] = int(
+                evidence_assessment["engineering_comparison_confidence"]
+            )
         candidate["Drop-In Rating"] = get_drop_in_rating(candidate["Drop-In Confidence"])
         candidate["Datasheet Match Count"] = score_evidence["matches"]
         candidate["Datasheet Difference Count"] = score_evidence["differences"]
@@ -1199,6 +1304,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         score_evidence["evidence_source"] = candidate.get("Evidence Source", "")
         score_evidence["evidence_type"] = candidate.get("Evidence Type", "")
         score_evidence["substitute_type"] = candidate.get("Substitute Type", "")
+        score_evidence.update(evidence_assessment)
         candidate["Recommendation Score Evidence"] = score_evidence
 
         normalized_candidates.append(candidate)

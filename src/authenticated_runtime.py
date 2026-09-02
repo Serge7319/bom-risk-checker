@@ -10480,6 +10480,27 @@ def run_authenticated_app() -> None:
 
             recommendation_score = int(float(selected_row.get("Recommendation Score", 0) or 0))
             drop_in_confidence = int(float(selected_row.get("Drop-In Confidence", 0) or 0))
+            engineering_comparison_confidence = int(
+                float(
+                    selected_row.get("Engineering Comparison Confidence", drop_in_confidence)
+                    or drop_in_confidence
+                )
+            )
+            supplier_relationship_confidence = int(
+                float(selected_row.get("Supplier Relationship Confidence", 0) or 0)
+            )
+            engineering_evidence_summary = _af62b_value(
+                selected_row,
+                ["Engineering Evidence Summary"],
+                "",
+            )
+            supplier_relationship_summary = _af62b_value(
+                selected_row,
+                ["Supplier Relationship Summary"],
+                "",
+            )
+            comparison_family_value = _af62b_value(selected_row, ["Comparison Family"], "")
+            is_passive_family = comparison_family_value in {"Capacitor", "Resistor", "Inductor"}
             recommendation_evidence = selected_row.get("Recommendation Score Evidence", {})
             if not isinstance(recommendation_evidence, dict):
                 recommendation_evidence = {}
@@ -10569,12 +10590,6 @@ def run_authenticated_app() -> None:
                 else:
                     tradeoff_points.append(price_delta)
 
-            confidence_label = (
-                "High" if drop_in_confidence >= 75
-                else "Medium" if drop_in_confidence >= 50
-                else "Low"
-            )
-
             recommendation_label = (
                 "Strong" if recommendation_score >= 75
                 else "Review" if recommendation_score >= 55
@@ -10585,11 +10600,6 @@ def run_authenticated_app() -> None:
                 else "medium" if recommendation_score >= 55
                 else "low"
             )
-            confidence_class = (
-                "good" if confidence_label == "High"
-                else "warn" if confidence_label == "Medium"
-                else ""
-            )
             lifecycle_class = "good" if lifecycle_value.lower() == "active" else "warn"
             risk_class_62b = "good" if risk_value.lower() == "low" else "warn"
 
@@ -10598,11 +10608,57 @@ def run_authenticated_app() -> None:
                 original_data=original_data,
                 candidate=selected_row.to_dict(),
                 recommendation_score=recommendation_score,
-                compatibility_confidence=drop_in_confidence,
+                compatibility_confidence=engineering_comparison_confidence,
                 engineering_matches=recommendation_points,
                 warnings=warning_points,
                 stock_delta=stock_delta,
                 price_delta=price_delta,
+                comparison_family=_af62b_value(selected_row, ["Comparison Family"], ""),
+                classification=classification_value,
+                comparison_rows=selected_row.get("Comparison Rows") or [],
+                comparison_counts=selected_row.get("Comparison Counts") or {},
+            )
+            engineering_comparison_confidence = int(
+                alternative_reasoning.get(
+                    "engineering_comparison_confidence",
+                    engineering_comparison_confidence,
+                )
+                or engineering_comparison_confidence
+            )
+            supplier_relationship_confidence = int(
+                alternative_reasoning.get(
+                    "supplier_relationship_confidence",
+                    supplier_relationship_confidence,
+                )
+                or supplier_relationship_confidence
+            )
+            engineering_evidence_summary = _af62b_value(
+                alternative_reasoning,
+                ["engineering_evidence_summary"],
+                engineering_evidence_summary,
+            )
+            supplier_relationship_summary = _af62b_value(
+                alternative_reasoning,
+                ["supplier_relationship_summary"],
+                supplier_relationship_summary,
+            )
+            confidence_label = (
+                "High" if engineering_comparison_confidence >= 75
+                else "Medium" if engineering_comparison_confidence >= 50
+                else "Low"
+            )
+            confidence_class = (
+                "good" if confidence_label == "High"
+                else "warn" if confidence_label == "Medium"
+                else ""
+            )
+            supplier_confidence_label = (
+                "High" if supplier_relationship_confidence >= 75 else "Medium"
+            ) if supplier_relationship_confidence else "Not classified"
+            compatibility_metric_label = (
+                "Engineering Compatibility"
+                if is_passive_family
+                else "Compatibility Confidence"
             )
 
             with st.container(border=True, key="af62b_best_card"):
@@ -10639,8 +10695,23 @@ def run_authenticated_app() -> None:
                         <strong>{html.escape(supplier_value)}</strong>
                       </div>
                       <div class="af62b-metric {confidence_class}">
-                        <span>Compatibility Confidence</span>
-                        <strong>{drop_in_confidence}% · {confidence_label}</strong>
+                        <span>{html.escape(compatibility_metric_label)}</span>
+                        <strong>{engineering_comparison_confidence}% · {confidence_label}</strong>
+                      </div>
+                      <div class="af62b-metric {'good' if supplier_relationship_confidence >= 75 else 'warn' if supplier_relationship_confidence else ''}">
+                        <span>Supplier Relationship</span>
+                        <strong>{f"{supplier_relationship_confidence}% · {supplier_confidence_label}" if supplier_relationship_confidence else "Not classified"}</strong>
+                      </div>
+                    </div>
+
+                    <div class="af62b-metrics" style="margin-top:10px;grid-template-columns:repeat(2,minmax(0,1fr));">
+                      <div class="af62b-metric">
+                        <span>Engineering Evidence</span>
+                        <strong>{html.escape(engineering_evidence_summary or 'Not available')}</strong>
+                      </div>
+                      <div class="af62b-metric">
+                        <span>Supplier Relationship Evidence</span>
+                        <strong>{html.escape(supplier_relationship_summary or classification_value)}</strong>
                       </div>
                     </div>
 
@@ -10698,16 +10769,22 @@ def run_authenticated_app() -> None:
                 cost_strength = 50
 
             warning_count = len(warning_points)
-            if drop_in_confidence >= 75:
+            if engineering_comparison_confidence >= 75:
                 intelligence_summary = (
-                    f"{selected_alternative} shows strong compatibility with the original "
+                    f"{selected_alternative} shows strong engineering compatibility with the original "
                     f"component and is suitable for focused engineering validation."
                 )
-            elif drop_in_confidence >= 50:
+            elif engineering_comparison_confidence >= 50:
                 intelligence_summary = (
                     f"{selected_alternative} is a plausible replacement, but Cadivor identified "
                     f"{warning_count} verification item{'s' if warning_count != 1 else ''} "
                     f"that should be resolved before production release."
+                )
+            elif supplier_relationship_confidence >= 75 and classification_value == "Verified direct substitute":
+                intelligence_summary = (
+                    f"{selected_alternative} is a supplier-listed direct substitute, but retrieved "
+                    f"engineering comparison evidence is incomplete. Confirm family-relevant fields "
+                    f"before treating this as a validated drop-in replacement."
                 )
             else:
                 intelligence_summary = (
@@ -10725,8 +10802,8 @@ def run_authenticated_app() -> None:
                 intelligence_summary += " Current supplier inventory is stronger than the original."
 
             compatibility_detail = (
-                f"{drop_in_confidence}% confidence"
-                if drop_in_confidence > 0
+                f"{engineering_comparison_confidence}% engineering compatibility"
+                if engineering_comparison_confidence > 0
                 else "Not verified"
             )
             lifecycle_detail = (
@@ -10774,7 +10851,7 @@ def run_authenticated_app() -> None:
                       <span>Compatibility</span>
                       <strong>{html.escape(compatibility_detail)}</strong>
                       <p>{len(recommendation_points)} verified match signal{'s' if len(recommendation_points) != 1 else ''}; {warning_count} warning{'s' if warning_count != 1 else ''}.</p>
-                      <div class="af7-meter {_af7_meter_class(drop_in_confidence)}"><i style="width:{max(2, min(100, drop_in_confidence))}%"></i></div>
+                      <div class="af7-meter {_af7_meter_class(engineering_comparison_confidence)}"><i style="width:{max(2, min(100, engineering_comparison_confidence))}%"></i></div>
                     </div>
                     <div class="af7-factor">
                       <span>Lifecycle</span>
@@ -10803,7 +10880,7 @@ def run_authenticated_app() -> None:
                   </div>
 
                   <div class="af7-explain-note">
-                    Score basis: {drop_in_confidence}% engineering compatibility, {int(recommendation_evidence.get('evidence_quality', 0) or 0)}% retrieved-evidence quality, and {int(recommendation_evidence.get('sourcing_signal', 0) or 0)}% sourcing signal. Documented differences and missing evidence lower the result.
+                    Score basis: {engineering_comparison_confidence}% engineering compatibility, {int(recommendation_evidence.get('evidence_quality', 0) or 0)}% retrieved-evidence quality, and {int(recommendation_evidence.get('sourcing_signal', 0) or 0)}% sourcing signal. Supplier relationship evidence is reported separately from engineering comparison coverage.
                   </div>
                 </div>
                 """,
