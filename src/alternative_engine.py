@@ -1,5 +1,6 @@
 import pandas as pd
 
+from integrations.stock_coercion import coerce_stock_total
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
 from integrations.supplier_aggregator import (
@@ -247,7 +248,7 @@ def calculate_recommendation_score(candidate: dict) -> int:
     reasons = []
 
     lifecycle = str(candidate.get("Lifecycle", "")).lower()
-    stock = int(candidate.get("Stock", 0))
+    stock = coerce_stock_total(candidate.get("Stock", 0))
     supplier = str(candidate.get("Supplier", "")).strip()
     unit_price = float(candidate.get("Unit Price", 0.0))
 
@@ -452,7 +453,7 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         "manufacturer_part_number": mpn,
         "manufacturer": str(row.get("manufacturer") or "").strip(),
         "description": description,
-        "stock_total": row.get("stock_total", 0),
+        "stock_total": coerce_stock_total(row.get("stock_total", 0)),
         "unit_price": row.get("unit_price", 0.0),
         "datasheet_url": str(row.get("datasheet_url") or "").strip(),
         "package": package or passive_fields.get("package", ""),
@@ -1244,7 +1245,9 @@ def apply_supplier_enrichment_to_candidate(
         enriched["Supplier"] = supplier_data.get("source") or enriched.get("Supplier", "")
         enriched["Sources Available"] = supplier_data.get("sources_available", "")
         enriched["Supplier Count"] = supplier_data.get("supplier_count", 0)
-        enriched["Stock"] = supplier_data.get("stock_total", enriched.get("Stock", 0))
+        enriched["Stock"] = coerce_stock_total(
+            supplier_data.get("stock_total", enriched.get("Stock", 0))
+        )
         enriched["Unit Price"] = supplier_data.get("unit_price", enriched.get("Unit Price", 0.0))
         if supplier_data.get("lifecycle_status"):
             enriched["Lifecycle"] = supplier_data.get("lifecycle_status")
@@ -1311,7 +1314,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Classification": classification,
                 "Supplier": str(result.get("source") or "DigiKey"),
                 "Manufacturer": str(result.get("manufacturer") or ""),
-                "Stock": result.get("stock_total", 0),
+                "Stock": coerce_stock_total(result.get("stock_total", 0)),
                 "Unit Price": result.get("unit_price", 0.0),
                 "Lifecycle": "Unknown",
                 "Estimated Risk": "Unknown",

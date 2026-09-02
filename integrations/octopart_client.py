@@ -1,11 +1,13 @@
 """Exact-match Octopart component intelligence through the Nexar Supply API."""
 from __future__ import annotations
 
+import re
 import threading
 import time
-import re
 
 import requests
+
+from integrations.stock_coercion import coerce_stock_total
 
 from src.secrets import get_secret
 
@@ -133,7 +135,7 @@ def _normalize_part(part: dict) -> dict:
             if not isinstance(offer, dict):
                 continue
             try:
-                result["stock_total"] += max(int(offer.get("inventoryLevel") or 0), 0)
+                result["stock_total"] += coerce_stock_total(offer.get("inventoryLevel"))
             except (TypeError, ValueError):
                 pass
             if not result["product_detail_url"]:

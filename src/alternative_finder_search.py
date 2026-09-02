@@ -218,6 +218,7 @@ def run_alternative_finder_search(
 ) -> dict[str, Any]:
     """Execute Alternative Finder search stages and persist durable session results."""
     from integrations.supplier_aggregator import get_best_part_data
+    from integrations.stock_coercion import coerce_stock_total
     from src.alternative_engine import get_alternative_discovery_metadata, suggest_alternatives_v2
     from src.alternative_finder_state import complete_alternative_finder_search, fail_alternative_finder_search
     from src.risk_engine import calculate_risk
@@ -236,6 +237,8 @@ def run_alternative_finder_search(
                 safe_original = get_best_part_data(entered_mpn) or {}
             if not isinstance(safe_original, dict):
                 safe_original = {}
+            if safe_original.get("stock_total") is not None:
+                safe_original["stock_total"] = coerce_stock_total(safe_original.get("stock_total"))
             try:
                 safe_risk = calculate_risk(safe_original) or {}
             except Exception:

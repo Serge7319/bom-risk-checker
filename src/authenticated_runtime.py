@@ -8825,6 +8825,7 @@ def run_authenticated_app() -> None:
             get_or_enrich_selected_candidate,
             run_alternative_finder_search,
         )
+        from integrations.stock_coercion import coerce_stock_total
         from src.alternative_finder_state import (
             clear_alternative_finder_search,
             get_active_alternative_finder_result,
@@ -10415,7 +10416,7 @@ def run_authenticated_app() -> None:
                 ["Sources Available", "Supplier", "Best Source", "Source"],
                 "Supplier not listed",
             )
-            stock_value = float(selected_row.get("Stock", 0) or 0)
+            stock_value = float(coerce_stock_total(selected_row.get("Stock", 0)))
             price_value = float(selected_row.get("Unit Price", 0) or 0)
             package_value = _af62b_value(selected_row, ["Package"], "Not verified")
             recommendation_copy = _af62b_value(
@@ -10431,7 +10432,7 @@ def run_authenticated_app() -> None:
                 "Not classified",
             )
 
-            original_stock = float(original_data.get("stock_total", 0) or 0)
+            original_stock = float(coerce_stock_total(original_data.get("stock_total", 0)))
             alternative_stock = stock_value
 
             original_price = float(original_data.get("unit_price", 0.0) or 0.0)

@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import streamlit as st
 
+from integrations.stock_coercion import coerce_stock_total
 from integrations.provider_health import (
     PROVIDER_AVAILABLE,
     PROVIDER_ERROR,
@@ -35,25 +36,6 @@ except ImportError as newark_import_error:
 
     def search_newark_by_part_number(part_number):
         raise RuntimeError("Newark supplier integration could not be loaded.") from _newark_import_error
-
-
-def _coerce_stock_total(value: object) -> int:
-    """Normalize supplier stock counts so aggregation never raises on malformed values."""
-    try:
-        if value is None or value == "":
-            return 0
-        if isinstance(value, bool):
-            return int(value)
-        if isinstance(value, int):
-            return max(value, 0)
-        if isinstance(value, float):
-            return max(int(value), 0)
-        text = str(value).strip().replace(",", "")
-        if not text:
-            return 0
-        return max(int(float(text)), 0)
-    except (TypeError, ValueError):
-        return 0
 
 
 def _empty_supplier_result(source_name: str, *, provider_status: str, error: str = "") -> dict:
@@ -170,7 +152,7 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
 
         result["provider_status"] = PROVIDER_AVAILABLE
         result.pop("error", None)
-        result["stock_total"] = _coerce_stock_total(result.get("stock_total"))
+        result["stock_total"] = coerce_stock_total(result.get("stock_total"))
         if started is not None:
             emit_timing(
                 "supplier.lookup",
@@ -266,11 +248,11 @@ def get_best_part_data(part_number: str) -> dict:
 
     best_result = max(
         valid_results,
-        key=lambda result: _coerce_stock_total(result.get("stock_total")),
+        key=lambda result: coerce_stock_total(result.get("stock_total")),
     )
 
     total_market_stock = sum(
-        _coerce_stock_total(result.get("stock_total"))
+        coerce_stock_total(result.get("stock_total"))
         for result in valid_results
     )
 
@@ -282,6 +264,7 @@ def get_best_part_data(part_number: str) -> dict:
 
     best_result["supplier_count"] = len(valid_results)
     best_result["total_market_stock"] = total_market_stock
+    best_result["stock_total"] = coerce_stock_total(best_result.get("stock_total"))
     best_result["sources_available"] = ", ".join(source_names)
     best_result["all_supplier_results"] = supplier_results
     provider_health = summarize_provider_health(supplier_results)
