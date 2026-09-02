@@ -1,3 +1,6 @@
+import pickle
+from typing import Any, Mapping, Optional
+
 import pandas as pd
 
 from integrations.stock_coercion import coerce_stock_total
@@ -33,6 +36,99 @@ _LAST_ALTERNATIVE_DISCOVERY: dict = {}
 
 def get_alternative_discovery_metadata() -> dict:
     return dict(_LAST_ALTERNATIVE_DISCOVERY)
+
+
+def _normalize_feature_tags(value: Any) -> list[str]:
+    if isinstance(value, set):
+        items = value
+    elif isinstance(value, (list, tuple)):
+        items = value
+    elif value in (None, ""):
+        return []
+    else:
+        return [str(value).strip()] if str(value).strip() else []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        text = str(item or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            normalized.append(text)
+    return sorted(normalized)
+
+
+def prepare_candidates_for_session_and_cache(candidates: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize candidate payloads for Streamlit cache and session persistence."""
+    prepared: list[dict[str, Any]] = []
+    for candidate in candidates or []:
+        if not isinstance(candidate, Mapping):
+            continue
+        row = dict(candidate)
+        row.pop("_discovery_row", None)
+        if "Feature Tags" in row:
+            row["Feature Tags"] = _normalize_feature_tags(row.get("Feature Tags"))
+        if "Stock" in row:
+            row["Stock"] = coerce_stock_total(row.get("Stock"))
+        prepared.append(row)
+    return prepared
+
+
+def build_salvage_candidates_from_discovery(
+    discovery: Optional[Mapping[str, Any]],
+    *,
+    canonical_mpn: str,
+    original_part_number: str,
+) -> list[dict[str, Any]]:
+    """Build minimal candidate rows when full enrichment or persistence fails."""
+    canonical = str(canonical_mpn or "").strip()
+    original = str(original_part_number or canonical).strip()
+    salvage: list[dict[str, Any]] = []
+    for result in (discovery or {}).get("candidates") or []:
+        if not isinstance(result, dict):
+            continue
+        candidate_part = str(result.get("manufacturer_part_number") or "").strip()
+        if not candidate_part:
+            continue
+        if candidate_part.casefold() in {canonical.casefold(), original.casefold()}:
+            continue
+        classification = classify_from_supplier_evidence(
+            result,
+            original_mpn=canonical or original,
+            original_manufacturer=str(result.get("manufacturer") or ""),
+        )
+        substitute_type = str(result.get("substitute_type") or "Candidate").strip()
+        salvage.append(
+            {
+                "Alternative Part": candidate_part,
+                "Category": classification,
+                "Classification": classification,
+                "Supplier": str(result.get("source") or "DigiKey"),
+                "Manufacturer": str(result.get("manufacturer") or ""),
+                "Stock": coerce_stock_total(result.get("stock_total", 0)),
+                "Unit Price": result.get("unit_price", 0.0),
+                "Lifecycle": "Unknown",
+                "Estimated Risk": "Unknown",
+                "Evidence Type": str(result.get("evidence_type") or "Supplier candidate"),
+                "Substitute Type": substitute_type,
+                "Evidence Source": str(result.get("source") or "DigiKey"),
+                "Retrieval Status": str(result.get("retrieval_status") or "ok"),
+                "Retrieved At": str(result.get("retrieved_at") or ""),
+                "Product URL": str(result.get("product_detail_url") or ""),
+                "Datasheet URL": str(result.get("datasheet_url") or ""),
+                "Recommendation": build_classification_recommendation(
+                    classification,
+                    substitute_type=substitute_type,
+                ),
+                "Recommendation Score": 78 if substitute_type.casefold() == "direct" else 45,
+                "Feature Tags": [],
+            }
+        )
+    return prepare_candidates_for_session_and_cache(salvage)
+
+
+def assert_candidates_cache_serializable(candidates: list[dict[str, Any]]) -> None:
+    """Raise when candidate payloads cannot be cached by Streamlit."""
+    pickle.dumps(prepare_candidates_for_session_and_cache(candidates))
 
 ELECTRICAL_FIELDS = {
     "bandwidth_mhz": {
@@ -1402,7 +1498,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         key=classification_sort_key,
     )
 
-    return apply_classification_result_cap(sorted_candidates)
+    finalized = apply_classification_result_cap(sorted_candidates)
+    return prepare_candidates_for_session_and_cache(finalized)
 
 def rank_alternatives(alternative_part_numbers: list) -> pd.DataFrame:
     """

@@ -52,6 +52,8 @@ def sanitize_search_diagnostic(
         code = "supplier_timeout"
     elif exc_type in {"RecursionError", "MemoryError"}:
         code = "internal_error"
+    elif exc_type in {"PicklingError", "TypeError"} and "pickle" in lowered:
+        code = "cache_serialization_failed"
     elif "not configured" in lowered or "missing required configuration" in lowered:
         code = "supplier_not_configured"
     elif provider:
@@ -78,17 +80,25 @@ class AlternativeFinderSearchRun:
         self.stages_ms: dict[str, float] = {}
         self.provider = ""
         self.operation = ""
+        self.active_stage = ""
+        self.failed_stage = ""
 
     def elapsed_ms(self) -> float:
         return round((time.perf_counter() - self._started) * 1000.0, 1)
 
     @contextmanager
     def stage(self, name: str) -> Iterator[None]:
+        previous_stage = self.active_stage
+        self.active_stage = name
         started = time.perf_counter()
         try:
             yield
+        except BaseException:
+            self.failed_stage = name
+            raise
         finally:
             self.stages_ms[name] = round((time.perf_counter() - started) * 1000.0, 1)
+            self.active_stage = previous_stage
 
     def timing_breakdown(self) -> dict[str, Any]:
         total = round(sum(self.stages_ms.values()), 1)
@@ -104,15 +114,28 @@ class AlternativeFinderSearchRun:
             provider=self.provider,
             operation=self.operation,
         )
+        if self.failed_stage:
+            diagnostic["failed_stage"] = self.failed_stage
+        elif self.active_stage:
+            diagnostic["failed_stage"] = self.active_stage
+        deploy_sha = "unknown"
+        try:
+            from src.performance_timing import deployment_version
+
+            deploy_sha = deployment_version()
+        except Exception:
+            pass
         logger.exception(
             "Alternative Finder search failed after %.1fms "
-            "(provider=%s operation=%s code=%s type=%s message=%s stages=%s)",
+            "(provider=%s operation=%s stage=%s code=%s type=%s message=%s deploy=%s stages=%s)",
             self.elapsed_ms(),
             self.provider or "unknown",
             self.operation or "unknown",
+            diagnostic.get("failed_stage") or self.failed_stage or self.active_stage or "unknown",
             diagnostic["diagnostic_code"],
             diagnostic["exception_type"],
             diagnostic["diagnostic_message"],
+            deploy_sha,
             self.stages_ms,
         )
         return diagnostic
@@ -146,6 +169,9 @@ def attach_failure_diagnostics(
             str(stage): float(duration)
             for stage, duration in stage_timings_ms.items()
         }
+    failed_stage = str(diagnostic.get("failed_stage") or "").strip()
+    if failed_stage:
+        result["failed_stage"] = failed_stage
 
 
 def _enrichment_cache_key(search_mpn: str, selected_mpn: str) -> str:
@@ -219,7 +245,11 @@ def run_alternative_finder_search(
     """Execute Alternative Finder search stages and persist durable session results."""
     from integrations.supplier_aggregator import get_best_part_data
     from integrations.stock_coercion import coerce_stock_total
-    from src.alternative_engine import get_alternative_discovery_metadata, suggest_alternatives_v2
+    from src.alternative_engine import (
+        build_salvage_candidates_from_discovery,
+        get_alternative_discovery_metadata,
+        suggest_alternatives_v2,
+    )
     from src.alternative_finder_state import complete_alternative_finder_search, fail_alternative_finder_search
     from src.risk_engine import calculate_risk
 
@@ -294,6 +324,17 @@ def run_alternative_finder_search(
         if _is_streamlit_control_flow(search_exc):
             raise
         diagnostic = search_run.log_failure(search_exc)
+        discovery = get_alternative_discovery_metadata() or {}
+        discovery = merge_supplier_failures_into_discovery(discovery, safe_original)
+        salvage_candidates = candidates
+        if not salvage_candidates:
+            salvage_candidates = build_salvage_candidates_from_discovery(
+                discovery,
+                canonical_mpn=str(
+                    safe_original.get("manufacturer_part_number") or entered_mpn
+                ).strip(),
+                original_part_number=entered_mpn,
+            )
         fail_alternative_finder_search(
             session_state,
             entered_mpn=entered_mpn,
@@ -304,9 +345,12 @@ def run_alternative_finder_search(
             lookup_error=safe_lookup_error,
             original_data=safe_original,
             original_risk=safe_risk,
+            candidates=salvage_candidates,
+            discovery_metadata=discovery,
             diagnostic_code=diagnostic["diagnostic_code"],
             diagnostic_message=diagnostic["diagnostic_message"],
             exception_type=diagnostic["exception_type"],
+            failed_stage=str(diagnostic.get("failed_stage") or search_run.failed_stage or search_run.active_stage or ""),
             stage_timings_ms=search_run.stages_ms,
         )
         attach_failure_diagnostics(

@@ -64,6 +64,121 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertEqual(result["stage_timings_ms"]["candidate_engine"], 45000.0)
         self.assertNotIn("api_key", str(result).casefold())
 
+    def test_suggest_return_is_cache_serializable_without_sets(self):
+        explicit = [
+            {
+                "manufacturer_part_number": "C0603C104K5RAC3121",
+                "manufacturer": "KEMET",
+                "source": "DigiKey",
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "retrieval_status": "ok",
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+                "stock_total": 7180,
+            }
+        ]
+
+        def discover(_part):
+            merged = self.classification.merge_discovery_candidates(
+                explicit,
+                [],
+                original_mpn="C0603C104K5RACTU",
+            )
+            return {
+                "original_mpn": "C0603C104K5RACTU",
+                "candidates": merged,
+                "explicit_count": len(explicit),
+                "catalog_count": 0,
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+                "retrieved_at": "2026-08-29T00:00:00+00:00",
+                "providers": {"DigiKey": {"substitutions": "ok", "catalog": "ok"}},
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        self.engine.get_best_part_data = lambda part: {
+            "manufacturer_part_number": part,
+            "manufacturer": "KEMET",
+            "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            "package": "0603",
+            "supplier_data_verified": True,
+            "all_supplier_results": [],
+        }
+
+        results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
+        self.assertGreater(len(results), 0)
+        for row in results:
+            self.assertIsInstance(row.get("Feature Tags"), list)
+        self.engine.assert_candidates_cache_serializable(results)
+
+    def test_run_alternative_finder_search_preserves_salvage_candidates_on_persist_failure(self):
+        session: dict = {}
+        self.state.init_alternative_finder_state(session)
+
+        explicit = [
+            {
+                "manufacturer_part_number": "C0603C104K5RAC3121",
+                "manufacturer": "KEMET",
+                "source": "DigiKey",
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "retrieval_status": "ok",
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            }
+        ]
+
+        def discover(_part):
+            merged = self.classification.merge_discovery_candidates(
+                explicit,
+                [],
+                original_mpn="C0603C104K5RACTU",
+            )
+            return {
+                "original_mpn": "C0603C104K5RACTU",
+                "candidates": merged,
+                "explicit_count": len(explicit),
+                "catalog_count": 0,
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+                "retrieved_at": "2026-08-29T00:00:00+00:00",
+                "providers": {"DigiKey": {"substitutions": "ok", "catalog": "ok"}},
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        self.aggregator.get_supplier_results = lambda _part: [
+            {
+                "source": "DigiKey",
+                "provider_status": "AVAILABLE",
+                "manufacturer_part_number": "C0603C104K5RACTU",
+                "stock_total": 1000,
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+                "manufacturer": "KEMET",
+                "package": "0603",
+            }
+        ]
+        self.engine.get_best_part_data = self.aggregator.get_best_part_data
+
+        original_complete = self.state.complete_alternative_finder_search
+
+        def exploding_complete(*args, **kwargs):
+            raise TypeError("cannot pickle set state")
+
+        self.state.complete_alternative_finder_search = exploding_complete
+        outcome = self.search.run_alternative_finder_search(session, "C0603C104K5RACTU")
+        self.state.complete_alternative_finder_search = original_complete
+
+        result = session[self.state.ALT_FINDER_RESULT_KEY]
+        self.assertEqual(outcome["status"], "failed")
+        self.assertEqual(result["status"], self.state.STATUS_FAILED)
+        self.assertEqual(result.get("failed_stage"), self.search.STAGE_PERSIST)
+        self.assertEqual(result.get("exception_type"), "TypeError")
+        self.assertGreater(len(result.get("candidates") or []), 0)
+        self.assertIn(
+            "C0603C104K5RAC3121",
+            [row["Alternative Part"] for row in result["candidates"]],
+        )
+        self.assertIn("Cadivor could not complete the supplier search", str(result.get("search_error")))
+
     def test_suggest_alternatives_avoids_per_candidate_supplier_lookups(self):
         calls: list[str] = []
 
