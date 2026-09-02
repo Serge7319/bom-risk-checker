@@ -25,6 +25,8 @@ except ImportError:
     def search_digikey_catalog_candidates(part_number: str) -> list[dict]:
         return []
 from integrations.octopart_client import search_octopart_by_part_number
+from src.alternative_classification import merge_discovery_candidates, utc_now_iso
+from src.secrets import get_secret
 
 try:
     from integrations.newark_client import search_newark_by_part_number
@@ -365,26 +367,130 @@ def get_best_part_data(part_number: str) -> dict:
     best_result.setdefault("quiescent_current_ma", None)
     best_result.setdefault("input_bias_na", None)
     best_result.setdefault("gbw_mhz", None)
-    for field_name in ("capacitance", "resistance", "inductance", "tolerance", "rated_voltage", "dielectric", "power_rating", "temperature_coefficient", "esr", "dcr", "rated_current", "saturation_current"):
+    for field_name in (
+        "capacitance",
+        "resistance",
+        "inductance",
+        "tolerance",
+        "rated_voltage",
+        "dielectric",
+        "power_rating",
+        "temperature_coefficient",
+        "esr",
+        "dcr",
+        "rated_current",
+        "saturation_current",
+        "device_type",
+        "reverse_voltage",
+        "forward_current",
+    ):
         best_result.setdefault(field_name, "")
 
     return best_result
 
+
+def _provider_configured(secret_name: str) -> bool:
+    try:
+        return bool(str(get_secret(secret_name, required=False) or "").strip())
+    except Exception:
+        return False
+
+
+def _provider_discovery_status(source_name: str) -> dict:
+    secret_map = {
+        "DigiKey": "DIGIKEY_CLIENT_ID",
+        "Mouser": "MOUSER_API_KEY",
+        "Newark": "NEWARK_API_KEY",
+        "Octopart": "NEXAR_CLIENT_ID",
+    }
+    secret_name = secret_map.get(source_name, "")
+    if secret_name and not _provider_configured(secret_name):
+        return {
+            "substitutions": "not_configured",
+            "lookup": "not_configured",
+            "message": f"{source_name} credentials are not configured.",
+        }
+    return {
+        "substitutions": "not_supported",
+        "lookup": "available",
+        "message": f"{source_name} does not expose explicit substitute relationships.",
+    }
+
+
+def discover_alternative_candidates(part_number: str) -> dict:
+    """Discover explicit substitutes and catalog candidates across configured sources."""
+    requested = str(part_number or "").strip()
+    retrieved_at = utc_now_iso()
+    discovery = {
+        "original_mpn": requested,
+        "retrieved_at": retrieved_at,
+        "providers": {},
+        "explicit_count": 0,
+        "catalog_count": 0,
+        "provider_failures": [],
+        "candidates": [],
+        "has_incomplete_evidence": False,
+    }
+    if not requested:
+        return discovery
+
+    explicit_substitutes: list[dict] = []
+    catalog_candidates: list[dict] = []
+
+    digikey_status = {"substitutions": "ok", "catalog": "ok", "lookup": "available", "message": ""}
+    try:
+        if not _provider_configured("DIGIKEY_CLIENT_ID"):
+            digikey_status = {
+                "substitutions": "not_configured",
+                "catalog": "not_configured",
+                "lookup": "not_configured",
+                "message": "DigiKey credentials are not configured.",
+            }
+            discovery["has_incomplete_evidence"] = True
+        else:
+            explicit_substitutes = search_digikey_substitutions(requested)
+            catalog_candidates = search_digikey_catalog_candidates(requested)
+            digikey_status["explicit_count"] = len(explicit_substitutes)
+            digikey_status["catalog_count"] = len(catalog_candidates)
+    except Exception as error:
+        safe_message = sanitize_provider_message(error)
+        digikey_status = {
+            "substitutions": "error",
+            "catalog": "error",
+            "lookup": "error",
+            "message": safe_message,
+        }
+        discovery["provider_failures"].append("DigiKey")
+        discovery["has_incomplete_evidence"] = True
+    discovery["providers"]["DigiKey"] = digikey_status
+
+    for source_name in ("Mouser", "Newark", "Octopart"):
+        status = _provider_discovery_status(source_name)
+        discovery["providers"][source_name] = status
+        if status.get("lookup") == "not_configured":
+            discovery["has_incomplete_evidence"] = True
+
+    merged = merge_discovery_candidates(
+        explicit_substitutes,
+        catalog_candidates,
+        original_mpn=requested,
+    )
+    discovery["explicit_count"] = len(explicit_substitutes)
+    discovery["catalog_count"] = len(catalog_candidates)
+    discovery["candidates"] = merged
+    return discovery
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def search_supplier_alternatives(part_number: str) -> list[dict]:
-    """Return ranked supplier evidence without treating catalog matches as direct substitutes."""
-    # Never stop discovery after the first distributor relationship. A valid
-    # direct substitute may coexist with catalog/family candidates that reveal
-    # ordering-code variants the substitutions endpoint did not return.
-    explicit_substitutes = search_digikey_substitutions(part_number)
-    catalog_candidates = search_digikey_catalog_candidates(part_number)
-    merged, seen = [], set()
-    for candidate in explicit_substitutes + catalog_candidates:
-        key = str(candidate.get("manufacturer_part_number") or "").strip().casefold()
-        if key and key not in seen:
-            seen.add(key)
-            merged.append(candidate)
-    return merged
+    """Return ranked supplier evidence without treating catalog matches as direct substitutes.
+
+    Never stop discovery after the first distributor relationship. A valid
+    direct substitute may coexist with catalog/family candidates that reveal
+    ordering-code variants the substitutions endpoint did not return.
+    """
+    discovery = discover_alternative_candidates(part_number)
+    return list(discovery.get("candidates") or [])
 
 
 def default_aggregated_result(part_number: str, supplier_results: list) -> dict:

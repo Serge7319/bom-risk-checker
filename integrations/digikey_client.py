@@ -1,5 +1,8 @@
-import requests
 import re
+from datetime import datetime, timezone
+from typing import Optional
+
+import requests
 from urllib.parse import quote
 
 from src.secrets import get_secret
@@ -45,7 +48,7 @@ def _mpn_key(value: object) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
 
 
-def _exact_keyword_product(products: list, part_number: str) -> dict | None:
+def _exact_keyword_product(products: list, part_number: str) -> Optional[dict]:
     """Select the exact MPN from a DigiKey keyword response.
 
     Keyword search is ranked, not an exact-MPN endpoint. Using its first result
@@ -64,16 +67,7 @@ def _exact_keyword_product(products: list, part_number: str) -> dict | None:
     return None
 
 
-def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_token: str) -> dict:
-    product = _search_digikey_exact_product(
-        part_number, client_id=client_id, access_token=access_token
-    )
-    if not product:
-        return default_digikey_result(part_number)
-    return normalize_digikey_product(product)
-
-
-def _search_digikey_exact_product(part_number: str, *, client_id: str, access_token: str) -> dict | None:
+def _search_digikey_exact_product(part_number: str, *, client_id: str, access_token: str) -> Optional[dict]:
     """Return the raw exact keyword product so callers retain package variants.
 
     DigiKey can associate the same manufacturer MPN with multiple purchasing
@@ -84,7 +78,6 @@ def _search_digikey_exact_product(part_number: str, *, client_id: str, access_to
     """
     url = "https://api.digikey.com/products/v4/search/keyword"
     headers = _digikey_headers(client_id, access_token)
-
     payload = {
         "Keywords": part_number,
         # A keyword search is not guaranteed to put the exact MPN first.
@@ -92,15 +85,19 @@ def _search_digikey_exact_product(part_number: str, *, client_id: str, access_to
         "Limit": 12,
         "Offset": 0,
     }
-
     response = requests.post(url, headers=headers, json=payload, timeout=15)
     response.raise_for_status()
-
-    data = response.json()
-
-    products = data.get("Products", [])
-
+    products = (response.json() or {}).get("Products") or []
     return _exact_keyword_product(products, part_number)
+
+
+def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_token: str) -> dict:
+    product = _search_digikey_exact_product(
+        part_number, client_id=client_id, access_token=access_token
+    )
+    if not product:
+        return default_digikey_result(part_number)
+    return normalize_digikey_product(product)
 
 
 def _digikey_product_numbers(product: dict) -> list[str]:
@@ -108,20 +105,25 @@ def _digikey_product_numbers(product: dict) -> list[str]:
     numbers = []
     if not isinstance(product, dict):
         return numbers
-
     primary = str(product.get("DigiKeyProductNumber") or "").strip()
     if primary:
         numbers.append(primary)
-
     for variation in product.get("ProductVariations") or []:
         if not isinstance(variation, dict):
             continue
         value = str(variation.get("DigiKeyProductNumber") or "").strip()
         if value:
             numbers.append(value)
+    seen: set[str] = set()
+    return [
+        value
+        for value in numbers
+        if not (value.casefold() in seen or seen.add(value.casefold()))
+    ]
 
-    seen = set()
-    return [value for value in numbers if not (value.casefold() in seen or seen.add(value.casefold()))]
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def search_digikey_by_part_number(part_number: str) -> dict:
@@ -155,7 +157,8 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
         # candidates, but it must not look like substitute evidence.
         return []
     results = []
-    seen_mpns = set()
+    seen_mpns: set[str] = set()
+    retrieved_at = _utc_now_iso()
     for product_number in product_numbers:
         response = requests.get(
             "https://api.digikey.com/products/v4/search/"
@@ -185,12 +188,19 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                 "evidence_type": "Distributor-listed substitute",
                 "substitute_type": str(item.get("SubstituteType") or "Candidate").strip(),
                 "manufacturer_part_number": mpn,
-                "manufacturer": str(manufacturer.get("Name") or "") if isinstance(manufacturer, dict) else str(manufacturer),
+                "manufacturer": (
+                    str(manufacturer.get("Name") or "")
+                    if isinstance(manufacturer, dict)
+                    else str(manufacturer)
+                ),
                 "description": str(item.get("Description") or "").strip(),
                 "stock_total": int(_as_number(item.get("QuantityAvailable"), 0)),
                 "unit_price": _as_number(item.get("UnitPrice"), 0.0),
                 "product_detail_url": str(item.get("ProductUrl") or "").strip(),
+                "datasheet_url": str(item.get("DatasheetUrl") or "").strip(),
                 "digikey_part_number": str(item.get("DigiKeyProductNumber") or "").strip(),
+                "retrieval_status": "ok",
+                "retrieved_at": retrieved_at,
             })
     return results
 
@@ -206,25 +216,25 @@ def _catalog_search_terms(part_number: str) -> list[str]:
     upper = requested.upper()
     for suffix in ("CT", "TR", "TU", "DKR"):
         if upper.endswith(suffix) and len(requested) > len(suffix) + 6:
-            terms.append(requested[:-len(suffix)])
-    seen = set()
-    return [term for term in terms if term and not (term.casefold() in seen or seen.add(term.casefold()))]
+            terms.append(requested[: -len(suffix)])
+    seen: set[str] = set()
+    return [
+        term
+        for term in terms
+        if term and not (term.casefold() in seen or seen.add(term.casefold()))
+    ]
 
 
 def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> list[dict]:
-    """Return catalog candidates when DigiKey has no explicit substitute mapping.
-
-    These are intentionally distinct from ``search_digikey_substitutions``:
-    a catalog match is useful for engineering review, but is never represented
-    as a direct supplier substitute.
-    """
+    """Return catalog candidates when DigiKey has no explicit substitute mapping."""
     requested = str(part_number or "").strip()
     if not requested:
         return []
     client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
     access_token = get_digikey_access_token()
     candidates = []
-    seen_part_numbers = set()
+    seen_part_numbers: set[str] = set()
+    retrieved_at = _utc_now_iso()
     for search_term in _catalog_search_terms(requested):
         response = requests.post(
             "https://api.digikey.com/products/v4/search/keyword",
@@ -238,7 +248,11 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
                 continue
             normalized = normalize_digikey_product(product)
             mpn = str(normalized.get("manufacturer_part_number") or "").strip()
-            if not mpn or mpn.casefold() == requested.casefold() or mpn.casefold() in seen_part_numbers:
+            if (
+                not mpn
+                or mpn.casefold() == requested.casefold()
+                or mpn.casefold() in seen_part_numbers
+            ):
                 continue
             seen_part_numbers.add(mpn.casefold())
             candidates.append({
@@ -251,7 +265,10 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
                 "stock_total": normalized.get("stock_total", 0),
                 "unit_price": normalized.get("unit_price", 0.0),
                 "product_detail_url": normalized.get("product_detail_url", ""),
+                "datasheet_url": normalized.get("datasheet_url", ""),
                 "digikey_part_number": normalized.get("digikey_part_number", ""),
+                "retrieval_status": "ok",
+                "retrieved_at": retrieved_at,
             })
     return candidates
 
@@ -374,8 +391,10 @@ def normalize_digikey_product(product: dict) -> dict:
     # to retain only IC-oriented fields, which made a fully specified capacitor
     # look "unknown" during comparison even when DigiKey had the values.
     parametric_fields = {
-        "capacitance": ["Capacitance"], "resistance": ["Resistance"],
-        "inductance": ["Inductance"], "tolerance": ["Tolerance"],
+        "capacitance": ["Capacitance"],
+        "resistance": ["Resistance"],
+        "inductance": ["Inductance"],
+        "tolerance": ["Tolerance"],
         "rated_voltage": ["Voltage - Rated", "Voltage Rating"],
         "dielectric": ["Temperature Coefficient", "Dielectric"],
         "power_rating": ["Power (Watts)", "Power Rating"],
@@ -384,8 +403,14 @@ def normalize_digikey_product(product: dict) -> dict:
         "rated_current": ["Current - Rated", "Current Rating"],
         "saturation_current": ["Current - Saturation"],
         "dcr": ["DC Resistance (DCR)"],
+        "device_type": ["Transistor Type", "Technology"],
+        "reverse_voltage": ["Voltage - DC Reverse (Vr) (Max)", "Reverse Voltage"],
+        "forward_current": ["Current - Average Rectified (Io)", "Forward Current"],
     }
-    parametric = {key: extract_digikey_parameter(product, names) for key, names in parametric_fields.items()}
+    parametric = {
+        key: extract_digikey_parameter(product, names)
+        for key, names in parametric_fields.items()
+    }
 
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),

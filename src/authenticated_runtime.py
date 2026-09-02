@@ -8810,7 +8810,12 @@ def run_authenticated_app() -> None:
     if app_mode == "Alternative Finder":
 
         from integrations.supplier_aggregator import get_best_part_data
-        from src.alternative_engine import suggest_alternatives_v2, compare_parts, rank_alternatives
+        from src.alternative_engine import (
+            suggest_alternatives_v2,
+            compare_parts,
+            rank_alternatives,
+            get_alternative_discovery_metadata,
+        )
         from src.datasheet_comparison import (
             build_datasheet_comparison,
             build_pdf_field_evidence,
@@ -10143,6 +10148,9 @@ def run_authenticated_app() -> None:
                             candidates = []
                         else:
                             candidates = suggest_alternatives_v2(searched_part) or []
+                        st.session_state["alternative_discovery_metadata"] = (
+                            get_alternative_discovery_metadata()
+                        )
                         for candidate in candidates:
                             candidate_part = str(candidate.get("Alternative Part", "") or "").strip()
                             if not candidate_part:
@@ -10479,6 +10487,11 @@ def run_authenticated_app() -> None:
             )
             evidence_type_value = _af62b_value(selected_row, ["Evidence Type"], "Supplier candidate")
             substitute_type_value = _af62b_value(selected_row, ["Substitute Type"], "Not classified")
+            classification_value = _af62b_value(
+                selected_row,
+                ["Classification", "Category"],
+                "Not classified",
+            )
 
             original_stock = float(original_data.get("stock_total", 0) or 0)
             alternative_stock = stock_value
@@ -10626,6 +10639,10 @@ def run_authenticated_app() -> None:
                       <div class="af62b-metric">
                         <span>Unit Price</span>
                         <strong>{"$" + format(price_value, ".4g") if price_value > 0 else "Not available"}</strong>
+                      </div>
+                      <div class="af62b-metric">
+                        <span>Classification</span>
+                        <strong>{html.escape(classification_value)}</strong>
                       </div>
                       <div class="af62b-metric">
                         <span>Source evidence</span>
@@ -11681,6 +11698,7 @@ def run_authenticated_app() -> None:
                 st.session_state["alternative_original_lookup_part"] = ""
                 st.session_state["alternative_original_lookup_error"] = ""
                 st.session_state["alternative_search_error"] = ""
+                st.session_state["alternative_discovery_metadata"] = {}
                 st.session_state["alternative_original_part"] = ""
                 reset_alternative_finder_prefill()
                 st.session_state["alternative_engineering_decisions"] = {}
@@ -11713,12 +11731,25 @@ def run_authenticated_app() -> None:
                 )
 
         elif st.session_state["alternative_search_attempted"]:
-            st.warning(
-                "No supplier-listed alternative candidates were retrieved from the configured sources. "
-                "This does not mean that no market alternatives exist."
-            )
+            discovery = st.session_state.get("alternative_discovery_metadata") or {}
+            provider_failures = discovery.get("provider_failures") or []
+            if provider_failures or discovery.get("has_incomplete_evidence"):
+                st.warning(
+                    "Supplier discovery was incomplete. One or more configured sources did not "
+                    "return substitute evidence. This does not mean that no market alternatives exist."
+                )
+                if provider_failures:
+                    st.caption(
+                        "Unavailable or failed sources: "
+                        + ", ".join(str(name) for name in provider_failures)
+                    )
+            else:
+                st.warning(
+                    "No supplier-listed alternative candidates were retrieved from the configured sources. "
+                    "This does not mean that no market alternatives exist."
+                )
             st.caption(
-                "Cadivor will show the source and evidence type whenever a candidate is retrieved."
+                "Cadivor shows classification, source, and evidence type whenever a candidate is retrieved."
             )
 
         stop_authenticated_page()
