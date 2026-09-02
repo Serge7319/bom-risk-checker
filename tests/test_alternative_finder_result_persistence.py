@@ -218,7 +218,7 @@ class AlternativeFinderRuntimeContractTests(unittest.TestCase):
 
         for needle in (
             "init_alternative_finder_state",
-            "complete_alternative_finder_search",
+            "run_alternative_finder_search",
             "get_alternative_finder_display_mpn",
             "get_alternative_finder_candidates",
             "clear_alternative_finder_search",

@@ -1269,7 +1269,14 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         identity.get("manufacturer_part_number") or original_part_number
     ).strip()
 
-    original_data = _enrich_part_data_from_suppliers(get_best_part_data(original_part_number))
+    try:
+        original_data = _enrich_part_data_from_suppliers(get_best_part_data(original_part_number))
+    except Exception:
+        original_data = {
+            "manufacturer_part_number": canonical_part_number,
+            "searched_part_number": original_part_number,
+            "supplier_data_verified": False,
+        }
     discovery = discover_alternative_candidates(canonical_part_number)
     _LAST_ALTERNATIVE_DISCOVERY = discovery
     supplier_results = list(discovery.get("candidates") or [])
@@ -1363,12 +1370,16 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             discovery_row = {}
         candidate_supplier_data = _discovery_row_to_part_data(discovery_row)
 
-        candidate = apply_supplier_enrichment_to_candidate(
-            original_data=original_data,
-            candidate=candidate,
-            candidate_supplier_data=candidate_supplier_data,
-            canonical_part_number=canonical_part_number,
-        )
+        base_candidate = dict(candidate)
+        try:
+            candidate = apply_supplier_enrichment_to_candidate(
+                original_data=original_data,
+                candidate=candidate,
+                candidate_supplier_data=candidate_supplier_data,
+                canonical_part_number=canonical_part_number,
+            )
+        except Exception:
+            candidate = base_candidate
 
         normalized_candidates.append(candidate)
 

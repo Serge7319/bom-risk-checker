@@ -286,12 +286,12 @@ class NewarkIntegrationTests(unittest.TestCase):
     def test_existing_bom_and_alternative_supplier_paths_remain_intact(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
         self.assertIn('"Sources Available": part_data.get("sources_available", "")', source)
-        self.assertIn("original_lookup = get_best_part_data(searched_part)", source)
+        self.assertIn("run_alternative_finder_search(", source)
 
     def test_alternative_candidates_use_discovery_evidence_without_per_candidate_lookup(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
         self.assertNotIn("supplier_data = get_best_part_data(candidate_part)", source)
-        self.assertIn("suggest_alternatives_v2(searched_part)", source)
+        self.assertIn("run_alternative_finder_search(", source)
         self.assertIn("get_or_enrich_selected_candidate(", source)
         self.assertIn("candidate_evidence_data = get_best_part_data(selected_alternative)", source)
 
