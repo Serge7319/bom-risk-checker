@@ -49,7 +49,13 @@ def _mpn_key(value: object) -> str:
 
 
 def _exact_keyword_product(products: list, part_number: str) -> Optional[dict]:
-    """Select the exact MPN from a DigiKey keyword response."""
+    """Select the exact MPN from a DigiKey keyword response.
+
+    Keyword search is ranked, not an exact-MPN endpoint. Using its first result
+    can attach a substitution lookup to a neighboring package, tape/reel
+    variant, or unrelated prefix match. Only an exact manufacturer MPN is a
+    safe baseline for a replacement recommendation.
+    """
     requested_key = _mpn_key(part_number)
     if not requested_key:
         return None
@@ -62,11 +68,20 @@ def _exact_keyword_product(products: list, part_number: str) -> Optional[dict]:
 
 
 def _search_digikey_exact_product(part_number: str, *, client_id: str, access_token: str) -> Optional[dict]:
-    """Return the raw exact keyword product so callers retain package variants."""
+    """Return the raw exact keyword product so callers retain package variants.
+
+    DigiKey can associate the same manufacturer MPN with multiple purchasing
+    package numbers (TR, CT, and DKR).  The substitutions endpoint is keyed by
+    a DigiKey product number, so keeping these variants lets us ask every
+    authoritative representation instead of silently falling back when the
+    first variant does not expose the relationship.
+    """
     url = "https://api.digikey.com/products/v4/search/keyword"
     headers = _digikey_headers(client_id, access_token)
     payload = {
         "Keywords": part_number,
+        # A keyword search is not guaranteed to put the exact MPN first.
+        # Keep this bounded, then explicitly select the exact product below.
         "Limit": 12,
         "Offset": 0,
     }
@@ -137,6 +152,9 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
     )
     product_numbers = _digikey_product_numbers(product or {})
     if not product_numbers:
+        # Do not call the substitutions endpoint for an unverified keyword
+        # match. A catalog search below can still provide clearly-labelled
+        # candidates, but it must not look like substitute evidence.
         return []
     results = []
     seen_mpns: set[str] = set()
@@ -188,7 +206,11 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
 
 
 def _catalog_search_terms(part_number: str) -> list[str]:
-    """Return conservative MPN-family searches without treating them as proof."""
+    """Return conservative MPN-family searches without treating them as proof.
+
+    Distributor substitutions are authoritative when present.  These terms only
+    broaden discovery for ordering/package suffixes such as CT, TR, TU and DKR.
+    """
     requested = str(part_number or "").strip()
     terms = [requested]
     upper = requested.upper()
@@ -365,6 +387,9 @@ def normalize_digikey_product(product: dict) -> dict:
 
     gbw_mhz = extract_frequency_mhz(gbw_text)
 
+    # Preserve the distributor's parametric evidence. Alternative Finder used
+    # to retain only IC-oriented fields, which made a fully specified capacitor
+    # look "unknown" during comparison even when DigiKey had the values.
     parametric_fields = {
         "capacitance": ["Capacitance"],
         "resistance": ["Resistance"],

@@ -67,6 +67,7 @@ from src.discussion_service import (
     set_comment_pinned,
     unfollow_analysis,
 )
+from src.workspace_service import set_my_functional_roles
 
 
 def _safe(value: Any, fallback: str = "—") -> str:
@@ -93,6 +94,29 @@ ANALYSIS_SECTIONS = (
     "Ask Cadivor",
 )
 
+FUNCTIONAL_WORK_ROLES = (
+    "Supply Chain Manager",
+    "Electrical Engineer",
+    "Procurement Specialist",
+    "Component Engineer",
+)
+
+
+def _member_functional_roles(workspace_members: list[dict], user_id: str, user_email: str) -> list[str]:
+    """Return the signed-in member's declared responsibility roles."""
+    user_id = _safe(user_id, "")
+    user_email = _safe(user_email, "").lower()
+    for member in workspace_members or []:
+        member_id = _safe(member.get("user_id"), "")
+        member_email = _safe(member.get("email"), "").lower()
+        if (user_id and member_id == user_id) or (user_email and member_email == user_email):
+            roles = member.get("functional_roles") or []
+            if isinstance(roles, str):
+                roles = [roles]
+            if isinstance(roles, (list, tuple)):
+                return [str(role) for role in roles if str(role) in FUNCTIONAL_WORK_ROLES]
+    return []
+
 
 def _analysis_section_nav_key(analysis_id: str) -> str:
     return f"cadivor_analysis_section_{analysis_id or 'default'}"
@@ -114,10 +138,6 @@ def _consume_pending_analysis_section(*, analysis_id: str) -> None:
     nav_key = _analysis_section_nav_key(analysis_id)
     st.session_state["cadivor_active_analysis_tab"] = pending
     st.session_state[nav_key] = pending
-    try:
-        st.query_params["analysis_tab"] = pending
-    except Exception:
-        pass
     st.session_state.pop(PENDING_ANALYSIS_SECTION_KEY, None)
     st.session_state.pop(PENDING_ANALYSIS_SECTION_ID_KEY, None)
 
@@ -162,15 +182,11 @@ def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
 
 
 def _commit_analysis_section_selection(*, analysis_id: str, selected: str) -> str:
-    """Persist the authoritative section after the navigation widget resolves."""
+    """Persist the authoritative section without creating browser-history noise."""
     clean = _safe(selected, "Engineering Intelligence")
     if clean not in ANALYSIS_SECTIONS:
         clean = "Engineering Intelligence"
     st.session_state["cadivor_active_analysis_tab"] = clean
-    try:
-        st.query_params["analysis_tab"] = clean
-    except Exception:
-        pass
     return clean
 
 
@@ -185,18 +201,17 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
         )
 
     with st.container(key="cv_analysis_section_nav"):
-        st.markdown(
-            '<div class="cv719-analysis-section-nav cv-analysis-section-nav-shell"></div>',
-            unsafe_allow_html=True,
-        )
-        selected = st.radio(
+        selected = st.pills(
             "Analysis section",
             ANALYSIS_SECTIONS,
-            horizontal=True,
+            selection_mode="single",
             key=nav_key,
             label_visibility="collapsed",
         )
-    return _commit_analysis_section_selection(analysis_id=analysis_id, selected=selected)
+    return _commit_analysis_section_selection(
+        analysis_id=analysis_id,
+        selected=selected or _safe(st.session_state.get("cadivor_active_analysis_tab"), "Engineering Intelligence"),
+    )
 
 
 def _num(value: Any, default: int = 0) -> int:
@@ -496,12 +511,11 @@ def render_analysis_detail(
         button[data-baseweb="tab"][aria-selected="true"]{background:#eff6ff!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:inset 0 -3px 0 #2563eb!important}
         button[data-baseweb="tab"][aria-selected="true"] p{color:#1d4ed8!important}
         div[data-baseweb="tab-highlight"]{display:none!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] > div[role="radiogroup"]{display:flex;flex-wrap:wrap;gap:6px;border:1px solid #dbe3ef;background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);border-radius:14px;padding:6px;margin:0 0 14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.85)}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]{border:1px solid transparent;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;color:#475569;background:transparent;margin:0;transition:background .15s ease,color .15s ease,box-shadow .15s ease,border-color .15s ease;cursor:pointer}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:hover{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){background:#2563eb;color:#fff!important;border-color:#2563eb;box-shadow:0 6px 16px rgba(37,99,235,.28)}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p,div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) span{color:#fff!important}
-        div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="radio"] input{display:none}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"]{border-bottom:1px solid #dbe3ef;padding:0;margin:0 0 18px}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] > div{gap:0!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button{border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;padding:10px 14px 9px!important;font-size:12px!important;font-weight:800!important;color:#64748b!important;background:transparent!important;box-shadow:none!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button:hover{color:#1d4ed8!important;background:transparent!important;border-bottom-color:#bfdbfe!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button[aria-pressed="true"],.st-key-cv_analysis_section_nav div[data-testid="stPills"] button[aria-selected="true"]{color:#1d4ed8!important;background:transparent!important;border-bottom-color:#2563eb!important}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
         .cv-status-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}
         .cv-status-card span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
@@ -517,6 +531,8 @@ def render_analysis_detail(
         .cv-report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.cv-report-card{border:1px solid #e2e8f0;background:#fff;border-radius:20px;padding:17px;box-shadow:0 14px 34px rgba(15,23,42,.045)}.cv-report-card h4{margin:0 0 6px;color:#0f172a!important;font-size:15px;font-weight:980}.cv-report-card p{margin:0 0 12px;color:#64748b!important;font-size:11px;font-weight:750;line-height:1.5}.cv-report-formats{display:flex;gap:7px;flex-wrap:wrap}.cv-format{border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:950}
         .cv-discussion-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:14px}
         .cv-discussion-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:17px;padding:14px}.cv-discussion-kpi span{display:block;color:#64748b!important;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}.cv-discussion-kpi strong{display:block;color:#0f172a!important;font-size:22px;font-weight:980}
+        .cv-discussion-compose-callout{border:1px solid #93c5fd;background:linear-gradient(135deg,#eff6ff,#fff);border-radius:18px;padding:15px 17px;margin:0 0 12px}.cv-discussion-compose-callout strong{display:block;color:#0f172a!important;font-size:15px;font-weight:980}.cv-discussion-compose-callout span{display:block;color:#475569!important;font-size:11px;font-weight:750;line-height:1.5;margin-top:4px}
+        section[data-testid="stMain"] [data-testid="stForm"] [data-testid="stTextArea"]{display:block!important;visibility:visible!important;opacity:1!important}section[data-testid="stMain"] [data-testid="stForm"] [data-testid="stTextArea"] textarea{display:block!important;visibility:visible!important;opacity:1!important;min-height:120px!important;height:120px!important}
         .cv-comment{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:15px 16px;margin-bottom:11px;box-shadow:0 10px 26px rgba(15,23,42,.04)}
         .cv-comment.pinned{border-color:#fcd34d;background:#fffbeb}.cv-comment-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:9px}.cv-comment-author{color:#0f172a!important;font-size:13px;font-weight:980}.cv-comment-meta{color:#64748b!important;font-size:10px;font-weight:800;margin-top:3px}.cv-comment-body{color:#334155!important;font-size:12px;font-weight:700;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.cv-comment-badge{display:inline-flex;border-radius:999px;padding:5px 8px;border:1px solid #fde68a;background:#fef3c7;color:#92400e!important;font-size:9px;font-weight:950}
         .cv-follow-card{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eff6ff);border-radius:20px;padding:17px;margin-bottom:14px}
@@ -1054,7 +1070,7 @@ def render_analysis_detail(
         hero_actions = st.columns(4, gap="small")
         with hero_actions[0]:
             internal_nav_button(
-                "Open in BOM Analyzer →",
+                "Open BOM Analyzer",
                 "BOM Analyzer",
                 key="analysis_hero_bom_analyzer",
                 use_container_width=True,
@@ -1210,16 +1226,23 @@ def render_analysis_detail(
 
         st.markdown('<div class="cv672-workspace-root"></div>', unsafe_allow_html=True)
         render_engineering_workspace_strip(decision_brief)
-        workspace_radio_key = f"cv672_workspace_radio_{analysis_id}"
+        workspace_nav_key = f"cv672_workspace_pills_{analysis_id}"
         ws_state_key = f"engineering_workspace_tab_{analysis_id}"
 
-        workspace_category = st.radio(
+        # Migrate an in-session selection from the earlier radio control while
+        # rendering the same underline-style pills used elsewhere in Cadivor.
+        prior_radio_key = f"cv672_workspace_radio_{analysis_id}"
+        if workspace_nav_key not in st.session_state and prior_radio_key in st.session_state:
+            st.session_state[workspace_nav_key] = st.session_state[prior_radio_key]
+
+        workspace_category = st.pills(
             "Engineering workspace category",
             WORKSPACE_CATEGORIES,
-            horizontal=True,
-            key=workspace_radio_key,
+            selection_mode="single",
+            key=workspace_nav_key,
             label_visibility="collapsed",
         )
+        workspace_category = workspace_category or "Decision Overview"
         st.session_state[ws_state_key] = workspace_category
 
         if workspace_category == "Decision Overview":
@@ -1233,6 +1256,17 @@ def render_analysis_detail(
 
         elif workspace_category == "Recommended Actions":
             render_engineering_workspace_actions(decision_brief)
+            if st.session_state.get("cv26_priority_action_return_analysis") == analysis_id:
+                def _return_to_risk_analytics() -> None:
+                    st.session_state[workspace_nav_key] = "Risk Analytics"
+                    st.session_state.pop("cv26_priority_action_return_analysis", None)
+
+                st.button(
+                    "← Back to Risk Analytics",
+                    key=f"cv26_back_to_risk_analytics_{analysis_id}",
+                    type="secondary",
+                    on_click=_return_to_risk_analytics,
+                )
             st.markdown(
                 '<div class="cv672-review-divider">Engineering review workflow</div>',
                 unsafe_allow_html=True,
@@ -1403,8 +1437,18 @@ def render_analysis_detail(
                     help="Includes open, investigation, rejected, unassigned, and overdue items.",
                 )
                 filtered_review_parts = []
+                priority_target_mpn = _safe(st.session_state.get(f"cv26_priority_action_target_{analysis_id}"), "")
+                if priority_target_mpn:
+                    target_controls, target_clear = st.columns([4, 1])
+                    target_controls.info(f"Priority Action task open for **{priority_target_mpn}**. Assign a workspace member, set due context, and save the review decision below.")
+                    with target_clear:
+                        if st.button("Show all tasks", key=f"cv26_clear_priority_target_{analysis_id}"):
+                            st.session_state.pop(f"cv26_priority_action_target_{analysis_id}", None)
+                            st.rerun()
                 for candidate in review_parts:
                     c_mpn = _safe(candidate.get("mpn"), "Unknown MPN")
+                    if priority_target_mpn and c_mpn != priority_target_mpn:
+                        continue
                     c_saved = decision_map.get(c_mpn, {})
                     c_decision = c_saved.get("decision") or "Not reviewed"
                     c_due = parse_due_date(c_saved, today=today)
@@ -1776,14 +1820,89 @@ def render_analysis_detail(
             st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Timeline</div><div class="cv26-card-meta">A practical sequence for closing release risk.</div><div class="cv26-timeline">{phase_html}</div></section>''', unsafe_allow_html=True)
 
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-            action_html=[]
-            for index,action in enumerate((advisor.get("priority_actions") or [])[:6],1):
+            priority_actions = (advisor.get("priority_actions") or [])[:6]
+            current_user_id = _safe(getattr(current_user, "id", ""), _safe(current_user.get("id") if isinstance(current_user, dict) else "", ""))
+            current_user_email = _safe(getattr(current_user, "email", ""), _safe(current_user.get("email") if isinstance(current_user, dict) else "", ""))
+            my_functional_roles = _member_functional_roles(workspace_members, current_user_id, current_user_email)
+            st.markdown('''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Each item names the accountable role and due context. Open its task to assign a workspace member, set the due date, record the decision, and retain its review history.</div></section>''', unsafe_allow_html=True)
+            scope_col, role_col = st.columns([1, 2])
+            action_scope = scope_col.radio(
+                "Priority Actions view",
+                ["All actions", "My roles"],
+                horizontal=True,
+                key=f"cv26_priority_scope_{analysis_id}",
+                label_visibility="collapsed",
+            )
+            role_col.caption(
+                "**Your responsibility roles:** " + (", ".join(my_functional_roles) if my_functional_roles else "Not set — choose them below to match work to you.")
+            )
+            current_member = next(
+                (
+                    member for member in workspace_members
+                    if (current_user_id and _safe(member.get("user_id"), "") == current_user_id)
+                    or (current_user_email and _safe(member.get("email"), "").lower() == current_user_email.lower())
+                ),
+                None,
+            )
+            if current_member:
+                with st.expander("Set my responsibility roles", expanded=not my_functional_roles):
+                    st.caption("Choose every discipline you cover. These responsibilities filter Priority Actions only; they do not change your workspace access.")
+                    chosen_roles = st.multiselect(
+                        "My responsibility roles",
+                        list(FUNCTIONAL_WORK_ROLES),
+                        default=my_functional_roles,
+                        key=f"cv26_my_functional_roles_{analysis_id}",
+                    )
+                    if st.button("Save my responsibility roles", key=f"cv26_save_my_functional_roles_{analysis_id}"):
+                        roles_error = set_my_functional_roles(
+                            supabase,
+                            str(workspace_id or ""),
+                            chosen_roles,
+                        )
+                        if roles_error:
+                            st.error("Cadivor could not save your responsibility roles. Please ask a workspace owner to update them.")
+                        else:
+                            st.success("Your responsibility roles were saved.")
+                            st.rerun()
+            if action_scope == "My roles":
+                priority_actions = [
+                    action for action in priority_actions
+                    if _safe(action.get("owner"), "Component Engineer") in my_functional_roles
+                    or _safe(action.get("support_owner"), "") in my_functional_roles
+                ]
+            if not priority_actions:
+                empty_copy = "No priority actions match your responsibility roles." if action_scope == "My roles" else "No priority actions are currently available."
+                st.markdown(f'<div class="cv-analysis-empty">{html.escape(empty_copy)}</div>', unsafe_allow_html=True)
+            for index, action in enumerate(priority_actions, 1):
                 bucket = _safe(action.get("priority_bucket"), _safe(action.get("schedule"), "Can Wait"))
-                pc = "high" if bucket == "Do Now" or index <= 2 else "medium" if bucket in ("Do This Week", "Do Before Production") else "low"
                 reason = _safe(action.get("why"), _safe((action.get("engineering_reasoning") or [""])[0], "Risk signal detected."))
-                action_html.append(f'<div class="cv26-action"><span class="cv26-priority {pc}">{html.escape(bucket.upper())}</span><div><strong>{html.escape(_safe(action.get("title"),"Review BOM risk"))}</strong><small>{html.escape(reason)}</small></div><span class="cv26-owner">{html.escape(_safe(action.get("owner"),"Engineering"))}</span></div>')
-            if not action_html: action_html.append('<div class="cv-analysis-empty">No priority actions are currently available.</div>')
-            st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Priority Actions</div><div class="cv26-card-meta">Cadivor-ranked recommendations with decision priority buckets.</div>{"".join(action_html)}</section>''', unsafe_allow_html=True)
+                accountable_role = _safe(action.get("owner"), "Component Engineer")
+                supporting_role = _safe(action.get("support_owner"), "")
+                part_number = _safe(action.get("part_number"), "")
+                with st.container(border=True):
+                    st.markdown(
+                        f'''<div class="cv26-action"><span class="cv26-priority {"high" if index <= 2 else "medium"}">{html.escape(bucket.upper())}</span><div><strong>{html.escape(_safe(action.get("title"), "Review BOM risk"))}</strong><small>{html.escape(reason)}</small></div></div>''',
+                        unsafe_allow_html=True,
+                    )
+                    role_col, status_col, due_col = st.columns(3)
+                    role_col.caption(f"**Accountable role:** {accountable_role}" + (f"  \n**Supporting role:** {supporting_role}" if supporting_role else ""))
+                    status_col.caption("**Status:** Not started\n\nOpen the task to assign it or record a review decision.")
+                    due_col.caption(f"**Due:** {bucket}\n\n**Component:** {part_number or 'BOM-level action'}")
+                    task_col, route_col = st.columns(2)
+                    with task_col:
+                        def _open_recommended_actions() -> None:
+                            st.session_state[workspace_radio_key] = "Recommended Actions"
+                            st.session_state["cv26_priority_action_return_analysis"] = analysis_id
+                            st.session_state[f"cv26_priority_action_target_{analysis_id}"] = part_number
+                        st.button("Assign or open task", key=f"cv26_open_task_{analysis_id}_{index}", use_container_width=True, type="primary", on_click=_open_recommended_actions)
+                    with route_col:
+                        route = _safe(action.get("action_route"), "component")
+                        if route == "alternative" and part_number:
+                            internal_nav_button("Find alternatives", ALTERNATIVE_FINDER_PAGE, key=f"cv26_action_alt_{analysis_id}_{index}", use_container_width=True, original_part=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id, source_page="risk_analytics")
+                        elif route == "monitor" and part_number:
+                            internal_nav_button("Open monitoring", "Monitoring", key=f"cv26_action_monitor_{analysis_id}_{index}", use_container_width=True, mpn=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id)
+                        else:
+                            internal_nav_button("Review component", "Analysis Details", key=f"cv26_action_component_{analysis_id}_{index}", use_container_width=True, analysis_id=analysis_id, analysis_tab="Components", component=part_number, focus="component-risk")
     if active_tab == "Overview":
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
         context_score = context_coverage.score
@@ -2371,6 +2490,16 @@ def render_analysis_detail(
                         source_page="analysis_detail",
                     )
                     internal_nav_button(
+                        "View Design Impact",
+                        "Design Impact Analyzer",
+                        key=f"analysis_design_impact_{analysis_id}_{selected_mpn}",
+                        use_container_width=True,
+                        mpn=selected_mpn,
+                        analysis_id=analysis_id,
+                        return_page="Analysis Details",
+                        return_section="Components",
+                    )
+                    internal_nav_button(
                         "Monitor Component",
                         "Monitoring",
                         key=f"analysis_monitor_component_{analysis_id}_{selected_mpn}",
@@ -2549,60 +2678,14 @@ def render_analysis_detail(
         )
 
         st.markdown(
-            f"""
-            <div class="cv-follow-card">
-              <div class="cv-analysis-card-title">
-                <span>Follow this BOM</span>
-                <span class="cv-analysis-pill {'good' if is_following else ''}">
-                  {'Following' if is_following else 'Not following'}
-                </span>
-              </div>
-              <div class="cv-analysis-row-meta">
-                Followers receive collaboration notifications when new comments or mentions are added.
-              </div>
+            """
+            <div class="cv-discussion-compose-callout">
+              <strong>Write a comment</strong>
+              <span>Ask a question, record engineering context, or mention a teammate. Your comment is saved to this BOM's review history.</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        follow_left, follow_right = st.columns([0.25, 0.75])
-        with follow_left:
-            if is_following:
-                if st.button(
-                    "Unfollow BOM",
-                    key=f"analysis_unfollow_{analysis_id}",
-                    use_container_width=True,
-                ):
-                    error = unfollow_analysis(
-                        supabase,
-                        workspace_id=workspace_id or "",
-                        analysis_id=analysis_id,
-                        user_id=user_id,
-                    )
-                    if error:
-                        st.error(error)
-                    else:
-                        st.success("You are no longer following this BOM.")
-                        st.rerun()
-            else:
-                if st.button(
-                    "Follow BOM",
-                    type="primary",
-                    key=f"analysis_follow_{analysis_id}",
-                    use_container_width=True,
-                ):
-                    error = follow_analysis(
-                        supabase,
-                        workspace_id=workspace_id or "",
-                        analysis_id=analysis_id,
-                        user_id=user_id,
-                    )
-                    if error:
-                        st.error(error)
-                    else:
-                        st.success("You are now following this BOM.")
-                        st.rerun()
-
-        st.markdown("#### Add an engineering comment")
         comment_kind = st.selectbox(
             "Comment type",
             ["Discussion", "Engineering Note", "Decision Rationale", "Procurement Note"],
@@ -2631,41 +2714,33 @@ def render_analysis_detail(
             else ""
         )
 
-        comment_body_key = f"analysis_comment_body_{analysis_id}"
-        comment_reset_key = f"analysis_comment_reset_{analysis_id}"
+        with st.form(f"analysis_comment_form_{analysis_id}", clear_on_submit=True):
+            comment_text = st.text_area(
+                "Your comment",
+                placeholder=(
+                    "Write your comment here. You can mention a teammate with "
+                    "@emailhandle or @firstname."
+                ),
+                height=120,
+                key=f"analysis_comment_body_{analysis_id}",
+            )
+            if workspace_members:
+                mention_examples = []
+                for member in workspace_members[:8]:
+                    email_value = _safe(member.get("email"), "")
+                    name_value = _safe(member.get("display_name"), "")
+                    handle = email_value.split("@", 1)[0] if "@" in email_value else ""
+                    if handle:
+                        mention_examples.append(f"@{handle}")
+                    elif name_value:
+                        mention_examples.append(
+                            "@" + re.sub(r"[^A-Za-z0-9._+-]+", ".", name_value).strip(".")
+                        )
+                if mention_examples:
+                    st.caption("Mention examples: " + ", ".join(mention_examples))
+            submitted_comment = st.form_submit_button("Post Comment", type="primary")
 
-        if st.session_state.pop(comment_reset_key, False):
-            st.session_state[comment_body_key] = ""
-
-        comment_text = st.text_area(
-            "Comment",
-            placeholder=(
-                "Record engineering context or mention a teammate with "
-                "@emailhandle or @firstname."
-            ),
-            height=120,
-            key=comment_body_key,
-        )
-        if workspace_members:
-            mention_examples = []
-            for member in workspace_members[:8]:
-                email_value = _safe(member.get("email"), "")
-                name_value = _safe(member.get("display_name"), "")
-                handle = email_value.split("@", 1)[0] if "@" in email_value else ""
-                if handle:
-                    mention_examples.append(f"@{handle}")
-                elif name_value:
-                    mention_examples.append(
-                        "@" + re.sub(r"[^A-Za-z0-9._+-]+", ".", name_value).strip(".")
-                    )
-            if mention_examples:
-                st.caption("Mention examples: " + ", ".join(mention_examples))
-
-        if st.button(
-            "Post Comment",
-            type="primary",
-            key=f"analysis_post_comment_{analysis_id}",
-        ):
+        if submitted_comment:
             created_comment, comment_error = add_analysis_comment(
                 supabase,
                 workspace_id=workspace_id or "",
@@ -2724,8 +2799,61 @@ def render_analysis_detail(
                             notification_type="analysis_comment",
                         )
                 st.success("Engineering comment posted.")
-                st.session_state[comment_reset_key] = True
                 st.rerun()
+
+        st.markdown(
+            f"""
+            <div class="cv-follow-card">
+              <div class="cv-analysis-card-title">
+                <span>Follow this BOM</span>
+                <span class="cv-analysis-pill {'good' if is_following else ''}">
+                  {'Following' if is_following else 'Not following'}
+                </span>
+              </div>
+              <div class="cv-analysis-row-meta">
+                Followers receive collaboration notifications when new comments or mentions are added.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        follow_left, follow_right = st.columns([0.25, 0.75])
+        with follow_left:
+            if is_following:
+                if st.button(
+                    "Unfollow BOM",
+                    key=f"analysis_unfollow_{analysis_id}",
+                    use_container_width=True,
+                ):
+                    error = unfollow_analysis(
+                        supabase,
+                        workspace_id=workspace_id or "",
+                        analysis_id=analysis_id,
+                        user_id=user_id,
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("You are no longer following this BOM.")
+                        st.rerun()
+            else:
+                if st.button(
+                    "Follow BOM",
+                    type="primary",
+                    key=f"analysis_follow_{analysis_id}",
+                    use_container_width=True,
+                ):
+                    error = follow_analysis(
+                        supabase,
+                        workspace_id=workspace_id or "",
+                        analysis_id=analysis_id,
+                        user_id=user_id,
+                    )
+                    if error:
+                        st.error(error)
+                    else:
+                        st.success("You are now following this BOM.")
+                        st.rerun()
 
         st.markdown("#### Discussion history")
 

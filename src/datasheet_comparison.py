@@ -135,7 +135,13 @@ def _field_status(original_value: str, candidate_value: str) -> tuple[str, str]:
 def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     """Build a transparent family-aware comparison from retrieved evidence."""
     family = infer_component_family(original)
-    fields = list(COMMON_FIELDS) + list(FAMILY_FIELDS.get(family, ()))
+    # "Supply voltage" is an IC attribute. Passive parts use their rated
+    # voltage, which is both electrically meaningful and present in their
+    # supplier/datasheet evidence.
+    common_fields = list(COMMON_FIELDS)
+    if family in {"Capacitor", "Resistor", "Inductor", "Transformer", "Diode / protection", "Transistor / MOSFET"}:
+        common_fields = [field for field in common_fields if field[1] != "voltage_range"]
+    fields = common_fields + list(FAMILY_FIELDS.get(family, ()))
     rows, counts = [], {"Match": 0, "Different": 0, "Needs data": 0}
     for label, key in fields:
         original_value = _display_value(original.get(key))
@@ -190,6 +196,12 @@ def build_recommendation_score_breakdown(
         + (normalized_sourcing * 0.15)
     )
     recommendation = max(0, min(recommendation, 98 if is_explicit_substitute else 95))
+
+    # DigiKey's explicit Direct relationship is meaningful evidence. It must
+    # not be demoted solely because a distributor did not expose every field;
+    # a documented electrical conflict still wins and prevents this floor.
+    if is_explicit_substitute and differences == 0:
+        recommendation = max(recommendation, 85)
 
     return {
         "recommendation_score": recommendation,

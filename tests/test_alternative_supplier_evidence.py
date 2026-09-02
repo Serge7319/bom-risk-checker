@@ -92,6 +92,28 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
         self.assertEqual(result["Evidence Type"], "Distributor catalog match")
         self.assertIn("catalog", result["Recommendation"].lower())
 
+    def test_keeps_up_to_ten_lower_confidence_candidates(self):
+        self.engine.discover_alternative_candidates = lambda _part: _discovery_payload([
+            {
+                "manufacturer_part_number": f"CANDIDATE-{index}",
+                "source": "DigiKey",
+                "substitute_type": "Upgrade",
+                "evidence_type": "Distributor-listed substitute",
+            }
+            for index in range(12)
+        ])
+
+        results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
+
+        self.assertEqual(len(results), 10)
+        self.assertTrue(
+            all(
+                row["Classification"]
+                == "Spec-matched alternative — engineering review required"
+                for row in results
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

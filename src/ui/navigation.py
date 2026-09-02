@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any, Mapping, Optional
+import html
 
 import streamlit as st
 
@@ -12,6 +13,8 @@ ALTERNATIVE_FINDER_PAGE = "Alternative Finder"
 ALT_FINDER_CONTEXT_KEY = "cadivor_alt_finder_pending_context"
 ALT_FINDER_RETURN_ANALYSIS_KEY = "cadivor_alt_finder_return_analysis_id"
 ALT_FINDER_RETURN_SECTION_KEY = "cadivor_alt_finder_return_analysis_section"
+ALT_FINDER_RETURN_PAGE_KEY = "cadivor_alt_finder_return_page"
+ALT_FINDER_RETURN_MPN_KEY = "cadivor_alt_finder_return_mpn"
 ALT_FINDER_INTENT = "find_alternatives"
 
 _ALT_NAV_KEYS = (
@@ -22,16 +25,19 @@ _ALT_NAV_KEYS = (
     "return_analysis_id",
     "part_id",
     "source_page",
+    "return_page",
+    "return_mpn",
     "intent",
 )
 
 
 def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
-    """Navigate without a browser reload or a new Streamlit session.
+    """Navigate in-app while keeping the address bar and browser history truthful.
 
-    Internal navigation is intentionally session-state driven. Query strings are
-    still accepted for external/deep links, but ordinary clicks must not force
-    CookieManager and Supabase authentication to hydrate again.
+    Streamlit query-parameter updates are client-side state changes, so they do
+    not reload the browser or rehydrate authentication. Keeping this compact URL
+    state is important: it gives browser Back/Forward a real route to restore
+    instead of leaving the previous page name in the address bar.
     """
     current_page = str(st.session_state.get("cadivor_route", "") or "").strip()
     if current_page == "BOM Analyzer" and page != "BOM Analyzer":
@@ -52,6 +58,12 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
         if value is not None and str(value).strip() != "":
             nav_params[key] = str(value)
     st.session_state["cadivor_nav_params"] = nav_params
+    try:
+        st.query_params.from_dict(nav_params)
+    except Exception:
+        # Navigation must remain usable if a deployed Streamlit version does
+        # not expose mutable query parameters.
+        pass
     if _rerun:
         st.rerun()
 
@@ -89,6 +101,8 @@ def navigate_to_alternative_finder(
     part_id: str = "",
     source_page: str = "",
     return_analysis_id: str = "",
+    return_page: str = "",
+    return_mpn: str = "",
     _rerun: bool = True,
 ) -> None:
     """Navigate to Alternative Finder with normalized, shared part context."""
@@ -121,6 +135,14 @@ def navigate_to_alternative_finder(
     else:
         st.session_state.pop(ALT_FINDER_RETURN_ANALYSIS_KEY, None)
         st.session_state.pop(ALT_FINDER_RETURN_SECTION_KEY, None)
+    if return_page:
+        st.session_state[ALT_FINDER_RETURN_PAGE_KEY] = return_page
+        st.session_state[ALT_FINDER_RETURN_MPN_KEY] = return_mpn or context["mpn"]
+        nav_kwargs["return_page"] = return_page
+        nav_kwargs["return_mpn"] = return_mpn or context["mpn"]
+    else:
+        st.session_state.pop(ALT_FINDER_RETURN_PAGE_KEY, None)
+        st.session_state.pop(ALT_FINDER_RETURN_MPN_KEY, None)
     if context["manufacturer"]:
         nav_kwargs["manufacturer"] = context["manufacturer"]
     if context["description"]:
@@ -271,36 +293,23 @@ def internal_nav_button(
     disabled: bool = False,
     **params: Any,
 ) -> bool:
-    """Render a button that keeps navigation inside the current Cadivor tab."""
+    """Render a browser-native, same-tab Cadivor route button."""
     clean_label = str(label or "").strip()
     if not clean_label:
         return False
-    def _commit_button_navigation() -> None:
-        # Widget callbacks run before Streamlit renders the next script pass.
-        # Committing here prevents the old page from consuming the first click.
-        if page == ALTERNATIVE_FINDER_PAGE:
-            navigate_to_alternative_finder(
-                mpn=str(params.get("original_part", "") or ""),
-                manufacturer=str(params.get("manufacturer", "") or ""),
-                description=str(params.get("description", "") or ""),
-                analysis_id=str(params.get("analysis_id", "") or ""),
-                part_id=str(params.get("part_id", "") or ""),
-                source_page=str(params.get("source_page", "") or ""),
-                return_analysis_id=str(params.get("return_analysis_id", "") or ""),
-                _rerun=False,
-            )
-        else:
-            navigate_to(page, _rerun=False, **params)
-
-    clicked = st.button(
-        clean_label,
-        key=key,
-        use_container_width=use_container_width,
-        type=type,
-        disabled=disabled,
-        on_click=_commit_button_navigation,
+    if disabled:
+        st.button(clean_label, key=key, use_container_width=use_container_width, type=type, disabled=True)
+        return False
+    href = internal_app_href(page, **params)
+    width_class = " cv-native-nav-button--wide" if use_container_width else ""
+    tone_class = " cv-native-nav-button--secondary" if type == "secondary" else ""
+    st.html(
+        f'<a class="cv-native-nav-button{width_class}{tone_class}" '
+        f'href="{html.escape(href, quote=True)}" target="_self" '
+        f'data-cadivor-nav-key="{html.escape(key, quote=True)}">'
+        f'{html.escape(clean_label)}</a>'
     )
-    return clicked
+    return False
 
 
 def render_command_nav_triggers(commands: list[dict]) -> None:

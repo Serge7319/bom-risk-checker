@@ -11,6 +11,9 @@ from typing import Callable
 
 import streamlit as st
 
+from src.urls import internal_app_href
+from src.ui.navigation import navigate_to
+
 
 NAV_GROUPS = (
     ("Analyze", (
@@ -52,6 +55,16 @@ def inject_unified_shell_css() -> None:
             f"<style id='cadivor-foundation-repair-css'>{css}</style>",
             unsafe_allow_html=True,
         )
+    st.markdown(
+        """
+        <style id="cadivor-native-navigation-links">
+        .cv-native-nav-button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:132px;max-width:100%;min-height:38px;padding:0 14px;border-radius:8px;background:#2563eb;color:#fff!important;font:700 13px/1.1 Inter,system-ui,sans-serif;white-space:nowrap;text-decoration:none!important;box-shadow:0 7px 16px rgba(37,99,235,.18)}
+        .cv-native-nav-button:hover{background:#1d4ed8;color:#fff!important;text-decoration:none!important}.cv-native-nav-button--wide{display:inline-flex;width:auto;min-width:160px}.cv-native-nav-button--secondary{background:#fff;color:#1e3a5f!important;border:1px solid #b8c8df;box-shadow:none}.cv-native-nav-button--secondary:hover{background:#f4f8ff;color:#1e3a5f!important}
+        .cv-foundation-nav-link{display:flex;align-items:center;width:100%;min-height:36px;padding:0 12px;border-radius:8px;color:#dbeafe!important;font:650 13px/1.1 Inter,system-ui,sans-serif;text-decoration:none!important}.cv-foundation-nav-link:hover{background:rgba(71,112,190,.28);color:#fff!important;text-decoration:none!important}.cv-foundation-nav-link.is-active{background:#173c81;color:#fff!important}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _escape(value: object) -> str:
@@ -64,9 +77,7 @@ def _commit_navigation(page: str) -> None:
     Using a widget callback avoids the former click -> rerun -> explicit rerun
     sequence that could briefly expose an incomplete/public render.
     """
-    st.session_state["cadivor_route"] = page
-    st.session_state["app_mode"] = page  # compatibility mirror
-    st.session_state["cadivor_nav_params"] = {"page": page}
+    navigate_to(page, _rerun=False)
     st.session_state.pop("cadivor_route_transition", None)
     st.session_state["cadivor_profile_menu_open"] = False
 
@@ -124,7 +135,8 @@ def render_unified_shell(
             st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
             st.markdown('<div class="cv-profile-menu-group">Workspace</div>', unsafe_allow_html=True)
             st.button("Workspace settings", key="cv_foundation_workspace", use_container_width=True, on_click=_commit_navigation, args=("Settings",))
-            st.button("Help center", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
+            if is_admin:
+                st.button("Resources", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
             st.divider()
             def _commit_signout() -> None:
                 # Streamlit runs on_click callbacks before the widget rerun.  By
@@ -166,19 +178,18 @@ def render_unified_shell(
             rows = configured_rows
             if group_name == "Workspace" and is_admin:
                 rows = (("Admin Console", "admin", "Admin Console"),) + rows
+            elif group_name == "Workspace":
+                rows = tuple(row for row in rows if row[2] != "Help")
             st.markdown(
                 f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
                 unsafe_allow_html=True,
             )
             for label, slug, destination in rows:
-                button_type = "primary" if destination == current_page else "secondary"
-                st.button(
-                    label,
-                    key=f"cv_foundation_nav_{slug}",
-                    type=button_type,
-                    use_container_width=True,
-                    on_click=_commit_navigation,
-                    args=(destination,),
+                active_class = " is-active" if destination == current_page else ""
+                st.html(
+                    f'<a class="cv-foundation-nav-link{active_class}" '
+                    f'href="{html.escape(internal_app_href(destination), quote=True)}" '
+                    f'target="_self">{_escape(label)}</a>'
                 )
 
         st.markdown(

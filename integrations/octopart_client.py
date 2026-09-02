@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 import time
+import re
 
 import requests
 
@@ -38,9 +39,20 @@ query CadivorSupplierSearch($mpn: String!) {
 """
 
 
+def _nexar_secret(primary_name: str, legacy_name: str) -> str:
+    """Resolve the current Nexar key, then the pre-standardization alias."""
+    value = get_secret(primary_name, default=None)
+    if value:
+        return str(value)
+    return str(get_secret(legacy_name, required=True))
+
+
 def _access_token() -> str:
-    client_id = get_secret("NEXAR_CLIENT_ID", required=True)
-    client_secret = get_secret("NEXAR_CLIENT_SECRET", required=True)
+    # Some Railway deployments were configured before the Nexar naming was
+    # standardized. Continue accepting those variable names so a working
+    # Octopart credential is not silently disconnected by a code upgrade.
+    client_id = _nexar_secret("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID")
+    client_secret = _nexar_secret("NEXAR_CLIENT_SECRET", "OCTOPART_CLIENT_SECRET")
     with _TOKEN_LOCK:
         if (
             _TOKEN_CACHE.get("client_id") == client_id
@@ -170,6 +182,13 @@ def search_octopart_by_part_number(part_number: str) -> dict:
         part = candidate.get("part") or {}
         if not isinstance(part, dict):
             continue
-        if str(part.get("mpn") or "").strip().casefold() == requested.casefold():
+        # Nexar may format manufacturer MPNs with spaces or punctuation. Treat
+        # those format-only differences as the same exact part, while still
+        # rejecting a true near match or package variant.
+        requested_key = re.sub(r"[^a-z0-9]", "", requested.casefold())
+        candidate_key = re.sub(
+            r"[^a-z0-9]", "", str(part.get("mpn") or "").strip().casefold()
+        )
+        if candidate_key and candidate_key == requested_key:
             return _normalize_part(part)
     return default_octopart_result(requested)

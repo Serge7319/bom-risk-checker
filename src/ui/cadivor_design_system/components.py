@@ -174,7 +174,11 @@ def _render_premium_metric_html(
             if metric.href:
                 action_html = (
                     f'<a class="cv64-metric__action" href="{escape(metric.href, quote=True)}" '
-                    f'target="_self">{action_label}</a>'
+                    'target="_self" style="display:inline-flex;align-items:center;justify-content:center;'
+                    'margin-top:12px;padding:8px 11px;border:1px solid #1d4ed8;border-radius:8px;'
+                    'background:#2563eb;color:#ffffff!important;font-size:12px;font-weight:800;'
+                    'line-height:1.2;text-decoration:none!important">'
+                    f'{action_label}</a>'
                 )
             else:
                 action_html = f'<div class="cv64-metric__action">{action_label}</div>'

@@ -104,6 +104,74 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(results[0]["substitute_type"], "Direct")
         self.assertIn("399-C0603C104K5RACTUCT-ND/substitutions", requested_urls[0])
 
+    def test_substitutions_use_exact_mpn_not_first_keyword_result(self):
+        requested_urls = []
+
+        def post(*_args, **_kwargs):
+            return _Response({"Products": [
+                {
+                    "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                    "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                },
+                {
+                    "ManufacturerProductNumber": "C0603C104K5RACTU",
+                    "DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND",
+                },
+            ]})
+
+        def get(url, **_kwargs):
+            requested_urls.append(url)
+            return _Response({"ProductSubstitutes": []})
+
+        self.client.requests.post = post
+        self.client.requests.get = get
+        self.client.search_digikey_substitutions("C0603C104K5RACTU")
+
+        self.assertIn("399-C0603C104K5RACTUCT-ND/substitutions", requested_urls[0])
+
+    def test_substitutions_query_each_exact_product_package_variant(self):
+        requested_urls = []
+
+        def post(*_args, **_kwargs):
+            return _Response({"Products": [{
+                "ManufacturerProductNumber": "C0603C104K5RACTU",
+                "DigiKeyProductNumber": "399-C0603C104K5RACTUTR-ND",
+                "ProductVariations": [
+                    {"DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND"},
+                    {"DigiKeyProductNumber": "399-C0603C104K5RACTUDKR-ND"},
+                ],
+            }]})
+
+        def get(url, **_kwargs):
+            requested_urls.append(url)
+            if "RACTUCT" in url:
+                return _Response({"ProductSubstitutes": [{
+                    "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                    "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                    "Manufacturer": {"Name": "KEMET"},
+                    "SubstituteType": "Direct",
+                }]})
+            return _Response({"ProductSubstitutes": []})
+
+        self.client.requests.post = post
+        self.client.requests.get = get
+
+        results = self.client.search_digikey_substitutions("C0603C104K5RACTU")
+
+        self.assertEqual([row["manufacturer_part_number"] for row in results], ["C0603C104K5RAC3121"])
+        self.assertEqual(len(requested_urls), 3)
+        self.assertTrue(any("RACTUCT" in url for url in requested_urls))
+
+    def test_non_exact_keyword_result_is_not_treated_as_verified_part(self):
+        self.client.requests.post = lambda *_args, **_kwargs: _Response({"Products": [{
+            "ManufacturerProductNumber": "C0603C104K5RAC3121",
+            "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+        }]})
+
+        result = self.client.search_digikey_by_part_number("C0603C104K5RACTU")
+
+        self.assertEqual(result["manufacturer_part_number"], "")
+
     def test_catalog_matches_are_not_claimed_as_direct_substitutes(self):
         self.client.requests.post = lambda *_args, **_kwargs: _Response({"Products": [{
             "ManufacturerProductNumber": "LM358DT",
@@ -120,6 +188,33 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(results[0]["manufacturer_part_number"], "LM358DT")
         self.assertEqual(results[0]["evidence_type"], "Distributor catalog match")
         self.assertEqual(results[0]["substitute_type"], "Similar")
+
+
+    def test_normalizes_capacitor_parametric_evidence(self):
+        product = {
+            "Manufacturer": {"Name": "KEMET"},
+            "ManufacturerProductNumber": "C0603C104K5RACTU",
+            "Description": {"ProductDescription": "CAP CER 0.1UF 50V X7R 0603"},
+            "Parameters": [
+                {"ParameterText": "Capacitance", "ValueText": "0.1 µF"},
+                {"ParameterText": "Voltage - Rated", "ValueText": "50V"},
+                {"ParameterText": "Temperature Coefficient", "ValueText": "X7R"},
+                {"ParameterText": "Tolerance", "ValueText": "±10%"},
+                {"ParameterText": "Package / Case", "ValueText": "0603 (1608 Metric)"},
+            ],
+        }
+        result = self.client.normalize_digikey_product(product)
+        self.assertEqual(result["capacitance"], "0.1 µF")
+        self.assertEqual(result["rated_voltage"], "50V")
+        self.assertEqual(result["dielectric"], "X7R")
+        self.assertEqual(result["tolerance"], "±10%")
+
+
+    def test_catalog_search_expands_packaging_suffix_to_mpn_family(self):
+        self.assertEqual(
+            self.client._catalog_search_terms("C0603C104K5RACTU"),
+            ["C0603C104K5RACTU", "C0603C104K5RAC"],
+        )
 
 
 if __name__ == "__main__":

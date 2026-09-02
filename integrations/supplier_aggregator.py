@@ -332,6 +332,20 @@ def get_best_part_data(part_number: str) -> dict:
                 best_result["input_bias_na"] = result.get("input_bias_na")
                 break
 
+    # Passive-component specifications must survive supplier selection. The
+    # highest-stock supplier often has less parametric data than DigiKey; copy
+    # verified values instead of presenting them as unavailable downstream.
+    for field_name in (
+        "capacitance", "resistance", "inductance", "tolerance", "rated_voltage",
+        "dielectric", "power_rating", "temperature_coefficient", "esr", "dcr",
+        "rated_current", "saturation_current",
+    ):
+        if not best_result.get(field_name):
+            for result in valid_results:
+                if result.get(field_name):
+                    best_result[field_name] = result.get(field_name)
+                    break
+
     if best_result.get("gbw_mhz") is None:
         for result in valid_results:
             if result.get("gbw_mhz") is not None:
@@ -469,7 +483,12 @@ def discover_alternative_candidates(part_number: str) -> dict:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def search_supplier_alternatives(part_number: str) -> list[dict]:
-    """Return ranked supplier evidence without treating catalog matches as direct substitutes."""
+    """Return ranked supplier evidence without treating catalog matches as direct substitutes.
+
+    Never stop discovery after the first distributor relationship. A valid
+    direct substitute may coexist with catalog/family candidates that reveal
+    ordering-code variants the substitutions endpoint did not return.
+    """
     discovery = discover_alternative_candidates(part_number)
     return list(discovery.get("candidates") or [])
 

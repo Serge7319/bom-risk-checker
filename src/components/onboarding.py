@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from src.services.customer_progress import build_activation_progress, next_activation_action
+from src.ui.navigation import navigate_to
 
 
 def _first_name(current_user: dict[str, Any] | None) -> str:
@@ -47,13 +48,14 @@ def _first_name(current_user: dict[str, Any] | None) -> str:
     return "Engineer"
 
 
-def _go_to(page: str) -> None:
-    """Navigate through Cadivor's query-parameter router."""
-    try:
-        st.query_params["page"] = page
-    except Exception:
-        st.experimental_set_query_params(page=page)
-    st.rerun()
+def _go_to(page: str, **params: Any) -> None:
+    """Use Cadivor's session router for authenticated navigation.
+
+    Query-string navigation is deliberately consumed only once after sign-in.
+    The onboarding buttons must therefore use the same state-driven router as
+    the sidebar; otherwise subsequent clicks leave the user on Dashboard.
+    """
+    navigate_to(page, **params)
 
 
 def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False, has_report: bool = False) -> None:
@@ -193,7 +195,10 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
                     use_container_width=True,
                     type="primary",
                 ):
-                    _go_to(row["page"])
+                    if row["label"] == "Upload your first BOM":
+                        _go_to(row["page"], new_analysis="1")
+                    else:
+                        _go_to(row["page"])
             elif not row["done"]:
                 prerequisite = {
                     "Analyze the BOM": "Unlocks after your first BOM is uploaded.",
@@ -232,7 +237,7 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
         primary, secondary, _ = st.columns([1.05, 1, 2.1])
         with primary:
             if st.button("Upload my first BOM →", type="primary", use_container_width=True, key="ftue_upload_first_bom"):
-                _go_to("BOM Analyzer")
+                _go_to("BOM Analyzer", new_analysis="1")
         with secondary:
             if st.button("See how it works", use_container_width=True, key="ftue_explore_workflow"):
                 st.session_state["show_ftue_workflow"] = not st.session_state.get("show_ftue_workflow", False)
@@ -270,7 +275,7 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
             primary_action, sample_action = st.columns([1.1, 1])
             with primary_action:
                 if st.button("Upload my BOM", type="primary", key="ftue_start_analysis", use_container_width=True):
-                    _go_to("BOM Analyzer")
+                    _go_to("BOM Analyzer", new_analysis="1")
             with sample_action:
                 sample_bom = pd.DataFrame([
                     {"Part Number": "LM2596S-5.0", "Manufacturer": "Texas Instruments", "Quantity": 2},

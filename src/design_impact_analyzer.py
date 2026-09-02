@@ -146,14 +146,47 @@ def build_design_impact(
     package_variants = len({row["Package"] for row in affected if row["Package"]})
     pin_variants = len({row["Pin Count"] for row in affected if row["Pin Count"] > 0})
 
-    impact_score = min(
-        100,
-        maximum_risk
-        + min(25, max(0, project_count - 1) * 10)
-        + (20 if minimum_stock <= 0 else 0)
-        + (15 if minimum_sources <= 1 else 0)
-        + (15 if lifecycle_exposed else 0),
-    )
+    impact_score_drivers = [
+        {
+            "label": "Component risk",
+            "points": maximum_risk,
+            "detail": f"Highest recorded component risk is {maximum_risk}/100.",
+        },
+        {
+            "label": "Cross-project exposure",
+            "points": min(25, max(0, project_count - 1) * 10),
+            "detail": (
+                f"Used in {project_count} saved project(s)."
+                if project_count > 1
+                else "Used in one saved project."
+            ),
+        },
+        {
+            "label": "Inventory evidence",
+            "points": 20 if minimum_stock <= 0 else 0,
+            "detail": (
+                "No available stock is recorded."
+                if minimum_stock <= 0
+                else f"{minimum_stock:,} units are recorded as available."
+            ),
+        },
+        {
+            "label": "Supplier coverage",
+            "points": 15 if minimum_sources <= 1 else 0,
+            "detail": f"Minimum recorded coverage is {minimum_sources} source(s).",
+        },
+        {
+            "label": "Lifecycle exposure",
+            "points": 15 if lifecycle_exposed else 0,
+            "detail": (
+                "Lifecycle exposure is recorded."
+                if lifecycle_exposed
+                else "No lifecycle exposure is recorded."
+            ),
+        },
+    ]
+    impact_score_raw = sum(driver["points"] for driver in impact_score_drivers)
+    impact_score = min(100, impact_score_raw)
 
     engineering_hours = max(
         1,
@@ -251,6 +284,9 @@ def build_design_impact(
         "minimum_sources": minimum_sources,
         "maximum_risk": maximum_risk,
         "impact_score": impact_score,
+        "impact_score_raw": impact_score_raw,
+        "impact_score_capped": impact_score_raw > 100,
+        "impact_score_drivers": impact_score_drivers,
         "impact_level": _impact_level(impact_score),
         "engineering_hours": engineering_hours,
         "manufacturer": _text(reference.get("Manufacturer"), "Unknown"),
@@ -313,6 +349,10 @@ def render_design_impact(
     *,
     intelligence: Dict[str, Any],
     internal_nav_button: Callable[..., Any],
+    return_analysis_id: str = "",
+    return_section: str = "Components",
+    has_monitoring: bool = False,
+    has_decision: bool = False,
 ) -> None:
     _css()
 
@@ -326,6 +366,18 @@ def render_design_impact(
         ),
         icon="git-compare-arrows",
     )
+
+    if return_analysis_id:
+        internal_nav_button(
+            "← Back to Analysis Details",
+            "Analysis Details",
+            key="impact_back_to_analysis_details",
+            type="secondary",
+            analysis_id=return_analysis_id,
+            analysis_tab=return_section,
+            component=intelligence.get("selected_mpn", ""),
+            focus="component-risk",
+        )
 
     options = intelligence["available_mpns"]
     if not options:
@@ -415,10 +467,28 @@ def render_design_impact(
                 Cadivor calculated an impact score of {intelligence['impact_score']}/100 using
                 cross-project usage, risk, lifecycle, stock, and supplier coverage.
               </div>
+              <div class="cv20-card-copy"><b>What this means:</b> higher scores indicate a change is more likely to affect release readiness, because more projects are exposed or the component has weaker lifecycle, inventory, or supplier evidence.</div>
             </section>
             """,
             unsafe_allow_html=True,
         )
+
+        st.markdown('<div class="cv20-section">Impact score drivers</div>', unsafe_allow_html=True)
+        if intelligence.get("impact_score_capped"):
+            st.caption(
+                f"The evidence signals total {intelligence['impact_score_raw']} points; "
+                "Cadivor caps the reported Impact Score at 100/100."
+            )
+        for driver in intelligence["impact_score_drivers"]:
+            st.markdown(
+                f"""
+                <div class="cv20-impact">
+                  <strong>{html.escape(driver['label'])} · +{int(driver['points'])} points</strong>
+                  <p>{html.escape(driver['detail'])}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         for item in intelligence["impact_categories"]:
             st.markdown(
@@ -472,21 +542,19 @@ def render_design_impact(
             use_container_width=True,
             original_part=current,
             source_page="design_impact",
+            return_page="Design Impact Analyzer",
+            return_mpn=current,
         )
     with actions[1]:
-        internal_nav_button(
-            "Open Monitoring",
-            "Monitoring",
-            key="impact_monitoring",
-            use_container_width=True,
-        )
+        if has_monitoring:
+            internal_nav_button("Open Monitoring", "Monitoring", key="impact_monitoring", use_container_width=True, mpn=current)
+        else:
+            st.caption("No monitoring record exists for this component yet.")
     with actions[2]:
-        internal_nav_button(
-            "Engineering Decisions",
-            "Engineering Decisions",
-            key="impact_decisions",
-            use_container_width=True,
-        )
+        if has_decision:
+            internal_nav_button("Engineering Decisions", "Engineering Decisions", key="impact_decisions", use_container_width=True, focus_part=current)
+        else:
+            st.caption("No engineering decision exists for this component yet.")
     with actions[3]:
         internal_nav_button(
             "Portfolio Intelligence",
