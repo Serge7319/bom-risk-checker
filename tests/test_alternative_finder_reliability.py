@@ -323,6 +323,45 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
         self.assertIn("Pinout evidence", rows)
         self.assertEqual(rows["Pinout evidence"], "Needs data")
 
+    def test_verified_direct_capacitor_gets_strong_passive_confidence(self):
+        capacitor_fields = {
+            "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            "capacitance": "0.1 µF",
+            "tolerance": "±10%",
+            "dielectric": "X7R",
+            "package": "0603",
+            "mounting_style": "Surface Mount, MLCC",
+            "rated_voltage": "50V",
+            "temperature_coefficient": "X7R",
+            "esr": "",
+            "lifecycle_status": "Active",
+            "stock_total": 50000,
+            "unit_price": 0.05,
+            "supplier_data_verified": True,
+        }
+
+        def part_data(part_number):
+            if part_number == "C0603C104K5RACTU":
+                return dict(capacitor_fields, manufacturer_part_number=part_number)
+            if part_number == "C0603C104K5RAC3121":
+                return dict(capacitor_fields, manufacturer_part_number=part_number)
+            return {}
+
+        self.engine.get_best_part_data = part_data
+        self._mock_discovery([{
+            "manufacturer_part_number": "C0603C104K5RAC3121",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+        }], [])
+        result = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")[0]
+        self.assertEqual(result["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
+        self.assertEqual(result["Comparison Family"], "Capacitor")
+        self.assertGreaterEqual(result["Drop-In Confidence"], 82)
+        counts = result.get("Comparison Counts") or {}
+        self.assertEqual(counts.get("Different", 0), 0)
+        self.assertGreaterEqual(counts.get("Match", 0), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

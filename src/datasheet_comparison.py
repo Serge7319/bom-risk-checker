@@ -91,6 +91,23 @@ PDF_LABEL_ALIASES = {
 
 PASSIVE_FAMILIES = frozenset({"Capacitor", "Resistor", "Inductor"})
 
+PASSIVE_PARAMETRIC_KEYS = (
+    "capacitance",
+    "resistance",
+    "inductance",
+    "tolerance",
+    "rated_voltage",
+    "dielectric",
+    "power_rating",
+    "temperature_coefficient",
+    "esr",
+    "dcr",
+    "rated_current",
+    "saturation_current",
+    "mounting_style",
+    "package",
+)
+
 
 def normalize_mounting_style(value: str) -> str:
     """Normalize mounting values for comparison without hiding genuine TH vs SMD differences."""
@@ -180,6 +197,83 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
             "Evidence": note,
         })
     return {"family": family, "rows": rows, "counts": counts}
+
+
+def build_engineering_evidence_assessment(
+    counts: Mapping[str, Any],
+    *,
+    classification: str = "",
+    substitute_type: str = "",
+) -> dict:
+    """Summarize engineering comparison coverage separately from supplier classification."""
+    matches = max(0, int(counts.get("Match", 0) or 0))
+    differences = max(0, int(counts.get("Different", 0) or 0))
+    needs_data = max(0, int(counts.get("Needs data", 0) or 0))
+    compared_fields = matches + differences + needs_data
+
+    if differences > 0:
+        status = "conflicts documented"
+    elif compared_fields == 0:
+        status = "incomplete"
+    elif needs_data == 0 and matches > 0:
+        status = "complete"
+    elif matches <= 1 and needs_data >= 5:
+        status = "incomplete"
+    elif matches >= max(1, compared_fields - 1):
+        status = "substantial"
+    else:
+        status = "partial"
+
+    match_label = "match" if matches == 1 else "matches"
+    field_label = "field" if needs_data == 1 else "fields"
+    summary = (
+        f"Engineering evidence: {status} — {matches} confirmed {match_label}, "
+        f"{needs_data} {field_label} need verification"
+    )
+
+    coverage_percent = round((matches / compared_fields) * 100) if compared_fields else 0
+
+    if differences > 0:
+        engineering_confidence = max(5, 55 - differences * 18)
+    elif compared_fields == 0:
+        engineering_confidence = 30
+    else:
+        coverage_ratio = matches / compared_fields
+        engineering_confidence = round(35 + coverage_ratio * 58)
+        if (
+            needs_data <= 1
+            and matches >= max(1, compared_fields - 1)
+            and differences == 0
+        ):
+            engineering_confidence = min(95, engineering_confidence + 6)
+
+    engineering_confidence = max(0, min(100, engineering_confidence))
+
+    supplier_relationship_confidence = 0
+    supplier_relationship_summary = ""
+    if classification == "Verified direct substitute":
+        supplier_relationship_confidence = 95
+        supplier_relationship_summary = (
+            "DigiKey identifies this candidate as a Direct substitute for the original part number."
+        )
+    elif str(substitute_type or "").casefold() == "direct":
+        supplier_relationship_confidence = 85
+        supplier_relationship_summary = (
+            "The configured supplier lists this candidate as a direct substitute relationship."
+        )
+
+    return {
+        "engineering_evidence_status": status,
+        "engineering_evidence_summary": summary,
+        "engineering_coverage_percent": coverage_percent,
+        "engineering_comparison_confidence": engineering_confidence,
+        "supplier_relationship_confidence": supplier_relationship_confidence,
+        "supplier_relationship_summary": supplier_relationship_summary,
+        "matches": matches,
+        "differences": differences,
+        "needs_data": needs_data,
+        "compared_fields": compared_fields,
+    }
 
 
 def build_recommendation_score_breakdown(

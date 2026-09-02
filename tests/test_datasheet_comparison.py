@@ -132,6 +132,30 @@ class DatasheetComparisonTests(unittest.TestCase):
                 self.assertNotIn("Pin count", attributes)
                 self.assertIn("Package", attributes)
 
+    def test_engineering_evidence_assessment_high_coverage(self):
+        from src.datasheet_comparison import build_engineering_evidence_assessment
+
+        assessment = build_engineering_evidence_assessment(
+            {"Match": 7, "Different": 0, "Needs data": 1},
+            classification="Verified direct substitute",
+            substitute_type="Direct",
+        )
+        self.assertGreaterEqual(assessment["engineering_comparison_confidence"], 82)
+        self.assertEqual(assessment["supplier_relationship_confidence"], 95)
+        self.assertIn("7 confirmed matches", assessment["engineering_evidence_summary"])
+
+    def test_engineering_evidence_assessment_sparse_coverage(self):
+        from src.datasheet_comparison import build_engineering_evidence_assessment
+
+        assessment = build_engineering_evidence_assessment(
+            {"Match": 1, "Different": 0, "Needs data": 7},
+            classification="Verified direct substitute",
+            substitute_type="Direct",
+        )
+        self.assertLess(assessment["engineering_comparison_confidence"], 55)
+        self.assertEqual(assessment["supplier_relationship_confidence"], 95)
+        self.assertIn("incomplete", assessment["engineering_evidence_summary"])
+
 
 if __name__ == "__main__":
     unittest.main()
