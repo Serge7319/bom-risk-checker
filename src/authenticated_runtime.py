@@ -8827,6 +8827,7 @@ def run_authenticated_app() -> None:
             STAGE_CANDIDATE_ENGINE,
             STAGE_ORIGINAL_LOOKUP,
             STAGE_PERSIST,
+            get_or_enrich_selected_candidate,
         )
         from src.alternative_finder_state import (
             clear_alternative_finder_search,
@@ -10419,6 +10420,17 @@ def run_authenticated_app() -> None:
                     active_finder_result["original_data"] = original_data
                     st.session_state["alternative_original_data"] = original_data
 
+            enriched_candidate, candidate_evidence_data, _selected_lookup_performed = (
+                get_or_enrich_selected_candidate(
+                    st.session_state,
+                    search_mpn=current_search,
+                    original_data=original_data,
+                    candidate_row=selected_row.to_dict(),
+                    selected_mpn=selected_alternative,
+                )
+            )
+            selected_row = pd.Series(enriched_candidate)
+
             def _af62b_value(row, keys, fallback="—"):
                 for key in keys:
                     try:
@@ -11027,7 +11039,8 @@ def run_authenticated_app() -> None:
             with st.container(key="af62b_compact_table"):
                 cadivor_engineering_dataframe(comparison_df)
 
-            candidate_evidence_data = get_best_part_data(selected_alternative) or {}
+            if not candidate_evidence_data:
+                candidate_evidence_data = get_best_part_data(selected_alternative) or {}
             datasheet_comparison = build_datasheet_comparison(
                 original_data,
                 candidate_evidence_data,

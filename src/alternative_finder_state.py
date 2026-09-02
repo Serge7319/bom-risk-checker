@@ -446,6 +446,7 @@ def clear_alternative_finder_search(
     session_state.pop("alternative_selected_candidate_62b", None)
     session_state.pop("alternative_compare_parts", None)
     session_state.pop("alternative_advanced_parts", None)
+    session_state.pop("alternative_finder_enriched_selected", None)
 
 
 def mark_alternative_finder_nav_consumed(

@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 STAGE_ORIGINAL_LOOKUP = "original_lookup"
 STAGE_DISCOVERY = "digikey_discovery"
 STAGE_CANDIDATE_ENGINE = "candidate_engine"
+STAGE_SELECTED_ENRICHMENT = "selected_candidate_enrichment"
 STAGE_PERSIST = "persist_results"
+
+ENRICHED_SELECTED_CACHE_KEY = "alternative_finder_enriched_selected"
 
 _SECRET_PATTERN = re.compile(
     r"(?i)(api[_-]?key|token|secret|password|authorization|bearer)\s*[:=]\s*\S+"
@@ -143,3 +146,66 @@ def attach_failure_diagnostics(
             str(stage): float(duration)
             for stage, duration in stage_timings_ms.items()
         }
+
+
+def _enrichment_cache_key(search_mpn: str, selected_mpn: str) -> str:
+    return f"{str(search_mpn or '').strip().upper()}::{str(selected_mpn or '').strip().upper()}"
+
+
+def _get_enrichment_cache(session_state: MutableMapping[str, Any]) -> dict[str, dict[str, Any]]:
+    cache = session_state.get(ENRICHED_SELECTED_CACHE_KEY)
+    if not isinstance(cache, dict):
+        cache = {}
+        session_state[ENRICHED_SELECTED_CACHE_KEY] = cache
+    return cache
+
+
+def clear_selected_candidate_enrichment_cache(session_state: MutableMapping[str, Any]) -> None:
+    session_state.pop(ENRICHED_SELECTED_CACHE_KEY, None)
+
+
+def get_or_enrich_selected_candidate(
+    session_state: MutableMapping[str, Any],
+    *,
+    search_mpn: str,
+    original_data: Mapping[str, Any],
+    candidate_row: Mapping[str, Any],
+    selected_mpn: str,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    """Enrich the selected candidate once per search/selection for initial render.
+
+    Returns `(enriched_candidate, supplier_evidence, performed_lookup)`.
+    Session caching prevents repeat supplier calls on ordinary reruns.
+    """
+    from integrations.supplier_aggregator import get_best_part_data
+    from src.alternative_engine import (
+        _enrich_part_data_from_suppliers,
+        apply_supplier_enrichment_to_candidate,
+    )
+
+    cache_key = _enrichment_cache_key(search_mpn, selected_mpn)
+    cache = _get_enrichment_cache(session_state)
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict) and isinstance(cached.get("candidate"), dict):
+        supplier_evidence = cached.get("supplier_evidence")
+        return (
+            dict(cached["candidate"]),
+            dict(supplier_evidence) if isinstance(supplier_evidence, dict) else {},
+            False,
+        )
+
+    supplier_evidence = _enrich_part_data_from_suppliers(get_best_part_data(selected_mpn) or {})
+    canonical_part_number = str(
+        original_data.get("manufacturer_part_number") or search_mpn or selected_mpn
+    ).strip()
+    enriched = apply_supplier_enrichment_to_candidate(
+        original_data=dict(original_data or {}),
+        candidate=dict(candidate_row or {}),
+        candidate_supplier_data=supplier_evidence,
+        canonical_part_number=canonical_part_number,
+    )
+    cache[cache_key] = {
+        "candidate": enriched,
+        "supplier_evidence": supplier_evidence,
+    }
+    return enriched, supplier_evidence, True

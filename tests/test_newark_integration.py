@@ -292,6 +292,7 @@ class NewarkIntegrationTests(unittest.TestCase):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
         self.assertNotIn("supplier_data = get_best_part_data(candidate_part)", source)
         self.assertIn("suggest_alternatives_v2(searched_part)", source)
+        self.assertIn("get_or_enrich_selected_candidate(", source)
         self.assertIn("candidate_evidence_data = get_best_part_data(selected_alternative)", source)
 
     def test_original_component_shows_all_verified_suppliers(self):
