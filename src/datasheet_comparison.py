@@ -12,7 +12,6 @@ import re
 from urllib.parse import urlparse
 
 import requests
-from pypdf import PdfReader
 
 
 MAX_DATASHEET_BYTES = 8 * 1024 * 1024
@@ -27,15 +26,43 @@ COMMON_FIELDS = (
 )
 
 FAMILY_FIELDS = {
-    "Resistor": (("Resistance", "resistance"), ("Tolerance", "tolerance"), ("Power rating", "power_rating"), ("Temperature coefficient", "temperature_coefficient")),
-    "Capacitor": (("Capacitance", "capacitance"), ("Tolerance", "tolerance"), ("Rated voltage", "rated_voltage"), ("Dielectric", "dielectric"), ("ESR", "esr")),
-    "Inductor": (("Inductance", "inductance"), ("Tolerance", "tolerance"), ("DCR", "dcr"), ("Rated current", "rated_current"), ("Saturation current", "saturation_current")),
+    "Resistor": (
+        ("Resistance", "resistance"),
+        ("Tolerance", "tolerance"),
+        ("Power rating", "power_rating"),
+        ("Temperature coefficient", "temperature_coefficient"),
+        ("Voltage rating", "rated_voltage"),
+    ),
+    "Capacitor": (
+        ("Capacitance", "capacitance"),
+        ("Tolerance", "tolerance"),
+        ("Rated voltage", "rated_voltage"),
+        ("Dielectric", "dielectric"),
+        ("Temperature characteristic", "temperature_coefficient"),
+        ("ESR", "esr"),
+    ),
+    "Inductor": (
+        ("Inductance", "inductance"),
+        ("Tolerance", "tolerance"),
+        ("DCR", "dcr"),
+        ("Rated current", "rated_current"),
+        ("Saturation current", "saturation_current"),
+        ("Shielding", "shielding"),
+        ("Height", "height"),
+    ),
     "Transformer": (("Turns ratio", "turns_ratio"), ("Isolation voltage", "isolation_voltage"), ("Power rating", "power_rating"), ("Inductance", "inductance")),
     "Diode / protection": (("Reverse voltage", "reverse_voltage"), ("Forward current", "forward_current"), ("Forward voltage", "forward_voltage"), ("Recovery time", "recovery_time")),
     "Transistor / MOSFET": (("Device type", "device_type"), ("Vds / Vce", "drain_or_collector_voltage"), ("Current", "rated_current"), ("Rds(on) / gain", "on_resistance_or_gain"), ("Gate threshold", "gate_threshold")),
     "Operational amplifier": (("Channels", "channel_count"), ("Supply voltage", "voltage_range"), ("Bandwidth", "bandwidth_mhz"), ("Slew rate", "slew_rate_v_us"), ("Input offset", "input_offset_mv"), ("Input bias", "input_bias_na")),
     "Regulator": (("Input voltage", "voltage_range"), ("Output voltage", "output_voltage"), ("Output current", "rated_current"), ("Dropout voltage", "dropout_voltage"), ("Quiescent current", "quiescent_current_ma")),
-    "Logic / processor": (("Architecture", "architecture"), ("Pin count", "pin_count"), ("Supply voltage", "voltage_range"), ("Frequency", "frequency_mhz")),
+    "Logic / processor": (
+        ("Architecture", "architecture"),
+        ("Pin count", "pin_count"),
+        ("Pinout evidence", "pinout"),
+        ("Supply voltage", "voltage_range"),
+        ("Frequency", "frequency_mhz"),
+        ("Channel count", "channel_count"),
+    ),
     "Oscillator / crystal": (("Frequency", "frequency_mhz"), ("Frequency tolerance", "frequency_tolerance"), ("Load capacitance", "load_capacitance")),
     "Sensor": (("Measurement range", "measurement_range"), ("Accuracy", "accuracy"), ("Interface", "interface"), ("Supply voltage", "voltage_range")),
     "Connector / electromechanical": (("Positions", "positions"), ("Pitch", "pitch"), ("Current rating", "rated_current"), ("Voltage rating", "rated_voltage")),
@@ -187,6 +214,8 @@ def extract_datasheet_text(url: str) -> dict:
     if parsed.scheme not in {"https", "http"} or not parsed.netloc:
         return {"available": False, "reason": "No valid datasheet URL was provided.", "pages": []}
     try:
+        from pypdf import PdfReader
+
         response = requests.get(url, timeout=20, headers={"Accept": "application/pdf"}, stream=True)
         response.raise_for_status()
         payload = b""
