@@ -5,6 +5,7 @@ from typing import Optional
 import requests
 from urllib.parse import quote
 
+from integrations.stock_coercion import coerce_stock_total
 from src.secrets import get_secret
 from src.parsing.electrical_extractors import (
     extract_frequency_mhz,
@@ -266,7 +267,7 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                     else str(manufacturer)
                 ),
                 "description": str(item.get("Description") or "").strip(),
-                "stock_total": int(_as_number(item.get("QuantityAvailable"), 0)),
+                "stock_total": coerce_stock_total(item.get("QuantityAvailable")),
                 "unit_price": _as_number(item.get("UnitPrice"), 0.0),
                 "product_detail_url": str(item.get("ProductUrl") or "").strip(),
                 "datasheet_url": str(item.get("DatasheetUrl") or "").strip(),
@@ -318,7 +319,10 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
         for product in (response.json() or {}).get("Products") or []:
             if not isinstance(product, dict):
                 continue
-            normalized = normalize_digikey_product(product)
+            try:
+                normalized = normalize_digikey_product(product)
+            except Exception:
+                continue
             mpn = str(normalized.get("manufacturer_part_number") or "").strip()
             if (
                 not mpn
@@ -382,7 +386,7 @@ def normalize_digikey_product(product: dict) -> dict:
         else str(manufacturer)
     )
 
-    stock_total = product.get("QuantityAvailable", 0) or 0
+    stock_total = coerce_stock_total(product.get("QuantityAvailable", 0) or 0)
 
     package = extract_digikey_parameter(
         product,
@@ -497,7 +501,7 @@ def normalize_digikey_product(product: dict) -> dict:
 
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
-        "stock_total": int(stock_total),
+        "stock_total": stock_total,
         "unit_price": extract_digikey_price(product),
         "supplier_count": 1,
         "lead_time_weeks": None,

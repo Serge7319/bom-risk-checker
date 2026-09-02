@@ -290,7 +290,8 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         ]
         data = self.aggregator.get_best_part_data("C0603C104K5RACTU")
         self.assertTrue(data["supplier_data_verified"])
-        self.assertEqual(data["source"], "DigiKey")
+        self.assertEqual(data["stock_total"], 12345)
+        self.assertEqual(data["source"], "Mouser")
 
     def test_run_alternative_finder_search_keeps_partial_results_when_one_provider_fails(self):
         session: dict = {}

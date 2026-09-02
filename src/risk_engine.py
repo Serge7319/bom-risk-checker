@@ -2,12 +2,13 @@ def calculate_risk(part_data: dict) -> dict:
     """
     Calculates a 0–100 risk score for one BOM component.
     """
+    from integrations.stock_coercion import coerce_stock_total
 
     score = 0
     reasons = []
 
     lifecycle_status = part_data.get("lifecycle_status", "Unknown")
-    stock_total = part_data.get("stock_total", 0)
+    stock_total = coerce_stock_total(part_data.get("stock_total", 0))
     supplier_count = part_data.get("supplier_count", 0)
     lead_time_weeks = part_data.get("lead_time_weeks", None)
     has_alternates = part_data.get("has_alternates", False)
