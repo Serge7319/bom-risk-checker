@@ -288,12 +288,12 @@ class NewarkIntegrationTests(unittest.TestCase):
         self.assertIn('"Sources Available": part_data.get("sources_available", "")', source)
         self.assertIn("original_lookup = get_best_part_data(searched_part)", source)
 
-    def test_alternative_candidates_use_verified_exact_supplier_matches(self):
+    def test_alternative_candidates_use_discovery_evidence_without_per_candidate_lookup(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
-        self.assertIn("supplier_data = get_best_part_data(candidate_part)", source)
-        self.assertIn("matched_part.upper() != candidate_part.upper()", source)
-        self.assertIn('candidate["Sources Available"] = supplier_data.get("sources_available", "")', source)
-        self.assertIn('candidate["Stock"] = supplier_data.get("stock_total", 0)', source)
+        self.assertNotIn("supplier_data = get_best_part_data(candidate_part)", source)
+        self.assertIn("suggest_alternatives_v2(searched_part)", source)
+        self.assertIn("get_or_enrich_selected_candidate(", source)
+        self.assertIn("candidate_evidence_data = get_best_part_data(selected_alternative)", source)
 
     def test_original_component_shows_all_verified_suppliers(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()

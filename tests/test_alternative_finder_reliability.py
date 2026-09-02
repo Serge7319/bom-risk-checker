@@ -353,6 +353,7 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
             "source": "DigiKey",
             "substitute_type": "Direct",
             "evidence_type": "Distributor-listed substitute",
+            "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
         }], [])
         result = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")[0]
         self.assertEqual(result["Classification"], self.classification.CLASS_VERIFIED_DIRECT)

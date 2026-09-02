@@ -1,6 +1,8 @@
 """Durable Alternative Finder session-state helpers for Streamlit reruns."""
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Mapping, MutableMapping, Optional
 
 ALT_FINDER_RESULT_KEY = "alternative_finder_result"
@@ -11,6 +13,11 @@ STATUS_IDLE = "idle"
 STATUS_RUNNING = "running"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
+
+MAX_SANITIZE_DEPTH = 64
+MARKER_CIRCULAR_REF = "<circular-reference>"
+MARKER_MAX_DEPTH = "<max-depth-exceeded>"
+MARKER_NON_SERIALIZABLE = "<non-serializable-object>"
 
 _LEGACY_KEYS = (
     "suggested_alternatives",
@@ -29,15 +36,126 @@ def _normalize_mpn(value: Any) -> str:
     return str(value or "").strip().upper()
 
 
-def sanitize_for_session(value: Any) -> Any:
+def _sanitize_path(parent: str, segment: str) -> str:
+    if not parent or parent == "root":
+        return segment
+    return f"{parent}.{segment}"
+
+
+def _record_sanitize_issue(kind: str, path: str) -> str:
+    marker = {
+        "circular": MARKER_CIRCULAR_REF,
+        "depth": MARKER_MAX_DEPTH,
+        "non_serializable": MARKER_NON_SERIALIZABLE,
+    }.get(kind, MARKER_NON_SERIALIZABLE)
+    return f"{marker} at {path}"
+
+
+def _sanitize_scalar(value: Any, *, path: str) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except Exception:
+            return repr(value)
+    try:
+        return str(value)
+    except Exception:
+        return _record_sanitize_issue("non_serializable", path)
+
+
+def sanitize_for_session(
+    value: Any,
+    *,
+    _seen: Optional[set[int]] = None,
+    _depth: int = 0,
+    _path: str = "root",
+) -> Any:
     """Make nested candidate payloads safe for Streamlit session persistence."""
+    if _depth >= MAX_SANITIZE_DEPTH:
+        return _record_sanitize_issue("depth", _path)
+
+    if isinstance(value, (type(None), bool, int, float, str)):
+        return value
+
+    if isinstance(value, (datetime, date, Decimal, bytes)):
+        return _sanitize_scalar(value, path=_path)
+
+    if isinstance(value, Mapping):
+        seen = _seen or set()
+        obj_id = id(value)
+        if obj_id in seen:
+            return _record_sanitize_issue("circular", _path)
+        seen = set(seen)
+        seen.add(obj_id)
+        sanitized: dict[str, Any] = {}
+        for raw_key, item in value.items():
+            key = str(raw_key)
+            item_path = _sanitize_path(_path, key)
+            sanitized[key] = sanitize_for_session(
+                item,
+                _seen=seen,
+                _depth=_depth + 1,
+                _path=item_path,
+            )
+        return sanitized
+
     if isinstance(value, set):
-        return sorted(str(item) for item in value)
-    if isinstance(value, dict):
-        return {key: sanitize_for_session(item) for key, item in value.items()}
+        seen = _seen or set()
+        obj_id = id(value)
+        if obj_id in seen:
+            return _record_sanitize_issue("circular", _path)
+        seen = set(seen)
+        seen.add(obj_id)
+        items = sorted(
+            (
+                sanitize_for_session(
+                    item,
+                    _seen=seen,
+                    _depth=_depth + 1,
+                    _path=f"{_path}[]",
+                )
+                for item in value
+            ),
+            key=lambda item: repr(item),
+        )
+        return items
+
     if isinstance(value, (list, tuple)):
-        return [sanitize_for_session(item) for item in value]
-    return value
+        seen = _seen or set()
+        obj_id = id(value)
+        if obj_id in seen:
+            return _record_sanitize_issue("circular", _path)
+        seen = set(seen)
+        seen.add(obj_id)
+        return [
+            sanitize_for_session(
+                item,
+                _seen=seen,
+                _depth=_depth + 1,
+                _path=f"{_path}[{index}]",
+            )
+            for index, item in enumerate(value)
+        ]
+
+    return _sanitize_scalar(value, path=_path)
+
+
+def _safe_sanitize_mapping(value: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        sanitized = sanitize_for_session(value)
+    except RecursionError:
+        return {_record_sanitize_issue("circular", "root"): True}
+    except Exception:
+        return {MARKER_NON_SERIALIZABLE: True}
+    return sanitized if isinstance(sanitized, dict) else {MARKER_NON_SERIALIZABLE: True}
 
 
 def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> None:
@@ -217,11 +335,11 @@ def complete_alternative_finder_search(
         "algorithm_version": RESULT_ALGORITHM_VERSION,
         "entered_mpn": entered_mpn.strip(),
         "canonical_mpn": (canonical_mpn or entered_mpn).strip(),
-        "original_data": sanitize_for_session(dict(original_data or {})),
-        "original_risk": sanitize_for_session(dict(original_risk or {})),
+        "original_data": _safe_sanitize_mapping(original_data),
+        "original_risk": _safe_sanitize_mapping(original_risk),
         "candidates": sanitized_candidates,
         "selected_candidate_mpn": selected,
-        "discovery_metadata": sanitize_for_session(dict(discovery_metadata or {})),
+        "discovery_metadata": _safe_sanitize_mapping(discovery_metadata),
         "lookup_error": lookup_error.strip(),
         "search_error": search_error.strip(),
     }
@@ -241,24 +359,42 @@ def fail_alternative_finder_search(
     lookup_error: str = "",
     original_data: Optional[Mapping[str, Any]] = None,
     original_risk: Optional[Mapping[str, Any]] = None,
+    diagnostic_code: str = "",
+    diagnostic_message: str = "",
+    exception_type: str = "",
+    stage_timings_ms: Optional[Mapping[str, float]] = None,
 ) -> None:
-    session_state[ALT_FINDER_RESULT_KEY] = {
+    safe_original_data = _safe_sanitize_mapping(original_data)
+    safe_original_risk = _safe_sanitize_mapping(original_risk)
+    failed_result: dict[str, Any] = {
         "status": STATUS_FAILED,
         "algorithm_version": RESULT_ALGORITHM_VERSION,
         "entered_mpn": entered_mpn.strip(),
         "search_error": search_error.strip(),
         "lookup_error": lookup_error.strip(),
-        "original_data": sanitize_for_session(dict(original_data or {})),
-        "original_risk": sanitize_for_session(dict(original_risk or {})),
+        "original_data": safe_original_data,
+        "original_risk": safe_original_risk,
         "candidates": [],
     }
+    if diagnostic_code.strip():
+        failed_result["diagnostic_code"] = diagnostic_code.strip()
+    if diagnostic_message.strip():
+        failed_result["diagnostic_message"] = diagnostic_message.strip()
+    if exception_type.strip():
+        failed_result["exception_type"] = exception_type.strip()
+    if stage_timings_ms:
+        failed_result["stage_timings_ms"] = {
+            str(stage): float(duration)
+            for stage, duration in stage_timings_ms.items()
+        }
+    session_state[ALT_FINDER_RESULT_KEY] = failed_result
     session_state["suggested_alternatives"] = []
     session_state["alternative_search_attempted"] = True
     session_state["alternative_search_error"] = search_error.strip()
     session_state["alternative_original_lookup_part"] = entered_mpn.strip()
     session_state["alternative_original_lookup_error"] = lookup_error.strip()
-    session_state["alternative_original_data"] = dict(original_data or {})
-    session_state["alternative_original_risk"] = dict(original_risk or {})
+    session_state["alternative_original_data"] = safe_original_data
+    session_state["alternative_original_risk"] = safe_original_risk
 
 
 def set_alternative_finder_selected_candidate(
@@ -310,6 +446,7 @@ def clear_alternative_finder_search(
     session_state.pop("alternative_selected_candidate_62b", None)
     session_state.pop("alternative_compare_parts", None)
     session_state.pop("alternative_advanced_parts", None)
+    session_state.pop("alternative_finder_enriched_selected", None)
 
 
 def mark_alternative_finder_nav_consumed(

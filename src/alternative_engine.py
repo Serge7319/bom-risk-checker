@@ -408,6 +408,92 @@ def _merge_supplier_part_data(*sources: dict) -> dict:
     return _enrich_part_data_from_suppliers(merged)
 
 
+_SMD_PACKAGE_CODES = frozenset(
+    {"01005", "0201", "0204", "0402", "0603", "0805", "1206", "1210", "1812", "2010", "2512"}
+)
+
+
+def _mlcc_tolerance_from_mpn(mpn: str) -> str:
+    upper = str(mpn or "").upper()
+    for index in range(max(len(upper) - 3, 0)):
+        digits = upper[index : index + 3]
+        suffix = upper[index + 3 : index + 4]
+        if len(digits) == 3 and digits.isdigit() and suffix.isalpha():
+            tolerance = {
+                "G": "±2%",
+                "J": "±5%",
+                "K": "±10%",
+                "M": "±20%",
+                "Z": "±80%",
+            }.get(suffix)
+            if tolerance:
+                return tolerance
+    return ""
+
+
+def _discovery_row_to_part_data(row: dict) -> dict:
+    """Build comparison-ready supplier fields from DigiKey discovery evidence."""
+    mpn = str(row.get("manufacturer_part_number") or "").strip()
+    description = str(row.get("description") or "").strip()
+    package = str(row.get("package") or "").strip()
+    if not package and mpn.upper().startswith("C") and len(mpn) >= 4:
+        size_code = mpn[1:5]
+        if size_code.isdigit():
+            package = size_code
+    passive_fields = _passive_fields_from_description(description)
+    for key in PASSIVE_PARAMETRIC_KEYS:
+        value = row.get(key)
+        if value not in (None, "", 0):
+            passive_fields[key] = value
+    if package in _SMD_PACKAGE_CODES:
+        passive_fields.setdefault("mounting_style", "Surface Mount")
+    passive_fields.setdefault("tolerance", _mlcc_tolerance_from_mpn(mpn))
+    return {
+        "manufacturer_part_number": mpn,
+        "manufacturer": str(row.get("manufacturer") or "").strip(),
+        "description": description,
+        "stock_total": row.get("stock_total", 0),
+        "unit_price": row.get("unit_price", 0.0),
+        "datasheet_url": str(row.get("datasheet_url") or "").strip(),
+        "package": package or passive_fields.get("package", ""),
+        "mounting_style": str(row.get("mounting_style") or passive_fields.get("mounting_style", "")).strip(),
+        "pin_count": row.get("pin_count", 0),
+        "architecture": str(row.get("architecture") or "").strip(),
+        "channel_count": row.get("channel_count", 0),
+        "voltage_range": str(row.get("voltage_range") or "").strip(),
+        "source": str(row.get("source") or "DigiKey"),
+        "supplier_data_verified": bool(mpn),
+        **passive_fields,
+    }
+
+
+def _passive_fields_from_description(description: str) -> dict:
+    """Extract coarse passive parametrics from distributor product descriptions."""
+    fields: dict = {}
+    text = str(description or "").strip()
+    if not text:
+        return fields
+    lowered = text.casefold()
+    if "surface mount" in lowered or "mlcc" in lowered or "smd" in lowered:
+        fields["mounting_style"] = "Surface Mount"
+    for token in text.replace(",", " ").split():
+        normalized = token.strip("()[]")
+        token_lower = normalized.casefold()
+        if token_lower.endswith("uf") and any(ch.isdigit() for ch in normalized):
+            value = normalized[:-2] if token_lower.endswith("uf") else normalized
+            fields.setdefault("capacitance", f"{value} µF")
+        if token_lower.endswith("v") and token_lower[:-1].replace(".", "").isdigit():
+            fields.setdefault("rated_voltage", normalized.upper())
+        if token_lower in {"x7r", "x5r", "c0g", "np0", "y5v"}:
+            fields.setdefault("dielectric", normalized.upper())
+            fields.setdefault("temperature_coefficient", normalized.upper())
+        if token_lower in {"±10%", "±5%", "±1%", "10%", "5%", "1%"}:
+            fields.setdefault("tolerance", normalized)
+        if normalized.isdigit() and len(normalized) == 4 and normalized.startswith(("0", "1", "2")):
+            fields.setdefault("package", normalized)
+    return fields
+
+
 def _passive_compatibility_confidence(counts: dict, *, classification: str = "", substitute_type: str = "") -> int:
     assessment = build_engineering_evidence_assessment(
         counts,
@@ -978,6 +1064,194 @@ def package_family(package: str) -> str:
     return "Unknown"
 
 
+    return fields
+
+
+def apply_supplier_enrichment_to_candidate(
+    *,
+    original_data: dict,
+    candidate: dict,
+    candidate_supplier_data: dict,
+    canonical_part_number: str,
+) -> dict:
+    """Apply supplier evidence to one candidate and rebuild comparison metadata."""
+    enriched = dict(candidate)
+    supplier_data = dict(candidate_supplier_data or {})
+
+    for candidate_key, supplier_key in (
+        ("Package", "package"),
+        ("Pin Count", "pin_count"),
+        ("Mounting Style", "mounting_style"),
+        ("Architecture", "architecture"),
+    ):
+        if supplier_data.get(supplier_key) not in (None, "", 0):
+            enriched[candidate_key] = supplier_data.get(supplier_key)
+
+    enriched["Supply Voltage Min"] = enriched.get("Supply Voltage Min") or supplier_data.get("supply_voltage_min")
+    enriched["Supply Voltage Max"] = enriched.get("Supply Voltage Max") or supplier_data.get("supply_voltage_max")
+    enriched["Voltage Range"] = enriched.get("Voltage Range") or supplier_data.get("voltage_range", "")
+    enriched["Datasheet URL"] = enriched.get("Datasheet URL") or supplier_data.get("datasheet_url", "")
+
+    for field_name, config in ELECTRICAL_FIELDS.items():
+        enriched[config["display_key"]] = (
+            enriched.get(config["display_key"])
+            or supplier_data.get(field_name)
+        )
+
+    feature_text = " ".join(
+        [
+            str(enriched.get("Alternative Part", "")),
+            str(enriched.get("Category", "")),
+            str(enriched.get("Architecture", "")),
+            str(enriched.get("Recommendation", "")),
+            str(enriched.get("Compatibility Notes", "")),
+            str(supplier_data.get("description", "")),
+        ]
+    )
+    enriched["Feature Tags"] = infer_feature_tags(feature_text)
+
+    original_candidate = {
+        "Alternative Part": canonical_part_number,
+        "Architecture": original_data.get("architecture", ""),
+        "Package": original_data.get("package", "")
+        or (
+            "SMD-8"
+            if original_data.get("mounting_style") == "SMD"
+            and original_data.get("pin_count") == 8
+            else ""
+        ),
+        "Pin Count": original_data.get("pin_count", 0),
+        "Voltage Range": original_data.get("voltage_range", ""),
+        "Channel Count": original_data.get("channel_count", 0),
+        "Supply Voltage Min": original_data.get("supply_voltage_min"),
+        "Supply Voltage Max": original_data.get("supply_voltage_max"),
+        "Bandwidth MHz": original_data.get("bandwidth_mhz"),
+        "Slew Rate V/us": original_data.get("slew_rate_v_us"),
+        "Input Offset mV": original_data.get("input_offset_mv"),
+        "Quiescent Current mA": original_data.get("quiescent_current_ma"),
+        "Input Bias nA": original_data.get("input_bias_na"),
+        "GBW MHz": original_data.get("gbw_mhz"),
+        "capacitance": original_data.get("capacitance", ""),
+        "resistance": original_data.get("resistance", ""),
+        "inductance": original_data.get("inductance", ""),
+        "tolerance": original_data.get("tolerance", ""),
+        "rated_voltage": original_data.get("rated_voltage", ""),
+        "dielectric": original_data.get("dielectric", ""),
+        "power_rating": original_data.get("power_rating", ""),
+        "temperature_coefficient": original_data.get("temperature_coefficient", ""),
+        "esr": original_data.get("esr", ""),
+        "dcr": original_data.get("dcr", ""),
+        "rated_current": original_data.get("rated_current", ""),
+        "saturation_current": original_data.get("saturation_current", ""),
+        "Feature Tags": original_data.get("Feature Tags", set()),
+    }
+
+    candidate_comparison_data = dict(supplier_data or {})
+    candidate_comparison_data.update({
+        "description": candidate_comparison_data.get("description", ""),
+        "architecture": enriched.get("Architecture", candidate_comparison_data.get("architecture", "")),
+        "package": enriched.get("Package", candidate_comparison_data.get("package", "")),
+        "pin_count": enriched.get("Pin Count", candidate_comparison_data.get("pin_count")),
+        "mounting_style": enriched.get(
+            "Mounting Style", candidate_comparison_data.get("mounting_style", "")
+        ),
+        "voltage_range": enriched.get("Voltage Range", candidate_comparison_data.get("voltage_range", "")),
+        "channel_count": enriched.get("Channel Count", candidate_comparison_data.get("channel_count")),
+    })
+    for field_name, config in ELECTRICAL_FIELDS.items():
+        candidate_comparison_data[field_name] = enriched.get(
+            config["display_key"], candidate_comparison_data.get(field_name)
+        )
+    for passive_key in (
+        "capacitance",
+        "resistance",
+        "inductance",
+        "tolerance",
+        "rated_voltage",
+        "dielectric",
+        "power_rating",
+        "temperature_coefficient",
+        "esr",
+        "dcr",
+        "rated_current",
+        "saturation_current",
+        "device_type",
+        "reverse_voltage",
+        "forward_current",
+        "pinout",
+        "frequency_mhz",
+    ):
+        if not candidate_comparison_data.get(passive_key):
+            candidate_comparison_data[passive_key] = supplier_data.get(passive_key, "")
+
+    comparison_result = build_datasheet_comparison(original_data, candidate_comparison_data)
+    comparison_counts = comparison_result["counts"]
+    enriched["Comparison Family"] = comparison_result.get("family", "")
+    enriched["Comparison Rows"] = comparison_result.get("rows", [])
+    enriched["Comparison Counts"] = comparison_counts
+    classification = refine_classification_after_comparison(
+        str(enriched.get("Classification") or CLASS_CATALOG_INSUFFICIENT),
+        comparison_counts,
+    )
+    enriched["Classification"] = classification
+    enriched["Category"] = classification
+    evidence_assessment = build_engineering_evidence_assessment(
+        comparison_counts,
+        classification=classification,
+        substitute_type=str(enriched.get("Substitute Type") or ""),
+    )
+    enriched["Engineering Evidence Assessment"] = evidence_assessment
+    enriched["Engineering Evidence Summary"] = evidence_assessment["engineering_evidence_summary"]
+    enriched["Engineering Comparison Confidence"] = evidence_assessment[
+        "engineering_comparison_confidence"
+    ]
+    enriched["Supplier Relationship Confidence"] = evidence_assessment[
+        "supplier_relationship_confidence"
+    ]
+    enriched["Supplier Relationship Summary"] = evidence_assessment[
+        "supplier_relationship_summary"
+    ]
+    enriched["Drop-In Confidence"] = calculate_drop_in_confidence(
+        original_candidate,
+        enriched,
+    )
+    enriched["Drop-In Rating"] = get_drop_in_rating(enriched["Drop-In Confidence"])
+    enriched["Drop-In Reasons"] = get_drop_in_reasons(original_candidate, enriched)
+    score_evidence = build_recommendation_score_breakdown(
+        enriched.get("Recommendation Score", 0),
+        enriched["Drop-In Confidence"],
+        comparison_counts,
+        is_explicit_substitute=(classification == CLASS_VERIFIED_DIRECT),
+    )
+    enriched["Recommendation Score"] = score_evidence["recommendation_score"]
+    enriched["Drop-In Confidence"] = score_evidence["compatibility_confidence"]
+    if str(enriched.get("Comparison Family") or "") in PASSIVE_FAMILIES:
+        enriched["Drop-In Confidence"] = int(
+            evidence_assessment["engineering_comparison_confidence"]
+        )
+    enriched["Drop-In Rating"] = get_drop_in_rating(enriched["Drop-In Confidence"])
+    enriched["Datasheet Match Count"] = score_evidence["matches"]
+    enriched["Datasheet Difference Count"] = score_evidence["differences"]
+    enriched["Datasheet Needs Data Count"] = score_evidence["needs_data"]
+    score_evidence["classification"] = classification
+    score_evidence["evidence_source"] = enriched.get("Evidence Source", "")
+    score_evidence["evidence_type"] = enriched.get("Evidence Type", "")
+    score_evidence["substitute_type"] = enriched.get("Substitute Type", "")
+    score_evidence.update(evidence_assessment)
+    enriched["Recommendation Score Evidence"] = score_evidence
+
+    if supplier_data.get("supplier_data_verified"):
+        enriched["Supplier"] = supplier_data.get("source") or enriched.get("Supplier", "")
+        enriched["Sources Available"] = supplier_data.get("sources_available", "")
+        enriched["Supplier Count"] = supplier_data.get("supplier_count", 0)
+        enriched["Stock"] = supplier_data.get("stock_total", enriched.get("Stock", 0))
+        enriched["Unit Price"] = supplier_data.get("unit_price", enriched.get("Unit Price", 0.0))
+        if supplier_data.get("lifecycle_status"):
+            enriched["Lifecycle"] = supplier_data.get("lifecycle_status")
+
+    return enriched
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def suggest_alternatives_v2(original_part_number: str) -> list:
     """
@@ -1052,58 +1326,11 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                     "Supplier-listed candidate only. Verify electrical characteristics, footprint, "
                     "dimensions/height, temperature range, qualification, and datasheet compatibility before approval."
                 ),
+                "_discovery_row": dict(result),
             }
         )
 
     candidates = supplier_candidates
-
-    MAX_LIVE_SUPPLIER_LOOKUPS = 10
-
-    for index, candidate in enumerate(candidates):
-
-        if isinstance(candidate, str):
-            candidate = {
-                "Alternative Part": candidate,
-                "Category": "Suggested Alternative",
-                "Lifecycle": "Unknown",
-                "Estimated Risk": "Medium",
-                "Recommendation": "Review compatibility",
-                "Recommendation Score": 70,
-            }
-
-        alt_part_number = candidate.get("Alternative Part", "")
-
-        if not alt_part_number:
-            continue
-
-        try:
-            exact_supplier_data = _enrich_part_data_from_suppliers(
-                get_best_part_data(alt_part_number) or {}
-            )
-        except Exception:
-            exact_supplier_data = {}
-        candidate["Enriched Supplier Data"] = exact_supplier_data
-        if exact_supplier_data.get("supplier_data_verified"):
-            candidate["Supplier"] = exact_supplier_data.get("source") or candidate.get("Supplier", "")
-            candidate["Stock"] = exact_supplier_data.get("stock_total", candidate.get("Stock", 0))
-            candidate["Unit Price"] = exact_supplier_data.get("unit_price", candidate.get("Unit Price", 0.0))
-            if exact_supplier_data.get("lifecycle_status"):
-                candidate["Lifecycle"] = exact_supplier_data.get("lifecycle_status")
-            for candidate_key, supplier_key in (
-                ("Package", "package"),
-                ("Pin Count", "pin_count"),
-                ("Mounting Style", "mounting_style"),
-                ("Architecture", "architecture"),
-                ("Channel Count", "channel_count"),
-                ("Datasheet URL", "datasheet_url"),
-            ):
-                if exact_supplier_data.get(supplier_key) not in (None, "", 0):
-                    candidate[candidate_key] = exact_supplier_data.get(supplier_key)
-            for supplier_key in PASSIVE_PARAMETRIC_KEYS:
-                if exact_supplier_data.get(supplier_key) in (None, "", 0):
-                    continue
-                candidate[supplier_key] = exact_supplier_data.get(supplier_key)
-
 
     normalized_candidates = []
 
@@ -1131,181 +1358,17 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Channel Count", 0
         ) or infer_channel_count_from_description(description_for_channel)
 
-     
+        discovery_row = candidate.pop("_discovery_row", None)
+        if not isinstance(discovery_row, dict):
+            discovery_row = {}
+        candidate_supplier_data = _discovery_row_to_part_data(discovery_row)
 
-        candidate_part_number = candidate.get("Alternative Part", "")
-
-        if candidate_index < MAX_LIVE_SUPPLIER_LOOKUPS:
-            fresh_supplier_data = _enrich_part_data_from_suppliers(
-                get_best_part_data(candidate_part_number) or {}
-            )
-        else:
-            fresh_supplier_data = {}
-        candidate_supplier_data = _merge_supplier_part_data(
-            candidate.get("Enriched Supplier Data") or {},
-            fresh_supplier_data,
+        candidate = apply_supplier_enrichment_to_candidate(
+            original_data=original_data,
+            candidate=candidate,
+            candidate_supplier_data=candidate_supplier_data,
+            canonical_part_number=canonical_part_number,
         )
-
-        candidate["Supply Voltage Min"] = candidate.get("Supply Voltage Min") or candidate_supplier_data.get("supply_voltage_min")
-        candidate["Supply Voltage Max"] = candidate.get("Supply Voltage Max") or candidate_supplier_data.get("supply_voltage_max")
-        candidate["Voltage Range"] = candidate.get("Voltage Range") or candidate_supplier_data.get("voltage_range", "")
-        candidate["Datasheet URL"] = candidate.get("Datasheet URL") or candidate_supplier_data.get("datasheet_url", "")
-
-        for field_name, config in ELECTRICAL_FIELDS.items():
-            candidate[config["display_key"]] = (
-                candidate.get(config["display_key"])
-                or candidate_supplier_data.get(field_name)
-            )
-        
-        feature_text = " ".join(
-            [
-                str(candidate.get("Alternative Part", "")),
-                str(candidate.get("Category", "")),
-                str(candidate.get("Architecture", "")),
-                str(candidate.get("Recommendation", "")),
-                str(candidate.get("Compatibility Notes", "")),
-                str(candidate_supplier_data.get("description", "")),
-            ]
-        )
-
-        candidate["Feature Tags"] = infer_feature_tags(feature_text)
-        
-
-        original_candidate = {
-            "Alternative Part": canonical_part_number,
-            "Architecture": original_data.get("architecture", ""),
-            "Package": original_data.get("package", "")
-            or (
-                "SMD-8"
-                if original_data.get("mounting_style") == "SMD"
-                and original_data.get("pin_count") == 8
-                else ""
-            ),
-            "Pin Count": original_data.get("pin_count", 0),
-            "Voltage Range": original_data.get("voltage_range", ""),
-            "Channel Count": original_data.get("channel_count", 0),
-            "Supply Voltage Min": original_data.get(
-                "supply_voltage_min"
-            ),
-            "Supply Voltage Max": original_data.get(
-                "supply_voltage_max"
-            ),
-            "Bandwidth MHz": original_data.get("bandwidth_mhz"),
-            "Slew Rate V/us": original_data.get("slew_rate_v_us"),
-            "Input Offset mV": original_data.get("input_offset_mv"),
-            "Quiescent Current mA": original_data.get("quiescent_current_ma"),
-            "Input Bias nA": original_data.get("input_bias_na"),
-            "GBW MHz": original_data.get("gbw_mhz"),
-            "capacitance": original_data.get("capacitance", ""),
-            "resistance": original_data.get("resistance", ""),
-            "inductance": original_data.get("inductance", ""),
-            "tolerance": original_data.get("tolerance", ""),
-            "rated_voltage": original_data.get("rated_voltage", ""),
-            "dielectric": original_data.get("dielectric", ""),
-            "power_rating": original_data.get("power_rating", ""),
-            "temperature_coefficient": original_data.get("temperature_coefficient", ""),
-            "esr": original_data.get("esr", ""),
-            "dcr": original_data.get("dcr", ""),
-            "rated_current": original_data.get("rated_current", ""),
-            "saturation_current": original_data.get("saturation_current", ""),
-            "Feature Tags": original_data.get("Feature Tags", set()),
-           }
-
-        # Make the recommendation score primarily reflect the retrieved
-        # engineering comparison, rather than allowing broad sourcing signals
-        # to make clearly different candidates look equally close.
-        candidate_comparison_data = dict(candidate_supplier_data or {})
-        candidate_comparison_data.update({
-            "description": candidate_comparison_data.get("description", ""),
-            "architecture": candidate.get("Architecture", candidate_comparison_data.get("architecture", "")),
-            "package": candidate.get("Package", candidate_comparison_data.get("package", "")),
-            "pin_count": candidate.get("Pin Count", candidate_comparison_data.get("pin_count")),
-            "mounting_style": candidate.get("Mounting", candidate_comparison_data.get("mounting_style", "")),
-            "voltage_range": candidate.get("Voltage Range", candidate_comparison_data.get("voltage_range", "")),
-            "channel_count": candidate.get("Channel Count", candidate_comparison_data.get("channel_count")),
-        })
-        for field_name, config in ELECTRICAL_FIELDS.items():
-            candidate_comparison_data[field_name] = candidate.get(
-                config["display_key"], candidate_comparison_data.get(field_name)
-            )
-        for passive_key in (
-            "capacitance",
-            "resistance",
-            "inductance",
-            "tolerance",
-            "rated_voltage",
-            "dielectric",
-            "power_rating",
-            "temperature_coefficient",
-            "esr",
-            "dcr",
-            "rated_current",
-            "saturation_current",
-            "device_type",
-            "reverse_voltage",
-            "forward_current",
-            "pinout",
-            "frequency_mhz",
-        ):
-            if not candidate_comparison_data.get(passive_key):
-                candidate_comparison_data[passive_key] = candidate_supplier_data.get(passive_key, "")
-        comparison_result = build_datasheet_comparison(
-            original_data, candidate_comparison_data
-        )
-        comparison_counts = comparison_result["counts"]
-        candidate["Comparison Family"] = comparison_result.get("family", "")
-        candidate["Comparison Rows"] = comparison_result.get("rows", [])
-        candidate["Comparison Counts"] = comparison_counts
-        classification = refine_classification_after_comparison(
-            str(candidate.get("Classification") or CLASS_CATALOG_INSUFFICIENT),
-            comparison_counts,
-        )
-        candidate["Classification"] = classification
-        candidate["Category"] = classification
-        evidence_assessment = build_engineering_evidence_assessment(
-            comparison_counts,
-            classification=classification,
-            substitute_type=str(candidate.get("Substitute Type") or ""),
-        )
-        candidate["Engineering Evidence Assessment"] = evidence_assessment
-        candidate["Engineering Evidence Summary"] = evidence_assessment["engineering_evidence_summary"]
-        candidate["Engineering Comparison Confidence"] = evidence_assessment[
-            "engineering_comparison_confidence"
-        ]
-        candidate["Supplier Relationship Confidence"] = evidence_assessment[
-            "supplier_relationship_confidence"
-        ]
-        candidate["Supplier Relationship Summary"] = evidence_assessment[
-            "supplier_relationship_summary"
-        ]
-        candidate["Drop-In Confidence"] = calculate_drop_in_confidence(
-            original_candidate,
-            candidate,
-        )
-        candidate["Drop-In Rating"] = get_drop_in_rating(candidate["Drop-In Confidence"])
-        candidate["Drop-In Reasons"] = get_drop_in_reasons(original_candidate, candidate)
-        score_evidence = build_recommendation_score_breakdown(
-            candidate["Recommendation Score"],
-            candidate["Drop-In Confidence"],
-            comparison_counts,
-            is_explicit_substitute=(classification == CLASS_VERIFIED_DIRECT),
-        )
-        candidate["Recommendation Score"] = score_evidence["recommendation_score"]
-        candidate["Drop-In Confidence"] = score_evidence["compatibility_confidence"]
-        if str(candidate.get("Comparison Family") or "") in PASSIVE_FAMILIES:
-            candidate["Drop-In Confidence"] = int(
-                evidence_assessment["engineering_comparison_confidence"]
-            )
-        candidate["Drop-In Rating"] = get_drop_in_rating(candidate["Drop-In Confidence"])
-        candidate["Datasheet Match Count"] = score_evidence["matches"]
-        candidate["Datasheet Difference Count"] = score_evidence["differences"]
-        candidate["Datasheet Needs Data Count"] = score_evidence["needs_data"]
-        score_evidence["classification"] = classification
-        score_evidence["evidence_source"] = candidate.get("Evidence Source", "")
-        score_evidence["evidence_type"] = candidate.get("Evidence Type", "")
-        score_evidence["substitute_type"] = candidate.get("Substitute Type", "")
-        score_evidence.update(evidence_assessment)
-        candidate["Recommendation Score Evidence"] = score_evidence
 
         normalized_candidates.append(candidate)
 
