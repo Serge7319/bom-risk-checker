@@ -359,10 +359,14 @@ def fail_alternative_finder_search(
     lookup_error: str = "",
     original_data: Optional[Mapping[str, Any]] = None,
     original_risk: Optional[Mapping[str, Any]] = None,
+    diagnostic_code: str = "",
+    diagnostic_message: str = "",
+    exception_type: str = "",
+    stage_timings_ms: Optional[Mapping[str, float]] = None,
 ) -> None:
     safe_original_data = _safe_sanitize_mapping(original_data)
     safe_original_risk = _safe_sanitize_mapping(original_risk)
-    session_state[ALT_FINDER_RESULT_KEY] = {
+    failed_result: dict[str, Any] = {
         "status": STATUS_FAILED,
         "algorithm_version": RESULT_ALGORITHM_VERSION,
         "entered_mpn": entered_mpn.strip(),
@@ -372,6 +376,18 @@ def fail_alternative_finder_search(
         "original_risk": safe_original_risk,
         "candidates": [],
     }
+    if diagnostic_code.strip():
+        failed_result["diagnostic_code"] = diagnostic_code.strip()
+    if diagnostic_message.strip():
+        failed_result["diagnostic_message"] = diagnostic_message.strip()
+    if exception_type.strip():
+        failed_result["exception_type"] = exception_type.strip()
+    if stage_timings_ms:
+        failed_result["stage_timings_ms"] = {
+            str(stage): float(duration)
+            for stage, duration in stage_timings_ms.items()
+        }
+    session_state[ALT_FINDER_RESULT_KEY] = failed_result
     session_state["suggested_alternatives"] = []
     session_state["alternative_search_attempted"] = True
     session_state["alternative_search_error"] = search_error.strip()

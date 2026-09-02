@@ -181,12 +181,34 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         )
 
 
+def _supplier_lookup_callable(source_name: str):
+    """Return a lookup callable only when the distributor credentials are configured."""
+    configured = {
+        "Mouser": ("MOUSER_API_KEY", search_mouser_by_part_number),
+        "DigiKey": ("DIGIKEY_CLIENT_ID", search_digikey_by_part_number),
+        "Newark": ("NEWARK_API_KEY", search_newark_by_part_number),
+        "Octopart": (
+            ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"),
+            search_octopart_by_part_number,
+        ),
+    }
+    entry = configured.get(source_name)
+    if not entry:
+        return None
+    secret_names, lookup_func = entry
+    if isinstance(secret_names, str):
+        secret_names = (secret_names,)
+    if any(_provider_configured(name) for name in secret_names):
+        return lookup_func
+    return None
+
+
 def get_supplier_results(part_number):
     suppliers = [
-        ("Mouser", search_mouser_by_part_number),
-        ("DigiKey", search_digikey_by_part_number),
-        ("Newark", search_newark_by_part_number),
-        ("Octopart", search_octopart_by_part_number),
+        ("Mouser", _supplier_lookup_callable("Mouser")),
+        ("DigiKey", _supplier_lookup_callable("DigiKey")),
+        ("Newark", _supplier_lookup_callable("Newark")),
+        ("Octopart", _supplier_lookup_callable("Octopart")),
     ]
 
     results = []

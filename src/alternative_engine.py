@@ -408,6 +408,92 @@ def _merge_supplier_part_data(*sources: dict) -> dict:
     return _enrich_part_data_from_suppliers(merged)
 
 
+_SMD_PACKAGE_CODES = frozenset(
+    {"01005", "0201", "0204", "0402", "0603", "0805", "1206", "1210", "1812", "2010", "2512"}
+)
+
+
+def _mlcc_tolerance_from_mpn(mpn: str) -> str:
+    upper = str(mpn or "").upper()
+    for index in range(max(len(upper) - 3, 0)):
+        digits = upper[index : index + 3]
+        suffix = upper[index + 3 : index + 4]
+        if len(digits) == 3 and digits.isdigit() and suffix.isalpha():
+            tolerance = {
+                "G": "±2%",
+                "J": "±5%",
+                "K": "±10%",
+                "M": "±20%",
+                "Z": "±80%",
+            }.get(suffix)
+            if tolerance:
+                return tolerance
+    return ""
+
+
+def _discovery_row_to_part_data(row: dict) -> dict:
+    """Build comparison-ready supplier fields from DigiKey discovery evidence."""
+    mpn = str(row.get("manufacturer_part_number") or "").strip()
+    description = str(row.get("description") or "").strip()
+    package = str(row.get("package") or "").strip()
+    if not package and mpn.upper().startswith("C") and len(mpn) >= 4:
+        size_code = mpn[1:5]
+        if size_code.isdigit():
+            package = size_code
+    passive_fields = _passive_fields_from_description(description)
+    for key in PASSIVE_PARAMETRIC_KEYS:
+        value = row.get(key)
+        if value not in (None, "", 0):
+            passive_fields[key] = value
+    if package in _SMD_PACKAGE_CODES:
+        passive_fields.setdefault("mounting_style", "Surface Mount")
+    passive_fields.setdefault("tolerance", _mlcc_tolerance_from_mpn(mpn))
+    return {
+        "manufacturer_part_number": mpn,
+        "manufacturer": str(row.get("manufacturer") or "").strip(),
+        "description": description,
+        "stock_total": row.get("stock_total", 0),
+        "unit_price": row.get("unit_price", 0.0),
+        "datasheet_url": str(row.get("datasheet_url") or "").strip(),
+        "package": package or passive_fields.get("package", ""),
+        "mounting_style": str(row.get("mounting_style") or passive_fields.get("mounting_style", "")).strip(),
+        "pin_count": row.get("pin_count", 0),
+        "architecture": str(row.get("architecture") or "").strip(),
+        "channel_count": row.get("channel_count", 0),
+        "voltage_range": str(row.get("voltage_range") or "").strip(),
+        "source": str(row.get("source") or "DigiKey"),
+        "supplier_data_verified": bool(mpn),
+        **passive_fields,
+    }
+
+
+def _passive_fields_from_description(description: str) -> dict:
+    """Extract coarse passive parametrics from distributor product descriptions."""
+    fields: dict = {}
+    text = str(description or "").strip()
+    if not text:
+        return fields
+    lowered = text.casefold()
+    if "surface mount" in lowered or "mlcc" in lowered or "smd" in lowered:
+        fields["mounting_style"] = "Surface Mount"
+    for token in text.replace(",", " ").split():
+        normalized = token.strip("()[]")
+        token_lower = normalized.casefold()
+        if token_lower.endswith("uf") and any(ch.isdigit() for ch in normalized):
+            value = normalized[:-2] if token_lower.endswith("uf") else normalized
+            fields.setdefault("capacitance", f"{value} µF")
+        if token_lower.endswith("v") and token_lower[:-1].replace(".", "").isdigit():
+            fields.setdefault("rated_voltage", normalized.upper())
+        if token_lower in {"x7r", "x5r", "c0g", "np0", "y5v"}:
+            fields.setdefault("dielectric", normalized.upper())
+            fields.setdefault("temperature_coefficient", normalized.upper())
+        if token_lower in {"±10%", "±5%", "±1%", "10%", "5%", "1%"}:
+            fields.setdefault("tolerance", normalized)
+        if normalized.isdigit() and len(normalized) == 4 and normalized.startswith(("0", "1", "2")):
+            fields.setdefault("package", normalized)
+    return fields
+
+
 def _passive_compatibility_confidence(counts: dict, *, classification: str = "", substitute_type: str = "") -> int:
     assessment = build_engineering_evidence_assessment(
         counts,
@@ -1052,58 +1138,11 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                     "Supplier-listed candidate only. Verify electrical characteristics, footprint, "
                     "dimensions/height, temperature range, qualification, and datasheet compatibility before approval."
                 ),
+                "_discovery_row": dict(result),
             }
         )
 
     candidates = supplier_candidates
-
-    MAX_LIVE_SUPPLIER_LOOKUPS = 10
-
-    for index, candidate in enumerate(candidates):
-
-        if isinstance(candidate, str):
-            candidate = {
-                "Alternative Part": candidate,
-                "Category": "Suggested Alternative",
-                "Lifecycle": "Unknown",
-                "Estimated Risk": "Medium",
-                "Recommendation": "Review compatibility",
-                "Recommendation Score": 70,
-            }
-
-        alt_part_number = candidate.get("Alternative Part", "")
-
-        if not alt_part_number:
-            continue
-
-        try:
-            exact_supplier_data = _enrich_part_data_from_suppliers(
-                get_best_part_data(alt_part_number) or {}
-            )
-        except Exception:
-            exact_supplier_data = {}
-        candidate["Enriched Supplier Data"] = exact_supplier_data
-        if exact_supplier_data.get("supplier_data_verified"):
-            candidate["Supplier"] = exact_supplier_data.get("source") or candidate.get("Supplier", "")
-            candidate["Stock"] = exact_supplier_data.get("stock_total", candidate.get("Stock", 0))
-            candidate["Unit Price"] = exact_supplier_data.get("unit_price", candidate.get("Unit Price", 0.0))
-            if exact_supplier_data.get("lifecycle_status"):
-                candidate["Lifecycle"] = exact_supplier_data.get("lifecycle_status")
-            for candidate_key, supplier_key in (
-                ("Package", "package"),
-                ("Pin Count", "pin_count"),
-                ("Mounting Style", "mounting_style"),
-                ("Architecture", "architecture"),
-                ("Channel Count", "channel_count"),
-                ("Datasheet URL", "datasheet_url"),
-            ):
-                if exact_supplier_data.get(supplier_key) not in (None, "", 0):
-                    candidate[candidate_key] = exact_supplier_data.get(supplier_key)
-            for supplier_key in PASSIVE_PARAMETRIC_KEYS:
-                if exact_supplier_data.get(supplier_key) in (None, "", 0):
-                    continue
-                candidate[supplier_key] = exact_supplier_data.get(supplier_key)
-
 
     normalized_candidates = []
 
@@ -1131,20 +1170,19 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "Channel Count", 0
         ) or infer_channel_count_from_description(description_for_channel)
 
-     
+        discovery_row = candidate.pop("_discovery_row", None)
+        if not isinstance(discovery_row, dict):
+            discovery_row = {}
+        candidate_supplier_data = _discovery_row_to_part_data(discovery_row)
 
-        candidate_part_number = candidate.get("Alternative Part", "")
-
-        if candidate_index < MAX_LIVE_SUPPLIER_LOOKUPS:
-            fresh_supplier_data = _enrich_part_data_from_suppliers(
-                get_best_part_data(candidate_part_number) or {}
-            )
-        else:
-            fresh_supplier_data = {}
-        candidate_supplier_data = _merge_supplier_part_data(
-            candidate.get("Enriched Supplier Data") or {},
-            fresh_supplier_data,
-        )
+        for candidate_key, supplier_key in (
+            ("Package", "package"),
+            ("Pin Count", "pin_count"),
+            ("Mounting Style", "mounting_style"),
+            ("Architecture", "architecture"),
+        ):
+            if candidate_supplier_data.get(supplier_key) not in (None, "", 0):
+                candidate[candidate_key] = candidate_supplier_data.get(supplier_key)
 
         candidate["Supply Voltage Min"] = candidate.get("Supply Voltage Min") or candidate_supplier_data.get("supply_voltage_min")
         candidate["Supply Voltage Max"] = candidate.get("Supply Voltage Max") or candidate_supplier_data.get("supply_voltage_max")
@@ -1220,7 +1258,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "architecture": candidate.get("Architecture", candidate_comparison_data.get("architecture", "")),
             "package": candidate.get("Package", candidate_comparison_data.get("package", "")),
             "pin_count": candidate.get("Pin Count", candidate_comparison_data.get("pin_count")),
-            "mounting_style": candidate.get("Mounting", candidate_comparison_data.get("mounting_style", "")),
+            "mounting_style": candidate.get(
+                "Mounting Style", candidate_comparison_data.get("mounting_style", "")
+            ),
             "voltage_range": candidate.get("Voltage Range", candidate_comparison_data.get("voltage_range", "")),
             "channel_count": candidate.get("Channel Count", candidate_comparison_data.get("channel_count")),
         })
