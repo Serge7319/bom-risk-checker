@@ -8841,6 +8841,7 @@ def run_authenticated_app() -> None:
             get_alternative_finder_original_risk,
             get_alternative_finder_selected_candidate,
             init_alternative_finder_state,
+            alternative_search_was_attempted,
             mark_alternative_finder_running,
             set_alternative_finder_selected_candidate,
             should_start_new_alternative_search,
@@ -11775,7 +11776,7 @@ def run_authenticated_app() -> None:
                     unsafe_allow_html=True,
                 )
 
-        elif st.session_state["alternative_search_attempted"]:
+        elif alternative_search_was_attempted(st.session_state):
             discovery = st.session_state.get("alternative_discovery_metadata") or {}
             provider_failures = discovery.get("provider_failures") or []
             if provider_failures or discovery.get("has_incomplete_evidence"):

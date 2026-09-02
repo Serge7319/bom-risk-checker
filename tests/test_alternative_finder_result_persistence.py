@@ -6,6 +6,7 @@ from src.alternative_finder_state import (
     ALT_FINDER_RESULT_KEY,
     STATUS_COMPLETED,
     STATUS_IDLE,
+    alternative_search_was_attempted,
     clear_alternative_finder_search,
     complete_alternative_finder_search,
     get_active_alternative_finder_result,
@@ -179,6 +180,31 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
         self.assertEqual(stored["Supplier Relationship Confidence"], 95)
         self.assertIn("substantial", stored["Engineering Evidence Summary"])
 
+    def test_brand_new_session_initializes_idle_alternative_finder_state(self):
+        session: dict = {}
+
+        init_alternative_finder_state(session)
+
+        self.assertFalse(session.get("alternative_search_attempted"))
+        self.assertFalse(alternative_search_was_attempted(session))
+        self.assertEqual(session[ALT_FINDER_RESULT_KEY]["status"], STATUS_IDLE)
+        self.assertEqual(get_alternative_finder_candidates(session), [])
+        self.assertEqual(get_alternative_finder_display_mpn(session, widget_value=""), "")
+
+        stored_candidates = get_alternative_finder_candidates(session)
+        entered_results_branch = False
+        entered_attempted_empty_branch = False
+        if stored_candidates:
+            entered_results_branch = True
+        elif alternative_search_was_attempted(session):
+            entered_attempted_empty_branch = True
+
+        self.assertFalse(entered_results_branch)
+        self.assertFalse(entered_attempted_empty_branch)
+
+        init_alternative_finder_state(session)
+        self.assertFalse(alternative_search_was_attempted(session))
+
 
 class AlternativeFinderRuntimeContractTests(unittest.TestCase):
     def test_runtime_uses_durable_result_helpers(self):
@@ -196,9 +222,21 @@ class AlternativeFinderRuntimeContractTests(unittest.TestCase):
             "get_alternative_finder_display_mpn",
             "get_alternative_finder_candidates",
             "clear_alternative_finder_search",
+            "alternative_search_was_attempted",
         ):
             with self.subTest(needle=needle):
                 self.assertIn(needle, alt_section)
+
+    def test_runtime_does_not_read_alternative_search_attempted_unsafely(self):
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py"
+        ).read_text(encoding="utf-8")
+        alt_section = source.split('if app_mode == "Alternative Finder":', 1)[1]
+        alt_section = alt_section.split("\n    if app_mode == ", 1)[0]
+        self.assertNotIn('st.session_state["alternative_search_attempted"]', alt_section)
+        self.assertIn("alternative_search_was_attempted(st.session_state)", alt_section)
 
     def test_runtime_no_longer_gates_summary_on_widget_match(self):
         from pathlib import Path

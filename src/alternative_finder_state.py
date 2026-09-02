@@ -158,6 +158,35 @@ def _safe_sanitize_mapping(value: Optional[Mapping[str, Any]]) -> dict[str, Any]
     return sanitized if isinstance(sanitized, dict) else {MARKER_NON_SERIALIZABLE: True}
 
 
+def _ensure_legacy_defaults(session_state: MutableMapping[str, Any]) -> None:
+    """Ensure legacy Alternative Finder keys exist on brand-new or partial sessions."""
+    for key in _LEGACY_KEYS:
+        if key in session_state:
+            continue
+        if key.endswith("_metadata"):
+            session_state[key] = {}
+        elif key.endswith("_attempted"):
+            session_state[key] = False
+        elif key.endswith("_error") or key == "alternative_original_lookup_part":
+            session_state[key] = ""
+        elif key == "suggested_alternatives":
+            session_state[key] = []
+        else:
+            session_state[key] = {}
+
+
+def alternative_search_was_attempted(session_state: Mapping[str, Any]) -> bool:
+    """Return True when a search has been attempted according to durable result state."""
+    result = session_state.get(ALT_FINDER_RESULT_KEY)
+    if isinstance(result, dict):
+        status = str(result.get("status") or STATUS_IDLE)
+        if status == STATUS_IDLE:
+            return False
+        if status in {STATUS_RUNNING, STATUS_COMPLETED, STATUS_FAILED}:
+            return True
+    return bool(session_state.get("alternative_search_attempted", False))
+
+
 def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> None:
     """Initialize Alternative Finder keys and migrate legacy session payloads."""
     session_state.setdefault("alternative_original_part", "")
@@ -167,6 +196,7 @@ def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> No
     session_state.setdefault("alternative_decision_db_status", "")
     session_state.setdefault("alternative_decision_db_error", "")
     session_state.setdefault("alternative_decision_flash", "")
+    _ensure_legacy_defaults(session_state)
 
     result = session_state.get(ALT_FINDER_RESULT_KEY)
     if not isinstance(result, dict):
@@ -182,8 +212,20 @@ def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> No
         }
         return
 
+    if result.get("status") == STATUS_IDLE:
+        session_state["alternative_search_attempted"] = False
+        return
+
     if result.get("status") == STATUS_COMPLETED:
         _sync_legacy_from_result(session_state, result)
+        return
+
+    if result.get("status") == STATUS_FAILED:
+        session_state["alternative_search_attempted"] = True
+        return
+
+    if result.get("status") == STATUS_RUNNING:
+        session_state["alternative_search_attempted"] = True
         return
 
     if session_state.get("alternative_search_attempted") and session_state.get("suggested_alternatives"):
