@@ -271,6 +271,95 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertEqual(lookup_calls.count("C0603C104K5RACTU"), 1)
         self.assertEqual(lookup_calls.count("C0603C104K5RAC3121"), 1)
 
+    def test_malformed_stock_total_does_not_abort_supplier_aggregation(self):
+        self.aggregator.get_supplier_results = lambda _part: [
+            {
+                "source": "Mouser",
+                "provider_status": "AVAILABLE",
+                "manufacturer_part_number": "C0603C104K5RACTU",
+                "stock_total": "12,345 On Order",
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            },
+            {
+                "source": "DigiKey",
+                "provider_status": "AVAILABLE",
+                "manufacturer_part_number": "C0603C104K5RACTU",
+                "stock_total": 50,
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            },
+        ]
+        data = self.aggregator.get_best_part_data("C0603C104K5RACTU")
+        self.assertTrue(data["supplier_data_verified"])
+        self.assertEqual(data["source"], "DigiKey")
+
+    def test_run_alternative_finder_search_keeps_partial_results_when_one_provider_fails(self):
+        session: dict = {}
+        self.state.init_alternative_finder_state(session)
+
+        self.aggregator.get_supplier_results = lambda _part: [
+            {
+                "source": "Mouser",
+                "provider_status": "PROVIDER_ERROR",
+                "error": "HTTP 500",
+                "manufacturer_part_number": "",
+            },
+            {
+                "source": "DigiKey",
+                "provider_status": "AVAILABLE",
+                "manufacturer_part_number": "C0603C104K5RACTU",
+                "stock_total": 1000,
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+                "manufacturer": "KEMET",
+                "package": "0603",
+            },
+        ]
+
+        explicit = [
+            {
+                "manufacturer_part_number": "C0603C104K5RAC3121",
+                "manufacturer": "KEMET",
+                "source": "DigiKey",
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "retrieval_status": "ok",
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            }
+        ]
+
+        def discover(_part):
+            merged = self.classification.merge_discovery_candidates(
+                explicit,
+                [],
+                original_mpn="C0603C104K5RACTU",
+            )
+            return {
+                "original_mpn": "C0603C104K5RACTU",
+                "candidates": merged,
+                "explicit_count": len(explicit),
+                "catalog_count": 0,
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+                "retrieved_at": "2026-08-29T00:00:00+00:00",
+                "providers": {"DigiKey": {"substitutions": "ok", "catalog": "ok"}},
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        self.engine.get_best_part_data = self.aggregator.get_best_part_data
+
+        outcome = self.search.run_alternative_finder_search(session, "C0603C104K5RACTU")
+        result = session[self.state.ALT_FINDER_RESULT_KEY]
+
+        self.assertEqual(outcome["status"], "completed")
+        self.assertEqual(result["status"], self.state.STATUS_COMPLETED)
+        self.assertGreater(len(result["candidates"]), 0)
+        self.assertIn(
+            "C0603C104K5RAC3121",
+            [row["Alternative Part"] for row in result["candidates"]],
+        )
+        self.assertIn("Mouser", result["discovery_metadata"]["provider_failures"])
+        self.assertTrue(result["discovery_metadata"]["has_incomplete_evidence"])
+        self.assertNotIn("Cadivor could not complete the supplier search", str(result))
+
 
 if __name__ == "__main__":
     unittest.main()

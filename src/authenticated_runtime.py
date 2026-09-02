@@ -8811,10 +8811,8 @@ def run_authenticated_app() -> None:
 
         from integrations.supplier_aggregator import get_best_part_data
         from src.alternative_engine import (
-            suggest_alternatives_v2,
             compare_parts,
             rank_alternatives,
-            get_alternative_discovery_metadata,
         )
         from src.datasheet_comparison import (
             build_datasheet_comparison,
@@ -8823,16 +8821,12 @@ def run_authenticated_app() -> None:
         )
         from src.alternative_reasoning import build_alternative_reasoning
         from src.alternative_finder_search import (
-            AlternativeFinderSearchRun,
-            STAGE_CANDIDATE_ENGINE,
-            STAGE_ORIGINAL_LOOKUP,
-            STAGE_PERSIST,
+            collect_provider_failure_names,
             get_or_enrich_selected_candidate,
+            run_alternative_finder_search,
         )
         from src.alternative_finder_state import (
             clear_alternative_finder_search,
-            complete_alternative_finder_search,
-            fail_alternative_finder_search,
             get_active_alternative_finder_result,
             get_alternative_finder_candidates,
             get_alternative_finder_display_mpn,
@@ -8846,7 +8840,6 @@ def run_authenticated_app() -> None:
             set_alternative_finder_selected_candidate,
             should_start_new_alternative_search,
         )
-        from src.risk_engine import calculate_risk
         return_analysis_id = str(
             _qp_value("return_analysis_id")
             or st.session_state.get("cadivor_alt_finder_return_analysis_id", "")
@@ -10090,80 +10083,10 @@ def run_authenticated_app() -> None:
                         "Checking supplier coverage, lifecycle evidence, and replacement candidates.",
                     )
                 try:
-                    search_run = AlternativeFinderSearchRun()
-                    original_lookup: dict = {}
-                    original_risk: dict = {}
-                    lookup_error = ""
-                    try:
-                        with search_run.stage(STAGE_ORIGINAL_LOOKUP):
-                            search_run.operation = "lookup"
-                            search_run.provider = "aggregator"
-                            original_lookup = get_best_part_data(searched_part) or {}
-                        if not isinstance(original_lookup, dict):
-                            original_lookup = {}
-                        try:
-                            original_risk = calculate_risk(original_lookup) or {}
-                        except Exception:
-                            original_risk = {}
-                        if not original_lookup.get("supplier_data_verified"):
-                            lookup_error = (
-                                f'No exact supplier match was found for "{searched_part}". '
-                                "Enter the complete manufacturer part number, including package or suffix where applicable."
-                            )
-                    except Exception as original_exc:
-                        original_lookup = {}
-                        original_risk = {}
-                        lookup_error = (
-                            "Some original-component details are temporarily unavailable. "
-                            "You can still review the available replacement evidence."
-                        )
-                        search_run.log_stage_warning(original_exc, stage=STAGE_ORIGINAL_LOOKUP)
-
-                    try:
-                        # A replacement recommendation needs a verified original part as
-                        # its comparison baseline. Do not turn a normal no-match into an
-                        # apparent supplier outage by calling the candidate engine anyway.
-                        if not original_lookup.get("supplier_data_verified"):
-                            candidates = []
-                            discovery = {}
-                        else:
-                            with search_run.stage(STAGE_CANDIDATE_ENGINE):
-                                search_run.operation = "suggest_alternatives_v2"
-                                search_run.provider = "digikey"
-                                candidates = suggest_alternatives_v2(searched_part) or []
-                            discovery = get_alternative_discovery_metadata() or {}
-                        with search_run.stage(STAGE_PERSIST):
-                            canonical_mpn = str(
-                                original_lookup.get("manufacturer_part_number") or searched_part
-                            ).strip()
-                            complete_alternative_finder_search(
-                                st.session_state,
-                                entered_mpn=searched_part,
-                                canonical_mpn=canonical_mpn,
-                                original_data=original_lookup,
-                                original_risk=original_risk,
-                                candidates=candidates,
-                                discovery_metadata=discovery,
-                                lookup_error=lookup_error,
-                                search_error="",
-                            )
-                    except Exception as search_exc:
-                        diagnostic = search_run.log_failure(search_exc)
-                        fail_alternative_finder_search(
-                            st.session_state,
-                            entered_mpn=searched_part,
-                            search_error=(
-                                "Cadivor could not complete the supplier search right now. "
-                                "Please try again in a moment."
-                            ),
-                            lookup_error=lookup_error,
-                            original_data=original_lookup,
-                            original_risk=original_risk,
-                            diagnostic_code=diagnostic["diagnostic_code"],
-                            diagnostic_message=diagnostic["diagnostic_message"],
-                            exception_type=diagnostic["exception_type"],
-                            stage_timings_ms=search_run.stages_ms,
-                        )
+                    run_alternative_finder_search(
+                        st.session_state,
+                        searched_part,
+                    )
                 finally:
                     st.session_state.pop("cadivor_operation", None)
                     search_status.empty()
@@ -10364,6 +10287,23 @@ def run_authenticated_app() -> None:
                 )
         stored_candidates = get_alternative_finder_candidates(st.session_state)
         if stored_candidates:
+            discovery = st.session_state.get("alternative_discovery_metadata") or {}
+            provider_failures = collect_provider_failure_names(
+                discovery_metadata=discovery,
+                original_data=original_summary_data,
+            )
+            if provider_failures or discovery.get("has_incomplete_evidence"):
+                st.info(
+                    "Some configured supplier sources were unavailable during this search. "
+                    "Cadivor kept the candidates retrieved from the sources that responded.",
+                    icon="ℹ️",
+                )
+                if provider_failures:
+                    st.caption(
+                        "Unavailable or failed sources: "
+                        + ", ".join(provider_failures)
+                    )
+
             alternatives_df = pd.DataFrame(stored_candidates)
 
             best_alternative = max(
