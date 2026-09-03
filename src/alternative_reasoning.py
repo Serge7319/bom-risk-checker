@@ -273,18 +273,61 @@ def _build_passive_alternative_reasoning(
     )
 
     if hard_blocker_count == 0 and classification == CLASS_VERIFIED_DIRECT and differences == 0:
-        disposition = VERIFIED_DIRECT_DISPOSITION
-        disposition_tone = "good"
-        use_case = "Supplier-listed direct replacement with engineering qualification confirmation"
-        approval_guidance = (
-            "Proceed with engineering qualification confirmation before production approval. "
-            "Direct substitute status does not replace datasheet, footprint, and circuit validation."
-        )
-        if evidence_assessment.get("engineering_evidence_status") == "incomplete":
-            approval_guidance += (
-                " Retrieved engineering comparison evidence is incomplete; confirm family-relevant "
-                "fields before treating this as a validated drop-in replacement."
+        suitability = _text(candidate.get("Recommendation Suitability"))
+        if not suitability:
+            from src.alternative_classification import classify_recommendation_suitability
+
+            suitability = classify_recommendation_suitability(
+                lifecycle,
+                source=_text(candidate.get("Supplier") or candidate.get("Evidence Source")),
             )
+        from src.alternative_classification import (
+            SUITABILITY_LIFECYCLE_VERIFY,
+            SUITABILITY_SOURCE_DISCONTINUATION,
+            SUITABILITY_SUSTAINING,
+        )
+
+        if suitability == SUITABILITY_SOURCE_DISCONTINUATION:
+            disposition = "Source discontinuation risk — sustaining-design review required"
+            disposition_tone = "warn"
+            use_case = "Sustaining an existing design only; do not prioritize for new designs"
+            approval_guidance = (
+                "Distributor sourcing status reports discontinuation for this listing. "
+                "It may remain useful for sustaining an existing design, but should not be "
+                "prioritized for a new design without review. Do not treat distributor "
+                "discontinuation alone as manufacturer end-of-life."
+            )
+        elif suitability == SUITABILITY_SUSTAINING:
+            disposition = "Sustaining-design review required"
+            disposition_tone = "warn"
+            use_case = "Sustaining an existing design; new-design use requires review"
+            approval_guidance = (
+                "Lifecycle status is Not For New Designs. This candidate may be useful for "
+                "sustaining an existing design, but should not be prioritized for a new design "
+                "without review."
+            )
+        elif suitability == SUITABILITY_LIFECYCLE_VERIFY:
+            disposition = "Lifecycle verification required"
+            disposition_tone = "warn"
+            use_case = "Candidate remains visible pending lifecycle confirmation"
+            approval_guidance = (
+                "Lifecycle evidence is missing or unknown. Complete lifecycle verification "
+                "before new-design approval. Do not treat this candidate as preferred for a "
+                "new design until lifecycle status is confirmed."
+            )
+        else:
+            disposition = VERIFIED_DIRECT_DISPOSITION
+            disposition_tone = "good"
+            use_case = "Supplier-listed direct replacement with engineering qualification confirmation"
+            approval_guidance = (
+                "Proceed with engineering qualification confirmation before production approval. "
+                "Direct substitute status does not replace datasheet, footprint, and circuit validation."
+            )
+            if evidence_assessment.get("engineering_evidence_status") == "incomplete":
+                approval_guidance += (
+                    " Retrieved engineering comparison evidence is incomplete; confirm family-relevant "
+                    "fields before treating this as a validated drop-in replacement."
+                )
     elif hard_blocker_count == 0 and engineering_confidence >= 80:
         disposition = "Recommended for engineering qualification"
         disposition_tone = "good"

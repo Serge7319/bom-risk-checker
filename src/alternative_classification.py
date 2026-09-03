@@ -10,6 +10,11 @@ CLASS_ORDERING_EQUIVALENT = "Same-manufacturer ordering-code equivalent"
 CLASS_SPEC_MATCHED = "Spec-matched alternative — engineering review required"
 CLASS_CATALOG_INSUFFICIENT = "Catalog candidate — insufficient evidence for compatibility"
 
+SUITABILITY_PREFERRED = "Preferred for new designs"
+SUITABILITY_LIFECYCLE_VERIFY = "Lifecycle verification required"
+SUITABILITY_SUSTAINING = "Sustaining-design review required"
+SUITABILITY_SOURCE_DISCONTINUATION = "Source discontinuation risk"
+
 EVIDENCE_DISTRIBUTOR_SUBSTITUTE = "distributor-listed substitute"
 EVIDENCE_DISTRIBUTOR_CATALOG = "distributor catalog match"
 
@@ -18,6 +23,22 @@ CLASSIFICATION_TIER = {
     CLASS_ORDERING_EQUIVALENT: 1,
     CLASS_SPEC_MATCHED: 2,
     CLASS_CATALOG_INSUFFICIENT: 3,
+}
+
+# Lower sorts first. Active lifecycle-safe candidates outrank review/warning states.
+SUITABILITY_TIER = {
+    SUITABILITY_PREFERRED: 0,
+    SUITABILITY_LIFECYCLE_VERIFY: 1,
+    SUITABILITY_SUSTAINING: 2,
+    SUITABILITY_SOURCE_DISCONTINUATION: 3,
+}
+
+# Review/warning-state scores cannot show an equal "Strong" badge (≥75).
+WARNING_RECOMMENDATION_SCORE_CAP = 74
+SUITABILITY_SCORE_PENALTY = {
+    SUITABILITY_LIFECYCLE_VERIFY: 4,
+    SUITABILITY_SUSTAINING: 5,
+    SUITABILITY_SOURCE_DISCONTINUATION: 8,
 }
 
 _PACKAGING_SUFFIXES = ("CT", "TR", "TU", "DKR", "AUTO")
@@ -123,11 +144,85 @@ def refine_classification_after_comparison(
     return classification
 
 
+def classify_recommendation_suitability(
+    lifecycle: str,
+    *,
+    source: str = "",
+) -> str:
+    """Separate lifecycle/sourcing suitability from substitute-relationship evidence.
+
+    Distributor-specific discontinuation is reported as source risk, not manufacturer EOL.
+    Unknown/missing lifecycle must never be presented as preferred for new designs.
+    """
+    text = str(lifecycle or "").strip().casefold()
+
+    if not text or text in {"unknown", "n/a", "none", "not available", "unavailable"}:
+        return SUITABILITY_LIFECYCLE_VERIFY
+
+    discontinued_markers = (
+        "discontinued",
+        "obsolete at",
+        "no longer stocked",
+        "end of life at",
+    )
+    if any(marker in text for marker in discontinued_markers):
+        return SUITABILITY_SOURCE_DISCONTINUATION
+
+    # Manufacturer EOL / obsolete is also a hard new-design warning, without
+    # relabeling a DigiKey-only discontinuation as manufacturer EOL in copy.
+    if any(marker in text for marker in ("obsolete", "end of life", "eol")):
+        return SUITABILITY_SOURCE_DISCONTINUATION
+
+    nfnd_markers = (
+        "not for new designs",
+        "not recommended for new",
+        "nrnd",
+        "nfd",
+    )
+    if any(marker in text for marker in nfnd_markers):
+        return SUITABILITY_SUSTAINING
+
+    if "active" in text:
+        return SUITABILITY_PREFERRED
+
+    # Non-active but unclassified statuses still need verification before new-design use.
+    return SUITABILITY_LIFECYCLE_VERIFY
+
+
+def apply_suitability_score_adjustment(
+    recommendation_score: int,
+    suitability: str,
+) -> dict[str, int | str]:
+    """Cap and penalize warning-state recommendation scores below Strong (≥75)."""
+    score = max(0, min(int(recommendation_score or 0), 100))
+    penalty = int(SUITABILITY_SCORE_PENALTY.get(suitability, 0) or 0)
+    capped = False
+    if suitability in SUITABILITY_SCORE_PENALTY:
+        if score > WARNING_RECOMMENDATION_SCORE_CAP:
+            score = WARNING_RECOMMENDATION_SCORE_CAP
+            capped = True
+        score = max(0, score - penalty)
+    return {
+        "recommendation_score": score,
+        "suitability_penalty": penalty,
+        "suitability_capped": 1 if capped else 0,
+        "recommendation_suitability": suitability,
+    }
+
+
 def classification_sort_key(candidate: dict) -> tuple:
     classification = str(candidate.get("Classification") or CLASS_CATALOG_INSUFFICIENT)
     tier = CLASSIFICATION_TIER.get(classification, 99)
+    suitability = str(
+        candidate.get("Recommendation Suitability")
+        or classify_recommendation_suitability(
+            str(candidate.get("Lifecycle") or ""),
+            source=str(candidate.get("Supplier") or candidate.get("Evidence Source") or ""),
+        )
+    )
+    suitability_tier = SUITABILITY_TIER.get(suitability, 1)
     score = int(candidate.get("Recommendation Score", 0) or 0)
-    return (tier, -score)
+    return (tier, suitability_tier, -score)
 
 
 _PRESERVED_RESULT_TIERS = frozenset({
@@ -188,8 +283,42 @@ def merge_discovery_candidates(
     return merged
 
 
-def build_classification_recommendation(classification: str, substitute_type: str = "") -> str:
+def build_classification_recommendation(
+    classification: str,
+    substitute_type: str = "",
+    *,
+    suitability: str = "",
+    lifecycle: str = "",
+    source: str = "",
+) -> str:
+    resolved_suitability = str(suitability or "").strip() or classify_recommendation_suitability(
+        lifecycle,
+        source=source,
+    )
     if classification == CLASS_VERIFIED_DIRECT:
+        if resolved_suitability == SUITABILITY_SOURCE_DISCONTINUATION:
+            source_label = str(source or "the reporting distributor").strip() or "the reporting distributor"
+            return (
+                f"Supplier lists this as a direct substitute ({substitute_type or 'Direct'}), "
+                f"but {source_label} reports discontinuation for this listing. "
+                "It may be useful for sustaining an existing design, but should not be "
+                "prioritized for a new design without review. This is distributor sourcing "
+                "status, not automatic manufacturer end-of-life."
+            )
+        if resolved_suitability == SUITABILITY_SUSTAINING:
+            return (
+                f"Supplier lists this as a direct substitute ({substitute_type or 'Direct'}), "
+                "but lifecycle status is Not For New Designs. "
+                "It may be useful for sustaining an existing design, but should not be "
+                "prioritized for a new design without review."
+            )
+        if resolved_suitability == SUITABILITY_LIFECYCLE_VERIFY:
+            return (
+                f"Supplier lists this as a direct substitute ({substitute_type or 'Direct'}), "
+                "but lifecycle evidence is missing or unknown. "
+                "Complete lifecycle verification before new-design approval. "
+                "Do not treat this candidate as preferred for a new design until lifecycle is confirmed."
+            )
         return (
             f"Supplier lists this as a direct substitute ({substitute_type or 'Direct'}). "
             "Confirm footprint, qualification, and datasheet compatibility before approval."

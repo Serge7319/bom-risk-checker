@@ -159,6 +159,150 @@ def supplier_coverage_label(
     return f"{name}: {labels.get(status, 'unknown')}"
 
 
+def _supplier_result_rows(
+    *,
+    original_data: Mapping[str, Any] | None = None,
+    discovery_metadata: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in (original_data or {}).get("all_supplier_results") or []:
+        if isinstance(row, dict) and row.get("source"):
+            rows.append(row)
+    if rows:
+        return rows
+    # Discovery metadata may only know configuration gaps without full supplier rows.
+    for source_name, status in ((discovery_metadata or {}).get("providers") or {}).items():
+        if not isinstance(status, dict):
+            continue
+        lookup = str(status.get("lookup") or "").strip().lower()
+        if lookup == "not_configured":
+            rows.append(
+                {
+                    "source": source_name,
+                    "provider_status": PROVIDER_NOT_CONFIGURED,
+                    "failure_category": CATEGORY_CONFIGURATION,
+                }
+            )
+    return rows
+
+
+def build_alternative_finder_coverage_notices(
+    *,
+    original_data: Mapping[str, Any] | None = None,
+    discovery_metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build category-aware supplier coverage notices for Alternative Finder UI."""
+    rows = _supplier_result_rows(
+        original_data=original_data,
+        discovery_metadata=discovery_metadata,
+    )
+    configuration_sources: list[str] = []
+    runtime_failures: list[dict[str, str]] = []
+    available_sources: list[str] = []
+
+    for row in rows:
+        source = str(row.get("source") or "").strip()
+        if not source:
+            continue
+        status = str(row.get("provider_status") or "").strip().upper()
+        category = str(row.get("failure_category") or "").strip() or categorize_supplier_failure(
+            provider_status=status,
+            error_message=str(row.get("error") or ""),
+        )
+        if status == "AVAILABLE":
+            available_sources.append(source)
+            continue
+        if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
+            if source not in configuration_sources:
+                configuration_sources.append(source)
+            continue
+        if status in {
+            PROVIDER_TIMEOUT,
+            PROVIDER_RATE_LIMITED,
+            PROVIDER_ERROR,
+            "TIMEOUT",
+            "RATE_LIMITED",
+            "PROVIDER_ERROR",
+        } or category in {
+            CATEGORY_TIMEOUT,
+            CATEGORY_RATE_LIMIT,
+            CATEGORY_HTTP_ERROR,
+            CATEGORY_AUTHENTICATION,
+            CATEGORY_MALFORMED_RESPONSE,
+            CATEGORY_PROVIDER_ERROR,
+        }:
+            runtime_failures.append(
+                {
+                    "source": source,
+                    "category": category,
+                    "label": supplier_coverage_label(
+                        source,
+                        status,
+                        failure_category=category,
+                    ),
+                }
+            )
+
+    # Discovery-level provider_failures are treated as runtime gaps when present.
+    for name in (discovery_metadata or {}).get("provider_failures") or []:
+        source = str(name).strip()
+        if not source:
+            continue
+        if source in configuration_sources:
+            continue
+        if any(item["source"] == source for item in runtime_failures):
+            continue
+        if source in available_sources:
+            continue
+        runtime_failures.append(
+            {
+                "source": source,
+                "category": CATEGORY_PROVIDER_ERROR,
+                "label": f"{source}: unavailable",
+            }
+        )
+
+    notices: list[str] = []
+    captions: list[str] = []
+
+    if configuration_sources:
+        if (
+            len(configuration_sources) == 1
+            and configuration_sources[0].casefold() == "octopart"
+        ):
+            notices.append(
+                "Octopart is not configured for this environment. "
+                "Results include Mouser, DigiKey, and Newark."
+            )
+        else:
+            names = ", ".join(configuration_sources)
+            notices.append(
+                f"{names} "
+                f"{'is' if len(configuration_sources) == 1 else 'are'} "
+                "not configured for this environment. "
+                "Cadivor kept results from the sources that are configured."
+            )
+
+    if runtime_failures:
+        notices.append(
+            "Some supplier sources did not respond during this search. "
+            "Cadivor kept the candidates retrieved from the sources that responded."
+        )
+        captions.append(
+            "Unavailable or failed sources: "
+            + ", ".join(item["label"] for item in runtime_failures)
+        )
+
+    return {
+        "notices": notices,
+        "captions": captions,
+        "configuration_sources": configuration_sources,
+        "runtime_failures": runtime_failures,
+        "available_sources": available_sources,
+        "show_generic_configured_failure": False,
+    }
+
+
 def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, str]) -> None:
     if not isinstance(result, dict) or not diagnostic:
         return

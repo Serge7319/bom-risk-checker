@@ -10317,22 +10317,17 @@ def run_authenticated_app() -> None:
                 )
         stored_candidates = get_alternative_finder_candidates(st.session_state)
         if stored_candidates:
+            from integrations.supplier_diagnostics import build_alternative_finder_coverage_notices
+
             discovery = st.session_state.get("alternative_discovery_metadata") or {}
-            provider_failures = collect_provider_failure_names(
-                discovery_metadata=discovery,
+            coverage = build_alternative_finder_coverage_notices(
                 original_data=original_summary_data,
+                discovery_metadata=discovery,
             )
-            if provider_failures or discovery.get("has_incomplete_evidence"):
-                st.info(
-                    "Some configured supplier sources were unavailable during this search. "
-                    "Cadivor kept the candidates retrieved from the sources that responded.",
-                    icon="ℹ️",
-                )
-                if provider_failures:
-                    st.caption(
-                        "Unavailable or failed sources: "
-                        + ", ".join(provider_failures)
-                    )
+            for notice in coverage.get("notices") or []:
+                st.info(notice, icon="ℹ️")
+            for caption in coverage.get("captions") or []:
+                st.caption(caption)
 
             alternatives_df = pd.DataFrame(stored_candidates)
 
@@ -10460,6 +10455,18 @@ def run_authenticated_app() -> None:
                 ["Classification", "Category"],
                 "Not classified",
             )
+            suitability_value = _af62b_value(
+                selected_row,
+                ["Recommendation Suitability"],
+                "",
+            )
+            if not suitability_value or suitability_value == "—":
+                from src.alternative_classification import classify_recommendation_suitability
+
+                suitability_value = classify_recommendation_suitability(
+                    lifecycle_value,
+                    source=supplier_value,
+                )
 
             original_stock = float(coerce_stock_total(original_data.get("stock_total", 0)))
             alternative_stock = stock_value
@@ -10534,6 +10541,25 @@ def run_authenticated_app() -> None:
                 else "medium" if recommendation_score >= 55
                 else "low"
             )
+            from src.alternative_classification import (
+                SUITABILITY_LIFECYCLE_VERIFY,
+                SUITABILITY_PREFERRED,
+                SUITABILITY_SOURCE_DISCONTINUATION,
+                SUITABILITY_SUSTAINING,
+            )
+            review_suitabilities = {
+                SUITABILITY_LIFECYCLE_VERIFY,
+                SUITABILITY_SUSTAINING,
+                SUITABILITY_SOURCE_DISCONTINUATION,
+            }
+            if suitability_value in review_suitabilities:
+                # Review/warning-state candidates must not present as equal to active Strong picks.
+                if recommendation_score >= 75:
+                    recommendation_label = "Review"
+                    recommendation_label_class = "medium"
+                suitability_badge = suitability_value
+            else:
+                suitability_badge = suitability_value or SUITABILITY_LIFECYCLE_VERIFY
             lifecycle_class = "good" if lifecycle_value.lower() == "active" else "warn"
             risk_class_62b = "good" if risk_value.lower() == "low" else "warn"
 
@@ -10661,6 +10687,10 @@ def run_authenticated_app() -> None:
                       <div class="af62b-metric">
                         <span>Classification</span>
                         <strong>{html.escape(classification_value)}</strong>
+                      </div>
+                      <div class="af62b-metric {'good' if suitability_value == SUITABILITY_PREFERRED else 'warn'}">
+                        <span>Recommendation suitability</span>
+                        <strong>{html.escape(suitability_badge)}</strong>
                       </div>
                       <div class="af62b-metric">
                         <span>Source evidence</span>
@@ -11747,18 +11777,18 @@ def run_authenticated_app() -> None:
                 )
 
         elif alternative_search_was_attempted(st.session_state):
+            from integrations.supplier_diagnostics import build_alternative_finder_coverage_notices
+
             discovery = st.session_state.get("alternative_discovery_metadata") or {}
-            provider_failures = discovery.get("provider_failures") or []
-            if provider_failures or discovery.get("has_incomplete_evidence"):
-                st.warning(
-                    "Supplier discovery was incomplete. One or more configured sources did not "
-                    "return substitute evidence. This does not mean that no market alternatives exist."
-                )
-                if provider_failures:
-                    st.caption(
-                        "Unavailable or failed sources: "
-                        + ", ".join(str(name) for name in provider_failures)
-                    )
+            coverage = build_alternative_finder_coverage_notices(
+                original_data=original_summary_data,
+                discovery_metadata=discovery,
+            )
+            if coverage.get("notices"):
+                for notice in coverage["notices"]:
+                    st.warning(notice)
+                for caption in coverage.get("captions") or []:
+                    st.caption(caption)
             else:
                 st.warning(
                     "No supplier-listed alternative candidates were retrieved from the configured sources. "
