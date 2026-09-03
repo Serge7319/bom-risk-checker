@@ -360,10 +360,13 @@ class SignupConfirmationUiTests(unittest.TestCase):
             if name.startswith("src.auth") or name in {"src.secrets", "src.config", "src.ui.core_premium_ui"}:
                 sys.modules.pop(name, None)
 
-        secrets = types.ModuleType("src.secrets")
-        secrets.get_secret = lambda *a, **k: "x"
-        secrets.get_secret_bool = lambda *a, **k: False
-        sys.modules["src.secrets"] = secrets
+        from tests.secrets_module_isolation import install_src_secrets_stub
+        _secrets, restore_secrets = install_src_secrets_stub(
+            get_secret=lambda *a, **k: "x",
+            get_secret_bool=lambda *a, **k: False,
+            ConfigurationError=RuntimeError,
+        )
+        self.addCleanup(restore_secrets)
         config = types.ModuleType("src.config")
         config.CADIVOR_MARKETING_URL = "https://www.cadivor.com/"
         sys.modules["src.config"] = config
@@ -412,10 +415,13 @@ class SignupConfirmationSignUpOptionsTests(unittest.TestCase):
         for name in list(sys.modules):
             if name.startswith("src.auth") or name in {"src.secrets", "src.config", "src.ui.core_premium_ui"}:
                 sys.modules.pop(name, None)
-        secrets = types.ModuleType("src.secrets")
-        secrets.get_secret = lambda *a, **k: "x"
-        secrets.get_secret_bool = lambda *a, **k: False
-        sys.modules["src.secrets"] = secrets
+        from tests.secrets_module_isolation import install_src_secrets_stub
+        _secrets, restore_secrets = install_src_secrets_stub(
+            get_secret=lambda *a, **k: "x",
+            get_secret_bool=lambda *a, **k: False,
+            ConfigurationError=RuntimeError,
+        )
+        self.addCleanup(restore_secrets)
         config = types.ModuleType("src.config")
         config.CADIVOR_MARKETING_URL = "https://www.cadivor.com/"
         sys.modules["src.config"] = config

@@ -56,11 +56,20 @@ class AskCadivorOneClickSuggestionTests(unittest.TestCase):
     def setUp(self):
         sys.modules.pop("src.components.engineering_assistant", None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load_assistant(self, session_state=None, query_params=None):
         st = _install_streamlit_stub(session_state, query_params)
-        secrets = types.ModuleType("src.secrets")
-        secrets.get_secret = lambda key, default="": default
-        sys.modules["src.secrets"] = secrets
+        from tests.secrets_module_isolation import install_src_secrets_stub
+        _secrets, restore_secrets = install_src_secrets_stub(
+            get_secret=lambda key, default="": default,
+            get_secret_bool=lambda key, default=False: default,
+            ConfigurationError=RuntimeError,
+        )
+        self.addCleanup(restore_secrets)
 
         auth_state = types.ModuleType("src.auth_state")
         auth_state.log_auth_diagnostic = lambda *args, **kwargs: None

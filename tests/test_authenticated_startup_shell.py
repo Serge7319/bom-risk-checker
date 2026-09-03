@@ -47,16 +47,20 @@ def _install_streamlit_stub(session_state: dict | None = None):
 
 
 def _install_auth_state(st):
-    secrets = sys.modules.get("src.secrets")
-    if secrets is None:
-        secrets = types.ModuleType("src.secrets")
-    secrets.get_secret = getattr(
-        secrets, "get_secret", lambda key, required=False, default=None: "test-secret"
-    )
-    secrets.get_secret_bool = getattr(
-        secrets, "get_secret_bool", lambda key, default=False: default
-    )
-    sys.modules["src.secrets"] = secrets
+    from tests.secrets_module_isolation import install_src_secrets_stub
+
+    prior = sys.modules.get("src.secrets")
+    if prior is not None and hasattr(prior, "get_secret") and hasattr(prior, "get_secret_bool"):
+        # Reuse an existing complete stub/real module without replacing it.
+        restore_secrets = lambda: None
+        secrets = prior
+    else:
+        _secrets, restore_secrets = install_src_secrets_stub(
+            get_secret=lambda key, required=False, default=None: "test-secret",
+            get_secret_bool=lambda key, default=False: default,
+            ConfigurationError=RuntimeError,
+        )
+        secrets = _secrets
 
     auth_cookies = types.ModuleType("src.auth_cookies")
 
@@ -86,14 +90,17 @@ def _install_auth_state(st):
     sys.modules.pop("src.auth_state", None)
     import importlib
 
-    return importlib.import_module("src.auth_state")
+    return importlib.import_module("src.auth_state"), restore_secrets
 
 
 def _install_bootstrap_deps(st):
-    secrets = types.ModuleType("src.secrets")
-    secrets.get_secret = lambda key, required=False, default=None: "test-secret"
-    secrets.get_secret_bool = lambda key, default=False: default
-    sys.modules["src.secrets"] = secrets
+    from tests.secrets_module_isolation import install_src_secrets_stub
+
+    _secrets, restore_secrets = install_src_secrets_stub(
+        get_secret=lambda key, required=False, default=None: "test-secret",
+        get_secret_bool=lambda key, default=False: default,
+        ConfigurationError=RuntimeError,
+    )
 
     auth_cookies = sys.modules.get("src.auth_cookies")
     if auth_cookies is None:
@@ -120,7 +127,7 @@ def _install_bootstrap_deps(st):
     auth_diagnostics.log_auth_bounce = MagicMock()
     sys.modules["src.auth_diagnostics"] = auth_diagnostics
 
-    _install_auth_state(st)
+    _auth_state, restore_auth_state_secrets = _install_auth_state(st)
 
     auth = types.ModuleType("src.auth")
     auth.show_auth_ui = MagicMock()
@@ -143,7 +150,11 @@ def _install_bootstrap_deps(st):
 
     import importlib
 
-    return importlib.import_module("src.auth_bootstrap")
+    def restore_all():
+        restore_auth_state_secrets()
+        restore_secrets()
+
+    return importlib.import_module("src.auth_bootstrap"), restore_all
 
 
 class AuthenticatedStartupShellTests(unittest.TestCase):
@@ -152,9 +163,15 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
             if name.startswith("src.auth") or name == "src.ui.core_premium_ui":
                 sys.modules.pop(name, None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load_bootstrap(self, session_state=None):
         st = _install_streamlit_stub(session_state or {})
-        bootstrap = _install_bootstrap_deps(st)
+        bootstrap, restore_secrets = _install_bootstrap_deps(st)
+        self.addCleanup(restore_secrets)
         return st, bootstrap, sys.modules["src.auth_state"], sys.modules["src.auth"]
 
     def test_first_authenticated_initialization_does_not_mask_render_failures(self):

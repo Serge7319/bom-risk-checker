@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import importlib
 import sys
-import types
 import unittest
+
+from tests.secrets_module_isolation import (
+    ensure_real_src_secrets_module,
+    install_src_secrets_stub,
+)
 
 
 class ProviderHealthCleanImportTests(unittest.TestCase):
@@ -31,6 +35,7 @@ class ProviderHealthCleanImportTests(unittest.TestCase):
             ):
                 sys.modules.pop(name, None)
         sys.modules.update(self._saved)
+        ensure_real_src_secrets_module()
 
     def test_provider_health_imports_without_secret_resolution(self):
         """provider_health must load without reading env/Streamlit secrets."""
@@ -57,17 +62,18 @@ class ProviderHealthCleanImportTests(unittest.TestCase):
         Auth tests replace ``src.secrets`` with a helper-only stub.  Provider
         health must not import ``ConfigurationError`` from that stub.
         """
-        stub = types.ModuleType("src.secrets")
-        stub.get_secret_bool = lambda *args, **kwargs: False
-        stub.get_secret = lambda *args, **kwargs: None
-        sys.modules["src.secrets"] = stub
+        _stub, restore = install_src_secrets_stub(
+            get_secret_bool=lambda *args, **kwargs: False,
+            get_secret=lambda *args, **kwargs: None,
+        )
+        self.addCleanup(restore)
         sys.modules.pop("integrations.provider_health", None)
 
         module = importlib.import_module("integrations.provider_health")
         from src.configuration_errors import ConfigurationError
 
         self.assertIs(module.ConfigurationError, ConfigurationError)
-        self.assertFalse(hasattr(stub, "ConfigurationError"))
+        self.assertFalse(hasattr(_stub, "ConfigurationError"))
 
 
 if __name__ == "__main__":

@@ -48,6 +48,12 @@ def _install_streamlit_stub(
     *,
     context_cookies: dict | None | object = _FakeContextCookies(),
 ):
+    prior_streamlit = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "streamlit" or name.startswith("streamlit.")
+    }
+
     st = types.ModuleType("streamlit")
     st.session_state = session_state if session_state is not None else {}
 
@@ -98,13 +104,24 @@ def _install_streamlit_stub(
     components = types.ModuleType("streamlit.components.v1")
     sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
     sys.modules["streamlit.components.v1"] = components
-    return st
+
+    def restore_streamlit() -> None:
+        for name in list(sys.modules):
+            if name == "streamlit" or name.startswith("streamlit."):
+                sys.modules.pop(name, None)
+        sys.modules.update(prior_streamlit)
+
+    return st, restore_streamlit
 
 
 def _install_auth_modules(st, cookie_manager_cls=_FakeCookieManager):
-    secrets = types.ModuleType("src.secrets")
-    secrets.get_secret_bool = lambda key, default=False: default
-    sys.modules["src.secrets"] = secrets
+    from tests.secrets_module_isolation import install_src_secrets_stub
+
+    _secrets, restore_secrets = install_src_secrets_stub(
+        get_secret_bool=lambda key, default=False: default,
+        get_secret=lambda key, required=False, default=None: default,
+        ConfigurationError=RuntimeError,
+    )
 
     for name in list(sys.modules):
         if name in {"src.auth_state", "src.auth_cookies"}:
@@ -119,7 +136,7 @@ def _install_auth_modules(st, cookie_manager_cls=_FakeCookieManager):
     sys.modules["extra_streamlit_components"] = stx
 
     auth_cookies = importlib.import_module("src.auth_cookies")
-    return auth_cookies, auth_state
+    return auth_cookies, auth_state, restore_secrets
 
 
 def _valid_payload(
@@ -140,9 +157,16 @@ class AuthCookieReadBridgeTests(unittest.TestCase):
             if name.startswith("src.auth_cookies") or name == "src.auth_state":
                 sys.modules.pop(name, None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load(self, session_state=None, **kwargs):
-        st = _install_streamlit_stub(session_state, **kwargs)
-        auth_cookies, auth_state = _install_auth_modules(st)
+        st, restore_streamlit = _install_streamlit_stub(session_state, **kwargs)
+        self.addCleanup(restore_streamlit)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self.addCleanup(restore_secrets)
         return st, auth_cookies, auth_state
 
     def test_fresh_manager_each_script_run_not_cross_run_singleton(self):
@@ -512,9 +536,16 @@ class UnifiedAuthCookieReadTests(unittest.TestCase):
             if name.startswith("src.auth_cookies") or name == "src.auth_state":
                 sys.modules.pop(name, None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load(self, session_state=None, **kwargs):
-        st = _install_streamlit_stub(session_state, **kwargs)
-        auth_cookies, auth_state = _install_auth_modules(st)
+        st, restore_streamlit = _install_streamlit_stub(session_state, **kwargs)
+        self.addCleanup(restore_streamlit)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self.addCleanup(restore_secrets)
         return st, auth_cookies, auth_state
 
     def test_context_present_valid_cookie_skips_manager_mount(self):
@@ -609,11 +640,20 @@ class ManagerFallbackHydrationTests(unittest.TestCase):
             if name.startswith("src.auth_cookies") or name == "src.auth_state":
                 sys.modules.pop(name, None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load(self, session_state=None, *, manager_cls=_DeferredHydrationCookieManager, **kwargs):
         session = session_state if session_state is not None else {}
-        st = _install_streamlit_stub(session, **kwargs)
+        st, restore_streamlit = _install_streamlit_stub(session, **kwargs)
+        self.addCleanup(restore_streamlit)
         manager_cls.session_state = st.session_state
-        auth_cookies, auth_state = _install_auth_modules(st, cookie_manager_cls=manager_cls)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(
+            st, cookie_manager_cls=manager_cls
+        )
+        self.addCleanup(restore_secrets)
         return st, auth_cookies, auth_state
 
     def _mock_supabase(self):

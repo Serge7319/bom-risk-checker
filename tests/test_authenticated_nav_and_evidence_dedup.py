@@ -137,10 +137,13 @@ def _install_st_stub(session_state=None, *, context_cookies=None):
 
 
 def _install_auth_modules(st):
-    secrets = types.ModuleType("src.secrets")
-    secrets.get_secret_bool = lambda key, default=False: default
-    secrets.get_secret = lambda key, required=False, default="": default
-    sys.modules["src.secrets"] = secrets
+    from tests.secrets_module_isolation import install_src_secrets_stub
+
+    _secrets, restore_secrets = install_src_secrets_stub(
+        get_secret_bool=lambda key, default=False: default,
+        get_secret=lambda key, required=False, default="": default,
+        ConfigurationError=RuntimeError,
+    )
     stx = types.ModuleType("extra_streamlit_components")
     stx.CookieManager = _FakeCookieManager
     sys.modules["extra_streamlit_components"] = stx
@@ -149,7 +152,7 @@ def _install_auth_modules(st):
             sys.modules.pop(mod_name)
     auth_state = importlib.import_module("src.auth_state")
     auth_cookies = importlib.import_module("src.auth_cookies")
-    return auth_cookies, auth_state
+    return auth_cookies, auth_state, restore_secrets
 
 
 class _ModuleIsolationMixin:
@@ -162,16 +165,25 @@ class _ModuleIsolationMixin:
         }
         for k in self._saved:
             sys.modules.pop(k)
+        self._secrets_restorers: list = []
 
     def tearDown(self):
+        while getattr(self, "_secrets_restorers", None):
+            restore = self._secrets_restorers.pop()
+            restore()
         for k in list(sys.modules):
             if k.startswith("src.") or k.startswith("streamlit"):
                 sys.modules.pop(k)
         sys.modules.update(self._saved)
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
 
     def _load(self, context_cookies):
         st = _install_st_stub(context_cookies=context_cookies)
-        auth_cookies, auth_state = _install_auth_modules(st)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self._secrets_restorers.append(restore_secrets)
+        self.addCleanup(restore_secrets)
         return auth_cookies, auth_state, st
 
 
@@ -472,7 +484,9 @@ class ExplicitLogoutNotUndoneTests(_ModuleIsolationMixin, unittest.TestCase):
             "cadivor_auth_status": AUTH_AUTHENTICATED,
         }
         st = _install_st_stub(session_state=session_state, context_cookies=ctx)
-        auth_cookies, auth_state = _install_auth_modules(st)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self._secrets_restorers.append(restore_secrets)
+        self.addCleanup(restore_secrets)
 
         # explicit_logout_pending must fire before logout_blocks_auth_restore.
         self.assertTrue(

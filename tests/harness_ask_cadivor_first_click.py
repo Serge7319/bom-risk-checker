@@ -109,10 +109,14 @@ def install_first_click_streamlit_stub(*, session_state: dict | None = None):
     return st, markdown_calls
 
 
-def _install_assistant_import_stubs() -> None:
-    secrets = types.ModuleType("src.secrets")
-    secrets.get_secret = lambda key, default="": default
-    sys.modules["src.secrets"] = secrets
+def _install_assistant_import_stubs():
+    from tests.secrets_module_isolation import install_src_secrets_stub
+
+    _secrets, restore_secrets = install_src_secrets_stub(
+        get_secret=lambda key, default="": default,
+        get_secret_bool=lambda key, default=False: default,
+        ConfigurationError=RuntimeError,
+    )
 
     auth_state = types.ModuleType("src.auth_state")
     auth_state.log_auth_diagnostic = lambda *args, **kwargs: None
@@ -159,6 +163,7 @@ def _install_assistant_import_stubs() -> None:
     engineering_ai.EngineeringAIError = _Error
     engineering_ai.log_ai_config = lambda api: None
     sys.modules["src.services.engineering_ai"] = engineering_ai
+    return restore_secrets
 
 
 def _load_assistant():
