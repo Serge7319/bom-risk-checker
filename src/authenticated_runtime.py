@@ -8830,6 +8830,7 @@ def run_authenticated_app() -> None:
             clear_alternative_finder_search,
             get_active_alternative_finder_result,
             get_alternative_finder_candidates,
+            get_alternative_finder_discovery_metadata,
             get_alternative_finder_display_mpn,
             get_alternative_finder_durable_result,
             get_alternative_finder_lookup_error,
@@ -10132,22 +10133,39 @@ def run_authenticated_app() -> None:
                     return str(value).strip()
             return fallback
 
-        def _af62_provider_coverage(data):
-            from integrations.supplier_diagnostics import supplier_coverage_label
+        def _af62_provider_coverage(data, discovery_metadata=None):
+            from integrations.supplier_diagnostics import (
+                CATEGORY_CONFIGURATION,
+                _discovery_not_configured_sources,
+                supplier_coverage_label,
+            )
 
             if not isinstance(data, dict):
                 return "Not checked"
+            configured_gaps = {
+                name.casefold()
+                for name in _discovery_not_configured_sources(discovery_metadata)
+            }
             coverage = []
             for row in data.get("all_supplier_results") or []:
                 if isinstance(row, dict) and row.get("source"):
+                    source = str(row["source"])
+                    status = str(row.get("provider_status") or "")
+                    category = str(row.get("failure_category") or "")
+                    if source.casefold() in configured_gaps:
+                        status = "NOT_CONFIGURED"
+                        category = CATEGORY_CONFIGURATION
                     coverage.append(
                         supplier_coverage_label(
-                            str(row["source"]),
-                            str(row.get("provider_status") or ""),
-                            failure_category=str(row.get("failure_category") or ""),
+                            source,
+                            status,
+                            failure_category=category,
                         )
                     )
             return " · ".join(coverage) if coverage else "Not checked"
+
+        discovery_summary = get_alternative_finder_discovery_metadata(st.session_state)
+
 
         def _af62_candidate_eyebrow(classification: str) -> str:
             from src.alternative_classification import (
@@ -10286,7 +10304,7 @@ def run_authenticated_app() -> None:
                       <div class="af62-field {risk_class}"><span>Risk</span><strong>{risk_display}</strong></div>
                       <div class="af62-field"><span>Package</span><strong>{package_display}</strong></div>
                       <div class="af62-field"><span>Verified Suppliers</span><strong>{html.escape(_af62_first(original_summary_data, ["sources_available", "source"], fallback="Not available"))}</strong></div>
-                      <div class="af62-field"><span>Supplier coverage</span><strong>{html.escape(_af62_provider_coverage(original_summary_data))}</strong></div>
+                      <div class="af62-field"><span>Supplier coverage</span><strong>{html.escape(_af62_provider_coverage(original_summary_data, discovery_summary))}</strong></div>
                       <div class="af62-field"><span>Datasheet / Source</span><strong>{datasheet_display}</strong></div>
                     </div>
                     <div class="af62-search-status {current_status_class}">{current_status}</div>
@@ -10325,7 +10343,7 @@ def run_authenticated_app() -> None:
         if stored_candidates:
             from integrations.supplier_diagnostics import build_alternative_finder_coverage_notices
 
-            discovery = st.session_state.get("alternative_discovery_metadata") or {}
+            discovery = get_alternative_finder_discovery_metadata(st.session_state)
             coverage = build_alternative_finder_coverage_notices(
                 original_data=original_summary_data,
                 discovery_metadata=discovery,
@@ -11821,7 +11839,7 @@ def run_authenticated_app() -> None:
         elif alternative_search_was_attempted(st.session_state):
             from integrations.supplier_diagnostics import build_alternative_finder_coverage_notices
 
-            discovery = st.session_state.get("alternative_discovery_metadata") or {}
+            discovery = get_alternative_finder_discovery_metadata(st.session_state)
             coverage = build_alternative_finder_coverage_notices(
                 original_data=original_summary_data,
                 discovery_metadata=discovery,

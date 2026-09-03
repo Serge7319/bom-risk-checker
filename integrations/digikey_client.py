@@ -174,15 +174,40 @@ def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_t
 
 
 def _variation_mpn(product: dict, variation: Optional[dict] = None) -> str:
-    """Return the manufacturer MPN for a product or one of its package variations."""
-    if isinstance(variation, dict):
-        for key in ("ManufacturerProductNumber", "ManufacturerPartNumber", "RequestedPartNumber"):
-            value = str(variation.get(key) or "").strip()
-            if value:
-                return value
-    if isinstance(product, dict):
-        return str(product.get("ManufacturerProductNumber") or "").strip()
+    """Return an explicit manufacturer MPN from a variation, else empty string.
+
+    DigiKey ProductVariations often omit ManufacturerProductNumber for true
+    packaging SKUs of the parent product, but may also list sibling family
+    DigiKey numbers without an MPN. Callers must not treat a missing variation
+    MPN as automatically equal to the parent MPN.
+    """
+    if not isinstance(variation, dict):
+        return ""
+    for key in ("ManufacturerProductNumber", "ManufacturerPartNumber", "RequestedPartNumber"):
+        value = str(variation.get(key) or "").strip()
+        if value:
+            return value
     return ""
+
+
+def _variation_belongs_to_requested_mpn(
+    product: dict,
+    variation: dict,
+    *,
+    required_mpn: str,
+) -> bool:
+    """True when a ProductVariation is a packaging SKU of the requested MPN."""
+    required_key = _mpn_key(required_mpn) or _mpn_key(
+        (product or {}).get("ManufacturerProductNumber")
+    )
+    if not required_key:
+        return False
+    explicit_mpn = _variation_mpn(product, variation)
+    if explicit_mpn:
+        return _mpn_key(explicit_mpn) == required_key
+    # No explicit MPN: only keep DigiKey numbers that encode this manufacturer MPN.
+    digikey_number = str((variation or {}).get("DigiKeyProductNumber") or "").strip()
+    return bool(digikey_number) and required_key in _mpn_key(digikey_number)
 
 
 def _digikey_product_numbers(product: dict, *, required_mpn: str = "") -> list[str]:
@@ -204,8 +229,9 @@ def _digikey_product_numbers(product: dict, *, required_mpn: str = "") -> list[s
     for variation in product.get("ProductVariations") or []:
         if not isinstance(variation, dict):
             continue
-        variation_mpn = _variation_mpn(product, variation)
-        if required_key and _mpn_key(variation_mpn) != required_key:
+        if required_key and not _variation_belongs_to_requested_mpn(
+            product, variation, required_mpn=required_mpn or parent_mpn
+        ):
             continue
         value = str(variation.get("DigiKeyProductNumber") or "").strip()
         if value:

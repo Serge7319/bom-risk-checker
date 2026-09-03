@@ -254,6 +254,11 @@ class DigiKeySubstitutionTests(unittest.TestCase):
                             "DigiKeyProductNumber": "399-C0603C104K5RAC7411CT-ND",
                         },
                         {
+                            # Live DigiKey payloads often omit ManufacturerProductNumber
+                            # for sibling family SKUs listed under ProductVariations.
+                            "DigiKeyProductNumber": "399-C0603C104K5RAC7411DKR-ND",
+                        },
+                        {
                             "ManufacturerProductNumber": "C0603C104K5RAC3121",
                             "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
                         },
@@ -263,7 +268,7 @@ class DigiKeySubstitutionTests(unittest.TestCase):
 
         def get(url, **_kwargs):
             substitution_urls.append(url)
-            if "RACTUCT" in url:
+            if "RACTUCT" in url or "RACTUTR" in url:
                 return _Response({
                     "ProductSubstitutes": [
                         {
@@ -282,7 +287,7 @@ class DigiKeySubstitutionTests(unittest.TestCase):
                         },
                     ]
                 })
-            if "7411CT" in url:
+            if "7411" in url:
                 return _Response({
                     "ProductSubstitutes": [{
                         "ManufacturerProductNumber": "C0603C104K5RAC7411",
@@ -309,9 +314,11 @@ class DigiKeySubstitutionTests(unittest.TestCase):
 
         self.assertIn("C0603C104K5RAC3121", by_part)
         self.assertEqual(by_part["C0603C104K5RAC3121"]["substitute_type"], "Direct")
+        self.assertIn("0603BB104K500YT", by_part)
         self.assertNotIn("C0603C104K5RAC7411", by_part)
         self.assertFalse(any("7411" in url for url in substitution_urls))
         self.assertFalse(any("3121CT" in url for url in substitution_urls))
+        self.assertTrue(any("RACTUTR" in url for url in substitution_urls))
 
 
 if __name__ == "__main__":

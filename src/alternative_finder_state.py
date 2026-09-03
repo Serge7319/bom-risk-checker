@@ -418,6 +418,23 @@ def get_alternative_finder_display_mpn(
     return str(widget_value or session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY) or "").strip()
 
 
+def get_alternative_finder_discovery_metadata(
+    session_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return discovery metadata from the durable result, falling back to the session mirror."""
+    active = get_active_alternative_finder_result(session_state)
+    if active:
+        discovery = active.get("discovery_metadata")
+        if isinstance(discovery, dict):
+            return dict(discovery)
+    result = session_state.get(ALT_FINDER_RESULT_KEY)
+    if isinstance(result, dict):
+        discovery = result.get("discovery_metadata")
+        if isinstance(discovery, dict):
+            return dict(discovery)
+    return dict(session_state.get("alternative_discovery_metadata") or {})
+
+
 def get_alternative_finder_original_data(session_state: Mapping[str, Any]) -> dict[str, Any]:
     active = get_active_alternative_finder_result(session_state)
     if active:
