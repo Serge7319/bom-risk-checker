@@ -204,6 +204,8 @@ def build_engineering_evidence_assessment(
     *,
     classification: str = "",
     substitute_type: str = "",
+    supplier_relationship_evidence: list | None = None,
+    evidence_source: str = "",
 ) -> dict:
     """Summarize engineering comparison coverage separately from supplier classification."""
     matches = max(0, int(counts.get("Match", 0) or 0))
@@ -249,17 +251,54 @@ def build_engineering_evidence_assessment(
 
     engineering_confidence = max(0, min(100, engineering_confidence))
 
+    from src.alternative_classification import (
+        CLASS_SUPPLIER_SIMILAR,
+        CLASS_SUPPLIER_UPGRADE,
+        CLASS_VERIFIED_DIRECT,
+        SUBSTITUTE_TYPE_DIRECT,
+        SUBSTITUTE_TYPE_SIMILAR,
+        SUBSTITUTE_TYPE_UPGRADE,
+        normalize_substitute_type,
+        relationship_evidence_summary,
+    )
+
+    evidence_rows = [
+        row for row in (supplier_relationship_evidence or []) if isinstance(row, dict)
+    ]
+    normalized_type = normalize_substitute_type(substitute_type)
     supplier_relationship_confidence = 0
-    supplier_relationship_summary = ""
-    if classification == "Verified direct substitute":
-        supplier_relationship_confidence = 95
-        supplier_relationship_summary = (
-            "DigiKey identifies this candidate as a Direct substitute for the original part number."
+    if evidence_rows:
+        supplier_relationship_summary = relationship_evidence_summary(evidence_rows)
+        digikey_direct = any(
+            str(row.get("supplier") or "").casefold() == "digikey"
+            and normalize_substitute_type(row.get("substitute_type")) == SUBSTITUTE_TYPE_DIRECT
+            for row in evidence_rows
         )
-    elif str(substitute_type or "").casefold() == "direct":
-        supplier_relationship_confidence = 85
+        if digikey_direct and classification == CLASS_VERIFIED_DIRECT:
+            supplier_relationship_confidence = 95
+        elif classification == CLASS_VERIFIED_DIRECT:
+            supplier_relationship_confidence = 90
+        elif classification == CLASS_SUPPLIER_UPGRADE or normalized_type == SUBSTITUTE_TYPE_UPGRADE:
+            supplier_relationship_confidence = 70
+        elif classification == CLASS_SUPPLIER_SIMILAR or normalized_type == SUBSTITUTE_TYPE_SIMILAR:
+            supplier_relationship_confidence = 55
+        else:
+            supplier_relationship_confidence = 40
+    elif classification == CLASS_VERIFIED_DIRECT and normalized_type == SUBSTITUTE_TYPE_DIRECT:
+        source_label = str(evidence_source or "Supplier").strip() or "Supplier"
+        supplier_relationship_confidence = 90
+        supplier_relationship_summary = f"{source_label} substitute type: Direct"
+    elif classification == CLASS_SUPPLIER_UPGRADE or normalized_type == SUBSTITUTE_TYPE_UPGRADE:
+        source_label = str(evidence_source or "Supplier").strip() or "Supplier"
+        supplier_relationship_confidence = 70
+        supplier_relationship_summary = f"{source_label} substitute type: Upgrade"
+    elif classification == CLASS_SUPPLIER_SIMILAR or normalized_type == SUBSTITUTE_TYPE_SIMILAR:
+        source_label = str(evidence_source or "Supplier").strip() or "Supplier"
+        supplier_relationship_confidence = 55
+        supplier_relationship_summary = f"{source_label} substitute type: Similar"
+    else:
         supplier_relationship_summary = (
-            "The configured supplier lists this candidate as a direct substitute relationship."
+            "No exact supplier substitute relationship was retained for this candidate."
         )
 
     return {
