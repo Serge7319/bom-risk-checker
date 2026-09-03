@@ -10094,6 +10094,16 @@ def run_authenticated_app() -> None:
 
         if st.session_state.get("alternative_search_error"):
             st.error(st.session_state["alternative_search_error"], icon="⚠️")
+            failed_result = get_active_alternative_finder_result(st.session_state) or {}
+            support_bits = []
+            failed_stage = str(failed_result.get("failed_stage") or "").strip()
+            diagnostic_code = str(failed_result.get("diagnostic_code") or "").strip()
+            if failed_stage:
+                support_bits.append(f"stage={failed_stage}")
+            if diagnostic_code:
+                support_bits.append(f"code={diagnostic_code}")
+            if support_bits:
+                st.caption("Support detail: " + " · ".join(support_bits))
 
         summary_col, tips_col = st.columns([1.35, 0.85], gap="medium")
 

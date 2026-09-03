@@ -158,6 +158,20 @@ def _safe_sanitize_mapping(value: Optional[Mapping[str, Any]]) -> dict[str, Any]
     return sanitized if isinstance(sanitized, dict) else {MARKER_NON_SERIALIZABLE: True}
 
 
+def _safe_sanitize_list(value: Optional[list[Any]]) -> list[dict[str, Any]]:
+    if not value:
+        return []
+    try:
+        sanitized = sanitize_for_session(list(value))
+    except RecursionError:
+        return [{MARKER_CIRCULAR_REF: True}]
+    except Exception:
+        return [{MARKER_NON_SERIALIZABLE: True}]
+    if not isinstance(sanitized, list):
+        return [{MARKER_NON_SERIALIZABLE: True}]
+    return [row for row in sanitized if isinstance(row, dict)]
+
+
 def _ensure_legacy_defaults(session_state: MutableMapping[str, Any]) -> None:
     """Ensure legacy Alternative Finder keys exist on brand-new or partial sessions."""
     for key in _LEGACY_KEYS:
@@ -367,7 +381,7 @@ def complete_alternative_finder_search(
     lookup_error: str = "",
     search_error: str = "",
 ) -> dict[str, Any]:
-    sanitized_candidates = sanitize_for_session(list(candidates or []))
+    sanitized_candidates = _safe_sanitize_list(list(candidates or []))
     selected = selected_candidate_mpn.strip()
     if not selected and sanitized_candidates:
         selected = str(sanitized_candidates[0].get("Alternative Part") or "").strip()
@@ -401,13 +415,17 @@ def fail_alternative_finder_search(
     lookup_error: str = "",
     original_data: Optional[Mapping[str, Any]] = None,
     original_risk: Optional[Mapping[str, Any]] = None,
+    candidates: Optional[list[Mapping[str, Any]]] = None,
+    discovery_metadata: Optional[Mapping[str, Any]] = None,
     diagnostic_code: str = "",
     diagnostic_message: str = "",
     exception_type: str = "",
+    failed_stage: str = "",
     stage_timings_ms: Optional[Mapping[str, float]] = None,
 ) -> None:
     safe_original_data = _safe_sanitize_mapping(original_data)
     safe_original_risk = _safe_sanitize_mapping(original_risk)
+    sanitized_candidates = _safe_sanitize_list(list(candidates or []))
     failed_result: dict[str, Any] = {
         "status": STATUS_FAILED,
         "algorithm_version": RESULT_ALGORITHM_VERSION,
@@ -416,7 +434,8 @@ def fail_alternative_finder_search(
         "lookup_error": lookup_error.strip(),
         "original_data": safe_original_data,
         "original_risk": safe_original_risk,
-        "candidates": [],
+        "candidates": sanitized_candidates,
+        "discovery_metadata": _safe_sanitize_mapping(discovery_metadata),
     }
     if diagnostic_code.strip():
         failed_result["diagnostic_code"] = diagnostic_code.strip()
@@ -424,13 +443,15 @@ def fail_alternative_finder_search(
         failed_result["diagnostic_message"] = diagnostic_message.strip()
     if exception_type.strip():
         failed_result["exception_type"] = exception_type.strip()
+    if failed_stage.strip():
+        failed_result["failed_stage"] = failed_stage.strip()
     if stage_timings_ms:
         failed_result["stage_timings_ms"] = {
             str(stage): float(duration)
             for stage, duration in stage_timings_ms.items()
         }
     session_state[ALT_FINDER_RESULT_KEY] = failed_result
-    session_state["suggested_alternatives"] = []
+    session_state["suggested_alternatives"] = sanitized_candidates
     session_state["alternative_search_attempted"] = True
     session_state["alternative_search_error"] = search_error.strip()
     session_state["alternative_original_lookup_part"] = entered_mpn.strip()
