@@ -4,6 +4,8 @@ import unittest
 
 from src.alternative_finder_state import (
     ALT_FINDER_RESULT_KEY,
+    ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY,
+    ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY,
     STATUS_COMPLETED,
     STATUS_IDLE,
     alternative_search_was_attempted,
@@ -21,6 +23,26 @@ from src.alternative_finder_state import (
     should_apply_alternative_finder_prefill,
     should_start_new_alternative_search,
 )
+
+
+class _WidgetBoundSession(dict):
+    """Simulate Streamlit rejecting writes to already-instantiated widget keys."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._instantiated_widgets: set[str] = set()
+
+    def instantiate_widget(self, key: str, value: str = "") -> None:
+        self._instantiated_widgets.add(key)
+        super().__setitem__(key, value)
+
+    def __setitem__(self, key, value):
+        if key in self._instantiated_widgets:
+            raise RuntimeError(
+                f"st.session_state.{key} cannot be modified after the widget "
+                f"with key {key} is instantiated."
+            )
+        super().__setitem__(key, value)
 
 
 def _sample_candidates(count: int = 35) -> list[dict]:
@@ -55,11 +77,41 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
             get_alternative_finder_display_mpn(self.session, widget_value=""),
             "C0603C104K5RACTU",
         )
+        self.assertEqual(
+            self.session.get(ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY),
+            "C0603C104K5RACTU",
+        )
         self.assertEqual(len(get_alternative_finder_candidates(self.session)), 35)
         self.assertEqual(
             get_alternative_finder_original_data(self.session)["package"],
             "0603",
         )
+
+    def test_complete_does_not_mutate_instantiated_original_part_widget_key(self):
+        session = _WidgetBoundSession()
+        session.instantiate_widget(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY, "C0603C104K5RACTU")
+
+        complete_alternative_finder_search(
+            session,
+            entered_mpn="C0603C104K5RACTU",
+            canonical_mpn="C0603C104K5RACTU",
+            original_data={"manufacturer_part_number": "C0603C104K5RACTU", "package": "0603"},
+            original_risk={"risk_level": "Low"},
+            candidates=_sample_candidates(3),
+            selected_candidate_mpn="CAND-000",
+        )
+
+        self.assertEqual(session[ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY], "C0603C104K5RACTU")
+        self.assertEqual(
+            session[ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY],
+            "C0603C104K5RACTU",
+        )
+        self.assertEqual(
+            get_alternative_finder_display_mpn(session, widget_value=""),
+            "C0603C104K5RACTU",
+        )
+        self.assertEqual(len(get_alternative_finder_candidates(session)), 3)
+        self.assertEqual(session[ALT_FINDER_RESULT_KEY]["status"], STATUS_COMPLETED)
 
     def test_candidate_selection_persists_across_rerun(self):
         complete_alternative_finder_search(
@@ -117,6 +169,10 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
         self.assertEqual(len(self.session.get("suggested_alternatives") or []), 35)
         self.assertEqual(
             self.session.get("alternative_original_lookup_part"),
+            "C0603C104K5RACTU",
+        )
+        self.assertEqual(
+            self.session.get(ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY),
             "C0603C104K5RACTU",
         )
 
