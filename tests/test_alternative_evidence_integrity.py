@@ -272,6 +272,75 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
         )
         self.assertEqual(classification, self.classification.CLASS_SUPPLIER_SIMILAR)
 
+    def test_c7411_without_exact_direct_pair_record_is_not_verified_direct(self):
+        catalog_only = {
+            "manufacturer_part_number": "C0603C104K5RAC7411",
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor catalog match",
+            "original_mpn": self.original,
+            "supplier_relationship_evidence": [],
+        }
+        leaked_from_sibling = {
+            "manufacturer_part_number": "C0603C104K5RAC7411",
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+            "original_mpn": self.original,
+            "supplier_relationship_evidence": [
+                _relationship(
+                    "DigiKey",
+                    "C0603C104K5RAC3121",
+                    "C0603C104K5RAC7411",
+                    "Direct",
+                )
+            ],
+        }
+        for candidate in (catalog_only, leaked_from_sibling):
+            classification = self.classification.classify_from_supplier_evidence(
+                candidate,
+                original_mpn=self.original,
+                original_manufacturer="KEMET",
+            )
+            self.assertNotEqual(
+                classification,
+                self.classification.CLASS_VERIFIED_DIRECT,
+                candidate,
+            )
+            self.assertFalse(
+                self.classification.has_exact_direct_relationship(
+                    candidate,
+                    original_mpn=self.original,
+                    candidate_mpn="C0603C104K5RAC7411",
+                )
+            )
+
+        def discover(_part):
+            merged = self.classification.merge_discovery_candidates(
+                [],
+                [catalog_only],
+                original_mpn=self.original,
+            )
+            return {
+                "original_mpn": self.original,
+                "candidates": merged,
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        results = self.engine.suggest_alternatives_v2(self.original)
+        row = next(
+            item for item in results if item["Alternative Part"] == "C0603C104K5RAC7411"
+        )
+        self.assertNotEqual(row["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
+        self.assertNotIn(
+            "DigiKey substitute type: Direct",
+            row.get("Supplier Relationship Summary", ""),
+        )
+
     def test_non_digikey_candidate_cannot_render_digikey_direct_without_record(self):
         assessment = self.datasheet.build_engineering_evidence_assessment(
             {"Match": 6, "Different": 0, "Needs data": 0},

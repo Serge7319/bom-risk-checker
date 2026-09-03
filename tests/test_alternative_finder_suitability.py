@@ -94,6 +94,35 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
         self.assertFalse(coverage["runtime_failures"])
         self.assertEqual(coverage["configuration_sources"], ["Octopart"])
 
+    def test_octopart_provider_error_does_not_override_discovery_not_configured(self):
+        coverage = self.diagnostics.build_alternative_finder_coverage_notices(
+            original_data={
+                "all_supplier_results": [
+                    {"source": "Mouser", "provider_status": "AVAILABLE"},
+                    {"source": "DigiKey", "provider_status": "AVAILABLE"},
+                    {"source": "Newark", "provider_status": "AVAILABLE"},
+                    {
+                        "source": "Octopart",
+                        "provider_status": "PROVIDER_ERROR",
+                        "error": "timed out",
+                    },
+                ]
+            },
+            discovery_metadata={
+                "provider_failures": ["Octopart"],
+                "providers": {"Octopart": {"lookup": "not_configured"}},
+            },
+        )
+        self.assertEqual(
+            coverage["notices"],
+            [
+                "Octopart is not configured for this environment. "
+                "Results include Mouser, DigiKey, and Newark."
+            ],
+        )
+        self.assertFalse(coverage["runtime_failures"])
+        self.assertEqual(coverage["captions"], [])
+
     def test_runtime_supplier_failure_keeps_distinct_notice(self):
         coverage = self.diagnostics.build_alternative_finder_coverage_notices(
             original_data={

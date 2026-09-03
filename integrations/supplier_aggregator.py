@@ -459,13 +459,13 @@ def _provider_configured(secret_name: str) -> bool:
 
 def _provider_discovery_status(source_name: str) -> dict:
     secret_map = {
-        "DigiKey": "DIGIKEY_CLIENT_ID",
-        "Mouser": "MOUSER_API_KEY",
-        "Newark": "NEWARK_API_KEY",
-        "Octopart": "NEXAR_CLIENT_ID",
+        "DigiKey": ("DIGIKEY_CLIENT_ID",),
+        "Mouser": ("MOUSER_API_KEY",),
+        "Newark": ("NEWARK_API_KEY",),
+        "Octopart": ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"),
     }
-    secret_name = secret_map.get(source_name, "")
-    if secret_name and not _provider_configured(secret_name):
+    secret_names = secret_map.get(source_name, ())
+    if secret_names and not any(_provider_configured(name) for name in secret_names):
         return {
             "substitutions": "not_configured",
             "lookup": "not_configured",

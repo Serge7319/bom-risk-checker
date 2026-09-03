@@ -639,6 +639,49 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         self.assertEqual(target["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
         self.assertEqual(target["Substitute Type"], "Direct")
         self.assertEqual(target["Evidence Type"], "Distributor-listed substitute")
+        self.assertEqual(
+            str(target.get("Supplier Relationship Summary") or "").count(
+                "DigiKey substitute type: Direct"
+            ),
+            1,
+        )
+
+    def test_octopart_misclassified_lookup_error_does_not_use_unavailable_wording(self):
+        coverage = self.diagnostics.build_alternative_finder_coverage_notices(
+            original_data={
+                "all_supplier_results": [
+                    {"source": "Mouser", "provider_status": "AVAILABLE"},
+                    {"source": "DigiKey", "provider_status": "AVAILABLE"},
+                    {"source": "Newark", "provider_status": "AVAILABLE"},
+                    {
+                        "source": "Octopart",
+                        "provider_status": "PROVIDER_ERROR",
+                        "failure_category": self.diagnostics.CATEGORY_PROVIDER_ERROR,
+                        "error": "No response from Octopart",
+                    },
+                ]
+            },
+            discovery_metadata={
+                "has_incomplete_evidence": True,
+                "provider_failures": ["Octopart"],
+                "providers": {
+                    "Octopart": {"lookup": "not_configured", "substitutions": "not_configured"},
+                    "DigiKey": {"lookup": "available", "substitutions": "ok"},
+                },
+            },
+        )
+        joined_notices = " ".join(coverage["notices"])
+        joined_captions = " ".join(coverage["captions"])
+        self.assertEqual(
+            coverage["notices"][0],
+            "Octopart is not configured for this environment. "
+            "Results include Mouser, DigiKey, and Newark.",
+        )
+        self.assertNotIn("did not respond", joined_notices.casefold())
+        self.assertNotIn("unavailable for this search", joined_notices.casefold())
+        self.assertNotIn("unavailable for this search", joined_captions.casefold())
+        self.assertEqual(coverage["configuration_sources"], ["Octopart"])
+        self.assertFalse(coverage["runtime_failures"])
 
 
 if __name__ == "__main__":

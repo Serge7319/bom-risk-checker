@@ -68,6 +68,12 @@ def categorize_supplier_failure(
 
     if status == PROVIDER_NOT_CONFIGURED:
         return CATEGORY_CONFIGURATION
+    if (
+        "not configured" in lowered
+        or "missing required configuration" in lowered
+        or "credentials are not configured" in lowered
+    ):
+        return CATEGORY_CONFIGURATION
     if status == PROVIDER_PART_NOT_FOUND:
         return CATEGORY_NO_RESULT
     if status == PROVIDER_RATE_LIMITED or "rate limit" in lowered or "429" in lowered:
@@ -142,12 +148,13 @@ def supplier_coverage_label(
     failure_category: str = "",
 ) -> str:
     status = str(provider_status or "").strip().upper()
+    category = str(failure_category or "").strip()
     name = str(source or "").strip() or "Supplier"
     if status == "AVAILABLE":
         return f"{name}: available"
+    if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
+        return f"{name}: not configured"
     if name.casefold() == "octopart":
-        if failure_category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
-            return f"{name}: not configured"
         return f"{name}: unavailable for this search"
     labels = {
         PROVIDER_NOT_CONFIGURED: "not configured",
@@ -159,30 +166,55 @@ def supplier_coverage_label(
     return f"{name}: {labels.get(status, 'unknown')}"
 
 
+def _discovery_not_configured_sources(
+    discovery_metadata: Mapping[str, Any] | None = None,
+) -> set[str]:
+    names: set[str] = set()
+    for source_name, status in ((discovery_metadata or {}).get("providers") or {}).items():
+        if not isinstance(status, dict):
+            continue
+        lookup = str(status.get("lookup") or "").strip().lower()
+        substitutions = str(status.get("substitutions") or "").strip().lower()
+        if lookup == "not_configured" or substitutions == "not_configured":
+            names.add(str(source_name).strip())
+    return {name for name in names if name}
+
+
 def _supplier_result_rows(
     *,
     original_data: Mapping[str, Any] | None = None,
     discovery_metadata: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for row in (original_data or {}).get("all_supplier_results") or []:
         if isinstance(row, dict) and row.get("source"):
-            rows.append(row)
-    if rows:
-        return rows
+            source = str(row.get("source") or "").strip()
+            payload = dict(row)
+            if source in _discovery_not_configured_sources(discovery_metadata):
+                payload["provider_status"] = PROVIDER_NOT_CONFIGURED
+                payload["failure_category"] = CATEGORY_CONFIGURATION
+            rows.append(payload)
+            if source:
+                seen.add(source.casefold())
     # Discovery metadata may only know configuration gaps without full supplier rows.
     for source_name, status in ((discovery_metadata or {}).get("providers") or {}).items():
         if not isinstance(status, dict):
             continue
         lookup = str(status.get("lookup") or "").strip().lower()
-        if lookup == "not_configured":
+        substitutions = str(status.get("substitutions") or "").strip().lower()
+        source = str(source_name).strip()
+        if not source or source.casefold() in seen:
+            continue
+        if lookup == "not_configured" or substitutions == "not_configured":
             rows.append(
                 {
-                    "source": source_name,
+                    "source": source,
                     "provider_status": PROVIDER_NOT_CONFIGURED,
                     "failure_category": CATEGORY_CONFIGURATION,
                 }
             )
+            seen.add(source.casefold())
     return rows
 
 
@@ -209,7 +241,10 @@ def build_alternative_finder_coverage_notices(
             provider_status=status,
             error_message=str(row.get("error") or ""),
         )
-        if status == "AVAILABLE":
+        if source in _discovery_not_configured_sources(discovery_metadata):
+            category = CATEGORY_CONFIGURATION
+            status = PROVIDER_NOT_CONFIGURED
+        if status == "AVAILABLE" and category != CATEGORY_CONFIGURATION:
             available_sources.append(source)
             continue
         if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
@@ -243,12 +278,16 @@ def build_alternative_finder_coverage_notices(
                 }
             )
 
+    configured_gaps = {name.casefold() for name in configuration_sources}
+    configured_gaps.update(
+        name.casefold() for name in _discovery_not_configured_sources(discovery_metadata)
+    )
     # Discovery-level provider_failures are treated as runtime gaps when present.
     for name in (discovery_metadata or {}).get("provider_failures") or []:
         source = str(name).strip()
         if not source:
             continue
-        if source in configuration_sources:
+        if source.casefold() in configured_gaps or source in configuration_sources:
             continue
         if any(item["source"] == source for item in runtime_failures):
             continue
