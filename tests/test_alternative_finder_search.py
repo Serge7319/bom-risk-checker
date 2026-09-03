@@ -159,17 +159,23 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.engine.get_best_part_data = self.aggregator.get_best_part_data
 
         original_complete = self.state.complete_alternative_finder_search
+        complete_calls = {"count": 0}
 
         def exploding_complete(*args, **kwargs):
-            raise TypeError("cannot pickle set state")
+            complete_calls["count"] += 1
+            if complete_calls["count"] == 1:
+                raise TypeError("cannot pickle set state")
+            return original_complete(*args, **kwargs)
 
         self.state.complete_alternative_finder_search = exploding_complete
         outcome = self.search.run_alternative_finder_search(session, "C0603C104K5RACTU")
         self.state.complete_alternative_finder_search = original_complete
 
         result = session[self.state.ALT_FINDER_RESULT_KEY]
-        self.assertEqual(outcome["status"], "failed")
-        self.assertEqual(result["status"], self.state.STATUS_FAILED)
+        self.assertEqual(outcome["status"], "partial_success")
+        self.assertEqual(outcome["search_outcome"], self.state.OUTCOME_PARTIAL_SUCCESS)
+        self.assertEqual(result["status"], self.state.STATUS_COMPLETED)
+        self.assertEqual(result["search_outcome"], self.state.OUTCOME_PARTIAL_SUCCESS)
         self.assertEqual(result.get("failed_stage"), self.search.STAGE_PERSIST)
         self.assertEqual(result.get("exception_type"), "TypeError")
         self.assertGreater(len(result.get("candidates") or []), 0)
@@ -177,7 +183,8 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             "C0603C104K5RAC3121",
             [row["Alternative Part"] for row in result["candidates"]],
         )
-        self.assertIn("Cadivor could not complete the supplier search", str(result.get("search_error")))
+        self.assertEqual(session.get("alternative_search_error"), "")
+        self.assertFalse(self.state.should_show_terminal_search_error(session))
 
     def test_suggest_alternatives_avoids_per_candidate_supplier_lookups(self):
         calls: list[str] = []
@@ -465,8 +472,10 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         outcome = self.search.run_alternative_finder_search(session, "C0603C104K5RACTU")
         result = session[self.state.ALT_FINDER_RESULT_KEY]
 
-        self.assertEqual(outcome["status"], "completed")
+        self.assertEqual(outcome["status"], "partial_success")
+        self.assertEqual(outcome["search_outcome"], self.state.OUTCOME_PARTIAL_SUCCESS)
         self.assertEqual(result["status"], self.state.STATUS_COMPLETED)
+        self.assertEqual(result["search_outcome"], self.state.OUTCOME_PARTIAL_SUCCESS)
         self.assertGreater(len(result["candidates"]), 0)
         self.assertIn(
             "C0603C104K5RAC3121",
@@ -474,7 +483,162 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         )
         self.assertIn("Mouser", result["discovery_metadata"]["provider_failures"])
         self.assertTrue(result["discovery_metadata"]["has_incomplete_evidence"])
+        self.assertEqual(session.get("alternative_search_error"), "")
+        self.assertFalse(self.state.should_show_terminal_search_error(session))
         self.assertNotIn("Cadivor could not complete the supplier search", str(result))
+
+
+class AlternativeFinderOutcomeTests(unittest.TestCase):
+    def setUp(self):
+        sys.modules["streamlit"] = types.SimpleNamespace(cache_data=_cache_data)
+        sys.modules.pop("src.alternative_engine", None)
+        sys.modules.pop("integrations.supplier_aggregator", None)
+        self.search = importlib.import_module("src.alternative_finder_search")
+        self.state = importlib.import_module("src.alternative_finder_state")
+        self.engine = importlib.import_module("src.alternative_engine")
+        self.classification = importlib.import_module("src.alternative_classification")
+        self.aggregator = importlib.import_module("integrations.supplier_aggregator")
+        self.diagnostics = importlib.import_module("integrations.supplier_diagnostics")
+
+    def _verified_direct_candidate(self):
+        return {
+            "manufacturer_part_number": "C0603C104K5RAC3121",
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+            "retrieval_status": "ok",
+            "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+        }
+
+    def test_true_failure_shows_terminal_error_without_candidates(self):
+        session: dict = {}
+        self.state.init_alternative_finder_state(session)
+        self.aggregator.get_best_part_data = lambda _part: {
+            "manufacturer_part_number": "C0603C104K5RACTU",
+            "supplier_data_verified": True,
+            "all_supplier_results": [],
+        }
+        self.engine.suggest_alternatives_v2 = lambda _part: (_ for _ in ()).throw(
+            RuntimeError("candidate engine exploded")
+        )
+        self.engine.discover_alternative_candidates = lambda _part: {
+            "original_mpn": "C0603C104K5RACTU",
+            "candidates": [],
+            "provider_failures": [],
+            "has_incomplete_evidence": False,
+        }
+
+        outcome = self.search.run_alternative_finder_search(session, "C0603C104K5RACTU")
+        result = session[self.state.ALT_FINDER_RESULT_KEY]
+
+        self.assertEqual(outcome["status"], "failed")
+        self.assertEqual(outcome["search_outcome"], "failure")
+        self.assertEqual(result["status"], self.state.STATUS_FAILED)
+        self.assertEqual(result["search_outcome"], self.state.OUTCOME_FAILURE)
+        self.assertEqual(result.get("candidates") or [], [])
+        self.assertIn("Cadivor could not complete the supplier search", session["alternative_search_error"])
+        self.assertTrue(self.state.should_show_terminal_search_error(session))
+
+    def test_stale_terminal_error_cleared_after_later_successful_search(self):
+        session: dict = {}
+        self.state.init_alternative_finder_state(session)
+        self.state.fail_alternative_finder_search(
+            session,
+            entered_mpn="OLD-PART",
+            search_error=self.state.TERMINAL_SEARCH_ERROR_MESSAGE,
+        )
+        self.assertTrue(self.state.should_show_terminal_search_error(session))
+
+        explicit = [self._verified_direct_candidate()]
+
+        def discover(_part):
+            merged = self.classification.merge_discovery_candidates(
+                explicit,
+                [],
+                original_mpn="C0603C104K5RACTU",
+            )
+            return {
+                "original_mpn": "C0603C104K5RACTU",
+                "candidates": merged,
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        self.aggregator.get_best_part_data = lambda _part: {
+            "manufacturer_part_number": "C0603C104K5RACTU",
+            "supplier_data_verified": True,
+            "all_supplier_results": [
+                {"source": "DigiKey", "provider_status": "AVAILABLE"},
+            ],
+        }
+
+        self.state.mark_alternative_finder_running(session, entered_mpn="C0603C104K5RACTU")
+        outcome = self.search.run_alternative_finder_search(session, "C0603C104K5RACTU")
+
+        self.assertIn(outcome["status"], {"completed", "partial_success"})
+        self.assertEqual(session.get("alternative_search_error"), "")
+        self.assertFalse(self.state.should_show_terminal_search_error(session))
+        self.assertGreater(len(self.state.get_alternative_finder_candidates(session)), 0)
+
+    def test_octopart_not_configured_records_configuration_category(self):
+        with self.assertLogs("integrations.supplier_diagnostics", level="INFO") as logs:
+            results = self.aggregator.get_supplier_results("C0603C104K5RACTU")
+        octopart_rows = [row for row in results if row.get("source") == "Octopart"]
+        self.assertEqual(len(octopart_rows), 1)
+        row = octopart_rows[0]
+        self.assertEqual(row.get("provider_status"), "NOT_CONFIGURED")
+        self.assertEqual(row.get("failure_category"), self.diagnostics.CATEGORY_CONFIGURATION)
+        self.assertTrue(any("ALT_FINDER_SUPPLIER_DIAG" in message for message in logs.output))
+        self.assertTrue(any("supplier=Octopart" in message for message in logs.output))
+        self.assertTrue(any("category=configuration" in message for message in logs.output))
+
+    def test_octopart_coverage_label_distinguishes_configuration_from_failure(self):
+        configured_label = self.diagnostics.supplier_coverage_label(
+            "Octopart",
+            "NOT_CONFIGURED",
+            failure_category=self.diagnostics.CATEGORY_CONFIGURATION,
+        )
+        failed_label = self.diagnostics.supplier_coverage_label(
+            "Octopart",
+            "PROVIDER_ERROR",
+            failure_category=self.diagnostics.CATEGORY_HTTP_ERROR,
+        )
+        self.assertEqual(configured_label, "Octopart: not configured")
+        self.assertEqual(failed_label, "Octopart: unavailable for this search")
+
+    def test_c3121_classification_follows_verified_direct_evidence(self):
+        explicit = [self._verified_direct_candidate()]
+        merged = self.classification.merge_discovery_candidates(
+            explicit,
+            [],
+            original_mpn="C0603C104K5RACTU",
+        )
+        classification = self.classification.classify_from_supplier_evidence(
+            merged[0],
+            original_mpn="C0603C104K5RACTU",
+            original_manufacturer="KEMET",
+        )
+        self.assertEqual(classification, self.classification.CLASS_VERIFIED_DIRECT)
+
+        def discover(_part):
+            return {
+                "original_mpn": "C0603C104K5RACTU",
+                "candidates": merged,
+                "provider_failures": [],
+                "has_incomplete_evidence": True,
+                "providers": {"DigiKey": {"substitutions": "ok"}},
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
+        target = next(
+            row for row in results if row["Alternative Part"] == "C0603C104K5RAC3121"
+        )
+        self.assertEqual(target["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
+        self.assertEqual(target["Substitute Type"], "Direct")
+        self.assertEqual(target["Evidence Type"], "Distributor-listed substitute")
 
 
 if __name__ == "__main__":

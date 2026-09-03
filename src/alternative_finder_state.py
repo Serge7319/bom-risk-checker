@@ -14,6 +14,15 @@ STATUS_RUNNING = "running"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 
+OUTCOME_SUCCESS = "success"
+OUTCOME_PARTIAL_SUCCESS = "partial_success"
+OUTCOME_FAILURE = "failure"
+
+TERMINAL_SEARCH_ERROR_MESSAGE = (
+    "Cadivor could not complete the supplier search right now. "
+    "Please try again in a moment."
+)
+
 MAX_SANITIZE_DEPTH = 64
 MARKER_CIRCULAR_REF = "<circular-reference>"
 MARKER_MAX_DEPTH = "<max-depth-exceeded>"
@@ -272,6 +281,61 @@ def _migrate_legacy_completed_search(session_state: MutableMapping[str, Any]) ->
     )
 
 
+def resolve_search_outcome(
+    candidates: list[Any],
+    *,
+    has_incomplete_evidence: bool = False,
+    persist_issue: bool = False,
+) -> str:
+    if not candidates:
+        return OUTCOME_FAILURE
+    if has_incomplete_evidence or persist_issue:
+        return OUTCOME_PARTIAL_SUCCESS
+    return OUTCOME_SUCCESS
+
+
+def clear_alternative_finder_search_errors(session_state: MutableMapping[str, Any]) -> None:
+    session_state["alternative_search_error"] = ""
+
+
+def get_alternative_finder_durable_result(
+    session_state: Mapping[str, Any],
+) -> Optional[dict[str, Any]]:
+    result = session_state.get(ALT_FINDER_RESULT_KEY)
+    if not isinstance(result, dict):
+        return None
+    status = str(result.get("status") or STATUS_IDLE)
+    if status in {STATUS_COMPLETED, STATUS_FAILED}:
+        return result
+    return None
+
+
+def get_alternative_finder_outcome(session_state: Mapping[str, Any]) -> str:
+    result = get_alternative_finder_durable_result(session_state)
+    if not result:
+        return ""
+    outcome = str(result.get("search_outcome") or "").strip()
+    if outcome:
+        return outcome
+    if result.get("status") == STATUS_FAILED:
+        return OUTCOME_FAILURE
+    if result.get("status") == STATUS_COMPLETED:
+        return OUTCOME_SUCCESS
+    return ""
+
+
+def should_show_terminal_search_error(session_state: Mapping[str, Any]) -> bool:
+    if get_alternative_finder_candidates(session_state):
+        return False
+    outcome = get_alternative_finder_outcome(session_state)
+    if outcome and outcome != OUTCOME_FAILURE:
+        return False
+    result = get_alternative_finder_durable_result(session_state)
+    if result and str(result.get("search_error") or "").strip():
+        return True
+    return bool(str(session_state.get("alternative_search_error") or "").strip())
+
+
 def _sync_legacy_from_result(
     session_state: MutableMapping[str, Any],
     result: Mapping[str, Any],
@@ -282,7 +346,13 @@ def _sync_legacy_from_result(
     session_state["alternative_original_risk"] = dict(result.get("original_risk") or {})
     session_state["alternative_original_lookup_part"] = str(result.get("entered_mpn") or "")
     session_state["alternative_original_lookup_error"] = str(result.get("lookup_error") or "")
-    session_state["alternative_search_error"] = str(result.get("search_error") or "")
+    outcome = str(result.get("search_outcome") or "").strip()
+    if not outcome and result.get("status") == STATUS_FAILED:
+        outcome = OUTCOME_FAILURE
+    if outcome in {OUTCOME_SUCCESS, OUTCOME_PARTIAL_SUCCESS}:
+        session_state["alternative_search_error"] = ""
+    else:
+        session_state["alternative_search_error"] = str(result.get("search_error") or "")
     session_state["alternative_discovery_metadata"] = dict(
         result.get("discovery_metadata") or {}
     )
@@ -304,9 +374,11 @@ def get_active_alternative_finder_result(
 
 
 def get_alternative_finder_candidates(session_state: Mapping[str, Any]) -> list[dict[str, Any]]:
-    active = get_active_alternative_finder_result(session_state)
-    if active:
-        return list(active.get("candidates") or [])
+    result = session_state.get(ALT_FINDER_RESULT_KEY)
+    if isinstance(result, dict):
+        stored = list(result.get("candidates") or [])
+        if stored:
+            return stored
     legacy = session_state.get("suggested_alternatives") or []
     return list(legacy) if isinstance(legacy, list) else []
 
@@ -361,6 +433,7 @@ def mark_alternative_finder_running(
     *,
     entered_mpn: str,
 ) -> None:
+    clear_alternative_finder_search_errors(session_state)
     session_state[ALT_FINDER_RESULT_KEY] = {
         "status": STATUS_RUNNING,
         "entered_mpn": entered_mpn,
@@ -380,11 +453,22 @@ def complete_alternative_finder_search(
     discovery_metadata: Optional[Mapping[str, Any]] = None,
     lookup_error: str = "",
     search_error: str = "",
+    search_outcome: str = "",
+    persist_diagnostic: Optional[Mapping[str, str]] = None,
 ) -> dict[str, Any]:
     sanitized_candidates = _safe_sanitize_list(list(candidates or []))
     selected = selected_candidate_mpn.strip()
     if not selected and sanitized_candidates:
         selected = str(sanitized_candidates[0].get("Alternative Part") or "").strip()
+
+    discovery = dict(discovery_metadata or {})
+    resolved_outcome = str(search_outcome or "").strip()
+    if not resolved_outcome:
+        resolved_outcome = resolve_search_outcome(
+            sanitized_candidates,
+            has_incomplete_evidence=bool(discovery.get("has_incomplete_evidence")),
+            persist_issue=bool(persist_diagnostic),
+        )
 
     result = {
         "status": STATUS_COMPLETED,
@@ -395,10 +479,21 @@ def complete_alternative_finder_search(
         "original_risk": _safe_sanitize_mapping(original_risk),
         "candidates": sanitized_candidates,
         "selected_candidate_mpn": selected,
-        "discovery_metadata": _safe_sanitize_mapping(discovery_metadata),
+        "discovery_metadata": _safe_sanitize_mapping(discovery),
         "lookup_error": lookup_error.strip(),
-        "search_error": search_error.strip(),
+        "search_error": "",
+        "search_outcome": resolved_outcome,
     }
+    if persist_diagnostic:
+        for key in (
+            "diagnostic_code",
+            "diagnostic_message",
+            "exception_type",
+            "failed_stage",
+        ):
+            value = str(persist_diagnostic.get(key) or "").strip()
+            if value:
+                result[key] = value
     session_state[ALT_FINDER_RESULT_KEY] = result
     session_state["alternative_original_part"] = entered_mpn.strip()
     if selected:
@@ -426,16 +521,44 @@ def fail_alternative_finder_search(
     safe_original_data = _safe_sanitize_mapping(original_data)
     safe_original_risk = _safe_sanitize_mapping(original_risk)
     sanitized_candidates = _safe_sanitize_list(list(candidates or []))
+    if sanitized_candidates:
+        persist_diagnostic = {
+            "diagnostic_code": diagnostic_code.strip(),
+            "diagnostic_message": diagnostic_message.strip(),
+            "exception_type": exception_type.strip(),
+            "failed_stage": failed_stage.strip(),
+        }
+        complete_alternative_finder_search(
+            session_state,
+            entered_mpn=entered_mpn,
+            canonical_mpn=entered_mpn,
+            original_data=safe_original_data,
+            original_risk=safe_original_risk,
+            candidates=sanitized_candidates,
+            discovery_metadata=discovery_metadata,
+            lookup_error=lookup_error,
+            search_outcome=OUTCOME_PARTIAL_SUCCESS,
+            persist_diagnostic=persist_diagnostic,
+        )
+        result = session_state.get(ALT_FINDER_RESULT_KEY)
+        if isinstance(result, dict) and stage_timings_ms:
+            result["stage_timings_ms"] = {
+                str(stage): float(duration)
+                for stage, duration in stage_timings_ms.items()
+            }
+        return
+
     failed_result: dict[str, Any] = {
         "status": STATUS_FAILED,
         "algorithm_version": RESULT_ALGORITHM_VERSION,
         "entered_mpn": entered_mpn.strip(),
-        "search_error": search_error.strip(),
+        "search_error": search_error.strip() or TERMINAL_SEARCH_ERROR_MESSAGE,
         "lookup_error": lookup_error.strip(),
         "original_data": safe_original_data,
         "original_risk": safe_original_risk,
-        "candidates": sanitized_candidates,
+        "candidates": [],
         "discovery_metadata": _safe_sanitize_mapping(discovery_metadata),
+        "search_outcome": OUTCOME_FAILURE,
     }
     if diagnostic_code.strip():
         failed_result["diagnostic_code"] = diagnostic_code.strip()
