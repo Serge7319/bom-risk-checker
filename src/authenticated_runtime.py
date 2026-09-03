@@ -8831,6 +8831,7 @@ def run_authenticated_app() -> None:
             get_active_alternative_finder_result,
             get_alternative_finder_candidates,
             get_alternative_finder_display_mpn,
+            get_alternative_finder_durable_result,
             get_alternative_finder_lookup_error,
             get_alternative_finder_original_data,
             get_alternative_finder_original_risk,
@@ -8838,6 +8839,7 @@ def run_authenticated_app() -> None:
             init_alternative_finder_state,
             alternative_search_was_attempted,
             mark_alternative_finder_running,
+            should_show_terminal_search_error,
             sync_alternative_finder_selected_candidate_result,
             set_alternative_finder_selected_candidate,
             should_start_new_alternative_search,
@@ -10093,9 +10095,9 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("cadivor_operation", None)
                     search_status.empty()
 
-        if st.session_state.get("alternative_search_error"):
+        if should_show_terminal_search_error(st.session_state):
             st.error(st.session_state["alternative_search_error"], icon="⚠️")
-            failed_result = get_active_alternative_finder_result(st.session_state) or {}
+            failed_result = get_alternative_finder_durable_result(st.session_state) or {}
             support_bits = []
             failed_stage = str(failed_result.get("failed_stage") or "").strip()
             diagnostic_code = str(failed_result.get("diagnostic_code") or "").strip()
@@ -10131,23 +10133,36 @@ def run_authenticated_app() -> None:
             return fallback
 
         def _af62_provider_coverage(data):
+            from integrations.supplier_diagnostics import supplier_coverage_label
+
             if not isinstance(data, dict):
                 return "Not checked"
-            labels = {
-                "AVAILABLE": "available",
-                "PART_NOT_FOUND": "no exact match",
-                "NOT_CONFIGURED": "not configured",
-                "TIMEOUT": "timed out",
-                "RATE_LIMITED": "rate limited",
-                "PROVIDER_ERROR": "unavailable",
-            }
             coverage = []
             for row in data.get("all_supplier_results") or []:
                 if isinstance(row, dict) and row.get("source"):
                     coverage.append(
-                        f"{row['source']}: {labels.get(str(row.get('provider_status') or ''), 'unknown')}"
+                        supplier_coverage_label(
+                            str(row["source"]),
+                            str(row.get("provider_status") or ""),
+                            failure_category=str(row.get("failure_category") or ""),
+                        )
                     )
             return " · ".join(coverage) if coverage else "Not checked"
+
+        def _af62_candidate_eyebrow(classification: str) -> str:
+            from src.alternative_classification import (
+                CLASS_ORDERING_EQUIVALENT,
+                CLASS_SPEC_MATCHED,
+                CLASS_VERIFIED_DIRECT,
+            )
+
+            if classification == CLASS_VERIFIED_DIRECT:
+                return "★ Verified direct substitute"
+            if classification == CLASS_ORDERING_EQUIVALENT:
+                return "★ Same-manufacturer ordering-code equivalent"
+            if classification == CLASS_SPEC_MATCHED:
+                return "★ Spec-matched alternative"
+            return "★ Supplier-listed candidate"
 
         manufacturer_display = html.escape(
             _af62_first(
@@ -10585,7 +10600,7 @@ def run_authenticated_app() -> None:
                     f"""
                     <div class="af62b-best-top">
                       <div>
-                        <div class="af62b-eyebrow">★ Supplier-listed candidate</div>
+                        <div class="af62b-eyebrow">{html.escape(_af62_candidate_eyebrow(classification_value))}</div>
                         <div class="af62b-best-part">{html.escape(selected_alternative)}</div>
                         <div class="af62b-best-copy">{html.escape(recommendation_copy)}</div>
                       </div>

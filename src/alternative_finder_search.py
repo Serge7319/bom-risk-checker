@@ -224,6 +224,12 @@ def merge_supplier_failures_into_discovery(
 ) -> dict[str, Any]:
     """Attach lookup failures from the original supplier aggregation to discovery metadata."""
     discovery = dict(discovery_metadata or {})
+    for row in (original_data or {}).get("all_supplier_results") or []:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("provider_status") or "").strip().upper()
+        if status in {"NOT_CONFIGURED", "TIMEOUT", "RATE_LIMITED", "PROVIDER_ERROR"}:
+            discovery["has_incomplete_evidence"] = True
     failures = collect_provider_failure_names(
         discovery_metadata=discovery,
         original_data=original_data,
@@ -243,6 +249,11 @@ def run_alternative_finder_search(
     lookup_error: str = "",
 ) -> dict[str, Any]:
     """Execute Alternative Finder search stages and persist durable session results."""
+    from integrations.supplier_diagnostics import (
+        new_alternative_finder_request_id,
+        reset_alternative_finder_request_id,
+        set_alternative_finder_request_id,
+    )
     from integrations.supplier_aggregator import get_best_part_data
     from integrations.stock_coercion import coerce_stock_total
     from src.alternative_engine import (
@@ -250,46 +261,56 @@ def run_alternative_finder_search(
         get_alternative_discovery_metadata,
         suggest_alternatives_v2,
     )
-    from src.alternative_finder_state import complete_alternative_finder_search, fail_alternative_finder_search
+    from src.alternative_finder_state import (
+        OUTCOME_PARTIAL_SUCCESS,
+        TERMINAL_SEARCH_ERROR_MESSAGE,
+        complete_alternative_finder_search,
+        fail_alternative_finder_search,
+        resolve_search_outcome,
+    )
     from src.risk_engine import calculate_risk
 
+    request_id = new_alternative_finder_request_id()
+    request_token = set_alternative_finder_request_id(request_id)
     search_run = AlternativeFinderSearchRun()
+    search_run.request_id = request_id
     entered_mpn = str(searched_part or "").strip()
     safe_original: dict = dict(original_lookup or {})
     safe_risk: dict = dict(original_risk or {})
     safe_lookup_error = str(lookup_error or "")
-
-    if not safe_original:
-        try:
-            with search_run.stage(STAGE_ORIGINAL_LOOKUP):
-                search_run.operation = "lookup"
-                search_run.provider = "aggregator"
-                safe_original = get_best_part_data(entered_mpn) or {}
-            if not isinstance(safe_original, dict):
-                safe_original = {}
-            if safe_original.get("stock_total") is not None:
-                safe_original["stock_total"] = coerce_stock_total(safe_original.get("stock_total"))
-            try:
-                safe_risk = calculate_risk(safe_original) or {}
-            except Exception:
-                safe_risk = {}
-            if not safe_original.get("supplier_data_verified"):
-                safe_lookup_error = (
-                    f'No exact supplier match was found for "{entered_mpn}". '
-                    "Enter the complete manufacturer part number, including package or suffix where applicable."
-                )
-        except Exception as original_exc:
-            if _is_streamlit_control_flow(original_exc):
-                raise
-            safe_original = {}
-            safe_risk = {}
-            safe_lookup_error = (
-                "Some original-component details are temporarily unavailable. "
-                "You can still review the available replacement evidence."
-            )
-            search_run.log_stage_warning(original_exc, stage=STAGE_ORIGINAL_LOOKUP)
+    candidates: list = []
 
     try:
+        if not safe_original:
+            try:
+                with search_run.stage(STAGE_ORIGINAL_LOOKUP):
+                    search_run.operation = "lookup"
+                    search_run.provider = "aggregator"
+                    safe_original = get_best_part_data(entered_mpn) or {}
+                if not isinstance(safe_original, dict):
+                    safe_original = {}
+                if safe_original.get("stock_total") is not None:
+                    safe_original["stock_total"] = coerce_stock_total(safe_original.get("stock_total"))
+                try:
+                    safe_risk = calculate_risk(safe_original) or {}
+                except Exception:
+                    safe_risk = {}
+                if not safe_original.get("supplier_data_verified"):
+                    safe_lookup_error = (
+                        f'No exact supplier match was found for "{entered_mpn}". '
+                        "Enter the complete manufacturer part number, including package or suffix where applicable."
+                    )
+            except Exception as original_exc:
+                if _is_streamlit_control_flow(original_exc):
+                    raise
+                safe_original = {}
+                safe_risk = {}
+                safe_lookup_error = (
+                    "Some original-component details are temporarily unavailable. "
+                    "You can still review the available replacement evidence."
+                )
+                search_run.log_stage_warning(original_exc, stage=STAGE_ORIGINAL_LOOKUP)
+
         candidates: list = []
         discovery: dict = {}
         if safe_original.get("supplier_data_verified"):
@@ -314,8 +335,14 @@ def run_alternative_finder_search(
                 lookup_error=safe_lookup_error,
                 search_error="",
             )
+        outcome = resolve_search_outcome(
+            candidates,
+            has_incomplete_evidence=bool(discovery.get("has_incomplete_evidence")),
+        )
         return {
-            "status": "completed",
+            "status": "partial_success" if outcome == OUTCOME_PARTIAL_SUCCESS else "completed",
+            "search_outcome": outcome,
+            "request_id": request_id,
             "candidate_count": len(candidates),
             "stage_timings_ms": dict(search_run.stages_ms),
             "discovery_metadata": discovery,
@@ -335,22 +362,55 @@ def run_alternative_finder_search(
                 ).strip(),
                 original_part_number=entered_mpn,
             )
+        if salvage_candidates:
+            canonical_mpn = str(
+                safe_original.get("manufacturer_part_number") or entered_mpn
+            ).strip()
+            complete_alternative_finder_search(
+                session_state,
+                entered_mpn=entered_mpn,
+                canonical_mpn=canonical_mpn,
+                original_data=safe_original,
+                original_risk=safe_risk,
+                candidates=salvage_candidates,
+                discovery_metadata=discovery,
+                lookup_error=safe_lookup_error,
+                search_outcome=OUTCOME_PARTIAL_SUCCESS,
+                persist_diagnostic=diagnostic,
+            )
+            result = session_state.get("alternative_finder_result")
+            if isinstance(result, dict):
+                result["stage_timings_ms"] = {
+                    str(stage): float(duration)
+                    for stage, duration in search_run.stages_ms.items()
+                }
+            return {
+                "status": "partial_success",
+                "search_outcome": OUTCOME_PARTIAL_SUCCESS,
+                "request_id": request_id,
+                "candidate_count": len(salvage_candidates),
+                "diagnostic": diagnostic,
+                "stage_timings_ms": dict(search_run.stages_ms),
+            }
+
         fail_alternative_finder_search(
             session_state,
             entered_mpn=entered_mpn,
-            search_error=(
-                "Cadivor could not complete the supplier search right now. "
-                "Please try again in a moment."
-            ),
+            search_error=TERMINAL_SEARCH_ERROR_MESSAGE,
             lookup_error=safe_lookup_error,
             original_data=safe_original,
             original_risk=safe_risk,
-            candidates=salvage_candidates,
+            candidates=[],
             discovery_metadata=discovery,
             diagnostic_code=diagnostic["diagnostic_code"],
             diagnostic_message=diagnostic["diagnostic_message"],
             exception_type=diagnostic["exception_type"],
-            failed_stage=str(diagnostic.get("failed_stage") or search_run.failed_stage or search_run.active_stage or ""),
+            failed_stage=str(
+                diagnostic.get("failed_stage")
+                or search_run.failed_stage
+                or search_run.active_stage
+                or ""
+            ),
             stage_timings_ms=search_run.stages_ms,
         )
         attach_failure_diagnostics(
@@ -360,9 +420,13 @@ def run_alternative_finder_search(
         )
         return {
             "status": "failed",
+            "search_outcome": "failure",
+            "request_id": request_id,
             "diagnostic": diagnostic,
             "stage_timings_ms": dict(search_run.stages_ms),
         }
+    finally:
+        reset_alternative_finder_request_id(request_token)
 
 
 def get_or_enrich_selected_candidate(

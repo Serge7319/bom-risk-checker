@@ -69,6 +69,7 @@ def _empty_supplier_result(source_name: str, *, provider_status: str, error: str
 
 
 def _safe_supplier_lookup(source_name, lookup_func, part_number):
+    from integrations.supplier_diagnostics import attach_supplier_diagnostic, log_supplier_diagnostic
     from src.performance_timing import (
         emit_timing,
         normalize_provider,
@@ -85,6 +86,13 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
                 provider_status=PROVIDER_NOT_CONFIGURED,
                 error=f"{source_name} is not configured",
             )
+            diagnostic = log_supplier_diagnostic(
+                supplier=str(source_name),
+                stage="lookup",
+                provider_status=PROVIDER_NOT_CONFIGURED,
+                error_message=result.get("error", ""),
+            )
+            attach_supplier_diagnostic(result, diagnostic)
             if started is not None:
                 emit_timing(
                     "supplier.lookup",
@@ -103,6 +111,13 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
                 provider_status=PROVIDER_ERROR,
                 error=f"No response from {source_name}",
             )
+            diagnostic = log_supplier_diagnostic(
+                supplier=str(source_name),
+                stage="lookup",
+                provider_status=PROVIDER_ERROR,
+                error_message=result.get("error", ""),
+            )
+            attach_supplier_diagnostic(result, diagnostic)
             if started is not None:
                 emit_timing(
                     "supplier.lookup",
@@ -127,6 +142,13 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         if result.get("error"):
             result["provider_status"] = PROVIDER_ERROR
             result["error"] = sanitize_provider_message(result.get("error"))
+            diagnostic = log_supplier_diagnostic(
+                supplier=str(source_name),
+                stage="lookup",
+                provider_status=PROVIDER_ERROR,
+                error_message=result.get("error", ""),
+            )
+            attach_supplier_diagnostic(result, diagnostic)
             if started is not None:
                 emit_timing(
                     "supplier.lookup",
@@ -140,6 +162,12 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         if not str(result.get("manufacturer_part_number") or "").strip():
             result["provider_status"] = PROVIDER_PART_NOT_FOUND
             result.pop("error", None)
+            diagnostic = log_supplier_diagnostic(
+                supplier=str(source_name),
+                stage="lookup",
+                provider_status=PROVIDER_PART_NOT_FOUND,
+            )
+            attach_supplier_diagnostic(result, diagnostic)
             if started is not None:
                 emit_timing(
                     "supplier.lookup",
@@ -166,7 +194,13 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
     except Exception as error:
         provider_status = classify_provider_exception(error)
         safe_message = sanitize_provider_message(error)
-        print(f"{source_name} lookup failed:", safe_message)
+        diagnostic = log_supplier_diagnostic(
+            supplier=str(source_name),
+            stage="lookup",
+            provider_status=provider_status,
+            error_message=safe_message,
+            exception_type=type(error).__name__,
+        )
         if started is not None:
             emit_timing(
                 "supplier.lookup",
@@ -176,11 +210,13 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
                 operation="lookup",
             )
 
-        return _empty_supplier_result(
+        result = _empty_supplier_result(
             source_name,
             provider_status=provider_status,
             error=safe_message,
         )
+        attach_supplier_diagnostic(result, diagnostic)
+        return result
 
 
 def _supplier_lookup_callable(source_name: str):
