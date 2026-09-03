@@ -8838,6 +8838,7 @@ def run_authenticated_app() -> None:
             init_alternative_finder_state,
             alternative_search_was_attempted,
             mark_alternative_finder_running,
+            sync_alternative_finder_selected_candidate_result,
             set_alternative_finder_selected_candidate,
             should_start_new_alternative_search,
         )
@@ -10231,6 +10232,9 @@ def run_authenticated_app() -> None:
                 else "No exact supplier match"
             )
             current_status_class = "warning"
+        elif active_finder_result and str(active_finder_result.get("status") or "") == "failed":
+            current_status = "Search incomplete"
+            current_status_class = "warning"
         elif active_finder_result and original_summary_data:
             current_status = "Component intelligence loaded"
             current_status_class = "success"
@@ -10356,7 +10360,7 @@ def run_authenticated_app() -> None:
                 key="alternative_selected_candidate_62b",
                 help="Choose another candidate to refresh the recommendation and comparison workspace.",
             )
-            set_alternative_finder_selected_candidate(
+            sync_alternative_finder_selected_candidate_result(
                 st.session_state,
                 selected_alternative,
             )

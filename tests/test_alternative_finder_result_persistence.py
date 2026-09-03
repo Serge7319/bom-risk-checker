@@ -17,6 +17,7 @@ from src.alternative_finder_state import (
     init_alternative_finder_state,
     sanitize_for_session,
     set_alternative_finder_selected_candidate,
+    sync_alternative_finder_selected_candidate_result,
     should_apply_alternative_finder_prefill,
     should_start_new_alternative_search,
 )
@@ -78,6 +79,23 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
             ),
             "CAND-012",
         )
+        active = get_active_alternative_finder_result(self.session)
+        assert active is not None
+        self.assertEqual(active["selected_candidate_mpn"], "CAND-012")
+
+    def test_sync_selected_candidate_result_preserves_widget_bound_key(self):
+        complete_alternative_finder_search(
+            self.session,
+            entered_mpn="C0603C104K5RACTU",
+            canonical_mpn="C0603C104K5RACTU",
+            original_data={"package": "0603"},
+            original_risk={},
+            candidates=_sample_candidates(),
+        )
+        self.session["alternative_selected_candidate_62b"] = "CAND-000"
+        sync_alternative_finder_selected_candidate_result(self.session, "CAND-012")
+
+        self.assertEqual(self.session["alternative_selected_candidate_62b"], "CAND-000")
         active = get_active_alternative_finder_result(self.session)
         assert active is not None
         self.assertEqual(active["selected_candidate_mpn"], "CAND-012")

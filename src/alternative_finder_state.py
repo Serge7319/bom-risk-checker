@@ -464,10 +464,22 @@ def set_alternative_finder_selected_candidate(
     session_state: MutableMapping[str, Any],
     candidate_mpn: str,
 ) -> None:
+    """Seed or update the selected candidate before the selectbox widget renders."""
     selected = str(candidate_mpn or "").strip()
     if not selected:
         return
     session_state["alternative_selected_candidate_62b"] = selected
+    sync_alternative_finder_selected_candidate_result(session_state, selected)
+
+
+def sync_alternative_finder_selected_candidate_result(
+    session_state: MutableMapping[str, Any],
+    candidate_mpn: str,
+) -> None:
+    """Persist the selected candidate on the durable result without touching widget keys."""
+    selected = str(candidate_mpn or "").strip()
+    if not selected:
+        return
     result = session_state.get(ALT_FINDER_RESULT_KEY)
     if isinstance(result, dict) and result.get("status") == STATUS_COMPLETED:
         result["selected_candidate_mpn"] = selected
