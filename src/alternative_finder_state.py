@@ -7,6 +7,10 @@ from typing import Any, Mapping, MutableMapping, Optional
 
 ALT_FINDER_RESULT_KEY = "alternative_finder_result"
 ALT_FINDER_NAV_CONSUMED_KEY = "alternative_finder_nav_consumed_token"
+# Widget-bound text input key. Never assign to this after the widget is created.
+ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY = "alternative_original_part"
+# Durable non-widget store for the MPN used by the completed/failed search.
+ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY = "alternative_completed_original_part"
 RESULT_ALGORITHM_VERSION = "supplier-evidence-v4"
 
 STATUS_IDLE = "idle"
@@ -210,9 +214,20 @@ def alternative_search_was_attempted(session_state: Mapping[str, Any]) -> bool:
     return bool(session_state.get("alternative_search_attempted", False))
 
 
+def _store_completed_original_part(
+    session_state: MutableMapping[str, Any],
+    entered_mpn: str,
+) -> None:
+    """Persist the searched MPN without touching the text-input widget key."""
+    value = str(entered_mpn or "").strip()
+    session_state[ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY] = value
+    session_state["alternative_original_lookup_part"] = value
+
+
 def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> None:
     """Initialize Alternative Finder keys and migrate legacy session payloads."""
-    session_state.setdefault("alternative_original_part", "")
+    session_state.setdefault(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY, "")
+    session_state.setdefault(ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY, "")
     session_state.setdefault("alternative_candidate_shortlist", [])
     session_state.setdefault("alternative_engineering_decisions", {})
     session_state.setdefault("alternative_decision_notes", {})
@@ -256,9 +271,12 @@ def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> No
 
 
 def _migrate_legacy_completed_search(session_state: MutableMapping[str, Any]) -> None:
-    entered_mpn = str(session_state.get("alternative_original_lookup_part") or "").strip()
+    entered_mpn = str(session_state.get(ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY) or "").strip()
     if not entered_mpn:
-        entered_mpn = str(session_state.get("alternative_original_part") or "").strip()
+        entered_mpn = str(session_state.get("alternative_original_lookup_part") or "").strip()
+    if not entered_mpn:
+        # Widget value is a last-resort migration source only; never write back to it here.
+        entered_mpn = str(session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY) or "").strip()
     if not entered_mpn:
         return
 
@@ -344,7 +362,6 @@ def _sync_legacy_from_result(
     session_state["alternative_search_attempted"] = True
     session_state["alternative_original_data"] = dict(result.get("original_data") or {})
     session_state["alternative_original_risk"] = dict(result.get("original_risk") or {})
-    session_state["alternative_original_lookup_part"] = str(result.get("entered_mpn") or "")
     session_state["alternative_original_lookup_error"] = str(result.get("lookup_error") or "")
     outcome = str(result.get("search_outcome") or "").strip()
     if not outcome and result.get("status") == STATUS_FAILED:
@@ -359,7 +376,9 @@ def _sync_legacy_from_result(
     session_state["alternative_result_algorithm_version"] = RESULT_ALGORITHM_VERSION
     entered_mpn = str(result.get("entered_mpn") or "")
     if entered_mpn:
-        session_state["alternative_original_part"] = entered_mpn
+        # Keep the text-input widget as the live user-entry source of truth.
+        # Completed-search MPN lives on a separate non-widget key.
+        _store_completed_original_part(session_state, entered_mpn)
 
 
 def get_active_alternative_finder_result(
@@ -390,7 +409,13 @@ def get_alternative_finder_display_mpn(
     active = get_active_alternative_finder_result(session_state)
     if active:
         return str(active.get("entered_mpn") or "").strip()
-    return str(widget_value or session_state.get("alternative_original_part") or "").strip()
+    completed = str(session_state.get(ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY) or "").strip()
+    if completed:
+        return completed
+    lookup = str(session_state.get("alternative_original_lookup_part") or "").strip()
+    if lookup:
+        return lookup
+    return str(widget_value or session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY) or "").strip()
 
 
 def get_alternative_finder_original_data(session_state: Mapping[str, Any]) -> dict[str, Any]:
@@ -495,7 +520,9 @@ def complete_alternative_finder_search(
             if value:
                 result[key] = value
     session_state[ALT_FINDER_RESULT_KEY] = result
-    session_state["alternative_original_part"] = entered_mpn.strip()
+    # Do not assign alternative_original_part here: that key is bound to the
+    # search text_input widget and Streamlit forbids mutation after instantiation.
+    _store_completed_original_part(session_state, entered_mpn)
     if selected:
         session_state["alternative_selected_candidate_62b"] = selected
     _sync_legacy_from_result(session_state, result)
@@ -577,7 +604,7 @@ def fail_alternative_finder_search(
     session_state["suggested_alternatives"] = sanitized_candidates
     session_state["alternative_search_attempted"] = True
     session_state["alternative_search_error"] = search_error.strip()
-    session_state["alternative_original_lookup_part"] = entered_mpn.strip()
+    _store_completed_original_part(session_state, entered_mpn)
     session_state["alternative_original_lookup_error"] = lookup_error.strip()
     session_state["alternative_original_data"] = safe_original_data
     session_state["alternative_original_risk"] = safe_original_risk
@@ -639,8 +666,9 @@ def clear_alternative_finder_search(
             session_state[key] = ""
         else:
             session_state[key] = [] if key == "suggested_alternatives" else {}
+    session_state[ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY] = ""
     if clear_widget:
-        session_state["alternative_original_part"] = ""
+        session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY] = ""
     session_state.pop("alternative_selected_candidate_62b", None)
     session_state.pop("alternative_compare_parts", None)
     session_state.pop("alternative_advanced_parts", None)
