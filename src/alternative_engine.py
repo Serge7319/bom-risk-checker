@@ -24,9 +24,11 @@ from src.alternative_classification import (
     CLASS_CATALOG_INSUFFICIENT,
     CLASS_VERIFIED_DIRECT,
     apply_classification_result_cap,
+    apply_suitability_score_adjustment,
     build_classification_recommendation,
     classification_sort_key,
     classify_from_supplier_evidence,
+    classify_recommendation_suitability,
     refine_classification_after_comparison,
 )
 import streamlit as st
@@ -558,6 +560,7 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         "architecture": str(row.get("architecture") or "").strip(),
         "channel_count": row.get("channel_count", 0),
         "voltage_range": str(row.get("voltage_range") or "").strip(),
+        "lifecycle_status": str(row.get("lifecycle_status") or row.get("Lifecycle") or "").strip(),
         "source": str(row.get("source") or "DigiKey"),
         "supplier_data_verified": bool(mpn),
         **passive_fields,
@@ -1335,7 +1338,6 @@ def apply_supplier_enrichment_to_candidate(
     score_evidence["evidence_type"] = enriched.get("Evidence Type", "")
     score_evidence["substitute_type"] = enriched.get("Substitute Type", "")
     score_evidence.update(evidence_assessment)
-    enriched["Recommendation Score Evidence"] = score_evidence
 
     if supplier_data.get("supplier_data_verified"):
         enriched["Supplier"] = supplier_data.get("source") or enriched.get("Supplier", "")
@@ -1347,6 +1349,29 @@ def apply_supplier_enrichment_to_candidate(
         enriched["Unit Price"] = supplier_data.get("unit_price", enriched.get("Unit Price", 0.0))
         if supplier_data.get("lifecycle_status"):
             enriched["Lifecycle"] = supplier_data.get("lifecycle_status")
+
+    suitability = classify_recommendation_suitability(
+        str(enriched.get("Lifecycle") or ""),
+        source=str(enriched.get("Supplier") or enriched.get("Evidence Source") or ""),
+    )
+    suitability_adjustment = apply_suitability_score_adjustment(
+        enriched.get("Recommendation Score", 0),
+        suitability,
+    )
+    enriched["Recommendation Suitability"] = suitability
+    enriched["Recommendation Score"] = suitability_adjustment["recommendation_score"]
+    score_evidence["recommendation_score"] = suitability_adjustment["recommendation_score"]
+    score_evidence["recommendation_suitability"] = suitability
+    score_evidence["suitability_penalty"] = suitability_adjustment["suitability_penalty"]
+    score_evidence["suitability_capped"] = bool(suitability_adjustment["suitability_capped"])
+    enriched["Recommendation"] = build_classification_recommendation(
+        classification,
+        substitute_type=str(enriched.get("Substitute Type") or ""),
+        suitability=suitability,
+        lifecycle=str(enriched.get("Lifecycle") or ""),
+        source=str(enriched.get("Supplier") or enriched.get("Evidence Source") or ""),
+    )
+    enriched["Recommendation Score Evidence"] = score_evidence
 
     return enriched
 
@@ -1403,6 +1428,11 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             original_manufacturer=str(original_data.get("manufacturer") or ""),
         )
         is_explicit_substitute = classification == CLASS_VERIFIED_DIRECT
+        lifecycle = str(result.get("lifecycle_status") or "Unknown").strip() or "Unknown"
+        suitability = classify_recommendation_suitability(
+            lifecycle,
+            source=str(result.get("source") or "DigiKey"),
+        )
         supplier_candidates.append(
             {
                 "Alternative Part": candidate_part,
@@ -1412,7 +1442,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Manufacturer": str(result.get("manufacturer") or ""),
                 "Stock": coerce_stock_total(result.get("stock_total", 0)),
                 "Unit Price": result.get("unit_price", 0.0),
-                "Lifecycle": "Unknown",
+                "Lifecycle": lifecycle,
                 "Estimated Risk": "Unknown",
                 "Evidence Type": evidence_type,
                 "Substitute Type": substitute_type,
@@ -1421,9 +1451,13 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Retrieved At": str(result.get("retrieved_at") or discovery.get("retrieved_at") or ""),
                 "Product URL": str(result.get("product_detail_url") or ""),
                 "Datasheet URL": str(result.get("datasheet_url") or ""),
+                "Recommendation Suitability": suitability,
                 "Recommendation": build_classification_recommendation(
                     classification,
                     substitute_type=substitute_type,
+                    suitability=suitability,
+                    lifecycle=lifecycle,
+                    source=str(result.get("source") or "DigiKey"),
                 ),
                 "Recommendation Score": (
                     78 if substitute_type.casefold() == "direct" else 62

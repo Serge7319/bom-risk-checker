@@ -256,6 +256,12 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                 continue
             seen_mpns.add(mpn_key)
             manufacturer = item.get("Manufacturer") or {}
+            product_status = item.get("ProductStatus")
+            lifecycle_status = (
+                infer_digikey_lifecycle(item)
+                if product_status not in (None, "", {})
+                else "Unknown"
+            )
             results.append({
                 "source": "DigiKey",
                 "evidence_type": "Distributor-listed substitute",
@@ -272,6 +278,7 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                 "product_detail_url": str(item.get("ProductUrl") or "").strip(),
                 "datasheet_url": str(item.get("DatasheetUrl") or "").strip(),
                 "digikey_part_number": str(item.get("DigiKeyProductNumber") or "").strip(),
+                "lifecycle_status": lifecycle_status,
                 "retrieval_status": "ok",
                 "retrieved_at": retrieved_at,
             })
@@ -343,6 +350,7 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
                 "product_detail_url": normalized.get("product_detail_url", ""),
                 "datasheet_url": normalized.get("datasheet_url", ""),
                 "digikey_part_number": normalized.get("digikey_part_number", ""),
+                "lifecycle_status": normalized.get("lifecycle_status", "Unknown"),
                 "retrieval_status": "ok",
                 "retrieved_at": retrieved_at,
             })
