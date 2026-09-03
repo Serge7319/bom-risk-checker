@@ -288,17 +288,217 @@ def _serialize_auth_cookie_payload(access_token: str, refresh_token: str) -> str
     return json.dumps(payload, separators=(",", ":"))
 
 
+def _decode_jwt_claims(access_token: str) -> dict | None:
+    """Decode JWT payload claims without verifying the signature.
+
+    This is intentionally NOT a security check — Supabase will validate the
+    token cryptographically on the next network call.  We only read the claims
+    to assess token freshness: whether the ``exp`` claim is in the future and
+    whether required identity fields (``sub``, and at least one of ``email`` or
+    ``role``) are present.  A token that fails this check is either expired,
+    structurally malformed, or has been tampered with in a way that removes
+    required claims; it must not supersede an active logout marker.
+
+    Returns a dict of decoded claims, or None on any parse failure.
+    """
+    import base64
+
+    if not access_token or access_token.count(".") < 2:
+        return None
+    try:
+        parts = access_token.split(".")
+        # JWT payload is the second segment; pad to a multiple of 4 bytes.
+        segment = parts[1]
+        padding = (4 - len(segment) % 4) % 4
+        decoded = base64.urlsafe_b64decode(segment + "=" * padding)
+        claims = json.loads(decoded)
+        if not isinstance(claims, dict):
+            return None
+        return claims
+    except Exception:
+        return None
+
+
+def _jwt_is_supersession_valid(access_token: str, *, logout_at: float | None = None) -> bool:
+    """Return True only when the JWT access token is cryptographically plausible,
+    non-expired, carries required identity claims, and (when available) was issued
+    *after* the recorded logout timestamp.
+
+    Rules:
+    1. JWT payload must be structurally decodable (not malformed/truncated).
+    2. ``exp`` claim must be present and in the future (UTC now).
+    3. ``sub`` claim must be present and non-empty.
+    4. At least one of ``email`` or ``role`` must be present and non-empty.
+    5. When ``logout_at`` is provided: ``iat`` (issued-at) must be strictly
+       greater than ``logout_at``.  This proves the token was issued by Supabase
+       *after* the explicit logout, meaning the user genuinely re-authenticated.
+       If ``iat`` is absent or ≤ ``logout_at``, the token predates or coincides
+       with the logout and must not supersede the marker.
+
+    Rule 5 is the primary temporal guard.  Rules 1–4 harden against corrupted,
+    expired, or identity-stripped tokens that coincidentally carry a future
+    ``exp`` but lack proof of re-authentication.
+    """
+    claims = _decode_jwt_claims(access_token)
+    if claims is None:
+        log_auth_cookie("supersession_rejected", reason="jwt_unparseable")
+        return False
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    exp = claims.get("exp")
+    try:
+        exp_float = float(exp)
+    except (TypeError, ValueError):
+        log_auth_cookie("supersession_rejected", reason="exp_missing_or_invalid")
+        return False
+    if exp_float <= now_ts:
+        log_auth_cookie("supersession_rejected", reason="token_expired")
+        return False
+
+    sub = str(claims.get("sub") or "").strip()
+    if not sub:
+        log_auth_cookie("supersession_rejected", reason="sub_claim_missing")
+        return False
+
+    email = str(claims.get("email") or "").strip()
+    role = str(claims.get("role") or "").strip()
+    if not email and not role:
+        log_auth_cookie("supersession_rejected", reason="identity_claims_missing")
+        return False
+
+    if logout_at is not None:
+        iat = claims.get("iat")
+        try:
+            iat_float = float(iat)
+        except (TypeError, ValueError):
+            # No iat claim — cannot prove token post-dates logout.  Reject.
+            log_auth_cookie("supersession_rejected", reason="iat_missing")
+            return False
+        if iat_float <= logout_at:
+            log_auth_cookie(
+                "supersession_rejected",
+                reason="token_predates_logout",
+                iat=str(int(iat_float)),
+                logout_at=str(int(logout_at)),
+            )
+            return False
+
+    log_auth_cookie("supersession_accepted", reason="jwt_valid_and_post_logout")
+    return True
+
+
+# Marker format version; bumped if the JSON schema changes incompatibly.
+_LOGOUT_MARKER_VERSION = 1
+_LOGOUT_MARKER_TRUTHY = {"1", "true", "yes", "logged_out"}
+
+
+def _parse_logout_marker_timestamp(raw: str) -> float | None:
+    """Extract the recorded logout_at UTC epoch from the marker payload.
+
+    Supports both the legacy truthy-string format (``"1"``, ``"true"`` …)
+    and the new JSON format ``{"v":1,"logout_at":1234567890}``.
+    Returns ``None`` for legacy markers (no timestamp available).
+    """
+    text = raw.strip()
+    if text.lower() in _LOGOUT_MARKER_TRUTHY:
+        return None  # legacy marker — no timestamp
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and data.get("v") == _LOGOUT_MARKER_VERSION:
+            ts = data.get("logout_at")
+            return float(ts) if ts is not None else None
+    except Exception:
+        pass
+    return None
+
+
+def _is_truthy_logout_marker(raw: str) -> bool:
+    """Return True when *raw* represents an active logout marker (any format)."""
+    text = raw.strip()
+    if text.lower() in _LOGOUT_MARKER_TRUTHY:
+        return True
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and data.get("v") == _LOGOUT_MARKER_VERSION:
+            return bool(data.get("logout_at"))
+    except Exception:
+        pass
+    return False
+
+
+def _supersedes_logout_marker(raw_auth: str | None, logout_at: float | None) -> bool:
+    """Return True when the raw auth cookie payload carries a JWT that supersedes
+    the logout marker under the full hardened rule set.
+
+    Delegates to ``_jwt_is_supersession_valid`` which enforces:
+    - structural validity
+    - non-expired ``exp``
+    - presence of ``sub`` + identity claim
+    - ``iat`` > ``logout_at`` when a timestamp is available
+
+    When ``raw_auth`` is None or unparseable, returns False (cannot supersede).
+    """
+    if not raw_auth:
+        return False
+    tokens = parse_auth_cookie(raw_auth)
+    if tokens is None:
+        return False
+    return _jwt_is_supersession_valid(
+        tokens["access_token"],
+        logout_at=logout_at,
+    )
+
+
 def _logout_marker_active(cookie_manager: Any = None) -> bool:
+    """Return True only when an active, non-superseded logout marker is present.
+
+    A logout marker is superseded — and this function returns False — only when
+    ALL of the following are satisfied by the auth cookie's JWT access token:
+
+    1. The JWT payload is structurally decodable (not malformed/tampered).
+    2. ``exp`` is present and in the future — the token has not expired.
+    3. ``sub`` is present and non-empty.
+    4. At least one of ``email`` or ``role`` is present — identity is asserted.
+    5. When the marker carries a ``logout_at`` timestamp: ``iat`` > ``logout_at``
+       — the token was issued *after* the explicit logout, proving the user
+       re-authenticated.  Legacy markers (value ``"1"``) skip rule 5 but still
+       enforce rules 1–4.
+
+    An explicit active logout (``cadivor_explicit_logout`` in session_state)
+    short-circuits the entire auth-restore pipeline via ``explicit_logout_pending``
+    before this function is called — so this function does not need to re-check it.
+    """
     context_cookies = _get_context_cookies()
+    logout_at: float | None = None
+    logout_marker_found = False
+
+    # --- Native context cookie path (primary) ---
     if context_cookies is not None:
         try:
-            raw = context_cookies.get(AUTH_LOGOUT_COOKIE_NAME)
+            raw_logout = context_cookies.get(AUTH_LOGOUT_COOKIE_NAME)
         except Exception:
-            raw = None
-        if raw is not None:
-            text = str(raw).strip().lower()
-            if text in {"1", "true", "yes", "logged_out"}:
-                return True
+            raw_logout = None
+        if raw_logout is not None:
+            raw_logout_text = str(raw_logout)
+            if _is_truthy_logout_marker(raw_logout_text):
+                logout_marker_found = True
+                logout_at = _parse_logout_marker_timestamp(raw_logout_text)
+
+    if logout_marker_found:
+        # Attempt supersession from the native context auth cookie.
+        try:
+            raw_auth = context_cookies.get(AUTH_COOKIE_NAME) if context_cookies is not None else None
+        except Exception:
+            raw_auth = None
+        if _supersedes_logout_marker(
+            str(raw_auth).strip() if raw_auth is not None else None,
+            logout_at,
+        ):
+            return False
+        return True
+
+    # --- CookieManager fallback path ---
     if cookie_manager is None:
         return False
     try:
@@ -307,17 +507,43 @@ def _logout_marker_active(cookie_manager: Any = None) -> bool:
         return False
     if raw is None:
         return False
-    text = str(raw).strip().lower()
-    return text in {"1", "true", "yes", "logged_out"}
+    raw_text = str(raw)
+    if not _is_truthy_logout_marker(raw_text):
+        return False
+    logout_at = _parse_logout_marker_timestamp(raw_text)
+
+    # Attempt supersession from the CookieManager auth cookie.
+    try:
+        for name in (AUTH_COOKIE_NAME, AUTH_COOKIE_LEGACY_NAME):
+            raw_auth = cookie_manager.get(cookie=name)
+            if raw_auth is not None:
+                if _supersedes_logout_marker(str(raw_auth).strip(), logout_at):
+                    return False
+    except Exception:
+        pass
+    return True
 
 
 def _set_logout_marker(cookie_manager: Any) -> None:
+    """Write a timestamped logout marker so a future session can distinguish
+    a stale marker (written before a subsequent re-login) from a current one.
+
+    The marker value is a JSON object ``{"v":1,"logout_at":<UTC epoch seconds>}``.
+    Legacy readers that only check for truthy strings will not recognise this
+    value, which is intentional — they will not fire the old "1" path.  Hardened
+    readers use ``_is_truthy_logout_marker`` which handles both formats.
+    """
     if cookie_manager is None:
         return
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    marker_val = json.dumps(
+        {"v": _LOGOUT_MARKER_VERSION, "logout_at": now_ts},
+        separators=(",", ":"),
+    )
     try:
         cookie_manager.set(
             cookie=AUTH_LOGOUT_COOKIE_NAME,
-            val="1",
+            val=marker_val,
             key="cadivor_set_auth_logout_marker",
             path="/",
             expires_at=datetime.now(timezone.utc) + timedelta(days=30),
@@ -327,7 +553,7 @@ def _set_logout_marker(cookie_manager: Any) -> None:
         try:
             cookie_manager.set(
                 cookie=AUTH_LOGOUT_COOKIE_NAME,
-                val="1",
+                val=marker_val,
                 key="cadivor_set_auth_logout_marker",
             )
         except Exception:

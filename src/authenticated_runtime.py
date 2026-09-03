@@ -10469,9 +10469,13 @@ def run_authenticated_app() -> None:
             relationship_evidence_rows = selected_row.get("Supplier Relationship Evidence") or []
             if not isinstance(relationship_evidence_rows, list):
                 relationship_evidence_rows = []
-            from src.alternative_classification import relationship_evidence_summary
+            from src.alternative_classification import (
+                relationship_evidence_link_pairs,
+                relationship_evidence_summary,
+            )
 
             exact_relationship_summary = relationship_evidence_summary(relationship_evidence_rows)
+            relationship_link_pairs = relationship_evidence_link_pairs(relationship_evidence_rows)
             if (
                 exact_relationship_summary.startswith("No exact")
                 and substitute_type_value not in {"", "—", "Not classified", "Unknown"}
@@ -10479,10 +10483,9 @@ def run_authenticated_app() -> None:
             ):
                 source_label = _af62b_value(selected_row, ["Evidence Source", "Supplier"], "Supplier")
                 exact_relationship_summary = f"{source_label} substitute type: {substitute_type_value}"
-                if source_url_value and source_url_value != "—":
-                    exact_relationship_summary = (
-                        f"{exact_relationship_summary} ({source_url_value})"
-                    )
+                # Fallback: if no evidence rows carried a link, use the top-level source_url.
+                if not relationship_link_pairs and source_url_value and source_url_value != "—":
+                    relationship_link_pairs = [(f"View {source_label} reference", source_url_value)]
             classification_value = _af62b_value(
                 selected_row,
                 ["Classification", "Category"],
@@ -10733,7 +10736,7 @@ def run_authenticated_app() -> None:
                       </div>
                       <div class="af62b-metric">
                         <span>Supplier reference</span>
-                        <strong>{html.escape(supplier_part_id_value if supplier_part_id_value not in {"", "—"} else "Not provided")}{(" · " + html.escape(source_url_value)) if source_url_value not in {"", "—"} else ""}</strong>
+                        <strong>{html.escape(supplier_part_id_value if supplier_part_id_value not in {"", "—"} else "Not provided")}</strong>
                       </div>
                     </div>
                     """,
