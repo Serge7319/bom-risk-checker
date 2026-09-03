@@ -10153,11 +10153,17 @@ def run_authenticated_app() -> None:
             from src.alternative_classification import (
                 CLASS_ORDERING_EQUIVALENT,
                 CLASS_SPEC_MATCHED,
+                CLASS_SUPPLIER_SIMILAR,
+                CLASS_SUPPLIER_UPGRADE,
                 CLASS_VERIFIED_DIRECT,
             )
 
             if classification == CLASS_VERIFIED_DIRECT:
                 return "★ Verified direct substitute"
+            if classification == CLASS_SUPPLIER_UPGRADE:
+                return "★ Supplier-listed upgrade"
+            if classification == CLASS_SUPPLIER_SIMILAR:
+                return "★ Supplier-listed similar"
             if classification == CLASS_ORDERING_EQUIVALENT:
                 return "★ Same-manufacturer ordering-code equivalent"
             if classification == CLASS_SPEC_MATCHED:
@@ -10450,6 +10456,33 @@ def run_authenticated_app() -> None:
             )
             evidence_type_value = _af62b_value(selected_row, ["Evidence Type"], "Supplier candidate")
             substitute_type_value = _af62b_value(selected_row, ["Substitute Type"], "Not classified")
+            source_url_value = _af62b_value(
+                selected_row,
+                ["Source URL", "Product URL"],
+                "",
+            )
+            supplier_part_id_value = _af62b_value(
+                selected_row,
+                ["Supplier Part ID"],
+                "",
+            )
+            relationship_evidence_rows = selected_row.get("Supplier Relationship Evidence") or []
+            if not isinstance(relationship_evidence_rows, list):
+                relationship_evidence_rows = []
+            from src.alternative_classification import relationship_evidence_summary
+
+            exact_relationship_summary = relationship_evidence_summary(relationship_evidence_rows)
+            if (
+                exact_relationship_summary.startswith("No exact")
+                and substitute_type_value not in {"", "—", "Not classified", "Unknown"}
+                and evidence_type_value.casefold() == "distributor-listed substitute"
+            ):
+                source_label = _af62b_value(selected_row, ["Evidence Source", "Supplier"], "Supplier")
+                exact_relationship_summary = f"{source_label} substitute type: {substitute_type_value}"
+                if source_url_value and source_url_value != "—":
+                    exact_relationship_summary = (
+                        f"{exact_relationship_summary} ({source_url_value})"
+                    )
             classification_value = _af62b_value(
                 selected_row,
                 ["Classification", "Category"],
@@ -10602,6 +10635,8 @@ def run_authenticated_app() -> None:
                 ["supplier_relationship_summary"],
                 supplier_relationship_summary,
             )
+            if exact_relationship_summary:
+                supplier_relationship_summary = exact_relationship_summary
             confidence_label = (
                 "High" if engineering_comparison_confidence >= 75
                 else "Medium" if engineering_comparison_confidence >= 50
@@ -10695,6 +10730,10 @@ def run_authenticated_app() -> None:
                       <div class="af62b-metric">
                         <span>Source evidence</span>
                         <strong>{html.escape(evidence_type_value)} · {html.escape(substitute_type_value)}</strong>
+                      </div>
+                      <div class="af62b-metric">
+                        <span>Supplier reference</span>
+                        <strong>{html.escape(supplier_part_id_value if supplier_part_id_value not in {"", "—"} else "Not provided")}{(" · " + html.escape(source_url_value)) if source_url_value not in {"", "—"} else ""}</strong>
                       </div>
                     </div>
                     """,

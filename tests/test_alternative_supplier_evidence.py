@@ -97,8 +97,15 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
             {
                 "manufacturer_part_number": f"CANDIDATE-{index}",
                 "source": "DigiKey",
-                "substitute_type": "Upgrade",
+                "substitute_type": "Similar",
                 "evidence_type": "Distributor-listed substitute",
+                "supplier_relationship_evidence": [{
+                    "supplier": "DigiKey",
+                    "substitute_type": "Similar",
+                    "original_mpn": "C0603C104K5RACTU",
+                    "candidate_mpn": f"CANDIDATE-{index}",
+                    "summary": "DigiKey substitute type: Similar",
+                }],
             }
             for index in range(12)
         ])
@@ -108,8 +115,7 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
         self.assertEqual(len(results), 10)
         self.assertTrue(
             all(
-                row["Classification"]
-                == "Spec-matched alternative — engineering review required"
+                row["Classification"] == "Supplier-listed similar"
                 for row in results
             )
         )

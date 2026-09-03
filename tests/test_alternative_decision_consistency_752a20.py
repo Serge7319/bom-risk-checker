@@ -176,7 +176,7 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
                 "Engineering Comparison Confidence": 42,
                 "Supplier Relationship Confidence": 95,
                 "Supplier Relationship Summary": (
-                    "DigiKey identifies this candidate as a Direct substitute for the original part number."
+                    "DigiKey substitute type: Direct"
                 ),
             },
             recommendation_score=85,
@@ -194,6 +194,10 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
         self.assertLess(result["engineering_comparison_confidence"], 55)
         self.assertGreaterEqual(result["supplier_relationship_confidence"], 90)
         self.assertIn("incomplete", result["engineering_evidence_summary"].casefold())
+        self.assertIn(
+            "digikey substitute type: direct",
+            str(result.get("supplier_relationship_summary") or "").casefold(),
+        )
         combined = " ".join(
             result["confirmed_matches"] + result["verification_required"] + result["blockers"]
         ).casefold()

@@ -1299,6 +1299,12 @@ def apply_supplier_enrichment_to_candidate(
         comparison_counts,
         classification=classification,
         substitute_type=str(enriched.get("Substitute Type") or ""),
+        supplier_relationship_evidence=list(
+            enriched.get("Supplier Relationship Evidence")
+            or enriched.get("supplier_relationship_evidence")
+            or []
+        ),
+        evidence_source=str(enriched.get("Evidence Source") or ""),
     )
     enriched["Engineering Evidence Assessment"] = evidence_assessment
     enriched["Engineering Evidence Summary"] = evidence_assessment["engineering_evidence_summary"]
@@ -1421,7 +1427,10 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         if not candidate_part:
             continue
         evidence_type = str(result.get("evidence_type") or "Supplier candidate").strip()
-        substitute_type = str(result.get("substitute_type") or "Candidate").strip()
+        substitute_type = str(result.get("substitute_type") or "Unknown").strip()
+        relationship_evidence = result.get("supplier_relationship_evidence")
+        if not isinstance(relationship_evidence, list):
+            relationship_evidence = []
         classification = classify_from_supplier_evidence(
             result,
             original_mpn=canonical_part_number,
@@ -1447,6 +1456,18 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Evidence Type": evidence_type,
                 "Substitute Type": substitute_type,
                 "Evidence Source": str(result.get("source") or "DigiKey"),
+                "Supplier Relationship Evidence": [
+                    dict(row) for row in relationship_evidence if isinstance(row, dict)
+                ],
+                "Supplier Part ID": str(
+                    result.get("supplier_part_id")
+                    or result.get("digikey_part_number")
+                    or ""
+                ),
+                "Source URL": str(
+                    result.get("source_url") or result.get("product_detail_url") or ""
+                ),
+                "Original MPN": str(result.get("original_mpn") or canonical_part_number),
                 "Retrieval Status": str(result.get("retrieval_status") or "ok"),
                 "Retrieved At": str(result.get("retrieved_at") or discovery.get("retrieved_at") or ""),
                 "Product URL": str(result.get("product_detail_url") or ""),
@@ -1461,7 +1482,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 ),
                 "Recommendation Score": (
                     78 if substitute_type.casefold() == "direct" else 62
-                ) if is_explicit_substitute else 45,
+                ) if is_explicit_substitute else (
+                    58 if substitute_type.casefold() == "upgrade" else 45
+                ),
                 "Compatibility Notes": (
                     "Supplier-listed candidate only. Verify electrical characteristics, footprint, "
                     "dimensions/height, temperature range, qualification, and datasheet compatibility before approval."

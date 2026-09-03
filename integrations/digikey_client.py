@@ -230,8 +230,14 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
         # candidates, but it must not look like substitute evidence.
         return []
     results = []
-    seen_mpns: set[str] = set()
+    seen_by_mpn: dict[str, dict] = {}
     retrieved_at = _utc_now_iso()
+    from src.alternative_classification import (
+        build_supplier_relationship_evidence,
+        conservative_substitute_type,
+        normalize_substitute_type,
+    )
+
     for product_number in product_numbers:
         response = requests.get(
             "https://api.digikey.com/products/v4/search/"
@@ -241,20 +247,20 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
         )
         response.raise_for_status()
         payload = response.json() or {}
-        substitute_rows = (
-            payload.get("ProductSubstitutes")
-            or payload.get("Substitutions")
-            or payload.get("Products")
-            or []
-        )
+        substitute_rows = payload.get("ProductSubstitutes")
+        if substitute_rows is None:
+            substitute_rows = payload.get("Substitutions")
+        if not isinstance(substitute_rows, list):
+            # Never fall back to generic Products lists: those are not substitute
+            # relationships and must not inherit Direct/Upgrade/Similar evidence.
+            substitute_rows = []
         for item in substitute_rows:
             if not isinstance(item, dict):
                 continue
             mpn = str(item.get("ManufacturerProductNumber") or "").strip()
             mpn_key = _mpn_key(mpn)
-            if not mpn or mpn_key == _mpn_key(requested) or mpn_key in seen_mpns:
+            if not mpn or mpn_key == _mpn_key(requested):
                 continue
-            seen_mpns.add(mpn_key)
             manufacturer = item.get("Manufacturer") or {}
             product_status = item.get("ProductStatus")
             lifecycle_status = (
@@ -262,10 +268,33 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                 if product_status not in (None, "", {})
                 else "Unknown"
             )
-            results.append({
+            substitute_type = normalize_substitute_type(item.get("SubstituteType"))
+            digikey_part_number = str(item.get("DigiKeyProductNumber") or "").strip()
+            product_url = str(item.get("ProductUrl") or "").strip()
+            relationship = build_supplier_relationship_evidence(
+                supplier="DigiKey",
+                original_mpn=requested,
+                candidate_mpn=mpn,
+                substitute_type=substitute_type,
+                supplier_part_id=digikey_part_number,
+                source_url=product_url,
+                evidence_type="Distributor-listed substitute",
+            )
+            existing = seen_by_mpn.get(mpn_key)
+            if existing:
+                evidence_rows = list(existing.get("supplier_relationship_evidence") or [])
+                evidence_rows.append(relationship)
+                existing["supplier_relationship_evidence"] = evidence_rows
+                existing["substitute_type"] = conservative_substitute_type(
+                    [str(row.get("substitute_type") or "") for row in evidence_rows]
+                )
+                continue
+
+            row = {
                 "source": "DigiKey",
                 "evidence_type": "Distributor-listed substitute",
-                "substitute_type": str(item.get("SubstituteType") or "Candidate").strip(),
+                "substitute_type": substitute_type,
+                "original_mpn": requested,
                 "manufacturer_part_number": mpn,
                 "manufacturer": (
                     str(manufacturer.get("Name") or "")
@@ -275,13 +304,18 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                 "description": str(item.get("Description") or "").strip(),
                 "stock_total": coerce_stock_total(item.get("QuantityAvailable")),
                 "unit_price": _as_number(item.get("UnitPrice"), 0.0),
-                "product_detail_url": str(item.get("ProductUrl") or "").strip(),
+                "product_detail_url": product_url,
                 "datasheet_url": str(item.get("DatasheetUrl") or "").strip(),
-                "digikey_part_number": str(item.get("DigiKeyProductNumber") or "").strip(),
+                "digikey_part_number": digikey_part_number,
+                "supplier_part_id": digikey_part_number,
+                "source_url": product_url,
                 "lifecycle_status": lifecycle_status,
+                "supplier_relationship_evidence": [relationship],
                 "retrieval_status": "ok",
                 "retrieved_at": retrieved_at,
-            })
+            }
+            seen_by_mpn[mpn_key] = row
+            results.append(row)
     return results
 
 

@@ -139,9 +139,23 @@ class DatasheetComparisonTests(unittest.TestCase):
             {"Match": 7, "Different": 0, "Needs data": 1},
             classification="Verified direct substitute",
             substitute_type="Direct",
+            evidence_source="DigiKey",
+            supplier_relationship_evidence=[{
+                "supplier": "DigiKey",
+                "substitute_type": "Direct",
+                "summary": "DigiKey substitute type: Direct",
+                "source_url": "https://www.digikey.com/example",
+                "original_mpn": "C0603C104K5RACTU",
+                "candidate_mpn": "C0603C104K5RAC3121",
+            }],
         )
         self.assertGreaterEqual(assessment["engineering_comparison_confidence"], 82)
         self.assertEqual(assessment["supplier_relationship_confidence"], 95)
+        self.assertIn("DigiKey substitute type: Direct", assessment["supplier_relationship_summary"])
+        self.assertNotIn(
+            "DigiKey identifies this candidate as a Direct substitute for the original part number.",
+            assessment["supplier_relationship_summary"],
+        )
         self.assertIn("7 confirmed matches", assessment["engineering_evidence_summary"])
 
     def test_engineering_evidence_assessment_sparse_coverage(self):
@@ -151,6 +165,14 @@ class DatasheetComparisonTests(unittest.TestCase):
             {"Match": 1, "Different": 0, "Needs data": 7},
             classification="Verified direct substitute",
             substitute_type="Direct",
+            evidence_source="DigiKey",
+            supplier_relationship_evidence=[{
+                "supplier": "DigiKey",
+                "substitute_type": "Direct",
+                "summary": "DigiKey substitute type: Direct",
+                "original_mpn": "C0603C104K5RACTU",
+                "candidate_mpn": "C0603C104K5RAC3121",
+            }],
         )
         self.assertLess(assessment["engineering_comparison_confidence"], 55)
         self.assertEqual(assessment["supplier_relationship_confidence"], 95)
