@@ -341,6 +341,176 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             row.get("Supplier Relationship Summary", ""),
         )
 
+    def test_c0603_end_to_end_only_pair_supported_directs_are_verified(self):
+        """End-to-end: DigiKey Direct only for pair-supported 3121/YT; never fabricated 7411 Direct.
+
+        Live DigiKey ProductVariations often list sibling RAC7411 DigiKey numbers
+        without ManufacturerProductNumber. Querying those SKUs and stamping
+        original_mpn=C0603C104K5RACTU fabricated Verified Direct for RAC7411.
+        """
+        original = self.original
+
+        class _Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return self.payload
+
+        substitution_urls = []
+
+        def post(*_args, **_kwargs):
+            return _Response({
+                "Products": [{
+                    "ManufacturerProductNumber": original,
+                    "DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND",
+                    "ProductVariations": [
+                        {"DigiKeyProductNumber": "399-C0603C104K5RACTUTR-ND"},
+                        # Sibling family SKU with no manufacturer MPN — must be ignored.
+                        {"DigiKeyProductNumber": "399-C0603C104K5RAC7411CT-ND"},
+                    ],
+                    "Manufacturer": {"Name": "KEMET"},
+                    "Description": {"ProductDescription": "CAP CER 0.1UF 50V X7R 0603"},
+                    "QuantityAvailable": 10000,
+                }]
+            })
+
+        def get(url, **_kwargs):
+            substitution_urls.append(url)
+            if "7411" in url:
+                # If queried, DigiKey would return a Direct row that older code
+                # wrongly attributed to the original search MPN.
+                return _Response({
+                    "ProductSubstitutes": [{
+                        "ManufacturerProductNumber": "C0603C104K5RAC7411",
+                        "DigiKeyProductNumber": "399-C0603C104K5RAC7411CT-ND",
+                        "Manufacturer": {"Name": "KEMET"},
+                        "SubstituteType": "Direct",
+                        "ProductUrl": "https://www.digikey.com/7411",
+                        "QuantityAvailable": 50000,
+                        "UnitPrice": 0.04,
+                    }]
+                })
+            return _Response({
+                "ProductSubstitutes": [
+                    {
+                        "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                        "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                        "Manufacturer": {"Name": "KEMET"},
+                        "SubstituteType": "Direct",
+                        "ProductUrl": "https://www.digikey.com/3121",
+                        "QuantityAvailable": 12000,
+                        "UnitPrice": 0.05,
+                    },
+                    {
+                        "ManufacturerProductNumber": "0603BB104K500YT",
+                        "DigiKeyProductNumber": "0603BB104K500YT-ND",
+                        "Manufacturer": {"Name": "ATC"},
+                        "SubstituteType": "Direct",
+                        "ProductUrl": "https://www.digikey.com/yt",
+                        "QuantityAvailable": 8000,
+                        "UnitPrice": 0.06,
+                    },
+                    {
+                        "ManufacturerProductNumber": "C0603C104K5RAC7411",
+                        "DigiKeyProductNumber": "399-C0603C104K5RAC7411CT-ND",
+                        "Manufacturer": {"Name": "KEMET"},
+                        "SubstituteType": "Similar",
+                        "ProductUrl": "https://www.digikey.com/7411-similar",
+                        "QuantityAvailable": 50000,
+                        "UnitPrice": 0.04,
+                    },
+                ]
+            })
+
+        self.digikey.get_secret = lambda *_a, **_k: "client-id"
+        self.digikey.get_digikey_access_token = lambda: "access-token"
+        self.digikey.requests.post = post
+        self.digikey.requests.get = get
+
+        explicit = self.digikey.search_digikey_substitutions(original)
+        catalog = [
+            {
+                "manufacturer_part_number": "C0603C104K5RAC7411",
+                "manufacturer": "KEMET",
+                "source": "DigiKey",
+                "substitute_type": "Similar",
+                "evidence_type": "Distributor catalog match",
+                "original_mpn": original,
+                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            }
+        ]
+        merged = self.classification.merge_discovery_candidates(
+            explicit,
+            catalog,
+            original_mpn=original,
+        )
+
+        def discover(_part):
+            return {
+                "original_mpn": original,
+                "candidates": merged,
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        results = self.engine.suggest_alternatives_v2(original)
+        by_part = {row["Alternative Part"]: row for row in results}
+
+        self.assertFalse(any("7411" in url for url in substitution_urls))
+        self.assertEqual(
+            by_part["C0603C104K5RAC3121"]["Classification"],
+            self.classification.CLASS_VERIFIED_DIRECT,
+        )
+        self.assertEqual(
+            by_part["0603BB104K500YT"]["Classification"],
+            self.classification.CLASS_VERIFIED_DIRECT,
+        )
+        self.assertEqual(
+            str(by_part["C0603C104K5RAC3121"]["Supplier Relationship Summary"]).count(
+                "DigiKey substitute type: Direct"
+            ),
+            1,
+        )
+        self.assertTrue(
+            self.classification.has_exact_direct_relationship(
+                {
+                    "manufacturer_part_number": "C0603C104K5RAC3121",
+                    "evidence_type": by_part["C0603C104K5RAC3121"]["Evidence Type"],
+                    "supplier_relationship_evidence": by_part["C0603C104K5RAC3121"][
+                        "Supplier Relationship Evidence"
+                    ],
+                },
+                original_mpn=original,
+                candidate_mpn="C0603C104K5RAC3121",
+            )
+        )
+        self.assertNotEqual(
+            by_part["C0603C104K5RAC7411"]["Classification"],
+            self.classification.CLASS_VERIFIED_DIRECT,
+        )
+        self.assertFalse(
+            self.classification.has_exact_direct_relationship(
+                {
+                    "manufacturer_part_number": "C0603C104K5RAC7411",
+                    "evidence_type": by_part["C0603C104K5RAC7411"]["Evidence Type"],
+                    "supplier_relationship_evidence": by_part["C0603C104K5RAC7411"][
+                        "Supplier Relationship Evidence"
+                    ],
+                },
+                original_mpn=original,
+                candidate_mpn="C0603C104K5RAC7411",
+            )
+        )
+        self.assertNotIn(
+            "DigiKey substitute type: Direct",
+            by_part["C0603C104K5RAC7411"].get("Supplier Relationship Summary", ""),
+        )
+
     def test_non_digikey_candidate_cannot_render_digikey_direct_without_record(self):
         assessment = self.datasheet.build_engineering_evidence_assessment(
             {"Match": 6, "Different": 0, "Needs data": 0},

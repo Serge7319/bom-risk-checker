@@ -123,6 +123,58 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
         self.assertFalse(coverage["runtime_failures"])
         self.assertEqual(coverage["captions"], [])
 
+    def test_production_ui_shape_octopart_unavailable_without_discovery_uses_config_notice(self):
+        """Reproduce the live Railway UI payload after db8233d.
+
+        Production showed provider-error/unavailable Octopart rows while the
+        session discovery mirror was empty. Missing Nexar credentials must still
+        force the configuration-specific notice — never the generic timeout copy.
+        """
+        import integrations.supplier_diagnostics as diagnostics
+
+        original = diagnostics._octopart_credentials_configured
+        diagnostics._octopart_credentials_configured = lambda: False
+        self.addCleanup(
+            lambda: setattr(
+                diagnostics, "_octopart_credentials_configured", original
+            )
+        )
+        coverage = self.diagnostics.build_alternative_finder_coverage_notices(
+            original_data={
+                "all_supplier_results": [
+                    {"source": "Mouser", "provider_status": "AVAILABLE"},
+                    {"source": "DigiKey", "provider_status": "AVAILABLE"},
+                    {"source": "Newark", "provider_status": "AVAILABLE"},
+                    {
+                        "source": "Octopart",
+                        "provider_status": "PROVIDER_ERROR",
+                        "failure_category": self.diagnostics.CATEGORY_PROVIDER_ERROR,
+                        "error": "No response from Octopart",
+                    },
+                ]
+            },
+            discovery_metadata={"provider_failures": ["Octopart"], "has_incomplete_evidence": True},
+        )
+        joined = " ".join(coverage["notices"] + coverage["captions"])
+        self.assertEqual(
+            coverage["notices"],
+            [
+                "Octopart is not configured for this environment. "
+                "Results include Mouser, DigiKey, and Newark."
+            ],
+        )
+        self.assertFalse(coverage["runtime_failures"])
+        self.assertNotIn("did not respond", joined.casefold())
+        self.assertNotIn("unavailable for this search", joined.casefold())
+        self.assertEqual(
+            self.diagnostics.supplier_coverage_label(
+                "Octopart",
+                "PROVIDER_ERROR",
+                failure_category=self.diagnostics.CATEGORY_PROVIDER_ERROR,
+            ),
+            "Octopart: not configured",
+        )
+
     def test_runtime_supplier_failure_keeps_distinct_notice(self):
         coverage = self.diagnostics.build_alternative_finder_coverage_notices(
             original_data={

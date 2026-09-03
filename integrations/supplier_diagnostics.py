@@ -141,6 +141,35 @@ def log_supplier_diagnostic(
     return payload
 
 
+def _octopart_credentials_configured() -> bool:
+    """True when any supported Octopart/Nexar credential is present in this environment."""
+    try:
+        from src.secrets import get_secret
+
+        for name in ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"):
+            if str(get_secret(name, required=False) or "").strip():
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _force_octopart_configuration_gap(
+    source: str,
+    *,
+    status: str = "",
+    category: str = "",
+) -> bool:
+    """Octopart must never use timeout/unavailable wording when credentials are absent."""
+    if str(source or "").strip().casefold() != "octopart":
+        return False
+    if str(status or "").strip().upper() == "AVAILABLE":
+        return False
+    if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
+        return True
+    return not _octopart_credentials_configured()
+
+
 def supplier_coverage_label(
     source: str,
     provider_status: str,
@@ -152,6 +181,8 @@ def supplier_coverage_label(
     name = str(source or "").strip() or "Supplier"
     if status == "AVAILABLE":
         return f"{name}: available"
+    if _force_octopart_configuration_gap(name, status=status, category=category):
+        return f"{name}: not configured"
     if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
         return f"{name}: not configured"
     if name.casefold() == "octopart":
@@ -191,7 +222,11 @@ def _supplier_result_rows(
         if isinstance(row, dict) and row.get("source"):
             source = str(row.get("source") or "").strip()
             payload = dict(row)
-            if source in _discovery_not_configured_sources(discovery_metadata):
+            if source in _discovery_not_configured_sources(discovery_metadata) or _force_octopart_configuration_gap(
+                source,
+                status=str(payload.get("provider_status") or ""),
+                category=str(payload.get("failure_category") or ""),
+            ):
                 payload["provider_status"] = PROVIDER_NOT_CONFIGURED
                 payload["failure_category"] = CATEGORY_CONFIGURATION
             rows.append(payload)
@@ -241,7 +276,11 @@ def build_alternative_finder_coverage_notices(
             provider_status=status,
             error_message=str(row.get("error") or ""),
         )
-        if source in _discovery_not_configured_sources(discovery_metadata):
+        if source in _discovery_not_configured_sources(discovery_metadata) or _force_octopart_configuration_gap(
+            source,
+            status=status,
+            category=category,
+        ):
             category = CATEGORY_CONFIGURATION
             status = PROVIDER_NOT_CONFIGURED
         if status == "AVAILABLE" and category != CATEGORY_CONFIGURATION:

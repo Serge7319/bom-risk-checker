@@ -595,6 +595,13 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         self.assertTrue(any("category=configuration" in message for message in logs.output))
 
     def test_octopart_coverage_label_distinguishes_configuration_from_failure(self):
+        import integrations.supplier_diagnostics as diagnostics
+
+        original = diagnostics._octopart_credentials_configured
+        diagnostics._octopart_credentials_configured = lambda: True
+        self.addCleanup(
+            lambda: setattr(diagnostics, "_octopart_credentials_configured", original)
+        )
         configured_label = self.diagnostics.supplier_coverage_label(
             "Octopart",
             "NOT_CONFIGURED",
