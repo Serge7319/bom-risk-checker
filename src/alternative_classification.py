@@ -173,22 +173,25 @@ def build_supplier_relationship_evidence(
 
 
 def _evidence_identity_key(row: dict) -> tuple:
-    """Return a stable deduplication key for one supplier relationship evidence record."""
+    """Return the displayed relationship identity for one evidence record.
+
+    SKU/package variants of the same supplier relationship (different DigiKey
+    product numbers or product URLs) are the same displayed claim and must
+    render once. Distinct suppliers or substitute types stay separate.
+    """
     return (
-        str(row.get("original_mpn") or "").strip().upper(),
-        str(row.get("candidate_mpn") or "").strip().upper(),
+        normalize_mpn_for_comparison(str(row.get("original_mpn") or "")),
+        normalize_mpn_for_comparison(str(row.get("candidate_mpn") or "")),
         str(row.get("supplier") or "").strip().casefold(),
-        str(row.get("supplier_part_id") or "").strip().upper(),
         str(row.get("substitute_type") or "").strip().casefold(),
-        str(row.get("source_url") or "").strip(),
     )
 
 
 def deduplicate_evidence_rows(evidence_rows: list[dict] | None) -> list[dict]:
     """Return a deduplicated list of supplier relationship evidence records.
 
-    Records are deduplicated by (original_mpn, candidate_mpn, supplier,
-    supplier_part_id, substitute_type, source_url). Insertion order is
+    Records are deduplicated by displayed relationship identity
+    (original_mpn, candidate_mpn, supplier, substitute_type). Insertion order is
     preserved; later duplicates are dropped.
     """
     rows = [row for row in (evidence_rows or []) if isinstance(row, dict)]
@@ -244,6 +247,56 @@ def relationship_evidence_link_pairs(
     return pairs
 
 
+def pair_relationship_evidence_rows(
+    result: dict,
+    *,
+    original_mpn: str,
+    candidate_mpn: str = "",
+) -> list[dict]:
+    """Return evidence rows that describe this original/candidate pair only."""
+    orig_key = normalize_mpn_for_comparison(original_mpn)
+    cand_key = normalize_mpn_for_comparison(
+        candidate_mpn or result.get("manufacturer_part_number") or result.get("Alternative Part") or ""
+    )
+    rows = result.get("supplier_relationship_evidence") or result.get(
+        "Supplier Relationship Evidence"
+    )
+    matched: list[dict] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        row_orig = normalize_mpn_for_comparison(str(row.get("original_mpn") or ""))
+        row_cand = normalize_mpn_for_comparison(str(row.get("candidate_mpn") or ""))
+        if orig_key and row_orig and row_orig != orig_key:
+            continue
+        if cand_key and row_cand and row_cand != cand_key:
+            continue
+        if orig_key and not row_orig:
+            continue
+        if cand_key and not row_cand:
+            continue
+        matched.append(row)
+    return matched
+
+
+def has_exact_direct_relationship(
+    result: dict,
+    *,
+    original_mpn: str,
+    candidate_mpn: str = "",
+) -> bool:
+    """True when this pair has a concrete distributor Direct relationship record."""
+    for row in pair_relationship_evidence_rows(
+        result, original_mpn=original_mpn, candidate_mpn=candidate_mpn
+    ):
+        if normalize_substitute_type(row.get("substitute_type")) != SUBSTITUTE_TYPE_DIRECT:
+            continue
+        evidence = str(row.get("evidence_type") or result.get("evidence_type") or "").strip().casefold()
+        if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE:
+            return True
+    return False
+
+
 def classify_from_supplier_evidence(
     result: dict,
     *,
@@ -254,8 +307,15 @@ def classify_from_supplier_evidence(
 
     Direct/Upgrade/Similar require an exact distributor substitute relationship
     record. Spec comparison, package, manufacturer, and MPN similarity never
-    create a Verified direct substitute label.
+    create a Verified direct substitute label. Verified Direct additionally
+    requires a pair-scoped Direct evidence record for the original and candidate.
     """
+    candidate_mpn = str(
+        result.get("manufacturer_part_number") or result.get("Alternative Part") or ""
+    )
+    pair_rows = pair_relationship_evidence_rows(
+        result, original_mpn=original_mpn, candidate_mpn=candidate_mpn
+    )
     evidence = str(result.get("evidence_type") or "").strip().casefold()
     substitute_type = normalize_substitute_type(
         result.get("substitute_type")
@@ -265,19 +325,40 @@ def classify_from_supplier_evidence(
     relationship_rows = result.get("supplier_relationship_evidence") or result.get(
         "Supplier Relationship Evidence"
     )
-    if isinstance(relationship_rows, list) and relationship_rows:
+    if pair_rows:
         substitute_type = conservative_substitute_type(
-            [str(row.get("substitute_type") or "") for row in relationship_rows if isinstance(row, dict)]
+            [str(row.get("substitute_type") or "") for row in pair_rows]
         )
         if any(
             str(row.get("evidence_type") or "").strip().casefold() == EVIDENCE_DISTRIBUTOR_SUBSTITUTE
-            for row in relationship_rows
-            if isinstance(row, dict)
+            for row in pair_rows
         ):
             evidence = EVIDENCE_DISTRIBUTOR_SUBSTITUTE
+        if (
+            evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE
+            and substitute_type == SUBSTITUTE_TYPE_DIRECT
+            and has_exact_direct_relationship(
+                result, original_mpn=original_mpn, candidate_mpn=candidate_mpn
+            )
+        ):
+            return CLASS_VERIFIED_DIRECT
+    elif isinstance(relationship_rows, list) and relationship_rows:
+        # Evidence exists but none of it describes this original/candidate pair.
+        substitute_type = SUBSTITUTE_TYPE_UNKNOWN
+        evidence = str(result.get("evidence_type") or "").strip().casefold()
+        if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE:
+            evidence = EVIDENCE_DISTRIBUTOR_CATALOG
 
     if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE and substitute_type == SUBSTITUTE_TYPE_DIRECT:
-        return CLASS_VERIFIED_DIRECT
+        # Top-level Direct is accepted only when no conflicting/mismatched
+        # relationship rows exist and the candidate itself claims this pair.
+        claimed_original = str(result.get("original_mpn") or original_mpn or "").strip()
+        if (
+            not (isinstance(relationship_rows, list) and relationship_rows)
+            and normalize_mpn_for_comparison(claimed_original) == normalize_mpn_for_comparison(original_mpn)
+            and normalize_mpn_for_comparison(candidate_mpn)
+        ):
+            return CLASS_VERIFIED_DIRECT
     if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE and substitute_type == SUBSTITUTE_TYPE_UPGRADE:
         return CLASS_SUPPLIER_UPGRADE
     if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE and substitute_type == SUBSTITUTE_TYPE_SIMILAR:
@@ -460,14 +541,9 @@ def _attach_or_merge_relationship_evidence(target: dict, source: dict) -> None:
         )
 
     deduped: list[dict] = []
-    seen_keys: set[tuple[str, str, str, str]] = set()
+    seen_keys: set[tuple] = set()
     for row in incoming:
-        key = (
-            str(row.get("supplier") or ""),
-            str(row.get("original_mpn") or ""),
-            str(row.get("candidate_mpn") or ""),
-            str(row.get("substitute_type") or ""),
-        )
+        key = _evidence_identity_key(row)
         if key in seen_keys:
             continue
         seen_keys.add(key)

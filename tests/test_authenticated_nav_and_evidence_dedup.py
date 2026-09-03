@@ -833,6 +833,29 @@ class DeduplicateEvidenceRowsTests(_EvidenceTestBase):
     def test_none_returns_empty(self):
         self.assertEqual(self._m.deduplicate_evidence_rows(None), [])
 
+    def test_same_direct_relationship_collapses_across_sku_urls(self):
+        base = {
+            "original_mpn": "C0603C104K5RACTU",
+            "candidate_mpn": "C0603C104K5RAC3121",
+            "supplier": "DigiKey",
+            "substitute_type": "Direct",
+            "summary": "DigiKey substitute type: Direct",
+        }
+        rows = [
+            {**base, "supplier_part_id": "399-C0603C104K5RAC3121CT-ND",
+             "source_url": "https://www.digikey.com/en/products/detail/ct"},
+            {**base, "supplier_part_id": "399-C0603C104K5RAC3121TR-ND",
+             "source_url": "https://www.digikey.com/en/products/detail/tr"},
+            {**base, "supplier_part_id": "399-C0603C104K5RAC3121DKR-ND",
+             "source_url": "https://www.digikey.com/en/products/detail/dkr"},
+        ]
+        deduped = self._m.deduplicate_evidence_rows(rows)
+        self.assertEqual(len(deduped), 1)
+        summary = self._m.relationship_evidence_summary(rows)
+        self.assertEqual(summary, "DigiKey substitute type: Direct")
+        self.assertEqual(summary.count("DigiKey substitute type: Direct"), 1)
+        self.assertEqual(len(self._m.relationship_evidence_link_pairs(rows)), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

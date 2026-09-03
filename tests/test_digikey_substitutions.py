@@ -239,6 +239,80 @@ class DigiKeySubstitutionTests(unittest.TestCase):
             ["C0603C104K5RACTU", "C0603C104K5RAC"],
         )
 
+    def test_sibling_mpn_variations_do_not_supply_direct_evidence(self):
+        substitution_urls = []
+
+        def post(*_args, **_kwargs):
+            return _Response({
+                "Products": [{
+                    "ManufacturerProductNumber": "C0603C104K5RACTU",
+                    "DigiKeyProductNumber": "399-C0603C104K5RACTUCT-ND",
+                    "ProductVariations": [
+                        {"DigiKeyProductNumber": "399-C0603C104K5RACTUTR-ND"},
+                        {
+                            "ManufacturerProductNumber": "C0603C104K5RAC7411",
+                            "DigiKeyProductNumber": "399-C0603C104K5RAC7411CT-ND",
+                        },
+                        {
+                            "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                            "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                        },
+                    ],
+                }]
+            })
+
+        def get(url, **_kwargs):
+            substitution_urls.append(url)
+            if "RACTUCT" in url:
+                return _Response({
+                    "ProductSubstitutes": [
+                        {
+                            "ManufacturerProductNumber": "C0603C104K5RAC3121",
+                            "DigiKeyProductNumber": "399-C0603C104K5RAC3121CT-ND",
+                            "Manufacturer": {"Name": "KEMET"},
+                            "SubstituteType": "Direct",
+                            "ProductUrl": "https://www.digikey.com/3121",
+                        },
+                        {
+                            "ManufacturerProductNumber": "0603BB104K500YT",
+                            "DigiKeyProductNumber": "0603BB104K500YT-ND",
+                            "Manufacturer": {"Name": "ATC"},
+                            "SubstituteType": "Direct",
+                            "ProductUrl": "https://www.digikey.com/yt",
+                        },
+                    ]
+                })
+            if "7411CT" in url:
+                return _Response({
+                    "ProductSubstitutes": [{
+                        "ManufacturerProductNumber": "C0603C104K5RAC7411",
+                        "DigiKeyProductNumber": "399-C0603C104K5RAC7411CT-ND",
+                        "Manufacturer": {"Name": "KEMET"},
+                        "SubstituteType": "Direct",
+                    }]
+                })
+            if "3121CT" in url:
+                return _Response({
+                    "ProductSubstitutes": [{
+                        "ManufacturerProductNumber": "C0603C104K5RAC7411",
+                        "DigiKeyProductNumber": "399-C0603C104K5RAC7411CT-ND",
+                        "Manufacturer": {"Name": "KEMET"},
+                        "SubstituteType": "Direct",
+                    }]
+                })
+            return _Response({"ProductSubstitutes": []})
+
+        self.client.requests.post = post
+        self.client.requests.get = get
+        results = self.client.search_digikey_substitutions("C0603C104K5RACTU")
+        by_part = {row["manufacturer_part_number"]: row for row in results}
+
+        self.assertIn("C0603C104K5RAC3121", by_part)
+        self.assertEqual(by_part["C0603C104K5RAC3121"]["substitute_type"], "Direct")
+        self.assertNotIn("C0603C104K5RAC7411", by_part)
+        self.assertFalse(any("7411" in url for url in substitution_urls))
+        self.assertFalse(any("3121CT" in url for url in substitution_urls))
+
 
 if __name__ == "__main__":
     unittest.main()

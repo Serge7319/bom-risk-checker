@@ -212,6 +212,8 @@ def collect_provider_failure_names(
             continue
         source = str(row.get("source") or "").strip()
         status = str(row.get("provider_status") or "").strip().upper()
+        if status == "NOT_CONFIGURED":
+            continue
         if source and status in {"TIMEOUT", "RATE_LIMITED", "PROVIDER_ERROR"} and source not in seen:
             seen.add(source)
             failures.append(source)

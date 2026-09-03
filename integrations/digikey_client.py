@@ -173,16 +173,39 @@ def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_t
     return normalized
 
 
-def _digikey_product_numbers(product: dict) -> list[str]:
-    """Collect all distributor product numbers for an exact MPN, in order."""
+def _variation_mpn(product: dict, variation: Optional[dict] = None) -> str:
+    """Return the manufacturer MPN for a product or one of its package variations."""
+    if isinstance(variation, dict):
+        for key in ("ManufacturerProductNumber", "ManufacturerPartNumber", "RequestedPartNumber"):
+            value = str(variation.get(key) or "").strip()
+            if value:
+                return value
+    if isinstance(product, dict):
+        return str(product.get("ManufacturerProductNumber") or "").strip()
+    return ""
+
+
+def _digikey_product_numbers(product: dict, *, required_mpn: str = "") -> list[str]:
+    """Collect distributor product numbers that belong to the requested manufacturer MPN.
+
+    DigiKey sometimes lists sibling family SKUs under ProductVariations. Those
+    numbers must not be used as substitutions keys for a different MPN — their
+    Direct/Upgrade/Similar lists describe a different original part.
+    """
     numbers = []
     if not isinstance(product, dict):
         return numbers
-    primary = str(product.get("DigiKeyProductNumber") or "").strip()
-    if primary:
-        numbers.append(primary)
+    required_key = _mpn_key(required_mpn) or _mpn_key(product.get("ManufacturerProductNumber"))
+    parent_mpn = str(product.get("ManufacturerProductNumber") or "").strip()
+    if not required_key or _mpn_key(parent_mpn) == required_key:
+        primary = str(product.get("DigiKeyProductNumber") or "").strip()
+        if primary:
+            numbers.append(primary)
     for variation in product.get("ProductVariations") or []:
         if not isinstance(variation, dict):
+            continue
+        variation_mpn = _variation_mpn(product, variation)
+        if required_key and _mpn_key(variation_mpn) != required_key:
             continue
         value = str(variation.get("DigiKeyProductNumber") or "").strip()
         if value:
@@ -223,7 +246,7 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
     product = _search_digikey_exact_product(
         requested, client_id=client_id, access_token=access_token
     )
-    product_numbers = _digikey_product_numbers(product or {})
+    product_numbers = _digikey_product_numbers(product or {}, required_mpn=requested)
     if not product_numbers:
         # Do not call the substitutions endpoint for an unverified keyword
         # match. A catalog search below can still provide clearly-labelled
