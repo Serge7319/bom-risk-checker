@@ -365,10 +365,13 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         st.caption = MagicMock()
         auth_cookies, auth_state = _install_auth_modules(st)
 
-        secrets = types.ModuleType("src.secrets")
-        secrets.get_secret = lambda key, required=False, default=None: "test-secret"
-        secrets.get_secret_bool = lambda key, default=False: default
-        sys.modules["src.secrets"] = secrets
+        from tests.secrets_module_isolation import install_src_secrets_stub
+        _secrets, restore_secrets = install_src_secrets_stub(
+            get_secret=lambda key, required=False, default=None: "test-secret",
+            get_secret_bool=lambda key, default=False: default,
+            ConfigurationError=RuntimeError,
+        )
+        self.addCleanup(restore_secrets)
 
         auth_diagnostics = types.ModuleType("src.auth_diagnostics")
         correlation_calls = []

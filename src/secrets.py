@@ -13,9 +13,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from src.configuration_errors import ConfigurationError
 
-class ConfigurationError(RuntimeError):
-    """Raised when a required configuration variable is missing."""
+__all__ = ("ConfigurationError", "get_secret", "get_secret_bool")
 
 
 def _normalize_value(value: Any) -> Any:

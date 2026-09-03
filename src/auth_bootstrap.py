@@ -123,7 +123,25 @@ def apply_auth_intent_from_query() -> None:
     Signup confirmation pending/result surfaces are sticky: login/signup query
     intent must not remount the credential form after a confirmation-required
     signup or a confirmation callback result.
+
+    An established authenticated session always wins: ?auth=login must never
+    redirect a valid logged-in user to the sign-in surface during internal
+    navigation (e.g. browser Back to a cached ?auth=login URL).
     """
+    from src.auth_state import AUTH_AUTHENTICATED
+
+    # Guard 1: already fully authenticated — never re-apply login/signup intent.
+    if st.session_state.get("cadivor_auth_status") == AUTH_AUTHENTICATED:
+        # Consume and remove any stale auth query param so it cannot poison
+        # future signed-out flows without affecting the current session.
+        try:
+            if "auth" in st.query_params:
+                del st.query_params["auth"]
+        except Exception:
+            pass
+        st.session_state["cadivor_auth_intent_applied"] = True
+        return
+
     root_state = str(st.session_state.get("cadivor_root_state") or "")
     try:
         requested_auth = st.query_params.get("auth", "")

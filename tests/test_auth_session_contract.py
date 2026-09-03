@@ -22,9 +22,13 @@ def _install_streamlit_stub(session_state: dict | None = None):
 
 
 def _install_auth_state(st):
-    secrets = types.ModuleType("src.secrets")
-    secrets.get_secret_bool = lambda key, default=False: default
-    sys.modules["src.secrets"] = secrets
+    from tests.secrets_module_isolation import install_src_secrets_stub
+
+    _secrets, restore_secrets = install_src_secrets_stub(
+        get_secret_bool=lambda key, default=False: default,
+        get_secret=lambda key, required=False, default=None: default,
+        ConfigurationError=RuntimeError,
+    )
 
     auth_cookies = types.ModuleType("src.auth_cookies")
 
@@ -46,7 +50,7 @@ def _install_auth_state(st):
     sys.modules.pop("src.auth_state", None)
     import importlib
 
-    return importlib.import_module("src.auth_state")
+    return importlib.import_module("src.auth_state"), restore_secrets
 
 
 class _FakeUser:
@@ -87,9 +91,15 @@ class AuthSessionContractTests(unittest.TestCase):
             if name in {"src.auth_state", "src.auth_cookies"}:
                 sys.modules.pop(name, None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load(self, session_state=None):
         st = _install_streamlit_stub(session_state)
-        auth_state = _install_auth_state(st)
+        auth_state, restore_secrets = _install_auth_state(st)
+        self.addCleanup(restore_secrets)
         return st, auth_state
 
     def _mock_supabase(self, *, user=_FakeUser(), fresh_tokens=("fresh-access", "fresh-refresh")):

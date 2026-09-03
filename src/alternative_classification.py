@@ -172,21 +172,76 @@ def build_supplier_relationship_evidence(
     }
 
 
-def relationship_evidence_summary(evidence_rows: list[dict] | None) -> str:
+def _evidence_identity_key(row: dict) -> tuple:
+    """Return a stable deduplication key for one supplier relationship evidence record."""
+    return (
+        str(row.get("original_mpn") or "").strip().upper(),
+        str(row.get("candidate_mpn") or "").strip().upper(),
+        str(row.get("supplier") or "").strip().casefold(),
+        str(row.get("supplier_part_id") or "").strip().upper(),
+        str(row.get("substitute_type") or "").strip().casefold(),
+        str(row.get("source_url") or "").strip(),
+    )
+
+
+def deduplicate_evidence_rows(evidence_rows: list[dict] | None) -> list[dict]:
+    """Return a deduplicated list of supplier relationship evidence records.
+
+    Records are deduplicated by (original_mpn, candidate_mpn, supplier,
+    supplier_part_id, substitute_type, source_url). Insertion order is
+    preserved; later duplicates are dropped.
+    """
     rows = [row for row in (evidence_rows or []) if isinstance(row, dict)]
+    seen: set[tuple] = set()
+    result = []
+    for row in rows:
+        key = _evidence_identity_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(row)
+    return result
+
+
+def relationship_evidence_summary(evidence_rows: list[dict] | None) -> str:
+    """Build a concise, deduplicated supplier relationship summary string.
+
+    Each unique relationship renders once as plain text without raw URLs.
+    The source URL is omitted from the summary text; callers should render it
+    as a separate link (use ``relationship_evidence_link_pairs`` for that).
+    """
+    rows = deduplicate_evidence_rows(evidence_rows)
     if not rows:
         return "No exact supplier substitute relationship was retained for this candidate."
     summaries = []
     for row in rows:
         summary = str(row.get("summary") or "").strip()
-        source_url = str(row.get("source_url") or "").strip()
-        if summary and source_url:
-            summaries.append(f"{summary} ({source_url})")
-        elif summary:
+        if summary:
             summaries.append(summary)
     return " · ".join(summaries) if summaries else (
         "No exact supplier substitute relationship was retained for this candidate."
     )
+
+
+def relationship_evidence_link_pairs(
+    evidence_rows: list[dict] | None,
+) -> list[tuple[str, str]]:
+    """Return (label, url) pairs for clickable supplier reference links.
+
+    Deduplicates by identity key; only rows with a non-empty source_url are
+    included. Each pair is suitable for rendering as one clean hyperlink.
+    """
+    rows = deduplicate_evidence_rows(evidence_rows)
+    pairs: list[tuple[str, str]] = []
+    seen_urls: set[str] = set()
+    for row in rows:
+        source_url = str(row.get("source_url") or "").strip()
+        if not source_url or source_url in seen_urls:
+            continue
+        seen_urls.add(source_url)
+        supplier = str(row.get("supplier") or "").strip() or "Supplier"
+        pairs.append((f"View {supplier} reference", source_url))
+    return pairs
 
 
 def classify_from_supplier_evidence(

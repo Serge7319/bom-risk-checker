@@ -100,7 +100,7 @@ class OctopartIntegrationTests(unittest.TestCase):
         self.assertEqual(self.requests.post.call_count, 1)
 
     def test_missing_configuration_is_not_silenced(self):
-        from src.secrets import ConfigurationError
+        from src.configuration_errors import ConfigurationError
         with patch.object(self.client, "get_secret", side_effect=ConfigurationError("Missing required configuration variable: NEXAR_CLIENT_ID")):
             with self.assertRaises(ConfigurationError):
                 self.client.search_octopart_by_part_number("LM358N")

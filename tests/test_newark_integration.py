@@ -204,7 +204,7 @@ class NewarkIntegrationTests(unittest.TestCase):
         )
 
     def test_missing_newark_api_key_is_not_configured(self):
-        from src.secrets import ConfigurationError
+        from src.configuration_errors import ConfigurationError
 
         error = ConfigurationError("Missing required configuration variable: NEWARK_API_KEY")
         self.assertEqual(
@@ -213,7 +213,7 @@ class NewarkIntegrationTests(unittest.TestCase):
         )
 
     def test_safe_lookup_reports_missing_newark_configuration(self):
-        from src.secrets import ConfigurationError
+        from src.configuration_errors import ConfigurationError
 
         def lookup(part):
             raise ConfigurationError("Missing required configuration variable: NEWARK_API_KEY")

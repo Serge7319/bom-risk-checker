@@ -29,11 +29,21 @@ class AuthDiagnosticsTests(unittest.TestCase):
             if name in {"src.auth_diagnostics", "src.auth_cookies", "src.auth_state"}:
                 sys.modules.pop(name, None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load_diagnostics(self, session_state=None):
+        from tests.secrets_module_isolation import install_src_secrets_stub
+
         st = _install_streamlit_stub(session_state)
-        secrets = types.ModuleType("src.secrets")
-        secrets.get_secret_bool = lambda key, default=False: default
-        sys.modules["src.secrets"] = secrets
+        _secrets, restore_secrets = install_src_secrets_stub(
+            get_secret_bool=lambda key, default=False: default,
+            get_secret=lambda key, required=False, default=None: default,
+            ConfigurationError=RuntimeError,
+        )
+        self.addCleanup(restore_secrets)
 
         auth_cookies = types.ModuleType("src.auth_cookies")
 

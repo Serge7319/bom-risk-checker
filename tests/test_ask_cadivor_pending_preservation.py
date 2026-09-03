@@ -50,11 +50,20 @@ class AskCadivorPendingPreservationTests(unittest.TestCase):
             if name.startswith("src.components.engineering_assistant"):
                 sys.modules.pop(name, None)
 
+    def tearDown(self):
+        from tests.secrets_module_isolation import ensure_real_src_secrets_module
+
+        ensure_real_src_secrets_module()
+
     def _load_assistant(self, session_state=None, *, can_use: bool = True):
         st = _install_streamlit_stub(session_state)
-        secrets = types.ModuleType("src.secrets")
-        secrets.get_secret = lambda key, default="": default
-        sys.modules["src.secrets"] = secrets
+        from tests.secrets_module_isolation import install_src_secrets_stub
+        _secrets, restore_secrets = install_src_secrets_stub(
+            get_secret=lambda key, default="": default,
+            get_secret_bool=lambda key, default=False: default,
+            ConfigurationError=RuntimeError,
+        )
+        self.addCleanup(restore_secrets)
 
         auth_state = types.ModuleType("src.auth_state")
         auth_state.log_auth_diagnostic = lambda *args, **kwargs: None

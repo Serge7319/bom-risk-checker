@@ -64,6 +64,15 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
         # Navigation must remain usable if a deployed Streamlit version does
         # not expose mutable query parameters.
         pass
+    # Ensure marketing auth intent params never survive into the authenticated
+    # workspace. from_dict replaces all params, but belt-and-suspenders removal
+    # ensures no Streamlit-version-specific quirk reintroduces them on rerun.
+    try:
+        for _intent_key in ("auth", "source"):
+            if _intent_key in st.query_params:
+                del st.query_params[_intent_key]
+    except Exception:
+        pass
     if _rerun:
         st.rerun()
 

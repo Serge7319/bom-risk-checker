@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.secrets import ConfigurationError
+from src.configuration_errors import ConfigurationError
 
 PROVIDER_AVAILABLE = "AVAILABLE"
 PROVIDER_PART_NOT_FOUND = "PART_NOT_FOUND"
