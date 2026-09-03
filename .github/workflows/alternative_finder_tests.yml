@@ -29,6 +29,7 @@ jobs:
           python -m unittest \
             tests.test_auth_cookie_read_bridge \
             tests.test_authenticated_nav_and_evidence_dedup \
+            tests.test_provider_health_import \
             tests.test_alternative_evidence_integrity \
             tests.test_alternative_supplier_evidence \
             tests.test_alternative_finder_search \
