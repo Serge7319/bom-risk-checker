@@ -284,16 +284,10 @@ def build_engineering_evidence_assessment(
             supplier_relationship_confidence = 55
         else:
             supplier_relationship_confidence = 40
-    elif classification == CLASS_SUPPLIER_UPGRADE or normalized_type == SUBSTITUTE_TYPE_UPGRADE:
-        source_label = str(evidence_source or "Supplier").strip() or "Supplier"
-        supplier_relationship_confidence = 70
-        supplier_relationship_summary = f"{source_label} substitute type: Upgrade"
-    elif classification == CLASS_SUPPLIER_SIMILAR or normalized_type == SUBSTITUTE_TYPE_SIMILAR:
-        source_label = str(evidence_source or "Supplier").strip() or "Supplier"
-        supplier_relationship_confidence = 55
-        supplier_relationship_summary = f"{source_label} substitute type: Similar"
     else:
-        # Never invent "substitute type: Direct" from classification alone.
+        # Never invent Direct/Upgrade/Similar display text without retained
+        # pair-scoped evidence rows. Classification alone is not enough.
+        supplier_relationship_confidence = 0
         supplier_relationship_summary = (
             "No exact supplier substitute relationship was retained for this candidate."
         )
@@ -413,7 +407,19 @@ def _find_pdf_evidence(pdf_result: dict, labels: tuple[str, ...]) -> tuple[str, 
 
 def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: str) -> list[dict]:
     """Extract page-cited relevant fields from two readable official PDFs."""
-    fields = list(COMMON_FIELDS) + list(FAMILY_FIELDS.get(family, ()))
+    common_fields = list(COMMON_FIELDS)
+    if family in PASSIVE_FAMILIES:
+        common_fields = [field for field in common_fields if field[1] != "pin_count"]
+    if family in {
+        "Capacitor",
+        "Resistor",
+        "Inductor",
+        "Transformer",
+        "Diode / protection",
+        "Transistor / MOSFET",
+    }:
+        common_fields = [field for field in common_fields if field[1] != "voltage_range"]
+    fields = common_fields + list(FAMILY_FIELDS.get(family, ()))
     rows = []
     for label, _key in fields:
         aliases = tuple(alias.casefold() for alias in PDF_LABEL_ALIASES.get(label, (label.casefold(),)))

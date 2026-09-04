@@ -1,4 +1,5 @@
 import pickle
+import re
 from typing import Any, Mapping, Optional
 
 import pandas as pd
@@ -513,6 +514,11 @@ _SMD_PACKAGE_CODES = frozenset(
 
 
 def _mlcc_tolerance_from_mpn(mpn: str) -> str:
+    """Infer MLCC tolerance letter codes from capacitor MPNs only.
+
+    Must never be applied to resistors/inductors/ICs — EIA digit+letter patterns
+    appear in many non-capacitor ordering codes.
+    """
     upper = str(mpn or "").upper()
     for index in range(max(len(upper) - 3, 0)):
         digits = upper[index : index + 3]
@@ -532,10 +538,25 @@ def _mlcc_tolerance_from_mpn(mpn: str) -> str:
 
 def _discovery_row_to_part_data(row: dict) -> dict:
     """Build comparison-ready supplier fields from DigiKey discovery evidence."""
+    from src.datasheet_comparison import infer_component_family
+
     mpn = str(row.get("manufacturer_part_number") or "").strip()
     description = str(row.get("description") or "").strip()
     package = str(row.get("package") or "").strip()
-    if not package and mpn.upper().startswith("C") and len(mpn) >= 4:
+    family = infer_component_family(
+        {
+            "description": description,
+            "manufacturer_part_number": mpn,
+            "architecture": str(row.get("architecture") or "").strip(),
+        }
+    )
+    # C-prefix EIA size codes are capacitor ordering conventions only.
+    if (
+        not package
+        and family == "Capacitor"
+        and mpn.upper().startswith("C")
+        and len(mpn) >= 4
+    ):
         size_code = mpn[1:5]
         if size_code.isdigit():
             package = size_code
@@ -546,7 +567,10 @@ def _discovery_row_to_part_data(row: dict) -> dict:
             passive_fields[key] = value
     if package in _SMD_PACKAGE_CODES:
         passive_fields.setdefault("mounting_style", "Surface Mount")
-    passive_fields.setdefault("tolerance", _mlcc_tolerance_from_mpn(mpn))
+    if family == "Capacitor":
+        mlcc_tolerance = _mlcc_tolerance_from_mpn(mpn)
+        if mlcc_tolerance:
+            passive_fields.setdefault("tolerance", mlcc_tolerance)
     return {
         "manufacturer_part_number": mpn,
         "manufacturer": str(row.get("manufacturer") or "").strip(),
@@ -568,7 +592,7 @@ def _discovery_row_to_part_data(row: dict) -> dict:
 
 
 def _passive_fields_from_description(description: str) -> dict:
-    """Extract coarse passive parametrics from distributor product descriptions."""
+    """Extract coarse Cap/R/L parametrics from distributor product descriptions."""
     fields: dict = {}
     text = str(description or "").strip()
     if not text:
@@ -580,10 +604,35 @@ def _passive_fields_from_description(description: str) -> dict:
         normalized = token.strip("()[]")
         token_lower = normalized.casefold()
         if token_lower.endswith("uf") and any(ch.isdigit() for ch in normalized):
-            value = normalized[:-2] if token_lower.endswith("uf") else normalized
+            value = normalized[:-2]
             fields.setdefault("capacitance", f"{value} µF")
+        elif token_lower.endswith(("µf", "μf")) and any(ch.isdigit() for ch in normalized):
+            value = normalized[:-2]
+            fields.setdefault("capacitance", f"{value} µF")
+        if (
+            token_lower.endswith("ohm")
+            or normalized.endswith("Ω")
+            or normalized.endswith("Ω")
+            or token_lower.endswith("ω")
+        ) and any(ch.isdigit() for ch in normalized):
+            fields.setdefault("resistance", normalized)
+        elif re.fullmatch(r"\d+(\.\d+)?k", token_lower):
+            fields.setdefault("resistance", f"{normalized[:-1]} kΩ")
+        elif re.fullmatch(r"\d+(\.\d+)?r", token_lower):
+            fields.setdefault("resistance", f"{normalized[:-1]} Ω")
+        if token_lower.endswith(("uh", "µh", "μh")) and any(ch.isdigit() for ch in normalized):
+            value = normalized[:-2]
+            fields.setdefault("inductance", f"{value} µH")
+        elif token_lower.endswith("mh") and any(ch.isdigit() for ch in normalized):
+            value = normalized[:-2]
+            fields.setdefault("inductance", f"{value} mH")
+        elif token_lower.endswith("nh") and any(ch.isdigit() for ch in normalized):
+            value = normalized[:-2]
+            fields.setdefault("inductance", f"{value} nH")
         if token_lower.endswith("v") and token_lower[:-1].replace(".", "").isdigit():
             fields.setdefault("rated_voltage", normalized.upper())
+        if token_lower.endswith("w") and token_lower[:-1].replace(".", "").isdigit():
+            fields.setdefault("power_rating", normalized.upper())
         if token_lower in {"x7r", "x5r", "c0g", "np0", "y5v"}:
             fields.setdefault("dielectric", normalized.upper())
             fields.setdefault("temperature_coefficient", normalized.upper())
@@ -626,12 +675,14 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
     )
     if family in PASSIVE_FAMILIES:
         counts = candidate.get("Comparison Counts")
-        if isinstance(counts, dict) and counts:
-            return _passive_compatibility_confidence(
-                counts,
-                classification=str(candidate.get("Classification") or ""),
-                substitute_type=str(candidate.get("Substitute Type") or ""),
-            )
+        if not isinstance(counts, dict):
+            counts = {}
+        # Never fall through to IC architecture/pin scoring for Cap/R/L.
+        return _passive_compatibility_confidence(
+            counts,
+            classification=str(candidate.get("Classification") or ""),
+            substitute_type=str(candidate.get("Substitute Type") or ""),
+        )
     score = 0
 
     original_architecture = str(

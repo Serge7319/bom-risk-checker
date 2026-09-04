@@ -183,12 +183,20 @@ def extract_mouser_attribute(part: dict, target_names: list) -> str:
 
 
 def extract_pin_count(text: str) -> int:
-    match = re.search(r"\b(\d+)\b", str(text))
-
-    if match:
-        return int(match.group(1))
-
-    return 0
+    """Parse pin count without treating EIA passive package codes as pin counts."""
+    raw = str(text or "").strip()
+    if not raw:
+        return 0
+    # DigiKey-aligned guard: 0603 / 0805 / 0402 are packages, not pin counts.
+    if re.search(r"\b0\d{3}\b|\b1\d{3}\b", raw):
+        return 0
+    compact = re.sub(r"[^0-9]", "", raw)
+    if re.fullmatch(r"(?:0\d{3}|\d{4})", compact or ""):
+        return 0
+    match = re.search(r"\b(\d{1,4})\b", raw)
+    if not match:
+        return 0
+    return int(match.group(1))
 
 def extract_voltage_limits(voltage_text: str):
     text = str(voltage_text or "").lower().replace(" ", "")

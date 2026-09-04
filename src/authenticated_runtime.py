@@ -11007,62 +11007,69 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-            comparison_df = pd.DataFrame(
+            comparison_rows = [
+                {
+                    "Attribute": "Part Number",
+                    "Original": original_part,
+                    "Selected Alternative": selected_row.get("Alternative Part", ""),
+                },
+                {
+                    "Attribute": "Lifecycle",
+                    "Original": original_data.get("lifecycle_status", "Unknown"),
+                    "Selected Alternative": selected_row.get("Lifecycle", "Unknown"),
+                },
+                {
+                    "Attribute": "Supplier",
+                    "Original": original_data.get("source", ""),
+                    "Selected Alternative": selected_row.get("Supplier", ""),
+                },
+                {
+                    "Attribute": "Stock",
+                    "Original": original_data.get("stock_total", 0),
+                    "Selected Alternative": selected_row.get("Stock", 0),
+                },
+                {
+                    "Attribute": "Unit Price",
+                    "Original": original_data.get("unit_price", 0.0),
+                    "Selected Alternative": selected_row.get("Unit Price", 0.0),
+                },
+                {
+                    "Attribute": "Stock Delta",
+                    "Original": "—",
+                    "Selected Alternative": stock_delta,
+                },
+                {
+                    "Attribute": "Price Delta",
+                    "Original": "—",
+                    "Selected Alternative": price_delta,
+                },
+                {
+                    "Attribute": "Package",
+                    "Original": original_data.get("package")
+                    or "Not available from supplier data",
+                    "Selected Alternative": selected_row.get("Package", ""),
+                },
+            ]
+            if not is_passive_family:
+                comparison_rows.extend(
+                    [
+                        {
+                            "Attribute": "Pin Count",
+                            "Original": original_data.get("pin_count")
+                            or "Not available from supplier data",
+                            "Selected Alternative": selected_row.get("Pin Count", ""),
+                        },
+                        {
+                            "Attribute": "Architecture",
+                            "Original": original_data.get("architecture")
+                            or original_data.get("Architecture")
+                            or "Not available from supplier data",
+                            "Selected Alternative": selected_row.get("Architecture", ""),
+                        },
+                    ]
+                )
+            comparison_rows.extend(
                 [
-                    {
-                        "Attribute": "Part Number",
-                        "Original": original_part,
-                        "Selected Alternative": selected_row.get("Alternative Part", ""),
-                    },
-                    {
-                        "Attribute": "Lifecycle",
-                        "Original": original_data.get("lifecycle_status", "Unknown"),
-                        "Selected Alternative": selected_row.get("Lifecycle", "Unknown"),
-                    },
-                    {
-                        "Attribute": "Supplier",
-                        "Original": original_data.get("source", ""),
-                        "Selected Alternative": selected_row.get("Supplier", ""),
-                    },
-                    {
-                        "Attribute": "Stock",
-                        "Original": original_data.get("stock_total", 0),
-                        "Selected Alternative": selected_row.get("Stock", 0),
-                    },
-                    {
-                        "Attribute": "Unit Price",
-                        "Original": original_data.get("unit_price", 0.0),
-                        "Selected Alternative": selected_row.get("Unit Price", 0.0),
-                    },
-                    {
-                        "Attribute": "Stock Delta",
-                        "Original": "—",
-                        "Selected Alternative": stock_delta,
-                    },
-                    {
-                        "Attribute": "Price Delta",
-                        "Original": "—",
-                        "Selected Alternative": price_delta,
-                    },
-                    {
-                        "Attribute": "Package",
-                        "Original": original_data.get("package")
-                        or "Not available from supplier data",
-                        "Selected Alternative": selected_row.get("Package", ""),
-                    },
-                    {
-                        "Attribute": "Pin Count",
-                        "Original": original_data.get("pin_count")
-                        or "Not available from supplier data",
-                        "Selected Alternative": selected_row.get("Pin Count", ""),
-                    },
-                    {
-                        "Attribute": "Architecture",
-                        "Original": original_data.get("architecture")
-                        or original_data.get("Architecture")
-                        or "Not available from supplier data",
-                        "Selected Alternative": selected_row.get("Architecture", ""),
-                    },
                     {
                         "Attribute": "Drop-In Confidence",
                         "Original": "—",
@@ -11075,6 +11082,7 @@ def run_authenticated_app() -> None:
                     },
                 ]
             )
+            comparison_df = pd.DataFrame(comparison_rows)
 
             st.markdown(
                 """
