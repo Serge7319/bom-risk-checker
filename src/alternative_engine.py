@@ -22,6 +22,11 @@ from src.datasheet_comparison import (
     PASSIVE_PARAMETRIC_KEYS,
     normalize_mounting_style,
 )
+from src.component_family_profiles import (
+    DISCRETE_PARAMETRIC_FAMILY_IDS,
+    all_parametric_keys,
+    get_family_profile,
+)
 from src.alternative_classification import (
     CLASS_CATALOG_INSUFFICIENT,
     CLASS_VERIFIED_DIRECT,
@@ -679,16 +684,26 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         candidate.get("Comparison Family")
         or infer_component_family(original)
     )
-    if family in PASSIVE_FAMILIES:
+    profile = get_family_profile(family)
+    if family in PASSIVE_FAMILIES or profile.scoring_mode in {
+        "parametric_matrix",
+        "resource_device",
+    } or family in DISCRETE_PARAMETRIC_FAMILY_IDS:
         counts = candidate.get("Comparison Counts")
-        if not isinstance(counts, dict):
-            counts = {}
-        # Never fall through to IC architecture/pin scoring for Cap/R/L.
-        return _passive_compatibility_confidence(
-            counts,
+        rows = candidate.get("Comparison Rows")
+        if not isinstance(rows, list) or not isinstance(counts, dict):
+            comparison = build_datasheet_comparison(original, candidate)
+            rows = comparison.get("rows", [])
+            counts = comparison.get("counts", {})
+            family = comparison.get("family") or family
+        assessment = build_engineering_evidence_assessment(
+            counts if isinstance(counts, dict) else {},
             classification=str(candidate.get("Classification") or ""),
             substitute_type=str(candidate.get("Substitute Type") or ""),
+            comparison_rows=rows if isinstance(rows, list) else None,
+            family=family,
         )
+        return int(assessment["engineering_comparison_confidence"])
     score = 0
 
     original_architecture = str(
@@ -1322,28 +1337,25 @@ def apply_supplier_enrichment_to_candidate(
         candidate_comparison_data[field_name] = enriched.get(
             config["display_key"], candidate_comparison_data.get(field_name)
         )
-    for passive_key in (
-        "capacitance",
-        "resistance",
-        "inductance",
-        "tolerance",
-        "rated_voltage",
-        "dielectric",
-        "power_rating",
-        "temperature_coefficient",
-        "esr",
-        "dcr",
-        "rated_current",
-        "saturation_current",
-        "device_type",
-        "reverse_voltage",
-        "forward_current",
-        "pinout",
-        "frequency_mhz",
-    ):
-        if not candidate_comparison_data.get(passive_key):
-            candidate_comparison_data[passive_key] = supplier_data.get(passive_key, "")
-
+    for parametric_key in all_parametric_keys(include_common=True):
+        if candidate_comparison_data.get(parametric_key) not in (None, "", 0):
+            continue
+        if supplier_data.get(parametric_key) not in (None, "", 0):
+            candidate_comparison_data[parametric_key] = supplier_data.get(parametric_key)
+            continue
+        if original_data.get(parametric_key) not in (None, "", 0):
+            # Do not copy original values onto the candidate — leave Needs data.
+            continue
+        display_map = {
+            "package": "Package",
+            "pin_count": "Pin Count",
+            "mounting_style": "Mounting Style",
+            "architecture": "Architecture",
+            "voltage_range": "Voltage Range",
+        }
+        display_key = display_map.get(parametric_key)
+        if display_key and enriched.get(display_key) not in (None, "", 0):
+            candidate_comparison_data[parametric_key] = enriched.get(display_key)
     comparison_result = build_datasheet_comparison(original_data, candidate_comparison_data)
     comparison_counts = comparison_result["counts"]
     enriched["Comparison Family"] = comparison_result.get("family", "")
@@ -1383,6 +1395,8 @@ def apply_supplier_enrichment_to_candidate(
         substitute_type=str(enriched.get("Substitute Type") or ""),
         supplier_relationship_evidence=pair_evidence,
         evidence_source=str(enriched.get("Evidence Source") or ""),
+        comparison_rows=comparison_result.get("rows"),
+        family=str(comparison_result.get("family") or ""),
     )
     enriched["Engineering Evidence Assessment"] = evidence_assessment
     enriched["Engineering Evidence Summary"] = evidence_assessment["engineering_evidence_summary"]
@@ -1409,7 +1423,13 @@ def apply_supplier_enrichment_to_candidate(
     )
     enriched["Recommendation Score"] = score_evidence["recommendation_score"]
     enriched["Drop-In Confidence"] = score_evidence["compatibility_confidence"]
-    if str(enriched.get("Comparison Family") or "") in PASSIVE_FAMILIES:
+    comparison_family = str(enriched.get("Comparison Family") or "")
+    profile = get_family_profile(comparison_family)
+    if (
+        comparison_family in PASSIVE_FAMILIES
+        or comparison_family in DISCRETE_PARAMETRIC_FAMILY_IDS
+        or profile.scoring_mode in {"parametric_matrix", "resource_device"}
+    ):
         enriched["Drop-In Confidence"] = int(
             evidence_assessment["engineering_comparison_confidence"]
         )

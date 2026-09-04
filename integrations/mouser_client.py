@@ -110,6 +110,28 @@ def normalize_mouser_part(part: dict) -> dict:
 
     gbw_mhz = None
 
+    from src.component_family_profiles import mouser_parametric_map
+
+    parametric = {}
+    skip_keys = {
+        "package",
+        "pin_count",
+        "mounting_style",
+        "voltage_range",
+        "lifecycle_status",
+    }
+    for key, names in mouser_parametric_map().items():
+        if key in skip_keys:
+            continue
+        value = extract_mouser_attribute(part, names)
+        if value:
+            parametric[key] = value
+    temperature_range = extract_mouser_attribute(
+        part, ["Operating Temperature", "Temperature Range"]
+    )
+    if temperature_range:
+        parametric.setdefault("temperature_range", temperature_range)
+
     return {
         "lifecycle_status": infer_lifecycle_status(part),
         "stock_total": stock_total,
@@ -138,6 +160,7 @@ def normalize_mouser_part(part: dict) -> dict:
         "input_bias_na": input_bias_na,
         "quiescent_current_ma": quiescent_current_ma,
         "gbw_mhz": gbw_mhz,
+        **parametric,
     }
 
 
@@ -174,18 +197,34 @@ def default_part_result() -> dict:
 
 
 def extract_mouser_attribute(part: dict, target_names: list) -> str:
-    attributes = part.get("ProductAttributes", [])
+    """Extract a Mouser attribute using exact match, then longest safe alias."""
+    attributes = part.get("ProductAttributes", []) or []
+    normalized_targets = [str(target or "").strip() for target in target_names if str(target or "").strip()]
+    if not normalized_targets:
+        return ""
 
+    for target in normalized_targets:
+        target_key = target.casefold()
+        for attribute in attributes:
+            name = str(attribute.get("AttributeName", "")).strip()
+            if name.casefold() == target_key:
+                return str(attribute.get("AttributeValue", "")).strip()
+
+    generic = {"type", "function", "series", "family", "technology"}
+    best_value = ""
+    best_score = 0
     for attribute in attributes:
-        name = str(attribute.get("AttributeName", "")).lower()
+        name = str(attribute.get("AttributeName", "")).strip()
+        name_key = name.casefold()
         value = str(attribute.get("AttributeValue", "")).strip()
-
-        for target in target_names:
-            if target.lower() in name:
-                return value
-
-    return ""
-
+        for target in normalized_targets:
+            target_key = target.casefold()
+            if target_key in generic:
+                continue
+            if target_key in name_key and len(target_key) > best_score:
+                best_value = value
+                best_score = len(target_key)
+    return best_value
 
 def extract_pin_count(text: str) -> int:
     """Parse pin count; bare integers allowed for explicit Number of Pins fields."""

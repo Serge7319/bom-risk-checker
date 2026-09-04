@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Mapping
 
 from src.alternative_classification import CLASS_VERIFIED_DIRECT
 from src.datasheet_comparison import PASSIVE_FAMILIES, build_engineering_evidence_assessment, infer_component_family, normalize_mounting_style
+from src.component_family_profiles import DISCRETE_PARAMETRIC_FAMILY_IDS, get_family_profile
 from integrations.pin_count import effective_pin_count
 
 VERIFIED_DIRECT_DISPOSITION = (
@@ -171,6 +172,8 @@ def _build_passive_alternative_reasoning(
         "channel count",
         "supply voltage",
     )
+    # Cap/R/L omit IC-oriented attributes. Discrete/IC family matrices keep them.
+    skip_ic_terms = comparison_family in PASSIVE_FAMILIES
 
     for row in rows:
         attribute = _text(row.get("Attribute"))
@@ -179,7 +182,7 @@ def _build_passive_alternative_reasoning(
         candidate_value = _text(row.get("Candidate"))
         if not attribute:
             continue
-        if any(term in attribute.casefold() for term in ic_terms):
+        if skip_ic_terms and any(term in attribute.casefold() for term in ic_terms):
             continue
         if status == "Match":
             if attribute == "Mounting":
@@ -253,6 +256,8 @@ def _build_passive_alternative_reasoning(
             counts,
             classification=classification,
             substitute_type=_text(candidate.get("Substitute Type")),
+            comparison_rows=rows,
+            family=comparison_family,
         )
     engineering_confidence = int(
         candidate.get("Engineering Comparison Confidence")
@@ -446,7 +451,7 @@ def build_alternative_reasoning(
     resolved_classification = classification or _text(
         candidate.get("Classification") or candidate.get("Category")
     )
-    if resolved_family in PASSIVE_FAMILIES:
+    if resolved_family in PASSIVE_FAMILIES or resolved_family in DISCRETE_PARAMETRIC_FAMILY_IDS:
         return _build_passive_alternative_reasoning(
             original_part=original_part,
             original_data=original_data,
@@ -456,6 +461,25 @@ def build_alternative_reasoning(
             classification=resolved_classification,
             comparison_family=resolved_family,
             comparison_rows=comparison_rows or candidate.get("Comparison Rows") or [],
+            comparison_counts=comparison_counts or candidate.get("Comparison Counts") or {},
+            stock_delta=stock_delta,
+            price_delta=price_delta,
+        )
+
+    # Resource devices (MCU/FPGA) and remaining IC families: prefer matrix rows
+    # when present so missing pinout/resources are named explicitly.
+    matrix_rows = list(comparison_rows or candidate.get("Comparison Rows") or [])
+    profile = get_family_profile(resolved_family)
+    if matrix_rows and profile.scoring_mode in {"resource_device", "parametric_matrix", "ic_weighted"}:
+        return _build_passive_alternative_reasoning(
+            original_part=original_part,
+            original_data=original_data,
+            candidate=candidate,
+            recommendation_score=recommendation_score,
+            compatibility_confidence=compatibility_confidence,
+            classification=resolved_classification,
+            comparison_family=resolved_family,
+            comparison_rows=matrix_rows,
             comparison_counts=comparison_counts or candidate.get("Comparison Counts") or {},
             stock_delta=stock_delta,
             price_delta=price_delta,

@@ -4,92 +4,48 @@ The module is deliberately conservative: a matching catalog field is useful
 evidence, but is never an automatic approval.  Datasheet PDFs are fetched only
 from supplier-provided HTTPS/HTTP links, parsed on demand, and the UI shows
 when a value is unavailable rather than inventing a comparison.
+
+Family field matrices, DigiKey aliases, and comparison modes come from
+``src.component_family_profiles`` so every family shares one declarative
+registry across normalization, scoring, UI, and PDF output.
 """
 from __future__ import annotations
 
 from io import BytesIO
 import re
+from typing import Any, Mapping
 from urllib.parse import urlparse
 
 import requests
+
+from src.component_family_profiles import (
+    PASSIVE_FAMILY_IDS,
+    comparison_fields,
+    get_family_profile,
+    infer_family_id,
+    legacy_family_fields,
+    pdf_label_aliases,
+)
+from src.parametric_compare import (
+    compare_field_values,
+    engineering_confidence_from_rows,
+    normalize_mounting_style,
+)
 
 
 MAX_DATASHEET_BYTES = 8 * 1024 * 1024
 MAX_DATASHEET_PAGES = 40
 
-
+# Back-compat exports used across the Alternative Finder stack.
+PASSIVE_FAMILIES = PASSIVE_FAMILY_IDS
 COMMON_FIELDS = (
     ("Package", "package"),
     ("Pin count", "pin_count"),
     ("Mounting", "mounting_style"),
     ("Supply voltage", "voltage_range"),
 )
-
-FAMILY_FIELDS = {
-    "Resistor": (
-        ("Resistance", "resistance"),
-        ("Tolerance", "tolerance"),
-        ("Power rating", "power_rating"),
-        ("Temperature coefficient", "temperature_coefficient"),
-        ("Voltage rating", "rated_voltage"),
-    ),
-    "Capacitor": (
-        ("Capacitance", "capacitance"),
-        ("Tolerance", "tolerance"),
-        ("Rated voltage", "rated_voltage"),
-        ("Dielectric", "dielectric"),
-        ("Temperature characteristic", "temperature_coefficient"),
-        ("ESR", "esr"),
-    ),
-    "Inductor": (
-        ("Inductance", "inductance"),
-        ("Tolerance", "tolerance"),
-        ("DCR", "dcr"),
-        ("Rated current", "rated_current"),
-        ("Saturation current", "saturation_current"),
-        ("Shielding", "shielding"),
-        ("Height", "height"),
-    ),
-    "Transformer": (("Turns ratio", "turns_ratio"), ("Isolation voltage", "isolation_voltage"), ("Power rating", "power_rating"), ("Inductance", "inductance")),
-    "Diode / protection": (("Reverse voltage", "reverse_voltage"), ("Forward current", "forward_current"), ("Forward voltage", "forward_voltage"), ("Recovery time", "recovery_time")),
-    "Transistor / MOSFET": (("Device type", "device_type"), ("Vds / Vce", "drain_or_collector_voltage"), ("Current", "rated_current"), ("Rds(on) / gain", "on_resistance_or_gain"), ("Gate threshold", "gate_threshold")),
-    "Operational amplifier": (("Channels", "channel_count"), ("Supply voltage", "voltage_range"), ("Bandwidth", "bandwidth_mhz"), ("Slew rate", "slew_rate_v_us"), ("Input offset", "input_offset_mv"), ("Input bias", "input_bias_na")),
-    "Regulator": (("Input voltage", "voltage_range"), ("Output voltage", "output_voltage"), ("Output current", "rated_current"), ("Dropout voltage", "dropout_voltage"), ("Quiescent current", "quiescent_current_ma")),
-    "Logic / processor": (
-        ("Architecture", "architecture"),
-        ("Pin count", "pin_count"),
-        ("Pinout evidence", "pinout"),
-        ("Supply voltage", "voltage_range"),
-        ("Frequency", "frequency_mhz"),
-        ("Channel count", "channel_count"),
-    ),
-    "Oscillator / crystal": (("Frequency", "frequency_mhz"), ("Frequency tolerance", "frequency_tolerance"), ("Load capacitance", "load_capacitance")),
-    "Sensor": (("Measurement range", "measurement_range"), ("Accuracy", "accuracy"), ("Interface", "interface"), ("Supply voltage", "voltage_range")),
-    "Connector / electromechanical": (("Positions", "positions"), ("Pitch", "pitch"), ("Current rating", "rated_current"), ("Voltage rating", "rated_voltage")),
-}
-
-PDF_LABEL_ALIASES = {
-    "Package": ("package", "case", "footprint"), "Pin count": ("pin count", "number of pins"),
-    "Mounting": ("mounting",), "Supply voltage": ("supply voltage", "operating voltage"),
-    "Resistance": ("resistance",), "Tolerance": ("tolerance",), "Power rating": ("power rating", "rated power"),
-    "Temperature coefficient": ("temperature coefficient", "tcr"), "Capacitance": ("capacitance",),
-    "Rated voltage": ("rated voltage", "voltage rating"), "Dielectric": ("dielectric",), "ESR": ("esr", "equivalent series resistance"),
-    "Inductance": ("inductance",), "DCR": ("dcr", "dc resistance"), "Rated current": ("rated current", "current rating"),
-    "Saturation current": ("saturation current",), "Turns ratio": ("turns ratio",), "Isolation voltage": ("isolation voltage",),
-    "Reverse voltage": ("reverse voltage",), "Forward current": ("forward current",), "Forward voltage": ("forward voltage",),
-    "Recovery time": ("recovery time",), "Device type": ("device type",), "Vds / Vce": ("vds", "vce", "drain-source voltage"),
-    "Current": ("drain current", "collector current", "current rating"), "Rds(on) / gain": ("rds(on)", "rds on", "dc current gain"),
-    "Gate threshold": ("gate threshold",), "Channels": ("channels", "number of circuits"), "Bandwidth": ("bandwidth", "gain bandwidth"),
-    "Slew rate": ("slew rate",), "Input offset": ("input offset",), "Input bias": ("input bias",),
-    "Input voltage": ("input voltage",), "Output voltage": ("output voltage",), "Output current": ("output current",),
-    "Dropout voltage": ("dropout voltage",), "Quiescent current": ("quiescent current",), "Architecture": ("architecture",),
-    "Frequency": ("frequency",), "Frequency tolerance": ("frequency tolerance",), "Load capacitance": ("load capacitance",),
-    "Measurement range": ("measurement range", "measurement range"), "Accuracy": ("accuracy",), "Interface": ("interface",),
-    "Positions": ("positions", "number of positions"), "Pitch": ("pitch",), "Current rating": ("current rating",), "Voltage rating": ("voltage rating",),
-}
-
-
-PASSIVE_FAMILIES = frozenset({"Capacitor", "Resistor", "Inductor"})
+FAMILY_FIELDS = legacy_family_fields()
+PDF_LABEL_ALIASES = pdf_label_aliases()
 
 PASSIVE_PARAMETRIC_KEYS = (
     "capacitance",
@@ -106,42 +62,52 @@ PASSIVE_PARAMETRIC_KEYS = (
     "saturation_current",
     "mounting_style",
     "package",
+    "device_type",
+    "collector_emitter_voltage",
+    "collector_current",
+    "dc_current_gain",
+    "power_dissipation",
+    "transition_frequency",
+    "vce_saturation",
+    "drain_source_voltage",
+    "continuous_drain_current",
+    "rds_on",
+    "gate_threshold",
+    "reverse_voltage",
+    "forward_current",
+    "forward_voltage",
+    "output_voltage",
+    "dropout_voltage",
+    "pinout",
+    "temperature_range",
+    "polarity",
+    "ripple_current",
+    "srf",
+    "shielding",
+    "positions",
+    "pitch",
+    "mating_style",
+    "coil_voltage",
+    "logic_resources",
+    "memory_size",
+    "io_count",
+    "peripherals",
+    "interface",
+    "measurement_range",
+    "accuracy",
+    "frequency_tolerance",
+    "load_capacitance",
+    "recovery_time",
+    "gate_charge",
+    "thermal_resistance",
+    "switching_frequency",
+    "collector_base_voltage",
+    "collector_cutoff_current",
 )
 
 
-def normalize_mounting_style(value: str) -> str:
-    """Normalize mounting values for comparison without hiding genuine TH vs SMD differences."""
-    text = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
-    if not text:
-        return ""
-    if text in {"smd", "smt"} or text.startswith("surfacemount"):
-        return "smd"
-    if "throughhole" in text or text in {"th", "tht"}:
-        return "throughhole"
-    return text
-
-
 def infer_component_family(part: dict) -> str:
-    text = " ".join(
-        str(part.get(key) or "")
-        for key in ("description", "architecture", "manufacturer_part_number")
-    ).casefold()
-    checks = (
-        ("transform", "Transformer"), ("inductor", "Inductor"), ("choke", "Inductor"),
-        ("capacitor", "Capacitor"), ("cap ", "Capacitor"), ("resistor", "Resistor"),
-        ("mosfet", "Transistor / MOSFET"), ("transistor", "Transistor / MOSFET"),
-        ("diode", "Diode / protection"), ("tvs", "Diode / protection"), ("rectifier", "Diode / protection"),
-        ("operational amplifier", "Operational amplifier"), (" op amp", "Operational amplifier"),
-        ("regulator", "Regulator"), ("ldo", "Regulator"),
-        ("microcontroller", "Logic / processor"), ("logic", "Logic / processor"), ("memory", "Logic / processor"),
-        ("oscillator", "Oscillator / crystal"), ("crystal", "Oscillator / crystal"),
-        ("sensor", "Sensor"), ("connector", "Connector / electromechanical"),
-        ("relay", "Connector / electromechanical"), ("switch", "Connector / electromechanical"),
-    )
-    for marker, family in checks:
-        if marker in text:
-            return family
-    return "General electronic component"
+    return infer_family_id(part)
 
 
 def _display_value(value) -> str:
@@ -164,6 +130,7 @@ def _normalize(value: str) -> str:
 
 
 def _field_status(original_value: str, candidate_value: str, *, attribute: str = "") -> tuple[str, str]:
+    """Legacy helper retained for PDF text-line compares without FieldSpec."""
     if not original_value or not candidate_value:
         return "Needs data", "One or both values were not available from the retrieved evidence."
     if attribute == "Mounting":
@@ -181,33 +148,37 @@ def _field_status(original_value: str, candidate_value: str, *, attribute: str =
 def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     """Build a transparent family-aware comparison from retrieved evidence."""
     family = infer_component_family(original)
-    # "Supply voltage" is an IC attribute. Passive parts use their rated
-    # voltage, which is both electrically meaningful and present in their
-    # supplier/datasheet evidence.
-    common_fields = list(COMMON_FIELDS)
-    if family in PASSIVE_FAMILIES:
-        common_fields = [field for field in common_fields if field[1] != "pin_count"]
-    if family in {"Capacitor", "Resistor", "Inductor", "Transformer", "Diode / protection", "Transistor / MOSFET"}:
-        common_fields = [field for field in common_fields if field[1] != "voltage_range"]
-    fields = common_fields + list(FAMILY_FIELDS.get(family, ()))
+    profile = get_family_profile(family)
+    fields = comparison_fields(profile)
     rows, counts = [], {"Match": 0, "Different": 0, "Needs data": 0}
-    for label, key in fields:
-        if key == "pin_count":
+    for spec in fields:
+        if spec.key == "pin_count":
             original_value = _display_pin_count(original)
             candidate_value = _display_pin_count(candidate)
         else:
-            original_value = _display_value(original.get(key))
-            candidate_value = _display_value(candidate.get(key))
-        status, note = _field_status(original_value, candidate_value, attribute=label)
+            original_value = _display_value(original.get(spec.key))
+            candidate_value = _display_value(candidate.get(spec.key))
+        status, note = compare_field_values(original_value, candidate_value, spec)
         counts[status] += 1
         rows.append({
-            "Attribute": label,
+            "Attribute": spec.label,
+            "Key": spec.key,
+            "Required": bool(spec.required),
+            "CompareMode": spec.compare,
+            "ValueRole": spec.value_role,
             "Original": original_value or "Not available",
             "Candidate": candidate_value or "Not available",
             "Status": status,
             "Evidence": note,
         })
-    return {"family": family, "rows": rows, "counts": counts}
+    return {
+        "family": family,
+        "family_display_name": profile.display_name,
+        "scoring_mode": profile.scoring_mode,
+        "requires_pinout_for_dropin": profile.requires_pinout_for_dropin,
+        "rows": rows,
+        "counts": counts,
+    }
 
 
 def build_engineering_evidence_assessment(
@@ -217,50 +188,65 @@ def build_engineering_evidence_assessment(
     substitute_type: str = "",
     supplier_relationship_evidence: list | None = None,
     evidence_source: str = "",
+    comparison_rows: list | None = None,
+    family: str = "",
 ) -> dict:
     """Summarize engineering comparison coverage separately from supplier classification."""
-    matches = max(0, int(counts.get("Match", 0) or 0))
-    differences = max(0, int(counts.get("Different", 0) or 0))
-    needs_data = max(0, int(counts.get("Needs data", 0) or 0))
-    compared_fields = matches + differences + needs_data
-
-    if differences > 0:
-        status = "conflicts documented"
-    elif compared_fields == 0:
-        status = "incomplete"
-    elif needs_data == 0 and matches > 0:
-        status = "complete"
-    elif matches <= 1 and needs_data >= 5:
-        status = "incomplete"
-    elif matches >= max(1, compared_fields - 1):
-        status = "substantial"
+    profile = get_family_profile(family) if family else None
+    if comparison_rows:
+        base = engineering_confidence_from_rows(
+            list(comparison_rows),
+            requires_pinout_for_dropin=bool(profile.requires_pinout_for_dropin) if profile else False,
+        )
+        matches = base["matches"]
+        differences = base["differences"]
+        needs_data = base["needs_data"]
+        compared_fields = base["compared_fields"]
+        status = base["engineering_evidence_status"]
+        summary = base["engineering_evidence_summary"]
+        coverage_percent = base["engineering_coverage_percent"]
+        engineering_confidence = base["engineering_comparison_confidence"]
     else:
-        status = "partial"
+        matches = max(0, int(counts.get("Match", 0) or 0))
+        differences = max(0, int(counts.get("Different", 0) or 0))
+        needs_data = max(0, int(counts.get("Needs data", 0) or 0))
+        compared_fields = matches + differences + needs_data
 
-    match_label = "match" if matches == 1 else "matches"
-    field_label = "field" if needs_data == 1 else "fields"
-    summary = (
-        f"Engineering evidence: {status} — {matches} confirmed {match_label}, "
-        f"{needs_data} {field_label} need verification"
-    )
+        if differences > 0:
+            status = "conflicts documented"
+        elif compared_fields == 0:
+            status = "incomplete"
+        elif needs_data == 0 and matches > 0:
+            status = "complete"
+        elif matches <= 1 and needs_data >= 5:
+            status = "incomplete"
+        elif matches >= max(1, compared_fields - 1):
+            status = "substantial"
+        else:
+            status = "partial"
 
-    coverage_percent = round((matches / compared_fields) * 100) if compared_fields else 0
+        match_label = "match" if matches == 1 else "matches"
+        field_label = "field" if needs_data == 1 else "fields"
+        summary = (
+            f"Engineering evidence: {status} — {matches} confirmed {match_label}, "
+            f"{needs_data} {field_label} need verification"
+        )
+        coverage_percent = round((matches / compared_fields) * 100) if compared_fields else 0
 
-    if differences > 0:
-        engineering_confidence = max(5, 55 - differences * 18)
-    elif compared_fields == 0:
-        engineering_confidence = 30
-    else:
-        coverage_ratio = matches / compared_fields
-        engineering_confidence = round(35 + coverage_ratio * 58)
-        if (
-            needs_data <= 1
-            and matches >= max(1, compared_fields - 1)
-            and differences == 0
-        ):
-            engineering_confidence = min(95, engineering_confidence + 6)
-
-    engineering_confidence = max(0, min(100, engineering_confidence))
+        if differences > 0:
+            engineering_confidence = max(5, 55 - differences * 18)
+        elif compared_fields == 0:
+            engineering_confidence = 30
+        else:
+            coverage_ratio = matches / compared_fields
+            engineering_confidence = round(35 + coverage_ratio * 58)
+            if (
+                needs_data <= 1
+                and matches >= max(1, compared_fields - 1)
+                and differences == 0
+            ):
+                engineering_confidence = min(95, engineering_confidence + 6)
+        engineering_confidence = max(0, min(100, engineering_confidence))
 
     from src.alternative_classification import (
         CLASS_SUPPLIER_SIMILAR,
@@ -296,8 +282,6 @@ def build_engineering_evidence_assessment(
         else:
             supplier_relationship_confidence = 40
     else:
-        # Never invent Direct/Upgrade/Similar display text without retained
-        # pair-scoped evidence rows. Classification alone is not enough.
         supplier_relationship_confidence = 0
         supplier_relationship_summary = (
             "No exact supplier substitute relationship was retained for this candidate."
@@ -356,10 +340,15 @@ def build_recommendation_score_breakdown(
     )
     recommendation = max(0, min(recommendation, 98 if is_explicit_substitute else 95))
 
-    # DigiKey's explicit Direct relationship is meaningful evidence. It must
-    # not be demoted solely because a distributor did not expose every field;
-    # a documented electrical conflict still wins and prevents this floor.
-    if is_explicit_substitute and differences == 0:
+    # DigiKey Direct is supplier-relationship evidence only. Floor the blended
+    # recommendation when engineering coverage is already substantial, but never
+    # invent high engineering compatibility from Direct + packaging alone.
+    if (
+        is_explicit_substitute
+        and differences == 0
+        and matches >= 4
+        and needs_data <= 2
+    ):
         recommendation = max(recommendation, 85)
 
     return {
@@ -416,29 +405,21 @@ def _find_pdf_evidence(pdf_result: dict, labels: tuple[str, ...]) -> tuple[str, 
     return "", ""
 
 
+
 def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: str) -> list[dict]:
     """Extract page-cited relevant fields from two readable official PDFs."""
-    common_fields = list(COMMON_FIELDS)
-    if family in PASSIVE_FAMILIES:
-        common_fields = [field for field in common_fields if field[1] != "pin_count"]
-    if family in {
-        "Capacitor",
-        "Resistor",
-        "Inductor",
-        "Transformer",
-        "Diode / protection",
-        "Transistor / MOSFET",
-    }:
-        common_fields = [field for field in common_fields if field[1] != "voltage_range"]
-    fields = common_fields + list(FAMILY_FIELDS.get(family, ()))
+    profile = get_family_profile(family)
+    fields = comparison_fields(profile)
     rows = []
-    for label, _key in fields:
-        aliases = tuple(alias.casefold() for alias in PDF_LABEL_ALIASES.get(label, (label.casefold(),)))
+    for spec in fields:
+        aliases = tuple(alias.casefold() for alias in (spec.pdf_aliases or (spec.label.casefold(),)))
         original_value, original_page = _find_pdf_evidence(original_pdf, aliases)
         candidate_value, candidate_page = _find_pdf_evidence(candidate_pdf, aliases)
-        status, note = _field_status(original_value, candidate_value)
+        status, note = compare_field_values(original_value, candidate_value, spec)
         rows.append({
-            "Attribute": label,
+            "Attribute": spec.label,
+            "Key": spec.key,
+            "Required": bool(spec.required),
             "Original PDF evidence": original_value or "Not found",
             "Candidate PDF evidence": candidate_value or "Not found",
             "Source pages": " / ".join(value for value in (original_page, candidate_page) if value) or "Not available",

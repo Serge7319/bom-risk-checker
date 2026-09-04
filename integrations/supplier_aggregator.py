@@ -412,6 +412,15 @@ def get_best_part_data(part_number: str) -> dict:
     # Passive-component specifications must survive supplier selection. The
     # highest-stock supplier often has less parametric data than DigiKey; copy
     # verified values instead of presenting them as unavailable downstream.
+    from src.component_family_profiles import all_parametric_keys
+
+    for field_name in all_parametric_keys(include_common=False):
+        if not best_result.get(field_name):
+            for result in valid_results:
+                if result.get(field_name):
+                    best_result[field_name] = result.get(field_name)
+                    break
+
     for field_name in (
         "capacitance", "resistance", "inductance", "tolerance", "rated_voltage",
         "dielectric", "power_rating", "temperature_coefficient", "esr", "dcr",

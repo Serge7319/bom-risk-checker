@@ -37,6 +37,8 @@ jobs:
             tests.test_alternative_finder_suitability \
             tests.test_alternative_finder_cross_family \
             tests.test_pin_count_parsing \
+            tests.test_family_engineering_profiles \
+            tests.test_family_raw_payload_contracts \
             tests.test_digikey_substitutions \
             tests.test_datasheet_comparison \
             tests.test_alternative_decision_consistency_752a20
