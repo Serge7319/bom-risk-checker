@@ -152,7 +152,7 @@ class DatasheetComparisonTests(unittest.TestCase):
             supplier_relationship_evidence=[{
                 "supplier": "DigiKey",
                 "substitute_type": "Direct",
-                "summary": "DigiKey substitute type: Direct",
+                "summary": "DigiKey relationship: Direct.",
                 "source_url": "https://www.digikey.com/example",
                 "original_mpn": "C0603C104K5RACTU",
                 "candidate_mpn": "C0603C104K5RAC3121",
@@ -160,7 +160,7 @@ class DatasheetComparisonTests(unittest.TestCase):
         )
         self.assertGreaterEqual(assessment["engineering_comparison_confidence"], 82)
         self.assertEqual(assessment["supplier_relationship_confidence"], 95)
-        self.assertIn("DigiKey substitute type: Direct", assessment["supplier_relationship_summary"])
+        self.assertIn("DigiKey relationship: Direct.", assessment["supplier_relationship_summary"])
         self.assertNotIn(
             "DigiKey identifies this candidate as a Direct substitute for the original part number.",
             assessment["supplier_relationship_summary"],
@@ -178,7 +178,7 @@ class DatasheetComparisonTests(unittest.TestCase):
             supplier_relationship_evidence=[{
                 "supplier": "DigiKey",
                 "substitute_type": "Direct",
-                "summary": "DigiKey substitute type: Direct",
+                "summary": "DigiKey relationship: Direct.",
                 "original_mpn": "C0603C104K5RACTU",
                 "candidate_mpn": "C0603C104K5RAC3121",
             }],

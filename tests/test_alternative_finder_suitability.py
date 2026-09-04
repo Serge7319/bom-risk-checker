@@ -30,7 +30,7 @@ def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
                 "candidate_mpn": mpn,
                 "substitute_type": "Direct",
                 "evidence_type": "Distributor-listed substitute",
-                "summary": "DigiKey substitute type: Direct",
+                "summary": "DigiKey relationship: Direct.",
                 "supplier_part_id": f"{mpn}-DK",
                 "source_url": f"https://www.digikey.com/en/products/{mpn}",
             }

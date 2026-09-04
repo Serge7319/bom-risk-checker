@@ -8830,6 +8830,9 @@ def run_authenticated_app() -> None:
             build_datasheet_comparison,
             build_pdf_field_evidence,
             extract_datasheet_text,
+            user_facing_comparison_rows,
+            user_facing_pdf_evidence_rows,
+            diagnostic_comparison_rows,
         )
         from src.alternative_reasoning import build_alternative_reasoning
         from src.alternative_finder_search import (
@@ -8840,6 +8843,7 @@ def run_authenticated_app() -> None:
         from integrations.stock_coercion import coerce_stock_total
         from src.alternative_finder_state import (
             clear_alternative_finder_search,
+            claim_alternative_finder_search_submit,
             get_active_alternative_finder_result,
             get_alternative_finder_candidates,
             get_alternative_finder_discovery_metadata,
@@ -8852,6 +8856,7 @@ def run_authenticated_app() -> None:
             init_alternative_finder_state,
             alternative_search_was_attempted,
             mark_alternative_finder_running,
+            resolve_alternative_finder_submitted_mpn,
             should_show_terminal_search_error,
             sync_alternative_finder_selected_candidate_result,
             set_alternative_finder_selected_candidate,
@@ -10071,28 +10076,34 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-            search_input_col, search_button_col = st.columns([4.5, 1.25], gap="medium")
-            with search_input_col:
-                original_part = st.text_input(
-                    "Manufacturer part number",
-                    key="alternative_original_part",
-                    placeholder="Example: ATMEGA328P-PU",
-                )
-            with search_button_col:
-                st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-                find_alternatives_clicked = st.button(
-                    "Find Alternatives →",
-                    type="primary",
-                    use_container_width=True,
-                    key="alternative_find_button_62a",
-                )
+            with st.form("af62_search_form", clear_on_submit=False, border=False):
+                form_cols = st.columns([4.5, 1.25], gap="medium")
+                with form_cols[0]:
+                    original_part = st.text_input(
+                        "Manufacturer part number",
+                        key="alternative_original_part",
+                        placeholder="Example: ATMEGA328P-PU",
+                    )
+                with form_cols[1]:
+                    st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
+                    find_alternatives_clicked = st.form_submit_button(
+                        "Find Alternatives →",
+                        type="primary",
+                        use_container_width=True,
+                    )
 
         if find_alternatives_clicked:
-            searched_part = (original_part or "").strip()
+            searched_part = resolve_alternative_finder_submitted_mpn(
+                original_part,
+                st.session_state.get("alternative_original_part"),
+            )
 
             if not searched_part:
                 st.warning("Please enter an original part number.")
-            else:
+            elif claim_alternative_finder_search_submit(
+                st.session_state,
+                searched_part,
+            ):
                 if should_start_new_alternative_search(
                     st.session_state,
                     searched_part,
@@ -10619,11 +10630,16 @@ def run_authenticated_app() -> None:
                 SUITABILITY_PREFERRED,
                 SUITABILITY_SOURCE_DISCONTINUATION,
                 SUITABILITY_SUSTAINING,
+                SUITABILITY_SUPPLIER_VALIDATE,
+                build_recommendation_score_drivers,
+                format_engineering_compatibility_headline,
+                resolve_presentation_suitability,
             )
             review_suitabilities = {
                 SUITABILITY_LIFECYCLE_VERIFY,
                 SUITABILITY_SUSTAINING,
                 SUITABILITY_SOURCE_DISCONTINUATION,
+                SUITABILITY_SUPPLIER_VALIDATE,
             }
             if suitability_value in review_suitabilities:
                 # Review/warning-state candidates must not present as equal to active Strong picks.
@@ -10677,6 +10693,33 @@ def run_authenticated_app() -> None:
             )
             if exact_relationship_summary:
                 supplier_relationship_summary = exact_relationship_summary
+            engineering_status_value = _af62b_value(
+                alternative_reasoning,
+                ["engineering_evidence_status"],
+                _af62b_value(selected_row, ["Engineering Evidence Status"], ""),
+            )
+            suitability_badge = resolve_presentation_suitability(
+                suitability_value,
+                engineering_status=engineering_status_value,
+                engineering_confidence=engineering_comparison_confidence,
+                comparison_rows=selected_row.get("Comparison Rows") or [],
+            )
+            suitability_value = suitability_badge
+            if suitability_badge in review_suitabilities and recommendation_score >= 75:
+                recommendation_label = "Review"
+                recommendation_label_class = "medium"
+            engineering_compatibility_headline = format_engineering_compatibility_headline(
+                engineering_status=engineering_status_value,
+                engineering_confidence=engineering_comparison_confidence,
+                comparison_rows=selected_row.get("Comparison Rows") or [],
+            )
+            score_drivers = build_recommendation_score_drivers(
+                comparison_rows=selected_row.get("Comparison Rows") or [],
+                tradeoffs=tradeoff_points,
+                warnings=warning_points,
+                engineering_confidence=engineering_comparison_confidence,
+                recommendation_score=recommendation_score,
+            )
             confidence_label = (
                 "High" if engineering_comparison_confidence >= 75
                 else "Medium" if engineering_comparison_confidence >= 50
@@ -10741,11 +10784,11 @@ def run_authenticated_app() -> None:
 
                     <div class="af62b-metrics" style="margin-top:10px;grid-template-columns:repeat(2,minmax(0,1fr));">
                       <div class="af62b-metric">
-                        <span>Engineering Evidence</span>
-                        <strong>{html.escape(engineering_evidence_summary or 'Not available')}</strong>
+                        <span>Engineering compatibility</span>
+                        <strong>{html.escape(engineering_compatibility_headline)}</strong>
                       </div>
                       <div class="af62b-metric">
-                        <span>Supplier Relationship Evidence</span>
+                        <span>Supplier relationship</span>
                         <strong>{html.escape(supplier_relationship_summary or classification_value)}</strong>
                       </div>
                     </div>
@@ -10763,7 +10806,7 @@ def run_authenticated_app() -> None:
                         <span>Classification</span>
                         <strong>{html.escape(classification_value)}</strong>
                       </div>
-                      <div class="af62b-metric {'good' if suitability_value == SUITABILITY_PREFERRED else 'warn'}">
+                      <div class="af62b-metric {'good' if suitability_badge == SUITABILITY_PREFERRED else 'warn'}">
                         <span>Recommendation suitability</span>
                         <strong>{html.escape(suitability_badge)}</strong>
                       </div>
@@ -10883,7 +10926,7 @@ def run_authenticated_app() -> None:
                   <div class="af7-intelligence-top">
                     <div>
                       <div class="af7-intelligence-eyebrow">Cadivor engineering intelligence</div>
-                      <div class="af7-intelligence-title">Why Cadivor recommends this part</div>
+                      <div class="af7-intelligence-title">{html.escape("Why this score is limited" if (recommendation_score < 55 or suitability_badge == SUITABILITY_SUPPLIER_VALIDATE) else "Why Cadivor recommends this part")}</div>
                       <div class="af7-intelligence-summary">{html.escape(intelligence_summary)}</div>
                     </div>
                     <div class="af7-confidence-badge">{recommendation_score}/100 recommendation</div>
@@ -10924,6 +10967,7 @@ def run_authenticated_app() -> None:
 
                   <div class="af7-explain-note">
                     Score basis: {engineering_comparison_confidence}% engineering compatibility, {int(recommendation_evidence.get('evidence_quality', 0) or 0)}% retrieved-evidence quality, and {int(recommendation_evidence.get('sourcing_signal', 0) or 0)}% sourcing signal. Supplier relationship evidence is reported separately from engineering comparison coverage.
+                    {("<br/>Score drivers: " + html.escape(" · ".join(score_drivers))) if score_drivers else ""}
                   </div>
                 </div>
                 """,
@@ -11151,7 +11195,18 @@ def run_authenticated_app() -> None:
             evidence_columns[1].metric("Differences", comparison_counts["Different"])
             evidence_columns[2].metric("Needs data", comparison_counts["Needs data"])
             with st.container(key="af62b_datasheet_evidence"):
-                cadivor_comparison_matrix_dataframe(pd.DataFrame(datasheet_comparison["rows"]))
+                cadivor_comparison_matrix_dataframe(
+                    pd.DataFrame(user_facing_comparison_rows(datasheet_comparison["rows"]))
+                )
+            if is_admin:
+                with st.expander("Developer comparison diagnostics", expanded=False):
+                    st.caption(
+                        "Internal schema metadata for engineering diagnostics. "
+                        "Regular users never see these columns."
+                    )
+                    cadivor_engineering_dataframe(
+                        pd.DataFrame(diagnostic_comparison_rows(datasheet_comparison["rows"]))
+                    )
 
             # Alternative evaluation must always expose its evidence workflow; plan limits may govern saved reports, not whether engineers can inspect the source evidence behind a recommendation.
             datasheet_enabled = True
@@ -11244,15 +11299,22 @@ def run_authenticated_app() -> None:
                             '<div class="af62b-compare-sub" style="margin-top:12px;">Official PDF evidence extracted for the engineering-relevant fields below. Page citations point to the text Cadivor retrieved; confirm the original tables and drawings before approval.</div>',
                             unsafe_allow_html=True,
                         )
-                        cadivor_engineering_dataframe(
-                            pd.DataFrame(
-                                build_pdf_field_evidence(
-                                    original_pdf,
-                                    candidate_pdf,
-                                    datasheet_comparison["family"],
-                                )
-                            )
+                        pdf_field_rows = build_pdf_field_evidence(
+                            original_pdf,
+                            candidate_pdf,
+                            datasheet_comparison["family"],
                         )
+                        cadivor_engineering_dataframe(
+                            pd.DataFrame(user_facing_pdf_evidence_rows(pdf_field_rows))
+                        )
+                        if is_admin:
+                            with st.expander(
+                                "Developer PDF comparison diagnostics",
+                                expanded=False,
+                            ):
+                                cadivor_engineering_dataframe(
+                                    pd.DataFrame(diagnostic_comparison_rows(pdf_field_rows))
+                                )
 
             st.markdown(
                 """

@@ -13,6 +13,9 @@ CLASS_SPEC_MATCHED = "Spec-matched alternative — engineering review required"
 CLASS_CATALOG_INSUFFICIENT = "Catalog candidate — insufficient evidence for compatibility"
 
 SUITABILITY_PREFERRED = "Preferred for new designs"
+SUITABILITY_SUPPLIER_VALIDATE = (
+    "Supplier-listed candidate — validate before new design use."
+)
 SUITABILITY_LIFECYCLE_VERIFY = "Lifecycle verification required"
 SUITABILITY_SUSTAINING = "Sustaining-design review required"
 SUITABILITY_SOURCE_DISCONTINUATION = "Source discontinuation risk"
@@ -161,7 +164,7 @@ def build_supplier_relationship_evidence(
         "source_url": str(source_url or "").strip(),
         "evidence_type": str(evidence_type or "").strip(),
         "summary": (
-            f"{source} substitute type: {normalized_type}"
+            f"{source} relationship: {normalized_type}."
             if source and normalized_type != SUBSTITUTE_TYPE_UNKNOWN
             else (
                 f"{source} relationship evidence unavailable"
@@ -447,6 +450,125 @@ def classify_recommendation_suitability(
 
     # Non-active but unclassified statuses still need verification before new-design use.
     return SUITABILITY_LIFECYCLE_VERIFY
+
+
+def required_dropin_field_missing(comparison_rows: list | None) -> bool:
+    """True when a required comparison field is unmatched or needs data."""
+    for row in comparison_rows or []:
+        if not isinstance(row, dict):
+            continue
+        if not bool(row.get("Required")):
+            continue
+        status = str(row.get("Status") or row.get("Result") or "").strip().casefold()
+        if status in {"needs data", "different", ""}:
+            return True
+        original = str(row.get("Original") or "").strip().casefold()
+        candidate = str(
+            row.get("Candidate") or row.get("Selected Alternative") or ""
+        ).strip().casefold()
+        if (
+            not candidate
+            or candidate in {"not available", "needs data", "—", "-"}
+            or not original
+            or original in {"not available", "needs data", "—", "-"}
+        ):
+            return True
+    return False
+
+
+def engineering_readiness_is_incomplete(
+    *,
+    engineering_status: str = "",
+    engineering_confidence: int = 0,
+    comparison_rows: list | None = None,
+) -> bool:
+    """True when engineering evidence is too weak for a Preferred new-design claim."""
+    status = str(engineering_status or "").strip().casefold()
+    if status in {"incomplete", "partial", "conflicts documented"}:
+        return True
+    if int(engineering_confidence or 0) < 55:
+        return True
+    if "incomplete" in str(engineering_status or "").casefold():
+        return True
+    return required_dropin_field_missing(comparison_rows)
+
+
+def resolve_presentation_suitability(
+    lifecycle_suitability: str,
+    *,
+    engineering_status: str = "",
+    engineering_confidence: int = 0,
+    comparison_rows: list | None = None,
+) -> str:
+    """Lifecycle suitability for display — never Preferred when engineering is incomplete."""
+    suitability = str(lifecycle_suitability or "").strip() or SUITABILITY_LIFECYCLE_VERIFY
+    if suitability != SUITABILITY_PREFERRED:
+        return suitability
+    if engineering_readiness_is_incomplete(
+        engineering_status=engineering_status,
+        engineering_confidence=engineering_confidence,
+        comparison_rows=comparison_rows,
+    ):
+        return SUITABILITY_SUPPLIER_VALIDATE
+    return SUITABILITY_PREFERRED
+
+
+def format_engineering_compatibility_headline(
+    *,
+    engineering_status: str = "",
+    engineering_confidence: int = 0,
+    comparison_rows: list | None = None,
+) -> str:
+    """User-facing engineering readiness line, separate from supplier relationship."""
+    if engineering_readiness_is_incomplete(
+        engineering_status=engineering_status,
+        engineering_confidence=engineering_confidence,
+        comparison_rows=comparison_rows,
+    ):
+        return "Engineering compatibility: Incomplete — validation required."
+    status = str(engineering_status or "").strip().casefold()
+    if status in {"complete", "substantial"} or int(engineering_confidence or 0) >= 75:
+        return "Engineering compatibility: Ready for focused validation."
+    return "Engineering compatibility: Partial — validation required."
+
+
+def build_recommendation_score_drivers(
+    *,
+    comparison_rows: list | None = None,
+    tradeoffs: list | None = None,
+    warnings: list | None = None,
+    engineering_confidence: int = 0,
+    recommendation_score: int = 0,
+) -> list[str]:
+    """Explain low/medium scores from missing fields, mismatches, and sourcing trade-offs."""
+    drivers: list[str] = []
+    for row in comparison_rows or []:
+        if not isinstance(row, dict):
+            continue
+        attribute = str(row.get("Attribute") or row.get("Key") or "Field").strip()
+        status = str(row.get("Status") or row.get("Result") or "").strip().casefold()
+        required = bool(row.get("Required"))
+        if status == "needs data":
+            prefix = "Missing required field" if required else "Unavailable field"
+            drivers.append(f"{prefix}: {attribute}")
+        elif status == "different":
+            drivers.append(f"Mismatch: {attribute}")
+    for item in warnings or []:
+        text = str(item or "").strip()
+        if text and text not in drivers:
+            drivers.append(text)
+    for item in tradeoffs or []:
+        text = str(item or "").strip()
+        if text and text not in drivers:
+            drivers.append(text)
+    if int(recommendation_score or 0) < 75 and int(engineering_confidence or 0) < 55:
+        if not any("incomplete" in d.casefold() or "missing" in d.casefold() for d in drivers):
+            drivers.insert(
+                0,
+                "Engineering comparison confidence is incomplete for a strong recommendation.",
+            )
+    # Keep the explanation focused.
+    return drivers[:8]
 
 
 def apply_suitability_score_adjustment(

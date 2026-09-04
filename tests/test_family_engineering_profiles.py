@@ -181,7 +181,7 @@ class FamilyMatrixTests(unittest.TestCase):
             supplier_relationship_evidence=[{
                 "supplier": "DigiKey",
                 "substitute_type": "Direct",
-                "summary": "DigiKey substitute type: Direct",
+                "summary": "DigiKey relationship: Direct.",
                 "original_mpn": "MMBT3904LT1G",
                 "candidate_mpn": "MMBT3904-7-F",
             }],
@@ -208,7 +208,7 @@ class FamilyMatrixTests(unittest.TestCase):
                 "Supplier Relationship Evidence": [{
                     "supplier": "DigiKey",
                     "substitute_type": "Direct",
-                    "summary": "DigiKey substitute type: Direct",
+                    "summary": "DigiKey relationship: Direct.",
                     "original_mpn": "MMBT3904LT1G",
                     "candidate_mpn": "MMBT3904-7-F",
                 }],

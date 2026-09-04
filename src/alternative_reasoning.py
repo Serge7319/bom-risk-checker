@@ -400,6 +400,9 @@ def _build_passive_alternative_reasoning(
         "decision_confidence": decision_confidence,
         "engineering_comparison_confidence": engineering_confidence,
         "supplier_relationship_confidence": supplier_relationship_confidence,
+        "engineering_evidence_status": evidence_assessment.get(
+            "engineering_evidence_status", ""
+        ),
         "engineering_evidence_summary": engineering_evidence_summary,
         "supplier_relationship_summary": supplier_relationship_summary,
         "use_case": use_case,
