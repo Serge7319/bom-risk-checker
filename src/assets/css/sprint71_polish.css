@@ -142,7 +142,7 @@ section[data-testid="stMain"] div[data-testid="stTabs"] button[aria-selected="tr
   padding: 0 2px;
 }
 
-/* Table performance — cap scroll region */
+/* Table performance — cap scroll region (AF comparison host opts out via !important) */
 .cv64-table-host {
   max-width: 100%;
   overflow: auto;

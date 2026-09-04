@@ -482,22 +482,62 @@ def render_kpi_card(
     )
 
 
+# Alternative Finder comparison matrices (BJT / passive / MCU / FPGA) are typically
+# well under this row count. Expand those fully; only long matrices get one scrollport.
+COMPARISON_MATRIX_EXPAND_ROW_LIMIT = 24
+_COMPARISON_MATRIX_HEADER_PX = 46
+_COMPARISON_MATRIX_ROW_PX = 39
+_COMPARISON_MATRIX_LONG_VIEWPORT_ROWS = 16
+# Streamlit 1.50+ (requirements pin 1.60) sizes the grid to all rows with this value.
+_COMPARISON_MATRIX_CONTENT_HEIGHT = "content"
+
+
+def _streamlit_supports_content_height() -> bool:
+    """True when st.dataframe accepts height='content' (Streamlit >= 1.50)."""
+    try:
+        parts = [int(p) for p in str(st.__version__).split(".")[:2]]
+        major, minor = (parts + [0, 0])[:2]
+        return (major, minor) >= (1, 50)
+    except Exception:
+        return False
+
+
+def comparison_matrix_dataframe_height(row_count: int) -> int | str:
+    """Return st.dataframe height for AF original-vs-replacement matrices.
+
+    Modest attribute matrices expand so every row is visible without a clipped
+    outer scroll wrapper (prefer height='content' on Streamlit 1.50+). Genuinely
+    long matrices use one Glide-owned viewport with a usable scrollbar (wheel,
+    drag, and keyboard when focused).
+    """
+    rows = max(0, int(row_count))
+    if rows <= COMPARISON_MATRIX_EXPAND_ROW_LIMIT:
+        if _streamlit_supports_content_height():
+            return _COMPARISON_MATRIX_CONTENT_HEIGHT
+        return _COMPARISON_MATRIX_HEADER_PX + max(rows, 1) * _COMPARISON_MATRIX_ROW_PX
+    return (
+        _COMPARISON_MATRIX_HEADER_PX
+        + _COMPARISON_MATRIX_LONG_VIEWPORT_ROWS * _COMPARISON_MATRIX_ROW_PX
+    )
+
+
 def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
     """Render a Streamlit dataframe inside the Cadivor table host shell."""
     if df is None or getattr(df, "empty", True):
         cadivor_empty_state("No records", "Nothing matches the current filters.", icon="search")
         return
+    host_class = str(kwargs.pop("host_class", "cv64-table-host") or "cv64-table-host").strip()
     kwargs.setdefault("use_container_width", True)
     kwargs.setdefault("hide_index", True)
     row_count = len(df)
     if "height" not in kwargs and row_count > 24:
         kwargs["height"] = min(520, 46 + min(row_count, 30) * 34)
-    _render_html('<div class="cv64-table-host">')
+    _render_html(f'<div class="{escape(host_class, quote=True)}">')
     try:
         st.dataframe(df, **kwargs)
     except Exception:
         st.dataframe(df, use_container_width=True, hide_index=True)
-    if row_count > 24 and "height" in kwargs:
+    if row_count > COMPARISON_MATRIX_EXPAND_ROW_LIMIT and "height" in kwargs:
         _render_html(
             f'<p class="cv71-table-note">Showing a scrollable view of {row_count:,} rows.</p>'
         )
@@ -534,6 +574,29 @@ def cadivor_engineering_dataframe(
     """Render a dataframe with shared engineering column formatting."""
     cfg = build_dataframe_column_config(df, column_config)
     cadivor_dataframe(df, column_config=cfg, **kwargs)
+
+
+def cadivor_comparison_matrix_dataframe(
+    df: pd.DataFrame,
+    *,
+    column_config: Mapping[str, Any] | None = None,
+    **kwargs: Any,
+) -> None:
+    """Render an AF comparison matrix without a broken nested scrollport.
+
+    Uses a dedicated host that allows horizontal overflow on narrow screens
+    while leaving vertical scrolling to Streamlit's grid when (and only when)
+    the matrix is long enough to need it.
+    """
+    if df is None or getattr(df, "empty", True):
+        cadivor_empty_state("No records", "Nothing matches the current filters.", icon="search")
+        return
+    kwargs.setdefault("height", comparison_matrix_dataframe_height(len(df)))
+    kwargs.setdefault(
+        "host_class",
+        "cv64-table-host cv64-comparison-table-host",
+    )
+    cadivor_engineering_dataframe(df, column_config=column_config, **kwargs)
 
 
 def render_decision_card_actions(

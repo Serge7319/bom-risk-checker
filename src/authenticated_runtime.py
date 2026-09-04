@@ -106,6 +106,7 @@ from src.ui.cadivor_design_system import (
     cadivor_button_wrap,
     cadivor_button_wrap_end,
     cadivor_engineering_dataframe,
+    cadivor_comparison_matrix_dataframe,
     cadivor_metric_row,
     cadivor_panel,
     cadivor_panel_end,
@@ -9580,6 +9581,7 @@ def run_authenticated_app() -> None:
                 margin-top:3px;
             }
 
+            /* Class name is unused by Streamlit keys; keep styling on st-key-* below. */
             .af62b-compact-table [data-testid="stDataFrame"]{
                 border:1px solid #E2E8F0;
                 border-radius:16px;
@@ -9641,9 +9643,24 @@ def run_authenticated_app() -> None:
                 line-height:1.5;
                 margin:0 0 12px;
             }
-            .st-key-af62b_compact_table [data-testid="stDataFrame"]{
-                max-height:430px!important;
-                overflow:auto!important;
+            /* Comparison tables: do not wrap Glide in a second max-height scrollport
+               (that made a visible scrollbar that could not be dragged). Expand
+               modest matrices; Glide owns vertical scroll only when height is set
+               for long tables. Preserve horizontal overflow on narrow screens. */
+            .st-key-af62b_compact_table .cv64-table-host,
+            .st-key-af62b_datasheet_evidence .cv64-table-host{
+                max-height:none!important;
+                overflow-x:auto!important;
+                overflow-y:visible!important;
+            }
+            .st-key-af62b_compact_table [data-testid="stDataFrame"],
+            .st-key-af62b_datasheet_evidence [data-testid="stDataFrame"]{
+                max-height:none!important;
+                overflow:hidden!important;
+            }
+            .st-key-af62b_compact_table [role="grid"],
+            .st-key-af62b_datasheet_evidence [role="grid"]{
+                outline-offset:2px;
             }
             .st-key-af62b_save_candidate button,
             .st-key-af62b_advanced_compare button{
@@ -11111,7 +11128,7 @@ def run_authenticated_app() -> None:
             )
 
             with st.container(key="af62b_compact_table"):
-                cadivor_engineering_dataframe(comparison_df)
+                cadivor_comparison_matrix_dataframe(comparison_df)
 
             if not candidate_evidence_data:
                 candidate_evidence_data = get_best_part_data(selected_alternative) or {}
@@ -11133,7 +11150,8 @@ def run_authenticated_app() -> None:
             evidence_columns[0].metric("Matches", comparison_counts["Match"])
             evidence_columns[1].metric("Differences", comparison_counts["Different"])
             evidence_columns[2].metric("Needs data", comparison_counts["Needs data"])
-            cadivor_engineering_dataframe(pd.DataFrame(datasheet_comparison["rows"]))
+            with st.container(key="af62b_datasheet_evidence"):
+                cadivor_comparison_matrix_dataframe(pd.DataFrame(datasheet_comparison["rows"]))
 
             # Alternative evaluation must always expose its evidence workflow; plan limits may govern saved reports, not whether engineers can inspect the source evidence behind a recommendation.
             datasheet_enabled = True
