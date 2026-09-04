@@ -2,6 +2,7 @@ import re
 
 import requests
 
+from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
 
 
@@ -28,11 +29,10 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     if not parts:
         return default_part_result()
 
-    part = parts[0]
+    return normalize_mouser_part(parts[0])
 
-    raw_attributes = part.get("ProductAttributes", [])
-    
 
+def normalize_mouser_part(part: dict) -> dict:
     availability = part.get("Availability", "")
     stock_total = extract_stock_number(availability)
 
@@ -51,10 +51,18 @@ def search_mouser_by_part_number(part_number: str) -> dict:
 
     pin_count_text = extract_mouser_attribute(
         part,
-        ["Number of Pins", "Pin Count", "Package / Case", "Package"],
+        [
+            "Number of Pins",
+            "Pin Count",
+            "Number of Terminations",
+            "Number of Balls",
+            "Ball Count",
+        ],
     )
-
-    pin_count = extract_pin_count(pin_count_text)
+    pin_count = resolve_pin_count(
+        explicit_count_text=pin_count_text,
+        package_text=package,
+    )
 
     voltage_text = extract_mouser_attribute(
         part,
@@ -68,8 +76,6 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     )
 
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_text)
-
-    
 
     description = part.get("Description", "")
     architecture = infer_architecture_from_description(description)
@@ -132,7 +138,6 @@ def search_mouser_by_part_number(part_number: str) -> dict:
         "input_bias_na": input_bias_na,
         "quiescent_current_ma": quiescent_current_ma,
         "gbw_mhz": gbw_mhz,
-
     }
 
 
@@ -183,20 +188,8 @@ def extract_mouser_attribute(part: dict, target_names: list) -> str:
 
 
 def extract_pin_count(text: str) -> int:
-    """Parse pin count without treating EIA passive package codes as pin counts."""
-    raw = str(text or "").strip()
-    if not raw:
-        return 0
-    # DigiKey-aligned guard: 0603 / 0805 / 0402 are packages, not pin counts.
-    if re.search(r"\b0\d{3}\b|\b1\d{3}\b", raw):
-        return 0
-    compact = re.sub(r"[^0-9]", "", raw)
-    if re.fullmatch(r"(?:0\d{3}|\d{4})", compact or ""):
-        return 0
-    match = re.search(r"\b(\d{1,4})\b", raw)
-    if not match:
-        return 0
-    return int(match.group(1))
+    """Parse pin count; bare integers allowed for explicit Number of Pins fields."""
+    return parse_pin_count_from_text(text, allow_bare_integer=True)
 
 def extract_voltage_limits(voltage_text: str):
     text = str(voltage_text or "").lower().replace(" ", "")

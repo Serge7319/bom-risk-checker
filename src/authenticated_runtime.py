@@ -1650,11 +1650,22 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
                 story.append(Spacer(1, 10))
 
                 for _, row in group_df.head(5).iterrows():
+                    from integrations.pin_count import effective_pin_count
+
+                    trusted_pins = effective_pin_count(
+                        {
+                            "pin_count": row.get("pin_count", 0),
+                            "package": row.get("package", ""),
+                        }
+                    )
+                    pin_display = (
+                        str(trusted_pins) if trusted_pins > 0 else "Needs data"
+                    )
                     engineering_text = (
                         f"<b>{row.get('alternative_part', '')}</b><br/>"
                         f"Architecture: {row.get('architecture', '')}<br/>"
                         f"Package: {row.get('package', '')}<br/>"
-                        f"Pin Count: {int(float(row.get('pin_count', 0) or 0))}<br/>"
+                        f"Pin Count: {pin_display}<br/>"
                         f"Voltage Range: {row.get('voltage_range', '')}<br/>"
                         f"Compatibility Notes: {row.get('compatibility_notes', '')}<br/>"
                         f"Score Reasons: {row.get('score_reasons', '')}"
@@ -11051,13 +11062,29 @@ def run_authenticated_app() -> None:
                 },
             ]
             if not is_passive_family:
+                from integrations.pin_count import effective_pin_count
+
+                original_pins = effective_pin_count(original_data)
+                selected_pins = effective_pin_count(
+                    {
+                        "pin_count": selected_row.get("Pin Count", selected_row.get("pin_count", 0)),
+                        "package": selected_row.get("Package", selected_row.get("package", "")),
+                    }
+                )
                 comparison_rows.extend(
                     [
                         {
                             "Attribute": "Pin Count",
-                            "Original": original_data.get("pin_count")
-                            or "Not available from supplier data",
-                            "Selected Alternative": selected_row.get("Pin Count", ""),
+                            "Original": (
+                                original_pins
+                                if original_pins > 0
+                                else "Not available from supplier data"
+                            ),
+                            "Selected Alternative": (
+                                selected_pins
+                                if selected_pins > 0
+                                else "Not available from supplier data"
+                            ),
                         },
                         {
                             "Attribute": "Architecture",

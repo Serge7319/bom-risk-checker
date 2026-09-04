@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import streamlit as st
 
+from integrations.pin_count import sanitize_stored_pin_count
 from integrations.stock_coercion import coerce_stock_total
 from integrations.provider_health import (
     PROVIDER_AVAILABLE,
@@ -330,6 +331,11 @@ def get_best_part_data(part_number: str) -> dict:
             if result.get("pin_count"):
                 best_result["pin_count"] = result.get("pin_count")
                 break
+
+    best_result["pin_count"] = sanitize_stored_pin_count(
+        best_result.get("pin_count"),
+        package_text=best_result.get("package", ""),
+    )
 
     if not best_result.get("mounting_style"):
         for result in valid_results:

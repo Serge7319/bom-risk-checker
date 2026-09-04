@@ -152,6 +152,13 @@ def _display_value(value) -> str:
     return str(value).strip()
 
 
+def _display_pin_count(part: dict) -> str:
+    from integrations.pin_count import effective_pin_count
+
+    count = effective_pin_count(part)
+    return str(count) if count > 0 else ""
+
+
 def _normalize(value: str) -> str:
     return re.sub(r"[^a-z0-9.+-]", "", value.casefold())
 
@@ -185,8 +192,12 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     fields = common_fields + list(FAMILY_FIELDS.get(family, ()))
     rows, counts = [], {"Match": 0, "Different": 0, "Needs data": 0}
     for label, key in fields:
-        original_value = _display_value(original.get(key))
-        candidate_value = _display_value(candidate.get(key))
+        if key == "pin_count":
+            original_value = _display_pin_count(original)
+            candidate_value = _display_pin_count(candidate)
+        else:
+            original_value = _display_value(original.get(key))
+            candidate_value = _display_value(candidate.get(key))
         status, note = _field_status(original_value, candidate_value, attribute=label)
         counts[status] += 1
         rows.append({

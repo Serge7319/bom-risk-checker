@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Mapping
 
 from src.alternative_classification import CLASS_VERIFIED_DIRECT
 from src.datasheet_comparison import PASSIVE_FAMILIES, build_engineering_evidence_assessment, infer_component_family, normalize_mounting_style
+from integrations.pin_count import effective_pin_count
 
 VERIFIED_DIRECT_DISPOSITION = (
     "Supplier-listed direct replacement candidate — engineering qualification confirmation required"
@@ -474,22 +475,8 @@ def build_alternative_reasoning(
         or candidate.get("Case Package")
     )
 
-    original_pins = int(
-        _number(
-            original_data.get("pin_count")
-            or original_data.get("Pin Count")
-            or original_data.get("pins"),
-            0,
-        )
-    )
-    candidate_pins = int(
-        _number(
-            candidate.get("Pin Count")
-            or candidate.get("pin_count")
-            or candidate.get("Pins"),
-            0,
-        )
-    )
+    original_pins = effective_pin_count(original_data)
+    candidate_pins = effective_pin_count(candidate)
 
     original_architecture = _text(
         original_data.get("architecture")

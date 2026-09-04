@@ -4,6 +4,7 @@ from typing import Any, Mapping, Optional
 
 import pandas as pd
 
+from integrations.pin_count import effective_pin_count
 from integrations.stock_coercion import coerce_stock_total
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
@@ -353,7 +354,7 @@ def calculate_recommendation_score(candidate: dict) -> int:
 
     architecture = str(candidate.get("Architecture", "")).lower()
     package = str(candidate.get("Package", "")).lower()
-    pin_count = int(candidate.get("Pin Count", 0) or 0)
+    pin_count = effective_pin_count(candidate)
     voltage_range = str(candidate.get("Voltage Range", "")).lower()
 
     # Lifecycle scoring
@@ -580,7 +581,12 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         "datasheet_url": str(row.get("datasheet_url") or "").strip(),
         "package": package or passive_fields.get("package", ""),
         "mounting_style": str(row.get("mounting_style") or passive_fields.get("mounting_style", "")).strip(),
-        "pin_count": row.get("pin_count", 0),
+        "pin_count": effective_pin_count(
+            {
+                "pin_count": row.get("pin_count", 0),
+                "package": package or passive_fields.get("package", ""),
+            }
+        ),
         "architecture": str(row.get("architecture") or "").strip(),
         "channel_count": row.get("channel_count", 0),
         "voltage_range": str(row.get("voltage_range") or "").strip(),
@@ -709,13 +715,9 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         candidate.get("Package", candidate.get("package", ""))
     ).lower()
 
-    original_pin_count = int(
-        original.get("Pin Count", original.get("pin_count", 0)) or 0
-    )
+    original_pin_count = effective_pin_count(original)
 
-    candidate_pin_count = int(
-        candidate.get("Pin Count", candidate.get("pin_count", 0)) or 0
-    )
+    candidate_pin_count = effective_pin_count(candidate)
 
     original_channel_count = int(
         original.get("Channel Count", original.get("channel_count", 0)) or 0
@@ -909,8 +911,8 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
     original_package = str(original.get("Package", original.get("package", ""))).strip()
     candidate_package = str(candidate.get("Package", candidate.get("package", ""))).strip()
 
-    original_pin_count = int(original.get("Pin Count", original.get("pin_count", 0)) or 0)
-    candidate_pin_count = int(candidate.get("Pin Count", candidate.get("pin_count", 0)) or 0)
+    original_pin_count = effective_pin_count(original)
+    candidate_pin_count = effective_pin_count(candidate)
 
     original_channel_count = int(
     original.get("Channel Count", original.get("channel_count", 0)) or 0
@@ -1238,6 +1240,13 @@ def apply_supplier_enrichment_to_candidate(
         if supplier_data.get(supplier_key) not in (None, "", 0):
             enriched[candidate_key] = supplier_data.get(supplier_key)
 
+    enriched["Pin Count"] = effective_pin_count(
+        {
+            "pin_count": enriched.get("Pin Count", 0),
+            "package": enriched.get("Package", ""),
+        }
+    )
+
     enriched["Supply Voltage Min"] = enriched.get("Supply Voltage Min") or supplier_data.get("supply_voltage_min")
     enriched["Supply Voltage Max"] = enriched.get("Supply Voltage Max") or supplier_data.get("supply_voltage_max")
     enriched["Voltage Range"] = enriched.get("Voltage Range") or supplier_data.get("voltage_range", "")
@@ -1271,7 +1280,7 @@ def apply_supplier_enrichment_to_candidate(
             and original_data.get("pin_count") == 8
             else ""
         ),
-        "Pin Count": original_data.get("pin_count", 0),
+        "Pin Count": effective_pin_count(original_data),
         "Voltage Range": original_data.get("voltage_range", ""),
         "Channel Count": original_data.get("channel_count", 0),
         "Supply Voltage Min": original_data.get("supply_voltage_min"),
