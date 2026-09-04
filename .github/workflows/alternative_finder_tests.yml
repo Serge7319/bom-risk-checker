@@ -41,4 +41,5 @@ jobs:
             tests.test_family_raw_payload_contracts \
             tests.test_digikey_substitutions \
             tests.test_datasheet_comparison \
-            tests.test_alternative_decision_consistency_752a20
+            tests.test_alternative_decision_consistency_752a20 \
+            tests.test_alternative_finder_comparison_scroll

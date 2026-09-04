@@ -880,6 +880,26 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   max-height: min(70vh, 720px);
 }
 
+/* AF comparison matrices: one scroll owner (Glide), not a nested outer scrollport.
+   Expand modest tables via explicit dataframe height; keep overflow-x for narrow screens. */
+.cv64-comparison-table-host {
+  max-height: none !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+
+.cv64-comparison-table-host [data-testid="stDataFrame"],
+.cv64-comparison-table-host [data-testid="stDataEditor"] {
+  max-height: none !important;
+  /* Clip to radius only — do not create a second vertical scrollport */
+  overflow: hidden !important;
+}
+
+.cv64-comparison-table-host [role="grid"] {
+  /* Glide grid receives focus for arrow / Page Up / Page Down navigation */
+  outline-offset: 2px;
+}
+
 .cv64-table-host [data-testid="stDataFrame"],
 .cv64-table-host [data-testid="stDataEditor"] {
   border: 0 !important;
