@@ -349,16 +349,8 @@ def classify_from_supplier_evidence(
         if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE:
             evidence = EVIDENCE_DISTRIBUTOR_CATALOG
 
-    if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE and substitute_type == SUBSTITUTE_TYPE_DIRECT:
-        # Top-level Direct is accepted only when no conflicting/mismatched
-        # relationship rows exist and the candidate itself claims this pair.
-        claimed_original = str(result.get("original_mpn") or original_mpn or "").strip()
-        if (
-            not (isinstance(relationship_rows, list) and relationship_rows)
-            and normalize_mpn_for_comparison(claimed_original) == normalize_mpn_for_comparison(original_mpn)
-            and normalize_mpn_for_comparison(candidate_mpn)
-        ):
-            return CLASS_VERIFIED_DIRECT
+    # Top-level Substitute Type / Evidence Type alone must never create Verified
+    # Direct. Only an exact original→candidate pair evidence row may do that.
     if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE and substitute_type == SUBSTITUTE_TYPE_UPGRADE:
         return CLASS_SUPPLIER_UPGRADE
     if evidence == EVIDENCE_DISTRIBUTOR_SUBSTITUTE and substitute_type == SUBSTITUTE_TYPE_SIMILAR:

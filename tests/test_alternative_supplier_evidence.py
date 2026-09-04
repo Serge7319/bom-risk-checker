@@ -5,6 +5,31 @@ import unittest
 
 sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
 
+def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
+    row = {
+        "manufacturer_part_number": mpn,
+        "manufacturer": extra.pop("manufacturer", "KEMET"),
+        "source": "DigiKey",
+        "substitute_type": "Direct",
+        "evidence_type": "Distributor-listed substitute",
+        "original_mpn": original,
+        "supplier_relationship_evidence": [
+            {
+                "supplier": "DigiKey",
+                "original_mpn": original,
+                "candidate_mpn": mpn,
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "summary": "DigiKey substitute type: Direct",
+                "supplier_part_id": f"{mpn}-DK",
+                "source_url": f"https://www.digikey.com/en/products/{mpn}",
+            }
+        ],
+    }
+    row.update(extra)
+    return row
+
+
 
 def _cache_data(*_args, **_kwargs):
     return lambda func: func
@@ -30,20 +55,10 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
 
     def test_retains_direct_and_cross_manufacturer_supplier_candidates(self):
         self.engine.discover_alternative_candidates = lambda _part: _discovery_payload([
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-            },
-            {
-                "manufacturer_part_number": "0603BB104K500YT",
-                "manufacturer": "Knowles Novacap",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-            },
+            _digikey_direct_pair("C0603C104K5RAC3121"),
+            _digikey_direct_pair(
+                "0603BB104K500YT", manufacturer="Knowles Novacap"
+            ),
         ])
 
         results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")

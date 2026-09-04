@@ -1295,15 +1295,33 @@ def apply_supplier_enrichment_to_candidate(
     )
     enriched["Classification"] = classification
     enriched["Category"] = classification
+    from src.alternative_classification import pair_relationship_evidence_rows
+
+    pair_evidence = pair_relationship_evidence_rows(
+        {
+            "supplier_relationship_evidence": list(
+                enriched.get("Supplier Relationship Evidence")
+                or enriched.get("supplier_relationship_evidence")
+                or []
+            ),
+            "manufacturer_part_number": str(
+                enriched.get("Alternative Part") or enriched.get("manufacturer_part_number") or ""
+            ),
+        },
+        original_mpn=str(
+            original_data.get("manufacturer_part_number")
+            or enriched.get("Original MPN")
+            or ""
+        ),
+        candidate_mpn=str(
+            enriched.get("Alternative Part") or enriched.get("manufacturer_part_number") or ""
+        ),
+    )
     evidence_assessment = build_engineering_evidence_assessment(
         comparison_counts,
         classification=classification,
         substitute_type=str(enriched.get("Substitute Type") or ""),
-        supplier_relationship_evidence=list(
-            enriched.get("Supplier Relationship Evidence")
-            or enriched.get("supplier_relationship_evidence")
-            or []
-        ),
+        supplier_relationship_evidence=pair_evidence,
         evidence_source=str(enriched.get("Evidence Source") or ""),
     )
     enriched["Engineering Evidence Assessment"] = evidence_assessment

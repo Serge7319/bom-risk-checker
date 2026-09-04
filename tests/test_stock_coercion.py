@@ -95,9 +95,22 @@ class StockCoercionTests(unittest.TestCase):
                 "source": "DigiKey",
                 "substitute_type": "Direct",
                 "evidence_type": "Distributor-listed substitute",
+                "original_mpn": "C0603C104K5RACTU",
                 "retrieval_status": "ok",
                 "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
                 "stock_total": "7180 In Stock",
+                "supplier_relationship_evidence": [
+                    {
+                        "supplier": "DigiKey",
+                        "original_mpn": "C0603C104K5RACTU",
+                        "candidate_mpn": "C0603C104K5RAC3121",
+                        "substitute_type": "Direct",
+                        "evidence_type": "Distributor-listed substitute",
+                        "summary": "DigiKey substitute type: Direct",
+                        "supplier_part_id": "C0603C104K5RAC3121-DK",
+                        "source_url": "https://www.digikey.com/en/products/C0603C104K5RAC3121",
+                    }
+                ],
             }
         ]
 

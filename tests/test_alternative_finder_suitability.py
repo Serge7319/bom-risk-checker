@@ -13,6 +13,33 @@ def _cache_data(*_args, **_kwargs):
     return lambda func: func
 
 
+def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
+    """Build a DigiKey Direct candidate with exact original→candidate pair evidence."""
+    row = {
+        "manufacturer_part_number": mpn,
+        "manufacturer": "KEMET",
+        "source": "DigiKey",
+        "substitute_type": "Direct",
+        "evidence_type": "Distributor-listed substitute",
+        "original_mpn": original,
+        "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+        "supplier_relationship_evidence": [
+            {
+                "supplier": "DigiKey",
+                "original_mpn": original,
+                "candidate_mpn": mpn,
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "summary": "DigiKey substitute type: Direct",
+                "supplier_part_id": f"{mpn}-DK",
+                "source_url": f"https://www.digikey.com/en/products/{mpn}",
+            }
+        ],
+    }
+    row.update(extra)
+    return row
+
+
 class AlternativeFinderSuitabilityTests(unittest.TestCase):
     def setUp(self):
         sys.modules["streamlit"] = types.SimpleNamespace(cache_data=_cache_data)
@@ -196,24 +223,10 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
 
     def test_active_verified_direct_ranks_above_nfnd_peer(self):
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Active",
-            },
-            {
-                "manufacturer_part_number": "C0603C104K5RACTU-NFND",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Not For New Designs",
-            },
+            _digikey_direct_pair("C0603C104K5RAC3121", lifecycle_status="Active"),
+            _digikey_direct_pair(
+                "C0603C104K5RACTU-NFND", lifecycle_status="Not For New Designs"
+            ),
         ]
         self._mock_discovery(explicit)
         results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
@@ -241,24 +254,10 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
 
     def test_active_verified_direct_ranks_above_distributor_discontinuation(self):
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Active",
-            },
-            {
-                "manufacturer_part_number": "C0603C104K5RACDISC",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Discontinued at DigiKey",
-            },
+            _digikey_direct_pair("C0603C104K5RAC3121", lifecycle_status="Active"),
+            _digikey_direct_pair(
+                "C0603C104K5RACDISC", lifecycle_status="Discontinued at DigiKey"
+            ),
         ]
         self._mock_discovery(explicit)
         results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
@@ -305,24 +304,8 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
         self.assertLess(adjusted["recommendation_score"], 75)
 
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Active",
-            },
-            {
-                "manufacturer_part_number": "C0603C104K5RACUNK",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Unknown",
-            },
+            _digikey_direct_pair("C0603C104K5RAC3121", lifecycle_status="Active"),
+            _digikey_direct_pair("C0603C104K5RACUNK", lifecycle_status="Unknown"),
         ]
         self._mock_discovery(explicit)
         results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
@@ -355,13 +338,20 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
             source="DigiKey",
         )
         self.assertEqual(suitability, self.classification.SUITABILITY_SUSTAINING)
-        classification = self.classification.classify_from_supplier_evidence(
+        # Top-level Direct without pair evidence must not become Verified Direct.
+        without_pair = self.classification.classify_from_supplier_evidence(
             {
                 "evidence_type": "Distributor-listed substitute",
                 "substitute_type": "Direct",
                 "manufacturer_part_number": "C0603C104K5RACNFND",
                 "manufacturer": "KEMET",
             },
+            original_mpn="C0603C104K5RACTU",
+            original_manufacturer="KEMET",
+        )
+        self.assertNotEqual(without_pair, self.classification.CLASS_VERIFIED_DIRECT)
+        classification = self.classification.classify_from_supplier_evidence(
+            _digikey_direct_pair("C0603C104K5RACNFND"),
             original_mpn="C0603C104K5RACTU",
             original_manufacturer="KEMET",
         )
@@ -372,33 +362,13 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
 
     def test_c3121_remains_top_active_verified_direct(self):
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Active",
-            },
-            {
-                "manufacturer_part_number": "C0603C104K5RACNFND",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Not For New Designs",
-            },
-            {
-                "manufacturer_part_number": "C0603C104K5RACDISC",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "lifecycle_status": "Discontinued at DigiKey",
-            },
+            _digikey_direct_pair("C0603C104K5RAC3121", lifecycle_status="Active"),
+            _digikey_direct_pair(
+                "C0603C104K5RACNFND", lifecycle_status="Not For New Designs"
+            ),
+            _digikey_direct_pair(
+                "C0603C104K5RACDISC", lifecycle_status="Discontinued at DigiKey"
+            ),
             {
                 "manufacturer_part_number": "GRM188R71H104KA93D",
                 "manufacturer": "Murata",
@@ -419,6 +389,65 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
             self.classification.SUITABILITY_PREFERRED,
         )
         self.assertGreaterEqual(top["Recommendation Score"], 75)
+
+
+    def test_live_equivalent_provider_error_renders_config_notice_and_coverage_field(self):
+        """Final rendered notice + coverage field for live-equivalent Octopart payload."""
+        import integrations.supplier_diagnostics as diagnostics
+
+        original = diagnostics._octopart_credentials_configured
+        diagnostics._octopart_credentials_configured = lambda: False
+        self.addCleanup(
+            lambda: setattr(diagnostics, "_octopart_credentials_configured", original)
+        )
+        original_data = {
+            "all_supplier_results": [
+                {"source": "Mouser", "provider_status": "AVAILABLE"},
+                {"source": "DigiKey", "provider_status": "AVAILABLE"},
+                {"source": "Newark", "provider_status": "AVAILABLE"},
+                {
+                    "source": "Octopart",
+                    "provider_status": "PROVIDER_ERROR",
+                    "failure_category": self.diagnostics.CATEGORY_PROVIDER_ERROR,
+                    "error": "No response from Octopart",
+                },
+            ]
+        }
+        discovery = {
+            "provider_failures": ["Octopart"],
+            "has_incomplete_evidence": True,
+            "providers": {"Octopart": {"lookup": "error", "substitutions": "skipped"}},
+        }
+        coverage = self.diagnostics.build_alternative_finder_coverage_notices(
+            original_data=original_data,
+            discovery_metadata=discovery,
+        )
+        expected_notice = (
+            "Octopart is not configured for this environment. "
+            "Results include Mouser, DigiKey, and Newark."
+        )
+        self.assertEqual(coverage["notices"], [expected_notice])
+        self.assertEqual(coverage["captions"], [])
+        self.assertFalse(coverage["runtime_failures"])
+        self.assertIn("Octopart: not configured", coverage["coverage_field"])
+        self.assertNotIn("unavailable for this search", coverage["coverage_field"])
+        self.assertNotIn("did not respond", " ".join(coverage["notices"]).casefold())
+        # Both renderers must agree via the canonical resolver.
+        field = self.diagnostics.format_alternative_finder_provider_coverage(
+            original_data=original_data,
+            discovery_metadata=discovery,
+        )
+        self.assertEqual(field, coverage["coverage_field"])
+        self.assertEqual(
+            self.diagnostics.supplier_coverage_label(
+                "Octopart",
+                "PROVIDER_ERROR",
+                failure_category=self.diagnostics.CATEGORY_PROVIDER_ERROR,
+                discovery_metadata=discovery,
+            ),
+            "Octopart: not configured",
+        )
+
 
 
 if __name__ == "__main__":
