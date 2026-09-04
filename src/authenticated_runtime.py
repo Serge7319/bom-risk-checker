@@ -10135,34 +10135,15 @@ def run_authenticated_app() -> None:
 
         def _af62_provider_coverage(data, discovery_metadata=None):
             from integrations.supplier_diagnostics import (
-                CATEGORY_CONFIGURATION,
-                _discovery_not_configured_sources,
-                supplier_coverage_label,
+                format_alternative_finder_provider_coverage,
             )
 
             if not isinstance(data, dict):
                 return "Not checked"
-            configured_gaps = {
-                name.casefold()
-                for name in _discovery_not_configured_sources(discovery_metadata)
-            }
-            coverage = []
-            for row in data.get("all_supplier_results") or []:
-                if isinstance(row, dict) and row.get("source"):
-                    source = str(row["source"])
-                    status = str(row.get("provider_status") or "")
-                    category = str(row.get("failure_category") or "")
-                    if source.casefold() in configured_gaps:
-                        status = "NOT_CONFIGURED"
-                        category = CATEGORY_CONFIGURATION
-                    coverage.append(
-                        supplier_coverage_label(
-                            source,
-                            status,
-                            failure_category=category,
-                        )
-                    )
-            return " · ".join(coverage) if coverage else "Not checked"
+            return format_alternative_finder_provider_coverage(
+                original_data=data,
+                discovery_metadata=discovery_metadata,
+            )
 
         discovery_summary = get_alternative_finder_discovery_metadata(st.session_state)
 
@@ -10488,22 +10469,32 @@ def run_authenticated_app() -> None:
             if not isinstance(relationship_evidence_rows, list):
                 relationship_evidence_rows = []
             from src.alternative_classification import (
+                pair_relationship_evidence_rows,
                 relationship_evidence_link_pairs,
                 relationship_evidence_summary,
             )
 
-            exact_relationship_summary = relationship_evidence_summary(relationship_evidence_rows)
-            relationship_link_pairs = relationship_evidence_link_pairs(relationship_evidence_rows)
-            if (
-                exact_relationship_summary.startswith("No exact")
-                and substitute_type_value not in {"", "—", "Not classified", "Unknown"}
-                and evidence_type_value.casefold() == "distributor-listed substitute"
-            ):
-                source_label = _af62b_value(selected_row, ["Evidence Source", "Supplier"], "Supplier")
-                exact_relationship_summary = f"{source_label} substitute type: {substitute_type_value}"
-                # Fallback: if no evidence rows carried a link, use the top-level source_url.
-                if not relationship_link_pairs and source_url_value and source_url_value != "—":
-                    relationship_link_pairs = [(f"View {source_label} reference", source_url_value)]
+            # Only pair-scoped evidence may drive Direct (or any) relationship display.
+            search_original_mpn = str(
+                get_alternative_finder_display_mpn(st.session_state)
+                or (original_summary_data or {}).get("manufacturer_part_number")
+                or ""
+            ).strip()
+            selected_candidate_mpn = str(
+                selected_row.get("Alternative Part")
+                or selected_row.get("manufacturer_part_number")
+                or ""
+            ).strip()
+            pair_scoped_evidence = pair_relationship_evidence_rows(
+                {
+                    "supplier_relationship_evidence": relationship_evidence_rows,
+                    "manufacturer_part_number": selected_candidate_mpn,
+                },
+                original_mpn=search_original_mpn,
+                candidate_mpn=selected_candidate_mpn,
+            )
+            exact_relationship_summary = relationship_evidence_summary(pair_scoped_evidence)
+            relationship_link_pairs = relationship_evidence_link_pairs(pair_scoped_evidence)
             classification_value = _af62b_value(
                 selected_row,
                 ["Classification", "Category"],

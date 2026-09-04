@@ -8,6 +8,33 @@ import unittest
 
 sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
 
+def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
+    row = {
+        "manufacturer_part_number": mpn,
+        "manufacturer": "KEMET",
+        "source": "DigiKey",
+        "substitute_type": "Direct",
+        "evidence_type": "Distributor-listed substitute",
+        "original_mpn": original,
+        "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+        "supplier_relationship_evidence": [
+            {
+                "supplier": "DigiKey",
+                "original_mpn": original,
+                "candidate_mpn": mpn,
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "summary": "DigiKey substitute type: Direct",
+                "supplier_part_id": f"{mpn}-DK",
+                "source_url": f"https://www.digikey.com/en/products/{mpn}",
+            }
+        ],
+    }
+    row.update(extra)
+    return row
+
+
+
 
 def _cache_data(*_args, **_kwargs):
     return lambda func: func
@@ -66,16 +93,9 @@ class AlternativeFinderSearchTests(unittest.TestCase):
 
     def test_suggest_return_is_cache_serializable_without_sets(self):
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "retrieval_status": "ok",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-                "stock_total": 7180,
-            }
+            _digikey_direct_pair(
+                "C0603C104K5RAC3121", retrieval_status="ok", stock_total=7180
+            )
         ]
 
         def discover(_part):
@@ -116,15 +136,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.state.init_alternative_finder_state(session)
 
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "retrieval_status": "ok",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-            }
+            _digikey_direct_pair("C0603C104K5RAC3121", retrieval_status="ok")
         ]
 
         def discover(_part):
@@ -207,15 +219,10 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.engine.get_best_part_data = track_lookup
 
         explicit = [
-            {
-                "manufacturer_part_number": f"DIRECT-SUB-{index:02d}",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "retrieval_status": "ok",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-            }
+            _digikey_direct_pair(
+                f"DIRECT-SUB-{index:02d}",
+                retrieval_status="ok",
+            )
             for index in range(12)
         ]
 
@@ -300,12 +307,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
 
         def discover(_part):
             merged = self.classification.merge_discovery_candidates(
-                [{
-                    "manufacturer_part_number": "C0603C104K5RAC3121",
-                    "source": "DigiKey",
-                    "substitute_type": "Direct",
-                    "evidence_type": "Distributor-listed substitute",
-                }],
+                [_digikey_direct_pair("C0603C104K5RAC3121", description="")],
                 [],
                 original_mpn="C0603C104K5RACTU",
             )
@@ -438,15 +440,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         ]
 
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "retrieval_status": "ok",
-                "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-            }
+            _digikey_direct_pair("C0603C104K5RAC3121", retrieval_status="ok")
         ]
 
         def discover(_part):
@@ -501,14 +495,29 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         self.diagnostics = importlib.import_module("integrations.supplier_diagnostics")
 
     def _verified_direct_candidate(self):
+        original = "C0603C104K5RACTU"
+        mpn = "C0603C104K5RAC3121"
         return {
-            "manufacturer_part_number": "C0603C104K5RAC3121",
+            "manufacturer_part_number": mpn,
             "manufacturer": "KEMET",
             "source": "DigiKey",
             "substitute_type": "Direct",
             "evidence_type": "Distributor-listed substitute",
+            "original_mpn": original,
             "retrieval_status": "ok",
             "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            "supplier_relationship_evidence": [
+                {
+                    "supplier": "DigiKey",
+                    "original_mpn": original,
+                    "candidate_mpn": mpn,
+                    "substitute_type": "Direct",
+                    "evidence_type": "Distributor-listed substitute",
+                    "summary": "DigiKey substitute type: Direct",
+                    "supplier_part_id": f"{mpn}-DK",
+                    "source_url": f"https://www.digikey.com/en/products/{mpn}",
+                }
+            ],
         }
 
     def test_true_failure_shows_terminal_error_without_candidates(self):

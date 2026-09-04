@@ -141,17 +141,53 @@ def log_supplier_diagnostic(
     return payload
 
 
+_PLACEHOLDER_SECRET_VALUES = frozenset(
+    {
+        "changeme",
+        "todo",
+        "xxx",
+        "none",
+        "null",
+        "your_client_id",
+        "your_secret",
+        "your_client_secret",
+        "replace_me",
+        "redacted",
+    }
+)
+
+
+def _secret_value_present(raw_value: object) -> bool:
+    """True when a secret value looks like real configuration (not empty/placeholder)."""
+    value = str(raw_value or "").strip()
+    if not value:
+        return False
+    lowered = value.casefold()
+    if lowered in _PLACEHOLDER_SECRET_VALUES:
+        return False
+    if "placeholder" in lowered or "example" in lowered or lowered.startswith("replace"):
+        return False
+    return True
+
+
 def _octopart_credentials_configured() -> bool:
-    """True when any supported Octopart/Nexar credential is present in this environment."""
+    """True only when Octopart/Nexar has both a client id and secret in this environment.
+
+    A lone client id (or placeholder) is not production configuration — treating it
+    as configured caused live PROVIDER_ERROR rows to render as timeout/unavailable.
+    Never log or return secret names/values from this helper.
+    """
     try:
         from src.secrets import get_secret
 
-        for name in ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"):
-            if str(get_secret(name, required=False) or "").strip():
-                return True
+        def _has(name: str) -> bool:
+            return _secret_value_present(get_secret(name, required=False))
+
+        has_id = _has("NEXAR_CLIENT_ID") or _has("OCTOPART_CLIENT_ID")
+        has_secret = _has("NEXAR_CLIENT_SECRET") or _has("OCTOPART_CLIENT_SECRET")
+        return has_id and has_secret
     except Exception:
         return False
-    return False
 
 
 def _force_octopart_configuration_gap(
@@ -159,15 +195,122 @@ def _force_octopart_configuration_gap(
     *,
     status: str = "",
     category: str = "",
+    error_message: str = "",
 ) -> bool:
-    """Octopart must never use timeout/unavailable wording when credentials are absent."""
+    """Octopart must use configuration wording when this environment is not usable."""
     if str(source or "").strip().casefold() != "octopart":
         return False
     if str(status or "").strip().upper() == "AVAILABLE":
         return False
     if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
         return True
+    if category == CATEGORY_AUTHENTICATION:
+        return True
+    lowered = _redact(error_message).casefold()
+    if any(
+        token in lowered
+        for token in (
+            "not configured",
+            "missing required configuration",
+            "authentication",
+            "unauthorized",
+            "credential",
+            "configuration failed",
+        )
+    ):
+        return True
     return not _octopart_credentials_configured()
+
+
+def resolve_supplier_coverage_status(
+    source: str,
+    *,
+    provider_status: str = "",
+    failure_category: str = "",
+    error_message: str = "",
+    discovery_metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Canonical configuration-aware coverage status for one supplier.
+
+    Both the Supplier coverage field and the blue coverage notices must use this
+    resolver so Octopart cannot diverge into unavailable/runtime-failure wording
+    when production credentials are absent or incomplete.
+    """
+    name = str(source or "").strip() or "Supplier"
+    status = str(provider_status or "").strip().upper()
+    category = str(failure_category or "").strip() or categorize_supplier_failure(
+        provider_status=status,
+        error_message=error_message,
+    )
+    discovery_gaps = {
+        item.casefold() for item in _discovery_not_configured_sources(discovery_metadata)
+    }
+    if name.casefold() in discovery_gaps or _force_octopart_configuration_gap(
+        name,
+        status=status,
+        category=category,
+        error_message=error_message,
+    ):
+        status = PROVIDER_NOT_CONFIGURED
+        category = CATEGORY_CONFIGURATION
+
+    if status == "AVAILABLE" and category != CATEGORY_CONFIGURATION:
+        label = f"{name}: available"
+        return {
+            "source": name,
+            "provider_status": status,
+            "failure_category": category,
+            "label": label,
+            "is_available": True,
+            "is_configuration_gap": False,
+            "is_runtime_failure": False,
+        }
+
+    if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
+        return {
+            "source": name,
+            "provider_status": PROVIDER_NOT_CONFIGURED,
+            "failure_category": CATEGORY_CONFIGURATION,
+            "label": f"{name}: not configured",
+            "is_available": False,
+            "is_configuration_gap": True,
+            "is_runtime_failure": False,
+        }
+
+    if name.casefold() == "octopart":
+        # Fully configured Octopart that still failed this search.
+        label = f"{name}: unavailable for this search"
+    else:
+        labels = {
+            PROVIDER_NOT_CONFIGURED: "not configured",
+            PROVIDER_PART_NOT_FOUND: "no exact match",
+            PROVIDER_TIMEOUT: "timed out",
+            PROVIDER_RATE_LIMITED: "rate limited",
+            PROVIDER_ERROR: "unavailable",
+        }
+        label = f"{name}: {labels.get(status, 'unknown')}"
+
+    is_runtime = status in {
+        PROVIDER_TIMEOUT,
+        PROVIDER_RATE_LIMITED,
+        PROVIDER_ERROR,
+    } or category in {
+        CATEGORY_TIMEOUT,
+        CATEGORY_RATE_LIMIT,
+        CATEGORY_HTTP_ERROR,
+        CATEGORY_AUTHENTICATION,
+        CATEGORY_MALFORMED_RESPONSE,
+        CATEGORY_PROVIDER_ERROR,
+    }
+    return {
+        "source": name,
+        "provider_status": status,
+        "failure_category": category,
+        "label": label,
+        "is_available": False,
+        "is_configuration_gap": False,
+        "is_runtime_failure": is_runtime,
+    }
 
 
 def supplier_coverage_label(
@@ -175,26 +318,19 @@ def supplier_coverage_label(
     provider_status: str,
     *,
     failure_category: str = "",
+    error_message: str = "",
+    discovery_metadata: Mapping[str, Any] | None = None,
 ) -> str:
-    status = str(provider_status or "").strip().upper()
-    category = str(failure_category or "").strip()
-    name = str(source or "").strip() or "Supplier"
-    if status == "AVAILABLE":
-        return f"{name}: available"
-    if _force_octopart_configuration_gap(name, status=status, category=category):
-        return f"{name}: not configured"
-    if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
-        return f"{name}: not configured"
-    if name.casefold() == "octopart":
-        return f"{name}: unavailable for this search"
-    labels = {
-        PROVIDER_NOT_CONFIGURED: "not configured",
-        PROVIDER_PART_NOT_FOUND: "no exact match",
-        PROVIDER_TIMEOUT: "timed out",
-        PROVIDER_RATE_LIMITED: "rate limited",
-        PROVIDER_ERROR: "unavailable",
-    }
-    return f"{name}: {labels.get(status, 'unknown')}"
+    return str(
+        resolve_supplier_coverage_status(
+            source,
+            provider_status=provider_status,
+            failure_category=failure_category,
+            error_message=error_message,
+            discovery_metadata=discovery_metadata,
+        ).get("label")
+        or f"{str(source or 'Supplier').strip() or 'Supplier'}: unknown"
+    )
 
 
 def _discovery_not_configured_sources(
@@ -221,14 +357,17 @@ def _supplier_result_rows(
     for row in (original_data or {}).get("all_supplier_results") or []:
         if isinstance(row, dict) and row.get("source"):
             source = str(row.get("source") or "").strip()
-            payload = dict(row)
-            if source in _discovery_not_configured_sources(discovery_metadata) or _force_octopart_configuration_gap(
+            resolved = resolve_supplier_coverage_status(
                 source,
-                status=str(payload.get("provider_status") or ""),
-                category=str(payload.get("failure_category") or ""),
-            ):
-                payload["provider_status"] = PROVIDER_NOT_CONFIGURED
-                payload["failure_category"] = CATEGORY_CONFIGURATION
+                provider_status=str(row.get("provider_status") or ""),
+                failure_category=str(row.get("failure_category") or ""),
+                error_message=str(row.get("error") or ""),
+                discovery_metadata=discovery_metadata,
+            )
+            payload = dict(row)
+            payload["provider_status"] = resolved["provider_status"]
+            payload["failure_category"] = resolved["failure_category"]
+            payload["coverage_label"] = resolved["label"]
             rows.append(payload)
             if source:
                 seen.add(source.casefold())
@@ -242,15 +381,40 @@ def _supplier_result_rows(
         if not source or source.casefold() in seen:
             continue
         if lookup == "not_configured" or substitutions == "not_configured":
+            resolved = resolve_supplier_coverage_status(
+                source,
+                provider_status=PROVIDER_NOT_CONFIGURED,
+                failure_category=CATEGORY_CONFIGURATION,
+                discovery_metadata=discovery_metadata,
+            )
             rows.append(
                 {
                     "source": source,
-                    "provider_status": PROVIDER_NOT_CONFIGURED,
-                    "failure_category": CATEGORY_CONFIGURATION,
+                    "provider_status": resolved["provider_status"],
+                    "failure_category": resolved["failure_category"],
+                    "coverage_label": resolved["label"],
                 }
             )
             seen.add(source.casefold())
     return rows
+
+
+def format_alternative_finder_provider_coverage(
+    *,
+    original_data: Mapping[str, Any] | None = None,
+    discovery_metadata: Mapping[str, Any] | None = None,
+) -> str:
+    """Render the Supplier coverage field from the canonical coverage resolver."""
+    rows = _supplier_result_rows(
+        original_data=original_data,
+        discovery_metadata=discovery_metadata,
+    )
+    labels = [
+        str(row.get("coverage_label") or "").strip()
+        for row in rows
+        if str(row.get("coverage_label") or "").strip()
+    ]
+    return " · ".join(labels) if labels else "Not checked"
 
 
 def build_alternative_finder_coverage_notices(
@@ -271,49 +435,26 @@ def build_alternative_finder_coverage_notices(
         source = str(row.get("source") or "").strip()
         if not source:
             continue
-        status = str(row.get("provider_status") or "").strip().upper()
-        category = str(row.get("failure_category") or "").strip() or categorize_supplier_failure(
-            provider_status=status,
-            error_message=str(row.get("error") or ""),
-        )
-        if source in _discovery_not_configured_sources(discovery_metadata) or _force_octopart_configuration_gap(
+        resolved = resolve_supplier_coverage_status(
             source,
-            status=status,
-            category=category,
-        ):
-            category = CATEGORY_CONFIGURATION
-            status = PROVIDER_NOT_CONFIGURED
-        if status == "AVAILABLE" and category != CATEGORY_CONFIGURATION:
+            provider_status=str(row.get("provider_status") or ""),
+            failure_category=str(row.get("failure_category") or ""),
+            error_message=str(row.get("error") or ""),
+            discovery_metadata=discovery_metadata,
+        )
+        if resolved["is_available"]:
             available_sources.append(source)
             continue
-        if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
+        if resolved["is_configuration_gap"]:
             if source not in configuration_sources:
                 configuration_sources.append(source)
             continue
-        if status in {
-            PROVIDER_TIMEOUT,
-            PROVIDER_RATE_LIMITED,
-            PROVIDER_ERROR,
-            "TIMEOUT",
-            "RATE_LIMITED",
-            "PROVIDER_ERROR",
-        } or category in {
-            CATEGORY_TIMEOUT,
-            CATEGORY_RATE_LIMIT,
-            CATEGORY_HTTP_ERROR,
-            CATEGORY_AUTHENTICATION,
-            CATEGORY_MALFORMED_RESPONSE,
-            CATEGORY_PROVIDER_ERROR,
-        }:
+        if resolved["is_runtime_failure"]:
             runtime_failures.append(
                 {
                     "source": source,
-                    "category": category,
-                    "label": supplier_coverage_label(
-                        source,
-                        status,
-                        failure_category=category,
-                    ),
+                    "category": str(resolved["failure_category"]),
+                    "label": str(resolved["label"]),
                 }
             )
 
@@ -321,7 +462,8 @@ def build_alternative_finder_coverage_notices(
     configured_gaps.update(
         name.casefold() for name in _discovery_not_configured_sources(discovery_metadata)
     )
-    # Discovery-level provider_failures are treated as runtime gaps when present.
+    # Discovery-level provider_failures are treated as runtime gaps when present,
+    # except Octopart which must remain configuration-aware via the canonical resolver.
     for name in (discovery_metadata or {}).get("provider_failures") or []:
         source = str(name).strip()
         if not source:
@@ -332,11 +474,22 @@ def build_alternative_finder_coverage_notices(
             continue
         if source in available_sources:
             continue
+        resolved = resolve_supplier_coverage_status(
+            source,
+            provider_status=PROVIDER_ERROR,
+            failure_category=CATEGORY_PROVIDER_ERROR,
+            discovery_metadata=discovery_metadata,
+        )
+        if resolved["is_configuration_gap"]:
+            if source not in configuration_sources:
+                configuration_sources.append(source)
+            configured_gaps.add(source.casefold())
+            continue
         runtime_failures.append(
             {
                 "source": source,
-                "category": CATEGORY_PROVIDER_ERROR,
-                "label": f"{source}: unavailable",
+                "category": str(resolved["failure_category"]),
+                "label": str(resolved["label"]),
             }
         )
 
@@ -377,6 +530,10 @@ def build_alternative_finder_coverage_notices(
         "configuration_sources": configuration_sources,
         "runtime_failures": runtime_failures,
         "available_sources": available_sources,
+        "coverage_field": format_alternative_finder_provider_coverage(
+            original_data=original_data,
+            discovery_metadata=discovery_metadata,
+        ),
         "show_generic_configured_failure": False,
     }
 

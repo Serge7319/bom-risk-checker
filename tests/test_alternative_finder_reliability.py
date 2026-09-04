@@ -5,6 +5,31 @@ import unittest
 
 sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
 
+def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
+    row = {
+        "manufacturer_part_number": mpn,
+        "manufacturer": extra.pop("manufacturer", "KEMET"),
+        "source": "DigiKey",
+        "substitute_type": "Direct",
+        "evidence_type": "Distributor-listed substitute",
+        "original_mpn": original,
+        "supplier_relationship_evidence": [
+            {
+                "supplier": "DigiKey",
+                "original_mpn": original,
+                "candidate_mpn": mpn,
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "summary": "DigiKey substitute type: Direct",
+                "supplier_part_id": f"{mpn}-DK",
+                "source_url": f"https://www.digikey.com/en/products/{mpn}",
+            }
+        ],
+    }
+    row.update(extra)
+    return row
+
+
 
 def _cache_data(*_args, **_kwargs):
     return lambda func: func
@@ -52,24 +77,12 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
 
     def test_verified_direct_substitutes_beyond_display_cap_remain_visible(self):
         explicit = [
-            {
-                "manufacturer_part_number": f"DIRECT-SUB-{index:02d}",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "retrieval_status": "ok",
-            }
+            _digikey_direct_pair(f"DIRECT-SUB-{index:02d}", retrieval_status="ok")
             for index in range(11)
         ]
-        explicit.append({
-            "manufacturer_part_number": "C0603C104K5RAC3121",
-            "manufacturer": "KEMET",
-            "source": "DigiKey",
-            "substitute_type": "Direct",
-            "evidence_type": "Distributor-listed substitute",
-            "retrieval_status": "ok",
-        })
+        explicit.append(
+            _digikey_direct_pair("C0603C104K5RAC3121", retrieval_status="ok")
+        )
         catalog = [
             {
                 "manufacturer_part_number": f"GRM-CATALOG-{index}",
@@ -118,13 +131,7 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
         identity = digikey.resolve_engineering_part_identity(distributor_number)
         self.assertEqual(identity["manufacturer_part_number"], "C0603C104K5RAC3121")
 
-        explicit = [{
-            "manufacturer_part_number": "C0603C104K5RAC3121",
-            "manufacturer": "KEMET",
-            "source": "DigiKey",
-            "substitute_type": "Direct",
-            "evidence_type": "Distributor-listed substitute",
-        }]
+        explicit = [_digikey_direct_pair("C0603C104K5RAC3121")]
         self._mock_discovery(explicit, [])
         results = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")
         target = [
@@ -136,22 +143,12 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
 
     def test_c0603_direct_substitute_is_verified_and_ranked_first(self):
         explicit = [
-            {
-                "manufacturer_part_number": "C0603C104K5RAC3121",
-                "manufacturer": "KEMET",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "retrieval_status": "ok",
-            },
-            {
-                "manufacturer_part_number": "0603BB104K500YT",
-                "manufacturer": "Knowles Novacap",
-                "source": "DigiKey",
-                "substitute_type": "Direct",
-                "evidence_type": "Distributor-listed substitute",
-                "retrieval_status": "ok",
-            },
+            _digikey_direct_pair("C0603C104K5RAC3121", retrieval_status="ok"),
+            _digikey_direct_pair(
+                "0603BB104K500YT",
+                manufacturer="Knowles Novacap",
+                retrieval_status="ok",
+            ),
         ]
         catalog = [
             {
@@ -171,12 +168,7 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
         )
 
     def test_explicit_substitutes_are_not_removed_by_catalog_candidates(self):
-        explicit = [{
-            "manufacturer_part_number": "C0603C104K5RAC3121",
-            "source": "DigiKey",
-            "substitute_type": "Direct",
-            "evidence_type": "Distributor-listed substitute",
-        }]
+        explicit = [_digikey_direct_pair("C0603C104K5RAC3121")]
         catalog = [{
             "manufacturer_part_number": "GRM188R71H104KA93D",
             "source": "DigiKey",
@@ -348,13 +340,12 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
             return {}
 
         self.engine.get_best_part_data = part_data
-        self._mock_discovery([{
-            "manufacturer_part_number": "C0603C104K5RAC3121",
-            "source": "DigiKey",
-            "substitute_type": "Direct",
-            "evidence_type": "Distributor-listed substitute",
-            "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
-        }], [])
+        self._mock_discovery([
+            _digikey_direct_pair(
+                "C0603C104K5RAC3121",
+                description="Capacitor Ceramic 0.1uF 50V X7R 0603",
+            )
+        ], [])
         result = self.engine.suggest_alternatives_v2("C0603C104K5RACTU")[0]
         self.assertEqual(result["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
         self.assertEqual(result["Comparison Family"], "Capacitor")

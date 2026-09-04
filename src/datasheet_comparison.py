@@ -284,10 +284,6 @@ def build_engineering_evidence_assessment(
             supplier_relationship_confidence = 55
         else:
             supplier_relationship_confidence = 40
-    elif classification == CLASS_VERIFIED_DIRECT and normalized_type == SUBSTITUTE_TYPE_DIRECT:
-        source_label = str(evidence_source or "Supplier").strip() or "Supplier"
-        supplier_relationship_confidence = 90
-        supplier_relationship_summary = f"{source_label} substitute type: Direct"
     elif classification == CLASS_SUPPLIER_UPGRADE or normalized_type == SUBSTITUTE_TYPE_UPGRADE:
         source_label = str(evidence_source or "Supplier").strip() or "Supplier"
         supplier_relationship_confidence = 70
@@ -297,6 +293,7 @@ def build_engineering_evidence_assessment(
         supplier_relationship_confidence = 55
         supplier_relationship_summary = f"{source_label} substitute type: Similar"
     else:
+        # Never invent "substitute type: Direct" from classification alone.
         supplier_relationship_summary = (
             "No exact supplier substitute relationship was retained for this candidate."
         )

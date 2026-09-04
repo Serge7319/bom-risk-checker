@@ -219,6 +219,13 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
         return result
 
 
+def _octopart_lookup_configured() -> bool:
+    """Octopart requires both a client id and a client secret to be usable."""
+    from integrations.supplier_diagnostics import _octopart_credentials_configured
+
+    return _octopart_credentials_configured()
+
+
 def _supplier_lookup_callable(source_name: str):
     """Return a lookup callable only when the distributor credentials are configured."""
     configured = {
@@ -236,6 +243,8 @@ def _supplier_lookup_callable(source_name: str):
     secret_names, lookup_func = entry
     if isinstance(secret_names, str):
         secret_names = (secret_names,)
+    if source_name == "Octopart":
+        return lookup_func if _octopart_lookup_configured() else None
     if any(_provider_configured(name) for name in secret_names):
         return lookup_func
     return None
@@ -464,8 +473,14 @@ def _provider_discovery_status(source_name: str) -> dict:
         "Newark": ("NEWARK_API_KEY",),
         "Octopart": ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"),
     }
-    secret_names = secret_map.get(source_name, ())
-    if secret_names and not any(_provider_configured(name) for name in secret_names):
+    if source_name == "Octopart":
+        configured = _octopart_lookup_configured()
+    else:
+        secret_names = secret_map.get(source_name, ())
+        configured = bool(secret_names) and any(
+            _provider_configured(name) for name in secret_names
+        )
+    if not configured:
         return {
             "substitutions": "not_configured",
             "lookup": "not_configured",

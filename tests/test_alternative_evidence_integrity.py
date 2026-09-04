@@ -564,6 +564,151 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
         results = self.digikey.search_digikey_substitutions(self.original)
         self.assertEqual(results, [])
 
+    def test_rac7411_cannot_reach_direct_from_non_pair_scoped_paths(self):
+        """RAC7411 must not become Direct/Verified Direct without TU→7411 pair evidence."""
+        original = self.original
+        candidate = "C0603C104K5RAC7411"
+
+        # 1) Catalog Direct claim with no pair evidence.
+        catalog_direct = {
+            "manufacturer_part_number": candidate,
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor catalog match",
+            "original_mpn": original,
+            "supplier_relationship_evidence": [],
+        }
+        # 2) Sibling SKU Direct evidence (wrong original_mpn).
+        sibling_leak = {
+            "manufacturer_part_number": candidate,
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+            "original_mpn": original,
+            "supplier_relationship_evidence": [
+                _relationship("DigiKey", "C0603C104K5RAC3121", candidate, "Direct")
+            ],
+        }
+        # 3) Candidate's own family/SKU Direct mention without original=TU pair.
+        own_sku_direct = {
+            "manufacturer_part_number": candidate,
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+            "original_mpn": candidate,
+            "supplier_relationship_evidence": [
+                _relationship("DigiKey", candidate, candidate, "Direct")
+            ],
+        }
+        # 4) Top-level Direct only (no evidence rows).
+        top_level_only = {
+            "manufacturer_part_number": candidate,
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+            "original_mpn": original,
+        }
+
+        for payload in (catalog_direct, sibling_leak, own_sku_direct, top_level_only):
+            classification = self.classification.classify_from_supplier_evidence(
+                payload,
+                original_mpn=original,
+                original_manufacturer="KEMET",
+            )
+            self.assertNotEqual(
+                classification,
+                self.classification.CLASS_VERIFIED_DIRECT,
+                payload,
+            )
+            self.assertFalse(
+                self.classification.has_exact_direct_relationship(
+                    payload,
+                    original_mpn=original,
+                    candidate_mpn=candidate,
+                ),
+                payload,
+            )
+            assessment = self.datasheet.build_engineering_evidence_assessment(
+                {"Match": 6, "Different": 0, "Needs data": 0},
+                classification=classification,
+                substitute_type=payload.get("substitute_type"),
+                evidence_source="DigiKey",
+                supplier_relationship_evidence=self.classification.pair_relationship_evidence_rows(
+                    payload,
+                    original_mpn=original,
+                    candidate_mpn=candidate,
+                ),
+            )
+            self.assertNotIn(
+                "DigiKey substitute type: Direct",
+                assessment["supplier_relationship_summary"],
+                payload,
+            )
+
+        # Exact TU→3121 pair evidence still yields Verified Direct + one-line display.
+        pair_3121 = {
+            "manufacturer_part_number": "C0603C104K5RAC3121",
+            "manufacturer": "KEMET",
+            "source": "DigiKey",
+            "substitute_type": "Direct",
+            "evidence_type": "Distributor-listed substitute",
+            "original_mpn": original,
+            "supplier_relationship_evidence": [
+                _relationship("DigiKey", original, "C0603C104K5RAC3121", "Direct")
+            ],
+        }
+        self.assertEqual(
+            self.classification.classify_from_supplier_evidence(
+                pair_3121,
+                original_mpn=original,
+                original_manufacturer="KEMET",
+            ),
+            self.classification.CLASS_VERIFIED_DIRECT,
+        )
+        summary = self.classification.relationship_evidence_summary(
+            pair_3121["supplier_relationship_evidence"]
+        )
+        self.assertEqual(summary.count("DigiKey substitute type: Direct"), 1)
+
+        def discover(_part):
+            merged = self.classification.merge_discovery_candidates(
+                [pair_3121],
+                [catalog_direct, sibling_leak],
+                original_mpn=original,
+            )
+            return {
+                "original_mpn": original,
+                "candidates": merged,
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+            }
+
+        self.engine.discover_alternative_candidates = discover
+        results = self.engine.suggest_alternatives_v2(original)
+        by_part = {row["Alternative Part"]: row for row in results}
+        self.assertEqual(
+            by_part["C0603C104K5RAC3121"]["Classification"],
+            self.classification.CLASS_VERIFIED_DIRECT,
+        )
+        self.assertEqual(
+            str(by_part["C0603C104K5RAC3121"]["Supplier Relationship Summary"]).count(
+                "DigiKey substitute type: Direct"
+            ),
+            1,
+        )
+        self.assertNotEqual(
+            by_part[candidate]["Classification"],
+            self.classification.CLASS_VERIFIED_DIRECT,
+        )
+        self.assertNotIn(
+            "DigiKey substitute type: Direct",
+            by_part[candidate].get("Supplier Relationship Summary", ""),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
