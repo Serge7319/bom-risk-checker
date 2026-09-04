@@ -5,6 +5,7 @@ from typing import Optional
 import requests
 from urllib.parse import quote
 
+from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from integrations.stock_coercion import coerce_stock_total
 from src.secrets import get_secret
 from src.parsing.electrical_extractors import (
@@ -50,7 +51,6 @@ def _mpn_key(value: object) -> str:
 
 
 _DIGIKEY_DISTRIBUTOR_PART_RE = re.compile(r"^\d+-.+?-ND$", re.IGNORECASE)
-_PASSIVE_PACKAGE_CODE_RE = re.compile(r"^(?:0\d{3}|\d{4})$")
 
 
 def is_digikey_distributor_part_number(part_number: str) -> bool:
@@ -455,18 +455,8 @@ def extract_digikey_parameter(product: dict, target_names: list) -> str:
 
 
 def extract_pin_count(text: str) -> int:
-    raw = str(text or "").strip()
-    if not raw:
-        return 0
-    if re.search(r"\b0\d{3}\b|\b1\d{3}\b", raw):
-        return 0
-    compact = re.sub(r"[^0-9]", "", raw)
-    if _PASSIVE_PACKAGE_CODE_RE.match(compact):
-        return 0
-    match = re.search(r"\b(\d{1,4})\b", raw)
-    if not match:
-        return 0
-    return int(match.group(1))
+    """Parse pin count; bare integers allowed for explicit Number of Pins fields."""
+    return parse_pin_count_from_text(text, allow_bare_integer=True)
 
 
 def normalize_digikey_product(product: dict) -> dict:
@@ -491,17 +481,22 @@ def normalize_digikey_product(product: dict) -> dict:
 
     pin_count_text = extract_digikey_parameter(
         product,
-        ["Number of Pins"],
+        [
+            "Number of Pins",
+            "Number of Terminations",
+            "Number of Balls",
+            "Pin Count",
+            "Ball Count",
+        ],
     )
-    if not pin_count_text:
-        package_text = extract_digikey_parameter(
-            product,
-            ["Supplier Device Package", "Package / Case"],
-        )
-        if package_text and not re.search(r"\b0\d{3}\b|\b1\d{3}\b", package_text):
-            pin_count_text = package_text
-
-    pin_count = extract_pin_count(pin_count_text)
+    package_text = extract_digikey_parameter(
+        product,
+        ["Supplier Device Package", "Package / Case"],
+    )
+    pin_count = resolve_pin_count(
+        explicit_count_text=pin_count_text,
+        package_text=package_text or package,
+    )
 
     description = (
         product.get("Description", {}).get("ProductDescription", "")

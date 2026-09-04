@@ -29,6 +29,8 @@ import re
 
 import pandas as pd
 
+from integrations.pin_count import effective_pin_count
+
 
 # -----------------------------------------------------------------------------
 # Basic helpers
@@ -358,8 +360,8 @@ def explain_compatibility(original: Dict[str, Any], candidate: Dict[str, Any]) -
         checks.append({"field": "Package", "status": "Unknown", "note": "Package data is incomplete."})
         score -= 8
 
-    original_pins = _num(_get(original, "Pin Count", "pin_count", default=0))
-    candidate_pins = _num(_get(candidate, "Pin Count", "pin_count", default=0))
+    original_pins = effective_pin_count(original if isinstance(original, dict) else {})
+    candidate_pins = effective_pin_count(candidate if isinstance(candidate, dict) else {})
 
     if original_pins and candidate_pins:
         if int(original_pins) == int(candidate_pins):

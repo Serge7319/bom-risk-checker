@@ -9,6 +9,7 @@ from src.parsing.electrical_extractors import (
 import requests
 from dotenv import load_dotenv
 
+from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
 
 load_dotenv()
@@ -74,7 +75,10 @@ def normalize_newark_product(product: dict) -> dict:
     architecture = infer_architecture_from_description(description)
     channel_count = infer_channel_count_from_description(description)
     package = extract_package_from_text(description)
-    pin_count = extract_pin_count_from_text(description)
+    pin_count = resolve_pin_count(
+        package_text=package,
+        fallback_texts=[description],
+    )
     mounting_style = extract_mounting_style_from_text(description)
     voltage_range = extract_voltage_range_from_text(description)
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_range)
@@ -231,20 +235,7 @@ def extract_package_from_text(text: str) -> str:
 
 
 def extract_pin_count_from_text(text: str) -> int:
-    text = str(text or "")
-
-    match = re.search(r"\b(\d+)\s*Pins?\b", text, re.IGNORECASE)
-
-    if match:
-        return int(match.group(1))
-
-    package = extract_package_from_text(text)
-    match = re.search(r"(\d+)$", package)
-
-    if match:
-        return int(match.group(1))
-
-    return 0
+    return parse_pin_count_from_text(text, allow_bare_integer=False)
 
 
 def extract_mounting_style_from_text(text: str) -> str:
