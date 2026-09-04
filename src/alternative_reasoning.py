@@ -172,8 +172,11 @@ def _build_passive_alternative_reasoning(
         "channel count",
         "supply voltage",
     )
-    # Cap/R/L omit IC-oriented attributes. Discrete/IC family matrices keep them.
+    profile = get_family_profile(comparison_family)
+    # Cap/R/L omit IC-oriented attributes. Families without meaningful architecture
+    # still keep pinout/package but never surface architecture wording.
     skip_ic_terms = comparison_family in PASSIVE_FAMILIES
+    skip_architecture = not bool(profile.architecture_meaningful)
 
     for row in rows:
         attribute = _text(row.get("Attribute"))
@@ -181,6 +184,8 @@ def _build_passive_alternative_reasoning(
         original_value = _text(row.get("Original"))
         candidate_value = _text(row.get("Candidate"))
         if not attribute:
+            continue
+        if skip_architecture and "architecture" in attribute.casefold():
             continue
         if skip_ic_terms and any(term in attribute.casefold() for term in ic_terms):
             continue
@@ -490,6 +495,8 @@ def build_alternative_reasoning(
 
     matches = list(engineering_matches or [])
     warning_items = list(warnings or [])
+    legacy_profile = get_family_profile(resolved_family)
+    architecture_meaningful = bool(legacy_profile.architecture_meaningful)
 
     original_package = _text(
         original_data.get("package")
@@ -566,18 +573,29 @@ def build_alternative_reasoning(
     else:
         verification.append("Verify pin count and pin assignment.")
 
-    if original_architecture and candidate_architecture:
-        if _same_text(original_architecture, candidate_architecture):
-            confirmed.append(
-                f"Architecture matches: {candidate_architecture}."
-            )
+    if architecture_meaningful:
+        if original_architecture and candidate_architecture:
+            if _same_text(original_architecture, candidate_architecture):
+                confirmed.append(
+                    f"Architecture matches: {candidate_architecture}."
+                )
+            else:
+                blockers.append(
+                    f"Architecture differs: original {original_architecture}, "
+                    f"candidate {candidate_architecture}."
+                )
         else:
-            blockers.append(
-                f"Architecture differs: original {original_architecture}, "
-                f"candidate {candidate_architecture}."
-            )
+            verification.append("Confirm architecture and functional equivalence.")
     else:
-        verification.append("Confirm architecture and functional equivalence.")
+        # Drop inherited architecture wording from generic match/warning lists.
+        matches = [
+            item for item in matches
+            if "architecture" not in str(item).casefold()
+        ]
+        warning_items = [
+            item for item in warning_items
+            if "architecture" not in str(item).casefold()
+        ]
 
     original_low, original_high = _parse_voltage_range(original_voltage)
     candidate_low, candidate_high = _parse_voltage_range(candidate_voltage)
