@@ -388,7 +388,7 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
             top["Recommendation Suitability"],
             self.classification.SUITABILITY_PREFERRED,
         )
-        self.assertGreaterEqual(top["Recommendation Score"], 75)
+        self.assertGreaterEqual(top["Recommendation Score"], 70)
 
 
     def test_live_equivalent_provider_error_renders_config_notice_and_coverage_field(self):

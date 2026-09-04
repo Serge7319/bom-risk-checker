@@ -11061,39 +11061,26 @@ def run_authenticated_app() -> None:
                     "Selected Alternative": selected_row.get("Package", ""),
                 },
             ]
-            if not is_passive_family:
-                from integrations.pin_count import effective_pin_count
-
-                original_pins = effective_pin_count(original_data)
-                selected_pins = effective_pin_count(
+            # Family-profile engineering attributes (not IC architecture for BJTs).
+            family_rows = selected_row.get("Comparison Rows") or []
+            if not family_rows:
+                family_rows = build_datasheet_comparison(
+                    original_data,
+                    candidate_evidence_data or selected_row,
+                ).get("rows") or []
+            for row in family_rows:
+                attribute = str(row.get("Attribute") or "").strip()
+                if not attribute or attribute in {"Package", "Drop-In Confidence", "Drop-In Rating"}:
+                    continue
+                # Skip attributes already shown in the sourcing block above.
+                if attribute in {"Lifecycle", "Stock", "Unit Price"}:
+                    continue
+                comparison_rows.append(
                     {
-                        "pin_count": selected_row.get("Pin Count", selected_row.get("pin_count", 0)),
-                        "package": selected_row.get("Package", selected_row.get("package", "")),
+                        "Attribute": attribute,
+                        "Original": row.get("Original") or "Needs data",
+                        "Selected Alternative": row.get("Candidate") or "Needs data",
                     }
-                )
-                comparison_rows.extend(
-                    [
-                        {
-                            "Attribute": "Pin Count",
-                            "Original": (
-                                original_pins
-                                if original_pins > 0
-                                else "Not available from supplier data"
-                            ),
-                            "Selected Alternative": (
-                                selected_pins
-                                if selected_pins > 0
-                                else "Not available from supplier data"
-                            ),
-                        },
-                        {
-                            "Attribute": "Architecture",
-                            "Original": original_data.get("architecture")
-                            or original_data.get("Architecture")
-                            or "Not available from supplier data",
-                            "Selected Alternative": selected_row.get("Architecture", ""),
-                        },
-                    ]
                 )
             comparison_rows.extend(
                 [
@@ -11423,6 +11410,26 @@ def run_authenticated_app() -> None:
                     "warnings": warning_points,
                     "advantages": advantage_points,
                     "tradeoffs": tradeoff_points,
+                    "comparison_table": [
+                        {
+                            "Attribute": row.get("Attribute"),
+                            "Original": row.get("Original"),
+                            "Selected Alternative": row.get("Candidate"),
+                            "Status": row.get("Status"),
+                            "Evidence": row.get("Evidence"),
+                        }
+                        for row in (
+                            selected_row.get("Comparison Rows")
+                            or datasheet_comparison.get("rows")
+                            or []
+                        )
+                        if isinstance(row, dict)
+                    ],
+                    "comparison_family": (
+                        selected_row.get("Comparison Family")
+                        or datasheet_comparison.get("family")
+                        or ""
+                    ),
                 },
                 "generated_at": datetime.now(timezone.utc).isoformat(),
             }

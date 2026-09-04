@@ -39,7 +39,7 @@ class DatasheetComparisonTests(unittest.TestCase):
     def test_transistor_and_inductor_get_different_engineering_checks(self):
         transistor = infer_component_family({"description": "N-Channel MOSFET 60V"})
         inductor = infer_component_family({"description": "Power Inductor 10 uH"})
-        self.assertEqual(transistor, "Transistor / MOSFET")
+        self.assertEqual(transistor, "MOSFET")
         self.assertEqual(inductor, "Inductor")
 
     def test_missing_data_is_never_reported_as_a_match(self):
@@ -78,9 +78,18 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertEqual(different["differences"], 3)
 
 
-    def test_supplier_listed_direct_substitute_is_not_penalized_for_missing_fields(self):
+    def test_supplier_listed_direct_substitute_is_not_inflated_when_evidence_is_sparse(self):
         score = build_recommendation_score_breakdown(
             60, 55, {"Match": 2, "Different": 0, "Needs data": 7},
+            is_explicit_substitute=True,
+        )
+        # Direct relationship must remain separate from engineering confidence;
+        # sparse packaging-only matches must not floor recommendation to 85+.
+        self.assertLess(score["recommendation_score"], 85)
+
+    def test_supplier_listed_direct_with_substantial_engineering_coverage_keeps_floor(self):
+        score = build_recommendation_score_breakdown(
+            60, 80, {"Match": 6, "Different": 0, "Needs data": 1},
             is_explicit_substitute=True,
         )
         self.assertGreaterEqual(score["recommendation_score"], 85)

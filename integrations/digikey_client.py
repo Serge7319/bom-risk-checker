@@ -441,17 +441,39 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
 
 
 def extract_digikey_parameter(product: dict, target_names: list) -> str:
-    parameters = product.get("Parameters", [])
+    """Extract a DigiKey parameter using exact match, then longest safe alias.
 
+    Bare aliases such as ``Type`` must not steal values from ``Mounting Type``.
+    """
+    parameters = product.get("Parameters", []) or []
+    normalized_targets = [str(target or "").strip() for target in target_names if str(target or "").strip()]
+    if not normalized_targets:
+        return ""
+
+    # 1) Exact ParameterText match (case-insensitive), first matching target order.
+    for target in normalized_targets:
+        target_key = target.casefold()
+        for param in parameters:
+            name = str(param.get("ParameterText", "")).strip()
+            if name.casefold() == target_key:
+                return str(param.get("ValueText", ""))
+
+    # 2) Longest substring alias. Reject ultra-generic tokens unless exact.
+    generic = {"type", "function", "series", "family", "technology"}
+    best_value = ""
+    best_score = 0
     for param in parameters:
-        name = str(param.get("ParameterText", "")).lower()
+        name = str(param.get("ParameterText", "")).strip()
+        name_key = name.casefold()
         value = str(param.get("ValueText", ""))
-
-        for target in target_names:
-            if target.lower() in name:
-                return value
-
-    return ""
+        for target in normalized_targets:
+            target_key = target.casefold()
+            if target_key in generic:
+                continue
+            if target_key in name_key and len(target_key) > best_score:
+                best_value = value
+                best_score = len(target_key)
+    return best_value
 
 
 def extract_pin_count(text: str) -> int:
@@ -560,30 +582,37 @@ def normalize_digikey_product(product: dict) -> dict:
 
     gbw_mhz = extract_frequency_mhz(gbw_text)
 
-    # Preserve the distributor's parametric evidence. Alternative Finder used
-    # to retain only IC-oriented fields, which made a fully specified capacitor
-    # look "unknown" during comparison even when DigiKey had the values.
-    parametric_fields = {
-        "capacitance": ["Capacitance"],
-        "resistance": ["Resistance"],
-        "inductance": ["Inductance"],
-        "tolerance": ["Tolerance"],
-        "rated_voltage": ["Voltage - Rated", "Voltage Rating"],
-        "dielectric": ["Temperature Coefficient", "Dielectric"],
-        "power_rating": ["Power (Watts)", "Power Rating"],
-        "temperature_coefficient": ["Temperature Coefficient"],
-        "esr": ["ESR (Equivalent Series Resistance)", "ESR"],
-        "rated_current": ["Current - Rated", "Current Rating"],
-        "saturation_current": ["Current - Saturation"],
-        "dcr": ["DC Resistance (DCR)"],
-        "device_type": ["Transistor Type", "Technology"],
-        "reverse_voltage": ["Voltage - DC Reverse (Vr) (Max)", "Reverse Voltage"],
-        "forward_current": ["Current - Average Rectified (Io)", "Forward Current"],
+    # Family-profile-driven parametric evidence. Keys and DigiKey ParameterText
+    # aliases come from the shared component-family registry so every family
+    # (passives, discretes, MCU/FPGA, connectors, …) uses one map.
+    from src.component_family_profiles import digikey_parametric_map
+
+    parametric_fields = digikey_parametric_map()
+    # Packaging / pin / mounting / supply are already extracted above — avoid
+    # overwriting trusted values with empty secondary lookups.
+    skip_keys = {
+        "package",
+        "pin_count",
+        "mounting_style",
+        "voltage_range",
+        "lifecycle_status",
     }
-    parametric = {
-        key: extract_digikey_parameter(product, names)
-        for key, names in parametric_fields.items()
-    }
+    parametric = {}
+    for key, names in parametric_fields.items():
+        if key in skip_keys:
+            continue
+        value = extract_digikey_parameter(product, names)
+        if value:
+            if key == "channel_count":
+                try:
+                    parametric[key] = int(float(str(value).strip().split()[0]))
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            parametric[key] = value
+    temperature_range = extract_digikey_parameter(product, ["Operating Temperature"])
+    if temperature_range:
+        parametric.setdefault("temperature_range", temperature_range)
 
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),

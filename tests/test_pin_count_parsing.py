@@ -188,6 +188,7 @@ class PinCountParsingTests(unittest.TestCase):
             "Pin Count": 236,
             "pin_count": 236,
             "package": "TO-236",
+            "description": "NPN transistor",
         }
         candidate = {
             "Architecture": "BJT",
@@ -195,6 +196,7 @@ class PinCountParsingTests(unittest.TestCase):
             "Pin Count": 236,
             "pin_count": 236,
             "package": "TO-236",
+            "description": "NPN transistor",
         }
         score_with_bogus = calculate_drop_in_confidence(original, candidate)
         original_ok = dict(original)
@@ -205,24 +207,11 @@ class PinCountParsingTests(unittest.TestCase):
         candidate_ok["pin_count"] = 0
         score_without = calculate_drop_in_confidence(original_ok, candidate_ok)
         self.assertEqual(score_with_bogus, score_without)
-        # Matching bogus 236 must not beat a true 3-pin match by inventing pins.
-        true_match = calculate_drop_in_confidence(
-            {
-                "Architecture": "BJT",
-                "Package": "SOT-23-3",
-                "Pin Count": 3,
-                "pin_count": 3,
-                "package": "SOT-23-3",
-            },
-            {
-                "Architecture": "BJT",
-                "Package": "SOT-23-3",
-                "Pin Count": 3,
-                "pin_count": 3,
-                "package": "SOT-23-3",
-            },
-        )
-        self.assertGreater(true_match, score_with_bogus)
+        comparison = build_datasheet_comparison(original, candidate)
+        pin_row = next(row for row in comparison["rows"] if row["Attribute"] == "Pin count")
+        self.assertEqual(pin_row["Status"], "Needs data")
+        self.assertNotIn("236", pin_row["Original"])
+        self.assertNotIn("236", pin_row["Candidate"])
 
     def test_microcontroller_qfn_and_passive_isolation(self):
         mcu = {
