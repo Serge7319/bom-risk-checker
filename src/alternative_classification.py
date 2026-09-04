@@ -539,13 +539,20 @@ def build_recommendation_score_drivers(
     warnings: list | None = None,
     engineering_confidence: int = 0,
     recommendation_score: int = 0,
+    comparison_family: str = "",
 ) -> list[str]:
     """Explain low/medium scores from missing fields, mismatches, and sourcing trade-offs."""
+    from src.component_family_profiles import get_family_profile
+
+    profile = get_family_profile(comparison_family) if comparison_family else None
+    architecture_meaningful = bool(profile.architecture_meaningful) if profile else False
     drivers: list[str] = []
     for row in comparison_rows or []:
         if not isinstance(row, dict):
             continue
         attribute = str(row.get("Attribute") or row.get("Key") or "Field").strip()
+        if not architecture_meaningful and "architecture" in attribute.casefold():
+            continue
         status = str(row.get("Status") or row.get("Result") or "").strip().casefold()
         required = bool(row.get("Required"))
         if status == "needs data":
@@ -555,7 +562,11 @@ def build_recommendation_score_drivers(
             drivers.append(f"Mismatch: {attribute}")
     for item in warnings or []:
         text = str(item or "").strip()
-        if text and text not in drivers:
+        if not text:
+            continue
+        if not architecture_meaningful and "architecture" in text.casefold():
+            continue
+        if text not in drivers:
             drivers.append(text)
     for item in tradeoffs or []:
         text = str(item or "").strip()

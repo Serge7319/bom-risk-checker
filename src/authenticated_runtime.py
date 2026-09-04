@@ -774,11 +774,26 @@ def generate_engineering_change_package_pdf(
 
     combined_warnings = " ".join(warnings).lower()
     next_steps = []
+    comparison_family = str(
+        comparison_snapshot.get("comparison_family")
+        or ""
+    )
+    architecture_meaningful = False
+    try:
+        from src.component_family_profiles import get_family_profile
+
+        architecture_meaningful = bool(
+            get_family_profile(comparison_family).architecture_meaningful
+        ) if comparison_family else False
+    except Exception:
+        architecture_meaningful = False
     if any(word in combined_warnings for word in ("package", "mounting", "footprint")):
         next_steps.append("Verify PCB footprint, land pattern, and mounting constraints.")
     if "voltage" in combined_warnings:
         next_steps.append("Confirm voltage ratings against the circuit operating limits.")
-    if any(word in combined_warnings for word in ("architecture", "channel")):
+    if architecture_meaningful and any(
+        word in combined_warnings for word in ("architecture", "channel")
+    ):
         next_steps.append("Validate the electrical architecture and functional behavior.")
     if "pin" in combined_warnings:
         next_steps.append("Confirm pin mapping before schematic or PCB release.")
@@ -8833,8 +8848,10 @@ def run_authenticated_app() -> None:
             user_facing_comparison_rows,
             user_facing_pdf_evidence_rows,
             diagnostic_comparison_rows,
+            user_may_view_comparison_diagnostics,
         )
         from src.alternative_reasoning import build_alternative_reasoning
+        from src.component_family_profiles import get_family_profile
         from src.alternative_finder_search import (
             collect_provider_failure_names,
             get_or_enrich_selected_candidate,
@@ -10596,6 +10613,12 @@ def run_authenticated_app() -> None:
 
             for reason in reason_list:
                 lowered = reason.lower()
+                if "architecture" in lowered and not bool(
+                    get_family_profile(
+                        _af62b_value(selected_row, ["Comparison Family"], "")
+                    ).architecture_meaningful
+                ):
+                    continue
                 if "could not be verified" in lowered:
                     warning_points.append(reason)
                 elif reason.startswith("⚠") or reason.startswith("ℹ"):
@@ -10719,6 +10742,7 @@ def run_authenticated_app() -> None:
                 warnings=warning_points,
                 engineering_confidence=engineering_comparison_confidence,
                 recommendation_score=recommendation_score,
+                comparison_family=_af62b_value(selected_row, ["Comparison Family"], ""),
             )
             confidence_label = (
                 "High" if engineering_comparison_confidence >= 75
@@ -11198,7 +11222,11 @@ def run_authenticated_app() -> None:
                 cadivor_comparison_matrix_dataframe(
                     pd.DataFrame(user_facing_comparison_rows(datasheet_comparison["rows"]))
                 )
-            if is_admin:
+            show_developer_diagnostics = user_may_view_comparison_diagnostics(
+                role=str((current_user or {}).get("role") or ""),
+                is_admin=bool(is_admin),
+            )
+            if show_developer_diagnostics:
                 with st.expander("Developer comparison diagnostics", expanded=False):
                     st.caption(
                         "Internal schema metadata for engineering diagnostics. "
@@ -11307,7 +11335,7 @@ def run_authenticated_app() -> None:
                         cadivor_engineering_dataframe(
                             pd.DataFrame(user_facing_pdf_evidence_rows(pdf_field_rows))
                         )
-                        if is_admin:
+                        if show_developer_diagnostics:
                             with st.expander(
                                 "Developer PDF comparison diagnostics",
                                 expanded=False,

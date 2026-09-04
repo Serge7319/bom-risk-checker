@@ -44,4 +44,5 @@ jobs:
             tests.test_alternative_decision_consistency_752a20 \
             tests.test_alternative_finder_comparison_scroll \
             tests.test_alternative_finder_search_submit \
-            tests.test_alternative_finder_presentation
+            tests.test_alternative_finder_presentation \
+            tests.test_alternative_finder_admin_diagnostics

@@ -663,12 +663,21 @@ def _passive_compatibility_confidence(counts: dict, *, classification: str = "",
     return int(assessment["engineering_comparison_confidence"])
 
 
-def _passive_drop_in_reasons(rows: list) -> str:
+def _matrix_drop_in_reasons(
+    rows: list,
+    *,
+    architecture_meaningful: bool = False,
+) -> str:
     parts = []
     for row in rows or []:
         attribute = str(row.get("Attribute") or "").strip()
         status = str(row.get("Status") or "").strip()
         if not attribute:
+            continue
+        if (
+            not architecture_meaningful
+            and "architecture" in attribute.casefold()
+        ):
             continue
         if status == "Match":
             parts.append(f"✓ {attribute} matches")
@@ -677,6 +686,11 @@ def _passive_drop_in_reasons(rows: list) -> str:
         elif status == "Needs data":
             parts.append(f"ℹ {attribute} needs verification from retrieved evidence")
     return "; ".join(parts)
+
+
+def _passive_drop_in_reasons(rows: list) -> str:
+    """Back-compat alias for matrix-driven drop-in reasons."""
+    return _matrix_drop_in_reasons(rows, architecture_meaningful=False)
 
 
 def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
@@ -910,12 +924,20 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         candidate.get("Comparison Family")
         or infer_component_family(original)
     )
+    profile = get_family_profile(family)
     comparison_rows = candidate.get("Comparison Rows")
-    if family in PASSIVE_FAMILIES and isinstance(comparison_rows, list) and comparison_rows:
-        return _passive_drop_in_reasons(comparison_rows)
+    use_matrix_reasons = (
+        family in PASSIVE_FAMILIES
+        or family in DISCRETE_PARAMETRIC_FAMILY_IDS
+        or profile.scoring_mode in {"parametric_matrix", "resource_device", "ic_weighted"}
+    )
+    if use_matrix_reasons and isinstance(comparison_rows, list) and comparison_rows:
+        return _matrix_drop_in_reasons(
+            comparison_rows,
+            architecture_meaningful=bool(profile.architecture_meaningful),
+        )
 
     reasons = []
-
 
     original_architecture = str(original.get("Architecture", original.get("architecture", ""))).lower()
     candidate_architecture = str(candidate.get("Architecture", candidate.get("architecture", ""))).lower()
@@ -989,15 +1011,16 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
         else:
             reasons.append(f"⚠ Function differs ({candidate_function})")
 
-    if original_architecture and candidate_architecture:
-        if original_architecture == candidate_architecture:
-            reasons.append(
-                f"✓ Same architecture ({candidate.get('Architecture', candidate.get('architecture', ''))})")
-        else:
-            reasons.append("⚠ Architecture differs")
+    if profile.architecture_meaningful:
+        if original_architecture and candidate_architecture:
+            if original_architecture == candidate_architecture:
+                reasons.append(
+                    f"✓ Same architecture ({candidate.get('Architecture', candidate.get('architecture', ''))})")
+            else:
+                reasons.append("⚠ Architecture differs")
 
-    if not original_function and not original_architecture:
-        reasons.append("⚠ Original architecture could not be verified")
+        if not original_function and not original_architecture:
+            reasons.append("⚠ Original architecture could not be verified")
 
     normalized_original_package = normalize_package_name(original_package)
     normalized_candidate_package = normalize_package_name(candidate_package)

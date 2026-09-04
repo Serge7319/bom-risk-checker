@@ -50,6 +50,21 @@ INTERNAL_COMPARISON_METADATA_COLUMNS = (
     "ValueRole",
 )
 
+
+def user_may_view_comparison_diagnostics(
+    *,
+    role: str | None = None,
+    is_admin: bool = False,
+) -> bool:
+    """Server-side guard: developer comparison diagnostics are admin-only.
+
+    Non-admin roles must never receive the expander, metadata columns, or
+    diagnostic table in the rendered page tree.
+    """
+    if bool(is_admin):
+        return True
+    return str(role or "").strip().casefold() == "admin"
+
 # Back-compat exports used across the Alternative Finder stack.
 PASSIVE_FAMILIES = PASSIVE_FAMILY_IDS
 COMMON_FIELDS = (
