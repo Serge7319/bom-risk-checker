@@ -36,6 +36,20 @@ from src.parametric_compare import (
 MAX_DATASHEET_BYTES = 8 * 1024 * 1024
 MAX_DATASHEET_PAGES = 40
 
+USER_FACING_COMPARISON_COLUMNS = (
+    "Attribute",
+    "Original",
+    "Candidate",
+    "Result",
+    "Evidence",
+)
+INTERNAL_COMPARISON_METADATA_COLUMNS = (
+    "Key",
+    "Required",
+    "CompareMode",
+    "ValueRole",
+)
+
 # Back-compat exports used across the Alternative Finder stack.
 PASSIVE_FAMILIES = PASSIVE_FAMILY_IDS
 COMMON_FIELDS = (
@@ -179,6 +193,58 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
         "rows": rows,
         "counts": counts,
     }
+
+
+def user_facing_comparison_rows(rows: list | None) -> list[dict]:
+    """Project comparison rows to the standard end-user column set.
+
+    Internal schema metadata (Key / Required / CompareMode / ValueRole) is
+    omitted. Status is exposed as Result for the user-facing table.
+    """
+    projected: list[dict] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        projected.append(
+            {
+                "Attribute": row.get("Attribute", ""),
+                "Original": row.get("Original", ""),
+                "Candidate": row.get(
+                    "Candidate",
+                    row.get("Selected Alternative", ""),
+                ),
+                "Result": row.get("Result", row.get("Status", "")),
+                "Evidence": row.get("Evidence", ""),
+            }
+        )
+    return projected
+
+
+def user_facing_pdf_evidence_rows(rows: list | None) -> list[dict]:
+    """Project PDF evidence rows without internal Key/Required metadata."""
+    projected: list[dict] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        projected.append(
+            {
+                "Attribute": row.get("Attribute", ""),
+                "Original": row.get("Original PDF evidence", row.get("Original", "")),
+                "Candidate": row.get(
+                    "Candidate PDF evidence",
+                    row.get("Candidate", ""),
+                ),
+                "Result": row.get("Result", row.get("Status", "")),
+                "Evidence": row.get("Evidence", ""),
+                "Source pages": row.get("Source pages", ""),
+            }
+        )
+    return projected
+
+
+def diagnostic_comparison_rows(rows: list | None) -> list[dict]:
+    """Full comparison rows including internal schema metadata for admins."""
+    return [dict(row) for row in (rows or []) if isinstance(row, dict)]
 
 
 def build_engineering_evidence_assessment(

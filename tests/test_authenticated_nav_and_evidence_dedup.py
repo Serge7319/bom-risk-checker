@@ -707,7 +707,7 @@ class _EvidenceTestBase(_ModuleIsolationMixin, unittest.TestCase):
             "substitute_type": substitute_type,
             "supplier_part_id": supplier_part_id,
             "source_url": source_url,
-            "summary": f"{supplier} substitute type: {substitute_type}",
+            "summary": f"{supplier} relationship: {substitute_type}.",
             "evidence_type": "distributor-listed substitute",
         }
 
@@ -716,12 +716,12 @@ class RelationshipEvidenceSummaryDedupTests(_EvidenceTestBase):
 
     def test_single_record_renders_once(self):
         summary = self._m.relationship_evidence_summary([self._row()])
-        self.assertEqual(summary.count("DigiKey substitute type: Direct"), 1)
+        self.assertEqual(summary.count("DigiKey relationship: Direct."), 1)
 
     def test_duplicate_records_deduplicated(self):
         row = self._row()
         summary = self._m.relationship_evidence_summary([row, dict(row), dict(row)])
-        self.assertEqual(summary.count("DigiKey substitute type: Direct"), 1)
+        self.assertEqual(summary.count("DigiKey relationship: Direct."), 1)
 
     def test_summary_does_not_contain_raw_url(self):
         summary = self._m.relationship_evidence_summary([self._row()])
@@ -787,7 +787,7 @@ class RelationshipEvidenceLinkPairsTests(_EvidenceTestBase):
             "substitute_type": "Direct",
             "supplier_part_id": "10482927",
             "source_url": "https://www.digikey.com/en/products/detail/C0603C104K5RAC3121/10482927",
-            "summary": "DigiKey substitute type: Direct",
+            "summary": "DigiKey relationship: Direct.",
             "evidence_type": "distributor-listed substitute",
         }]
         pairs = self._m.relationship_evidence_link_pairs(rows)
@@ -839,7 +839,7 @@ class DeduplicateEvidenceRowsTests(_EvidenceTestBase):
             "candidate_mpn": "C0603C104K5RAC3121",
             "supplier": "DigiKey",
             "substitute_type": "Direct",
-            "summary": "DigiKey substitute type: Direct",
+            "summary": "DigiKey relationship: Direct.",
         }
         rows = [
             {**base, "supplier_part_id": "399-C0603C104K5RAC3121CT-ND",
@@ -852,8 +852,8 @@ class DeduplicateEvidenceRowsTests(_EvidenceTestBase):
         deduped = self._m.deduplicate_evidence_rows(rows)
         self.assertEqual(len(deduped), 1)
         summary = self._m.relationship_evidence_summary(rows)
-        self.assertEqual(summary, "DigiKey substitute type: Direct")
-        self.assertEqual(summary.count("DigiKey substitute type: Direct"), 1)
+        self.assertEqual(summary, "DigiKey relationship: Direct.")
+        self.assertEqual(summary.count("DigiKey relationship: Direct."), 1)
         self.assertEqual(len(self._m.relationship_evidence_link_pairs(rows)), 1)
 
 

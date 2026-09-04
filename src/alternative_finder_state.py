@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+import time
 from typing import Any, Mapping, MutableMapping, Optional
 
 ALT_FINDER_RESULT_KEY = "alternative_finder_result"
@@ -11,6 +12,10 @@ ALT_FINDER_NAV_CONSUMED_KEY = "alternative_finder_nav_consumed_token"
 ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY = "alternative_original_part"
 # Durable non-widget store for the MPN used by the completed/failed search.
 ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY = "alternative_completed_original_part"
+# Dedupe guard for button double-clicks / repeated Enter on the search form.
+ALTERNATIVE_LAST_SUBMIT_MPN_KEY = "alternative_finder_last_submit_mpn"
+ALTERNATIVE_LAST_SUBMIT_AT_KEY = "alternative_finder_last_submit_at"
+ALTERNATIVE_SEARCH_SUBMIT_DEBOUNCE_SECONDS = 2.0
 RESULT_ALGORITHM_VERSION = "supplier-evidence-v4"
 
 STATUS_IDLE = "idle"
@@ -663,6 +668,57 @@ def should_start_new_alternative_search(
     if not active:
         return True
     return _normalize_mpn(active.get("entered_mpn")) != submitted
+
+
+def resolve_alternative_finder_submitted_mpn(*values: Any) -> str:
+    """Return the first non-empty MPN from form/widget/session candidates."""
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def claim_alternative_finder_search_submit(
+    session_state: MutableMapping[str, Any],
+    submitted_mpn: str,
+    *,
+    debounce_seconds: float = ALTERNATIVE_SEARCH_SUBMIT_DEBOUNCE_SECONDS,
+    now: float | None = None,
+) -> bool:
+    """Claim a search submit once; reject empty, in-flight, or duplicate bursts.
+
+    Used so one Find Alternatives click or Enter submits the current typed MPN
+    exactly once, while double-clicks / repeated Enter do not re-run the search.
+    """
+    submitted = _normalize_mpn(submitted_mpn)
+    if not submitted:
+        return False
+
+    result = session_state.get(ALT_FINDER_RESULT_KEY)
+    if isinstance(result, dict):
+        if (
+            str(result.get("status") or "") == STATUS_RUNNING
+            and _normalize_mpn(result.get("entered_mpn")) == submitted
+        ):
+            return False
+
+    current = float(time.time() if now is None else now)
+    last_mpn = _normalize_mpn(session_state.get(ALTERNATIVE_LAST_SUBMIT_MPN_KEY))
+    try:
+        last_at = float(session_state.get(ALTERNATIVE_LAST_SUBMIT_AT_KEY) or 0.0)
+    except (TypeError, ValueError):
+        last_at = 0.0
+    if (
+        last_mpn == submitted
+        and last_at > 0.0
+        and (current - last_at) < float(debounce_seconds)
+    ):
+        return False
+
+    session_state[ALTERNATIVE_LAST_SUBMIT_MPN_KEY] = submitted
+    session_state[ALTERNATIVE_LAST_SUBMIT_AT_KEY] = current
+    return True
 
 
 def clear_alternative_finder_search(

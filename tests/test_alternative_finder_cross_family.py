@@ -23,7 +23,7 @@ def _relationship(supplier, original, candidate, substitute_type):
         "raw_substitute_type": substitute_type,
         "source_url": f"https://www.digikey.com/en/products/{candidate}",
         "evidence_type": "Distributor-listed substitute",
-        "summary": f"{supplier} substitute type: {substitute_type}",
+        "summary": f"{supplier} relationship: {substitute_type}.",
     }
 
 
@@ -275,7 +275,7 @@ class AlternativeFinderCrossFamilyTests(unittest.TestCase):
                         ),
                     )
                     self.assertNotIn(
-                        "DigiKey substitute type: Direct",
+                        "DigiKey relationship: Direct.",
                         assessment["supplier_relationship_summary"],
                     )
 
@@ -375,7 +375,7 @@ class AlternativeFinderCrossFamilyTests(unittest.TestCase):
                     self.classification.CLASS_VERIFIED_DIRECT,
                 )
                 self.assertIn(
-                    "DigiKey substitute type: Direct",
+                    "DigiKey relationship: Direct.",
                     nfnd.get("Supplier Relationship Summary", ""),
                 )
                 self.assertEqual(

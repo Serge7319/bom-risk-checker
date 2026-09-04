@@ -24,7 +24,7 @@ def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
                 "candidate_mpn": mpn,
                 "substitute_type": "Direct",
                 "evidence_type": "Distributor-listed substitute",
-                "summary": "DigiKey substitute type: Direct",
+                "summary": "DigiKey relationship: Direct.",
                 "supplier_part_id": f"{mpn}-DK",
                 "source_url": f"https://www.digikey.com/en/products/{mpn}",
             }
@@ -359,7 +359,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         counts = enriched["Comparison Counts"]
         self.assertEqual(counts.get("Different"), 0)
         self.assertGreaterEqual(counts.get("Match", 0), 6)
-        self.assertIn("DigiKey substitute type: Direct", enriched["Supplier Relationship Summary"])
+        self.assertIn("DigiKey relationship: Direct.", enriched["Supplier Relationship Summary"])
         self.assertGreaterEqual(enriched["Engineering Comparison Confidence"], 82)
         self.assertTrue(supplier_evidence.get("supplier_data_verified"))
 
@@ -515,7 +515,7 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
                     "candidate_mpn": mpn,
                     "substitute_type": "Direct",
                     "evidence_type": "Distributor-listed substitute",
-                    "summary": "DigiKey substitute type: Direct",
+                    "summary": "DigiKey relationship: Direct.",
                     "supplier_part_id": f"{mpn}-DK",
                     "source_url": f"https://www.digikey.com/en/products/{mpn}",
                 }
@@ -793,7 +793,7 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         self.assertEqual(target["Evidence Type"], "Distributor-listed substitute")
         self.assertEqual(
             str(target.get("Supplier Relationship Summary") or "").count(
-                "DigiKey substitute type: Direct"
+                "DigiKey relationship: Direct."
             ),
             1,
         )

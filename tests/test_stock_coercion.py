@@ -106,7 +106,7 @@ class StockCoercionTests(unittest.TestCase):
                         "candidate_mpn": "C0603C104K5RAC3121",
                         "substitute_type": "Direct",
                         "evidence_type": "Distributor-listed substitute",
-                        "summary": "DigiKey substitute type: Direct",
+                        "summary": "DigiKey relationship: Direct.",
                         "supplier_part_id": "C0603C104K5RAC3121-DK",
                         "source_url": "https://www.digikey.com/en/products/C0603C104K5RAC3121",
                     }

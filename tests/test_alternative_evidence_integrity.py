@@ -23,7 +23,7 @@ def _relationship(supplier, original, candidate, substitute_type, url=""):
         "raw_substitute_type": substitute_type,
         "source_url": url or f"https://www.digikey.com/en/products/{candidate}",
         "evidence_type": "Distributor-listed substitute",
-        "summary": f"{supplier} substitute type: {substitute_type}",
+        "summary": f"{supplier} relationship: {substitute_type}.",
     }
 
 
@@ -118,7 +118,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             )
             self.assertEqual(by_part[mpn]["Substitute Type"], "Direct")
             self.assertIn(
-                "DigiKey substitute type: Direct",
+                "DigiKey relationship: Direct.",
                 by_part[mpn]["Supplier Relationship Summary"],
             )
 
@@ -135,7 +135,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             )
             self.assertEqual(by_part[mpn]["Substitute Type"], "Upgrade")
             self.assertIn(
-                "DigiKey substitute type: Upgrade",
+                "DigiKey relationship: Upgrade.",
                 by_part[mpn]["Supplier Relationship Summary"],
             )
 
@@ -192,7 +192,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             self.classification.CLASS_VERIFIED_DIRECT,
         )
         self.assertNotIn(
-            "DigiKey substitute type: Direct",
+            "DigiKey relationship: Direct.",
             result.get("Supplier Relationship Summary", ""),
         )
 
@@ -337,7 +337,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
         )
         self.assertNotEqual(row["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
         self.assertNotIn(
-            "DigiKey substitute type: Direct",
+            "DigiKey relationship: Direct.",
             row.get("Supplier Relationship Summary", ""),
         )
 
@@ -472,7 +472,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
         )
         self.assertEqual(
             str(by_part["C0603C104K5RAC3121"]["Supplier Relationship Summary"]).count(
-                "DigiKey substitute type: Direct"
+                "DigiKey relationship: Direct."
             ),
             1,
         )
@@ -507,7 +507,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             )
         )
         self.assertNotIn(
-            "DigiKey substitute type: Direct",
+            "DigiKey relationship: Direct.",
             by_part["C0603C104K5RAC7411"].get("Supplier Relationship Summary", ""),
         )
 
@@ -531,7 +531,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
                 _relationship("Mouser", self.original, "ALT-1", "Direct")
             ],
         )
-        self.assertIn("Mouser substitute type: Direct", mouser_direct["supplier_relationship_summary"])
+        self.assertIn("Mouser relationship: Direct.", mouser_direct["supplier_relationship_summary"])
         self.assertNotIn(
             "DigiKey identifies this candidate as a Direct",
             mouser_direct["supplier_relationship_summary"],
@@ -644,7 +644,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
                 ),
             )
             self.assertNotIn(
-                "DigiKey substitute type: Direct",
+                "DigiKey relationship: Direct.",
                 assessment["supplier_relationship_summary"],
                 payload,
             )
@@ -672,7 +672,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
         summary = self.classification.relationship_evidence_summary(
             pair_3121["supplier_relationship_evidence"]
         )
-        self.assertEqual(summary.count("DigiKey substitute type: Direct"), 1)
+        self.assertEqual(summary.count("DigiKey relationship: Direct."), 1)
 
         def discover(_part):
             merged = self.classification.merge_discovery_candidates(
@@ -696,7 +696,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
         )
         self.assertEqual(
             str(by_part["C0603C104K5RAC3121"]["Supplier Relationship Summary"]).count(
-                "DigiKey substitute type: Direct"
+                "DigiKey relationship: Direct."
             ),
             1,
         )
@@ -705,7 +705,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             self.classification.CLASS_VERIFIED_DIRECT,
         )
         self.assertNotIn(
-            "DigiKey substitute type: Direct",
+            "DigiKey relationship: Direct.",
             by_part[candidate].get("Supplier Relationship Summary", ""),
         )
 
