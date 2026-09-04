@@ -61,10 +61,12 @@ def categorize_supplier_failure(
     provider_status: str,
     error_message: str = "",
     exception_type: str = "",
+    status_code: str | int | None = None,
 ) -> str:
     status = str(provider_status or "").strip().upper()
     lowered = _redact(error_message).casefold()
     exc = str(exception_type or "").strip()
+    code = _safe_http_status_code(status_code, error_message)
 
     if status == PROVIDER_NOT_CONFIGURED:
         return CATEGORY_CONFIGURATION
@@ -76,27 +78,87 @@ def categorize_supplier_failure(
         return CATEGORY_CONFIGURATION
     if status == PROVIDER_PART_NOT_FOUND:
         return CATEGORY_NO_RESULT
-    if status == PROVIDER_RATE_LIMITED or "rate limit" in lowered or "429" in lowered:
+    if status == PROVIDER_RATE_LIMITED or "rate limit" in lowered or "429" in lowered or code == "429":
         return CATEGORY_RATE_LIMIT
     if status == PROVIDER_TIMEOUT or exc in {"ReadTimeout", "ConnectTimeout", "Timeout"}:
         return CATEGORY_TIMEOUT
     if "timeout" in lowered or "timed out" in lowered:
         return CATEGORY_TIMEOUT
-    if exc in {"HTTPError", "ConnectionError"} or "http" in lowered:
-        return CATEGORY_HTTP_ERROR
+    # Auth must win over generic HTTPError (requests raises HTTPError for 401/403).
     if (
-        "authentication" in lowered
+        code in {"401", "403"}
+        or "authentication" in lowered
         or "unauthorized" in lowered
+        or "forbidden" in lowered
         or "401" in lowered
         or "403" in lowered
         or "credential" in lowered
     ):
         return CATEGORY_AUTHENTICATION
+    if exc in {"HTTPError", "ConnectionError"} or "http" in lowered or code:
+        return CATEGORY_HTTP_ERROR
     if "json" in lowered or "graphql" in lowered or "malformed" in lowered:
         return CATEGORY_MALFORMED_RESPONSE
     if status == PROVIDER_ERROR:
         return CATEGORY_PROVIDER_ERROR
     return CATEGORY_PROVIDER_ERROR
+
+
+def _safe_http_status_code(
+    status_code: str | int | None = None,
+    error_message: str = "",
+    error: BaseException | None = None,
+) -> str:
+    """Return a bare HTTP status code string, never URLs or response bodies."""
+    if status_code is not None and str(status_code).strip():
+        raw = str(status_code).strip()
+        if raw.isdigit() and 100 <= int(raw) <= 599:
+            return raw
+    if error is not None:
+        response = getattr(error, "response", None)
+        code = getattr(response, "status_code", None) if response is not None else None
+        if isinstance(code, int) and 100 <= code <= 599:
+            return str(code)
+    # Only accept a standalone 3-digit status; never scrape credentialed URLs.
+    match = re.search(r"(?<![0-9])([1-5][0-9]{2})(?![0-9])", str(error_message or ""))
+    if match:
+        return match.group(1)
+    return ""
+
+
+def railway_diagnostic_category(internal_category: str) -> str:
+    """Map internal failure categories to the Railway-searchable taxonomy."""
+    mapping = {
+        CATEGORY_CONFIGURATION: "configuration",
+        CATEGORY_AUTHENTICATION: "auth",
+        CATEGORY_HTTP_ERROR: "http",
+        CATEGORY_RATE_LIMIT: "rate_limit",
+        CATEGORY_TIMEOUT: "timeout",
+        CATEGORY_MALFORMED_RESPONSE: "provider_response",
+        CATEGORY_NO_RESULT: "provider_response",
+        CATEGORY_PROVIDER_ERROR: "provider_response",
+    }
+    return mapping.get(str(internal_category or "").strip(), "unknown")
+
+
+def diagnostic_is_retryable(
+    *,
+    log_category: str,
+    status_code: str = "",
+) -> bool:
+    if log_category in {"timeout", "rate_limit"}:
+        return True
+    if log_category in {"configuration", "auth"}:
+        return False
+    if status_code.isdigit():
+        code = int(status_code)
+        if code == 429 or code == 408 or code >= 500:
+            return True
+        if 400 <= code < 500:
+            return False
+    if log_category == "http":
+        return True
+    return False
 
 
 def log_supplier_diagnostic(
@@ -107,36 +169,54 @@ def log_supplier_diagnostic(
     provider_status: str,
     error_message: str = "",
     exception_type: str = "",
+    status_code: str | int | None = None,
+    error: BaseException | None = None,
     retained_candidates: bool = False,
 ) -> dict[str, str]:
+    """Emit one Railway-searchable supplier diagnostic for a non-success lookup.
+
+    Uses WARNING so Deploy Logs capture the event (INFO is not reliably retained).
+    The log line contains only safe searchable fields — never headers, tokens,
+    credentialed URLs, or response bodies.
+    """
     resolved_request_id = str(request_id or get_alternative_finder_request_id() or "unknown").strip()
+    safe_status_code = _safe_http_status_code(status_code, error_message, error)
     category = categorize_supplier_failure(
         provider_status=provider_status,
         error_message=error_message,
         exception_type=exception_type,
+        status_code=safe_status_code,
+    )
+    log_category = railway_diagnostic_category(category)
+    retryable = diagnostic_is_retryable(
+        log_category=log_category,
+        status_code=safe_status_code,
     )
     safe_message = _redact(error_message)[:160]
+    # Drop anything that still looks like a URL after redaction.
+    if "://" in safe_message or "nexar.com" in safe_message.casefold():
+        safe_message = "Supplier lookup failed."
     payload = {
         "request_id": resolved_request_id,
-        "supplier": supplier,
-        "stage": stage,
+        "supplier": str(supplier or "").strip() or "Supplier",
+        "stage": str(stage or "").strip() or "lookup",
         "category": category,
+        "log_category": log_category,
         "provider_status": str(provider_status or ""),
         "exception_type": str(exception_type or ""),
+        "status_code": safe_status_code,
+        "retryable": "true" if retryable else "false",
         "message": safe_message,
         "retained_candidates": "true" if retained_candidates else "false",
     }
-    logger.info(
-        "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s stage=%s category=%s "
-        "status=%s exception_type=%s retained_candidates=%s message=%s",
+    logger.warning(
+        "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
+        "status_code=%s retryable=%s",
         payload["request_id"],
         payload["supplier"],
-        payload["stage"],
-        payload["category"],
-        payload["provider_status"],
-        payload["exception_type"] or "none",
-        payload["retained_candidates"],
-        payload["message"] or "none",
+        payload["log_category"],
+        payload["status_code"] or "none",
+        payload["retryable"],
     )
     return payload
 
@@ -197,28 +277,25 @@ def _force_octopart_configuration_gap(
     category: str = "",
     error_message: str = "",
 ) -> bool:
-    """Octopart must use configuration wording when this environment is not usable."""
+    """Octopart uses configuration wording only when this environment is not usable.
+
+    Configured-but-failing Octopart (invalid credentials, HTTP errors, timeouts)
+    must remain a runtime unavailable path so Deploy Logs and UI stay aligned.
+    """
     if str(source or "").strip().casefold() != "octopart":
         return False
     if str(status or "").strip().upper() == "AVAILABLE":
         return False
     if category == CATEGORY_CONFIGURATION or status == PROVIDER_NOT_CONFIGURED:
         return True
-    if category == CATEGORY_AUTHENTICATION:
-        return True
     lowered = _redact(error_message).casefold()
-    if any(
-        token in lowered
-        for token in (
-            "not configured",
-            "missing required configuration",
-            "authentication",
-            "unauthorized",
-            "credential",
-            "configuration failed",
-        )
+    if (
+        "not configured" in lowered
+        or "missing required configuration" in lowered
+        or "credentials are not configured" in lowered
     ):
         return True
+    # Invalid/expired credentials are runtime failures when secrets are present.
     return not _octopart_credentials_configured()
 
 
@@ -543,3 +620,9 @@ def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, 
         return
     result["failure_category"] = str(diagnostic.get("category") or "")
     result["diagnostic_stage"] = str(diagnostic.get("stage") or "")
+    if diagnostic.get("status_code"):
+        result["diagnostic_status_code"] = str(diagnostic.get("status_code") or "")
+    if diagnostic.get("retryable"):
+        result["diagnostic_retryable"] = str(diagnostic.get("retryable") or "")
+    if diagnostic.get("log_category"):
+        result["diagnostic_log_category"] = str(diagnostic.get("log_category") or "")

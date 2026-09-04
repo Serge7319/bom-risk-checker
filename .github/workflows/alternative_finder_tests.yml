@@ -35,6 +35,7 @@ jobs:
             tests.test_alternative_supplier_evidence \
             tests.test_alternative_finder_search \
             tests.test_alternative_finder_suitability \
+            tests.test_alternative_finder_cross_family \
             tests.test_digikey_substitutions \
             tests.test_datasheet_comparison \
             tests.test_alternative_decision_consistency_752a20

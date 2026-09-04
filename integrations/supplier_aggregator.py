@@ -200,6 +200,7 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number):
             provider_status=provider_status,
             error_message=safe_message,
             exception_type=type(error).__name__,
+            error=error,
         )
         if started is not None:
             emit_timing(
