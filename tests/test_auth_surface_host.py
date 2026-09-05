@@ -433,15 +433,23 @@ class AuthSurfaceHostCardAndModeTests(unittest.TestCase):
 
     def test_login_mode_shows_login_immediately(self):
         self.st.session_state[self.auth.AUTH_MODE_WIDGET_KEY] = self.auth.AUTH_MODE_LOGIN
-        labels: list[str] = []
-        self.st.form_submit_button = MagicMock(
-            side_effect=lambda label, **k: labels.append(str(label)) or False
-        )
         self.st.radio = MagicMock(return_value=self.auth.AUTH_MODE_LOGIN)
-        with patch.object(self.auth, "inject_core_premium_ui_auth"):
+        atomic_calls: list[dict] = []
+
+        def capture_atomic_login(**kwargs):
+            atomic_calls.append(dict(kwargs))
+            return None
+
+        with patch.object(self.auth, "inject_core_premium_ui_auth"), patch.object(
+            self.auth, "render_atomic_login", side_effect=capture_atomic_login
+        ):
             self.auth.show_auth_ui(MagicMock(), None)
-        self.assertIn(self.auth.AUTH_MODE_LOGIN, labels)
-        self.assertNotIn("Terms summary", "\n".join(str(c) for c in self.st.markdown.call_args_list))
+        self.assertEqual(len(atomic_calls), 1)
+        self.assertEqual(atomic_calls[0].get("submit_label"), self.auth.AUTH_MODE_LOGIN)
+        self.assertNotIn(
+            "Terms summary",
+            "\n".join(str(c) for c in self.st.markdown.call_args_list),
+        )
 
 
 class AuthSurfaceHostMultiRunHarness(unittest.TestCase):
