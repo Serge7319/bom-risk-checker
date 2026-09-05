@@ -28,18 +28,21 @@ SUBREASON_MALFORMED_RESPONSE = "malformed_response"
 SUBREASON_MISSING_EXPECTED_DATA = "missing_expected_data"
 SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
 SUBREASON_AUTHENTICATION = "authentication"
+SUBREASON_RATE_LIMIT = "rate_limit"
 SUBREASON_ZERO_RESULTS = "zero_results"
 SUBREASON_OK = "ok"
 
 # Safe GraphQL error taxonomy for diagnostics/tests (never message bodies).
 GRAPHQL_KIND_AUTH = "auth"
 GRAPHQL_KIND_SCHEMA = "schema"
+GRAPHQL_KIND_RATE_LIMIT = "rate_limit"
 GRAPHQL_KIND_OTHER = "other"
 
-# Match the current Nexar Supply docs (pricingByVolumeLevels / partsByMpn):
-# - search-level q + limit only (country/currency optional; omit to avoid arg rejects)
-# - part.name (not shortDescription)
-# - offer prices as quantity + price (currency selected separately when needed)
+# Match the current Nexar Supply docs for supSearchMpn:
+# - search-level q + limit only
+# - part.mpn + manufacturer.name (documented MPN-search fields)
+# - avoid undocumented part.name (docs use shortDescription on keyword search)
+# - offer prices as quantity + price
 # - no clickUrl dependency for core availability/pricing normalization
 _PART_QUERY = """
 query CadivorSupplierSearch($mpn: String!) {
@@ -49,7 +52,6 @@ query CadivorSupplierSearch($mpn: String!) {
       part {
         id
         mpn
-        name
         manufacturer {
           name
         }
@@ -75,6 +77,7 @@ _REJECTED_FIELD_PATTERNS = (
     re.compile(r"Cannot query field ['\"]([^'\"]+)['\"]", re.IGNORECASE),
     re.compile(r"Unknown (?:field|argument) ['\"]([^'\"]+)['\"]", re.IGNORECASE),
     re.compile(r"Field ['\"]([^'\"]+)['\"] is not defined", re.IGNORECASE),
+    re.compile(r"Field ['\"]([^'\"]+)['\"] doesn't exist", re.IGNORECASE),
     re.compile(r"Argument ['\"]([^'\"]+)['\"] has invalid value", re.IGNORECASE),
     re.compile(r"got invalid value .+ for argument ['\"]([^'\"]+)['\"]", re.IGNORECASE),
 )
@@ -93,6 +96,16 @@ _AUTH_ERROR_CODES = frozenset(
     }
 )
 
+_RATE_LIMIT_ERROR_CODES = frozenset(
+    {
+        "rate_limited",
+        "ratelimited",
+        "too_many_requests",
+        "throttled",
+        "throttle",
+    }
+)
+
 
 class OctopartResponseError(RuntimeError):
     """Configured Octopart/Nexar call failed with a classified response subreason."""
@@ -104,6 +117,7 @@ class OctopartResponseError(RuntimeError):
         subreason: str,
         rejected_fields: list[str] | tuple[str, ...] | None = None,
         error_codes: list[str] | tuple[str, ...] | None = None,
+        graphql_kind: str = "",
     ):
         super().__init__(message)
         self.subreason = str(subreason or SUBREASON_MALFORMED_RESPONSE).strip()
@@ -117,6 +131,7 @@ class OctopartResponseError(RuntimeError):
             for item in (error_codes or ())
             if str(item or "").strip()
         )
+        self.graphql_kind = str(graphql_kind or "").strip()
 
 
 def _nexar_secret(primary_name: str, legacy_name: str) -> str:
@@ -167,6 +182,18 @@ def _access_token() -> str:
         access_token = str(payload.get("access_token") or "").strip()
         if not access_token:
             raise RuntimeError("Octopart authentication returned no usable credential.")
+        # Token may succeed while omitting Supply scope; treat that as auth failure
+        # before any GraphQL call so diagnostics stay actionable.
+        granted_scope = str(payload.get("scope") or "").strip().casefold()
+        if granted_scope and NEXAR_TOKEN_SCOPE not in {
+            part.strip() for part in granted_scope.replace(",", " ").split()
+        }:
+            raise OctopartResponseError(
+                "Octopart authentication returned a token without Supply API scope.",
+                subreason=SUBREASON_AUTHENTICATION,
+                error_codes=["insufficient_scope"],
+                graphql_kind=GRAPHQL_KIND_AUTH,
+            )
         try:
             expires_in = max(int(payload.get("expires_in", 3600)), 1)
         except (TypeError, ValueError):
@@ -216,7 +243,7 @@ def _normalize_part(part: dict) -> dict:
     result["manufacturer"] = (
         str(manufacturer.get("name") or "") if isinstance(manufacturer, dict) else ""
     )
-    result["description"] = str(part.get("name") or part.get("shortDescription") or "")
+    result["description"] = str(part.get("shortDescription") or part.get("name") or "")
 
     seller_names = set()
     prices = []
@@ -266,21 +293,36 @@ def extract_graphql_rejected_fields(errors: list[Any] | None) -> list[str]:
     """Extract rejected GraphQL field/argument names only (safe for diagnostics/tests)."""
     found: list[str] = []
     seen: set[str] = set()
+
+    def _add(name: str) -> None:
+        cleaned = str(name or "").strip()
+        if not cleaned or cleaned in seen:
+            return
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", cleaned):
+            return
+        if cleaned in {"query", "mutation", "subscription", "data"}:
+            return
+        seen.add(cleaned)
+        found.append(cleaned)
+
     for item in errors or []:
         message = ""
         if isinstance(item, dict):
             message = str(item.get("message") or "")
+            path = item.get("path")
+            if isinstance(path, list) and path:
+                leaf = path[-1]
+                if isinstance(leaf, str):
+                    _add(leaf)
+            extensions = item.get("extensions")
+            if isinstance(extensions, dict):
+                for key in ("fieldName", "argumentName", "field", "argument"):
+                    _add(str(extensions.get(key) or ""))
         else:
             message = str(item or "")
         for pattern in _REJECTED_FIELD_PATTERNS:
             for match in pattern.finditer(message):
-                name = str(match.group(1) or "").strip()
-                if not name or name in seen:
-                    continue
-                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-                    continue
-                seen.add(name)
-                found.append(name)
+                _add(str(match.group(1) or ""))
     return found
 
 
@@ -316,6 +358,19 @@ def _graphql_messages(errors: list[Any]) -> str:
     return " ".join(snippets).casefold()
 
 
+def _is_rate_limit_graphql_failure(errors: list[Any]) -> bool:
+    codes = {code.casefold().replace("-", "_") for code in extract_graphql_error_codes(errors)}
+    if codes & _RATE_LIMIT_ERROR_CODES:
+        return True
+    joined = _graphql_messages(errors)
+    return (
+        "rate limit" in joined
+        or "too many requests" in joined
+        or "throttl" in joined
+        or "429" in joined
+    )
+
+
 def _is_auth_graphql_failure(errors: list[Any]) -> bool:
     codes = {code.casefold().replace("-", "_") for code in extract_graphql_error_codes(errors)}
     if codes & _AUTH_ERROR_CODES:
@@ -337,7 +392,8 @@ def _is_auth_graphql_failure(errors: list[Any]) -> bool:
         "authentication required",
         "invalid token",
         "token expired",
-        "jwt",
+        "jwt expired",
+        "jwt invalid",
     )
     return any(marker in joined for marker in markers)
 
@@ -348,22 +404,23 @@ def _is_schema_graphql_failure(errors: list[Any]) -> bool:
     joined = _graphql_messages(errors)
     codes = {code.casefold() for code in extract_graphql_error_codes(errors)}
     if "graphql_validation_failed" in codes or "validation" in " ".join(codes):
-        # Validation without extractable field names still maps to schema mismatch.
         schema_markers = (
             "cannot query field",
             "unknown field",
             "unknown argument",
             "field undefined",
             "is not defined",
+            "doesn't exist",
+            "does not exist",
             "has invalid value",
             "got invalid value",
             "expected type",
             "must not have a selection",
+            "did you mean",
         )
         if any(marker in joined for marker in schema_markers):
             return True
-        # Pure validation failures with no auth markers are schema-class.
-        if not _is_auth_graphql_failure(errors):
+        if not _is_auth_graphql_failure(errors) and not _is_rate_limit_graphql_failure(errors):
             return True
     return (
         "cannot query field" in joined
@@ -371,6 +428,8 @@ def _is_schema_graphql_failure(errors: list[Any]) -> bool:
         or "unknown argument" in joined
         or "field undefined" in joined
         or "is not defined by type" in joined
+        or "doesn't exist" in joined
+        or "does not exist" in joined
         or "has invalid value" in joined
         or "got invalid value" in joined
     )
@@ -383,6 +442,8 @@ def graphql_error_kind(errors: list[Any] | None) -> str:
         return GRAPHQL_KIND_OTHER
     if _is_auth_graphql_failure(items):
         return GRAPHQL_KIND_AUTH
+    if _is_rate_limit_graphql_failure(items):
+        return GRAPHQL_KIND_RATE_LIMIT
     if _is_schema_graphql_failure(items):
         return GRAPHQL_KIND_SCHEMA
     return GRAPHQL_KIND_OTHER
@@ -406,6 +467,8 @@ def _graphql_error_subreason(errors: list[Any]) -> str:
     kind = graphql_error_kind(errors)
     if kind == GRAPHQL_KIND_AUTH:
         return SUBREASON_AUTHENTICATION
+    if kind == GRAPHQL_KIND_RATE_LIMIT:
+        return SUBREASON_RATE_LIMIT
     if kind == GRAPHQL_KIND_SCHEMA:
         return SUBREASON_SCHEMA_MISMATCH
     return SUBREASON_GRAPHQL_ERRORS
@@ -420,6 +483,7 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
         "usable": False,
         "rejected_fields": [],
         "error_codes": [],
+        "graphql_kind": GRAPHQL_KIND_OTHER,
     }
     if payload is None or payload == "":
         return dict(empty)
@@ -435,6 +499,7 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
     has_errors = isinstance(errors, list) and bool(errors)
     rejected_fields = extract_graphql_rejected_fields(errors if has_errors else [])
     error_codes = extract_graphql_error_codes(errors if has_errors else [])
+    kind = graphql_error_kind(errors if has_errors else [])
     data = payload.get("data")
 
     def _fail(subreason: str) -> dict[str, Any]:
@@ -445,6 +510,7 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
             "usable": False,
             "rejected_fields": rejected_fields,
             "error_codes": error_codes,
+            "graphql_kind": kind if has_errors else GRAPHQL_KIND_OTHER,
         }
 
     if has_errors and data in (None, {}):
@@ -470,6 +536,7 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
             "usable": True,
             "rejected_fields": [],
             "error_codes": [],
+            "graphql_kind": GRAPHQL_KIND_OTHER,
         }
     if not isinstance(search, dict):
         return _fail(SUBREASON_MALFORMED_RESPONSE)
@@ -498,9 +565,9 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
             "usable": True,
             "rejected_fields": [],
             "error_codes": [],
+            "graphql_kind": GRAPHQL_KIND_OTHER,
         }
 
-    # Partial GraphQL errors with usable rows: still treat as success for exact-match.
     if has_errors and not results:
         return _fail(_graphql_error_subreason(errors if isinstance(errors, list) else []))
 
@@ -511,6 +578,7 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
         "usable": True,
         "rejected_fields": rejected_fields,
         "error_codes": error_codes,
+        "graphql_kind": kind,
     }
 
 
@@ -543,6 +611,24 @@ def search_octopart_by_part_number(part_number: str) -> dict:
         headers={"Authorization": f"Bearer {_access_token()}"},
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
+    try:
+        status_code = int(getattr(response, "status_code", 0) or 0)
+    except (TypeError, ValueError):
+        status_code = 0
+    if status_code in {401, 403}:
+        raise OctopartResponseError(
+            "Octopart supplier query was rejected by authentication.",
+            subreason=SUBREASON_AUTHENTICATION,
+            error_codes=[str(status_code)],
+            graphql_kind=GRAPHQL_KIND_AUTH,
+        )
+    if status_code == 429:
+        raise OctopartResponseError(
+            "Octopart supplier query was rate limited.",
+            subreason=SUBREASON_RATE_LIMIT,
+            error_codes=["429"],
+            graphql_kind=GRAPHQL_KIND_RATE_LIMIT,
+        )
     response.raise_for_status()
     try:
         payload = response.json()
@@ -560,6 +646,7 @@ def search_octopart_by_part_number(part_number: str) -> dict:
             subreason=subreason,
             rejected_fields=list(classified.get("rejected_fields") or []),
             error_codes=list(classified.get("error_codes") or []),
+            graphql_kind=str(classified.get("graphql_kind") or ""),
         )
 
     results = list(classified.get("results") or [])
@@ -570,7 +657,6 @@ def search_octopart_by_part_number(part_number: str) -> dict:
         normalized["octopart_hits"] = hits
         return normalized
 
-    # Valid GraphQL data with no exact MPN match is a completed zero-result search.
     empty = default_octopart_result(requested)
     empty["octopart_subreason"] = SUBREASON_ZERO_RESULTS
     empty["octopart_hits"] = hits

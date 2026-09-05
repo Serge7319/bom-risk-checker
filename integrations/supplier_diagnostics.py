@@ -35,6 +35,7 @@ SUBREASON_MALFORMED_RESPONSE = "malformed_response"
 SUBREASON_MISSING_EXPECTED_DATA = "missing_expected_data"
 SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
 SUBREASON_AUTHENTICATION = "authentication"
+SUBREASON_RATE_LIMIT = "rate_limit"
 SUBREASON_ZERO_RESULTS = "zero_results"
 
 _SECRET_PATTERN = re.compile(
@@ -116,6 +117,43 @@ def _redact(message: str) -> str:
     return _SECRET_PATTERN.sub(r"\1=<redacted>", str(message or "")).strip()
 
 
+def _strip_urls_and_query_secrets(message: str) -> str:
+    """Remove credentialed URLs/query strings so they cannot drive classification."""
+    text = str(message or "")
+    # Drop full URLs first (often embed callInfo.apiKey=...).
+    text = re.sub(r"https?://\S+", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(?i)\b(?:api[_-]?key|token|client_secret|password|authorization)=[^&\s]+",
+        "",
+        text,
+    )
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _explicit_auth_status(status_code: str = "") -> bool:
+    return str(status_code or "").strip() in {"401", "403"}
+
+
+def _unambiguous_auth_message(message: str) -> bool:
+    """True only for clear auth wording after URL/query redaction."""
+    lowered = _strip_urls_and_query_secrets(message).casefold()
+    if not lowered:
+        return False
+    markers = (
+        "unauthorized",
+        "unauthenticated",
+        "forbidden",
+        "invalid api key",
+        "invalid apikey",
+        "invalid token",
+        "access denied",
+        "authentication failed",
+        "not authenticated",
+        "insufficient scope",
+    )
+    return any(marker in lowered for marker in markers)
+
+
 def categorize_supplier_failure(
     *,
     provider_status: str,
@@ -125,15 +163,18 @@ def categorize_supplier_failure(
     subreason: str = "",
 ) -> str:
     status = str(provider_status or "").strip().upper()
-    lowered = _redact(error_message).casefold()
-    exc = str(exception_type or "").strip()
     code = _safe_http_status_code(status_code, error_message)
     reason = str(subreason or "").strip().casefold()
+    # Classify from URL-stripped text so query params like apiKey= do not look like auth.
+    lowered = _strip_urls_and_query_secrets(_redact(error_message)).casefold()
+    exc = str(exception_type or "").strip()
 
     if reason == SUBREASON_ZERO_RESULTS or status == PROVIDER_PART_NOT_FOUND:
         return CATEGORY_NO_RESULT
     if reason == SUBREASON_AUTHENTICATION:
         return CATEGORY_AUTHENTICATION
+    if reason == SUBREASON_RATE_LIMIT or status == PROVIDER_RATE_LIMITED:
+        return CATEGORY_RATE_LIMIT
     if reason == SUBREASON_GRAPHQL_ERRORS:
         return CATEGORY_PROVIDER_ERROR
     if reason in {
@@ -157,16 +198,14 @@ def categorize_supplier_failure(
         return CATEGORY_TIMEOUT
     if "timeout" in lowered or "timed out" in lowered:
         return CATEGORY_TIMEOUT
-    # Auth must win over generic HTTPError (requests raises HTTPError for 401/403).
-    if (
-        code in {"401", "403"}
-        or "authentication" in lowered
-        or "unauthorized" in lowered
-        or "forbidden" in lowered
-        or "401" in lowered
-        or "403" in lowered
-        or "credential" in lowered
-    ):
+    # Explicit HTTP auth statuses win first.
+    if _explicit_auth_status(code):
+        return CATEGORY_AUTHENTICATION
+    # HTTP 5xx is provider/http failure unless status itself was 401/403 above.
+    if code.isdigit() and int(code) >= 500:
+        return CATEGORY_HTTP_ERROR
+    # Auth only with unambiguous wording after URL/query redaction (never apiKey-in-URL).
+    if _unambiguous_auth_message(error_message):
         return CATEGORY_AUTHENTICATION
     if exc in {"HTTPError", "ConnectionError"} or "http" in lowered or code:
         return CATEGORY_HTTP_ERROR
@@ -197,6 +236,7 @@ def normalize_provider_response_subreason(
         SUBREASON_MISSING_EXPECTED_DATA,
         SUBREASON_SCHEMA_MISMATCH,
         SUBREASON_AUTHENTICATION,
+        SUBREASON_RATE_LIMIT,
         SUBREASON_ZERO_RESULTS,
     }
     if reason in allowed:
@@ -322,6 +362,11 @@ def log_supplier_diagnostic(
             if str(item or "").strip()
             and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", str(item).strip())
         ]
+        graphql_kind = str(getattr(error, "graphql_kind", "") or "").strip()
+        if graphql_kind and not re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", graphql_kind):
+            graphql_kind = ""
+    else:
+        graphql_kind = ""
     safe_status_code = _safe_http_status_code(status_code, error_message, error)
     resolved_subreason = normalize_provider_response_subreason(
         subreason=subreason or error_subreason,
@@ -371,8 +416,13 @@ def log_supplier_diagnostic(
         payload["rejected_fields"] = ",".join(rejected_fields[:8])
     if error_codes:
         payload["error_codes"] = ",".join(error_codes[:8])
+    if graphql_kind:
+        payload["graphql_kind"] = graphql_kind
     extra_bits: list[str] = []
     extra_vals: list[str] = []
+    if graphql_kind:
+        extra_bits.append("graphql_kind=%s")
+        extra_vals.append(payload["graphql_kind"])
     if rejected_fields:
         extra_bits.append("rejected_fields=%s")
         extra_vals.append(payload["rejected_fields"])
@@ -434,6 +484,8 @@ def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, 
         result["diagnostic_rejected_fields"] = str(diagnostic.get("rejected_fields") or "")
     if diagnostic.get("error_codes"):
         result["diagnostic_error_codes"] = str(diagnostic.get("error_codes") or "")
+    if diagnostic.get("graphql_kind"):
+        result["diagnostic_graphql_kind"] = str(diagnostic.get("graphql_kind") or "")
 
 
 _PLACEHOLDER_SECRET_VALUES = frozenset(
