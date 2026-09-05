@@ -34,10 +34,9 @@ class OctopartIntegrationTests(unittest.TestCase):
         self.requests.post.reset_mock()
         self.client._TOKEN_CACHE.clear()
 
-    def _part(self, mpn="LM358N", *, name="Operational amplifier"):
+    def _part(self, mpn="LM358N", *, description="Operational amplifier"):
         return {
             "mpn": mpn,
-            "name": name,
             "manufacturer": {"name": "Texas Instruments"},
             "sellers": [
                 {
@@ -45,7 +44,6 @@ class OctopartIntegrationTests(unittest.TestCase):
                     "offers": [
                         {
                             "inventoryLevel": 120,
-                            "clickUrl": "https://example.com/a",
                             "prices": [{"quantity": 1, "price": 0.62}],
                         }
                     ],
@@ -60,13 +58,18 @@ class OctopartIntegrationTests(unittest.TestCase):
                     ],
                 },
             ],
+            "_description": description,
         }
 
     def _responses(self, parts, *, hits=None):
         token = Mock()
         token.json.return_value = {"access_token": "private-token", "expires_in": 3600}
         graphql = Mock()
-        results = [{"part": part} for part in parts]
+        results = []
+        for part in parts:
+            row = dict(part)
+            description = str(row.pop("_description", "") or "")
+            results.append({"description": description, "part": row})
         payload = {
             "data": {
                 "supSearchMpn": {
@@ -82,6 +85,38 @@ class OctopartIntegrationTests(unittest.TestCase):
     def _secrets(self, name, **kwargs):
         return {"NEXAR_CLIENT_ID": "client-id", "NEXAR_CLIENT_SECRET": "private-secret"}[name]
 
+    def test_canonical_query_matches_official_nexar_supply_example(self):
+        query = self.client.canonical_sup_search_mpn_query()
+        self.assertEqual(query, self.client.CANONICAL_SUP_SEARCH_MPN_QUERY)
+        self.assertEqual(query, self.client._PART_QUERY)
+        self.assertIn("query SearchMpn($mpn: String!, $limit: Int!)", query)
+        self.assertIn("supSearchMpn(q: $mpn, limit: $limit)", query)
+        self.assertIn("hits", query)
+        self.assertIn("description", query)
+        self.assertIn("manufacturer {", query)
+        self.assertIn("inventoryLevel", query)
+        self.assertIn("prices {", query)
+        self.assertIn("quantity", query)
+        self.assertIn("price", query)
+        self.assertEqual(self.client.query_contains_unsupported_fields(query), [])
+        self.assertNotIn("clickUrl", query)
+        self.assertNotIn("shortDescription", query)
+        self.assertNotIn("currency:", query)
+        self.assertNotIn("country:", query)
+        self.assertNotRegex(query, r"\bpart\s*\{\s*id\b")
+
+    def test_request_builder_emits_documented_query_and_limit_variable(self):
+        body = self.client.build_nexar_sup_search_mpn_request("LM358N", limit=5)
+        self.assertEqual(body["query"], self.client.CANONICAL_SUP_SEARCH_MPN_QUERY)
+        self.assertEqual(body["variables"], {"mpn": "LM358N", "limit": 5})
+        self.assertEqual(
+            self.client.query_contains_unsupported_fields(body["query"]), []
+        )
+
+    def test_authorization_header_uses_bearer_token_form(self):
+        headers = self.client.nexar_authorization_headers("private-token")
+        self.assertEqual(headers, {"Authorization": "Bearer private-token"})
+
     def test_query_uses_current_nexar_fields(self):
         query = self.client._PART_QUERY
         self.assertIn("supSearchMpn", query)
@@ -90,12 +125,10 @@ class OctopartIntegrationTests(unittest.TestCase):
         self.assertIn("quantity", query)
         self.assertIn("price", query)
         self.assertIn("inventoryLevel", query)
-        # Official MPN-search docs do not require part.name/shortDescription.
+        self.assertIn("description", query)
         self.assertNotIn("shortDescription", query)
-        # Docs Key Response Fields do not list part.id; keep query docs-aligned.
         self.assertNotRegex(query, r"\bpart\s*\{\s*id\b")
         self.assertNotRegex(query, r"\bpart\s*\{\s*id\s*mpn\s*name\b")
-        # Keep the query minimal; optional country/currency/clickUrl caused live rejects.
         self.assertNotIn("country:", query)
         self.assertNotIn("currency:", query)
         self.assertNotIn("clickUrl", query)
@@ -238,6 +271,7 @@ class OctopartIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(generic["graphql_kind"], self.client.GRAPHQL_KIND_PROVIDER)
         self.assertEqual(generic["subreason"], self.client.SUBREASON_PROVIDER_FAILURE)
+        self.assertTrue(generic["error_fingerprint"].startswith("gql_"))
         opaque = self.client.inspect_nexar_graphql_errors(
             fixtures["unknown_opaque"]["errors"]
         )
@@ -368,7 +402,62 @@ class OctopartIntegrationTests(unittest.TestCase):
         self.assertEqual(
             query_call.kwargs["headers"]["Authorization"], "Bearer private-token"
         )
+        self.assertEqual(
+            query_call.kwargs["headers"],
+            self.client.nexar_authorization_headers("private-token"),
+        )
+        self.assertEqual(
+            query_call.kwargs["json"],
+            self.client.build_nexar_sup_search_mpn_request("LM358N"),
+        )
         self.assertEqual(query_call.kwargs["json"]["variables"]["mpn"], "LM358N")
+        self.assertEqual(query_call.kwargs["json"]["variables"]["limit"], 5)
+        self.assertEqual(
+            query_call.kwargs["json"]["query"],
+            self.client.CANONICAL_SUP_SEARCH_MPN_QUERY,
+        )
+
+    def test_normal_response_contract(self):
+        self._responses([self._part(description="Official result description")])
+        with patch.object(self.client, "get_secret", side_effect=self._secrets):
+            result = self.client.search_octopart_by_part_number("LM358N")
+        self.assertEqual(result["manufacturer_part_number"], "LM358N")
+        self.assertEqual(result["description"], "Official result description")
+        self.assertEqual(result["octopart_subreason"], self.client.SUBREASON_OK)
+        self.assertGreater(result["stock_total"], 0)
+
+    def test_http_auth_failure_classified_as_authentication(self):
+        token = Mock()
+        token.json.return_value = {"access_token": "private-token", "expires_in": 3600}
+        graphql = Mock()
+        graphql.status_code = 401
+        graphql.json.return_value = {"errors": [{"message": "should not leak"}]}
+        self.requests.post.side_effect = [token, graphql]
+        with patch.object(self.client, "get_secret", side_effect=self._secrets):
+            with self.assertRaises(self.client.OctopartResponseError) as caught:
+                self.client.search_octopart_by_part_number("LM358N")
+        self.assertEqual(caught.exception.subreason, self.client.SUBREASON_AUTHENTICATION)
+        self.assertEqual(caught.exception.graphql_kind, self.client.GRAPHQL_KIND_AUTH)
+        self.assertNotIn("should not leak", str(caught.exception))
+
+    def test_schema_failure_contract_via_search(self):
+        token = Mock()
+        token.json.return_value = {"access_token": "private-token", "expires_in": 3600}
+        graphql = Mock()
+        graphql.json.return_value = {
+            "errors": [
+                {
+                    "message": "Cannot query field 'shortDescription' on type 'SupPart'.",
+                    "extensions": {"code": "GRAPHQL_VALIDATION_FAILED"},
+                }
+            ]
+        }
+        self.requests.post.side_effect = [token, graphql]
+        with patch.object(self.client, "get_secret", side_effect=self._secrets):
+            with self.assertRaises(self.client.OctopartResponseError) as caught:
+                self.client.search_octopart_by_part_number("LM358N")
+        self.assertEqual(caught.exception.subreason, self.client.SUBREASON_SCHEMA_MISMATCH)
+        self.assertEqual(list(caught.exception.rejected_fields), ["shortDescription"])
 
     def test_supplier_aggregator_registers_octopart(self):
         from pathlib import Path
