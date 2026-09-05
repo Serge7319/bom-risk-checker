@@ -87,12 +87,24 @@ class AuthenticatedRuntimeImportTests(unittest.TestCase):
         self._install_streamlit_stub()
         auth_cookies = self._install_auth_cookies_stub()
         auth_bootstrap = self._install_auth_bootstrap_stub()
+        # Prior auth unit tests may leave a partial core_premium_ui stub in
+        # sys.modules; clear it so runtime import can resolve real symbols.
         for name in (
             "src.authenticated_runtime",
             "src.browser_navigation",
             "src.auth_idle_recovery",
+            "src.ui.core_premium_ui",
         ):
             sys.modules.pop(name, None)
+        core_ui = types.ModuleType("src.ui.core_premium_ui")
+        core_ui.inject_core_premium_ui = MagicMock()
+        core_ui.inject_core_premium_ui_auth = MagicMock()
+        core_ui.inject_workspace_geometry_final = MagicMock()
+        core_ui.mark_authenticated_surface_ready = MagicMock()
+        core_ui.stop_authenticated_page = MagicMock()
+        sys.modules.setdefault("src.ui", types.ModuleType("src.ui"))
+        sys.modules["src.ui.core_premium_ui"] = core_ui
+        auth_bootstrap.clear_login_handoff = MagicMock()
         try:
             runtime = importlib.import_module("src.authenticated_runtime")
         except ModuleNotFoundError as exc:

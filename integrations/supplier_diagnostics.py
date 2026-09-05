@@ -36,6 +36,7 @@ SUBREASON_MISSING_EXPECTED_DATA = "missing_expected_data"
 SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
 SUBREASON_AUTHENTICATION = "authentication"
 SUBREASON_RATE_LIMIT = "rate_limit"
+SUBREASON_PROVIDER_FAILURE = "provider_failure"
 SUBREASON_ZERO_RESULTS = "zero_results"
 
 _SECRET_PATTERN = re.compile(
@@ -177,6 +178,8 @@ def categorize_supplier_failure(
         return CATEGORY_RATE_LIMIT
     if reason == SUBREASON_GRAPHQL_ERRORS:
         return CATEGORY_PROVIDER_ERROR
+    if reason == SUBREASON_PROVIDER_FAILURE:
+        return CATEGORY_PROVIDER_ERROR
     if reason in {
         SUBREASON_SCHEMA_MISMATCH,
         SUBREASON_MISSING_EXPECTED_DATA,
@@ -237,6 +240,7 @@ def normalize_provider_response_subreason(
         SUBREASON_SCHEMA_MISMATCH,
         SUBREASON_AUTHENTICATION,
         SUBREASON_RATE_LIMIT,
+        SUBREASON_PROVIDER_FAILURE,
         SUBREASON_ZERO_RESULTS,
     }
     if reason in allowed:
@@ -347,6 +351,8 @@ def log_supplier_diagnostic(
     error_subreason = ""
     rejected_fields: list[str] = []
     error_codes: list[str] = []
+    error_fingerprint = ""
+    error_count = 0
     if error is not None:
         error_subreason = str(getattr(error, "subreason", "") or "").strip()
         raw_fields = getattr(error, "rejected_fields", None) or ()
@@ -365,6 +371,13 @@ def log_supplier_diagnostic(
         graphql_kind = str(getattr(error, "graphql_kind", "") or "").strip()
         if graphql_kind and not re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", graphql_kind):
             graphql_kind = ""
+        raw_fingerprint = str(getattr(error, "error_fingerprint", "") or "").strip()
+        if raw_fingerprint and re.fullmatch(r"[A-Za-z0-9_]{1,48}", raw_fingerprint):
+            error_fingerprint = raw_fingerprint
+        try:
+            error_count = max(int(getattr(error, "error_count", 0) or 0), 0)
+        except (TypeError, ValueError):
+            error_count = 0
     else:
         graphql_kind = ""
     safe_status_code = _safe_http_status_code(status_code, error_message, error)
@@ -418,6 +431,10 @@ def log_supplier_diagnostic(
         payload["error_codes"] = ",".join(error_codes[:8])
     if graphql_kind:
         payload["graphql_kind"] = graphql_kind
+    if error_fingerprint:
+        payload["error_fingerprint"] = error_fingerprint
+    if error_count:
+        payload["error_count"] = str(error_count)
     extra_bits: list[str] = []
     extra_vals: list[str] = []
     if graphql_kind:
@@ -429,6 +446,12 @@ def log_supplier_diagnostic(
     if error_codes:
         extra_bits.append("error_codes=%s")
         extra_vals.append(payload["error_codes"])
+    if error_fingerprint:
+        extra_bits.append("error_fingerprint=%s")
+        extra_vals.append(payload["error_fingerprint"])
+    if error_count:
+        extra_bits.append("error_count=%s")
+        extra_vals.append(payload["error_count"])
     if resolved_subreason and extra_bits:
         logger.warning(
             "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
@@ -486,6 +509,12 @@ def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, 
         result["diagnostic_error_codes"] = str(diagnostic.get("error_codes") or "")
     if diagnostic.get("graphql_kind"):
         result["diagnostic_graphql_kind"] = str(diagnostic.get("graphql_kind") or "")
+    if diagnostic.get("error_fingerprint"):
+        result["diagnostic_error_fingerprint"] = str(
+            diagnostic.get("error_fingerprint") or ""
+        )
+    if diagnostic.get("error_count"):
+        result["diagnostic_error_count"] = str(diagnostic.get("error_count") or "")
 
 
 _PLACEHOLDER_SECRET_VALUES = frozenset(

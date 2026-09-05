@@ -24,7 +24,10 @@ class ManualLoginAtomicTests(unittest.TestCase):
                 sys.modules.pop(name, None)
 
     def _load_auth(self, session_state=None):
-        st = _install_streamlit_stub(session_state or {}, context_cookies=_FakeContextCookies())
+        st, restore_streamlit = _install_streamlit_stub(
+            session_state or {}, context_cookies=_FakeContextCookies()
+        )
+        self.addCleanup(restore_streamlit)
         st.rerun = MagicMock()
         st.error = MagicMock()
         st.success = MagicMock()
@@ -39,7 +42,8 @@ class ManualLoginAtomicTests(unittest.TestCase):
         config.CADIVOR_MARKETING_URL = "https://www.cadivor.com/"
         sys.modules["src.config"] = config
 
-        _auth_cookies, auth_state = _install_auth_modules(st)
+        _auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self.addCleanup(restore_secrets)
 
         sys.modules.pop("src.auth", None)
         import importlib

@@ -24,6 +24,8 @@ def render_atomic_login(
     key: str,
     disabled: bool = False,
     submit_label: str = "Login",
+    prefill_email: str = "",
+    error_message: str = "",
 ) -> Any:
     """Render Login and return one atomic submit payload, or None.
 
@@ -41,6 +43,8 @@ def render_atomic_login(
     return component(
         disabled=bool(disabled),
         submit_label=label,
+        prefill_email=str(prefill_email or "").strip(),
+        error_message=str(error_message or "").strip(),
         default=None,
         key=key,
     )

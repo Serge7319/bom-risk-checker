@@ -29,8 +29,12 @@ class AuthAtomicRestoreTests(unittest.TestCase):
                 sys.modules.pop(name, None)
 
     def _load(self, session_state=None, *, context_cookies=_FakeContextCookies()):
-        st = _install_streamlit_stub(session_state or {}, context_cookies=context_cookies)
-        auth_cookies, auth_state = _install_auth_modules(st)
+        st, restore_streamlit = _install_streamlit_stub(
+            session_state or {}, context_cookies=context_cookies
+        )
+        self.addCleanup(restore_streamlit)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self.addCleanup(restore_secrets)
         return st, auth_cookies, auth_state
 
     def _mock_supabase(self, *, user=_FakeUser()):

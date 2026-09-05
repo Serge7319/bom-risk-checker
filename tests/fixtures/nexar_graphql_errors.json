@@ -56,6 +56,13 @@
       }
     ]
   },
+  "unknown_opaque": {
+    "errors": [
+      {
+        "message": "Operation rejected by policy gate 7f3a9c."
+      }
+    ]
+  },
   "zero_results": {
     "data": {
       "supSearchMpn": {

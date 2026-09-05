@@ -29,6 +29,7 @@ SUBREASON_MISSING_EXPECTED_DATA = "missing_expected_data"
 SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
 SUBREASON_AUTHENTICATION = "authentication"
 SUBREASON_RATE_LIMIT = "rate_limit"
+SUBREASON_PROVIDER_FAILURE = "provider_failure"
 SUBREASON_ZERO_RESULTS = "zero_results"
 SUBREASON_OK = "ok"
 
@@ -36,6 +37,7 @@ SUBREASON_OK = "ok"
 GRAPHQL_KIND_AUTH = "auth"
 GRAPHQL_KIND_SCHEMA = "schema"
 GRAPHQL_KIND_RATE_LIMIT = "rate_limit"
+GRAPHQL_KIND_PROVIDER = "provider"
 GRAPHQL_KIND_OTHER = "other"
 
 # Match the current Nexar Supply docs for supSearchMpn:
@@ -50,7 +52,6 @@ query CadivorSupplierSearch($mpn: String!) {
     hits
     results {
       part {
-        id
         mpn
         manufacturer {
           name
@@ -118,6 +119,8 @@ class OctopartResponseError(RuntimeError):
         rejected_fields: list[str] | tuple[str, ...] | None = None,
         error_codes: list[str] | tuple[str, ...] | None = None,
         graphql_kind: str = "",
+        error_fingerprint: str = "",
+        error_count: int = 0,
     ):
         super().__init__(message)
         self.subreason = str(subreason or SUBREASON_MALFORMED_RESPONSE).strip()
@@ -132,6 +135,11 @@ class OctopartResponseError(RuntimeError):
             if str(item or "").strip()
         )
         self.graphql_kind = str(graphql_kind or "").strip()
+        self.error_fingerprint = str(error_fingerprint or "").strip()
+        try:
+            self.error_count = max(int(error_count or 0), 0)
+        except (TypeError, ValueError):
+            self.error_count = 0
 
 
 def _nexar_secret(primary_name: str, legacy_name: str) -> str:
@@ -348,6 +356,42 @@ def extract_graphql_error_codes(errors: list[Any] | None) -> list[str]:
     return codes
 
 
+def graphql_error_fingerprint(errors: list[Any] | None) -> str:
+    """Stable non-sensitive fingerprint for unknown GraphQL failures.
+
+    Never includes raw messages, URLs, tokens, or response bodies — only a
+    short hash of normalized shape signals (length bucket + token stubs).
+    """
+    import hashlib
+
+    parts: list[str] = []
+    for item in errors or []:
+        if isinstance(item, dict):
+            message = str(item.get("message") or "")
+            code = ""
+            extensions = item.get("extensions")
+            if isinstance(extensions, dict):
+                code = str(extensions.get("code") or "").strip()
+            path = item.get("path")
+            path_depth = len(path) if isinstance(path, list) else 0
+        else:
+            message = str(item or "")
+            code = ""
+            path_depth = 0
+        normalized = re.sub(r"[^a-z0-9]+", " ", message.casefold()).strip()
+        tokens = [tok for tok in normalized.split() if tok and len(tok) <= 24][:6]
+        # Keep only short alphabetic stubs; drop anything that looks like an id/url.
+        stubs = [tok for tok in tokens if tok.isalpha() and 2 <= len(tok) <= 12][:4]
+        length_bucket = min(len(normalized) // 16, 15)
+        parts.append(
+            f"c={code.casefold()[:32]}|d={path_depth}|l={length_bucket}|t={'-'.join(stubs)}"
+        )
+    if not parts:
+        return ""
+    digest = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:12]
+    return f"gql_{len(parts)}_{digest}"
+
+
 def _graphql_messages(errors: list[Any]) -> str:
     snippets: list[str] = []
     for item in errors:
@@ -394,6 +438,42 @@ def _is_auth_graphql_failure(errors: list[Any]) -> bool:
         "token expired",
         "jwt expired",
         "jwt invalid",
+        "not entitled",
+        "entitlement",
+        "access control",
+        "supply.domain",
+        "supply api",
+    )
+    return any(marker in joined for marker in markers)
+
+
+def _is_provider_graphql_failure(errors: list[Any]) -> bool:
+    """Known safe provider-side failure wording (never treat as schema/auth)."""
+    codes = {code.casefold().replace("-", "_") for code in extract_graphql_error_codes(errors)}
+    if codes & {
+        "internal_server_error",
+        "internal",
+        "server_error",
+        "bad_gateway",
+        "service_unavailable",
+        "upstream_error",
+        "provider_error",
+    }:
+        return True
+    joined = _graphql_messages(errors)
+    markers = (
+        "temporarily unavailable",
+        "upstream supplier",
+        "upstream error",
+        "upstream service",
+        "internal server",
+        "internal error",
+        "server error",
+        "service unavailable",
+        "bad gateway",
+        "try again later",
+        "provider error",
+        "backend error",
     )
     return any(marker in joined for marker in markers)
 
@@ -446,6 +526,8 @@ def graphql_error_kind(errors: list[Any] | None) -> str:
         return GRAPHQL_KIND_RATE_LIMIT
     if _is_schema_graphql_failure(items):
         return GRAPHQL_KIND_SCHEMA
+    if _is_provider_graphql_failure(items):
+        return GRAPHQL_KIND_PROVIDER
     return GRAPHQL_KIND_OTHER
 
 
@@ -454,11 +536,15 @@ def inspect_nexar_graphql_errors(errors: list[Any] | None) -> dict[str, Any]:
     rejected_fields = extract_graphql_rejected_fields(errors)
     error_codes = extract_graphql_error_codes(errors)
     kind = graphql_error_kind(errors)
+    fingerprint = ""
+    if kind == GRAPHQL_KIND_OTHER:
+        fingerprint = graphql_error_fingerprint(errors)
     return {
         "error_count": len(errors or []),
         "rejected_fields": rejected_fields,
         "error_codes": error_codes,
         "graphql_kind": kind,
+        "error_fingerprint": fingerprint,
         "subreason": _graphql_error_subreason(errors or []),
     }
 
@@ -471,6 +557,8 @@ def _graphql_error_subreason(errors: list[Any]) -> str:
         return SUBREASON_RATE_LIMIT
     if kind == GRAPHQL_KIND_SCHEMA:
         return SUBREASON_SCHEMA_MISMATCH
+    if kind == GRAPHQL_KIND_PROVIDER:
+        return SUBREASON_PROVIDER_FAILURE
     return SUBREASON_GRAPHQL_ERRORS
 
 
@@ -484,6 +572,8 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
         "rejected_fields": [],
         "error_codes": [],
         "graphql_kind": GRAPHQL_KIND_OTHER,
+        "error_fingerprint": "",
+        "error_count": 0,
     }
     if payload is None or payload == "":
         return dict(empty)
@@ -500,6 +590,10 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
     rejected_fields = extract_graphql_rejected_fields(errors if has_errors else [])
     error_codes = extract_graphql_error_codes(errors if has_errors else [])
     kind = graphql_error_kind(errors if has_errors else [])
+    error_count = len(errors) if has_errors else 0
+    fingerprint = ""
+    if has_errors and kind == GRAPHQL_KIND_OTHER:
+        fingerprint = graphql_error_fingerprint(errors)
     data = payload.get("data")
 
     def _fail(subreason: str) -> dict[str, Any]:
@@ -511,6 +605,8 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
             "rejected_fields": rejected_fields,
             "error_codes": error_codes,
             "graphql_kind": kind if has_errors else GRAPHQL_KIND_OTHER,
+            "error_fingerprint": fingerprint if has_errors else "",
+            "error_count": error_count,
         }
 
     if has_errors and data in (None, {}):
@@ -537,6 +633,8 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
             "rejected_fields": [],
             "error_codes": [],
             "graphql_kind": GRAPHQL_KIND_OTHER,
+            "error_fingerprint": "",
+            "error_count": 0,
         }
     if not isinstance(search, dict):
         return _fail(SUBREASON_MALFORMED_RESPONSE)
@@ -566,6 +664,8 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
             "rejected_fields": [],
             "error_codes": [],
             "graphql_kind": GRAPHQL_KIND_OTHER,
+            "error_fingerprint": "",
+            "error_count": 0,
         }
 
     if has_errors and not results:
@@ -579,6 +679,8 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
         "rejected_fields": rejected_fields,
         "error_codes": error_codes,
         "graphql_kind": kind,
+        "error_fingerprint": "",
+        "error_count": error_count,
     }
 
 
@@ -647,6 +749,8 @@ def search_octopart_by_part_number(part_number: str) -> dict:
             rejected_fields=list(classified.get("rejected_fields") or []),
             error_codes=list(classified.get("error_codes") or []),
             graphql_kind=str(classified.get("graphql_kind") or ""),
+            error_fingerprint=str(classified.get("error_fingerprint") or ""),
+            error_count=int(classified.get("error_count") or 0),
         )
 
     results = list(classified.get("results") or [])
