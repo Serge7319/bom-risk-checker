@@ -18,6 +18,7 @@ GRAPHQL_URL = "https://api.nexar.com/graphql"
 # Official Nexar Supply API client-credentials scope (required for supSearch*).
 NEXAR_TOKEN_SCOPE = "supply.domain"
 REQUEST_TIMEOUT_SECONDS = 15
+DEFAULT_SEARCH_LIMIT = 5
 _TOKEN_LOCK = threading.Lock()
 _TOKEN_CACHE: dict[str, object] = {}
 
@@ -40,17 +41,14 @@ GRAPHQL_KIND_RATE_LIMIT = "rate_limit"
 GRAPHQL_KIND_PROVIDER = "provider"
 GRAPHQL_KIND_OTHER = "other"
 
-# Match the current Nexar Supply docs for supSearchMpn:
-# - search-level q + limit only
-# - part.mpn + manufacturer.name (documented MPN-search fields)
-# - avoid undocumented part.name (docs use shortDescription on keyword search)
-# - offer prices as quantity + price
-# - no clickUrl dependency for core availability/pricing normalization
-_PART_QUERY = """
-query CadivorSupplierSearch($mpn: String!) {
-  supSearchMpn(q: $mpn, limit: 5) {
+# Canonical Nexar Supply MPN search — modeled on official Nexar examples.
+# Do not add undocumented fields; do not invent parallel query strings.
+CANONICAL_SUP_SEARCH_MPN_QUERY = """
+query SearchMpn($mpn: String!, $limit: Int!) {
+  supSearchMpn(q: $mpn, limit: $limit) {
     hits
     results {
+      description
       part {
         mpn
         manufacturer {
@@ -72,7 +70,58 @@ query CadivorSupplierSearch($mpn: String!) {
     }
   }
 }
-"""
+""".strip()
+
+# Back-compat alias for existing imports/tests; always the canonical query.
+_PART_QUERY = CANONICAL_SUP_SEARCH_MPN_QUERY
+
+# Fields that must never appear in the emitted canonical query.
+_UNSUPPORTED_QUERY_MARKERS = (
+    "clickUrl",
+    "shortDescription",
+    "currency:",
+    "country:",
+    "authorizedOnly",
+    "includeBrokers",
+    "octopartUrl",
+    "factoryLeadDays",
+    "similarParts",
+)
+
+
+def canonical_sup_search_mpn_query() -> str:
+    """Return the single official Nexar Supply MPN search query string."""
+    return CANONICAL_SUP_SEARCH_MPN_QUERY
+
+
+def build_nexar_sup_search_mpn_request(
+    mpn: str, *, limit: int = DEFAULT_SEARCH_LIMIT
+) -> dict[str, Any]:
+    """Build the only Octopart/Nexar GraphQL request body used by Cadivor."""
+    try:
+        resolved_limit = int(limit)
+    except (TypeError, ValueError):
+        resolved_limit = DEFAULT_SEARCH_LIMIT
+    if resolved_limit < 1:
+        resolved_limit = DEFAULT_SEARCH_LIMIT
+    return {
+        "query": CANONICAL_SUP_SEARCH_MPN_QUERY,
+        "variables": {
+            "mpn": str(mpn or "").strip(),
+            "limit": resolved_limit,
+        },
+    }
+
+
+def nexar_authorization_headers(access_token: str) -> dict[str, str]:
+    """Documented Nexar HTTP authorization: Authorization: Bearer <access token>."""
+    return {"Authorization": f"Bearer {str(access_token or '').strip()}"}
+
+
+def query_contains_unsupported_fields(query: str) -> list[str]:
+    """Return unsupported markers found in a query (for contract tests)."""
+    text = str(query or "")
+    return [marker for marker in _UNSUPPORTED_QUERY_MARKERS if marker in text]
 
 _REJECTED_FIELD_PATTERNS = (
     re.compile(r"Cannot query field ['\"]([^'\"]+)['\"]", re.IGNORECASE),
@@ -244,14 +293,17 @@ def default_octopart_result(part_number: str = "") -> dict:
     }
 
 
-def _normalize_part(part: dict) -> dict:
+def _normalize_search_result(result_row: dict) -> dict:
+    """Normalize one canonical `supSearchMpn.results[]` row into Cadivor fields."""
+    part = result_row.get("part") if isinstance(result_row.get("part"), dict) else {}
     result = default_octopart_result()
     result["manufacturer_part_number"] = str(part.get("mpn") or "").strip()
     manufacturer = part.get("manufacturer") or {}
     result["manufacturer"] = (
         str(manufacturer.get("name") or "") if isinstance(manufacturer, dict) else ""
     )
-    result["description"] = str(part.get("shortDescription") or part.get("name") or "")
+    # Official query exposes description on the search result, not on part.
+    result["description"] = str(result_row.get("description") or "").strip()
 
     seller_names = set()
     prices = []
@@ -271,10 +323,6 @@ def _normalize_part(part: dict) -> dict:
                 result["stock_total"] += coerce_stock_total(offer.get("inventoryLevel"))
             except (TypeError, ValueError):
                 pass
-            if not result["product_detail_url"]:
-                result["product_detail_url"] = str(
-                    offer.get("clickUrl") or offer.get("octopartUrl") or ""
-                )
             for tier in offer.get("prices") or []:
                 if not isinstance(tier, dict):
                     continue
@@ -295,6 +343,11 @@ def _normalize_part(part: dict) -> dict:
         )
     result["octopart_subreason"] = SUBREASON_OK
     return result
+
+
+def _normalize_part(part: dict) -> dict:
+    """Back-compat wrapper: treat a bare part dict as a search result without description."""
+    return _normalize_search_result({"part": part, "description": ""})
 
 
 def extract_graphql_rejected_fields(errors: list[Any] | None) -> list[str]:
@@ -537,7 +590,8 @@ def inspect_nexar_graphql_errors(errors: list[Any] | None) -> dict[str, Any]:
     error_codes = extract_graphql_error_codes(errors)
     kind = graphql_error_kind(errors)
     fingerprint = ""
-    if kind == GRAPHQL_KIND_OTHER:
+    # Auth/schema get explicit labels; everything else gets a safe fingerprint only.
+    if kind in {GRAPHQL_KIND_OTHER, GRAPHQL_KIND_PROVIDER}:
         fingerprint = graphql_error_fingerprint(errors)
     return {
         "error_count": len(errors or []),
@@ -592,7 +646,7 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
     kind = graphql_error_kind(errors if has_errors else [])
     error_count = len(errors) if has_errors else 0
     fingerprint = ""
-    if has_errors and kind == GRAPHQL_KIND_OTHER:
+    if has_errors and kind in {GRAPHQL_KIND_OTHER, GRAPHQL_KIND_PROVIDER}:
         fingerprint = graphql_error_fingerprint(errors)
     data = payload.get("data")
 
@@ -684,7 +738,8 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
     }
 
 
-def _exact_match_part(requested: str, results: list[Any]) -> dict | None:
+def _exact_match_result(requested: str, results: list[Any]) -> dict | None:
+    """Return the canonical results[] row whose part.mpn exactly matches."""
     requested_key = re.sub(r"[^a-z0-9]", "", requested.casefold())
     for candidate in results:
         if not isinstance(candidate, dict):
@@ -696,11 +751,12 @@ def _exact_match_part(requested: str, results: list[Any]) -> dict | None:
             r"[^a-z0-9]", "", str(part.get("mpn") or "").strip().casefold()
         )
         if candidate_key and candidate_key == requested_key:
-            return part
+            return candidate
     return None
 
 
 def search_octopart_by_part_number(part_number: str) -> dict:
+    """Lookup via the single canonical Nexar Supply SearchMpn query."""
     requested = str(part_number or "").strip()
     if not requested:
         empty = default_octopart_result()
@@ -709,8 +765,8 @@ def search_octopart_by_part_number(part_number: str) -> dict:
 
     response = requests.post(
         GRAPHQL_URL,
-        json={"query": _PART_QUERY, "variables": {"mpn": requested}},
-        headers={"Authorization": f"Bearer {_access_token()}"},
+        json=build_nexar_sup_search_mpn_request(requested),
+        headers=nexar_authorization_headers(_access_token()),
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
     try:
@@ -755,12 +811,13 @@ def search_octopart_by_part_number(part_number: str) -> dict:
 
     results = list(classified.get("results") or [])
     hits = int(classified.get("hits") or 0)
-    matched = _exact_match_part(requested, results)
+    matched = _exact_match_result(requested, results)
     if matched is not None:
-        normalized = _normalize_part(matched)
+        normalized = _normalize_search_result(matched)
         normalized["octopart_hits"] = hits
         return normalized
 
+    # Valid data with hits=0 or no exact MPN match → PART_NOT_FOUND / zero_results.
     empty = default_octopart_result(requested)
     empty["octopart_subreason"] = SUBREASON_ZERO_RESULTS
     empty["octopart_hits"] = hits
