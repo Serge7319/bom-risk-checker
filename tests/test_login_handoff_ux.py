@@ -1,7 +1,6 @@
-"""Login handoff UX regressions: one-click submit, progress state, no blank gap."""
+"""Login handoff UX regressions: bounded stages, no indefinite SIGNING_IN."""
 from __future__ import annotations
 
-import sys
 import types
 import unittest
 from pathlib import Path
@@ -17,6 +16,7 @@ HTML = (ROOT / "src" / "components" / "atomic_login" / "index.html").read_text(
 AUTH = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
 BOOTSTRAP = (ROOT / "src" / "auth_bootstrap.py").read_text(encoding="utf-8")
 RUNTIME = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+IDLE = (ROOT / "src" / "auth_idle_recovery.py").read_text(encoding="utf-8")
 
 
 class LoginHandoffUxTests(unittest.TestCase):
@@ -49,22 +49,10 @@ class LoginHandoffUxTests(unittest.TestCase):
         self.assertIn("email.disabled = Boolean(isBusy)", HTML)
         self.assertIn("password.disabled = Boolean(isBusy)", HTML)
         self.assertIn("disabled=login_in_flight", AUTH)
-        self.assertIn('cadivor_login_handoff_active', AUTH)
+        self.assertIn("login_in_flight = manual_login_in_flight()", AUTH)
 
-    def test_successful_handoff_keeps_branded_surface_not_blank(self):
-        self.assertIn("Signing you in…", AUTH)
-        self.assertIn("LOGIN_HANDOFF_ACTIVE_KEY", BOOTSTRAP)
-        self.assertIn("should_render_authenticated_startup_shell()", BOOTSTRAP)
-        self.assertIn(
-            "if not should_render_authenticated_startup_shell():\n"
-            "        auth_surface_host.empty()",
-            BOOTSTRAP,
-        )
-        self.assertIn("render_auth_transition(AUTHENTICATED_STARTUP_SHELL_MESSAGE)", BOOTSTRAP)
-        self.assertIn("clear_login_handoff()", RUNTIME)
-        self.assertIn('AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Signing you in…"', BOOTSTRAP)
-
-        st, auth, auth_state = self._load_auth()
+    def test_successful_one_click_leaves_signing_in_and_starts_initializing(self):
+        st, auth, _auth_state = self._load_auth()
         transitions = []
 
         with patch.object(
@@ -92,8 +80,40 @@ class LoginHandoffUxTests(unittest.TestCase):
             )
 
         self.assertIn("Signing you in…", transitions)
+        self.assertEqual(st.session_state["cadivor_root_state"], auth.APP_AUTHENTICATED)
+        self.assertNotEqual(st.session_state["cadivor_root_state"], auth.APP_SIGNING_IN)
         self.assertTrue(st.session_state.get("cadivor_login_handoff_active"))
+        self.assertEqual(
+            st.session_state.get("cadivor_login_handoff_stage"),
+            "initializing",
+        )
         st.rerun.assert_called_once_with()
+
+    def test_signing_in_cannot_remain_without_in_flight_work(self):
+        """Stale APP_SIGNING_IN must restore Login — never park forever."""
+        self.assertIn("if state == APP_SIGNING_IN:", AUTH)
+        block = AUTH[
+            AUTH.index("if state == APP_SIGNING_IN:") : AUTH.index(
+                "if state in (APP_LOGIN, APP_SIGNUP):"
+            )
+        ]
+        self.assertIn("manual_login_in_flight()", block)
+        self.assertIn("fail_login_handoff", block)
+        self.assertIn("LOGIN_HANDOFF_TIMEOUT", BOOTSTRAP)
+        self.assertIn("auth_surface_host.empty()", BOOTSTRAP)
+        self.assertNotIn(
+            "render_auth_transition(AUTHENTICATED_STARTUP_SHELL_MESSAGE)",
+            BOOTSTRAP,
+        )
+
+    def test_handoff_shell_is_stage_and_time_bounded(self):
+        self.assertIn("LOGIN_HANDOFF_STAGE_AUTHENTICATING", BOOTSTRAP)
+        self.assertIn("LOGIN_HANDOFF_STAGE_INITIALIZING", BOOTSTRAP)
+        self.assertIn("LOGIN_HANDOFF_TIMEOUT_SECONDS", BOOTSTRAP)
+        self.assertIn("login_handoff_timed_out()", BOOTSTRAP)
+        self.assertIn("fail_login_handoff(", BOOTSTRAP)
+        self.assertIn("clear_login_handoff()", RUNTIME)
+        self.assertIn("clear_login_handoff()", IDLE)
 
     def test_failed_login_returns_form_with_error_and_email(self):
         st, auth, _auth_state = self._load_auth()
@@ -119,16 +139,82 @@ class LoginHandoffUxTests(unittest.TestCase):
         self.assertIn("args.prefill_email", HTML)
         self.assertIn("args.error_message", HTML)
 
-    def test_signing_in_state_does_not_reset_to_login_form(self):
-        self.assertIn("if state == APP_SIGNING_IN:", AUTH)
-        block = AUTH[
-            AUTH.index("if state == APP_SIGNING_IN:") : AUTH.index(
-                "if state in (APP_LOGIN, APP_SIGNUP):"
+    def test_success_plus_profile_init_clears_signing_in_and_handoff(self):
+        """Credentials + profile success must not leave APP_SIGNING_IN forever."""
+        from tests.test_authenticated_startup_shell import (
+            _install_bootstrap_deps,
+            _install_streamlit_stub,
+        )
+
+        st = _install_streamlit_stub(
+            {
+                "cadivor_login_handoff_active": True,
+                "cadivor_login_handoff_stage": "initializing",
+                "cadivor_login_handoff_started_at": 1000.0,
+                "cadivor_root_state": "authenticated",
+                "cadivor_auth_status": "authenticated",
+            }
+        )
+        bootstrap, restore_secrets = _install_bootstrap_deps(st)
+        self.addCleanup(restore_secrets)
+
+        with patch("time.monotonic", return_value=1001.0):
+            self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
+            bootstrap.clear_login_handoff()
+            self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
+        self.assertNotIn("cadivor_login_handoff_active", st.session_state)
+        self.assertNotEqual(st.session_state.get("cadivor_root_state"), "signing_in")
+
+    def test_handoff_timeout_during_authenticating_restores_login(self):
+        from tests.test_authenticated_startup_shell import (
+            _install_bootstrap_deps,
+            _install_streamlit_stub,
+        )
+
+        st = _install_streamlit_stub(
+            {
+                "cadivor_login_handoff_active": True,
+                "cadivor_login_handoff_stage": "authenticating",
+                "cadivor_login_handoff_started_at": 1000.0,
+                "cadivor_login_email_draft": "keepme@example.com",
+                "cadivor_root_state": "signing_in",
+                "cadivor_manual_login_in_progress": True,
+            }
+        )
+        bootstrap, restore_secrets = _install_bootstrap_deps(st)
+        self.addCleanup(restore_secrets)
+
+        with patch("time.monotonic", return_value=1000.0 + bootstrap.LOGIN_HANDOFF_TIMEOUT_SECONDS + 1.0):
+            self.assertTrue(bootstrap.login_handoff_timed_out())
+            bootstrap.fail_login_handoff(
+                message=bootstrap.LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+                email="keepme@example.com",
+            )
+
+        self.assertEqual(st.session_state["cadivor_root_state"], "login")
+        self.assertEqual(
+            st.session_state["cadivor_auth_error"],
+            bootstrap.LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+        )
+        self.assertEqual(
+            st.session_state["cadivor_login_email_draft"],
+            "keepme@example.com",
+        )
+        self.assertFalse(st.session_state.get("cadivor_login_handoff_active", False))
+        self.assertFalse(st.session_state.get("cadivor_manual_login_in_progress", False))
+
+    def test_transient_profile_failure_clears_handoff_before_retry_ui(self):
+        self.assertIn("clear_login_handoff()", IDLE)
+        # clear must precede st.error in retryable profile path
+        retry_fn = IDLE[
+            IDLE.index("def render_retryable_profile_error") : IDLE.index(
+                "def load_workspace_profile"
             )
         ]
-        self.assertIn('render_auth_transition("Signing you in…")', block)
-        self.assertIn("return", block)
-        self.assertNotIn('cadivor_root_state"] = APP_LOGIN', block)
+        self.assertLess(
+            retry_fn.index("clear_login_handoff()"),
+            retry_fn.index("st.error(message)"),
+        )
 
 
 if __name__ == "__main__":
