@@ -385,11 +385,15 @@ def _fail_manual_login_and_rerun(
     *,
     event: str,
     message: str,
+    email: str = "",
 ) -> None:
     """Rebuild an enabled Login surface after a provider-side failure."""
     finish_manual_login_failed(cookie_manager)
     st.session_state["cadivor_root_state"] = APP_LOGIN
     st.session_state["cadivor_auth_error"] = message
+    if email:
+        st.session_state["cadivor_login_email_draft"] = str(email).strip()
+    st.session_state.pop("cadivor_login_handoff_active", None)
     _log_manual_login_event(event, cookie_manager)
     st.rerun()
 
@@ -399,7 +403,8 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     begin_manual_login(cookie_manager)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
-    render_auth_transition("Opening your engineering workspace…")
+    st.session_state["cadivor_login_email_draft"] = str(email or "").strip()
+    render_auth_transition("Signing you in…")
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
@@ -412,6 +417,7 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             cookie_manager,
             event="manual_login_provider_exception",
             message=MANUAL_LOGIN_FAILURE_MESSAGE,
+            email=email,
         )
         return
 
@@ -425,11 +431,13 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             cookie_manager,
             event="manual_login_provider_no_session",
             message=MANUAL_LOGIN_NO_SESSION_MESSAGE,
+            email=email,
         )
         return
 
     _log_manual_login_event("manual_login_provider_session_ready", cookie_manager)
     mark_authenticated(user, session, cookie_manager)
+    st.session_state.pop("cadivor_login_email_draft", None)
     _log_manual_login_event("manual_login_session_committed", cookie_manager)
     st.rerun()
 
@@ -850,6 +858,7 @@ def _render_auth_page(
     initial_mode: str,
     *,
     session_expired: bool = False,
+    auth_error: str = "",
 ):
     _render_auth_card_brand(
         context_sub="Engineering intelligence for modern electronics teams.",
@@ -892,10 +901,18 @@ def _render_auth_page(
         # The Login component owns one native browser form and emits the email,
         # password, and a unique request id together on the physical submit.
         # This avoids Streamlit's separate password-commit and button reruns.
+        from src.auth_state import manual_login_in_flight
+
+        login_in_flight = manual_login_in_flight() or bool(
+            st.session_state.get("cadivor_login_handoff_active")
+        )
+        draft_email = str(st.session_state.get("cadivor_login_email_draft") or "").strip()
         login_payload = render_atomic_login(
             key="cadivor_atomic_login",
-            disabled=False,
+            disabled=login_in_flight,
             submit_label="Sign in again" if session_expired else "Login",
+            prefill_email=draft_email,
+            error_message="" if login_in_flight else str(auth_error or "").strip(),
         )
         email = ""
         password = ""
@@ -1247,10 +1264,10 @@ def show_auth_ui(supabase, cookie_manager=None):
             return
 
         if state == APP_SIGNING_IN:
-            st.session_state["cadivor_root_state"] = APP_LOGIN
-            st.session_state.pop("cadivor_manual_login_in_progress", None)
-            state = APP_LOGIN
-            _seed_auth_mode_widget(AUTH_MODE_LOGIN)
+            # Keep the branded progress surface while credentials are in flight.
+            # Do not fall back to the Login form mid-submit (blank/white flicker).
+            render_auth_transition("Signing you in…")
+            return
 
         if state in (APP_LOGIN, APP_SIGNUP):
             recovery = _auth_recovery()
@@ -1271,6 +1288,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                 cookie_manager=cookie_manager,
                 initial_mode=_auth_mode_label_for_root(state),
                 session_expired=bool(session_expired),
+                auth_error=str(error or ""),
             )
             return
 

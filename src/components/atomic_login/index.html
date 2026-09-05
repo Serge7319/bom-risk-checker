@@ -11,6 +11,7 @@
     label{display:grid;gap:7px;font-size:14px;font-weight:700;color:#334155}
     input{width:100%;height:44px;border:1px solid #cbd5e1;border-radius:9px;padding:0 13px;background:#fff;color:#0f172a;font:500 15px/1.2 inherit;outline:none;box-shadow:0 1px 2px rgba(15,23,42,.03)}
     input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+    input:disabled{background:#f8fafc;color:#64748b;cursor:wait}
     input::placeholder{color:#94a3b8}
     button{height:44px;border:0;border-radius:9px;background:#2563eb;color:#fff;font:700 15px/1 inherit;cursor:pointer;box-shadow:0 7px 16px rgba(37,99,235,.2)}
     button:hover{background:#1d4ed8}
@@ -41,6 +42,7 @@
   let streamlitRenderReady = false;
   let pendingSubmitValue = null;
   let idleSubmitLabel = "Login";
+  let lastPrefillEmail = "";
 
   function post(type, extra = {}) {
     window.parent.postMessage({isStreamlitMessage:true,type,...extra},"*");
@@ -52,6 +54,16 @@
     if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
     return Date.now().toString(36)+"-"+Math.random().toString(36).slice(2);
   }
+  function setBusy(isBusy, label) {
+    email.disabled = Boolean(isBusy);
+    password.disabled = Boolean(isBusy);
+    button.disabled = Boolean(isBusy) || submitted;
+    if (isBusy) {
+      button.textContent = "Signing in…";
+    } else if (!submitted) {
+      button.textContent = label || idleSubmitLabel;
+    }
+  }
   function sendPendingSubmitWhenReady() {
     // The card is intentionally visible while Streamlit initializes this
     // iframe. A physical submit during that small window must survive until
@@ -62,7 +74,8 @@
       dataType:"json"
     });
     pendingSubmitValue = null;
-    password.value = "";
+    // Keep password in the field until the server confirms success via a
+    // disabled/handoff render; failed auth remounts with an error message.
   }
 
   window.addEventListener("message", (event) => {
@@ -73,15 +86,26 @@
     if (typeof args.submit_label === "string" && args.submit_label.trim()) {
       idleSubmitLabel = args.submit_label.trim();
     }
-    button.disabled = Boolean(args.disabled) || submitted;
-    if (!submitted) button.textContent = idleSubmitLabel;
+    const prefill = typeof args.prefill_email === "string" ? args.prefill_email.trim() : "";
+    if (prefill && prefill !== lastPrefillEmail) {
+      email.value = prefill;
+      lastPrefillEmail = prefill;
+    }
+    const serverError = typeof args.error_message === "string" ? args.error_message.trim() : "";
+    if (serverError) {
+      submitted = false;
+      status.textContent = serverError;
+    } else if (!submitted) {
+      status.textContent = "";
+    }
+    setBusy(Boolean(args.disabled), idleSubmitLabel);
     sendPendingSubmitWhenReady();
     resize();
   });
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (submitted) return;
+    if (submitted || button.disabled) return;
     const emailValue = email.value.trim();
     const passwordValue = password.value;
     if (!emailValue || !passwordValue) {
@@ -90,8 +114,7 @@
       return;
     }
     submitted = true;
-    button.disabled = true;
-    button.textContent = "Signing in…";
+    setBusy(true);
     status.textContent = "";
     pendingSubmitValue = {
       email:emailValue,

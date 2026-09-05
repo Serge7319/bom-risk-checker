@@ -92,6 +92,8 @@ class OctopartIntegrationTests(unittest.TestCase):
         self.assertIn("inventoryLevel", query)
         # Official MPN-search docs do not require part.name/shortDescription.
         self.assertNotIn("shortDescription", query)
+        # Docs Key Response Fields do not list part.id; keep query docs-aligned.
+        self.assertNotRegex(query, r"\bpart\s*\{\s*id\b")
         self.assertNotRegex(query, r"\bpart\s*\{\s*id\s*mpn\s*name\b")
         # Keep the query minimal; optional country/currency/clickUrl caused live rejects.
         self.assertNotIn("country:", query)
@@ -172,12 +174,16 @@ class OctopartIntegrationTests(unittest.TestCase):
 
     def test_graphql_errors_classified_without_leaking_provider_details(self):
         _, graphql = self._responses([])
-        graphql.json.return_value = {"errors": [{"message": "private upstream error"}]}
+        graphql.json.return_value = {"errors": [{"message": "private opaque gate failure xyz"}]}
         with patch.object(self.client, "get_secret", side_effect=self._secrets):
             with self.assertRaises(self.client.OctopartResponseError) as caught:
                 self.client.search_octopart_by_part_number("LM358N")
         self.assertEqual(caught.exception.subreason, self.client.SUBREASON_GRAPHQL_ERRORS)
-        self.assertNotIn("private upstream", str(caught.exception))
+        self.assertEqual(caught.exception.graphql_kind, self.client.GRAPHQL_KIND_OTHER)
+        self.assertTrue(str(caught.exception.error_fingerprint or "").startswith("gql_"))
+        self.assertEqual(caught.exception.error_count, 1)
+        self.assertNotIn("private opaque", str(caught.exception))
+        self.assertNotIn("xyz", str(caught.exception))
 
     def test_auth_graphql_errors_classified_as_authentication(self):
         from pathlib import Path
@@ -230,8 +236,18 @@ class OctopartIntegrationTests(unittest.TestCase):
         generic = self.client.inspect_nexar_graphql_errors(
             fixtures["generic_graphql"]["errors"]
         )
-        self.assertEqual(generic["graphql_kind"], self.client.GRAPHQL_KIND_OTHER)
-        self.assertEqual(generic["subreason"], self.client.SUBREASON_GRAPHQL_ERRORS)
+        self.assertEqual(generic["graphql_kind"], self.client.GRAPHQL_KIND_PROVIDER)
+        self.assertEqual(generic["subreason"], self.client.SUBREASON_PROVIDER_FAILURE)
+        opaque = self.client.inspect_nexar_graphql_errors(
+            fixtures["unknown_opaque"]["errors"]
+        )
+        self.assertEqual(opaque["graphql_kind"], self.client.GRAPHQL_KIND_OTHER)
+        self.assertEqual(opaque["subreason"], self.client.SUBREASON_GRAPHQL_ERRORS)
+        self.assertTrue(opaque["error_fingerprint"].startswith("gql_"))
+        self.assertEqual(opaque["error_count"], 1)
+        self.assertNotIn("secret", opaque["error_fingerprint"].casefold())
+        self.assertNotIn("token", opaque["error_fingerprint"].casefold())
+        self.assertNotIn("nexar.com", opaque["error_fingerprint"].casefold())
 
     def test_schema_mismatch_graphql_errors(self):
         classified = self.client.classify_nexar_graphql_payload(
@@ -326,6 +342,8 @@ class OctopartIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(with_errors["subreason"], self.client.SUBREASON_GRAPHQL_ERRORS)
         self.assertFalse(with_errors["usable"])
+        self.assertTrue(str(with_errors.get("error_fingerprint") or "").startswith("gql_"))
+        self.assertEqual(with_errors.get("error_count"), 1)
         self.assertEqual(without_errors["subreason"], self.client.SUBREASON_ZERO_RESULTS)
         self.assertTrue(without_errors["usable"])
 
@@ -367,9 +385,12 @@ class OctopartIntegrationTests(unittest.TestCase):
 
 class OctopartDiagnosticPropagationTests(unittest.TestCase):
     def setUp(self):
-        sys.modules.setdefault(
-            "streamlit", types.SimpleNamespace(cache_data=lambda *a, **k: (lambda f: f))
-        )
+        # Force a cache_data-capable Streamlit stub even if an earlier test left a
+        # partial streamlit module in sys.modules (setdefault would keep it).
+        streamlit = types.ModuleType("streamlit")
+        streamlit.cache_data = lambda *a, **k: (lambda f: f)
+        streamlit.secrets = {}
+        sys.modules["streamlit"] = streamlit
         sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
         sys.modules.pop("integrations.supplier_aggregator", None)
         self.aggregator = importlib.import_module("integrations.supplier_aggregator")
@@ -423,6 +444,67 @@ class OctopartDiagnosticPropagationTests(unittest.TestCase):
         self.assertIn(f"request_id={request_id}", joined)
         self.assertIn("subreason=graphql_errors", joined)
         self.assertIn("rejected_fields=shortDescription", joined)
+
+    def test_unknown_graphql_emits_fingerprint_not_raw_message(self):
+        from pathlib import Path
+        import json
+
+        fixtures = json.loads(
+            (
+                Path(__file__).resolve().parent
+                / "fixtures"
+                / "nexar_graphql_errors.json"
+            ).read_text(encoding="utf-8")
+        )
+        errors = fixtures["unknown_opaque"]["errors"]
+        inspected = self.client.inspect_nexar_graphql_errors(errors)
+        fingerprint = inspected["error_fingerprint"]
+        self.assertTrue(fingerprint.startswith("gql_1_"))
+        self.assertEqual(inspected["error_count"], 1)
+
+        original_creds = self.diagnostics._octopart_credentials_configured
+        self.diagnostics._octopart_credentials_configured = lambda: True
+        self.addCleanup(
+            lambda: setattr(
+                self.diagnostics, "_octopart_credentials_configured", original_creds
+            )
+        )
+        original_callable = self.aggregator._supplier_lookup_callable
+
+        def lookup_callable(source_name):
+            if source_name == "Octopart":
+
+                def boom(_part):
+                    raise self.client.OctopartResponseError(
+                        "Octopart supplier query could not be completed.",
+                        subreason=self.client.SUBREASON_GRAPHQL_ERRORS,
+                        graphql_kind=self.client.GRAPHQL_KIND_OTHER,
+                        error_fingerprint=fingerprint,
+                        error_count=1,
+                    )
+
+                return boom
+            return None
+
+        self.aggregator._supplier_lookup_callable = lookup_callable
+        self.addCleanup(
+            lambda: setattr(
+                self.aggregator, "_supplier_lookup_callable", original_callable
+            )
+        )
+
+        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
+            results = self.aggregator.get_supplier_results("LM358N")
+
+        octopart = next(row for row in results if row.get("source") == "Octopart")
+        self.assertEqual(octopart.get("diagnostic_error_fingerprint"), fingerprint)
+        self.assertEqual(octopart.get("diagnostic_error_count"), "1")
+        joined = "\n".join(logs.output)
+        self.assertIn(f"error_fingerprint={fingerprint}", joined)
+        self.assertIn("error_count=1", joined)
+        self.assertIn("graphql_kind=other", joined)
+        self.assertNotIn("policy gate", joined)
+        self.assertNotIn("7f3a9c", joined)
         self.assertNotIn("request_id=unknown", joined)
         self.assertNotIn("Bearer ", joined)
         self.assertNotIn("private-token", joined)

@@ -176,18 +176,28 @@ def apply_auth_intent_from_query() -> None:
         st.session_state["cadivor_auth_intent_applied"] = True
 
 
-AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Loading your workspace…"
+AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Signing you in…"
+LOGIN_HANDOFF_ACTIVE_KEY = "cadivor_login_handoff_active"
 
 
 def should_render_authenticated_startup_shell() -> bool:
-    """Avoid masking an authenticated render failure with a permanent loader.
+    """Show a branded handoff shell only during post-login workspace initialization.
 
-    The prior opaque shell improved visual continuity, but it also obscured a
-    server-side exception by leaving users on an indefinite loading screen.
-    Customer access takes priority over that cosmetic transition.
+    The permanent opaque shell was disabled because it could mask a server-side
+    exception. A one-shot handoff flag still prevents the blank white gap after
+    Login while remaining retired once the authenticated workspace paints.
     """
-    return False
+    return bool(st.session_state.get(LOGIN_HANDOFF_ACTIVE_KEY))
 
+
+def begin_login_handoff() -> None:
+    """Mark the next authenticated startup as a branded Login handoff."""
+    st.session_state[LOGIN_HANDOFF_ACTIVE_KEY] = True
+
+
+def clear_login_handoff() -> None:
+    """Retire the Login handoff shell after workspace initialization succeeds."""
+    st.session_state.pop(LOGIN_HANDOFF_ACTIVE_KEY, None)
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
     """Render lightweight workspace chrome while the authenticated app initializes."""
@@ -608,7 +618,15 @@ def ensure_authenticated_or_stop() -> None:
         st.stop()
 
     # Authenticated workspace: clear the auth surface so no boot/card height remains.
-    auth_surface_host.empty()
+    # During Login handoff, keep the surface until the branded startup shell paints
+    # so users never see a blank white page between Login and Dashboard.
+    if not should_render_authenticated_startup_shell():
+        auth_surface_host.empty()
+    else:
+        from src.auth_state import render_auth_transition
+
+        with auth_surface_host.container():
+            render_auth_transition(AUTHENTICATED_STARTUP_SHELL_MESSAGE)
 
     if cookie_manager is None:
         cookie_manager = get_auth_cookie_manager(mount=True)

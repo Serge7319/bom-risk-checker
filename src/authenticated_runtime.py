@@ -1778,6 +1778,13 @@ def run_authenticated_app() -> None:
     with timed_phase("runtime.load_user_data", operation="load_user_data"):
         current_user = load_user_data()
 
+    try:
+        from src.auth_bootstrap import clear_login_handoff
+
+        clear_login_handoff()
+    except Exception:
+        st.session_state.pop("cadivor_login_handoff_active", None)
+
     is_admin = str(current_user.get("role", "")).lower() == "admin"
     # Admin Console v2.1 records only a timestamped authenticated heartbeat.
     # It deliberately stores no BOM content, page history, or client metadata.

@@ -25,7 +25,9 @@ class AtomicLoginComponentContractTests(unittest.TestCase):
         self.assertIn("password:passwordValue", HTML)
         self.assertIn("request_id:requestId()", HTML)
         self.assertIn('post("streamlit:setComponentValue"', HTML)
-        self.assertIn("if (submitted) return", HTML)
+        self.assertIn("if (submitted || button.disabled) return", HTML)
+        self.assertIn("button.disabled = Boolean(isBusy) || submitted", HTML)
+        self.assertIn('button.textContent = "Signing in…"', HTML)
 
     def test_first_submit_waits_for_streamlit_render_handshake(self):
         self.assertIn("let streamlitRenderReady = false", HTML)

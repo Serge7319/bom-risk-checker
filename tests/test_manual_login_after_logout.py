@@ -31,11 +31,13 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
                 sys.modules.pop(name, None)
 
     def _load(self, session_state=None, *, context_cookies=None):
-        st = _install_streamlit_stub(
+        st, restore_streamlit = _install_streamlit_stub(
             session_state or {},
             context_cookies=context_cookies if context_cookies is not None else _FakeContextCookies(),
         )
-        auth_cookies, auth_state = _install_auth_modules(st)
+        self.addCleanup(restore_streamlit)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self.addCleanup(restore_secrets)
         return st, auth_cookies, auth_state
 
     def _mock_supabase(self, *, user=_FakeUser()):
@@ -348,12 +350,13 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         self.assertIn("hydration_wait_rerun", bootstrap_source)
 
     def test_bootstrap_routes_signing_in_to_show_auth_ui_without_boundary_failed(self):
-        st = _install_streamlit_stub(
+        st, restore_streamlit = _install_streamlit_stub(
             {
                 "cadivor_manual_login_in_progress": True,
                 "cadivor_root_state": "signing_in",
             }
         )
+        self.addCleanup(restore_streamlit)
 
         def cache_resource(**kwargs):
             def decorator(fn):
@@ -363,7 +366,8 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         st.cache_resource = cache_resource
         st.stop = MagicMock()
         st.caption = MagicMock()
-        auth_cookies, auth_state = _install_auth_modules(st)
+        auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
+        self.addCleanup(restore_secrets)
 
         from tests.secrets_module_isolation import install_src_secrets_stub
         _secrets, restore_secrets = install_src_secrets_stub(

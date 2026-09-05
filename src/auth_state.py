@@ -248,6 +248,15 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     st.session_state.pop("cadivor_logout_committed", None)
     st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state.pop("cadivor_auth_submission", None)
+    if manual_login_success:
+        # Keep a branded handoff surface across the authenticated startup rerun
+        # so users never see a blank white page between Login and Dashboard.
+        try:
+            from src.auth_bootstrap import begin_login_handoff
+
+            begin_login_handoff()
+        except Exception:
+            st.session_state["cadivor_login_handoff_active"] = True
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
     route = requested or "Dashboard"
