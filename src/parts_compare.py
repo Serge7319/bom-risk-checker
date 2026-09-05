@@ -24,6 +24,8 @@ FINDING_COMPATIBLE = "Compatible on available evidence"
 FINDING_MATERIAL = "Material difference"
 FINDING_NEEDS_DATA = "Needs data / engineering validation"
 
+COMPARE_PARTS_PART_A_WIDGET_KEY = "compare_parts_part_a"
+COMPARE_PARTS_PART_B_WIDGET_KEY = "compare_parts_part_b"
 COMPARE_PARTS_RESULT_KEY = "compare_parts_result"
 COMPARE_PARTS_LAST_SUBMIT_KEY = "compare_parts_last_submit"
 COMPARE_PARTS_LAST_SUBMIT_AT_KEY = "compare_parts_last_submit_at"
@@ -45,6 +47,19 @@ USER_FACING_COMPARE_COLUMNS = (
 
 def _normalize_mpn(value: Any) -> str:
     return str(value or "").strip().upper()
+
+
+def resolve_compare_parts_submitted_mpn(*values: Any) -> str:
+    """Return the first non-empty MPN from form/widget/session candidates.
+
+    Streamlit can report an empty form return on the first Enter/click while the
+    keyed widget session value already holds the typed MPN.
+    """
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
 
 
 def claim_compare_parts_submit(
@@ -541,6 +556,8 @@ __all__ = [
     "FINDING_MATERIAL",
     "FINDING_NEEDS_DATA",
     "USER_FACING_COMPARE_COLUMNS",
+    "COMPARE_PARTS_PART_A_WIDGET_KEY",
+    "COMPARE_PARTS_PART_B_WIDGET_KEY",
     "build_parts_comparison",
     "claim_compare_parts_submit",
     "derive_overall_finding",
@@ -548,6 +565,7 @@ __all__ = [
     "lookup_part_for_compare",
     "map_status_to_assessment",
     "public_part_card",
+    "resolve_compare_parts_submitted_mpn",
     "run_compare_parts",
     "user_facing_compare_rows",
     "user_may_view_comparison_diagnostics",

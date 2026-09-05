@@ -177,6 +177,9 @@ def apply_auth_intent_from_query() -> None:
 
 
 AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Preparing your workspace…"
+AUTH_ENTRY_SHELL_MESSAGE = "Restoring your workspace…"
+AUTH_ENTRY_SHELL_KEY = "cadivor_auth_entry_shell"
+AUTH_ENTRY_SHELL_MESSAGE_KEY = "cadivor_auth_entry_shell_message"
 LOGIN_HANDOFF_ACTIVE_KEY = "cadivor_login_handoff_active"
 LOGIN_HANDOFF_STAGE_KEY = "cadivor_login_handoff_stage"
 LOGIN_HANDOFF_STARTED_AT_KEY = "cadivor_login_handoff_started_at"
@@ -201,6 +204,11 @@ def login_handoff_stage() -> str:
 
 def login_handoff_message() -> str:
     """Branded copy for the current bounded Login handoff stage."""
+    if st.session_state.get(AUTH_ENTRY_SHELL_KEY) and not login_handoff_active():
+        return str(
+            st.session_state.get(AUTH_ENTRY_SHELL_MESSAGE_KEY)
+            or AUTH_ENTRY_SHELL_MESSAGE
+        )
     stage = login_handoff_stage()
     if stage == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
         return "Signing you in…"
@@ -209,6 +217,21 @@ def login_handoff_message() -> str:
     if login_handoff_active():
         return AUTHENTICATED_STARTUP_SHELL_MESSAGE
     return "Signing you in…"
+
+
+def mark_authenticated_entry_shell(
+    message: str = AUTH_ENTRY_SHELL_MESSAGE,
+) -> None:
+    """Paint one branded shell while cookie/session restore loads the workspace."""
+    st.session_state[AUTH_ENTRY_SHELL_KEY] = True
+    st.session_state[AUTH_ENTRY_SHELL_MESSAGE_KEY] = str(
+        message or AUTH_ENTRY_SHELL_MESSAGE
+    )
+
+
+def clear_authenticated_entry_shell() -> None:
+    st.session_state.pop(AUTH_ENTRY_SHELL_KEY, None)
+    st.session_state.pop(AUTH_ENTRY_SHELL_MESSAGE_KEY, None)
 
 
 def begin_login_handoff(stage: str = LOGIN_HANDOFF_STAGE_INITIALIZING) -> None:
@@ -224,6 +247,8 @@ def begin_login_handoff(stage: str = LOGIN_HANDOFF_STAGE_INITIALIZING) -> None:
     st.session_state[LOGIN_HANDOFF_ACTIVE_KEY] = True
     st.session_state[LOGIN_HANDOFF_STAGE_KEY] = resolved
     st.session_state.setdefault(LOGIN_HANDOFF_STARTED_AT_KEY, time.monotonic())
+    # Manual login owns the handoff shell; drop any cold-entry overlay.
+    clear_authenticated_entry_shell()
 
 
 def advance_login_handoff(stage: str) -> None:
@@ -237,16 +262,14 @@ def advance_login_handoff(stage: str) -> None:
 
 
 def clear_login_handoff() -> None:
-    """Retire the Login handoff shell after workspace initialization succeeds."""
+    """End Login handoff and any cold authenticated entry shell."""
     st.session_state.pop(LOGIN_HANDOFF_ACTIVE_KEY, None)
     st.session_state.pop(LOGIN_HANDOFF_STAGE_KEY, None)
     st.session_state.pop(LOGIN_HANDOFF_STARTED_AT_KEY, None)
+    clear_authenticated_entry_shell()
 
 
 def login_handoff_timed_out() -> bool:
-    """True when the branded handoff has exceeded its hard bound."""
-    import time
-
     if not login_handoff_active():
         return False
     try:
@@ -256,6 +279,30 @@ def login_handoff_timed_out() -> bool:
     if started <= 0.0:
         return False
     return (time.monotonic() - started) >= LOGIN_HANDOFF_TIMEOUT_SECONDS
+
+
+def should_render_authenticated_startup_shell() -> bool:
+    """Show a branded shell during post-login init or cold authenticated restore.
+
+    The shell is stage-bound and time-bounded for Login handoff. Cookie/session
+    restore uses a one-shot entry shell cleared when the workspace mounts.
+    """
+    if st.session_state.get(AUTH_ENTRY_SHELL_KEY) and not login_handoff_active():
+        return True
+    if not login_handoff_active():
+        return False
+    if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
+        # Auth card progress owns this stage; do not stack the opaque shell.
+        return False
+    if login_handoff_timed_out():
+        # Drop the opaque shell so a hung profile init cannot mask the
+        # authenticated retry UI or Login form on subsequent runs.
+        if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
+            fail_login_handoff(message=LOGIN_HANDOFF_TIMEOUT_MESSAGE)
+        else:
+            clear_login_handoff()
+        return False
+    return login_handoff_stage() == LOGIN_HANDOFF_STAGE_INITIALIZING
 
 
 def fail_login_handoff(
@@ -285,28 +332,6 @@ def fail_login_handoff(
     st.session_state["cadivor_atomic_login_error_epoch"] = epoch + 1
     if draft:
         st.session_state[LOGIN_HANDOFF_EMAIL_KEY] = draft
-
-
-def should_render_authenticated_startup_shell() -> bool:
-    """Show a branded handoff shell only during post-login workspace initialization.
-
-    The shell is stage-bound and time-bounded. It must never remain after
-    workspace init succeeds, fails, or exceeds LOGIN_HANDOFF_TIMEOUT_SECONDS.
-    """
-    if not login_handoff_active():
-        return False
-    if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
-        # Auth card progress owns this stage; do not stack the opaque shell.
-        return False
-    if login_handoff_timed_out():
-        # Drop the opaque shell so a hung profile init cannot mask the
-        # authenticated retry UI or Login form on subsequent runs.
-        if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
-            fail_login_handoff(message=LOGIN_HANDOFF_TIMEOUT_MESSAGE)
-        else:
-            clear_login_handoff()
-        return False
-    return login_handoff_stage() == LOGIN_HANDOFF_STAGE_INITIALIZING
 
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
@@ -730,7 +755,11 @@ def ensure_authenticated_or_stop() -> None:
     # Authenticated workspace: always release the Login auth surface so
     # CookieManager / workspace widgets are not blocked behind a retained card.
     # Continuity during Login handoff is owned by the bounded startup shell in
-    # streamlit_app.py — not by keeping this empty() host occupied.
+    # streamlit_app.py. Cookie/session restore also paints one branded entry
+    # shell so the user never sees an unexplained blank page while the
+    # authenticated runtime imports.
+    if not login_handoff_active():
+        mark_authenticated_entry_shell(AUTH_ENTRY_SHELL_MESSAGE)
     auth_surface_host.empty()
 
     if cookie_manager is None:

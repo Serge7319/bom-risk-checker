@@ -1786,6 +1786,8 @@ def run_authenticated_app() -> None:
         st.session_state.pop("cadivor_login_handoff_active", None)
         st.session_state.pop("cadivor_login_handoff_stage", None)
         st.session_state.pop("cadivor_login_handoff_started_at", None)
+        st.session_state.pop("cadivor_auth_entry_shell", None)
+        st.session_state.pop("cadivor_auth_entry_shell_message", None)
 
     is_admin = str(current_user.get("role", "")).lower() == "admin"
     # Admin Console v2.1 records only a timestamped authenticated heartbeat.

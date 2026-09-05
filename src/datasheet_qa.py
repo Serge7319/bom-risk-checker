@@ -21,13 +21,15 @@ DATASHEET_QA_LAST_SUBMIT_KEY = "datasheet_qa_last_submit"
 DATASHEET_QA_LAST_SUBMIT_AT_KEY = "datasheet_qa_last_submit_at"
 DATASHEET_QA_SUBMIT_DEBOUNCE_SECONDS = 2.0
 DATASHEET_QA_STATUS_KEY = "datasheet_qa_status"
+DATASHEET_QA_QUESTION_WIDGET_KEY = "datasheet_qa_question"
+DATASHEET_QA_CLEAR_QUESTION_KEY = "datasheet_qa_clear_question"
 
 STATUS_IDLE = "idle"
 STATUS_PROCESSING = "processing"
 STATUS_READY = "ready"
 STATUS_FAILED = "failed"
 
-NOT_FOUND_ANSWER = "Not found in the uploaded datasheet."
+NOT_FOUND_ANSWER = "Not found in this datasheet."
 MAX_CHUNKS_PER_PAGE = 4
 MAX_CHUNK_CHARS = 1200
 MAX_RETRIEVED_CHUNKS = 6
@@ -44,6 +46,15 @@ class DatasheetChunk:
     start_char: int
 
 
+def resolve_datasheet_question(*values: Any) -> str:
+    """Return the first non-empty question from form/widget/session candidates."""
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
 def claim_datasheet_question_submit(
     session_state: MutableMapping[str, Any],
     question: str,
@@ -51,10 +62,15 @@ def claim_datasheet_question_submit(
     debounce_seconds: float = DATASHEET_QA_SUBMIT_DEBOUNCE_SECONDS,
     now: float | None = None,
 ) -> bool:
-    """Claim one question submit; reject empty, in-flight, or duplicate bursts."""
+    """Claim one question submit; reject empty, in-flight, or duplicate bursts.
+
+    A different question after a completed answer is always allowed. Only an
+    identical in-flight or rapid-duplicate question is suppressed.
+    """
     cleaned = str(question or "").strip()
     if not cleaned:
         return False
+    # Block only while a question is actually processing (any in-flight work).
     if str(session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING:
         return False
     token = cleaned.casefold()[:240]
@@ -383,18 +399,33 @@ def build_datasheet_qa_context(chunks: list[Mapping[str, Any]]) -> dict[str, Any
     }
 
 
+def compact_datasheet_history(thread: list[Mapping[str, Any]] | None) -> list[dict[str, str]]:
+    """Compact prior Q&A turns for the AI service without document bodies."""
+    history: list[dict[str, str]] = []
+    for turn in (thread or [])[-6:]:
+        if not isinstance(turn, dict):
+            continue
+        question = str(turn.get("question") or "").strip()
+        answer = str(turn.get("answer") or "").strip()
+        if not question or not answer:
+            continue
+        history.append({"question": question[:400], "answer": answer[:600]})
+    return history
+
+
 def answer_datasheet_question(
     document: Mapping[str, Any],
     question: str,
     *,
     ai_client: Any | None = None,
+    history: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Retrieve relevant chunks and produce a cited answer."""
+    """Retrieve relevant excerpts and produce a cited answer."""
     cleaned = str(question or "").strip()
     if not cleaned:
         return {
             "ok": False,
-            "error": "Enter an engineering question about the uploaded datasheet.",
+            "error": "Enter a question about this datasheet.",
             "answer": "",
             "citations": [],
             "evidence": [],
@@ -410,7 +441,7 @@ def answer_datasheet_question(
     if not document or not document.get("available"):
         return {
             "ok": False,
-            "error": str(document.get("reason") or "Upload a text-based PDF datasheet first."),
+            "error": str(document.get("reason") or "Upload a text-searchable PDF datasheet first."),
             "answer": "",
             "citations": [],
             "evidence": [],
@@ -434,12 +465,12 @@ def answer_datasheet_question(
             response = ai_client.ask(
                 question=cleaned,
                 context=build_datasheet_qa_context(chunks),
-                history=[],
+                history=list(history or []),
             )
             answer = str(getattr(response, "answer", "") or "")
             provider = str(getattr(response, "provider", "openai") or "openai")
         except Exception as exc:  # noqa: BLE001 — convert to actionable UI failure
-            message = "Cadivor could not complete datasheet Q&A right now."
+            message = "Cadivor could not answer from this datasheet right now. Please try again."
             code = getattr(exc, "code", "")
             if code == "validation":
                 message = str(exc)
@@ -471,6 +502,24 @@ def answer_datasheet_question(
         "evidence": evidence,
         "provider": provider,
     }
+
+
+def build_datasheet_ai_client() -> Any | None:
+    """Construct the optional EngineeringAI client without page-level secrets UI."""
+    try:
+        from src.secrets import get_secret
+        from src.services.engineering_ai import EngineeringAI
+
+        return EngineeringAI(
+            api_key=str(get_secret("OPENAI_API_KEY", default="") or ""),
+            model=str(get_secret("OPENAI_MODEL", default="gpt-4.1-mini") or "gpt-4.1-mini"),
+            base_url=str(
+                get_secret("OPENAI_BASE_URL", default="https://api.openai.com/v1")
+                or "https://api.openai.com/v1"
+            ),
+        )
+    except Exception:
+        return None
 
 
 def store_document_in_session(
