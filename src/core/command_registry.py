@@ -32,6 +32,8 @@ DEFAULT_COMMANDS: tuple[Command, ...] = (
     Command("dashboard", "Open Dashboard", "Portfolio health and engineering priorities", "Dashboard", "Navigation", "⌂", ("home", "overview", "command center"), "G D"),
     Command("bom-analyzer", "Open BOM Analyzer", "Upload, analyze, and review a bill of materials", "BOM Analyzer", "Navigation", "▦", ("upload", "analysis", "bom", "parts"), "G B"),
     Command("alternative-finder", "Find Alternatives", "Search and compare replacement components", "Alternative Finder", "Engineering", "⇄", ("replacement", "substitute", "cross reference", "compare"), "G A"),
+    Command("compare-parts", "Compare Parts", "Neutral engineering comparison of any two MPNs", "Compare Parts", "Engineering", "⇋", ("compare parts", "side by side", "attribute matrix"), "G C"),
+    Command("datasheet-qa", "Datasheet Q&A", "Ask cited questions against an uploaded datasheet PDF", "Datasheet Q&A", "Engineering", "📄", ("datasheet", "pdf", "citation", "ask datasheet")),
     Command("monitoring", "Open Monitoring", "Review lifecycle, stock, and supplier changes", "Monitoring", "Engineering", "◷", ("alerts", "lifecycle", "inventory", "stock", "supplier"), "G M"),
     Command("decisions", "Open Engineering Decisions", "Review approvals, rejections, and audit records", "Engineering Decisions", "Engineering", "◆", ("approve", "reject", "review", "audit", "decision"), "G E"),
     Command("reports", "Generate Engineering Report", "Executive, lifecycle, risk, and readiness reports", "Reports", "Actions", "□", ("pdf", "executive report", "export", "lifecycle report"), "G R"),
