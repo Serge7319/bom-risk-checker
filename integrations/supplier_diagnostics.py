@@ -26,6 +26,14 @@ CATEGORY_MALFORMED_RESPONSE = "malformed_response"
 CATEGORY_NO_RESULT = "no_result"
 CATEGORY_PROVIDER_ERROR = "provider_error"
 
+# Railway-searchable Octopart/Nexar provider_response subreasons.
+SUBREASON_GRAPHQL_ERRORS = "graphql_errors"
+SUBREASON_EMPTY_RESPONSE = "empty_response"
+SUBREASON_MALFORMED_RESPONSE = "malformed_response"
+SUBREASON_MISSING_EXPECTED_DATA = "missing_expected_data"
+SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
+SUBREASON_ZERO_RESULTS = "zero_results"
+
 _SECRET_PATTERN = re.compile(
     r"(?i)(api[_-]?key|token|secret|password|authorization|bearer)\s*[:=]\s*\S+"
 )
@@ -62,12 +70,25 @@ def categorize_supplier_failure(
     error_message: str = "",
     exception_type: str = "",
     status_code: str | int | None = None,
+    subreason: str = "",
 ) -> str:
     status = str(provider_status or "").strip().upper()
     lowered = _redact(error_message).casefold()
     exc = str(exception_type or "").strip()
     code = _safe_http_status_code(status_code, error_message)
+    reason = str(subreason or "").strip().casefold()
 
+    if reason == SUBREASON_ZERO_RESULTS or status == PROVIDER_PART_NOT_FOUND:
+        return CATEGORY_NO_RESULT
+    if reason == SUBREASON_GRAPHQL_ERRORS:
+        return CATEGORY_PROVIDER_ERROR
+    if reason in {
+        SUBREASON_SCHEMA_MISMATCH,
+        SUBREASON_MISSING_EXPECTED_DATA,
+        SUBREASON_EMPTY_RESPONSE,
+        SUBREASON_MALFORMED_RESPONSE,
+    }:
+        return CATEGORY_MALFORMED_RESPONSE
     if status == PROVIDER_NOT_CONFIGURED:
         return CATEGORY_CONFIGURATION
     if (
@@ -76,8 +97,6 @@ def categorize_supplier_failure(
         or "credentials are not configured" in lowered
     ):
         return CATEGORY_CONFIGURATION
-    if status == PROVIDER_PART_NOT_FOUND:
-        return CATEGORY_NO_RESULT
     if status == PROVIDER_RATE_LIMITED or "rate limit" in lowered or "429" in lowered or code == "429":
         return CATEGORY_RATE_LIMIT
     if status == PROVIDER_TIMEOUT or exc in {"ReadTimeout", "ConnectTimeout", "Timeout"}:
@@ -97,11 +116,53 @@ def categorize_supplier_failure(
         return CATEGORY_AUTHENTICATION
     if exc in {"HTTPError", "ConnectionError"} or "http" in lowered or code:
         return CATEGORY_HTTP_ERROR
-    if "json" in lowered or "graphql" in lowered or "malformed" in lowered:
+    # Match GraphQL payload failures only — not credentialed/API URLs containing "/graphql".
+    if "graphql error" in lowered or "graphql errors" in lowered:
+        return CATEGORY_PROVIDER_ERROR
+    if "json" in lowered or "malformed" in lowered:
         return CATEGORY_MALFORMED_RESPONSE
     if status == PROVIDER_ERROR:
         return CATEGORY_PROVIDER_ERROR
     return CATEGORY_PROVIDER_ERROR
+
+
+def normalize_provider_response_subreason(
+    *,
+    subreason: str = "",
+    provider_status: str = "",
+    category: str = "",
+    exception_type: str = "",
+    error_message: str = "",
+) -> str:
+    """Return a safe Octopart/provider_response subreason for diagnostics."""
+    reason = str(subreason or "").strip().casefold()
+    allowed = {
+        SUBREASON_GRAPHQL_ERRORS,
+        SUBREASON_EMPTY_RESPONSE,
+        SUBREASON_MALFORMED_RESPONSE,
+        SUBREASON_MISSING_EXPECTED_DATA,
+        SUBREASON_SCHEMA_MISMATCH,
+        SUBREASON_ZERO_RESULTS,
+    }
+    if reason in allowed:
+        return reason
+    status = str(provider_status or "").strip().upper()
+    if status == PROVIDER_PART_NOT_FOUND:
+        return SUBREASON_ZERO_RESULTS
+    lowered = _redact(error_message).casefold()
+    exc = str(exception_type or "").strip()
+    if "cannot query field" in lowered or "unknown field" in lowered:
+        return SUBREASON_SCHEMA_MISMATCH
+    # Do not treat "…/graphql" URLs in HTTP error strings as GraphQL payload failures.
+    if exc == "OctopartResponseError" or "graphql error" in lowered or "graphql errors" in lowered:
+        return SUBREASON_GRAPHQL_ERRORS
+    if "json" in lowered or "malformed" in lowered:
+        return SUBREASON_MALFORMED_RESPONSE
+    if str(category or "") == CATEGORY_MALFORMED_RESPONSE:
+        return SUBREASON_MALFORMED_RESPONSE
+    if str(category or "") == CATEGORY_NO_RESULT:
+        return SUBREASON_ZERO_RESULTS
+    return ""
 
 
 def _safe_http_status_code(
@@ -172,6 +233,7 @@ def log_supplier_diagnostic(
     status_code: str | int | None = None,
     error: BaseException | None = None,
     retained_candidates: bool = False,
+    subreason: str = "",
 ) -> dict[str, str]:
     """Emit one Railway-searchable supplier diagnostic for a non-success lookup.
 
@@ -179,14 +241,31 @@ def log_supplier_diagnostic(
     The log line contains only safe searchable fields — never headers, tokens,
     credentialed URLs, or response bodies.
     """
-    resolved_request_id = str(request_id or get_alternative_finder_request_id() or "unknown").strip()
+    resolved_request_id = str(request_id or get_alternative_finder_request_id() or "").strip() or "unknown"
+    error_subreason = ""
+    if error is not None:
+        error_subreason = str(getattr(error, "subreason", "") or "").strip()
     safe_status_code = _safe_http_status_code(status_code, error_message, error)
+    resolved_subreason = normalize_provider_response_subreason(
+        subreason=subreason or error_subreason,
+        provider_status=provider_status,
+        exception_type=exception_type or (type(error).__name__ if error is not None else ""),
+        error_message=error_message,
+    )
     category = categorize_supplier_failure(
         provider_status=provider_status,
         error_message=error_message,
-        exception_type=exception_type,
+        exception_type=exception_type or (type(error).__name__ if error is not None else ""),
         status_code=safe_status_code,
+        subreason=resolved_subreason,
     )
+    if not resolved_subreason:
+        resolved_subreason = normalize_provider_response_subreason(
+            provider_status=provider_status,
+            category=category,
+            exception_type=exception_type or (type(error).__name__ if error is not None else ""),
+            error_message=error_message,
+        )
     log_category = railway_diagnostic_category(category)
     retryable = diagnostic_is_retryable(
         log_category=log_category,
@@ -202,23 +281,53 @@ def log_supplier_diagnostic(
         "stage": str(stage or "").strip() or "lookup",
         "category": category,
         "log_category": log_category,
+        "subreason": resolved_subreason,
         "provider_status": str(provider_status or ""),
-        "exception_type": str(exception_type or ""),
+        "exception_type": str(exception_type or (type(error).__name__ if error is not None else "")),
         "status_code": safe_status_code,
         "retryable": "true" if retryable else "false",
         "message": safe_message,
         "retained_candidates": "true" if retained_candidates else "false",
     }
-    logger.warning(
-        "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
-        "status_code=%s retryable=%s",
-        payload["request_id"],
-        payload["supplier"],
-        payload["log_category"],
-        payload["status_code"] or "none",
-        payload["retryable"],
-    )
+    if resolved_subreason:
+        logger.warning(
+            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
+            "subreason=%s status_code=%s retryable=%s",
+            payload["request_id"],
+            payload["supplier"],
+            payload["log_category"],
+            payload["subreason"],
+            payload["status_code"] or "none",
+            payload["retryable"],
+        )
+    else:
+        logger.warning(
+            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
+            "status_code=%s retryable=%s",
+            payload["request_id"],
+            payload["supplier"],
+            payload["log_category"],
+            payload["status_code"] or "none",
+            payload["retryable"],
+        )
     return payload
+
+
+def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, str]) -> None:
+    if not isinstance(result, dict) or not diagnostic:
+        return
+    result["failure_category"] = str(diagnostic.get("category") or "")
+    result["diagnostic_stage"] = str(diagnostic.get("stage") or "")
+    if diagnostic.get("status_code"):
+        result["diagnostic_status_code"] = str(diagnostic.get("status_code") or "")
+    if diagnostic.get("retryable"):
+        result["diagnostic_retryable"] = str(diagnostic.get("retryable") or "")
+    if diagnostic.get("log_category"):
+        result["diagnostic_log_category"] = str(diagnostic.get("log_category") or "")
+    if diagnostic.get("subreason"):
+        result["diagnostic_subreason"] = str(diagnostic.get("subreason") or "")
+    if diagnostic.get("request_id"):
+        result["diagnostic_request_id"] = str(diagnostic.get("request_id") or "")
 
 
 _PLACEHOLDER_SECRET_VALUES = frozenset(
@@ -351,6 +460,18 @@ def resolve_supplier_coverage_status(
             "label": f"{name}: not configured",
             "is_available": False,
             "is_configuration_gap": True,
+            "is_runtime_failure": False,
+        }
+
+    # Valid zero-result / no exact match is a completed supplier search, not an outage.
+    if status == PROVIDER_PART_NOT_FOUND or category == CATEGORY_NO_RESULT:
+        return {
+            "source": name,
+            "provider_status": PROVIDER_PART_NOT_FOUND,
+            "failure_category": CATEGORY_NO_RESULT,
+            "label": f"{name}: no exact match",
+            "is_available": False,
+            "is_configuration_gap": False,
             "is_runtime_failure": False,
         }
 
@@ -613,16 +734,3 @@ def build_alternative_finder_coverage_notices(
         ),
         "show_generic_configured_failure": False,
     }
-
-
-def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, str]) -> None:
-    if not isinstance(result, dict) or not diagnostic:
-        return
-    result["failure_category"] = str(diagnostic.get("category") or "")
-    result["diagnostic_stage"] = str(diagnostic.get("stage") or "")
-    if diagnostic.get("status_code"):
-        result["diagnostic_status_code"] = str(diagnostic.get("status_code") or "")
-    if diagnostic.get("retryable"):
-        result["diagnostic_retryable"] = str(diagnostic.get("retryable") or "")
-    if diagnostic.get("log_category"):
-        result["diagnostic_log_category"] = str(diagnostic.get("log_category") or "")

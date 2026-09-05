@@ -34,6 +34,7 @@ jobs:
             tests.test_alternative_evidence_integrity \
             tests.test_alternative_supplier_evidence \
             tests.test_alternative_finder_search \
+            tests.test_octopart_integration \
             tests.test_alternative_finder_suitability \
             tests.test_alternative_finder_cross_family \
             tests.test_pin_count_parsing \

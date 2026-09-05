@@ -757,8 +757,75 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
             "PROVIDER_ERROR",
             failure_category=self.diagnostics.CATEGORY_HTTP_ERROR,
         )
+        zero_label = self.diagnostics.supplier_coverage_label(
+            "Octopart",
+            "PART_NOT_FOUND",
+            failure_category=self.diagnostics.CATEGORY_NO_RESULT,
+        )
         self.assertEqual(configured_label, "Octopart: not configured")
         self.assertEqual(failed_label, "Octopart: unavailable for this search")
+        self.assertEqual(zero_label, "Octopart: no exact match")
+
+    def test_configured_octopart_graphql_failure_emits_subreason_and_request_id(self):
+        import integrations.supplier_diagnostics as diagnostics
+        from integrations.octopart_client import (
+            OctopartResponseError,
+            SUBREASON_SCHEMA_MISMATCH,
+        )
+
+        original_creds = diagnostics._octopart_credentials_configured
+        diagnostics._octopart_credentials_configured = lambda: True
+        self.addCleanup(
+            lambda: setattr(diagnostics, "_octopart_credentials_configured", original_creds)
+        )
+        original_callable = self.aggregator._supplier_lookup_callable
+
+        def lookup_callable(source_name):
+            if source_name == "Octopart":
+
+                def boom(_part):
+                    raise OctopartResponseError(
+                        "Octopart supplier query could not be completed.",
+                        subreason=SUBREASON_SCHEMA_MISMATCH,
+                    )
+
+                return boom
+            return None
+
+        self.aggregator._supplier_lookup_callable = lookup_callable
+        self.addCleanup(
+            lambda: setattr(self.aggregator, "_supplier_lookup_callable", original_callable)
+        )
+
+        request_id = "searchreq42aa"
+        token = diagnostics.set_alternative_finder_request_id(request_id)
+        self.addCleanup(lambda: diagnostics.reset_alternative_finder_request_id(token))
+
+        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
+            results = self.aggregator.get_supplier_results("C0603C104K5RACTU")
+
+        octopart = next(row for row in results if row.get("source") == "Octopart")
+        self.assertEqual(octopart.get("provider_status"), "PROVIDER_ERROR")
+        self.assertEqual(octopart.get("failure_category"), self.diagnostics.CATEGORY_MALFORMED_RESPONSE)
+        self.assertEqual(octopart.get("diagnostic_subreason"), "schema_mismatch")
+        self.assertEqual(octopart.get("diagnostic_request_id"), request_id)
+        self.assertEqual(octopart.get("diagnostic_log_category"), "provider_response")
+
+        joined = "\n".join(logs.output)
+        self.assertIn(f"request_id={request_id}", joined)
+        self.assertIn("category=provider_response", joined)
+        self.assertIn("subreason=schema_mismatch", joined)
+        self.assertNotIn("request_id=unknown", joined)
+        self.assertNotIn("Bearer ", joined)
+        self.assertNotIn("shortDescription", joined)
+
+        label = self.diagnostics.supplier_coverage_label(
+            "Octopart",
+            octopart.get("provider_status"),
+            failure_category=octopart.get("failure_category"),
+            error_message=str(octopart.get("error") or ""),
+        )
+        self.assertEqual(label, "Octopart: unavailable for this search")
 
     def test_c3121_classification_follows_verified_direct_evidence(self):
         explicit = [self._verified_direct_candidate()]
