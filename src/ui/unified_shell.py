@@ -20,6 +20,8 @@ NAV_GROUPS = (
         ("Dashboard", "dashboard", "Dashboard"),
         ("BOM Analyzer", "bom", "BOM Analyzer"),
         ("Alternative Finder", "alternatives", "Alternative Finder"),
+        ("Compare Parts", "compare", "Compare Parts"),
+        ("Datasheet Q&A", "datasheet-qa", "Datasheet Q&A"),
         ("Design Impact", "impact", "Design Impact Analyzer"),
     )),
     ("Decide", (

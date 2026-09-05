@@ -2366,6 +2366,8 @@ def run_authenticated_app() -> None:
         "Dashboard",
         "BOM Analyzer",
         "Alternative Finder",
+        "Compare Parts",
+        "Datasheet Q&A",
         "Monitoring",
         "Engineering Decisions",
         "Procurement Advisor",
@@ -8827,6 +8829,18 @@ def run_authenticated_app() -> None:
         else:
             st.info("No users found.")
 
+        stop_authenticated_page()
+
+    if app_mode == "Compare Parts":
+        from src.pages.compare_parts import render_compare_parts_page
+
+        render_compare_parts_page(is_admin=bool(is_admin), role=str(current_user.get("role") or ""))
+        stop_authenticated_page()
+
+    if app_mode == "Datasheet Q&A":
+        from src.pages.datasheet_qa import render_datasheet_qa_page
+
+        render_datasheet_qa_page()
         stop_authenticated_page()
 
     if app_mode == "Alternative Finder":
