@@ -176,28 +176,128 @@ def apply_auth_intent_from_query() -> None:
         st.session_state["cadivor_auth_intent_applied"] = True
 
 
-AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Signing you in…"
+AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Preparing your workspace…"
 LOGIN_HANDOFF_ACTIVE_KEY = "cadivor_login_handoff_active"
+LOGIN_HANDOFF_STAGE_KEY = "cadivor_login_handoff_stage"
+LOGIN_HANDOFF_STARTED_AT_KEY = "cadivor_login_handoff_started_at"
+LOGIN_HANDOFF_EMAIL_KEY = "cadivor_login_email_draft"
+# Bound the branded post-login shell so a failed/hung profile init cannot
+# leave users on an indefinite "Signing you in…" screen.
+LOGIN_HANDOFF_TIMEOUT_SECONDS = 35.0
+LOGIN_HANDOFF_STAGE_AUTHENTICATING = "authenticating"
+LOGIN_HANDOFF_STAGE_INITIALIZING = "initializing"
+LOGIN_HANDOFF_TIMEOUT_MESSAGE = (
+    "Sign-in timed out while preparing your workspace. Please try again."
+)
 
 
-def should_render_authenticated_startup_shell() -> bool:
-    """Show a branded handoff shell only during post-login workspace initialization.
-
-    The permanent opaque shell was disabled because it could mask a server-side
-    exception. A one-shot handoff flag still prevents the blank white gap after
-    Login while remaining retired once the authenticated workspace paints.
-    """
+def login_handoff_active() -> bool:
     return bool(st.session_state.get(LOGIN_HANDOFF_ACTIVE_KEY))
 
 
-def begin_login_handoff() -> None:
-    """Mark the next authenticated startup as a branded Login handoff."""
+def login_handoff_stage() -> str:
+    return str(st.session_state.get(LOGIN_HANDOFF_STAGE_KEY) or "").strip()
+
+
+def login_handoff_message() -> str:
+    """Branded copy for the current bounded Login handoff stage."""
+    stage = login_handoff_stage()
+    if stage == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
+        return "Signing you in…"
+    if stage == LOGIN_HANDOFF_STAGE_INITIALIZING:
+        return AUTHENTICATED_STARTUP_SHELL_MESSAGE
+    if login_handoff_active():
+        return AUTHENTICATED_STARTUP_SHELL_MESSAGE
+    return "Signing you in…"
+
+
+def begin_login_handoff(stage: str = LOGIN_HANDOFF_STAGE_INITIALIZING) -> None:
+    """Start a bounded branded Login→workspace handoff."""
+    import time
+
+    resolved = str(stage or LOGIN_HANDOFF_STAGE_INITIALIZING).strip()
+    if resolved not in {
+        LOGIN_HANDOFF_STAGE_AUTHENTICATING,
+        LOGIN_HANDOFF_STAGE_INITIALIZING,
+    }:
+        resolved = LOGIN_HANDOFF_STAGE_INITIALIZING
     st.session_state[LOGIN_HANDOFF_ACTIVE_KEY] = True
+    st.session_state[LOGIN_HANDOFF_STAGE_KEY] = resolved
+    st.session_state.setdefault(LOGIN_HANDOFF_STARTED_AT_KEY, time.monotonic())
+
+
+def advance_login_handoff(stage: str) -> None:
+    """Move an in-flight handoff to the next bounded stage."""
+    if not login_handoff_active():
+        begin_login_handoff(stage)
+        return
+    resolved = str(stage or "").strip()
+    if resolved:
+        st.session_state[LOGIN_HANDOFF_STAGE_KEY] = resolved
 
 
 def clear_login_handoff() -> None:
     """Retire the Login handoff shell after workspace initialization succeeds."""
     st.session_state.pop(LOGIN_HANDOFF_ACTIVE_KEY, None)
+    st.session_state.pop(LOGIN_HANDOFF_STAGE_KEY, None)
+    st.session_state.pop(LOGIN_HANDOFF_STARTED_AT_KEY, None)
+
+
+def login_handoff_timed_out() -> bool:
+    """True when the branded handoff has exceeded its hard bound."""
+    import time
+
+    if not login_handoff_active():
+        return False
+    try:
+        started = float(st.session_state.get(LOGIN_HANDOFF_STARTED_AT_KEY) or 0.0)
+    except (TypeError, ValueError):
+        started = 0.0
+    if started <= 0.0:
+        return False
+    return (time.monotonic() - started) >= LOGIN_HANDOFF_TIMEOUT_SECONDS
+
+
+def fail_login_handoff(
+    *,
+    message: str = LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+    email: str = "",
+) -> None:
+    """Clear handoff state and restore an enabled Login form with an error."""
+    from src.auth_state import APP_LOGIN, AUTH_SIGNED_OUT
+
+    draft = str(email or st.session_state.get(LOGIN_HANDOFF_EMAIL_KEY) or "").strip()
+    clear_login_handoff()
+    st.session_state.pop("cadivor_manual_login_in_progress", None)
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state["cadivor_root_state"] = APP_LOGIN
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_auth_error"] = str(message or LOGIN_HANDOFF_TIMEOUT_MESSAGE)
+    if draft:
+        st.session_state[LOGIN_HANDOFF_EMAIL_KEY] = draft
+
+
+def should_render_authenticated_startup_shell() -> bool:
+    """Show a branded handoff shell only during post-login workspace initialization.
+
+    The shell is stage-bound and time-bounded. It must never remain after
+    workspace init succeeds, fails, or exceeds LOGIN_HANDOFF_TIMEOUT_SECONDS.
+    """
+    if not login_handoff_active():
+        return False
+    if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
+        # Auth card progress owns this stage; do not stack the opaque shell.
+        return False
+    if login_handoff_timed_out():
+        # Drop the opaque shell so a hung profile init cannot mask the
+        # authenticated retry UI or Login form on subsequent runs.
+        if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
+            fail_login_handoff(message=LOGIN_HANDOFF_TIMEOUT_MESSAGE)
+        else:
+            clear_login_handoff()
+        return False
+    return login_handoff_stage() == LOGIN_HANDOFF_STAGE_INITIALIZING
+
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
     """Render lightweight workspace chrome while the authenticated app initializes."""
@@ -617,16 +717,11 @@ def ensure_authenticated_or_stop() -> None:
         )
         st.stop()
 
-    # Authenticated workspace: clear the auth surface so no boot/card height remains.
-    # During Login handoff, keep the surface until the branded startup shell paints
-    # so users never see a blank white page between Login and Dashboard.
-    if not should_render_authenticated_startup_shell():
-        auth_surface_host.empty()
-    else:
-        from src.auth_state import render_auth_transition
-
-        with auth_surface_host.container():
-            render_auth_transition(AUTHENTICATED_STARTUP_SHELL_MESSAGE)
+    # Authenticated workspace: always release the Login auth surface so
+    # CookieManager / workspace widgets are not blocked behind a retained card.
+    # Continuity during Login handoff is owned by the bounded startup shell in
+    # streamlit_app.py — not by keeping this empty() host occupied.
+    auth_surface_host.empty()
 
     if cookie_manager is None:
         cookie_manager = get_auth_cookie_manager(mount=True)

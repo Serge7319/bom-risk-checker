@@ -39,6 +39,7 @@ from src.auth_bootstrap import (
     AUTHENTICATED_STARTUP_SHELL_MESSAGE,
     ensure_authenticated_or_stop,
     log_startup_phase,
+    login_handoff_message,
     render_startup_loading_shell,
     should_render_authenticated_startup_shell,
 )
@@ -68,7 +69,7 @@ with timed_phase("startup.ensure_authenticated", operation="resolve"):
     ensure_authenticated_or_stop()
 
 if should_render_authenticated_startup_shell():
-    render_startup_loading_shell(AUTHENTICATED_STARTUP_SHELL_MESSAGE)
+    render_startup_loading_shell(login_handoff_message() or AUTHENTICATED_STARTUP_SHELL_MESSAGE)
 log_startup_phase("load_authenticated_runtime")
 with timed_phase("startup.authenticated_runtime_import", operation="import"):
     from src.authenticated_runtime import run_authenticated_app

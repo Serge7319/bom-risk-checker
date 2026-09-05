@@ -249,14 +249,23 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state.pop("cadivor_auth_submission", None)
     if manual_login_success:
-        # Keep a branded handoff surface across the authenticated startup rerun
-        # so users never see a blank white page between Login and Dashboard.
+        # Bound the branded handoff across the authenticated startup rerun.
+        # Stage=initializing so streamlit_app can paint the workspace shell
+        # without retaining the Login auth surface.
         try:
-            from src.auth_bootstrap import begin_login_handoff
+            from src.auth_bootstrap import (
+                LOGIN_HANDOFF_STAGE_INITIALIZING,
+                advance_login_handoff,
+                begin_login_handoff,
+            )
 
-            begin_login_handoff()
+            if st.session_state.get("cadivor_login_handoff_active"):
+                advance_login_handoff(LOGIN_HANDOFF_STAGE_INITIALIZING)
+            else:
+                begin_login_handoff(LOGIN_HANDOFF_STAGE_INITIALIZING)
         except Exception:
             st.session_state["cadivor_login_handoff_active"] = True
+            st.session_state["cadivor_login_handoff_stage"] = "initializing"
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
     route = requested or "Dashboard"
@@ -753,6 +762,22 @@ def resolve_auth_state(supabase: Any, cookie_manager: Any) -> str:
             pass
 
     if manual_login_in_flight():
+        try:
+            from src.auth_bootstrap import (
+                LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+                fail_login_handoff,
+                login_handoff_timed_out,
+            )
+
+            if login_handoff_timed_out():
+                draft = str(st.session_state.get("cadivor_login_email_draft") or "").strip()
+                fail_login_handoff(
+                    message=LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+                    email=draft,
+                )
+                return AUTH_SIGNED_OUT
+        except Exception:
+            pass
         st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
         return AUTH_SIGNING_IN
 

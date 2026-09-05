@@ -389,11 +389,18 @@ def _fail_manual_login_and_rerun(
 ) -> None:
     """Rebuild an enabled Login surface after a provider-side failure."""
     finish_manual_login_failed(cookie_manager)
-    st.session_state["cadivor_root_state"] = APP_LOGIN
-    st.session_state["cadivor_auth_error"] = message
-    if email:
-        st.session_state["cadivor_login_email_draft"] = str(email).strip()
-    st.session_state.pop("cadivor_login_handoff_active", None)
+    try:
+        from src.auth_bootstrap import fail_login_handoff
+
+        fail_login_handoff(message=message, email=email)
+    except Exception:
+        st.session_state["cadivor_root_state"] = APP_LOGIN
+        st.session_state["cadivor_auth_error"] = message
+        if email:
+            st.session_state["cadivor_login_email_draft"] = str(email).strip()
+        st.session_state.pop("cadivor_login_handoff_active", None)
+        st.session_state.pop("cadivor_login_handoff_stage", None)
+        st.session_state.pop("cadivor_login_handoff_started_at", None)
     _log_manual_login_event(event, cookie_manager)
     st.rerun()
 
@@ -404,7 +411,17 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
     st.session_state["cadivor_login_email_draft"] = str(email or "").strip()
-    render_auth_transition("Signing you in…")
+    try:
+        from src.auth_bootstrap import (
+            LOGIN_HANDOFF_STAGE_AUTHENTICATING,
+            begin_login_handoff,
+            login_handoff_message,
+        )
+
+        begin_login_handoff(LOGIN_HANDOFF_STAGE_AUTHENTICATING)
+        render_auth_transition(login_handoff_message())
+    except Exception:
+        render_auth_transition("Signing you in…")
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
@@ -437,6 +454,8 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
 
     _log_manual_login_event("manual_login_provider_session_ready", cookie_manager)
     mark_authenticated(user, session, cookie_manager)
+    # Root state must leave APP_SIGNING_IN immediately after credentials succeed.
+    st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
     st.session_state.pop("cadivor_login_email_draft", None)
     _log_manual_login_event("manual_login_session_committed", cookie_manager)
     st.rerun()
@@ -903,9 +922,7 @@ def _render_auth_page(
         # This avoids Streamlit's separate password-commit and button reruns.
         from src.auth_state import manual_login_in_flight
 
-        login_in_flight = manual_login_in_flight() or bool(
-            st.session_state.get("cadivor_login_handoff_active")
-        )
+        login_in_flight = manual_login_in_flight()
         draft_email = str(st.session_state.get("cadivor_login_email_draft") or "").strip()
         login_payload = render_atomic_login(
             key="cadivor_atomic_login",
@@ -1264,10 +1281,44 @@ def show_auth_ui(supabase, cookie_manager=None):
             return
 
         if state == APP_SIGNING_IN:
-            # Keep the branded progress surface while credentials are in flight.
-            # Do not fall back to the Login form mid-submit (blank/white flicker).
-            render_auth_transition("Signing you in…")
-            return
+            from src.auth_state import manual_login_in_flight
+
+            try:
+                from src.auth_bootstrap import (
+                    LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+                    fail_login_handoff,
+                    login_handoff_message,
+                    login_handoff_timed_out,
+                )
+            except Exception:
+                login_handoff_timed_out = lambda: False  # noqa: E731
+                fail_login_handoff = None
+                login_handoff_message = lambda: "Signing you in…"  # noqa: E731
+                LOGIN_HANDOFF_TIMEOUT_MESSAGE = (
+                    "Sign-in timed out while preparing your workspace. Please try again."
+                )
+
+            # Progress UI is allowed only while credentials are actually in flight.
+            # A stale APP_SIGNING_IN across reruns previously deadlocked Login.
+            if manual_login_in_flight() and not login_handoff_timed_out():
+                render_auth_transition(login_handoff_message())
+                return
+
+            draft = str(st.session_state.get("cadivor_login_email_draft") or "").strip()
+            if fail_login_handoff is not None:
+                fail_login_handoff(
+                    message=(
+                        LOGIN_HANDOFF_TIMEOUT_MESSAGE
+                        if login_handoff_timed_out()
+                        else MANUAL_LOGIN_FAILURE_MESSAGE
+                    ),
+                    email=draft,
+                )
+            else:
+                st.session_state["cadivor_root_state"] = APP_LOGIN
+                st.session_state.pop("cadivor_manual_login_in_progress", None)
+            state = APP_LOGIN
+            _seed_auth_mode_widget(AUTH_MODE_LOGIN)
 
         if state in (APP_LOGIN, APP_SIGNUP):
             recovery = _auth_recovery()

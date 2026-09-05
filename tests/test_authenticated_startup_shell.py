@@ -219,16 +219,21 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
         _st, bootstrap, *_rest = self._load_bootstrap({})
         self.assertEqual(
             bootstrap.AUTHENTICATED_STARTUP_SHELL_MESSAGE,
-            "Signing you in…",
+            "Preparing your workspace…",
         )
         self.assertNotIn("Opening your engineering workspace", bootstrap.AUTHENTICATED_STARTUP_SHELL_MESSAGE)
 
     def test_login_handoff_flag_enables_startup_shell_once(self):
         _st, bootstrap, *_rest = self._load_bootstrap({})
         self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
-        bootstrap.begin_login_handoff()
+        bootstrap.begin_login_handoff(bootstrap.LOGIN_HANDOFF_STAGE_INITIALIZING)
         self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
         bootstrap.clear_login_handoff()
+        self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
+
+    def test_authenticating_stage_does_not_render_opaque_startup_shell(self):
+        _st, bootstrap, *_rest = self._load_bootstrap({})
+        bootstrap.begin_login_handoff(bootstrap.LOGIN_HANDOFF_STAGE_AUTHENTICATING)
         self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
 
     def test_startup_shell_preserves_workspace_chrome_during_handoff(self):
@@ -247,7 +252,7 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
         self.assertIn("cv-startup-shell-main", rendered)
         self.assertIn("Dashboard", rendered)
         self.assertIn("BOM Analyzer", rendered)
-        self.assertIn("Signing you in", rendered)
+        self.assertIn("Preparing your workspace", rendered)
 
     def test_startup_shell_does_not_fade_before_real_shell_marker(self):
         st, bootstrap, *_rest = self._load_bootstrap({})

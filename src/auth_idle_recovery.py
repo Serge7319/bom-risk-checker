@@ -210,6 +210,15 @@ def enter_session_expired_recovery(
 
     from src.auth_state import APP_LOGIN, mark_signed_out
 
+    try:
+        from src.auth_bootstrap import clear_login_handoff
+
+        clear_login_handoff()
+    except Exception:
+        st.session_state.pop("cadivor_login_handoff_active", None)
+        st.session_state.pop("cadivor_login_handoff_stage", None)
+        st.session_state.pop("cadivor_login_handoff_started_at", None)
+
     preserve_requested_page_for_reauth(st.session_state)
     mark_signed_out(reason=f"idle_session:{reason}")
     st.session_state["cadivor_root_state"] = APP_LOGIN
@@ -234,6 +243,17 @@ def render_retryable_profile_error(*, message: str) -> None:
     import streamlit as st
 
     from src.ui.core_premium_ui import stop_authenticated_page
+
+    # Retire the Login handoff shell before painting retry UI so the opaque
+    # "Signing you in…" overlay cannot mask the actionable error forever.
+    try:
+        from src.auth_bootstrap import clear_login_handoff
+
+        clear_login_handoff()
+    except Exception:
+        st.session_state.pop("cadivor_login_handoff_active", None)
+        st.session_state.pop("cadivor_login_handoff_stage", None)
+        st.session_state.pop("cadivor_login_handoff_started_at", None)
 
     st.error(message)
     st.caption("Your signed-in session was kept. Retry when the connection is available.")
