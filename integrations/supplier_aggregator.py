@@ -73,10 +73,8 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
     from integrations.supplier_diagnostics import (
         SUBREASON_ZERO_RESULTS,
         attach_supplier_diagnostic,
-        get_alternative_finder_request_id,
+        resolve_supplier_diagnostic_request_id,
         log_supplier_diagnostic,
-        reset_alternative_finder_request_id,
-        set_alternative_finder_request_id,
     )
     from src.performance_timing import (
         emit_timing,
@@ -86,10 +84,9 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
     )
     import time as _time
 
-    resolved_request_id = str(request_id or get_alternative_finder_request_id() or "").strip()
-    request_token = None
-    if resolved_request_id:
-        request_token = set_alternative_finder_request_id(resolved_request_id)
+    # Resolve once; do not mutate the process-wide AF request-id stack from worker
+    # threads (concurrent set/reset would race). Pass the id explicitly to logs.
+    resolved_request_id = resolve_supplier_diagnostic_request_id(request_id)
 
     started = _time.perf_counter() if timing_enabled() else None
     try:
@@ -243,9 +240,6 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
         )
         attach_supplier_diagnostic(result, diagnostic)
         return result
-    finally:
-        if request_token is not None:
-            reset_alternative_finder_request_id(request_token)
 
 
 def _octopart_lookup_configured() -> bool:
@@ -279,10 +273,10 @@ def _supplier_lookup_callable(source_name: str):
     return None
 
 
-def get_supplier_results(part_number):
-    from integrations.supplier_diagnostics import get_alternative_finder_request_id
+def get_supplier_results(part_number, request_id: str = ""):
+    from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id
 
-    request_id = get_alternative_finder_request_id()
+    resolved_request_id = resolve_supplier_diagnostic_request_id(request_id)
     suppliers = [
         ("Mouser", _supplier_lookup_callable("Mouser")),
         ("DigiKey", _supplier_lookup_callable("DigiKey")),
@@ -299,7 +293,7 @@ def get_supplier_results(part_number):
                 source_name,
                 lookup_func,
                 part_number,
-                request_id,
+                resolved_request_id,
             ): source_name
             for source_name, lookup_func in suppliers
         }
@@ -312,7 +306,16 @@ def get_supplier_results(part_number):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_best_part_data(part_number: str) -> dict:
-    supplier_results = get_supplier_results(part_number)
+    from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id
+
+    # Resolve AF request_id via stack/last-id so Streamlit cache_data executions
+    # still correlate diagnostics even when ContextVar is empty in this frame.
+    # Tests may stub get_supplier_results with a one-arg callable — keep compatible.
+    request_id = resolve_supplier_diagnostic_request_id()
+    try:
+        supplier_results = get_supplier_results(part_number, request_id=request_id)
+    except TypeError:
+        supplier_results = get_supplier_results(part_number)
     
     valid_results = [
         result for result in supplier_results
