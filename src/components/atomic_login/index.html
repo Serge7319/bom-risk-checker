@@ -17,7 +17,8 @@
     button:hover{background:#1d4ed8}
     button:focus-visible{outline:3px solid rgba(37,99,235,.25);outline-offset:2px}
     button:disabled{cursor:wait;opacity:.72}
-    .status{min-height:18px;margin:0;color:#b91c1c;font-size:13px;font-weight:650}
+    .status{min-height:18px;margin:0;color:#b91c1c;font-size:13px;font-weight:650;line-height:1.35}
+    .status:not(:empty){margin-top:2px}
   </style>
 </head>
 <body>
@@ -28,7 +29,7 @@
     <label>Password
       <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required>
     </label>
-    <p id="status" class="status" role="alert" aria-live="polite"></p>
+    <p id="status" class="status" role="alert" aria-live="polite" data-login-error></p>
     <button id="submit" type="submit">Login</button>
   </form>
 <script>
@@ -43,6 +44,7 @@
   let pendingSubmitValue = null;
   let idleSubmitLabel = "Login";
   let lastPrefillEmail = "";
+  let lastErrorEpoch = -1;
 
   function post(type, extra = {}) {
     window.parent.postMessage({isStreamlitMessage:true,type,...extra},"*");
@@ -64,6 +66,17 @@
       button.textContent = label || idleSubmitLabel;
     }
   }
+  function applyServerError(message) {
+    submitted = false;
+    status.textContent = message;
+    password.value = "";
+    setBusy(false, idleSubmitLabel);
+    // Focus password after enable so the user can retry immediately.
+    window.setTimeout(() => {
+      try { password.focus(); } catch (_) {}
+    }, 0);
+    resize();
+  }
   function sendPendingSubmitWhenReady() {
     // The card is intentionally visible while Streamlit initializes this
     // iframe. A physical submit during that small window must survive until
@@ -74,8 +87,6 @@
       dataType:"json"
     });
     pendingSubmitValue = null;
-    // Keep password in the field until the server confirms success via a
-    // disabled/handoff render; failed auth remounts with an error message.
   }
 
   window.addEventListener("message", (event) => {
@@ -92,13 +103,22 @@
       lastPrefillEmail = prefill;
     }
     const serverError = typeof args.error_message === "string" ? args.error_message.trim() : "";
-    if (serverError) {
+    let errorEpoch = 0;
+    try { errorEpoch = Number(args.error_epoch || 0) || 0; } catch (_) { errorEpoch = 0; }
+    if (serverError && errorEpoch !== lastErrorEpoch) {
+      lastErrorEpoch = errorEpoch;
+      applyServerError(serverError);
+    } else if (serverError) {
+      // Same epoch re-render: keep the visible error and stay enabled.
       submitted = false;
       status.textContent = serverError;
+      setBusy(Boolean(args.disabled), idleSubmitLabel);
     } else if (!submitted) {
       status.textContent = "";
+      setBusy(Boolean(args.disabled), idleSubmitLabel);
+    } else {
+      setBusy(Boolean(args.disabled), idleSubmitLabel);
     }
-    setBusy(Boolean(args.disabled), idleSubmitLabel);
     sendPendingSubmitWhenReady();
     resize();
   });
