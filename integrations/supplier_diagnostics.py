@@ -4,8 +4,10 @@ from __future__ import annotations
 import contextvars
 import logging
 import re
+import threading
 import uuid
-from typing import Any, Mapping
+from contextlib import contextmanager
+from typing import Any, Iterator, Mapping
 
 from integrations.provider_health import (
     PROVIDER_ERROR,
@@ -43,21 +45,70 @@ _current_request_id: contextvars.ContextVar[str] = contextvars.ContextVar(
     default="",
 )
 
+# Streamlit @st.cache_data and ThreadPoolExecutor workers do not reliably inherit
+# ContextVars. Keep a process-local stack + last AF id so every supplier diagnostic
+# during/after a user search can resolve the originating request_id.
+_REQUEST_ID_LOCK = threading.Lock()
+_ACTIVE_REQUEST_ID_STACK: list[str] = []
+_LAST_AF_REQUEST_ID = ""
+
 
 def new_alternative_finder_request_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
 def set_alternative_finder_request_id(request_id: str) -> contextvars.Token[str]:
-    return _current_request_id.set(str(request_id or "").strip())
+    global _LAST_AF_REQUEST_ID
+    cleaned = str(request_id or "").strip()
+    with _REQUEST_ID_LOCK:
+        _ACTIVE_REQUEST_ID_STACK.append(cleaned)
+        if cleaned:
+            _LAST_AF_REQUEST_ID = cleaned
+    return _current_request_id.set(cleaned)
 
 
 def reset_alternative_finder_request_id(token: contextvars.Token[str]) -> None:
+    with _REQUEST_ID_LOCK:
+        if _ACTIVE_REQUEST_ID_STACK:
+            _ACTIVE_REQUEST_ID_STACK.pop()
     _current_request_id.reset(token)
 
 
 def get_alternative_finder_request_id() -> str:
-    return str(_current_request_id.get() or "").strip()
+    value = str(_current_request_id.get() or "").strip()
+    if value:
+        return value
+    with _REQUEST_ID_LOCK:
+        if _ACTIVE_REQUEST_ID_STACK:
+            stacked = str(_ACTIVE_REQUEST_ID_STACK[-1] or "").strip()
+            if stacked:
+                return stacked
+        return str(_LAST_AF_REQUEST_ID or "").strip()
+
+
+def resolve_supplier_diagnostic_request_id(request_id: str = "") -> str:
+    """Resolve a correlator for supplier diagnostics; prefer AF search id over unknown."""
+    explicit = str(request_id or "").strip()
+    if explicit and explicit.casefold() != "unknown":
+        return explicit
+    inherited = get_alternative_finder_request_id()
+    if inherited and inherited.casefold() != "unknown":
+        return inherited
+    return ""
+
+
+@contextmanager
+def bind_alternative_finder_request_id(request_id: str = "") -> Iterator[str]:
+    """Bind an AF request id for nested supplier lookups (enrichment / UI fallbacks)."""
+    cleaned = str(request_id or "").strip()
+    if not cleaned or cleaned.casefold() == "unknown":
+        yield ""
+        return
+    token = set_alternative_finder_request_id(cleaned)
+    try:
+        yield cleaned
+    finally:
+        reset_alternative_finder_request_id(token)
 
 
 def _redact(message: str) -> str:
@@ -241,10 +292,17 @@ def log_supplier_diagnostic(
     The log line contains only safe searchable fields — never headers, tokens,
     credentialed URLs, or response bodies.
     """
-    resolved_request_id = str(request_id or get_alternative_finder_request_id() or "").strip() or "unknown"
+    resolved_request_id = resolve_supplier_diagnostic_request_id(request_id) or "unknown"
     error_subreason = ""
+    rejected_fields: list[str] = []
     if error is not None:
         error_subreason = str(getattr(error, "subreason", "") or "").strip()
+        raw_fields = getattr(error, "rejected_fields", None) or ()
+        rejected_fields = [
+            str(item).strip()
+            for item in raw_fields
+            if str(item or "").strip() and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(item).strip())
+        ]
     safe_status_code = _safe_http_status_code(status_code, error_message, error)
     resolved_subreason = normalize_provider_response_subreason(
         subreason=subreason or error_subreason,
@@ -289,7 +347,22 @@ def log_supplier_diagnostic(
         "message": safe_message,
         "retained_candidates": "true" if retained_candidates else "false",
     }
-    if resolved_subreason:
+    if rejected_fields:
+        # Field names only — never GraphQL messages, tokens, or bodies.
+        payload["rejected_fields"] = ",".join(rejected_fields[:8])
+    if resolved_subreason and rejected_fields:
+        logger.warning(
+            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
+            "subreason=%s rejected_fields=%s status_code=%s retryable=%s",
+            payload["request_id"],
+            payload["supplier"],
+            payload["log_category"],
+            payload["subreason"],
+            payload["rejected_fields"],
+            payload["status_code"] or "none",
+            payload["retryable"],
+        )
+    elif resolved_subreason:
         logger.warning(
             "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
             "subreason=%s status_code=%s retryable=%s",
@@ -328,6 +401,8 @@ def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, 
         result["diagnostic_subreason"] = str(diagnostic.get("subreason") or "")
     if diagnostic.get("request_id"):
         result["diagnostic_request_id"] = str(diagnostic.get("request_id") or "")
+    if diagnostic.get("rejected_fields"):
+        result["diagnostic_rejected_fields"] = str(diagnostic.get("rejected_fields") or "")
 
 
 _PLACEHOLDER_SECRET_VALUES = frozenset(

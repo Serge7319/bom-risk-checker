@@ -28,23 +28,33 @@ SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
 SUBREASON_ZERO_RESULTS = "zero_results"
 SUBREASON_OK = "ok"
 
-# Align with current Nexar Supply docs: search-level country/currency, offer
-# prices as quantity+price (currency is selected on the query, not per tier).
+# Match the current Nexar Supply docs (pricingByVolumeLevels / partsByMpn):
+# - search-level q + limit only (country/currency optional; omit to avoid arg rejects)
+# - part.name (not shortDescription)
+# - offer prices as quantity + price (currency selected separately when needed)
+# - no clickUrl dependency for core availability/pricing normalization
 _PART_QUERY = """
 query CadivorSupplierSearch($mpn: String!) {
-  supSearchMpn(q: $mpn, limit: 5, country: "US", currency: "USD") {
+  supSearchMpn(q: $mpn, limit: 5) {
     hits
     results {
       part {
+        id
         mpn
         name
-        manufacturer { name }
+        manufacturer {
+          name
+        }
         sellers {
-          company { name }
+          company {
+            name
+          }
           offers {
             inventoryLevel
-            clickUrl
-            prices { quantity price }
+            prices {
+              quantity
+              price
+            }
           }
         }
       }
@@ -53,13 +63,37 @@ query CadivorSupplierSearch($mpn: String!) {
 }
 """
 
+_REJECTED_FIELD_PATTERNS = (
+    re.compile(r"Cannot query field ['\"]([^'\"]+)['\"]", re.IGNORECASE),
+    re.compile(r"Unknown (?:field|argument) ['\"]([^'\"]+)['\"]", re.IGNORECASE),
+    re.compile(r"Field ['\"]([^'\"]+)['\"] is not defined", re.IGNORECASE),
+    re.compile(r"Argument ['\"]([^'\"]+)['\"] has invalid value", re.IGNORECASE),
+)
+
 
 class OctopartResponseError(RuntimeError):
     """Configured Octopart/Nexar call failed with a classified response subreason."""
 
-    def __init__(self, message: str, *, subreason: str):
+    def __init__(
+        self,
+        message: str,
+        *,
+        subreason: str,
+        rejected_fields: list[str] | tuple[str, ...] | None = None,
+        error_codes: list[str] | tuple[str, ...] | None = None,
+    ):
         super().__init__(message)
         self.subreason = str(subreason or SUBREASON_MALFORMED_RESPONSE).strip()
+        self.rejected_fields = tuple(
+            str(item).strip()
+            for item in (rejected_fields or ())
+            if str(item or "").strip()
+        )
+        self.error_codes = tuple(
+            str(item).strip()
+            for item in (error_codes or ())
+            if str(item or "").strip()
+        )
 
 
 def _nexar_secret(primary_name: str, legacy_name: str) -> str:
@@ -120,7 +154,6 @@ def _access_token() -> str:
         return access_token
 
 
-
 def default_octopart_result(part_number: str = "") -> dict:
     return {
         "source": "Octopart",
@@ -178,11 +211,12 @@ def _normalize_part(part: dict) -> dict:
             except (TypeError, ValueError):
                 pass
             if not result["product_detail_url"]:
-                result["product_detail_url"] = str(offer.get("clickUrl") or "")
+                result["product_detail_url"] = str(
+                    offer.get("clickUrl") or offer.get("octopartUrl") or ""
+                )
             for tier in offer.get("prices") or []:
                 if not isinstance(tier, dict):
                     continue
-                # Search-level currency:"USD" already scopes prices; accept tiers as-is.
                 try:
                     quantity = int(tier.get("quantity") or 1)
                     price = float(tier.get("price"))
@@ -202,6 +236,62 @@ def _normalize_part(part: dict) -> dict:
     return result
 
 
+def extract_graphql_rejected_fields(errors: list[Any] | None) -> list[str]:
+    """Extract rejected GraphQL field/argument names only (safe for diagnostics/tests)."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for item in errors or []:
+        message = ""
+        if isinstance(item, dict):
+            message = str(item.get("message") or "")
+        else:
+            message = str(item or "")
+        for pattern in _REJECTED_FIELD_PATTERNS:
+            for match in pattern.finditer(message):
+                name = str(match.group(1) or "").strip()
+                if not name or name in seen:
+                    continue
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                    continue
+                seen.add(name)
+                found.append(name)
+    return found
+
+
+def extract_graphql_error_codes(errors: list[Any] | None) -> list[str]:
+    """Extract safe GraphQL error codes (no messages/bodies)."""
+    codes: list[str] = []
+    seen: set[str] = set()
+    for item in errors or []:
+        if not isinstance(item, dict):
+            continue
+        extensions = item.get("extensions")
+        raw = ""
+        if isinstance(extensions, dict):
+            raw = str(extensions.get("code") or "").strip()
+        if not raw:
+            raw = str(item.get("code") or "").strip()
+        if not raw or raw in seen:
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", raw):
+            continue
+        seen.add(raw)
+        codes.append(raw)
+    return codes
+
+
+def inspect_nexar_graphql_errors(errors: list[Any] | None) -> dict[str, Any]:
+    """Controlled diagnostic helper for fixtures/tests — never logs secrets or bodies."""
+    rejected_fields = extract_graphql_rejected_fields(errors)
+    error_codes = extract_graphql_error_codes(errors)
+    return {
+        "error_count": len(errors or []),
+        "rejected_fields": rejected_fields,
+        "error_codes": error_codes,
+        "subreason": _graphql_error_subreason(errors or []),
+    }
+
+
 def _graphql_error_subreason(errors: list[Any]) -> str:
     snippets: list[str] = []
     for item in errors:
@@ -213,8 +303,11 @@ def _graphql_error_subreason(errors: list[Any]) -> str:
     if (
         "cannot query field" in joined
         or "unknown field" in joined
+        or "unknown argument" in joined
         or "field undefined" in joined
         or "is not defined by type" in joined
+        or "has invalid value" in joined
+        or "got invalid value" in joined
     ):
         return SUBREASON_SCHEMA_MISMATCH
     return SUBREASON_GRAPHQL_ERRORS
@@ -222,71 +315,53 @@ def _graphql_error_subreason(errors: list[Any]) -> str:
 
 def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
     """Classify a Nexar GraphQL JSON body without logging secrets or bodies."""
+    empty = {
+        "subreason": SUBREASON_EMPTY_RESPONSE,
+        "hits": 0,
+        "results": [],
+        "usable": False,
+        "rejected_fields": [],
+        "error_codes": [],
+    }
     if payload is None or payload == "":
-        return {
-            "subreason": SUBREASON_EMPTY_RESPONSE,
-            "hits": 0,
-            "results": [],
-            "usable": False,
-        }
+        return dict(empty)
     if not isinstance(payload, dict):
         return {
+            **empty,
             "subreason": SUBREASON_MALFORMED_RESPONSE,
-            "hits": 0,
-            "results": [],
-            "usable": False,
         }
     if not payload:
-        return {
-            "subreason": SUBREASON_EMPTY_RESPONSE,
-            "hits": 0,
-            "results": [],
-            "usable": False,
-        }
+        return dict(empty)
 
     errors = payload.get("errors")
     has_errors = isinstance(errors, list) and bool(errors)
+    rejected_fields = extract_graphql_rejected_fields(errors if has_errors else [])
+    error_codes = extract_graphql_error_codes(errors if has_errors else [])
     data = payload.get("data")
 
-    if has_errors and data in (None, {}):
+    def _fail(subreason: str) -> dict[str, Any]:
         return {
-            "subreason": _graphql_error_subreason(errors),
+            "subreason": subreason,
             "hits": 0,
             "results": [],
             "usable": False,
+            "rejected_fields": rejected_fields,
+            "error_codes": error_codes,
         }
+
+    if has_errors and data in (None, {}):
+        return _fail(_graphql_error_subreason(errors))
 
     if data is None and not has_errors:
-        return {
-            "subreason": SUBREASON_EMPTY_RESPONSE,
-            "hits": 0,
-            "results": [],
-            "usable": False,
-        }
+        return _fail(SUBREASON_EMPTY_RESPONSE)
 
     if not isinstance(data, dict):
-        return {
-            "subreason": SUBREASON_MALFORMED_RESPONSE,
-            "hits": 0,
-            "results": [],
-            "usable": False,
-        }
+        return _fail(SUBREASON_MALFORMED_RESPONSE)
 
     if "supSearchMpn" not in data:
-        # Successful auth/HTTP but unexpected GraphQL shape.
         if has_errors:
-            return {
-                "subreason": _graphql_error_subreason(errors if isinstance(errors, list) else []),
-                "hits": 0,
-                "results": [],
-                "usable": False,
-            }
-        return {
-            "subreason": SUBREASON_MISSING_EXPECTED_DATA,
-            "hits": 0,
-            "results": [],
-            "usable": False,
-        }
+            return _fail(_graphql_error_subreason(errors if isinstance(errors, list) else []))
+        return _fail(SUBREASON_MISSING_EXPECTED_DATA)
 
     search = data.get("supSearchMpn")
     if search is None:
@@ -295,25 +370,17 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
             "hits": 0,
             "results": [],
             "usable": True,
+            "rejected_fields": [],
+            "error_codes": [],
         }
     if not isinstance(search, dict):
-        return {
-            "subreason": SUBREASON_MALFORMED_RESPONSE,
-            "hits": 0,
-            "results": [],
-            "usable": False,
-        }
+        return _fail(SUBREASON_MALFORMED_RESPONSE)
 
     results = search.get("results")
     if results is None:
         results = []
     if not isinstance(results, list):
-        return {
-            "subreason": SUBREASON_MALFORMED_RESPONSE,
-            "hits": 0,
-            "results": [],
-            "usable": False,
-        }
+        return _fail(SUBREASON_MALFORMED_RESPONSE)
 
     try:
         hits = int(search.get("hits") if search.get("hits") is not None else len(results))
@@ -321,26 +388,31 @@ def classify_nexar_graphql_payload(payload: Any) -> dict[str, Any]:
         hits = len(results)
 
     if not results:
-        # GraphQL errors with empty results still count as provider GraphQL failure.
         if has_errors:
             return {
-                "subreason": _graphql_error_subreason(errors if isinstance(errors, list) else []),
+                **_fail(_graphql_error_subreason(errors if isinstance(errors, list) else [])),
                 "hits": hits,
-                "results": [],
-                "usable": False,
             }
         return {
             "subreason": SUBREASON_ZERO_RESULTS,
             "hits": hits,
             "results": [],
             "usable": True,
+            "rejected_fields": [],
+            "error_codes": [],
         }
+
+    # Partial GraphQL errors with usable rows: still treat as success for exact-match.
+    if has_errors and not results:
+        return _fail(_graphql_error_subreason(errors if isinstance(errors, list) else []))
 
     return {
         "subreason": SUBREASON_OK,
         "hits": hits,
         "results": results,
         "usable": True,
+        "rejected_fields": rejected_fields,
+        "error_codes": error_codes,
     }
 
 
@@ -388,6 +460,8 @@ def search_octopart_by_part_number(part_number: str) -> dict:
         raise OctopartResponseError(
             "Octopart supplier query could not be completed.",
             subreason=subreason,
+            rejected_fields=list(classified.get("rejected_fields") or []),
+            error_codes=list(classified.get("error_codes") or []),
         )
 
     results = list(classified.get("results") or [])

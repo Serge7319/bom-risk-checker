@@ -10442,7 +10442,12 @@ def run_authenticated_app() -> None:
 
             original_data = get_alternative_finder_original_data(st.session_state)
             if not original_data:
-                original_data = get_best_part_data(current_search) or {}
+                from integrations.supplier_diagnostics import bind_alternative_finder_request_id
+
+                with bind_alternative_finder_request_id(
+                    st.session_state.get("alternative_finder_request_id")
+                ):
+                    original_data = get_best_part_data(current_search) or {}
                 if active_finder_result:
                     active_finder_result["original_data"] = original_data
                     st.session_state["alternative_original_data"] = original_data
@@ -11199,7 +11204,12 @@ def run_authenticated_app() -> None:
                 cadivor_comparison_matrix_dataframe(comparison_df)
 
             if not candidate_evidence_data:
-                candidate_evidence_data = get_best_part_data(selected_alternative) or {}
+                from integrations.supplier_diagnostics import bind_alternative_finder_request_id
+
+                with bind_alternative_finder_request_id(
+                    st.session_state.get("alternative_finder_request_id")
+                ):
+                    candidate_evidence_data = get_best_part_data(selected_alternative) or {}
             datasheet_comparison = build_datasheet_comparison(
                 original_data,
                 candidate_evidence_data,

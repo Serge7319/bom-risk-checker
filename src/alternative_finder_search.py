@@ -276,6 +276,10 @@ def run_alternative_finder_search(
     request_token = set_alternative_finder_request_id(request_id)
     search_run = AlternativeFinderSearchRun()
     search_run.request_id = request_id
+    try:
+        session_state["alternative_finder_request_id"] = request_id
+    except Exception:
+        pass
     entered_mpn = str(searched_part or "").strip()
     safe_original: dict = dict(original_lookup or {})
     safe_risk: dict = dict(original_risk or {})
@@ -463,7 +467,13 @@ def get_or_enrich_selected_candidate(
 
     supplier_evidence = {}
     try:
-        supplier_evidence = _enrich_part_data_from_suppliers(get_best_part_data(selected_mpn) or {})
+        from integrations.supplier_diagnostics import bind_alternative_finder_request_id
+
+        inherited = str(session_state.get("alternative_finder_request_id") or "").strip()
+        with bind_alternative_finder_request_id(inherited):
+            supplier_evidence = _enrich_part_data_from_suppliers(
+                get_best_part_data(selected_mpn) or {}
+            )
     except Exception as enrich_exc:
         logger.warning(
             "Alternative Finder selected-candidate enrichment failed for %s: %s",
