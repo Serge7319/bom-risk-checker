@@ -69,8 +69,12 @@ class AuthenticatedReadResilienceTests(unittest.TestCase):
         self.assertIn("execute_supabase_read(", block)
         self.assertIn('operation="load_user_data"', block)
         self.assertIn("SupabaseReadTransportError", block)
-        self.assertIn("stop_authenticated_page()", block)
+        self.assertIn("load_workspace_profile", block)
+        self.assertIn("from src.auth_idle_recovery import load_workspace_profile", block)
         self.assertNotIn(".execute()", block)
+        idle_source = (ROOT / "src" / "auth_idle_recovery.py").read_text(encoding="utf-8")
+        self.assertIn("stop_authenticated_page()", idle_source)
+        self.assertIn("render_retryable_profile_error", idle_source)
 
     def test_saved_bom_count_uses_read_helper_with_fallback(self) -> None:
         source = _runtime_source()

@@ -135,6 +135,18 @@ class OctopartIntegrationTests(unittest.TestCase):
         secret.assert_not_called()
         self.requests.post.assert_not_called()
 
+    def test_oauth_token_requests_supply_domain_scope(self):
+        self._responses([self._part()])
+        with patch.object(self.client, "get_secret", side_effect=self._secrets):
+            self.client.search_octopart_by_part_number("LM358N")
+        token_call = self.requests.post.call_args_list[0]
+        self.assertEqual(token_call.args[0], self.client.TOKEN_URL)
+        self.assertEqual(
+            token_call.kwargs["data"]["scope"],
+            self.client.NEXAR_TOKEN_SCOPE,
+        )
+        self.assertEqual(token_call.kwargs["data"]["scope"], "supply.domain")
+
     def test_oauth_token_is_cached(self):
         self._responses([self._part()])
         with patch.object(self.client, "get_secret", side_effect=self._secrets):
@@ -164,6 +176,52 @@ class OctopartIntegrationTests(unittest.TestCase):
                 self.client.search_octopart_by_part_number("LM358N")
         self.assertEqual(caught.exception.subreason, self.client.SUBREASON_GRAPHQL_ERRORS)
         self.assertNotIn("private upstream", str(caught.exception))
+
+    def test_auth_graphql_errors_classified_as_authentication(self):
+        from pathlib import Path
+        import json
+
+        fixtures = json.loads(
+            (
+                Path(__file__).resolve().parent
+                / "fixtures"
+                / "nexar_graphql_errors.json"
+            ).read_text(encoding="utf-8")
+        )
+        for key in ("auth_insufficient_scope", "auth_unauthenticated"):
+            payload = fixtures[key]
+            inspected = self.client.inspect_nexar_graphql_errors(payload["errors"])
+            self.assertEqual(inspected["graphql_kind"], self.client.GRAPHQL_KIND_AUTH)
+            self.assertEqual(
+                inspected["subreason"], self.client.SUBREASON_AUTHENTICATION
+            )
+            classified = self.client.classify_nexar_graphql_payload(payload)
+            self.assertEqual(
+                classified["subreason"], self.client.SUBREASON_AUTHENTICATION
+            )
+            self.assertTrue(classified["error_codes"])
+
+    def test_fixture_schema_and_generic_kinds(self):
+        from pathlib import Path
+        import json
+
+        fixtures = json.loads(
+            (
+                Path(__file__).resolve().parent
+                / "fixtures"
+                / "nexar_graphql_errors.json"
+            ).read_text(encoding="utf-8")
+        )
+        schema = self.client.inspect_nexar_graphql_errors(
+            fixtures["schema_unknown_argument"]["errors"]
+        )
+        self.assertEqual(schema["graphql_kind"], self.client.GRAPHQL_KIND_SCHEMA)
+        self.assertEqual(schema["rejected_fields"], ["currency"])
+        generic = self.client.inspect_nexar_graphql_errors(
+            fixtures["generic_graphql"]["errors"]
+        )
+        self.assertEqual(generic["graphql_kind"], self.client.GRAPHQL_KIND_OTHER)
+        self.assertEqual(generic["subreason"], self.client.SUBREASON_GRAPHQL_ERRORS)
 
     def test_schema_mismatch_graphql_errors(self):
         classified = self.client.classify_nexar_graphql_payload(

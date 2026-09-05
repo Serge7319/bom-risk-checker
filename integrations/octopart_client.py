@@ -15,6 +15,8 @@ from src.secrets import get_secret
 
 TOKEN_URL = "https://identity.nexar.com/connect/token"
 GRAPHQL_URL = "https://api.nexar.com/graphql"
+# Official Nexar Supply API client-credentials scope (required for supSearch*).
+NEXAR_TOKEN_SCOPE = "supply.domain"
 REQUEST_TIMEOUT_SECONDS = 15
 _TOKEN_LOCK = threading.Lock()
 _TOKEN_CACHE: dict[str, object] = {}
@@ -25,8 +27,14 @@ SUBREASON_EMPTY_RESPONSE = "empty_response"
 SUBREASON_MALFORMED_RESPONSE = "malformed_response"
 SUBREASON_MISSING_EXPECTED_DATA = "missing_expected_data"
 SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
+SUBREASON_AUTHENTICATION = "authentication"
 SUBREASON_ZERO_RESULTS = "zero_results"
 SUBREASON_OK = "ok"
+
+# Safe GraphQL error taxonomy for diagnostics/tests (never message bodies).
+GRAPHQL_KIND_AUTH = "auth"
+GRAPHQL_KIND_SCHEMA = "schema"
+GRAPHQL_KIND_OTHER = "other"
 
 # Match the current Nexar Supply docs (pricingByVolumeLevels / partsByMpn):
 # - search-level q + limit only (country/currency optional; omit to avoid arg rejects)
@@ -68,6 +76,21 @@ _REJECTED_FIELD_PATTERNS = (
     re.compile(r"Unknown (?:field|argument) ['\"]([^'\"]+)['\"]", re.IGNORECASE),
     re.compile(r"Field ['\"]([^'\"]+)['\"] is not defined", re.IGNORECASE),
     re.compile(r"Argument ['\"]([^'\"]+)['\"] has invalid value", re.IGNORECASE),
+    re.compile(r"got invalid value .+ for argument ['\"]([^'\"]+)['\"]", re.IGNORECASE),
+)
+
+_AUTH_ERROR_CODES = frozenset(
+    {
+        "unauthenticated",
+        "unauthorized",
+        "forbidden",
+        "access_denied",
+        "accessdenied",
+        "insufficient_scope",
+        "insufficientscope",
+        "permission_denied",
+        "permissiondenied",
+    }
 )
 
 
@@ -113,6 +136,7 @@ def _access_token() -> str:
     with _TOKEN_LOCK:
         if (
             _TOKEN_CACHE.get("client_id") == client_id
+            and _TOKEN_CACHE.get("scope") == NEXAR_TOKEN_SCOPE
             and float(_TOKEN_CACHE.get("expires_at", 0)) > time.monotonic() + 60
         ):
             return str(_TOKEN_CACHE["access_token"])
@@ -123,6 +147,7 @@ def _access_token() -> str:
                 "grant_type": "client_credentials",
                 "client_id": client_id,
                 "client_secret": client_secret,
+                "scope": NEXAR_TOKEN_SCOPE,
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
@@ -148,6 +173,7 @@ def _access_token() -> str:
             expires_in = 3600
         _TOKEN_CACHE.update(
             client_id=client_id,
+            scope=NEXAR_TOKEN_SCOPE,
             access_token=access_token,
             expires_at=time.monotonic() + expires_in,
         )
@@ -280,27 +306,66 @@ def extract_graphql_error_codes(errors: list[Any] | None) -> list[str]:
     return codes
 
 
-def inspect_nexar_graphql_errors(errors: list[Any] | None) -> dict[str, Any]:
-    """Controlled diagnostic helper for fixtures/tests — never logs secrets or bodies."""
-    rejected_fields = extract_graphql_rejected_fields(errors)
-    error_codes = extract_graphql_error_codes(errors)
-    return {
-        "error_count": len(errors or []),
-        "rejected_fields": rejected_fields,
-        "error_codes": error_codes,
-        "subreason": _graphql_error_subreason(errors or []),
-    }
-
-
-def _graphql_error_subreason(errors: list[Any]) -> str:
+def _graphql_messages(errors: list[Any]) -> str:
     snippets: list[str] = []
     for item in errors:
         if isinstance(item, dict):
             snippets.append(str(item.get("message") or ""))
         else:
             snippets.append(str(item or ""))
-    joined = " ".join(snippets).casefold()
-    if (
+    return " ".join(snippets).casefold()
+
+
+def _is_auth_graphql_failure(errors: list[Any]) -> bool:
+    codes = {code.casefold().replace("-", "_") for code in extract_graphql_error_codes(errors)}
+    if codes & _AUTH_ERROR_CODES:
+        return True
+    joined = _graphql_messages(errors)
+    markers = (
+        "not authenticated",
+        "unauthenticated",
+        "unauthorized",
+        "access denied",
+        "permission denied",
+        "forbidden",
+        "insufficient scope",
+        "invalid scope",
+        "missing scope",
+        "required scope",
+        "not authorized",
+        "authorization required",
+        "authentication required",
+        "invalid token",
+        "token expired",
+        "jwt",
+    )
+    return any(marker in joined for marker in markers)
+
+
+def _is_schema_graphql_failure(errors: list[Any]) -> bool:
+    if extract_graphql_rejected_fields(errors):
+        return True
+    joined = _graphql_messages(errors)
+    codes = {code.casefold() for code in extract_graphql_error_codes(errors)}
+    if "graphql_validation_failed" in codes or "validation" in " ".join(codes):
+        # Validation without extractable field names still maps to schema mismatch.
+        schema_markers = (
+            "cannot query field",
+            "unknown field",
+            "unknown argument",
+            "field undefined",
+            "is not defined",
+            "has invalid value",
+            "got invalid value",
+            "expected type",
+            "must not have a selection",
+        )
+        if any(marker in joined for marker in schema_markers):
+            return True
+        # Pure validation failures with no auth markers are schema-class.
+        if not _is_auth_graphql_failure(errors):
+            return True
+    return (
         "cannot query field" in joined
         or "unknown field" in joined
         or "unknown argument" in joined
@@ -308,7 +373,40 @@ def _graphql_error_subreason(errors: list[Any]) -> str:
         or "is not defined by type" in joined
         or "has invalid value" in joined
         or "got invalid value" in joined
-    ):
+    )
+
+
+def graphql_error_kind(errors: list[Any] | None) -> str:
+    """Classify GraphQL errors into a safe kind label for diagnostics."""
+    items = list(errors or [])
+    if not items:
+        return GRAPHQL_KIND_OTHER
+    if _is_auth_graphql_failure(items):
+        return GRAPHQL_KIND_AUTH
+    if _is_schema_graphql_failure(items):
+        return GRAPHQL_KIND_SCHEMA
+    return GRAPHQL_KIND_OTHER
+
+
+def inspect_nexar_graphql_errors(errors: list[Any] | None) -> dict[str, Any]:
+    """Controlled diagnostic helper for fixtures/tests — never logs secrets or bodies."""
+    rejected_fields = extract_graphql_rejected_fields(errors)
+    error_codes = extract_graphql_error_codes(errors)
+    kind = graphql_error_kind(errors)
+    return {
+        "error_count": len(errors or []),
+        "rejected_fields": rejected_fields,
+        "error_codes": error_codes,
+        "graphql_kind": kind,
+        "subreason": _graphql_error_subreason(errors or []),
+    }
+
+
+def _graphql_error_subreason(errors: list[Any]) -> str:
+    kind = graphql_error_kind(errors)
+    if kind == GRAPHQL_KIND_AUTH:
+        return SUBREASON_AUTHENTICATION
+    if kind == GRAPHQL_KIND_SCHEMA:
         return SUBREASON_SCHEMA_MISMATCH
     return SUBREASON_GRAPHQL_ERRORS
 

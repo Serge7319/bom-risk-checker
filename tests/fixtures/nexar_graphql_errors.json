@@ -1,0 +1,50 @@
+{
+  "auth_insufficient_scope": {
+    "errors": [
+      {
+        "message": "Access denied: insufficient scope for Supply API.",
+        "extensions": {"code": "FORBIDDEN"}
+      }
+    ]
+  },
+  "auth_unauthenticated": {
+    "errors": [
+      {
+        "message": "Not authenticated",
+        "extensions": {"code": "UNAUTHENTICATED"}
+      }
+    ]
+  },
+  "schema_unknown_argument": {
+    "errors": [
+      {
+        "message": "Unknown argument 'currency' on field 'Query.supSearchMpn'.",
+        "locations": [{"line": 2, "column": 18}],
+        "extensions": {"code": "GRAPHQL_VALIDATION_FAILED"}
+      }
+    ]
+  },
+  "schema_unknown_field": {
+    "errors": [
+      {
+        "message": "Cannot query field 'clickUrl' on type 'SupOffer'.",
+        "extensions": {"code": "GRAPHQL_VALIDATION_FAILED"}
+      }
+    ]
+  },
+  "generic_graphql": {
+    "errors": [
+      {
+        "message": "Upstream supplier temporarily unavailable."
+      }
+    ]
+  },
+  "zero_results": {
+    "data": {
+      "supSearchMpn": {
+        "hits": 0,
+        "results": []
+      }
+    }
+  }
+}

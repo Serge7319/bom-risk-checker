@@ -40,6 +40,7 @@
   let submitted = false;
   let streamlitRenderReady = false;
   let pendingSubmitValue = null;
+  let idleSubmitLabel = "Login";
 
   function post(type, extra = {}) {
     window.parent.postMessage({isStreamlitMessage:true,type,...extra},"*");
@@ -69,7 +70,11 @@
     if (data.type !== "streamlit:render") return;
     const args = data.args || {};
     streamlitRenderReady = true;
+    if (typeof args.submit_label === "string" && args.submit_label.trim()) {
+      idleSubmitLabel = args.submit_label.trim();
+    }
     button.disabled = Boolean(args.disabled) || submitted;
+    if (!submitted) button.textContent = idleSubmitLabel;
     sendPendingSubmitWhenReady();
     resize();
   });

@@ -844,19 +844,36 @@ def _render_password_recovery_form(supabase, cookie_manager) -> None:
     _render_back_to_marketing_link()
 
 
-def _render_auth_page(supabase, cookie_manager, initial_mode: str):
+def _render_auth_page(
+    supabase,
+    cookie_manager,
+    initial_mode: str,
+    *,
+    session_expired: bool = False,
+):
     _render_auth_card_brand(
         context_sub="Engineering intelligence for modern electronics teams.",
     )
-    st.markdown(
-        """
-        <div class="auth-heading">Access your workspace</div>
-        <p class="auth-copy">Sign in to Cadivor, or create a workspace to run your first BOM through Cadivor.</p>
-        <div class="auth-strip">🔒 Your BOMs, saved analyses, reports, recommendations, and subscription usage stay connected to your Cadivor workspace.</div>
-        <div class="auth-divider"></div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if session_expired:
+        st.markdown(
+            """
+            <div class="auth-heading">Sign in again</div>
+            <p class="auth-copy">Your Cadivor session expired after inactivity. Sign in again to return to your workspace.</p>
+            <div class="auth-strip">🔒 Your BOMs, saved analyses, reports, recommendations, and subscription usage stay connected to your Cadivor workspace.</div>
+            <div class="auth-divider"></div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+            <div class="auth-heading">Access your workspace</div>
+            <p class="auth-copy">Sign in to Cadivor, or create a workspace to run your first BOM through Cadivor.</p>
+            <div class="auth-strip">🔒 Your BOMs, saved analyses, reports, recommendations, and subscription usage stay connected to your Cadivor workspace.</div>
+            <div class="auth-divider"></div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # Mode selector is outside the form so one radio change immediately reruns
     # Python with the new value (Streamlit forms batch widgets until submit).
@@ -878,6 +895,7 @@ def _render_auth_page(supabase, cookie_manager, initial_mode: str):
         login_payload = render_atomic_login(
             key="cadivor_atomic_login",
             disabled=False,
+            submit_label="Sign in again" if session_expired else "Login",
         )
         email = ""
         password = ""
@@ -1239,6 +1257,9 @@ def show_auth_ui(supabase, cookie_manager=None):
             notice = st.session_state.pop("cadivor_auth_notice", None)
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
             error = st.session_state.pop("cadivor_auth_error", None)
+            session_expired = st.session_state.pop("cadivor_session_expired_notice", None)
+            if session_expired:
+                st.warning(session_expired)
             if notice:
                 st.success(notice)
             if recovery_notice:
@@ -1249,6 +1270,7 @@ def show_auth_ui(supabase, cookie_manager=None):
                 supabase=supabase,
                 cookie_manager=cookie_manager,
                 initial_mode=_auth_mode_label_for_root(state),
+                session_expired=bool(session_expired),
             )
             return
 

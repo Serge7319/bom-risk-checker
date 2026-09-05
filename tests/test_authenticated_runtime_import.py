@@ -59,9 +59,14 @@ class AuthenticatedRuntimeImportTests(unittest.TestCase):
         st.stop = MagicMock(side_effect=RuntimeError("stop"))
         st.cache_data = lambda *args, **kwargs: (lambda fn: fn)
         st.cache_resource = lambda *args, **kwargs: (lambda fn: fn)
+        components_v1 = types.ModuleType("streamlit.components.v1")
+        components_v1.html = MagicMock()
+        components_v1.declare_component = MagicMock(
+            return_value=MagicMock(return_value=None)
+        )
         sys.modules["streamlit"] = st
         sys.modules["streamlit.components"] = types.ModuleType("streamlit.components")
-        sys.modules["streamlit.components.v1"] = types.ModuleType("streamlit.components.v1")
+        sys.modules["streamlit.components.v1"] = components_v1
         return st
 
     def _install_auth_cookies_stub(self):
@@ -82,7 +87,12 @@ class AuthenticatedRuntimeImportTests(unittest.TestCase):
         self._install_streamlit_stub()
         auth_cookies = self._install_auth_cookies_stub()
         auth_bootstrap = self._install_auth_bootstrap_stub()
-        sys.modules.pop("src.authenticated_runtime", None)
+        for name in (
+            "src.authenticated_runtime",
+            "src.browser_navigation",
+            "src.auth_idle_recovery",
+        ):
+            sys.modules.pop(name, None)
         try:
             runtime = importlib.import_module("src.authenticated_runtime")
         except ModuleNotFoundError as exc:
@@ -131,20 +141,19 @@ class AuthenticatedRuntimeImportTests(unittest.TestCase):
             call_order.append("load")
             raise RuntimeError("stop_after_load")
 
-        auth_state = types.ModuleType("src.auth_state")
-        auth_state.explicit_logout_pending = lambda: False
-        auth_state.handle_explicit_logout_if_pending = lambda: False
-        sys.modules["src.auth_state"] = auth_state
-
         try:
             runtime, _, _ = self._load_runtime_module()
         except ModuleNotFoundError:
             self.skipTest("Full runtime import requires optional app dependencies")
 
-        with patch.object(runtime, "_init_runtime_clients", side_effect=_track_init):
-            with patch.object(runtime, "load_user_data", side_effect=_track_load):
-                with self.assertRaises(RuntimeError):
-                    runtime.run_authenticated_app()
+        # Patch logout helpers after import so module-level auth_state symbols remain.
+        with patch("src.auth_state.explicit_logout_pending", return_value=False), patch(
+            "src.auth_state.handle_explicit_logout_if_pending", return_value=False
+        ), patch.object(
+            runtime, "_init_runtime_clients", side_effect=_track_init
+        ), patch.object(runtime, "load_user_data", side_effect=_track_load):
+            with self.assertRaises(RuntimeError):
+                runtime.run_authenticated_app()
 
         self.assertEqual(call_order, ["init", "load"])
 

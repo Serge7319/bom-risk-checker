@@ -34,6 +34,7 @@ SUBREASON_EMPTY_RESPONSE = "empty_response"
 SUBREASON_MALFORMED_RESPONSE = "malformed_response"
 SUBREASON_MISSING_EXPECTED_DATA = "missing_expected_data"
 SUBREASON_SCHEMA_MISMATCH = "schema_mismatch"
+SUBREASON_AUTHENTICATION = "authentication"
 SUBREASON_ZERO_RESULTS = "zero_results"
 
 _SECRET_PATTERN = re.compile(
@@ -131,6 +132,8 @@ def categorize_supplier_failure(
 
     if reason == SUBREASON_ZERO_RESULTS or status == PROVIDER_PART_NOT_FOUND:
         return CATEGORY_NO_RESULT
+    if reason == SUBREASON_AUTHENTICATION:
+        return CATEGORY_AUTHENTICATION
     if reason == SUBREASON_GRAPHQL_ERRORS:
         return CATEGORY_PROVIDER_ERROR
     if reason in {
@@ -193,6 +196,7 @@ def normalize_provider_response_subreason(
         SUBREASON_MALFORMED_RESPONSE,
         SUBREASON_MISSING_EXPECTED_DATA,
         SUBREASON_SCHEMA_MISMATCH,
+        SUBREASON_AUTHENTICATION,
         SUBREASON_ZERO_RESULTS,
     }
     if reason in allowed:
@@ -204,6 +208,13 @@ def normalize_provider_response_subreason(
     exc = str(exception_type or "").strip()
     if "cannot query field" in lowered or "unknown field" in lowered:
         return SUBREASON_SCHEMA_MISMATCH
+    if (
+        "unauthorized" in lowered
+        or "unauthenticated" in lowered
+        or "forbidden" in lowered
+        or "insufficient scope" in lowered
+    ):
+        return SUBREASON_AUTHENTICATION
     # Do not treat "…/graphql" URLs in HTTP error strings as GraphQL payload failures.
     if exc == "OctopartResponseError" or "graphql error" in lowered or "graphql errors" in lowered:
         return SUBREASON_GRAPHQL_ERRORS
@@ -295,6 +306,7 @@ def log_supplier_diagnostic(
     resolved_request_id = resolve_supplier_diagnostic_request_id(request_id) or "unknown"
     error_subreason = ""
     rejected_fields: list[str] = []
+    error_codes: list[str] = []
     if error is not None:
         error_subreason = str(getattr(error, "subreason", "") or "").strip()
         raw_fields = getattr(error, "rejected_fields", None) or ()
@@ -302,6 +314,13 @@ def log_supplier_diagnostic(
             str(item).strip()
             for item in raw_fields
             if str(item or "").strip() and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(item).strip())
+        ]
+        raw_codes = getattr(error, "error_codes", None) or ()
+        error_codes = [
+            str(item).strip()
+            for item in raw_codes
+            if str(item or "").strip()
+            and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", str(item).strip())
         ]
     safe_status_code = _safe_http_status_code(status_code, error_message, error)
     resolved_subreason = normalize_provider_response_subreason(
@@ -350,15 +369,25 @@ def log_supplier_diagnostic(
     if rejected_fields:
         # Field names only — never GraphQL messages, tokens, or bodies.
         payload["rejected_fields"] = ",".join(rejected_fields[:8])
-    if resolved_subreason and rejected_fields:
+    if error_codes:
+        payload["error_codes"] = ",".join(error_codes[:8])
+    extra_bits: list[str] = []
+    extra_vals: list[str] = []
+    if rejected_fields:
+        extra_bits.append("rejected_fields=%s")
+        extra_vals.append(payload["rejected_fields"])
+    if error_codes:
+        extra_bits.append("error_codes=%s")
+        extra_vals.append(payload["error_codes"])
+    if resolved_subreason and extra_bits:
         logger.warning(
             "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
-            "subreason=%s rejected_fields=%s status_code=%s retryable=%s",
+            "subreason=%s " + " ".join(extra_bits) + " status_code=%s retryable=%s",
             payload["request_id"],
             payload["supplier"],
             payload["log_category"],
             payload["subreason"],
-            payload["rejected_fields"],
+            *extra_vals,
             payload["status_code"] or "none",
             payload["retryable"],
         )
@@ -403,6 +432,8 @@ def attach_supplier_diagnostic(result: dict[str, Any], diagnostic: Mapping[str, 
         result["diagnostic_request_id"] = str(diagnostic.get("request_id") or "")
     if diagnostic.get("rejected_fields"):
         result["diagnostic_rejected_fields"] = str(diagnostic.get("rejected_fields") or "")
+    if diagnostic.get("error_codes"):
+        result["diagnostic_error_codes"] = str(diagnostic.get("error_codes") or "")
 
 
 _PLACEHOLDER_SECRET_VALUES = frozenset(
