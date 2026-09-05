@@ -19,7 +19,12 @@ def _declared_component():
     )
 
 
-def render_atomic_login(*, key: str, disabled: bool = False) -> Any:
+def render_atomic_login(
+    *,
+    key: str,
+    disabled: bool = False,
+    submit_label: str = "Login",
+) -> Any:
     """Render Login and return one atomic submit payload, or None.
 
     The component never writes credentials to browser storage, query params,
@@ -32,8 +37,10 @@ def render_atomic_login(*, key: str, disabled: bool = False) -> Any:
     except (ImportError, AttributeError):
         # Unit-test Streamlit stubs do not expose the components package.
         return None
+    label = str(submit_label or "Login").strip() or "Login"
     return component(
         disabled=bool(disabled),
+        submit_label=label,
         default=None,
         key=key,
     )

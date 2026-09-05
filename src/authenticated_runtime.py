@@ -188,52 +188,38 @@ def _init_runtime_clients() -> None:
 
 
 def load_user_data():
-    user = st.session_state["user"]
-    user_id = user.id
+    """Load the Cadivor users row for the authenticated session.
+
+    Idle recovery: refresh an expired/stale access token once before treating
+    profile initialization as failed. Do not provision a new profile merely
+    because a read failed under an expired JWT.
+    """
+    from src.auth_idle_recovery import load_workspace_profile
     from src.services.authenticated_profile_cache import (
         recent_verified_profile,
         remember_verified_profile,
     )
+    from src.services.user_provisioning import ensure_user_profile
 
-    try:
-        response = execute_supabase_read(
-            supabase.table("users")
-            .select("*")
-            .eq("id", user_id),
+    def _read_profile(user_id):
+        return execute_supabase_read(
+            supabase.table("users").select("*").eq("id", user_id),
             operation="load_user_data",
         )
-    except SupabaseReadTransportError:
-        cached_profile = recent_verified_profile(st.session_state, user_id)
-        if cached_profile:
-            return cached_profile
-        st.warning(
-            "Cadivor could not reach the database right now. "
-            "Please wait a moment and use **Rerun** or refresh the page."
-        )
-        stop_authenticated_page()
 
-    if response.data:
-        return remember_verified_profile(st.session_state, response.data[0]) or response.data[0]
+    def _ensure_profile(client, auth_user):
+        return ensure_user_profile(client, auth_user, operation="load_user_data")
 
-    # A profile that was successfully loaded earlier in this authenticated
-    # session must not be treated as missing because one later read is briefly
-    # empty. Provisioning is only for a genuinely fresh session with no
-    # verified profile yet.
-    cached_profile = recent_verified_profile(st.session_state, user_id)
-    if cached_profile:
-        return cached_profile
-
-    from src.services.user_provisioning import UserProvisioningError, ensure_user_profile
-
-    try:
-        profile, _created = ensure_user_profile(supabase, user, operation="load_user_data")
-        return remember_verified_profile(st.session_state, profile) or profile
-    except UserProvisioningError:
-        st.error(
-            "Cadivor could not initialize your workspace profile. "
-            "Please try again in a moment or contact support if this continues."
-        )
-        stop_authenticated_page()
+    return load_workspace_profile(
+        supabase=supabase,
+        session_state=st.session_state,
+        cookie_manager=cookie_manager,
+        read_profile=_read_profile,
+        ensure_profile=_ensure_profile,
+        recent_profile=recent_verified_profile,
+        remember_profile=remember_verified_profile,
+        transport_error_type=SupabaseReadTransportError,
+    )
 
 
 
