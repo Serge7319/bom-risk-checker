@@ -26,6 +26,7 @@ def render_atomic_login(
     submit_label: str = "Login",
     prefill_email: str = "",
     error_message: str = "",
+    error_epoch: int = 0,
 ) -> Any:
     """Render Login and return one atomic submit payload, or None.
 
@@ -40,11 +41,16 @@ def render_atomic_login(
         # Unit-test Streamlit stubs do not expose the components package.
         return None
     label = str(submit_label or "Login").strip() or "Login"
+    try:
+        epoch = max(int(error_epoch or 0), 0)
+    except (TypeError, ValueError):
+        epoch = 0
     return component(
         disabled=bool(disabled),
         submit_label=label,
         prefill_email=str(prefill_email or "").strip(),
         error_message=str(error_message or "").strip(),
+        error_epoch=epoch,
         default=None,
         key=key,
     )

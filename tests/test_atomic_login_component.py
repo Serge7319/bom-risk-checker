@@ -29,6 +29,22 @@ class AtomicLoginComponentContractTests(unittest.TestCase):
         self.assertIn("button.disabled = Boolean(isBusy) || submitted", HTML)
         self.assertIn('button.textContent = "Signing in…"', HTML)
 
+    def test_invalid_credentials_error_is_inline_with_password_refocus(self):
+        self.assertIn('data-login-error', HTML)
+        self.assertIn("function applyServerError(message)", HTML)
+        self.assertIn('password.value = ""', HTML)
+        self.assertIn("password.focus()", HTML)
+        self.assertIn("setBusy(false, idleSubmitLabel)", HTML)
+        self.assertIn("args.error_message", HTML)
+        self.assertIn("args.error_epoch", HTML)
+        self.assertIn("ATOMIC_LOGIN_ERROR_KEY", AUTH)
+        self.assertIn(
+            '"Email or password is incorrect. Please try again."',
+            AUTH,
+        )
+        self.assertIn("error_epoch=error_epoch", AUTH)
+        self.assertIn("error_epoch: int = 0", BRIDGE)
+
     def test_first_submit_waits_for_streamlit_render_handshake(self):
         self.assertIn("let streamlitRenderReady = false", HTML)
         self.assertIn("let pendingSubmitValue = null", HTML)

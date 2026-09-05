@@ -373,11 +373,45 @@ def _log_manual_login_event(event: str, cookie_manager=None) -> None:
 
 
 MANUAL_LOGIN_FAILURE_MESSAGE = (
-    "Cadivor could not sign you in. Check your credentials and try again."
+    "Email or password is incorrect. Please try again."
 )
 MANUAL_LOGIN_NO_SESSION_MESSAGE = (
     "Cadivor could not complete sign-in. Please try again."
 )
+ATOMIC_LOGIN_ERROR_KEY = "cadivor_atomic_login_error"
+ATOMIC_LOGIN_ERROR_EPOCH_KEY = "cadivor_atomic_login_error_epoch"
+
+
+def _set_manual_login_error(message: str, *, email: str = "") -> None:
+    """Persist a user-visible Login error for the atomic component remount."""
+    text = str(message or MANUAL_LOGIN_FAILURE_MESSAGE).strip() or MANUAL_LOGIN_FAILURE_MESSAGE
+    st.session_state["cadivor_auth_error"] = text
+    st.session_state[ATOMIC_LOGIN_ERROR_KEY] = text
+    try:
+        epoch = int(st.session_state.get(ATOMIC_LOGIN_ERROR_EPOCH_KEY) or 0)
+    except (TypeError, ValueError):
+        epoch = 0
+    st.session_state[ATOMIC_LOGIN_ERROR_EPOCH_KEY] = epoch + 1
+    if email:
+        st.session_state["cadivor_login_email_draft"] = str(email).strip()
+
+
+def _consume_manual_login_error() -> str:
+    """Return the Login error for this paint and keep it available to the component."""
+    # Prefer the atomic-login copy so a Streamlit st.error pop cannot erase it
+    # before the iframe receives args.
+    message = str(
+        st.session_state.get(ATOMIC_LOGIN_ERROR_KEY)
+        or st.session_state.get("cadivor_auth_error")
+        or ""
+    ).strip()
+    st.session_state.pop("cadivor_auth_error", None)
+    return message
+
+
+def _clear_manual_login_error() -> None:
+    st.session_state.pop("cadivor_auth_error", None)
+    st.session_state.pop(ATOMIC_LOGIN_ERROR_KEY, None)
 
 
 def _fail_manual_login_and_rerun(
@@ -395,12 +429,10 @@ def _fail_manual_login_and_rerun(
         fail_login_handoff(message=message, email=email)
     except Exception:
         st.session_state["cadivor_root_state"] = APP_LOGIN
-        st.session_state["cadivor_auth_error"] = message
-        if email:
-            st.session_state["cadivor_login_email_draft"] = str(email).strip()
         st.session_state.pop("cadivor_login_handoff_active", None)
         st.session_state.pop("cadivor_login_handoff_stage", None)
         st.session_state.pop("cadivor_login_handoff_started_at", None)
+    _set_manual_login_error(message, email=email)
     _log_manual_login_event(event, cookie_manager)
     st.rerun()
 
@@ -408,6 +440,7 @@ def _fail_manual_login_and_rerun(
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Authenticate credentials in the same script run as the Login submit."""
     begin_manual_login(cookie_manager)
+    _clear_manual_login_error()
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
     st.session_state["cadivor_login_email_draft"] = str(email or "").strip()
@@ -457,6 +490,7 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     # Root state must leave APP_SIGNING_IN immediately after credentials succeed.
     st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
     st.session_state.pop("cadivor_login_email_draft", None)
+    _clear_manual_login_error()
     _log_manual_login_event("manual_login_session_committed", cookie_manager)
     st.rerun()
 
@@ -924,12 +958,22 @@ def _render_auth_page(
 
         login_in_flight = manual_login_in_flight()
         draft_email = str(st.session_state.get("cadivor_login_email_draft") or "").strip()
+        component_error = "" if login_in_flight else str(
+            st.session_state.get(ATOMIC_LOGIN_ERROR_KEY)
+            or auth_error
+            or ""
+        ).strip()
+        try:
+            error_epoch = int(st.session_state.get(ATOMIC_LOGIN_ERROR_EPOCH_KEY) or 0)
+        except (TypeError, ValueError):
+            error_epoch = 0
         login_payload = render_atomic_login(
             key="cadivor_atomic_login",
             disabled=login_in_flight,
             submit_label="Sign in again" if session_expired else "Login",
             prefill_email=draft_email,
-            error_message="" if login_in_flight else str(auth_error or "").strip(),
+            error_message=component_error,
+            error_epoch=error_epoch,
         )
         email = ""
         password = ""
@@ -1324,7 +1368,9 @@ def show_auth_ui(supabase, cookie_manager=None):
             recovery = _auth_recovery()
             notice = st.session_state.pop("cadivor_auth_notice", None)
             recovery_notice = st.session_state.pop(recovery._RECOVERY_NOTICE_KEY, None)
-            error = st.session_state.pop("cadivor_auth_error", None)
+            # Keep the atomic-login error for the iframe; only pop the Streamlit
+            # alert copy so a second paint cannot blank the component message.
+            error = _consume_manual_login_error()
             session_expired = st.session_state.pop("cadivor_session_expired_notice", None)
             if session_expired:
                 st.warning(session_expired)
@@ -1332,8 +1378,6 @@ def show_auth_ui(supabase, cookie_manager=None):
                 st.success(notice)
             if recovery_notice:
                 st.success(recovery_notice)
-            if error:
-                st.error(error)
             _render_auth_page(
                 supabase=supabase,
                 cookie_manager=cookie_manager,

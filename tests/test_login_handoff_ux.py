@@ -130,14 +130,64 @@ class LoginHandoffUxTests(unittest.TestCase):
             auth.MANUAL_LOGIN_FAILURE_MESSAGE,
         )
         self.assertEqual(
+            st.session_state[auth.ATOMIC_LOGIN_ERROR_KEY],
+            "Email or password is incorrect. Please try again.",
+        )
+        self.assertGreaterEqual(
+            int(st.session_state.get(auth.ATOMIC_LOGIN_ERROR_EPOCH_KEY) or 0),
+            1,
+        )
+        self.assertEqual(
             st.session_state["cadivor_login_email_draft"],
             "keepme@example.com",
         )
         self.assertFalse(st.session_state.get("cadivor_login_handoff_active", False))
+        self.assertFalse(st.session_state.get("cadivor_manual_login_in_progress", False))
         self.assertIn("prefill_email=draft_email", AUTH)
         self.assertIn("error_message=", AUTH)
+        self.assertIn("error_epoch=", AUTH)
         self.assertIn("args.prefill_email", HTML)
         self.assertIn("args.error_message", HTML)
+        self.assertIn("applyServerError", HTML)
+        self.assertIn('password.value = ""', HTML)
+        self.assertIn("password.focus()", HTML)
+        # Error must be owned by the atomic Login surface, not only st.error.
+        self.assertIn("ATOMIC_LOGIN_ERROR_KEY", AUTH)
+        self.assertNotIn("st.error(error)", AUTH[AUTH.index("if state in (APP_LOGIN, APP_SIGNUP):"):AUTH.index("if state == APP_PASSWORD_RESET:")])
+
+    def test_invalid_password_error_reaches_atomic_login_args(self):
+        """User-visible invalid-password copy must be passed into the iframe."""
+        st, auth, _auth_state = self._load_auth()
+        captured = {}
+
+        def fake_render_atomic_login(**kwargs):
+            captured.update(kwargs)
+            return None
+
+        st.radio = MagicMock(return_value=auth.AUTH_MODE_LOGIN)
+        st.button = MagicMock(return_value=False)
+        st.markdown = MagicMock()
+        st.session_state[auth.ATOMIC_LOGIN_ERROR_KEY] = auth.MANUAL_LOGIN_FAILURE_MESSAGE
+        st.session_state[auth.ATOMIC_LOGIN_ERROR_EPOCH_KEY] = 3
+        st.session_state["cadivor_login_email_draft"] = "keepme@example.com"
+        st.session_state["cadivor_root_state"] = auth.APP_LOGIN
+
+        with patch.object(auth, "render_atomic_login", side_effect=fake_render_atomic_login):
+            auth._render_auth_page(
+                MagicMock(),
+                MagicMock(),
+                auth.AUTH_MODE_LOGIN,
+                auth_error=auth.MANUAL_LOGIN_FAILURE_MESSAGE,
+            )
+
+        self.assertEqual(
+            captured.get("error_message"),
+            "Email or password is incorrect. Please try again.",
+        )
+        self.assertEqual(captured.get("prefill_email"), "keepme@example.com")
+        self.assertEqual(captured.get("error_epoch"), 3)
+        self.assertFalse(captured.get("disabled"))
+        self.assertEqual(captured.get("submit_label"), "Login")
 
     def test_success_plus_profile_init_clears_signing_in_and_handoff(self):
         """Credentials + profile success must not leave APP_SIGNING_IN forever."""
