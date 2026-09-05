@@ -1,6 +1,7 @@
 """Supplier provider health and degraded-data provenance helpers."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.configuration_errors import ConfigurationError
@@ -20,15 +21,32 @@ _FAILURE_STATUSES = {
 }
 
 
+def _strip_urls_and_query_secrets(message: str) -> str:
+    """Remove credentialed URLs/query strings before user-facing sanitization."""
+    text = str(message or "")
+    text = re.sub(r"https?://\S+", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(?i)\b(?:api[_-]?key|token|client_secret|password|authorization)=[^&\s]+",
+        "",
+        text,
+    )
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def classify_provider_exception(error: Exception) -> str:
     if isinstance(error, ConfigurationError):
         return PROVIDER_NOT_CONFIGURED
 
     message = str(error or "").lower()
+    status = getattr(getattr(error, "response", None), "status_code", None)
+    if isinstance(status, int) and status == 429:
+        return PROVIDER_RATE_LIMITED
     if "timeout" in message or "timed out" in message:
         return PROVIDER_TIMEOUT
     if "429" in message or "rate limit" in message or "too many requests" in message:
         return PROVIDER_RATE_LIMITED
+    if isinstance(status, int) and status in {401, 403}:
+        return PROVIDER_ERROR
     if "401" in message or "403" in message or "unauthorized" in message:
         return PROVIDER_ERROR
     return PROVIDER_ERROR
@@ -41,7 +59,10 @@ def sanitize_provider_message(error: Exception | str | None) -> str:
     text = str(error).strip()
     if not text:
         return "Supplier lookup failed."
-    lowered = text.lower()
+    # Strip credentialed URLs/query params before secret-marker checks so a
+    # Newark/Element14 apiKey query string does not become an auth diagnosis.
+    cleaned = _strip_urls_and_query_secrets(text)
+    lowered = cleaned.lower()
     secret_markers = (
         "api_key",
         "apikey",
@@ -49,13 +70,20 @@ def sanitize_provider_message(error: Exception | str | None) -> str:
         "bearer ",
         "client_secret",
         "password",
-        "token",
+        "token=",
+        " token",
+        "token ",
     )
     if any(marker in lowered for marker in secret_markers):
         return "Supplier authentication or configuration failed."
-    if len(text) > 160:
+    status = getattr(getattr(error, "response", None), "status_code", None)
+    if isinstance(status, int) and status >= 500:
         return "Supplier lookup failed."
-    return text
+    if isinstance(status, int) and status in {401, 403}:
+        return "Supplier authentication or configuration failed."
+    if len(cleaned) > 160 or not cleaned:
+        return "Supplier lookup failed."
+    return cleaned
 
 
 def provider_status_label(status: str) -> str:

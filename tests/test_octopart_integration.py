@@ -85,12 +85,14 @@ class OctopartIntegrationTests(unittest.TestCase):
     def test_query_uses_current_nexar_fields(self):
         query = self.client._PART_QUERY
         self.assertIn("supSearchMpn", query)
-        self.assertIn("name", query)
+        self.assertIn("manufacturer {", query)
         self.assertIn("prices {", query)
         self.assertIn("quantity", query)
         self.assertIn("price", query)
         self.assertIn("inventoryLevel", query)
+        # Official MPN-search docs do not require part.name/shortDescription.
         self.assertNotIn("shortDescription", query)
+        self.assertNotRegex(query, r"\bpart\s*\{\s*id\s*mpn\s*name\b")
         # Keep the query minimal; optional country/currency/clickUrl caused live rejects.
         self.assertNotIn("country:", query)
         self.assertNotIn("currency:", query)
@@ -217,6 +219,14 @@ class OctopartIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(schema["graphql_kind"], self.client.GRAPHQL_KIND_SCHEMA)
         self.assertEqual(schema["rejected_fields"], ["currency"])
+        path_leaf = self.client.inspect_nexar_graphql_errors(
+            fixtures["schema_path_leaf"]["errors"]
+        )
+        self.assertEqual(path_leaf["graphql_kind"], self.client.GRAPHQL_KIND_SCHEMA)
+        self.assertIn("name", path_leaf["rejected_fields"])
+        rate = self.client.inspect_nexar_graphql_errors(fixtures["rate_limited"]["errors"])
+        self.assertEqual(rate["graphql_kind"], self.client.GRAPHQL_KIND_RATE_LIMIT)
+        self.assertEqual(rate["subreason"], self.client.SUBREASON_RATE_LIMIT)
         generic = self.client.inspect_nexar_graphql_errors(
             fixtures["generic_graphql"]["errors"]
         )
@@ -624,6 +634,78 @@ class OctopartDiagnosticPropagationTests(unittest.TestCase):
         self.assertEqual(payload["status_code"], "500")
         self.assertNotEqual(payload["subreason"], "graphql_errors")
         self.assertNotIn("api.nexar.com", payload["message"])
+
+    def test_newark_http_500_with_apikey_url_is_http_not_auth(self):
+        """Element14 URLs embed apiKey; 500 must not be mislabeled as auth."""
+        class _Response:
+            status_code = 500
+
+        class _HTTPError(Exception):
+            def __init__(self):
+                super().__init__(
+                    "500 Server Error: Internal Server Error for url: "
+                    "https://api.element14.com/catalog/products?"
+                    "callInfo.apiKey=secret-newark-key&term=manuPartNum:LM358"
+                )
+                self.response = _Response()
+
+        error = _HTTPError()
+        from integrations.provider_health import sanitize_provider_message
+
+        safe = sanitize_provider_message(error)
+        self.assertNotIn("secret-newark-key", safe)
+        self.assertNotIn("authentication", safe.casefold())
+
+        payload = self.diagnostics.log_supplier_diagnostic(
+            request_id="newark500aa",
+            supplier="Newark",
+            stage="lookup",
+            provider_status="PROVIDER_ERROR",
+            error_message=safe,
+            exception_type=type(error).__name__,
+            error=error,
+        )
+        self.assertEqual(payload["status_code"], "500")
+        self.assertEqual(payload["category"], self.diagnostics.CATEGORY_HTTP_ERROR)
+        self.assertEqual(payload["log_category"], "http")
+        self.assertNotEqual(payload["log_category"], "auth")
+        self.assertNotIn("secret-newark-key", "\n".join(str(v) for v in payload.values()))
+
+        label = self.diagnostics.supplier_coverage_label(
+            "Newark",
+            "PROVIDER_ERROR",
+            failure_category=payload["category"],
+            error_message=safe,
+        )
+        self.assertTrue(label.startswith("Newark: unavailable"))
+        self.assertNotIn("not configured", label.casefold())
+        self.assertNotIn("no exact match", label.casefold())
+
+    def test_newark_http_401_remains_auth(self):
+        class _Response:
+            status_code = 401
+
+        class _HTTPError(Exception):
+            def __init__(self):
+                super().__init__(
+                    "401 Client Error: Unauthorized for url: "
+                    "https://api.element14.com/catalog/products?callInfo.apiKey=secret"
+                )
+                self.response = _Response()
+
+        error = _HTTPError()
+        payload = self.diagnostics.log_supplier_diagnostic(
+            request_id="newark401aa",
+            supplier="Newark",
+            stage="lookup",
+            provider_status="PROVIDER_ERROR",
+            error_message=str(error),
+            exception_type=type(error).__name__,
+            error=error,
+        )
+        self.assertEqual(payload["status_code"], "401")
+        self.assertEqual(payload["category"], self.diagnostics.CATEGORY_AUTHENTICATION)
+        self.assertEqual(payload["log_category"], "auth")
 
 
 if __name__ == "__main__":

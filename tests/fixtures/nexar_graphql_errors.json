@@ -32,6 +32,23 @@
       }
     ]
   },
+  "schema_path_leaf": {
+    "errors": [
+      {
+        "message": "Validation error",
+        "path": ["supSearchMpn", "results", "part", "name"],
+        "extensions": {"code": "GRAPHQL_VALIDATION_FAILED", "fieldName": "name"}
+      }
+    ]
+  },
+  "rate_limited": {
+    "errors": [
+      {
+        "message": "Too many requests",
+        "extensions": {"code": "RATE_LIMITED"}
+      }
+    ]
+  },
   "generic_graphql": {
     "errors": [
       {

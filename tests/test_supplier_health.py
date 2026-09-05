@@ -123,6 +123,23 @@ class SupplierHealthTests(unittest.TestCase):
         self.assertNotIn("sk-live", message)
         self.assertIn("authentication", message.lower())
 
+    def test_newark_style_500_with_apikey_query_is_not_auth_message(self):
+        class _Response:
+            status_code = 500
+
+        class _HTTPError(Exception):
+            def __init__(self):
+                super().__init__(
+                    "500 Server Error for url: "
+                    "https://api.element14.com/catalog/products?callInfo.apiKey=sekrit"
+                )
+                self.response = _Response()
+
+        message = sanitize_provider_message(_HTTPError())
+        self.assertEqual(message, "Supplier lookup failed.")
+        self.assertNotIn("sekrit", message)
+        self.assertNotIn("authentication", message.lower())
+
     def test_classify_rate_limit(self):
         self.assertEqual(
             classify_provider_exception(Exception("429 Too Many Requests")),
