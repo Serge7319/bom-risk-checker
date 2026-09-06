@@ -43,6 +43,31 @@ def _assert_not_blank_topbar(html: str, label: str) -> None:
         raise AssertionError(f"{label}: empty/unknown frame without gate or brand")
 
 
+_MARKUP_INDICATORS = (
+    "<div",
+    "<style",
+    "<span",
+    "class=",
+    "cv-",
+    "</",
+    "unsafe_allow_html",
+)
+
+
+def _assert_no_visible_markup(page, label: str) -> None:
+    """Visible page text must never contain raw HTML / CSS / component markup."""
+    try:
+        visible = str(page.inner_text("body") or "")
+    except Exception as exc:
+        raise AssertionError(f"{label}: could not read visible text ({exc})") from exc
+    lowered = visible.casefold()
+    for token in _MARKUP_INDICATORS:
+        if token.casefold() in lowered:
+            raise AssertionError(
+                f"{label}: visible text contains markup indicator {token!r}"
+            )
+
+
 def _find_login_fields(page):
     for frame in [page, *page.frames]:
         email = frame.locator(
@@ -127,8 +152,13 @@ def main() -> int:
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
 
+            saw_restoring_before_login = False
             for _ in range(40):
                 html = page.content()
+                _assert_no_visible_markup(page, "cold_start_wait")
+                body = page.inner_text("body") or ""
+                if "Restoring your session" in body:
+                    saw_restoring_before_login = True
                 target, email, password = _find_login_fields(page)
                 if target is not None and 'data-auth-gate="login"' in html:
                     break
@@ -141,11 +171,20 @@ def main() -> int:
                 print("AUTH_SMOKE fail=no_login_inputs")
                 return 4
 
+            if saw_restoring_before_login:
+                raise AssertionError(
+                    "cold_start: intermediate boot surface shown before Login"
+                )
+
             page.screenshot(path=str(OUT / "01_boot_or_login.png"), full_page=True)
             html = page.content()
             _assert_not_blank_topbar(html, "frame1")
+            _assert_no_visible_markup(page, "login")
             (OUT / "01_boot_or_login.html").write_text(html[:200000], encoding="utf-8")
             assert 'data-auth-gate="login"' in html
+            login_body = page.inner_text("body") or ""
+            if "Restoring your session" in login_body:
+                raise AssertionError("login: boot restore message still visible")
 
             email.fill("wrong@cadivor.test")
             password.fill("not-the-password")
@@ -156,6 +195,7 @@ def main() -> int:
             page.screenshot(path=str(OUT / "02_invalid_password.png"), full_page=True)
             html_bad = page.content()
             _assert_not_blank_topbar(html_bad, "invalid_password")
+            _assert_no_visible_markup(page, "invalid_login")
             (OUT / "02_invalid_password.html").write_text(
                 html_bad[:200000], encoding="utf-8"
             )
@@ -173,6 +213,7 @@ def main() -> int:
             page.screenshot(path=str(OUT / "03_authenticating.png"), full_page=True)
             html_auth = page.content()
             _assert_not_blank_topbar(html_auth, "authenticating")
+            _assert_no_visible_markup(page, "authenticating")
             (OUT / "03_authenticating.html").write_text(
                 html_auth[:200000], encoding="utf-8"
             )
@@ -183,6 +224,7 @@ def main() -> int:
             for _ in range(40):
                 html_ready = page.content()
                 body = page.inner_text("body")
+                _assert_no_visible_markup(page, "ready_wait")
                 if (
                     "cv-foundation-topbar" in html_ready
                     or "Dashboard" in html_ready
@@ -197,6 +239,7 @@ def main() -> int:
             page.screenshot(path=str(OUT / "04_ready.png"), full_page=True)
             html_ready = page.content()
             _assert_not_blank_topbar(html_ready, "ready")
+            _assert_no_visible_markup(page, "ready")
             (OUT / "04_ready.html").write_text(html_ready[:200000], encoding="utf-8")
             if not ready or (
                 "Mock workspace" not in html_ready and "Dashboard" not in html_ready
@@ -207,10 +250,23 @@ def main() -> int:
                 raise AssertionError("ready: fake topbar present")
 
             page.reload(wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
+            # Session restore may briefly show the full-page boot shell — never markup.
+            for _ in range(20):
+                _assert_no_visible_markup(page, "boot_restore_wait")
+                html_probe = page.content()
+                body_probe = page.inner_text("body") or ""
+                if (
+                    "Mock workspace" in html_probe
+                    or "Dashboard" in html_probe
+                    or 'data-auth-gate="login"' in html_probe
+                ) and "Restoring your session" not in body_probe:
+                    break
+                page.wait_for_timeout(250)
+            page.wait_for_timeout(1500)
             page.screenshot(path=str(OUT / "05_session_restore.png"), full_page=True)
             html_restore = page.content()
             _assert_not_blank_topbar(html_restore, "session_restore")
+            _assert_no_visible_markup(page, "session_restore")
             (OUT / "05_session_restore.html").write_text(
                 html_restore[:200000], encoding="utf-8"
             )

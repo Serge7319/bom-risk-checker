@@ -7,11 +7,13 @@ Rules:
 - Exactly one complete branded surface per non-ready script run.
 - Never use an empty placeholder as the root auth surface.
 - Never mount authenticated app chrome until state is ready.
+- Never emit HTML/CSS/component markup as visible page text.
 - Railway diagnostics: gate transitions with session_hash / script_run_id only.
 """
 from __future__ import annotations
 
-from typing import Any, Literal
+import html as html_lib
+from typing import Literal
 
 import streamlit as st
 
@@ -29,7 +31,8 @@ def get_auth_gate_state() -> AuthGateState:
     raw = str(st.session_state.get(AUTH_GATE_STATE_KEY) or "").strip().lower()
     if raw in _VALID_STATES:
         return raw  # type: ignore[return-value]
-    return "boot"
+    # Unauthenticated default — never imply a session restore.
+    return "login"
 
 
 def set_auth_gate_state(
@@ -39,9 +42,9 @@ def set_auth_gate_state(
     error_message: str = "",
 ) -> None:
     """Set the gate state and emit a safe correlation line."""
-    resolved = str(state or "boot").strip().lower()
+    resolved = str(state or "login").strip().lower()
     if resolved not in _VALID_STATES:
-        resolved = "boot"
+        resolved = "login"
     previous = get_auth_gate_state()
     st.session_state[AUTH_GATE_STATE_KEY] = resolved
     if resolved == "error":
@@ -92,7 +95,6 @@ def _log_gate_transition(previous: str, nxt: str, *, reason: str = "") -> None:
                 + (f"__{str(reason).strip()}" if reason else "")
             )[:180],
         )
-        # Extra compact line for Railway scrapers.
         print(
             "AUTH_GATE "
             f"from={previous} to={nxt} "
@@ -105,84 +107,51 @@ def _log_gate_transition(previous: str, nxt: str, *, reason: str = "") -> None:
         pass
 
 
-def render_full_page_gate_surface(
-    *,
-    title: str,
-    message: str,
-    kind: AuthGateState,
-    show_progress: bool = True,
-    error_text: str = "",
-) -> None:
-    """Paint one complete branded gate surface (never a bare top bar).
-
-    boot / authenticating: opaque full-viewport card (no widgets underneath).
-    login / error: in-flow branded chrome so Streamlit form/recovery stay visible.
-    """
-    safe_title = str(title or "Cadivor")
-    safe_message = str(message or "Please wait…")
-    safe_error = str(error_text or "").strip()
-    progress_html = (
-        '<div class="cv-auth-gate-progress" aria-hidden="true"></div>'
-        if show_progress
-        else ""
-    )
-    error_html = (
-        f'<div class="cv-auth-gate-error" role="alert">{safe_error}</div>'
-        if safe_error
-        else ""
-    )
-    interactive = kind in {"login", "error"}
+def _inject_gate_css(*, interactive: bool, show_progress: bool) -> None:
+    """CSS-only injection — never mix style tags with card markup in one markdown."""
     if interactive:
         st.markdown(
-            f"""
+            """
             <style id="cadivor-auth-gate-css">
-            /* Neutralize leftover fixed boot/authenticating overlays from prior paints. */
-            div.cv-auth-gate{{
+            div.cv-auth-gate{
               display:none!important;visibility:hidden!important;pointer-events:none!important;
               opacity:0!important;z-index:-1!important
-            }}
+            }
             header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
-            section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{
+            section[data-testid="stSidebar"],[data-testid="collapsedControl"]{
               display:none!important;visibility:hidden!important;height:0!important
-            }}
-            html,body,.stApp,[data-testid="stAppViewContainer"]{{
+            }
+            html,body,.stApp,[data-testid="stAppViewContainer"]{
               background:#F5F7FB!important;color:#0F172A!important
-            }}
-            .main .block-container{{
+            }
+            .main .block-container{
               max-width:480px!important;padding:clamp(28px,8vh,72px) 16px 40px!important;margin:0 auto!important
-            }}
-            .cv-auth-gate-inline{{
-              text-align:center;font-family:Inter,system-ui,sans-serif;margin:0 0 8px
-            }}
-            .cv-auth-gate-inline .cv-auth-gate-mark{{
-              width:48px;height:48px;margin:0 auto 12px;border-radius:14px;display:grid;
-              place-items:center;background:#2563EB;color:#fff;font-weight:900;font-size:22px;
-              box-shadow:0 12px 26px rgba(37,99,235,.25)
-            }}
-            .cv-auth-gate-inline h1{{
-              margin:0;color:#0F172A!important;font-size:20px;letter-spacing:-.025em
-            }}
-            .cv-auth-gate-inline p{{
-              margin:8px 0 0;color:#64748B!important;font-size:13px;line-height:1.45
-            }}
-            .cv-auth-gate-error{{
-              margin:12px auto 0;max-width:440px;padding:10px 12px;border-radius:12px;text-align:left;
-              background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;font-size:12px;
-              line-height:1.45;font-weight:700
-            }}
+            }
             </style>
-            <div class="cv-auth-gate-inline" data-testid="cadivor-auth-gate"
-                 data-auth-gate="{kind}" data-kind="{kind}" role="status" aria-live="polite">
-              <div class="cv-auth-gate-mark">C</div>
-              <h1>{safe_title}</h1>
-              <p>{safe_message}</p>
-              {error_html}
-            </div>
             """,
             unsafe_allow_html=True,
         )
         return
 
+    progress_rules = ""
+    if show_progress:
+        progress_rules = """
+        .cv-auth-gate-card[data-progress="1"]{
+          padding-bottom:34px
+        }
+        .cv-auth-gate-card[data-progress="1"]:after{
+          content:"";position:absolute;left:30px;right:30px;bottom:22px;height:4px;
+          border-radius:999px;background:#E8EEF6;overflow:hidden
+        }
+        .cv-auth-gate-card[data-progress="1"]:before{
+          content:"";position:absolute;left:30px;bottom:22px;height:4px;width:42%;
+          border-radius:999px;background:#2563EB;z-index:1;
+          animation:cv-auth-gate-progress 1.1s ease-in-out infinite
+        }
+        @keyframes cv-auth-gate-progress{
+          0%{transform:translateX(0)}100%{transform:translateX(140%)}
+        }
+        """
     st.markdown(
         f"""
         <style id="cadivor-auth-gate-css">
@@ -201,7 +170,7 @@ def render_full_page_gate_surface(
           font-family:Inter,system-ui,sans-serif;pointer-events:auto
         }}
         .cv-auth-gate-card{{
-          width:min(440px,100%);padding:30px 30px 26px;border:1px solid #DCE4EE;
+          position:relative;width:min(440px,100%);padding:30px 30px 26px;border:1px solid #DCE4EE;
           border-radius:22px;background:rgba(255,255,255,.97);
           box-shadow:0 24px 70px rgba(15,23,42,.10);text-align:center
         }}
@@ -214,37 +183,95 @@ def render_full_page_gate_surface(
           margin:0;color:#0F172A!important;font-size:20px;letter-spacing:-.025em
         }}
         .cv-auth-gate-card p{{
-          margin:8px 0 18px;color:#64748B!important;font-size:13px;line-height:1.45
-        }}
-        .cv-auth-gate-progress{{
-          height:4px;border-radius:999px;background:#E8EEF6;overflow:hidden;position:relative
-        }}
-        .cv-auth-gate-progress:after{{
-          content:"";position:absolute;left:0;top:0;bottom:0;width:42%;border-radius:inherit;background:#2563EB;
-          animation:cv-auth-gate-progress 1.1s ease-in-out infinite
+          margin:8px 0 0;color:#64748B!important;font-size:13px;line-height:1.45
         }}
         .cv-auth-gate-error{{
-          margin:0 0 14px;padding:10px 12px;border-radius:12px;text-align:left;
+          margin:14px 0 0;padding:10px 12px;border-radius:12px;text-align:left;
           background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;font-size:12px;
           line-height:1.45;font-weight:700
         }}
-        @keyframes cv-auth-gate-progress{{
-          0%{{transform:translateX(-110%)}}100%{{transform:translateX(340%)}}
-        }}
+        {progress_rules}
         </style>
-        <div class="cv-auth-gate" data-kind="{kind}" data-testid="cadivor-auth-gate"
-             data-auth-gate="{kind}" role="status" aria-live="polite">
-          <div class="cv-auth-gate-card">
-            <div class="cv-auth-gate-mark">C</div>
-            <h1>{safe_title}</h1>
-            <p>{safe_message}</p>
-            {error_html}
-            {progress_html}
-          </div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_full_page_gate_surface(
+    *,
+    title: str,
+    message: str,
+    kind: AuthGateState,
+    show_progress: bool = True,
+    error_text: str = "",
+) -> None:
+    """Paint one complete branded gate surface (never bare top bar / raw HTML text).
+
+    login / error: CSS chrome only — show_auth_ui owns the visible Login card.
+    boot / authenticating: full-viewport Cadivor shell (session restore / sign-in).
+    """
+    safe_title = html_lib.escape(str(title or "Cadivor"))
+    safe_message = html_lib.escape(str(message or "Please wait…"))
+    safe_error = html_lib.escape(str(error_text or "").strip())
+    safe_kind = html_lib.escape(str(kind or "login"))
+    interactive = kind in {"login", "error"}
+
+    try:
+        _inject_gate_css(interactive=interactive, show_progress=show_progress and not interactive)
+    except Exception:
+        # Never fall back to dumping markup as plain text.
+        pass
+
+    if interactive:
+        # Invisible state marker for tests/diagnostics — not a second visible card.
+        try:
+            st.markdown(
+                f'<div data-testid="cadivor-auth-gate" data-auth-gate="{safe_kind}" '
+                f'data-kind="{safe_kind}" aria-hidden="true" '
+                f'style="position:absolute;width:1px;height:1px;margin:-1px;border:0;'
+                f'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>',
+                unsafe_allow_html=True,
+            )
+        except Exception:
+            pass
+        if kind == "error" and safe_error:
+            try:
+                st.error(str(error_text or "").strip())
+            except Exception:
+                pass
+        return
+
+    progress_attr = ' data-progress="1"' if show_progress else ""
+    error_block = (
+        f'<div class="cv-auth-gate-error" role="alert">{safe_error}</div>'
+        if safe_error
+        else ""
+    )
+    # Body markup is a separate markdown call from CSS to avoid Streamlit
+    # escaping nested HTML as visible text.
+    try:
+        st.markdown(
+            f'<div class="cv-auth-gate" data-kind="{safe_kind}" data-testid="cadivor-auth-gate" '
+            f'data-auth-gate="{safe_kind}" role="status" aria-live="polite">'
+            f'<div class="cv-auth-gate-card"{progress_attr}>'
+            f'<div class="cv-auth-gate-mark">C</div>'
+            f"<h1>{safe_title}</h1>"
+            f"<p>{safe_message}</p>"
+            f"{error_block}"
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        # Plain-text fallback only — never dump HTML/CSS as visible text.
+        plain_title = str(title or "Cadivor").strip() or "Cadivor"
+        plain_message = str(message or "Please wait…").strip() or "Please wait…"
+        try:
+            st.write(plain_title)
+            st.caption(plain_message)
+            if error_text:
+                st.error(str(error_text).strip())
+        except Exception:
+            pass
 
 
 def retire_auth_gate_overlays() -> None:
@@ -252,7 +279,7 @@ def retire_auth_gate_overlays() -> None:
     st.markdown(
         """
         <style id="cadivor-auth-gate-retire">
-        div.cv-auth-gate,div.cv-auth-gate-inline,[data-testid="cadivor-auth-gate"]{
+        div.cv-auth-gate,[data-testid="cadivor-auth-gate"]{
           display:none!important;visibility:hidden!important;pointer-events:none!important
         }
         </style>
@@ -291,7 +318,7 @@ def paint_auth_gate(state: AuthGateState) -> None:
             or "Please try again or contact support.",
         )
         return
-    # login: outer branded frame; login form widgets render after this marker.
+    # login: CSS chrome only — final Login card comes from show_auth_ui.
     render_full_page_gate_surface(
         title="Cadivor",
         message="Sign in to continue to your engineering workspace.",
@@ -308,15 +335,15 @@ def resolve_initial_gate_state(
     has_tokens: bool = False,
     pending_credentials: bool = False,
 ) -> AuthGateState:
-    """Deterministic first paint choice before any network I/O."""
+    """Deterministic first paint choice before any network I/O.
+
+    Unauthenticated visitors go straight to login — never a boot flash.
+    boot is reserved for an existing-session restore (tokens already present).
+    """
     if pending_credentials or handoff_active:
         return "authenticating"
     if force_signed_out:
         return "login"
     if has_tokens:
         return "boot"
-    current = get_auth_gate_state()
-    if current in {"login", "error", "authenticating", "boot"}:
-        return current
-    return "boot"
-
+    return "login"
