@@ -71,7 +71,7 @@ from src.ui.framework import (
     dashboard_command_center,
     dashboard_insight_card,
 )
-from src.urls import app_checkout_url
+from src.urls import app_checkout_url, app_url
 from src.secrets import get_secret
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
@@ -7663,6 +7663,66 @@ def run_authenticated_app() -> None:
                 key="settings_view_plans",
                 use_container_width=True,
             )
+
+            # Customer self-service portal: Stripe remains the source of truth.
+            # Admins bypass checkout/limits and never receive a billing portal action.
+            from src.stripe_helper import (
+                create_billing_portal_session,
+                customer_may_manage_billing,
+            )
+
+            stored_stripe_customer_id = str(
+                current_user.get("stripe_customer_id")
+                or profile.get("stripe_customer_id")
+                or ""
+            ).strip()
+            portal_url_key = "settings_billing_portal_url"
+            portal_customer_key = "settings_billing_portal_customer_id"
+
+            def _clear_billing_portal_session_state() -> None:
+                st.session_state.pop(portal_url_key, None)
+                st.session_state.pop(portal_customer_key, None)
+
+            if customer_may_manage_billing(
+                role=str(current_user.get("role") or profile.get("role") or ""),
+                stripe_customer_id=stored_stripe_customer_id,
+            ):
+                if st.button(
+                    "Manage billing",
+                    key="settings_manage_billing",
+                    use_container_width=True,
+                ):
+                    try:
+                        st.session_state[portal_url_key] = create_billing_portal_session(
+                            stored_stripe_customer_id,
+                            app_url("", page="Settings"),
+                        )
+                        st.session_state[portal_customer_key] = stored_stripe_customer_id
+                    except Exception:
+                        _clear_billing_portal_session_state()
+                        st.error(
+                            "Billing management could not be opened. "
+                            "Please try again or contact support."
+                        )
+                portal_url = str(st.session_state.get(portal_url_key) or "").strip()
+                portal_customer = str(
+                    st.session_state.get(portal_customer_key) or ""
+                ).strip()
+                if portal_url and portal_customer == stored_stripe_customer_id:
+                    st.link_button(
+                        "Continue to Stripe billing portal →",
+                        portal_url,
+                        use_container_width=True,
+                    )
+                else:
+                    # Stale portal URL from another account/session must never render.
+                    _clear_billing_portal_session_state()
+            else:
+                _clear_billing_portal_session_state()
+                if not is_admin:
+                    st.caption(
+                        "No active Stripe subscription is connected to this account yet."
+                    )
 
         stop_authenticated_page()
 

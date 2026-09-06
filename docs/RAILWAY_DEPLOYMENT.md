@@ -142,6 +142,22 @@ After Railway assigns a domain, add test-mode success/cancel URLs based on `CADI
 - `https://<service>.up.railway.app/?checkout=success&session_id={CHECKOUT_SESSION_ID}`
 - `https://<service>.up.railway.app/?checkout=cancel`
 
+### Stripe Customer Portal (self-service billing)
+
+Cadivor’s Settings → Billing **Manage billing** button opens the Stripe-hosted
+Customer Portal. Portal configuration is **not** controlled by app code and must
+be set separately in each Stripe mode (Dashboard → Settings → Billing → Customer
+portal):
+
+| Mode | Configure before use |
+|------|----------------------|
+| **Sandbox / test** | Allow cancellation at period end, payment-method updates, and invoice history. Confirm the portal return URL origin matches `CADIVOR_APP_ORIGIN`. |
+| **Live** | Configure the same options separately in live mode before launch. Do not assume test-mode settings carry over. |
+
+The webhook remains the only source of truth for plan and subscription fields on
+the Cadivor `users` row. Opening the portal does not locally mutate plan,
+cancellation, or usage.
+
 ## Smoke-test checklist
 
 - [ ] Deploy logs show `streamlit run streamlit_app.py`

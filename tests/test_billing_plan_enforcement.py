@@ -62,6 +62,20 @@ class BillingPlanEnforcementTests(unittest.TestCase):
         self.assertIn('plan_name=selected_plan_name', source)
         self.assertIn('monthly_limit=selected_plan.get("monthly_bom_limit")', source)
 
+    def test_settings_billing_portal_respects_admin_and_customer_id(self):
+        source = (ROOT / "src" / "authenticated_runtime.py").read_text()
+        helper = (ROOT / "src" / "stripe_helper.py").read_text()
+        self.assertIn("create_billing_portal_session", helper)
+        self.assertIn("customer_may_manage_billing", helper)
+        self.assertIn('"Manage billing"', source)
+        self.assertIn("stripe_customer_id", source)
+        # Admin bypass for plan resolution must remain untouched.
+        plans = load_plans()
+        self.assertEqual(
+            plans.resolve_effective_plan({"role": "admin", "plan": "Starter"}),
+            ("Enterprise", False),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
