@@ -7202,6 +7202,32 @@ def run_authenticated_app() -> None:
                 text-transform:uppercase;
                 margin:0 0 12px;
             }
+            /* Scoped override: only the billing-panel link_button is primary.
+               Global premium_interactions.css keeps other stLinkButton anchors as text links. */
+            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton,
+            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > div{
+                width:100%!important;
+            }
+            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a{
+                display:inline-flex!important;
+                align-items:center!important;
+                justify-content:center!important;
+                width:100%!important;
+                min-height:2.5rem!important;
+                padding:0.55rem 1rem!important;
+                border:1px solid #2563EB!important;
+                border-radius:0.65rem!important;
+                background:#2563EB!important;
+                color:#FFFFFF!important;
+                box-shadow:0 10px 22px rgba(37,99,235,.22)!important;
+                text-decoration:none!important;
+                font-weight:850!important;
+            }
+            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a:hover{
+                background:#1D4ED8!important;
+                border-color:#1D4ED8!important;
+                color:#FFFFFF!important;
+            }
             .cv-settings-note{
                 border:1px solid #DBEAFE;
                 border-radius:15px;
@@ -7708,7 +7734,46 @@ def run_authenticated_app() -> None:
                             # Stale portal URL from another account/session must never render.
                             _clear_billing_portal_session_state()
                             portal_url = ""
+                            portal_customer = ""
                             portal_ready = False
+
+                    if not portal_ready:
+                        cadivor_button_wrap("primary")
+                        if st.button(
+                            "Manage billing",
+                            key="settings_manage_billing",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            try:
+                                created_url = str(
+                                    create_billing_portal_session(
+                                        stored_stripe_customer_id,
+                                        app_url("", page="Settings"),
+                                    )
+                                    or ""
+                                ).strip()
+                                st.session_state[portal_url_key] = created_url
+                                st.session_state[portal_customer_key] = (
+                                    stored_stripe_customer_id
+                                )
+                                # Same-run handoff: keep Billing tab and render Open immediately.
+                                portal_url = created_url
+                                portal_customer = stored_stripe_customer_id
+                                portal_ready = bool(
+                                    portal_url
+                                    and portal_customer == stored_stripe_customer_id
+                                )
+                            except Exception:
+                                _clear_billing_portal_session_state()
+                                portal_url = ""
+                                portal_customer = ""
+                                portal_ready = False
+                                st.error(
+                                    "Billing management could not be opened. "
+                                    "Please try again or contact support."
+                                )
+                        cadivor_button_wrap_end()
 
                     if portal_ready:
                         st.caption(
@@ -7721,33 +7786,6 @@ def run_authenticated_app() -> None:
                             type="primary",
                             use_container_width=True,
                         )
-                        cadivor_button_wrap_end()
-                    else:
-                        cadivor_button_wrap("primary")
-                        if st.button(
-                            "Manage billing",
-                            key="settings_manage_billing",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            try:
-                                st.session_state[portal_url_key] = (
-                                    create_billing_portal_session(
-                                        stored_stripe_customer_id,
-                                        app_url("", page="Settings"),
-                                    )
-                                )
-                                st.session_state[portal_customer_key] = (
-                                    stored_stripe_customer_id
-                                )
-                                # Rerun so Open replaces Manage in the same action slot.
-                                st.rerun()
-                            except Exception:
-                                _clear_billing_portal_session_state()
-                                st.error(
-                                    "Billing management could not be opened. "
-                                    "Please try again or contact support."
-                                )
                         cadivor_button_wrap_end()
                 else:
                     _clear_billing_portal_session_state()
