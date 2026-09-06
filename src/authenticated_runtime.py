@@ -7194,6 +7194,14 @@ def run_authenticated_app() -> None:
                 font-weight:900;
                 overflow-wrap:anywhere;
             }
+            .cv-billing-actions__label{
+                color:#64748B;
+                font-size:10px;
+                font-weight:900;
+                letter-spacing:.08em;
+                text-transform:uppercase;
+                margin:0 0 12px;
+            }
             .cv-settings-note{
                 border:1px solid #DBEAFE;
                 border-radius:15px;
@@ -7657,15 +7665,10 @@ def run_authenticated_app() -> None:
                 """,
                 unsafe_allow_html=True,
             )
-            internal_nav_button(
-                "View Plans",
-                "Pricing",
-                key="settings_view_plans",
-                use_container_width=True,
-            )
 
             # Customer self-service portal: Stripe remains the source of truth.
             # Admins bypass checkout/limits and never receive a billing portal action.
+            # All billing actions stay in one bounded area under the plan summary.
             from src.stripe_helper import (
                 create_billing_portal_session,
                 customer_may_manage_billing,
@@ -7683,46 +7686,84 @@ def run_authenticated_app() -> None:
                 st.session_state.pop(portal_url_key, None)
                 st.session_state.pop(portal_customer_key, None)
 
-            if customer_may_manage_billing(
-                role=str(current_user.get("role") or profile.get("role") or ""),
-                stripe_customer_id=stored_stripe_customer_id,
-            ):
-                if st.button(
-                    "Manage billing",
-                    key="settings_manage_billing",
-                    use_container_width=True,
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="cv-billing-actions__label">Plan &amp; billing actions</div>',
+                    unsafe_allow_html=True,
+                )
+
+                if customer_may_manage_billing(
+                    role=str(current_user.get("role") or profile.get("role") or ""),
+                    stripe_customer_id=stored_stripe_customer_id,
                 ):
-                    try:
-                        st.session_state[portal_url_key] = create_billing_portal_session(
-                            stored_stripe_customer_id,
-                            app_url("", page="Settings"),
-                        )
-                        st.session_state[portal_customer_key] = stored_stripe_customer_id
-                    except Exception:
-                        _clear_billing_portal_session_state()
-                        st.error(
-                            "Billing management could not be opened. "
-                            "Please try again or contact support."
-                        )
-                portal_url = str(st.session_state.get(portal_url_key) or "").strip()
-                portal_customer = str(
-                    st.session_state.get(portal_customer_key) or ""
-                ).strip()
-                if portal_url and portal_customer == stored_stripe_customer_id:
-                    st.link_button(
-                        "Continue to Stripe billing portal →",
-                        portal_url,
-                        use_container_width=True,
+                    portal_url = str(st.session_state.get(portal_url_key) or "").strip()
+                    portal_customer = str(
+                        st.session_state.get(portal_customer_key) or ""
+                    ).strip()
+                    portal_ready = bool(
+                        portal_url and portal_customer == stored_stripe_customer_id
                     )
+                    if portal_url or portal_customer:
+                        if not portal_ready:
+                            # Stale portal URL from another account/session must never render.
+                            _clear_billing_portal_session_state()
+                            portal_url = ""
+                            portal_ready = False
+
+                    if portal_ready:
+                        st.caption(
+                            "Manage payment methods, view invoices, or cancel your subscription securely through Stripe."
+                        )
+                        cadivor_button_wrap("primary")
+                        st.link_button(
+                            "Open secure billing portal",
+                            portal_url,
+                            type="primary",
+                            use_container_width=True,
+                        )
+                        cadivor_button_wrap_end()
+                    else:
+                        cadivor_button_wrap("primary")
+                        if st.button(
+                            "Manage billing",
+                            key="settings_manage_billing",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            try:
+                                st.session_state[portal_url_key] = (
+                                    create_billing_portal_session(
+                                        stored_stripe_customer_id,
+                                        app_url("", page="Settings"),
+                                    )
+                                )
+                                st.session_state[portal_customer_key] = (
+                                    stored_stripe_customer_id
+                                )
+                                # Rerun so Open replaces Manage in the same action slot.
+                                st.rerun()
+                            except Exception:
+                                _clear_billing_portal_session_state()
+                                st.error(
+                                    "Billing management could not be opened. "
+                                    "Please try again or contact support."
+                                )
+                        cadivor_button_wrap_end()
                 else:
-                    # Stale portal URL from another account/session must never render.
                     _clear_billing_portal_session_state()
-            else:
-                _clear_billing_portal_session_state()
-                if not is_admin:
-                    st.caption(
-                        "No active Stripe subscription is connected to this account yet."
-                    )
+                    if not is_admin:
+                        st.caption(
+                            "No active Stripe subscription is connected to this account yet."
+                        )
+
+                cadivor_button_wrap("secondary")
+                internal_nav_button(
+                    "View Plans",
+                    "Pricing",
+                    key="settings_view_plans",
+                    use_container_width=True,
+                )
+                cadivor_button_wrap_end()
 
         stop_authenticated_page()
 
