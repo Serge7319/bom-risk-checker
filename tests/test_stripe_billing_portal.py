@@ -116,7 +116,15 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
         self.assertIn("customer_may_manage_billing", self.runtime)
         self.assertIn("stripe_customer_id", self.runtime)
         self.assertIn('app_url("", page="Settings")', self.runtime)
-        self.assertIn("Continue to Stripe billing portal", self.runtime)
+        self.assertIn("Open secure billing portal", self.runtime)
+        self.assertIn(
+            "Manage payment methods, view invoices, or cancel your subscription securely through Stripe.",
+            self.runtime,
+        )
+        self.assertNotIn("Continue to Stripe billing portal", self.runtime)
+        self.assertIn("st.container(border=True)", self.runtime)
+        self.assertIn("cv-billing-actions__label", self.runtime)
+        self.assertNotIn('class="cv-billing-actions"', self.runtime)
         self.assertIn(
             "No active Stripe subscription is connected to this account yet.",
             self.runtime,
@@ -138,7 +146,7 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
             billing_block,
         )
         self.assertIn(
-            "st.session_state[portal_customer_key] = stored_stripe_customer_id",
+            "st.session_state[portal_customer_key] = (",
             billing_block,
         )
         self.assertIn(
@@ -146,6 +154,15 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
             billing_block,
         )
         self.assertIn("_clear_billing_portal_session_state()", billing_block)
+        self.assertIn("Open secure billing portal", billing_block)
+        self.assertIn(
+            "Manage payment methods, view invoices, or cancel your subscription securely through Stripe.",
+            billing_block,
+        )
+        self.assertNotIn("Continue to Stripe billing portal", billing_block)
+        self.assertIn("st.container(border=True)", billing_block)
+        self.assertIn("cv-billing-actions__label", billing_block)
+        self.assertNotIn('class="cv-billing-actions"', billing_block)
         # Ineligible / mismatched paths must clear both keys.
         self.assertGreaterEqual(
             billing_block.count("_clear_billing_portal_session_state()"),
