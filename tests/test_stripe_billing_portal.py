@@ -163,11 +163,41 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
         self.assertIn("st.container(border=True)", billing_block)
         self.assertIn("cv-billing-actions__label", billing_block)
         self.assertNotIn('class="cv-billing-actions"', billing_block)
+        # Same-run handoff: no Settings tab reset via rerun after Manage billing.
+        self.assertNotIn("st.rerun()", billing_block)
+        self.assertIn("portal_url = created_url", billing_block)
+        self.assertIn("portal_customer = stored_stripe_customer_id", billing_block)
+        self.assertIn("portal_ready = bool(", billing_block)
         # Ineligible / mismatched paths must clear both keys.
         self.assertGreaterEqual(
             billing_block.count("_clear_billing_portal_session_state()"),
             2,
         )
+
+    def test_billing_portal_link_button_has_scoped_primary_override(self):
+        """Only the billing-panel link_button is primary; global link style stays."""
+        from pathlib import Path
+        import re
+
+        root = Path(__file__).resolve().parents[1]
+        premium_css = (
+            root / "src" / "assets" / "css" / "premium_interactions.css"
+        ).read_text(encoding="utf-8")
+        # Global generic rule must remain (text-link styling for all other link buttons).
+        self.assertRegex(
+            premium_css,
+            r'section\[data-testid="stMain"\]\s*\.stLinkButton\s*>\s*a\s*\{',
+        )
+        self.assertIn("background:transparent!important", premium_css.replace(" ", ""))
+        # Scoped billing override uses the bordered panel marker.
+        self.assertRegex(
+            self.runtime,
+            r'\[data-testid="stVerticalBlockBorderWrapper"\]:has\(\.cv-billing-actions__label\)\s*\.stLinkButton\s*>\s*a\s*\{',
+        )
+        compact_runtime = re.sub(r"\s+", "", self.runtime)
+        self.assertIn("background:#2563EB!important", compact_runtime)
+        self.assertIn("color:#FFFFFF!important", compact_runtime)
+        self.assertIn("width:100%!important", compact_runtime)
 
     def test_portal_errors_are_customer_safe(self):
         billing_block = self.runtime[
@@ -179,6 +209,7 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
         self.assertNotIn("Billing portal error:", billing_block)
         self.assertNotIn("{e}", billing_block)
         self.assertNotIn("{exc}", billing_block)
+        self.assertNotIn("st.rerun()", billing_block)
 
     def test_helper_does_not_accept_browser_customer_id_parameterization(self):
         self.assertIn("never from query params", self.helper.casefold())
