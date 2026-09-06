@@ -9,6 +9,7 @@ from src.datasheet_comparison import MAX_DATASHEET_BYTES, MAX_DATASHEET_PAGES
 from src.datasheet_qa import (
     DATASHEET_QA_CLEAR_QUESTION_KEY,
     DATASHEET_QA_DOC_KEY,
+    DATASHEET_QA_PENDING_QUESTION_KEY,
     DATASHEET_QA_QUESTION_WIDGET_KEY,
     DATASHEET_QA_STATUS_KEY,
     DATASHEET_QA_THREAD_KEY,
@@ -17,6 +18,7 @@ from src.datasheet_qa import (
     STATUS_READY,
     answer_datasheet_question,
     append_thread_turn,
+    apply_datasheet_question_clear,
     build_datasheet_ai_client,
     claim_datasheet_question_submit,
     clear_datasheet_document,
@@ -28,7 +30,13 @@ from src.datasheet_qa import (
 from src.ui.cadivor_design_system import (
     cadivor_button_wrap,
     cadivor_button_wrap_end,
+    cadivor_empty_state,
+    cadivor_meta_row,
+    cadivor_panel,
+    cadivor_panel_end,
     cadivor_section_header,
+    inject_cadivor_design_system,
+    render_subsection_header,
 )
 
 
@@ -37,36 +45,26 @@ def _esc(value: object) -> str:
 
 
 def _inject_datasheet_qa_styles() -> None:
-    if st.session_state.get("_cadivor_datasheet_qa_styles"):
+    inject_cadivor_design_system()
+    if st.session_state.get("_cadivor_datasheet_qa_styles_v2"):
         return
-    st.session_state["_cadivor_datasheet_qa_styles"] = True
+    st.session_state["_cadivor_datasheet_qa_styles_v2"] = True
     st.markdown(
         """
-        <style id="cadivor-datasheet-qa-css">
-        .dq-workspace{max-width:920px;margin:0 auto 28px;padding:0 4px}
-        .dq-hero-note{margin:0 0 16px;padding:12px 14px;border:1px solid #DCE5F0;border-radius:12px;background:linear-gradient(180deg,#F8FBFF 0%,#F3F7FC 100%);color:#334155;font-size:13px;line-height:1.5}
-        .dq-doc-card{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 14px;padding:16px 18px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(15,23,42,.04)}
-        .dq-doc-card__title{font-size:15px;font-weight:850;color:#0F172A;letter-spacing:-.01em}
-        .dq-doc-card__meta{margin-top:6px;color:#475569;font-size:13px;line-height:1.45}
-        .dq-doc-card__status{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:4px 10px;border-radius:999px;background:#ECFDF5;color:#047857;font-size:12px;font-weight:750}
-        .dq-doc-card__status i{width:7px;height:7px;border-radius:999px;background:#10B981}
-        .dq-ask-card{margin:0 0 18px;padding:18px 18px 14px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(15,23,42,.04)}
-        .dq-ask-card__label{margin:0 0 10px;font-size:14px;font-weight:850;color:#0F172A}
-        .dq-ask-card__hint{margin:0 0 12px;color:#64748B;font-size:12px;line-height:1.4}
-        .dq-thread{display:flex;flex-direction:column;gap:12px}
-        .dq-thread-card{padding:16px 18px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;box-shadow:0 8px 18px rgba(15,23,42,.03)}
-        .dq-thread-card__q-label,.dq-thread-card__a-label{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B}
-        .dq-thread-card__q{margin:4px 0 12px;font-size:14px;font-weight:750;color:#0F172A;line-height:1.45}
-        .dq-thread-card__a{margin:4px 0 0;font-size:14px;color:#334155;line-height:1.55}
-        .dq-thread-card__a.is-missing{color:#1D4ED8}
-        .dq-sources{margin-top:12px;padding-top:10px;border-top:1px solid #EEF2F7;font-size:12px;font-weight:750;color:#1D4ED8}
-        .dq-notice{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;font-size:12px;line-height:1.45}
-        .dq-empty{margin:0;padding:20px 18px;border:1px dashed #CBD5E1;border-radius:14px;background:#F8FAFC;color:#64748B;font-size:13px;line-height:1.5}
-        section[data-testid="stMain"] .dq-ask-card .stFormSubmitButton>button{
-          min-width:132px!important;width:auto!important;max-width:180px!important
-        }
-        @media(max-width:720px){
-          .dq-doc-card{flex-direction:column}
+        <style id="cadivor-datasheet-qa-css-v2">
+        .dq-workspace{max-width:min(920px,var(--cv-canvas,1420px));margin:0 auto 28px;padding:0 4px}
+        .dq-reading{max-width:var(--cv-reading-max,62ch);color:var(--cv64-text-secondary,#475569);font-size:13px;line-height:1.5;margin:0 0 16px}
+        .dq-ask-hint{margin:0 0 10px;color:var(--cv64-text-muted,#64748B);font-size:12px;line-height:1.4}
+        .dq-turn-q{margin:4px 0 12px;font-size:14px;font-weight:750;color:var(--cv64-text,#0F172A);line-height:1.45}
+        .dq-turn-a{margin:4px 0 0;font-size:14px;color:var(--cv64-text-secondary,#334155);line-height:1.55}
+        .dq-turn-a.is-missing{color:var(--cv64-info,#1D4ED8)}
+        .dq-turn-label{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--cv64-text-muted,#64748B)}
+        .dq-sources{margin-top:12px;padding-top:10px;border-top:1px solid var(--cv64-border,#EEF2F7);font-size:12px;font-weight:750;color:var(--cv64-info,#1D4ED8)}
+        .dq-notice{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:var(--cv64-warning-soft,#FFF7ED);border:1px solid var(--cv64-warning-border,#FED7AA);color:var(--cv64-warning-text,#9A3412);font-size:12px;line-height:1.45}
+        .dq-progress{margin:8px 0 0;padding-left:18px;color:var(--cv64-text-secondary,#475569);font-size:13px;line-height:1.55}
+        .dq-progress li{margin:4px 0}
+        section[data-testid="stMain"] .dq-workspace .stFormSubmitButton>button{
+          min-width:148px!important;width:auto!important;max-width:200px!important
         }
         </style>
         """,
@@ -77,8 +75,8 @@ def _inject_datasheet_qa_styles() -> None:
 def render_datasheet_qa_page() -> None:
     """Render the Datasheet Q&A workspace."""
     _inject_datasheet_qa_styles()
-    if st.session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, False):
-        st.session_state[DATASHEET_QA_QUESTION_WIDGET_KEY] = ""
+    # Snapshot before deferred clear can wipe a same-run form submit.
+    preclear_question = apply_datasheet_question_clear(st.session_state)
 
     st.markdown('<div class="cv64-page-shell"><div class="dq-workspace">', unsafe_allow_html=True)
     cadivor_section_header(
@@ -91,11 +89,11 @@ def render_datasheet_qa_page() -> None:
         icon="file-text",
     )
     st.markdown(
-        '<div class="dq-hero-note">'
-        "Ask Cadivor synthesizes a concise engineering answer from the relevant pages of "
+        f'<p class="dq-reading">'
+        f"Ask Cadivor synthesizes a concise engineering answer from the relevant pages of "
         f"your upload. Limits: {MAX_DATASHEET_BYTES // (1024 * 1024)} MB · "
         f"{MAX_DATASHEET_PAGES} pages · text-searchable PDFs only · session-private."
-        "</div>",
+        f"</p>",
         unsafe_allow_html=True,
     )
 
@@ -103,6 +101,10 @@ def render_datasheet_qa_page() -> None:
     ready_document = isinstance(document, dict) and bool(document.get("available"))
 
     if not ready_document:
+        cadivor_panel(
+            "Upload datasheet",
+            subtitle="PDF only · session-private · text-searchable pages required",
+        )
         uploaded = st.file_uploader(
             "Upload datasheet PDF",
             type=["pdf"],
@@ -111,6 +113,7 @@ def render_datasheet_qa_page() -> None:
                 f"PDF only · up to {MAX_DATASHEET_BYTES // (1024 * 1024)} MB · "
                 f"up to {MAX_DATASHEET_PAGES} pages · session-private"
             ),
+            label_visibility="collapsed",
         )
         if uploaded is not None:
             payload = uploaded.getvalue()
@@ -131,40 +134,34 @@ def render_datasheet_qa_page() -> None:
         elif isinstance(document, dict) and document.get("reason"):
             st.warning(str(document.get("reason")))
         else:
-            st.markdown(
-                '<div class="dq-empty">'
-                "Upload a text-searchable datasheet PDF to begin. Scanned image-only PDFs "
-                "are not supported yet."
-                "</div>",
-                unsafe_allow_html=True,
+            cadivor_empty_state(
+                "No datasheet yet",
+                "Upload a text-searchable datasheet PDF to begin. "
+                "Scanned image-only PDFs are not supported yet.",
+                icon="file-text",
             )
+        cadivor_panel_end()
         if not ready_document:
             st.markdown("</div></div>", unsafe_allow_html=True)
             return
 
     page_count = int(document.get("page_count") or 0)
-    st.markdown(
-        f"""
-        <div class="dq-doc-card">
-          <div>
-            <div class="dq-doc-card__title">{_esc(document.get("filename") or "Datasheet")}</div>
-            <div class="dq-doc-card__meta">
-              {page_count} page{"s" if page_count != 1 else ""} with searchable text · Session-private
-            </div>
-            <div class="dq-doc-card__status"><i></i>Document ready</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    cadivor_panel(str(document.get("filename") or "Datasheet"))
+    cadivor_meta_row(
+        [
+            ("Document ready", "success"),
+            (f"{page_count} page{'s' if page_count != 1 else ''}", "neutral"),
+            ("Session-private", "neutral"),
+        ]
     )
-    remove_cols = st.columns([1, 4])
-    with remove_cols[0]:
-        cadivor_button_wrap("secondary")
-        if st.button("Remove document", key="datasheet_qa_remove", use_container_width=False):
-            clear_datasheet_document(st.session_state)
-            st.session_state[DATASHEET_QA_CLEAR_QUESTION_KEY] = True
-            st.rerun()
-        cadivor_button_wrap_end()
+    cadivor_button_wrap("secondary")
+    if st.button("Remove document", key="datasheet_qa_remove", use_container_width=False):
+        clear_datasheet_document(st.session_state)
+        st.session_state[DATASHEET_QA_CLEAR_QUESTION_KEY] = True
+        st.session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
+        st.rerun()
+    cadivor_button_wrap_end()
+    cadivor_panel_end()
 
     status = str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or STATUS_READY)
     thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
@@ -174,9 +171,8 @@ def render_datasheet_qa_page() -> None:
         else "Ask a clear engineering question about ratings, package, limits, or device identity."
     )
 
-    st.markdown('<div class="dq-ask-card">', unsafe_allow_html=True)
-    st.markdown('<div class="dq-ask-card__label">Ask Cadivor</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="dq-ask-card__hint">{_esc(ask_hint)}</div>', unsafe_allow_html=True)
+    cadivor_panel("Ask Cadivor", subtitle=ask_hint)
+    st.markdown(f'<p class="dq-ask-hint">{_esc(ask_hint)}</p>', unsafe_allow_html=True)
     with st.form("datasheet_qa_form", clear_on_submit=False, border=False):
         question_form = st.text_area(
             "Question",
@@ -195,30 +191,60 @@ def render_datasheet_qa_page() -> None:
                 disabled=status == STATUS_PROCESSING,
             )
             cadivor_button_wrap_end()
-    st.markdown("</div>", unsafe_allow_html=True)
+    if status == STATUS_PROCESSING:
+        pending_q = str(
+            st.session_state.get(DATASHEET_QA_PENDING_QUESTION_KEY) or ""
+        ).strip()
+        cadivor_panel("Working on your question")
+        if pending_q:
+            st.markdown(
+                f'<div class="dq-turn-label">Question</div>'
+                f'<div class="dq-turn-q">{_esc(pending_q)}</div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown(
+            '<ol class="dq-progress">'
+            "<li><strong>Retrieving relevant pages</strong></li>"
+            "<li><strong>Ask Cadivor is analyzing the datasheet</strong></li>"
+            "<li>Answer card appears when ready</li>"
+            "</ol>",
+            unsafe_allow_html=True,
+        )
+        cadivor_panel_end()
+    cadivor_panel_end()
 
     if asked:
         question = resolve_datasheet_question(
-            question_form,
+            preclear_question,
+            st.session_state.get(DATASHEET_QA_PENDING_QUESTION_KEY),
             st.session_state.get(DATASHEET_QA_QUESTION_WIDGET_KEY),
+            question_form,
         )
         if not question:
             st.warning("Enter a question about this datasheet.")
         elif claim_datasheet_question_submit(st.session_state, question):
+            st.session_state[DATASHEET_QA_PENDING_QUESTION_KEY] = question
             st.session_state[DATASHEET_QA_STATUS_KEY] = STATUS_PROCESSING
             try:
                 history = compact_datasheet_history(thread)
-                with st.status("Ask Cadivor is reviewing the datasheet…", expanded=True):
-                    st.write("Finding relevant pages and preparing a grounded answer…")
+                progress = st.status(
+                    "Ask Cadivor is working on your question…",
+                    expanded=True,
+                )
+                with progress:
+                    st.write("1. Retrieving relevant pages…")
+                    st.write("2. Ask Cadivor is analyzing the datasheet…")
                     result = answer_datasheet_question(
                         document,
                         question,
                         ai_client=build_datasheet_ai_client(),
                         history=history,
                     )
+                    st.write("3. Preparing your answer card…")
                 append_thread_turn(st.session_state, question=question, result=result)
                 if result.get("ok"):
                     st.session_state[DATASHEET_QA_CLEAR_QUESTION_KEY] = True
+                    st.session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
                 elif result.get("error"):
                     st.error(str(result.get("error")))
             except Exception:
@@ -230,28 +256,30 @@ def render_datasheet_qa_page() -> None:
 
     thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
     if not thread:
-        st.markdown(
-            '<div class="dq-empty">'
-            "Ask Cadivor a question to see a grounded answer with page references."
-            "</div>",
-            unsafe_allow_html=True,
+        cadivor_empty_state(
+            "No questions yet",
+            "Ask Cadivor a question to see a grounded answer with page references.",
+            icon="message-circle",
         )
         st.markdown("</div></div>", unsafe_allow_html=True)
         return
 
-    st.markdown('<div class="dq-thread">', unsafe_allow_html=True)
+    render_subsection_header(
+        "Conversation",
+        description="Each answer is grounded only in retrieved pages from your upload.",
+    )
     for turn in thread:
         if not isinstance(turn, dict):
             continue
-        st.markdown('<div class="dq-thread-card">', unsafe_allow_html=True)
+        cadivor_panel()
         st.markdown(
-            '<div class="dq-thread-card__q-label">Question</div>'
-            f'<div class="dq-thread-card__q">{_esc(turn.get("question"))}</div>',
+            '<div class="dq-turn-label">Question</div>'
+            f'<div class="dq-turn-q">{_esc(turn.get("question"))}</div>',
             unsafe_allow_html=True,
         )
         if turn.get("error") and not turn.get("ok"):
             st.error(str(turn.get("error")))
-            st.markdown("</div>", unsafe_allow_html=True)
+            cadivor_panel_end()
             continue
         notice = str(turn.get("notice") or "").strip()
         if notice:
@@ -262,14 +290,14 @@ def render_datasheet_qa_page() -> None:
         answer = str(turn.get("answer") or "")
         answer_class = " is-missing" if answer == NOT_FOUND_ANSWER else ""
         st.markdown(
-            '<div class="dq-thread-card__a-label">Answer</div>'
-            f'<div class="dq-thread-card__a{answer_class}">{_esc(answer)}</div>',
+            '<div class="dq-turn-label">Cadivor’s answer</div>'
+            f'<div class="dq-turn-a{answer_class}">{_esc(answer)}</div>',
             unsafe_allow_html=True,
         )
         citations = list(turn.get("citations") or [])
         if citations:
             st.markdown(
-                '<div class="dq-sources">Sources: '
+                '<div class="dq-sources">Page references: '
                 + ", ".join(_esc(item) for item in citations)
                 + "</div>",
                 unsafe_allow_html=True,
@@ -280,6 +308,13 @@ def render_datasheet_qa_page() -> None:
                 for item in evidence:
                     page = item.get("citation") or f"Page {item.get('page')}"
                     st.markdown(f"**{_esc(page)}**")
-                    st.code(str(item.get("excerpt") or ""), language=None)
-        st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div></div></div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f'<pre style="white-space:pre-wrap;font-size:12px;line-height:1.45;'
+                        f'margin:0 0 10px;padding:10px 12px;border-radius:10px;'
+                        f'background:var(--cv64-surface-muted,#F8FAFC);'
+                        f'border:1px solid var(--cv64-border,#E2E8F0);">'
+                        f'{_esc(item.get("excerpt") or "")}</pre>',
+                        unsafe_allow_html=True,
+                    )
+        cadivor_panel_end()
+    st.markdown("</div></div>", unsafe_allow_html=True)

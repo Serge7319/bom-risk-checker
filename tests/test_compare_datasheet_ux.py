@@ -6,7 +6,10 @@ import unittest
 from pathlib import Path
 
 from src.datasheet_qa import (
+    DATASHEET_QA_CLEAR_QUESTION_KEY,
     DATASHEET_QA_DOC_KEY,
+    DATASHEET_QA_PENDING_QUESTION_KEY,
+    DATASHEET_QA_QUESTION_WIDGET_KEY,
     DATASHEET_QA_STATUS_KEY,
     DATASHEET_QA_THREAD_KEY,
     NOT_FOUND_ANSWER,
@@ -14,6 +17,7 @@ from src.datasheet_qa import (
     STATUS_READY,
     answer_datasheet_question,
     append_thread_turn,
+    apply_datasheet_question_clear,
     claim_datasheet_question_submit,
     clear_datasheet_document,
     compact_datasheet_history,
@@ -73,7 +77,7 @@ class ComparePartsSubmitUxTests(unittest.TestCase):
     def test_no_full_width_primary_submit_bar(self):
         self.assertIn("use_container_width=False", COMPARE_PAGE)
         self.assertIn("cadivor_button_wrap(\"primary\")", COMPARE_PAGE)
-        self.assertIn("cp-compare-card", COMPARE_PAGE)
+        self.assertIn("cadivor_panel", COMPARE_PAGE)
         self.assertNotRegex(
             COMPARE_PAGE,
             r'form_submit_button\(\s*"Compare Parts[^"]*"\s*,\s*type="primary"\s*,\s*use_container_width=True',
@@ -86,6 +90,46 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
             resolve_datasheet_question("", "What is VCC?"),
             "What is VCC?",
         )
+
+    def test_first_click_submit_uses_session_when_form_return_empty(self):
+        """Production Streamlit quirk: form return empty, widget session populated."""
+        session = {
+            DATASHEET_QA_QUESTION_WIDGET_KEY: "What is VCC?",
+            DATASHEET_QA_STATUS_KEY: STATUS_READY,
+        }
+        form_return = ""
+        question = resolve_datasheet_question(
+            form_return,
+            session.get(DATASHEET_QA_QUESTION_WIDGET_KEY),
+        )
+        self.assertEqual(question, "What is VCC?")
+        self.assertTrue(claim_datasheet_question_submit(session, question, now=100.0))
+        session[DATASHEET_QA_PENDING_QUESTION_KEY] = question
+        self.assertEqual(session[DATASHEET_QA_PENDING_QUESTION_KEY], "What is VCC?")
+
+    def test_deferred_clear_does_not_wipe_in_flight_submit(self):
+        session = {
+            DATASHEET_QA_CLEAR_QUESTION_KEY: True,
+            DATASHEET_QA_QUESTION_WIDGET_KEY: "What is the package?",
+        }
+        preclear = apply_datasheet_question_clear(session)
+        self.assertEqual(preclear, "What is the package?")
+        # Composer is cleared, but the snapped value still resolves + claims.
+        self.assertEqual(session.get(DATASHEET_QA_QUESTION_WIDGET_KEY), "")
+        self.assertEqual(
+            resolve_datasheet_question("", session.get(DATASHEET_QA_QUESTION_WIDGET_KEY), preclear),
+            "What is the package?",
+        )
+        self.assertTrue(claim_datasheet_question_submit(session, preclear, now=250.0))
+
+    def test_page_submit_gate_orders_resolve_before_claim(self):
+        self.assertIn("apply_datasheet_question_clear", DATASHEET_PAGE)
+        self.assertIn("preclear_question", DATASHEET_PAGE)
+        resolve_idx = DATASHEET_PAGE.find("resolve_datasheet_question(")
+        claim_idx = DATASHEET_PAGE.find("claim_datasheet_question_submit(")
+        self.assertGreater(resolve_idx, 0)
+        self.assertGreater(claim_idx, resolve_idx)
+        self.assertIn("DATASHEET_QA_PENDING_QUESTION_KEY", DATASHEET_PAGE)
 
     def test_upload_then_two_sequential_questions_without_reupload(self):
         session = {}
@@ -160,20 +204,23 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
     def test_product_language_and_normal_ask_button(self):
         self.assertIn("Ask Cadivor", DATASHEET_PAGE)
         self.assertIn("Document ready", DATASHEET_PAGE)
-        self.assertIn("Sources:", DATASHEET_PAGE)
+        self.assertIn("Page references:", DATASHEET_PAGE)
         self.assertIn("Supporting passages", DATASHEET_PAGE)
-        self.assertIn("Answer", DATASHEET_PAGE)
+        self.assertIn("Cadivor’s answer", DATASHEET_PAGE)
+        self.assertIn("Retrieving relevant pages", DATASHEET_PAGE)
+        self.assertIn("Ask Cadivor is analyzing the datasheet", DATASHEET_PAGE)
         self.assertIn("NOT_FOUND_ANSWER", DATASHEET_PAGE)
         self.assertEqual(NOT_FOUND_ANSWER, "Not found in this datasheet.")
         self.assertIn('st.form_submit_button(\n                "Ask Cadivor"', DATASHEET_PAGE)
         self.assertIn("use_container_width=False", DATASHEET_PAGE)
-        self.assertIn("dq-doc-card", DATASHEET_PAGE)
-        self.assertIn("dq-ask-card", DATASHEET_PAGE)
-        self.assertIn("dq-thread-card", DATASHEET_PAGE)
+        self.assertIn("cadivor_panel", DATASHEET_PAGE)
+        self.assertIn("cadivor_empty_state", DATASHEET_PAGE)
+        self.assertIn("cadivor_meta_row", DATASHEET_PAGE)
         self.assertIn("dq-workspace", DATASHEET_PAGE)
         self.assertIn("DATASHEET_QA_CLEAR_QUESTION_KEY", DATASHEET_PAGE)
         self.assertIn("DATASHEET_QA_QUESTION_WIDGET_KEY", DATASHEET_PAGE)
         self.assertIn("resolve_datasheet_question", DATASHEET_PAGE)
+        self.assertIn("disabled=status == STATUS_PROCESSING", DATASHEET_PAGE)
 
     def test_chronological_thread_not_reversed(self):
         self.assertIn("for turn in thread:", DATASHEET_PAGE)
@@ -183,35 +230,32 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
 class ComparePartsVisualContracts(unittest.TestCase):
     def test_workspace_width_and_assessment_metrics(self):
         self.assertIn("cp-workspace", COMPARE_PAGE)
-        self.assertIn("cp-metrics", COMPARE_PAGE)
+        self.assertIn("cadivor_panel", COMPARE_PAGE)
+        self.assertIn("render_kpi_row_safe", COMPARE_PAGE)
         self.assertIn("Compatible fields", COMPARE_PAGE)
         self.assertIn("Material differences", COMPARE_PAGE)
         self.assertIn("Needs validation", COMPARE_PAGE)
         self.assertIn("Component type:", COMPARE_PAGE)
         self.assertNotIn("Family profile:", COMPARE_PAGE)
-        self.assertIn("cp-finding", COMPARE_PAGE)
-        self.assertIn("cp-compare-card", COMPARE_PAGE)
+        self.assertIn("Overall assessment", COMPARE_PAGE)
+        self.assertIn("cp-assessment-card", COMPARE_PAGE)
+        self.assertIn("cp-legend", COMPARE_PAGE)
+        self.assertIn("cadivor_comparison_matrix_dataframe", COMPARE_PAGE)
+        self.assertIn("cadivor_empty_state", COMPARE_PAGE)
 
 
 class AuthReentryShellTests(unittest.TestCase):
-    def test_authenticated_path_mounts_progress_not_blank_empty(self):
-        self.assertIn("mount_auth_progress_surface", BOOTSTRAP)
-        self.assertIn("AUTH_PROGRESS_MOUNTED_KEY", BOOTSTRAP)
-        self.assertIn("Restoring your workspace", BOOTSTRAP)
-        auth_path = BOOTSTRAP[
-            BOOTSTRAP.find("if auth_status != AUTH_AUTHENTICATED:") : BOOTSTRAP.find(
-                'log_startup_phase("auth_boundary_passed")'
-            )
-        ]
-        self.assertIn("mount_auth_progress_surface(auth_surface_host)", auth_path)
-        self.assertNotIn("auth_surface_host.empty()", auth_path)
+    def test_auth_gate_owns_bootstrap_paint(self):
+        self.assertIn("paint_auth_gate(", BOOTSTRAP)
+        self.assertIn("set_auth_gate_state(", BOOTSTRAP)
+        self.assertNotIn("auth_surface_host = st.empty()", BOOTSTRAP)
+        self.assertNotIn("cv-startup-shell-topbar", BOOTSTRAP)
+        self.assertIn("Restoring your session…", (ROOT / "src" / "auth_gate.py").read_text(encoding="utf-8"))
 
-    def test_startup_shell_covers_entry_and_login_handoff(self):
-        self.assertIn("AUTH_ENTRY_SHELL_KEY", BOOTSTRAP)
-        self.assertIn("should_render_authenticated_startup_shell", STREAMLIT_APP)
-        self.assertIn("auth_progress_surface_mounted()", STREAMLIT_APP)
-        self.assertIn("render_startup_loading_shell", STREAMLIT_APP)
-        self.assertIn("login_handoff_message()", STREAMLIT_APP)
+    def test_entrypoint_has_no_competing_startup_shell(self):
+        self.assertNotIn("should_render_authenticated_startup_shell()", STREAMLIT_APP)
+        self.assertNotIn("render_startup_loading_shell", STREAMLIT_APP)
+        self.assertIn("ensure_authenticated_or_stop()", STREAMLIT_APP)
 
     def test_clear_login_handoff_also_clears_entry_shell(self):
         self.assertIn("clear_authenticated_entry_shell()", BOOTSTRAP)
@@ -223,9 +267,10 @@ class AuthReentryShellTests(unittest.TestCase):
         self.assertIn("clear_authenticated_entry_shell()", block)
         self.assertIn("LOGIN_HANDOFF_ACTIVE_KEY", block)
 
-    def test_unauthenticated_login_still_uses_auth_surface_host(self):
-        self.assertIn("with auth_surface_host.container():", BOOTSTRAP)
+    def test_unauthenticated_login_uses_gate_then_show_auth_ui(self):
+        self.assertIn('paint_auth_gate("login")', BOOTSTRAP)
         self.assertIn("show_auth_ui(supabase, cookie_manager)", BOOTSTRAP)
+        self.assertNotIn("with auth_surface_host.container():", BOOTSTRAP)
 
 
 class CustomerCopySanityTests(unittest.TestCase):
