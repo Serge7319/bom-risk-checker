@@ -158,15 +158,19 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
             self.assertNotIn(term, joined)
 
     def test_product_language_and_normal_ask_button(self):
-        self.assertIn("Ask about this datasheet", DATASHEET_PAGE)
-        self.assertIn("Ask another question", DATASHEET_PAGE)
+        self.assertIn("Ask Cadivor", DATASHEET_PAGE)
+        self.assertIn("Document ready", DATASHEET_PAGE)
         self.assertIn("Sources:", DATASHEET_PAGE)
+        self.assertIn("Supporting passages", DATASHEET_PAGE)
+        self.assertIn("Answer", DATASHEET_PAGE)
         self.assertIn("NOT_FOUND_ANSWER", DATASHEET_PAGE)
         self.assertEqual(NOT_FOUND_ANSWER, "Not found in this datasheet.")
-        self.assertIn('st.form_submit_button(\n                "Ask"', DATASHEET_PAGE)
+        self.assertIn('st.form_submit_button(\n                "Ask Cadivor"', DATASHEET_PAGE)
         self.assertIn("use_container_width=False", DATASHEET_PAGE)
         self.assertIn("dq-doc-card", DATASHEET_PAGE)
+        self.assertIn("dq-ask-card", DATASHEET_PAGE)
         self.assertIn("dq-thread-card", DATASHEET_PAGE)
+        self.assertIn("dq-workspace", DATASHEET_PAGE)
         self.assertIn("DATASHEET_QA_CLEAR_QUESTION_KEY", DATASHEET_PAGE)
         self.assertIn("DATASHEET_QA_QUESTION_WIDGET_KEY", DATASHEET_PAGE)
         self.assertIn("resolve_datasheet_question", DATASHEET_PAGE)
@@ -176,19 +180,36 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
         self.assertNotIn("reversed(thread)", DATASHEET_PAGE)
 
 
+class ComparePartsVisualContracts(unittest.TestCase):
+    def test_workspace_width_and_assessment_metrics(self):
+        self.assertIn("cp-workspace", COMPARE_PAGE)
+        self.assertIn("cp-metrics", COMPARE_PAGE)
+        self.assertIn("Compatible fields", COMPARE_PAGE)
+        self.assertIn("Material differences", COMPARE_PAGE)
+        self.assertIn("Needs validation", COMPARE_PAGE)
+        self.assertIn("Component type:", COMPARE_PAGE)
+        self.assertNotIn("Family profile:", COMPARE_PAGE)
+        self.assertIn("cp-finding", COMPARE_PAGE)
+        self.assertIn("cp-compare-card", COMPARE_PAGE)
+
+
 class AuthReentryShellTests(unittest.TestCase):
-    def test_cold_authenticated_entry_shell_is_marked_before_auth_surface_clear(self):
-        self.assertIn("mark_authenticated_entry_shell", BOOTSTRAP)
-        self.assertIn("AUTH_ENTRY_SHELL_KEY", BOOTSTRAP)
+    def test_authenticated_path_mounts_progress_not_blank_empty(self):
+        self.assertIn("mount_auth_progress_surface", BOOTSTRAP)
+        self.assertIn("AUTH_PROGRESS_MOUNTED_KEY", BOOTSTRAP)
         self.assertIn("Restoring your workspace", BOOTSTRAP)
-        clear_idx = BOOTSTRAP.index("auth_surface_host.empty()")
-        mark_idx = BOOTSTRAP.rfind("mark_authenticated_entry_shell", 0, clear_idx)
-        self.assertGreater(mark_idx, 0)
-        self.assertLess(mark_idx, clear_idx)
+        auth_path = BOOTSTRAP[
+            BOOTSTRAP.find("if auth_status != AUTH_AUTHENTICATED:") : BOOTSTRAP.find(
+                'log_startup_phase("auth_boundary_passed")'
+            )
+        ]
+        self.assertIn("mount_auth_progress_surface(auth_surface_host)", auth_path)
+        self.assertNotIn("auth_surface_host.empty()", auth_path)
 
     def test_startup_shell_covers_entry_and_login_handoff(self):
         self.assertIn("AUTH_ENTRY_SHELL_KEY", BOOTSTRAP)
         self.assertIn("should_render_authenticated_startup_shell", STREAMLIT_APP)
+        self.assertIn("auth_progress_surface_mounted()", STREAMLIT_APP)
         self.assertIn("render_startup_loading_shell", STREAMLIT_APP)
         self.assertIn("login_handoff_message()", STREAMLIT_APP)
 

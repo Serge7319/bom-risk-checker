@@ -53,12 +53,11 @@ class LoginHandoffUxTests(unittest.TestCase):
 
     def test_successful_one_click_leaves_signing_in_and_starts_initializing(self):
         st, auth, _auth_state = self._load_auth()
-        transitions = []
+        shells = []
 
-        with patch.object(
-            auth,
-            "render_auth_transition",
-            side_effect=lambda message="": transitions.append(str(message)),
+        with patch(
+            "src.auth_bootstrap.render_startup_loading_shell",
+            side_effect=lambda message="": shells.append(str(message)),
         ):
             auth._submit_manual_login(
                 MagicMock(
@@ -79,7 +78,7 @@ class LoginHandoffUxTests(unittest.TestCase):
                 "password-value",
             )
 
-        self.assertIn("Signing you in…", transitions)
+        self.assertTrue(any("Signing you in" in m for m in shells))
         self.assertEqual(st.session_state["cadivor_root_state"], auth.APP_AUTHENTICATED)
         self.assertNotEqual(st.session_state["cadivor_root_state"], auth.APP_SIGNING_IN)
         self.assertTrue(st.session_state.get("cadivor_login_handoff_active"))
@@ -87,7 +86,8 @@ class LoginHandoffUxTests(unittest.TestCase):
             st.session_state.get("cadivor_login_handoff_stage"),
             "initializing",
         )
-        st.rerun.assert_called_once_with()
+        # Same-run continue: success must not st.rerun() into a blank gap.
+        st.rerun.assert_not_called()
 
     def test_signing_in_cannot_remain_without_in_flight_work(self):
         """Stale APP_SIGNING_IN must restore Login — never park forever."""
@@ -100,11 +100,14 @@ class LoginHandoffUxTests(unittest.TestCase):
         self.assertIn("manual_login_in_flight()", block)
         self.assertIn("fail_login_handoff", block)
         self.assertIn("LOGIN_HANDOFF_TIMEOUT", BOOTSTRAP)
-        self.assertIn("auth_surface_host.empty()", BOOTSTRAP)
-        self.assertNotIn(
-            "render_auth_transition(AUTHENTICATED_STARTUP_SHELL_MESSAGE)",
-            BOOTSTRAP,
-        )
+        # Logout may empty; authenticated path must mount progress instead.
+        self.assertIn("mount_auth_progress_surface(auth_surface_host)", BOOTSTRAP)
+        auth_path = BOOTSTRAP[
+            BOOTSTRAP.find("if auth_status != AUTH_AUTHENTICATED:") : BOOTSTRAP.find(
+                'log_startup_phase("auth_boundary_passed")'
+            )
+        ]
+        self.assertNotIn("auth_surface_host.empty()", auth_path)
 
     def test_handoff_shell_is_stage_and_time_bounded(self):
         self.assertIn("LOGIN_HANDOFF_STAGE_AUTHENTICATING", BOOTSTRAP)

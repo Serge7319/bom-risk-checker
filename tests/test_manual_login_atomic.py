@@ -97,7 +97,9 @@ class ManualLoginAtomicTests(unittest.TestCase):
 
         auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
 
-        self.assertEqual(calls, ["sign_in", "rerun"])
+        # Success continues in the same script run — no blank-inducing rerun.
+        self.assertEqual(calls, ["sign_in"])
+        self.assertNotIn("rerun", calls)
 
     def test_password_is_never_stored_in_session_state(self):
         st, auth, _auth_state = self._load_auth()
@@ -117,7 +119,7 @@ class ManualLoginAtomicTests(unittest.TestCase):
             )
         )
 
-    def test_successful_login_calls_mark_authenticated_before_rerun(self):
+    def test_successful_login_calls_mark_authenticated_without_rerun(self):
         st, auth, _auth_state = self._load_auth()
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.return_value = types.SimpleNamespace(
@@ -130,10 +132,10 @@ class ManualLoginAtomicTests(unittest.TestCase):
             order.append("mark_authenticated")
 
         with patch.object(auth, "mark_authenticated", side_effect=mark_authenticated):
-            auth.st.rerun = lambda: order.append("rerun")
             auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
 
-        self.assertEqual(order, ["mark_authenticated", "rerun"])
+        self.assertEqual(order, ["mark_authenticated"])
+        st.rerun.assert_not_called()
 
     def test_invalid_login_rebuilds_enabled_login_once(self):
         st, auth, _auth_state = self._load_auth()

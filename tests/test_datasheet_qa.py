@@ -154,6 +154,130 @@ class DatasheetQaCoreTests(unittest.TestCase):
         self.assertFalse(claim_datasheet_question_submit(session, "What is VCC?", now=10.5))
         self.assertTrue(claim_datasheet_question_submit(session, "What is VCC?", now=13.0))
 
+    def test_wrong_premise_diode_on_transistor_is_corrected(self):
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(
+                [
+                    "2N3904 — This device is an NPN silicon bipolar transistor for "
+                    "general-purpose amplification and switching.",
+                    "Absolute maximum collector-emitter voltage VCEO is 40 V.",
+                ]
+            ),
+            filename="2n3904.pdf",
+        )
+        result = answer_datasheet_question(
+            document, "Can this diode be used as a rectifier?"
+        )
+        self.assertTrue(result["ok"])
+        self.assertNotEqual(result["answer"], NOT_FOUND_ANSWER)
+        lowered = result["answer"].casefold()
+        self.assertIn("transistor", lowered)
+        self.assertIn("diode", lowered)
+        self.assertTrue(result["citations"])
+        self.assertEqual(result.get("answer_kind"), "wrong_premise")
+
+    def test_true_missing_evidence_is_not_found(self):
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(["Package dimensions and marking information only."]),
+            filename="pkg.pdf",
+        )
+        result = answer_datasheet_question(
+            document, "What is the neutron cross section of the die?"
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["answer"], NOT_FOUND_ANSWER)
+        self.assertEqual(result.get("answer_kind"), "insufficient_evidence")
+        self.assertEqual(result["citations"], [])
+
+    def test_engineering_ai_receives_only_retrieved_excerpts(self):
+        from types import SimpleNamespace
+
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(
+                [
+                    "Absolute maximum supply voltage VCC is 5.5 V.",
+                    "Storage temperature range is -65 C to 150 C.",
+                ]
+            ),
+            filename="spec.pdf",
+        )
+        captured: dict = {}
+
+        class _FakeEngineeringAI:
+            configured = True
+
+            def ask(self, *, question, context, history=None):
+                captured["question"] = question
+                captured["context"] = context
+                captured["history"] = history
+                return SimpleNamespace(
+                    answer="Absolute maximum VCC is 5.5 V (Page 1).",
+                    provider="openai",
+                )
+
+        result = answer_datasheet_question(
+            document,
+            "What is the absolute maximum VCC?",
+            ai_client=_FakeEngineeringAI(),
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["provider"], "openai")
+        self.assertIn("5.5", result["answer"])
+        self.assertTrue(result["citations"])
+        context = captured["context"]
+        self.assertTrue(context.get("datasheet_qa"))
+        excerpts = context.get("untrusted_document_excerpts") or []
+        self.assertTrue(excerpts)
+        for item in excerpts:
+            self.assertIn("page", item)
+            self.assertIn("excerpt", item)
+        # Context must not include full document pages dump beyond retrieved excerpts.
+        self.assertNotIn("pages", context)
+        self.assertNotIn("chunks", context)
+        joined = " ".join(str(item.get("excerpt") or "") for item in excerpts).casefold()
+        self.assertIn("5.5", joined)
+
+    def test_assisted_fallback_notice_when_ai_fails(self):
+        from src.datasheet_qa import ASSISTED_FALLBACK_NOTICE
+        from src.services.engineering_ai import EngineeringAIError
+
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(["Absolute maximum supply voltage VCC is 5.5 V."]),
+            filename="spec.pdf",
+        )
+
+        class _FailingAI:
+            configured = True
+
+            def ask(self, *, question, context, history=None):
+                raise EngineeringAIError("provider unavailable", code="upstream")
+
+        result = answer_datasheet_question(
+            document,
+            "What is the absolute maximum VCC?",
+            ai_client=_FailingAI(),
+        )
+        self.assertTrue(result["ok"])
+        self.assertTrue(result.get("assisted_fallback"))
+        self.assertEqual(result.get("notice"), ASSISTED_FALLBACK_NOTICE)
+        self.assertNotEqual(result["answer"], "")
+        self.assertEqual(result["provider"], "local-excerpts")
+        # Customer-facing notice must not expose provider/model terms.
+        notice = str(result.get("notice") or "").casefold()
+        self.assertNotIn("openai", notice)
+        self.assertNotIn("model", notice)
+        self.assertNotIn("prompt", notice)
+
+    def test_engineering_ai_datasheet_system_covers_wrong_premise(self):
+        from src.services import engineering_ai as ai
+
+        instructions = ai._system_instruction(datasheet_qa=True)
+        lowered = instructions.casefold()
+        self.assertIn("wrong premise", lowered)
+        self.assertIn("not found in this datasheet", lowered)
+        self.assertIn("untrusted_document_excerpts", lowered)
+        self.assertNotIn("openai", lowered)
+
 
 class DatasheetQaUiWiringTests(unittest.TestCase):
     def test_nav_and_page_wire_datasheet_qa(self):
@@ -165,6 +289,7 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn('"Datasheet Q&A"', runtime)
         self.assertIn("render_datasheet_qa_page", runtime)
         self.assertIn("datasheet_qa_form", page)
+        self.assertIn("Ask Cadivor", page)
         self.assertIn("Remove document", page)
         self.assertIn("MAX_DATASHEET_BYTES", page)
         self.assertIn("MAX_DATASHEET_PAGES", page)

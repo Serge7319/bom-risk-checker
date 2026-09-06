@@ -449,10 +449,12 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             LOGIN_HANDOFF_STAGE_AUTHENTICATING,
             begin_login_handoff,
             login_handoff_message,
+            render_startup_loading_shell,
         )
 
         begin_login_handoff(LOGIN_HANDOFF_STAGE_AUTHENTICATING)
-        render_auth_transition(login_handoff_message())
+        # Same branded progress surface as post-auth init — not a second card.
+        render_startup_loading_shell(login_handoff_message())
     except Exception:
         render_auth_transition("Signing you in…")
 
@@ -492,7 +494,8 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     st.session_state.pop("cadivor_login_email_draft", None)
     _clear_manual_login_error()
     _log_manual_login_event("manual_login_session_committed", cookie_manager)
-    st.rerun()
+    # Do not st.rerun() on success. ensure_authenticated_or_stop continues in
+    # the same script run and remounts progress into auth_surface_host.
 
 
 def _signup_response_get(obj, key: str, default=None):
@@ -1333,11 +1336,13 @@ def show_auth_ui(supabase, cookie_manager=None):
                     fail_login_handoff,
                     login_handoff_message,
                     login_handoff_timed_out,
+                    render_startup_loading_shell,
                 )
             except Exception:
                 login_handoff_timed_out = lambda: False  # noqa: E731
                 fail_login_handoff = None
                 login_handoff_message = lambda: "Signing you in…"  # noqa: E731
+                render_startup_loading_shell = None
                 LOGIN_HANDOFF_TIMEOUT_MESSAGE = (
                     "Sign-in timed out while preparing your workspace. Please try again."
                 )
@@ -1345,7 +1350,10 @@ def show_auth_ui(supabase, cookie_manager=None):
             # Progress UI is allowed only while credentials are actually in flight.
             # A stale APP_SIGNING_IN across reruns previously deadlocked Login.
             if manual_login_in_flight() and not login_handoff_timed_out():
-                render_auth_transition(login_handoff_message())
+                if render_startup_loading_shell is not None:
+                    render_startup_loading_shell(login_handoff_message())
+                else:
+                    render_auth_transition(login_handoff_message())
                 return
 
             draft = str(st.session_state.get("cadivor_login_email_draft") or "").strip()

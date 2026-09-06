@@ -176,14 +176,17 @@ class AuthSurfaceHostSourceGuards(unittest.TestCase):
                 "render_auth_boot must execute inside auth_surface_host.container()",
             )
 
-    def test_authenticated_path_clears_host(self):
-        self.assertIn("auth_surface_host.empty()", self.bootstrap)
+    def test_authenticated_path_mounts_progress_without_blank_clear(self):
+        """Authenticated path must remount progress — never empty() to blank."""
+        self.assertIn("mount_auth_progress_surface(auth_surface_host)", self.bootstrap)
         boundary = self.bootstrap.find('log_startup_phase("auth_boundary_passed")')
-        clear_idx = self.bootstrap.rfind("auth_surface_host.empty()", 0, boundary)
-        self.assertGreater(clear_idx, 0)
-        self.assertLess(clear_idx, boundary)
-        after_clear = self.bootstrap[clear_idx:boundary]
-        self.assertNotIn("show_auth_ui", after_clear)
+        auth_path = self.bootstrap[
+            self.bootstrap.find("if auth_status != AUTH_AUTHENTICATED:") : boundary
+        ]
+        # Logout may still empty; authenticated fall-through must not.
+        self.assertNotIn("auth_surface_host.empty()", auth_path)
+        self.assertIn("mount_auth_progress_surface(auth_surface_host)", auth_path)
+        self.assertIn("continue_authenticated", auth_path)
 
     def test_hydration_config_unchanged(self):
         cookies = self.cookies
@@ -326,14 +329,17 @@ class AuthSurfaceHostLifecycleTests(unittest.TestCase):
         self.assertEqual(host.container_enters, 1)
         self.assertEqual(self.st.empty.call_count, 1)
 
-    def test_authenticated_clears_host_and_skips_auth_ui(self):
+    def test_authenticated_mounts_progress_without_blank_clear(self):
         with patch.object(self.bootstrap, "resolve_auth_state", return_value=self.state.AUTH_AUTHENTICATED):
             self.bootstrap.ensure_authenticated_or_stop()
         self.auth.show_auth_ui.assert_not_called()
         host = _AuthSurfaceHost.created[0]
-        self.assertEqual(host.cleared, 1)
-        self.assertEqual(host.container_enters, 0)
+        self.assertEqual(host.cleared, 0)
+        self.assertGreaterEqual(host.container_enters, 1)
         self.cookies.persist_session_auth_cookie.assert_called()
+        self.assertTrue(
+            self.st.session_state.get(self.bootstrap.AUTH_PROGRESS_MOUNTED_KEY)
+        )
 
     def test_mode_switch_settled_no_boot_one_host(self):
         """Login/Create Account settled path: host once, auth UI once, no boot."""

@@ -231,9 +231,18 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
         bootstrap.clear_login_handoff()
         self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
 
-    def test_authenticating_stage_does_not_render_opaque_startup_shell(self):
+    def test_authenticating_stage_uses_same_progress_shell(self):
+        """Authenticating and initializing share one branded progress surface."""
         _st, bootstrap, *_rest = self._load_bootstrap({})
         bootstrap.begin_login_handoff(bootstrap.LOGIN_HANDOFF_STAGE_AUTHENTICATING)
+        self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
+        bootstrap.advance_login_handoff(bootstrap.LOGIN_HANDOFF_STAGE_INITIALIZING)
+        self.assertTrue(bootstrap.should_render_authenticated_startup_shell())
+
+    def test_mounted_progress_suppresses_entrypoint_second_shell(self):
+        st, bootstrap, *_rest = self._load_bootstrap({})
+        bootstrap.begin_login_handoff(bootstrap.LOGIN_HANDOFF_STAGE_INITIALIZING)
+        st.session_state[bootstrap.AUTH_PROGRESS_MOUNTED_KEY] = True
         self.assertFalse(bootstrap.should_render_authenticated_startup_shell())
 
     def test_startup_shell_preserves_workspace_chrome_during_handoff(self):
@@ -285,6 +294,7 @@ class AuthenticatedStartupShellTests(unittest.TestCase):
     def test_streamlit_entrypoint_gates_startup_shell(self):
         source = (ROOT / "streamlit_app.py").read_text(encoding="utf-8")
         self.assertIn("should_render_authenticated_startup_shell()", source)
+        self.assertIn("auth_progress_surface_mounted()", source)
         self.assertIn("AUTHENTICATED_STARTUP_SHELL_MESSAGE", source)
         self.assertNotIn(
             'render_startup_loading_shell("Opening your engineering workspace',

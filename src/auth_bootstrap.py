@@ -180,6 +180,8 @@ AUTHENTICATED_STARTUP_SHELL_MESSAGE = "Preparing your workspace…"
 AUTH_ENTRY_SHELL_MESSAGE = "Restoring your workspace…"
 AUTH_ENTRY_SHELL_KEY = "cadivor_auth_entry_shell"
 AUTH_ENTRY_SHELL_MESSAGE_KEY = "cadivor_auth_entry_shell_message"
+# Run-scoped: auth_surface_host already painted the branded progress surface.
+AUTH_PROGRESS_MOUNTED_KEY = "cadivor_auth_progress_mounted_run"
 LOGIN_HANDOFF_ACTIVE_KEY = "cadivor_login_handoff_active"
 LOGIN_HANDOFF_STAGE_KEY = "cadivor_login_handoff_stage"
 LOGIN_HANDOFF_STARTED_AT_KEY = "cadivor_login_handoff_started_at"
@@ -222,7 +224,7 @@ def login_handoff_message() -> str:
 def mark_authenticated_entry_shell(
     message: str = AUTH_ENTRY_SHELL_MESSAGE,
 ) -> None:
-    """Paint one branded shell while cookie/session restore loads the workspace."""
+    """Mark a branded shell while cookie/session restore loads the workspace."""
     st.session_state[AUTH_ENTRY_SHELL_KEY] = True
     st.session_state[AUTH_ENTRY_SHELL_MESSAGE_KEY] = str(
         message or AUTH_ENTRY_SHELL_MESSAGE
@@ -234,8 +236,45 @@ def clear_authenticated_entry_shell() -> None:
     st.session_state.pop(AUTH_ENTRY_SHELL_MESSAGE_KEY, None)
 
 
+def auth_progress_surface_mounted() -> bool:
+    """True when this script run already painted progress into auth_surface_host."""
+    return bool(st.session_state.get(AUTH_PROGRESS_MOUNTED_KEY))
+
+
+def mount_auth_progress_surface(host: Any, message: str | None = None) -> None:
+    """Authoritative progress paint: replace host content, never clear to blank.
+
+    The auth_surface_host is the single owner of login → progress continuity.
+    Callers must not call host.empty() between login and workspace readiness.
+    """
+    text = str(
+        message
+        or login_handoff_message()
+        or AUTHENTICATED_STARTUP_SHELL_MESSAGE
+    )
+    with host.container():
+        render_startup_loading_shell(text)
+    st.session_state[AUTH_PROGRESS_MOUNTED_KEY] = True
+
+
+def _should_keep_auth_progress_mounted() -> bool:
+    """Whether an in-flight handoff or restore must keep the progress surface."""
+    if login_handoff_active():
+        return True
+    if st.session_state.get(AUTH_ENTRY_SHELL_KEY):
+        return True
+    if st.session_state.get("cadivor_force_signed_out"):
+        return False
+    if explicit_logout_pending():
+        return False
+    # Session tokens already present (same-tab restore / post-login continue).
+    access = str(st.session_state.get("access_token") or "").strip()
+    refresh = str(st.session_state.get("refresh_token") or "").strip()
+    return bool(access and refresh)
+
+
 def begin_login_handoff(stage: str = LOGIN_HANDOFF_STAGE_INITIALIZING) -> None:
-    """Start a bounded branded Login→workspace handoff."""
+    """Start a bounded branded Login→workspace handoff (idempotent if active)."""
     import time
 
     resolved = str(stage or LOGIN_HANDOFF_STAGE_INITIALIZING).strip()
@@ -244,6 +283,11 @@ def begin_login_handoff(stage: str = LOGIN_HANDOFF_STAGE_INITIALIZING) -> None:
         LOGIN_HANDOFF_STAGE_INITIALIZING,
     }:
         resolved = LOGIN_HANDOFF_STAGE_INITIALIZING
+    # One handoff only: never restart the timer or spawn a second bootstrap.
+    if login_handoff_active():
+        st.session_state[LOGIN_HANDOFF_STAGE_KEY] = resolved
+        clear_authenticated_entry_shell()
+        return
     st.session_state[LOGIN_HANDOFF_ACTIVE_KEY] = True
     st.session_state[LOGIN_HANDOFF_STAGE_KEY] = resolved
     st.session_state.setdefault(LOGIN_HANDOFF_STARTED_AT_KEY, time.monotonic())
@@ -267,6 +311,7 @@ def clear_login_handoff() -> None:
     st.session_state.pop(LOGIN_HANDOFF_STAGE_KEY, None)
     st.session_state.pop(LOGIN_HANDOFF_STARTED_AT_KEY, None)
     clear_authenticated_entry_shell()
+    st.session_state.pop(AUTH_PROGRESS_MOUNTED_KEY, None)
 
 
 def login_handoff_timed_out() -> bool:
@@ -282,18 +327,21 @@ def login_handoff_timed_out() -> bool:
 
 
 def should_render_authenticated_startup_shell() -> bool:
-    """Show a branded shell during post-login init or cold authenticated restore.
+    """Whether a branded progress shell is still required for this run.
 
-    The shell is stage-bound and time-bounded for Login handoff. Cookie/session
-    restore uses a one-shot entry shell cleared when the workspace mounts.
+    Preferred path: auth_bootstrap.mount_auth_progress_surface owns the paint
+    inside auth_surface_host. streamlit_app only paints when that mount did not
+    already happen (fallback), never as a competing second surface.
     """
+    if auth_progress_surface_mounted():
+        return False
     if st.session_state.get(AUTH_ENTRY_SHELL_KEY) and not login_handoff_active():
         return True
     if not login_handoff_active():
         return False
+    # One continuous progress surface for authenticating + initializing.
     if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
-        # Auth card progress owns this stage; do not stack the opaque shell.
-        return False
+        return True
     if login_handoff_timed_out():
         # Drop the opaque shell so a hung profile init cannot mask the
         # authenticated retry UI or Login form on subsequent runs.
@@ -480,7 +528,12 @@ def ensure_authenticated_or_stop() -> None:
     # replace each other in the same Streamlit delta position instead of
     # stacking as top-level siblings during stale-element transitions.
     # Do not store this DeltaGenerator in session_state.
+    # Progress ownership: this host alone paints login → branded progress →
+    # (workspace sibling). Never clear it to blank while a handoff is active.
+    st.session_state.pop(AUTH_PROGRESS_MOUNTED_KEY, None)
     auth_surface_host = st.empty()
+    if _should_keep_auth_progress_mounted():
+        mount_auth_progress_surface(auth_surface_host)
 
     log_auth_correlation(
         "bootstrap_entry",
@@ -566,6 +619,7 @@ def ensure_authenticated_or_stop() -> None:
     bootstrap_cookie_source = "skipped"
     if (
         not manual_login_in_flight()
+        and not login_handoff_active()
         and not explicit_logout_pending()
         and not st.session_state.get("cadivor_force_signed_out")
     ):
@@ -619,7 +673,9 @@ def ensure_authenticated_or_stop() -> None:
             )
             st.stop()
 
-    if not manual_login_in_flight():
+    # Never start a second cookie-hydration bootstrap while Login handoff owns
+    # the auth surface — those wait/rerun loops produce blank white gaps.
+    if not manual_login_in_flight() and not login_handoff_active():
         if cookie_manager is None:
             cookie_manager = get_auth_cookie_manager(mount=False)
         if manager_fallback_hydration_pending(cookie_manager):
@@ -734,33 +790,43 @@ def ensure_authenticated_or_stop() -> None:
         _render_t0 = time.perf_counter()
         with auth_surface_host.container():
             show_auth_ui(supabase, cookie_manager)
-        emit_timing(
-            "auth.render_signed_out",
-            duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
-            outcome="stopped",
-            route="signed_out",
-            operation="render",
-        )
-        if _timing_enabled():
-            st.caption(f"Startup timing: {startup_phase_summary()}")
-        emit_timing(
-            "auth.boundary",
-            duration_ms=0.0,
-            outcome="signed_out",
-            route="signed_out",
-            event="boundary",
-        )
-        st.stop()
+        # Same-run Login success: credentials committed inside show_auth_ui.
+        # Continue into the authenticated path without st.rerun() / host.empty()
+        # so the branded progress surface never yields a blank white page.
+        if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
+            auth_status = AUTH_AUTHENTICATED
+            emit_timing(
+                "auth.render_signed_out",
+                duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
+                outcome="continue_authenticated",
+                route="login_handoff",
+                operation="render",
+            )
+        else:
+            emit_timing(
+                "auth.render_signed_out",
+                duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
+                outcome="stopped",
+                route="signed_out",
+                operation="render",
+            )
+            if _timing_enabled():
+                st.caption(f"Startup timing: {startup_phase_summary()}")
+            emit_timing(
+                "auth.boundary",
+                duration_ms=0.0,
+                outcome="signed_out",
+                route="signed_out",
+                event="boundary",
+            )
+            st.stop()
 
-    # Authenticated workspace: always release the Login auth surface so
-    # CookieManager / workspace widgets are not blocked behind a retained card.
-    # Continuity during Login handoff is owned by the bounded startup shell in
-    # streamlit_app.py. Cookie/session restore also paints one branded entry
-    # shell so the user never sees an unexplained blank page while the
-    # authenticated runtime imports.
+    # Authenticated workspace: replace the Login/form surface with one branded
+    # progress paint in the SAME host. Never call host.empty() here — that is
+    # the blank-white regression between Login and the workspace.
     if not login_handoff_active():
         mark_authenticated_entry_shell(AUTH_ENTRY_SHELL_MESSAGE)
-    auth_surface_host.empty()
+    mount_auth_progress_surface(auth_surface_host)
 
     if cookie_manager is None:
         cookie_manager = get_auth_cookie_manager(mount=True)

@@ -37,6 +37,7 @@ st.markdown(
 
 from src.auth_bootstrap import (
     AUTHENTICATED_STARTUP_SHELL_MESSAGE,
+    auth_progress_surface_mounted,
     ensure_authenticated_or_stop,
     log_startup_phase,
     login_handoff_message,
@@ -68,7 +69,9 @@ from src.performance_timing import timed_phase
 with timed_phase("startup.ensure_authenticated", operation="resolve"):
     ensure_authenticated_or_stop()
 
-if should_render_authenticated_startup_shell():
+# Fallback only: bootstrap normally mounts progress into auth_surface_host.
+# Never paint a second competing shell when the host already owns progress.
+if should_render_authenticated_startup_shell() and not auth_progress_surface_mounted():
     render_startup_loading_shell(login_handoff_message() or AUTHENTICATED_STARTUP_SHELL_MESSAGE)
 log_startup_phase("load_authenticated_runtime")
 with timed_phase("startup.authenticated_runtime_import", operation="import"):

@@ -43,28 +43,35 @@ def _inject_compare_parts_styles() -> None:
     st.markdown(
         """
         <style id="cadivor-compare-parts-css">
-        .cp-hero-note{margin:0 0 14px;padding:10px 14px;border:1px solid #DCE5F0;border-radius:12px;background:#F8FBFF;color:#334155;font-size:13px;line-height:1.45}
+        .cp-workspace{max-width:1080px;margin:0 auto 28px;padding:0 4px}
+        .cp-hero-note{margin:0 0 16px;padding:12px 14px;border:1px solid #DCE5F0;border-radius:12px;background:linear-gradient(180deg,#F8FBFF 0%,#F3F7FC 100%);color:#334155;font-size:13px;line-height:1.5}
         .cp-compare-card{margin:0 0 18px;padding:18px 18px 14px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(15,23,42,.04)}
-        .cp-finding{margin:8px 0 16px;padding:16px 18px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF}
+        .cp-finding{margin:8px 0 16px;padding:18px 18px 16px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(15,23,42,.04)}
         .cp-finding__label{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B}
-        .cp-finding__title{margin-top:4px;font-size:20px;font-weight:900;color:#0F172A}
+        .cp-finding__title{margin-top:4px;font-size:22px;font-weight:900;color:#0F172A;letter-spacing:-.02em}
         .cp-finding__title.is-compatible{color:#166534}
         .cp-finding__title.is-material{color:#B45309}
         .cp-finding__title.is-needs{color:#1D4ED8}
-        .cp-finding__body{margin-top:8px;color:#475569;font-size:13px;line-height:1.45}
-        .cp-part-card{padding:14px 16px;border:1px solid #E2E8F0;border-radius:14px;background:#FFFFFF;min-height:148px}
+        .cp-finding__body{margin-top:8px;color:#475569;font-size:13px;line-height:1.5}
+        .cp-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+        .cp-metric{padding:12px 12px;border:1px solid #E8EEF6;border-radius:12px;background:#F8FAFC}
+        .cp-metric__value{font-size:22px;font-weight:900;color:#0F172A;letter-spacing:-.02em}
+        .cp-metric__label{margin-top:2px;font-size:11px;font-weight:750;color:#64748B;text-transform:uppercase;letter-spacing:.04em}
+        .cp-part-card{padding:16px;border:1px solid #E2E8F0;border-radius:14px;background:#FFFFFF;min-height:156px;box-shadow:0 8px 18px rgba(15,23,42,.03)}
         .cp-part-card__eyebrow{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B}
-        .cp-part-card__mpn{margin-top:4px;font-size:18px;font-weight:900;color:#0F172A}
-        .cp-part-card__meta{margin-top:8px;color:#475569;font-size:13px;line-height:1.45}
-        .cp-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:750}
-        .cp-badge--ok{background:#DCFCE7;color:#166534}
-        .cp-badge--diff{background:#FFEDD5;color:#9A3412}
-        .cp-badge--need{background:#DBEAFE;color:#1E40AF}
+        .cp-part-card__mpn{margin-top:4px;font-size:18px;font-weight:900;color:#0F172A;letter-spacing:-.02em}
+        .cp-part-card__meta{margin-top:8px;color:#475569;font-size:13px;line-height:1.5}
+        .cp-matrix-note{margin:4px 0 10px;color:#64748B;font-size:12px;line-height:1.45}
+        .cp-empty{margin:0;padding:18px;border:1px dashed #CBD5E1;border-radius:14px;background:#F8FAFC;color:#64748B;font-size:13px}
         section[data-testid="stMain"] .cp-compare-card .stFormSubmitButton>button{
           min-width:160px!important;width:auto!important;max-width:220px!important
         }
+        section[data-testid="stMain"] .cp-workspace [data-testid="stDataFrame"]{
+          border:1px solid #E2E8F0;border-radius:12px;overflow:hidden
+        }
         @media(max-width:760px){
           .cp-part-card{min-height:0}
+          .cp-metrics{grid-template-columns:1fr}
         }
         </style>
         """,
@@ -83,6 +90,7 @@ def _finding_class(finding: str) -> str:
 def _render_part_card(title: str, card: Mapping[str, Any]) -> None:
     datasheet = str(card.get("datasheet_url") or "")
     supplier = str(card.get("supplier_url") or "")
+    component_type = str(card.get("family_display_name") or "—")
     st.markdown(
         f"""
         <div class="cp-part-card">
@@ -90,7 +98,7 @@ def _render_part_card(title: str, card: Mapping[str, Any]) -> None:
           <div class="cp-part-card__mpn">{_esc(card.get("mpn") or "Not found")}</div>
           <div class="cp-part-card__meta">
             {_esc(card.get("manufacturer") or "—")}<br/>
-            Family: {_esc(card.get("family_display_name") or "—")}<br/>
+            Component type: {_esc(component_type)}<br/>
             Package: {_esc(card.get("package") or "—")} · Lifecycle: {_esc(card.get("lifecycle_status") or "—")}
           </div>
         </div>
@@ -130,7 +138,7 @@ def _decorate_assessment_column(matrix: pd.DataFrame) -> pd.DataFrame:
 def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None) -> None:
     """Render the Compare Parts engineering workspace."""
     _inject_compare_parts_styles()
-    st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+    st.markdown('<div class="cv64-page-shell"><div class="cp-workspace">', unsafe_allow_html=True)
     cadivor_section_header(
         "Compare any two parts on shared engineering evidence",
         eyebrow="Compare Parts",
@@ -164,7 +172,7 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 key=COMPARE_PARTS_PART_B_WIDGET_KEY,
                 placeholder="Manufacturer part number",
             )
-        button_cols = st.columns([1, 2, 1])
+        button_cols = st.columns([1, 3])
         with button_cols[0]:
             cadivor_button_wrap("primary")
             submitted = st.form_submit_button(
@@ -208,33 +216,41 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
 
     result = st.session_state.get(COMPARE_PARTS_RESULT_KEY)
     if not isinstance(result, dict):
-        st.info("Enter Part A and Part B, then press Compare Parts or Enter.")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(
+            '<div class="cp-empty">Enter Part A and Part B, then press Compare Parts or Enter.</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("</div></div>", unsafe_allow_html=True)
         return
 
     status = str(result.get("status") or "")
     if status == STATUS_RUNNING:
         st.info("Comparison in progress…")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div></div>", unsafe_allow_html=True)
         return
     if status == STATUS_FAILED:
         st.error(str(result.get("error") or "Comparison could not be completed."))
     if status not in {STATUS_COMPLETED, STATUS_FAILED}:
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div></div>", unsafe_allow_html=True)
         return
 
     comparison = result.get("comparison")
     if not isinstance(comparison, dict):
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div></div>", unsafe_allow_html=True)
         return
 
     finding = str(comparison.get("finding") or FINDING_NEEDS_DATA)
     counts = dict(comparison.get("counts") or {})
+    compatible = int(counts.get("compatible") or 0)
+    material = int(counts.get("material_difference") or 0)
     needs = int(counts.get("needs_data") or 0)
     validation_note = (
         f"{needs} attribute{'s' if needs != 1 else ''} still need engineering validation."
         if needs
         else "Required available attributes were compared without material differences."
+    )
+    component_type = str(
+        comparison.get("family_display_name") or comparison.get("family") or "General"
     )
     st.markdown(
         f"""
@@ -244,6 +260,11 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
           <div class="cp-finding__body">
             {_esc(comparison.get("engineering_evidence_summary") or "")}<br/>
             <strong>What needs validation:</strong> {_esc(validation_note)}
+          </div>
+          <div class="cp-metrics">
+            <div class="cp-metric"><div class="cp-metric__value">{compatible}</div><div class="cp-metric__label">Compatible fields</div></div>
+            <div class="cp-metric"><div class="cp-metric__value">{material}</div><div class="cp-metric__label">Material differences</div></div>
+            <div class="cp-metric"><div class="cp-metric__value">{needs}</div><div class="cp-metric__label">Needs validation</div></div>
           </div>
         </div>
         """,
@@ -257,11 +278,10 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
         _render_part_card("Part B", comparison.get("part_b") or {})
 
     st.markdown(
-        f"**Family profile:** {_esc(comparison.get('family_display_name') or comparison.get('family') or 'General')}"
-    )
-    st.caption(
+        f'<div class="cp-matrix-note">Component type: {_esc(component_type)}. '
         "Engineering compatibility is separate from any supplier substitute relationship. "
-        "Cadivor never labels either part as a Direct substitute here."
+        "Cadivor never labels either part as a Direct substitute here.</div>",
+        unsafe_allow_html=True,
     )
 
     rows = list(comparison.get("rows") or [])
@@ -301,4 +321,4 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
             else:
                 st.caption("No diagnostic rows available.")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)

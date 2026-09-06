@@ -87,7 +87,7 @@ class LoginHandoff752B11Tests(unittest.TestCase):
         st.rerun.assert_called_once_with()
         self.assertEqual(st.session_state["cadivor_root_state"], auth.APP_LOGIN)
 
-    def test_success_logs_ready_then_commit_before_single_rerun(self):
+    def test_success_logs_ready_then_commit_without_rerun(self):
         st, auth, _auth_state = self._load_auth()
         supabase = MagicMock()
         session = types.SimpleNamespace(access_token="access", refresh_token="refresh")
@@ -110,7 +110,6 @@ class LoginHandoff752B11Tests(unittest.TestCase):
                 side_effect=lambda *_: order.append("mark_authenticated"),
             ),
         ):
-            auth.st.rerun = lambda: order.append("rerun")
             auth._submit_manual_login(
                 supabase, MagicMock(), "user@example.com", "password-value"
             )
@@ -123,10 +122,11 @@ class LoginHandoff752B11Tests(unittest.TestCase):
                 "manual_login_provider_session_ready",
                 "mark_authenticated",
                 "manual_login_session_committed",
-                "rerun",
             ],
         )
+        self.assertNotIn("rerun", order)
         supabase.auth.sign_in_with_password.assert_called_once()
+        st.rerun.assert_not_called()
 
     def test_login_failure_never_renders_raw_exception_in_same_run(self):
         _st, auth, _auth_state = self._load_auth()
