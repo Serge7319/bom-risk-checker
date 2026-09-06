@@ -278,11 +278,13 @@ def paint_auth_surface(host: Any, *, kind: str = "auto", message: str | None = N
 
     resolved = str(kind or "auto").strip().lower()
     if resolved == "auto":
-        resolved = "authenticating" if _should_keep_auth_progress_mounted() else "boot"
+        resolved = (
+            "authenticating" if _should_keep_auth_progress_mounted() else "login"
+        )
     elif resolved == "progress":
         resolved = "authenticating"
     elif resolved not in {"boot", "authenticating", "login", "error"}:
-        resolved = "boot"
+        resolved = "login"
     set_auth_gate_state(resolved, reason="legacy_paint_redirect")  # type: ignore[arg-type]
     paint_auth_gate(resolved)  # type: ignore[arg-type]
     st.session_state[AUTH_PROGRESS_MOUNTED_KEY] = True
@@ -528,10 +530,16 @@ def _ensure_authenticated_or_stop_impl() -> None:
 
     access = str(st.session_state.get("access_token") or "").strip()
     refresh = str(st.session_state.get("refresh_token") or "").strip()
+    # Peek durable cookies before first paint so a real session restore uses boot,
+    # while cold visitors (no tokens, no cookie) go straight to Login.
+    cookie_tokens, _cookie_peek_source = read_auth_cookie_tokens_with_source(
+        cookie_manager=None
+    )
+    has_restore_candidate = bool(access and refresh) or bool(cookie_tokens)
     gate_state = resolve_initial_gate_state(
         force_signed_out=bool(st.session_state.get("cadivor_force_signed_out")),
         handoff_active=bool(login_handoff_active() or manual_login_in_flight()),
-        has_tokens=bool(access and refresh),
+        has_tokens=has_restore_candidate,
         pending_credentials=has_pending_credentials(),
     )
     set_auth_gate_state(gate_state, reason="bootstrap_first_paint")

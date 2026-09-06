@@ -25,6 +25,25 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertNotIn("cv-startup-shell-topbar", source)
         self.assertNotIn("CADIVOR_AUTH_GATE_MOCK", source)
         self.assertNotIn("mock_auth_enabled", source)
+        # Cold visitors must not default into boot.
+        self.assertIn('return "login"', source)
+        self.assertIn("_inject_gate_css", source)
+
+    def test_resolve_initial_login_without_tokens(self):
+        from src.auth_gate import resolve_initial_gate_state
+
+        self.assertEqual(
+            resolve_initial_gate_state(has_tokens=False),
+            "login",
+        )
+        self.assertEqual(
+            resolve_initial_gate_state(has_tokens=True),
+            "boot",
+        )
+        self.assertEqual(
+            resolve_initial_gate_state(pending_credentials=True),
+            "authenticating",
+        )
 
     def test_bootstrap_no_longer_uses_empty_host_root(self):
         bootstrap = (ROOT / "src" / "auth_bootstrap.py").read_text(encoding="utf-8")
@@ -149,7 +168,15 @@ class AuthGateLifecycleSmokeTests(unittest.TestCase):
             error_message="Email or password is incorrect. Please try again.",
         )
         gate.paint_auth_gate("login")
-        self.assertTrue(any("Email or password is incorrect" in f for f in self.frames))
+        self.assertTrue(any('data-auth-gate="login"' in f for f in self.frames))
+        self.assertEqual(
+            gate.auth_gate_error_message(),
+            "Email or password is incorrect. Please try again.",
+        )
+        # Login chrome is CSS-only — no intermediate brand card / raw HTML body.
+        joined_login = "\n".join(self.frames)
+        self.assertNotIn("cv-auth-gate-inline", joined_login)
+        self.assertNotIn("<div class=\"cv-auth-gate-card\"", joined_login)
 
 
 class ProductionMockEnvCannotReadyTests(unittest.TestCase):
