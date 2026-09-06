@@ -25,10 +25,19 @@ from src.parts_compare import (
     run_compare_parts,
 )
 from src.ui.cadivor_design_system import (
+    MetricCard,
     cadivor_button_wrap,
     cadivor_button_wrap_end,
     cadivor_comparison_matrix_dataframe,
+    cadivor_empty_state,
+    cadivor_engineering_dataframe,
+    cadivor_meta_row,
+    cadivor_panel,
+    cadivor_panel_end,
     cadivor_section_header,
+    inject_cadivor_design_system,
+    render_kpi_row_safe,
+    render_subsection_header,
 )
 
 
@@ -37,41 +46,34 @@ def _esc(value: object) -> str:
 
 
 def _inject_compare_parts_styles() -> None:
-    if st.session_state.get("_cadivor_compare_parts_styles"):
+    inject_cadivor_design_system()
+    if st.session_state.get("_cadivor_compare_parts_styles_v2"):
         return
-    st.session_state["_cadivor_compare_parts_styles"] = True
+    st.session_state["_cadivor_compare_parts_styles_v2"] = True
     st.markdown(
         """
-        <style id="cadivor-compare-parts-css">
-        .cp-workspace{max-width:1080px;margin:0 auto 28px;padding:0 4px}
-        .cp-hero-note{margin:0 0 16px;padding:12px 14px;border:1px solid #DCE5F0;border-radius:12px;background:linear-gradient(180deg,#F8FBFF 0%,#F3F7FC 100%);color:#334155;font-size:13px;line-height:1.5}
-        .cp-compare-card{margin:0 0 18px;padding:18px 18px 14px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(15,23,42,.04)}
-        .cp-finding{margin:8px 0 16px;padding:18px 18px 16px;border:1px solid #E2E8F0;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 24px rgba(15,23,42,.04)}
-        .cp-finding__label{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B}
-        .cp-finding__title{margin-top:4px;font-size:22px;font-weight:900;color:#0F172A;letter-spacing:-.02em}
-        .cp-finding__title.is-compatible{color:#166534}
-        .cp-finding__title.is-material{color:#B45309}
-        .cp-finding__title.is-needs{color:#1D4ED8}
-        .cp-finding__body{margin-top:8px;color:#475569;font-size:13px;line-height:1.5}
-        .cp-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
-        .cp-metric{padding:12px 12px;border:1px solid #E8EEF6;border-radius:12px;background:#F8FAFC}
-        .cp-metric__value{font-size:22px;font-weight:900;color:#0F172A;letter-spacing:-.02em}
-        .cp-metric__label{margin-top:2px;font-size:11px;font-weight:750;color:#64748B;text-transform:uppercase;letter-spacing:.04em}
-        .cp-part-card{padding:16px;border:1px solid #E2E8F0;border-radius:14px;background:#FFFFFF;min-height:156px;box-shadow:0 8px 18px rgba(15,23,42,.03)}
-        .cp-part-card__eyebrow{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B}
-        .cp-part-card__mpn{margin-top:4px;font-size:18px;font-weight:900;color:#0F172A;letter-spacing:-.02em}
-        .cp-part-card__meta{margin-top:8px;color:#475569;font-size:13px;line-height:1.5}
-        .cp-matrix-note{margin:4px 0 10px;color:#64748B;font-size:12px;line-height:1.45}
-        .cp-empty{margin:0;padding:18px;border:1px dashed #CBD5E1;border-radius:14px;background:#F8FAFC;color:#64748B;font-size:13px}
-        section[data-testid="stMain"] .cp-compare-card .stFormSubmitButton>button{
+        <style id="cadivor-compare-parts-css-v2">
+        .cp-workspace{max-width:min(1080px,var(--cv-canvas,1420px));margin:0 auto 28px;padding:0 4px}
+        .cp-reading{max-width:var(--cv-reading-max,62ch);color:var(--cv64-text-secondary,#475569);font-size:13px;line-height:1.5;margin:0 0 16px}
+        .cp-finding-title{margin:6px 0 8px;font-size:22px;font-weight:900;letter-spacing:-.02em;color:var(--cv64-text,#0F172A)}
+        .cp-finding-title.is-compatible{color:var(--cv64-success,#166534)}
+        .cp-finding-title.is-material{color:var(--cv64-warning,#B45309)}
+        .cp-finding-title.is-needs{color:var(--cv64-info,#1D4ED8)}
+        .cp-finding-body{color:var(--cv64-text-secondary,#475569);font-size:13px;line-height:1.5;margin:0 0 12px}
+        .cp-part-mpn{margin:4px 0 8px;font-size:18px;font-weight:900;letter-spacing:-.02em;color:var(--cv64-text,#0F172A)}
+        .cp-part-meta{color:var(--cv64-text-secondary,#475569);font-size:13px;line-height:1.5;margin:0 0 10px}
+        .cp-matrix-note{margin:4px 0 10px;color:var(--cv64-text-muted,#64748B);font-size:12px;line-height:1.45}
+        .cp-legend{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+        .cp-legend span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:750;border:1px solid var(--cv64-border,#E2E8F0);background:#fff;color:var(--cv64-text-secondary,#475569)}
+        .cp-legend .ok{border-color:#BBF7D0;background:#F0FDF4;color:#166534}
+        .cp-legend .warn{border-color:#FDE68A;background:#FFFBEB;color:#B45309}
+        .cp-legend .need{border-color:#BFDBFE;background:#EFF6FF;color:#1D4ED8}
+        .cp-assessment-card{border:1px solid var(--cv64-border,#E2E8F0);border-radius:16px;background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%);padding:18px 18px 14px;box-shadow:0 10px 28px rgba(15,23,42,.04);margin-bottom:14px}
+        section[data-testid="stMain"] .cp-workspace .stFormSubmitButton>button{
           min-width:160px!important;width:auto!important;max-width:220px!important
         }
         section[data-testid="stMain"] .cp-workspace [data-testid="stDataFrame"]{
-          border:1px solid #E2E8F0;border-radius:12px;overflow:hidden
-        }
-        @media(max-width:760px){
-          .cp-part-card{min-height:0}
-          .cp-metrics{grid-template-columns:1fr}
+          border:1px solid var(--cv64-border,#E2E8F0);border-radius:12px;overflow:hidden
         }
         </style>
         """,
@@ -87,22 +89,27 @@ def _finding_class(finding: str) -> str:
     return "is-needs"
 
 
+def _finding_tone(finding: str) -> str:
+    if finding == FINDING_COMPATIBLE:
+        return "success"
+    if finding == FINDING_MATERIAL:
+        return "warning"
+    return "info"
+
+
 def _render_part_card(title: str, card: Mapping[str, Any]) -> None:
     datasheet = str(card.get("datasheet_url") or "")
     supplier = str(card.get("supplier_url") or "")
     component_type = str(card.get("family_display_name") or "—")
+    cadivor_panel(title)
     st.markdown(
-        f"""
-        <div class="cp-part-card">
-          <div class="cp-part-card__eyebrow">{_esc(title)}</div>
-          <div class="cp-part-card__mpn">{_esc(card.get("mpn") or "Not found")}</div>
-          <div class="cp-part-card__meta">
-            {_esc(card.get("manufacturer") or "—")}<br/>
-            Component type: {_esc(component_type)}<br/>
-            Package: {_esc(card.get("package") or "—")} · Lifecycle: {_esc(card.get("lifecycle_status") or "—")}
-          </div>
-        </div>
-        """,
+        f'<div class="cp-part-mpn">{_esc(card.get("mpn") or "Not found")}</div>'
+        f'<div class="cp-part-meta">'
+        f"{_esc(card.get('manufacturer') or '—')}<br/>"
+        f"Component type: {_esc(component_type)}<br/>"
+        f"Package: {_esc(card.get('package') or '—')} · "
+        f"Lifecycle: {_esc(card.get('lifecycle_status') or '—')}"
+        f"</div>",
         unsafe_allow_html=True,
     )
     link_cols = st.columns(2)
@@ -116,6 +123,7 @@ def _render_part_card(title: str, card: Mapping[str, Any]) -> None:
             st.link_button("Supplier page", supplier, use_container_width=True)
         else:
             st.caption("Supplier page unavailable")
+    cadivor_panel_end()
 
 
 def _decorate_assessment_column(matrix: pd.DataFrame) -> pd.DataFrame:
@@ -149,15 +157,18 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
         icon="git-compare",
     )
     st.markdown(
-        '<div class="cp-hero-note">'
+        '<p class="cp-reading">'
         "Cadivor compares only available evidence. Missing attributes stay missing and "
         "are never inferred as a match. Validate package, pinout, and electrical limits "
         "before production use."
-        "</div>",
+        "</p>",
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="cp-compare-card">', unsafe_allow_html=True)
+    cadivor_panel(
+        "Compare parts",
+        subtitle="Enter manufacturer part numbers for Part A and Part B",
+    )
     with st.form("compare_parts_form", clear_on_submit=False, border=False):
         cols = st.columns(2)
         with cols[0]:
@@ -181,7 +192,7 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 use_container_width=False,
             )
             cadivor_button_wrap_end()
-    st.markdown("</div>", unsafe_allow_html=True)
+    cadivor_panel_end()
 
     if submitted:
         part_a = resolve_compare_parts_submitted_mpn(
@@ -216,9 +227,10 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
 
     result = st.session_state.get(COMPARE_PARTS_RESULT_KEY)
     if not isinstance(result, dict):
-        st.markdown(
-            '<div class="cp-empty">Enter Part A and Part B, then press Compare Parts or Enter.</div>',
-            unsafe_allow_html=True,
+        cadivor_empty_state(
+            "No comparison yet",
+            "Enter Part A and Part B, then press Compare Parts or Enter.",
+            icon="git-compare",
         )
         st.markdown("</div></div>", unsafe_allow_html=True)
         return
@@ -252,24 +264,33 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
     component_type = str(
         comparison.get("family_display_name") or comparison.get("family") or "General"
     )
+
+    cadivor_panel("Overall assessment")
+    st.markdown('<div class="cp-assessment-card">', unsafe_allow_html=True)
+    cadivor_meta_row(
+        [
+            (finding, _finding_tone(finding)),
+            (f"Component type · {component_type}", "neutral"),
+        ]
+    )
     st.markdown(
-        f"""
-        <div class="cp-finding">
-          <div class="cp-finding__label">Overall assessment</div>
-          <div class="cp-finding__title {_finding_class(finding)}">{_esc(finding)}</div>
-          <div class="cp-finding__body">
-            {_esc(comparison.get("engineering_evidence_summary") or "")}<br/>
-            <strong>What needs validation:</strong> {_esc(validation_note)}
-          </div>
-          <div class="cp-metrics">
-            <div class="cp-metric"><div class="cp-metric__value">{compatible}</div><div class="cp-metric__label">Compatible fields</div></div>
-            <div class="cp-metric"><div class="cp-metric__value">{material}</div><div class="cp-metric__label">Material differences</div></div>
-            <div class="cp-metric"><div class="cp-metric__value">{needs}</div><div class="cp-metric__label">Needs validation</div></div>
-          </div>
-        </div>
-        """,
+        f'<div class="cp-finding-title {_finding_class(finding)}">{_esc(finding)}</div>'
+        f'<div class="cp-finding-body">'
+        f"{_esc(comparison.get('engineering_evidence_summary') or '')}<br/>"
+        f"<strong>What needs validation:</strong> {_esc(validation_note)}"
+        f"</div>",
         unsafe_allow_html=True,
     )
+    render_kpi_row_safe(
+        [
+            MetricCard(label="Compatible fields", value=str(compatible), tone="success", icon="check"),
+            MetricCard(label="Material differences", value=str(material), tone="warning", icon="alert"),
+            MetricCard(label="Needs validation", value=str(needs), tone="info", icon="search"),
+        ],
+        columns=3,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    cadivor_panel_end()
 
     identity_cols = st.columns(2)
     with identity_cols[0]:
@@ -288,11 +309,28 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
     matrix = _decorate_assessment_column(
         pd.DataFrame(rows, columns=list(USER_FACING_COMPARE_COLUMNS))
     )
-    st.subheader("Attribute comparison")
+    render_subsection_header(
+        "Attribute comparison",
+        description="Compact Compatible / Material difference / Needs validation matrix.",
+    )
+    st.markdown(
+        '<div class="cp-legend">'
+        '<span class="ok">Compatible</span>'
+        '<span class="warn">Material difference</span>'
+        '<span class="need">Needs validation</span>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
     if matrix is None or matrix.empty:
-        st.info("No comparable attributes were available for these parts.")
+        cadivor_empty_state(
+            "No comparable attributes",
+            "No comparable attributes were available for these parts.",
+            icon="table",
+        )
     else:
+        cadivor_panel("Comparison matrix")
         cadivor_comparison_matrix_dataframe(matrix, key="compare_parts_matrix")
+        cadivor_panel_end()
 
     try:
         pdf_bytes = generate_parts_comparison_pdf(comparison)
@@ -317,7 +355,10 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
         with st.expander("Developer comparison diagnostics (Admin)", expanded=False):
             diagnostic_rows = list(comparison.get("diagnostic_rows") or [])
             if diagnostic_rows:
-                st.dataframe(pd.DataFrame(diagnostic_rows), use_container_width=True, hide_index=True)
+                cadivor_engineering_dataframe(
+                    pd.DataFrame(diagnostic_rows),
+                    key="compare_parts_diagnostics",
+                )
             else:
                 st.caption("No diagnostic rows available.")
 

@@ -23,6 +23,7 @@ DATASHEET_QA_SUBMIT_DEBOUNCE_SECONDS = 2.0
 DATASHEET_QA_STATUS_KEY = "datasheet_qa_status"
 DATASHEET_QA_QUESTION_WIDGET_KEY = "datasheet_qa_question"
 DATASHEET_QA_CLEAR_QUESTION_KEY = "datasheet_qa_clear_question"
+DATASHEET_QA_PENDING_QUESTION_KEY = "datasheet_qa_pending_question"
 
 STATUS_IDLE = "idle"
 STATUS_PROCESSING = "processing"
@@ -79,12 +80,37 @@ class DatasheetChunk:
 
 
 def resolve_datasheet_question(*values: Any) -> str:
-    """Return the first non-empty question from form/widget/session candidates."""
+    """Return the first non-empty question from form/widget/session candidates.
+
+    Streamlit form submits can return an empty/stale widget value on the first
+    click while ``st.session_state[DATASHEET_QA_QUESTION_WIDGET_KEY]`` already
+    holds the typed text. Callers must pass the form return and the keyed
+    session value (plus any preclear/pending snapshot) so the first click
+    still claims the typed question.
+    """
     for value in values:
         text = str(value or "").strip()
         if text:
             return text
     return ""
+
+
+def apply_datasheet_question_clear(
+    session_state: MutableMapping[str, Any],
+) -> str:
+    """Honor deferred clear without losing an in-flight submit candidate.
+
+    Snapshots the pending/widget question *before* wiping the composer so a
+    same-run form submit (empty form return + populated session) can still
+    resolve and claim. The composer widget is cleared when the flag is set.
+    """
+    preclear = resolve_datasheet_question(
+        session_state.get(DATASHEET_QA_PENDING_QUESTION_KEY),
+        session_state.get(DATASHEET_QA_QUESTION_WIDGET_KEY),
+    )
+    if session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, False):
+        session_state[DATASHEET_QA_QUESTION_WIDGET_KEY] = ""
+    return preclear
 
 
 def claim_datasheet_question_submit(

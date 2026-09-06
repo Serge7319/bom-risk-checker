@@ -241,20 +241,68 @@ def auth_progress_surface_mounted() -> bool:
     return bool(st.session_state.get(AUTH_PROGRESS_MOUNTED_KEY))
 
 
-def mount_auth_progress_surface(host: Any, message: str | None = None) -> None:
-    """Authoritative progress paint: replace host content, never clear to blank.
+# Run-scoped host pointer (never session_state): login submit remounts via owner API.
+_AUTH_SURFACE_HOST: Any | None = None
+_AUTH_SURFACE_KIND_KEY = "cadivor_auth_surface_kind"
 
-    The auth_surface_host is the single owner of login → progress continuity.
-    Callers must not call host.empty() between login and workspace readiness.
+
+def bind_auth_surface_host(host: Any) -> None:
+    """Remember the current script-run auth host for owner-only remounts."""
+    global _AUTH_SURFACE_HOST
+    _AUTH_SURFACE_HOST = host
+
+
+def get_auth_surface_host() -> Any | None:
+    return _AUTH_SURFACE_HOST
+
+
+def mount_auth_progress_surface(host: Any, message: str | None = None) -> None:
+    """Deprecated compatibility shim — redirects to the auth gate.
+
+    Never paints the fake dashboard/topbar shell that caused blank production
+    frames. The auth gate is the sole owner of boot/authenticating surfaces.
     """
-    text = str(
-        message
-        or login_handoff_message()
-        or AUTHENTICATED_STARTUP_SHELL_MESSAGE
-    )
-    with host.container():
-        render_startup_loading_shell(text)
+    del host, message  # host.empty() paths are retired
+    from src.auth_gate import paint_auth_gate, set_auth_gate_state
+
+    set_auth_gate_state("authenticating", reason="legacy_mount_redirect")
+    paint_auth_gate("authenticating")
     st.session_state[AUTH_PROGRESS_MOUNTED_KEY] = True
+    st.session_state[_AUTH_SURFACE_KIND_KEY] = "progress"
+
+
+def paint_auth_surface(host: Any, *, kind: str = "auto", message: str | None = None) -> None:
+    """Deprecated compatibility shim — redirects to the auth gate."""
+    del host
+    from src.auth_gate import paint_auth_gate, set_auth_gate_state
+
+    resolved = str(kind or "auto").strip().lower()
+    if resolved == "auto":
+        resolved = "authenticating" if _should_keep_auth_progress_mounted() else "boot"
+    elif resolved == "progress":
+        resolved = "authenticating"
+    elif resolved not in {"boot", "authenticating", "login", "error"}:
+        resolved = "boot"
+    set_auth_gate_state(resolved, reason="legacy_paint_redirect")  # type: ignore[arg-type]
+    paint_auth_gate(resolved)  # type: ignore[arg-type]
+    st.session_state[AUTH_PROGRESS_MOUNTED_KEY] = True
+    st.session_state[_AUTH_SURFACE_KIND_KEY] = resolved
+
+
+def should_render_authenticated_startup_shell() -> bool:
+    """Always False — competing startup shells are retired; auth gate owns paint."""
+    return False
+
+
+def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
+    """Deprecated — paints the auth-gate authenticating card (no fake topbar)."""
+    from src.auth_gate import paint_auth_gate, set_auth_gate_state
+
+    del message
+    set_auth_gate_state("authenticating", reason="legacy_shell_redirect")
+    paint_auth_gate("authenticating")
+    st.session_state[AUTH_PROGRESS_MOUNTED_KEY] = True
+    st.session_state[_AUTH_SURFACE_KIND_KEY] = "progress"
 
 
 def _should_keep_auth_progress_mounted() -> bool:
@@ -312,6 +360,7 @@ def clear_login_handoff() -> None:
     st.session_state.pop(LOGIN_HANDOFF_STARTED_AT_KEY, None)
     clear_authenticated_entry_shell()
     st.session_state.pop(AUTH_PROGRESS_MOUNTED_KEY, None)
+    st.session_state.pop(_AUTH_SURFACE_KIND_KEY, None)
 
 
 def login_handoff_timed_out() -> bool:
@@ -326,33 +375,6 @@ def login_handoff_timed_out() -> bool:
     return (time.monotonic() - started) >= LOGIN_HANDOFF_TIMEOUT_SECONDS
 
 
-def should_render_authenticated_startup_shell() -> bool:
-    """Whether a branded progress shell is still required for this run.
-
-    Preferred path: auth_bootstrap.mount_auth_progress_surface owns the paint
-    inside auth_surface_host. streamlit_app only paints when that mount did not
-    already happen (fallback), never as a competing second surface.
-    """
-    if auth_progress_surface_mounted():
-        return False
-    if st.session_state.get(AUTH_ENTRY_SHELL_KEY) and not login_handoff_active():
-        return True
-    if not login_handoff_active():
-        return False
-    # One continuous progress surface for authenticating + initializing.
-    if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
-        return True
-    if login_handoff_timed_out():
-        # Drop the opaque shell so a hung profile init cannot mask the
-        # authenticated retry UI or Login form on subsequent runs.
-        if login_handoff_stage() == LOGIN_HANDOFF_STAGE_AUTHENTICATING:
-            fail_login_handoff(message=LOGIN_HANDOFF_TIMEOUT_MESSAGE)
-        else:
-            clear_login_handoff()
-        return False
-    return login_handoff_stage() == LOGIN_HANDOFF_STAGE_INITIALIZING
-
-
 def fail_login_handoff(
     *,
     message: str = LOGIN_HANDOFF_TIMEOUT_MESSAGE,
@@ -360,6 +382,7 @@ def fail_login_handoff(
 ) -> None:
     """Clear handoff state and restore an enabled Login form with an error."""
     from src.auth_state import APP_LOGIN, AUTH_SIGNED_OUT
+    from src.auth_gate import set_auth_gate_state
 
     draft = str(email or st.session_state.get(LOGIN_HANDOFF_EMAIL_KEY) or "").strip()
     clear_login_handoff()
@@ -380,83 +403,12 @@ def fail_login_handoff(
     st.session_state["cadivor_atomic_login_error_epoch"] = epoch + 1
     if draft:
         st.session_state[LOGIN_HANDOFF_EMAIL_KEY] = draft
-
-
-def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
-    """Render lightweight workspace chrome while the authenticated app initializes."""
-    safe_message = str(message or "Preparing your workspace…")
-    st.markdown(
-        f"""
-        <style id="cadivor-startup-shell-css">
-        header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
-        section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{display:none!important}}
-        html,body,.stApp,[data-testid="stAppViewContainer"]{{background:#F5F7FB!important;color:#0F172A!important}}
-        .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
-        /* Keep the handoff shell as an opaque, non-interactive viewport overlay.
-           Streamlit marks old elements stale before the replacement tree has
-           finished painting; the narrow stale rule prevents that framework
-           fade. The real shell marker then retires this overlay. */
-        .cv-startup-shell{{position:fixed;inset:0;z-index:900;min-height:100vh;background:#F5F7FB;font-family:Inter,system-ui,sans-serif;color:#0F172A;opacity:1;pointer-events:none;transition:opacity .16s ease}}
-        [data-stale]:has(.cv-startup-shell),
-        [data-stale]:has(.cv-startup-shell) .cv-startup-shell{{opacity:1!important}}
-        [data-testid="stAppViewContainer"]:has(.cv-foundation-topbar) .cv-startup-shell{{opacity:0!important}}
-        .cv-startup-shell-topbar{{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #E2E8F0;background:#FFFFFF}}
-        .cv-startup-shell-brand{{display:flex;align-items:center;gap:11px;font-size:17px;font-weight:900;letter-spacing:-.025em}}
-        .cv-startup-shell-mark{{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#2563EB;color:#FFFFFF;font-weight:950;font-size:16px;box-shadow:0 8px 18px rgba(37,99,235,.22)}}
-        .cv-startup-shell-status{{display:flex;align-items:center;gap:9px;color:#64748B;font-size:12px;font-weight:750}}
-        .cv-startup-shell-status i{{width:8px;height:8px;border-radius:999px;background:#2563EB;box-shadow:0 0 0 4px rgba(37,99,235,.10);animation:cv-shell-pulse 1.35s ease-in-out infinite}}
-        .cv-startup-shell-body{{display:grid;grid-template-columns:176px minmax(0,1fr);min-height:calc(100vh - 64px)}}
-        .cv-startup-shell-nav{{padding:20px 12px;background:#0B1F3A;border-right:1px solid #173154;color:#DCE8F7}}
-        .cv-startup-shell-nav-title{{padding:0 10px 16px;color:#FFFFFF;font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}}
-        .cv-startup-shell-nav-item{{height:36px;display:flex;align-items:center;gap:9px;margin:3px 0;padding:0 10px;border-radius:9px;color:#AFC2DA;font-size:11px;font-weight:750}}
-        .cv-startup-shell-nav-item.active{{background:#173E78;color:#FFFFFF}}
-        .cv-startup-shell-nav-item b{{width:8px;height:8px;border:1.5px solid currentColor;border-radius:3px;opacity:.9}}
-        .cv-startup-shell-main{{padding:34px 32px;overflow:hidden}}
-        .cv-startup-shell-heading{{width:min(360px,55%);height:25px;border-radius:8px;background:#DCE5F0;margin-bottom:12px}}
-        .cv-startup-shell-copy{{width:min(560px,78%);height:12px;border-radius:999px;background:#E5EBF3;margin-bottom:28px}}
-        .cv-startup-shell-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}}
-        .cv-startup-shell-tile{{height:92px;border:1px solid #E1E7EF;border-radius:14px;background:#FFFFFF;box-shadow:0 8px 20px rgba(15,23,42,.035)}}
-        .cv-startup-shell-panel{{height:250px;border:1px solid #E1E7EF;border-radius:16px;background:#FFFFFF;box-shadow:0 10px 28px rgba(15,23,42,.04)}}
-        .cv-startup-shell-tile,.cv-startup-shell-panel,.cv-startup-shell-heading,.cv-startup-shell-copy{{position:relative;overflow:hidden}}
-        .cv-startup-shell-tile:after,.cv-startup-shell-panel:after,.cv-startup-shell-heading:after,.cv-startup-shell-copy:after{{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);animation:cv-shell-shimmer 1.5s infinite}}
-        @keyframes cv-shell-shimmer{{100%{{transform:translateX(100%)}}}}
-        @keyframes cv-shell-pulse{{0%,100%{{opacity:.45}}50%{{opacity:1}}}}
-        @media(max-width:760px){{
-          .cv-startup-shell-body{{grid-template-columns:64px minmax(0,1fr)}}
-          .cv-startup-shell-nav{{padding:18px 8px}}
-          .cv-startup-shell-nav-title,.cv-startup-shell-nav-item span{{display:none}}
-          .cv-startup-shell-nav-item{{justify-content:center;padding:0}}
-          .cv-startup-shell-main{{padding:24px 16px}}
-          .cv-startup-shell-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}
-        }}
-        </style>
-        <div class="cv-startup-shell" role="status" aria-live="polite">
-          <div class="cv-startup-shell-topbar">
-            <div class="cv-startup-shell-brand"><div class="cv-startup-shell-mark">C</div><span>Cadivor</span></div>
-            <div class="cv-startup-shell-status"><i></i><span>{safe_message}</span></div>
-          </div>
-          <div class="cv-startup-shell-body">
-            <aside class="cv-startup-shell-nav" aria-hidden="true">
-              <div class="cv-startup-shell-nav-title">Workspace</div>
-              <div class="cv-startup-shell-nav-item active"><b></b><span>Dashboard</span></div>
-              <div class="cv-startup-shell-nav-item"><b></b><span>BOM Analyzer</span></div>
-              <div class="cv-startup-shell-nav-item"><b></b><span>Alternative Finder</span></div>
-              <div class="cv-startup-shell-nav-item"><b></b><span>Design Impact</span></div>
-            </aside>
-            <main class="cv-startup-shell-main" aria-hidden="true">
-              <div class="cv-startup-shell-heading"></div>
-              <div class="cv-startup-shell-copy"></div>
-              <div class="cv-startup-shell-grid">
-                <div class="cv-startup-shell-tile"></div><div class="cv-startup-shell-tile"></div>
-                <div class="cv-startup-shell-tile"></div><div class="cv-startup-shell-tile"></div>
-              </div>
-              <div class="cv-startup-shell-panel"></div>
-            </main>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    set_auth_gate_state(
+        "login",
+        reason="login_handoff_failed",
+        error_message=str(message or LOGIN_HANDOFF_TIMEOUT_MESSAGE),
     )
+
 
 def _restore_copilot_workflow_snapshot() -> None:
     """Restore in-flight copilot workflow keys across reruns in the same session."""
@@ -509,9 +461,56 @@ def _log_ask_cadivor_auth_restore(**details: Any) -> None:
 
 
 def ensure_authenticated_or_stop() -> None:
-    """Resolve auth and render login/signup immediately for signed-out visitors."""
+    """Single auth gate: boot | login | authenticating | ready | error.
+
+    Paints one complete branded surface before any network/hydration work can
+    yield. Never uses an empty placeholder as the root auth surface. Returns only when
+    the gate is ready so the authenticated runtime may mount.
+    """
+    try:
+        _ensure_authenticated_or_stop_impl()
+    except Exception as exc:
+        # Streamlit control-flow exceptions must propagate.
+        name = type(exc).__name__
+        if name in {"RerunException", "StopException", "RerunData"}:
+            raise
+        # Never log tokens/passwords/email/profile — type + correlation only.
+        try:
+            from src.auth_diagnostics import log_auth_correlation
+            from src.auth_gate import paint_auth_gate, set_auth_gate_state
+
+            log_auth_correlation(
+                "auth_gate_unexpected_exception",
+                transition_reason=name[:80],
+            )
+            print(f"AUTH_GATE unexpected_exception type={name}", flush=True)
+            set_auth_gate_state(
+                "error",
+                reason="unexpected_exception",
+                error_message="Sign-in could not be completed. Please try again.",
+            )
+            paint_auth_gate("error")
+            if st.button("Back to Login", key="auth_gate_unexpected_retry"):
+                set_auth_gate_state("login", reason="unexpected_retry")
+                st.rerun()
+            st.stop()
+        except Exception as nested:
+            if type(nested).__name__ in {"RerunException", "StopException", "RerunData"}:
+                raise
+            st.stop()
+
+
+def _ensure_authenticated_or_stop_impl() -> None:
     from src.auth_cookies import native_cookie_api_available, read_auth_cookie_tokens_with_source
     from src.auth_diagnostics import log_auth_bounce, log_auth_correlation
+    from src.auth_gate import (
+        get_auth_gate_state,
+        has_pending_credentials,
+        paint_auth_gate,
+        pop_pending_credentials,
+        resolve_initial_gate_state,
+        set_auth_gate_state,
+    )
     from src.performance_timing import emit_timing, timed_phase
 
     auth_status_in = str(st.session_state.get("cadivor_auth_status") or "unknown")
@@ -523,23 +522,27 @@ def ensure_authenticated_or_stop() -> None:
         supabase = get_supabase_client()
     cookie_manager = None
 
-    # One stable authentication surface slot for this script run.
-    # Created before CookieManager mount / hydration so boot and signed-out UI
-    # replace each other in the same Streamlit delta position instead of
-    # stacking as top-level siblings during stale-element transitions.
-    # Do not store this DeltaGenerator in session_state.
-    # Progress ownership: this host alone paints login → branded progress →
-    # (workspace sibling). Never clear it to blank while a handoff is active.
+    # Clear legacy empty-host progress flags — the gate owns paint now.
     st.session_state.pop(AUTH_PROGRESS_MOUNTED_KEY, None)
-    auth_surface_host = st.empty()
-    if _should_keep_auth_progress_mounted():
-        mount_auth_progress_surface(auth_surface_host)
+    st.session_state.pop(_AUTH_SURFACE_KIND_KEY, None)
+
+    access = str(st.session_state.get("access_token") or "").strip()
+    refresh = str(st.session_state.get("refresh_token") or "").strip()
+    gate_state = resolve_initial_gate_state(
+        force_signed_out=bool(st.session_state.get("cadivor_force_signed_out")),
+        handoff_active=bool(login_handoff_active() or manual_login_in_flight()),
+        has_tokens=bool(access and refresh),
+        pending_credentials=has_pending_credentials(),
+    )
+    set_auth_gate_state(gate_state, reason="bootstrap_first_paint")
+    # FIRST paint — before cookie I/O, resolve, or profile work.
+    paint_auth_gate(gate_state)
 
     log_auth_correlation(
         "bootstrap_entry",
         cookie_manager=None,
         auth_status_in=auth_status_in,
-        transition_reason="bootstrap_entry",
+        transition_reason=f"gate_{gate_state}",
     )
     log_auth_restore(
         "cookie_component_initialized",
@@ -562,7 +565,6 @@ def ensure_authenticated_or_stop() -> None:
         signup_confirmation_surface_active,
     )
 
-    # Deterministic marker precedence: never guess when both markers appear.
     with timed_phase("auth.callback_apply", operation="resolve"):
         if signup_and_recovery_markers_conflict():
             reject_conflicting_auth_callbacks()
@@ -570,72 +572,90 @@ def ensure_authenticated_or_stop() -> None:
             apply_password_recovery_from_query(supabase)
             apply_signup_confirmation_from_query(supabase)
 
-    if password_recovery_active():
-        log_startup_phase("render_password_recovery_ui")
-        _render_t0 = time.perf_counter()
-        with auth_surface_host.container():
-            show_auth_ui(supabase, cookie_manager)
-        emit_timing(
-            "auth.render_signed_out",
-            duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
-            outcome="stopped",
-            route="password_recovery",
-            operation="render",
-        )
-        if _timing_enabled():
-            st.caption(f"Startup timing: {startup_phase_summary()}")
-        emit_timing(
-            "auth.boundary",
-            duration_ms=0.0,
-            outcome="stopped",
-            route="password_recovery",
-            event="boundary",
-        )
+    if password_recovery_active() or signup_confirmation_surface_active():
+        set_auth_gate_state("login", reason="recovery_or_signup_surface")
+        paint_auth_gate("login")
+        show_auth_ui(supabase, cookie_manager)
         st.stop()
 
-    if signup_confirmation_surface_active():
-        log_startup_phase("render_signup_confirmation_ui")
-        _render_t0 = time.perf_counter()
-        with auth_surface_host.container():
-            show_auth_ui(supabase, cookie_manager)
-        emit_timing(
-            "auth.render_signed_out",
-            duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
-            outcome="stopped",
-            route="signup_confirmation",
-            operation="render",
-        )
-        if _timing_enabled():
-            st.caption(f"Startup timing: {startup_phase_summary()}")
+    # Authenticating: process stashed credentials after the branded surface painted.
+    if get_auth_gate_state() == "authenticating" and has_pending_credentials():
+        email, password = pop_pending_credentials()
+        try:
+            from src.auth import execute_password_login
+
+            ok = execute_password_login(supabase, cookie_manager, email, password)
+            if ok:
+                set_auth_gate_state("ready", reason="provider_login_success")
+            else:
+                set_auth_gate_state(
+                    "login",
+                    reason="provider_login_failed",
+                    error_message=str(
+                        st.session_state.get("cadivor_atomic_login_error")
+                        or "Email or password is incorrect. Please try again."
+                    ),
+                )
+                st.rerun()
+        except Exception:
+            fail_login_handoff(
+                message="Sign-in could not be completed. Please try again.",
+                email=email,
+            )
+            set_auth_gate_state(
+                "error",
+                reason="login_exception",
+                error_message="Sign-in could not be completed. Please try again.",
+            )
+            paint_auth_gate("error")
+            if st.button("Back to Login", key="auth_gate_error_retry"):
+                set_auth_gate_state("login", reason="error_retry")
+                st.rerun()
+            st.stop()
+
+    # After a successful authenticating transition, admit the app immediately.
+    if get_auth_gate_state() == "ready" and (
+        str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED
+    ):
+        if cookie_manager is None:
+            cookie_manager = get_auth_cookie_manager(mount=True)
+        try:
+            persist_session_auth_cookie(cookie_manager)
+        except Exception:
+            pass
+        clear_login_handoff()
+        try:
+            from src.auth_gate import retire_auth_gate_overlays
+
+            retire_auth_gate_overlays()
+        except Exception:
+            pass
+        log_startup_phase("auth_boundary_passed")
         emit_timing(
             "auth.boundary",
             duration_ms=0.0,
-            outcome="stopped",
-            route="signup_confirmation",
+            outcome="authenticated",
+            route="authenticated",
             event="boundary",
         )
-        st.stop()
+        return
 
     bootstrap_cookie_source = "skipped"
     if (
-        not manual_login_in_flight()
-        and not login_handoff_active()
+        get_auth_gate_state() in {"boot", "ready", "authenticating"}
         and not explicit_logout_pending()
         and not st.session_state.get("cadivor_force_signed_out")
+        and not has_pending_credentials()
     ):
+        if get_auth_gate_state() == "boot":
+            paint_auth_gate("boot")
         with timed_phase("auth.cookie_read", operation="hydrate") as cookie_meta:
             _tokens, cookie_source = read_auth_cookie_tokens_with_source(cookie_manager=None)
             bootstrap_cookie_source = cookie_source
-            if cookie_source == "context":
-                hydration_reason = "native_context_restore_started"
-            elif cookie_source == "manager_fallback":
-                hydration_reason = "manager_fallback_restore_started"
-            else:
-                hydration_reason = "native_context_cookie_absent"
             log_auth_correlation(
                 "after_cookie_hydration",
                 cookie_manager=None,
-                transition_reason=hydration_reason,
+                transition_reason="gate_boot_hydrate",
                 cookie_source=cookie_source,
             )
             hydrated = hydrate_session_from_auth_cookie(cookie_manager)
@@ -646,16 +666,13 @@ def ensure_authenticated_or_stop() -> None:
                 cookie_source=cookie_source,
                 cookie_absent=bool(st.session_state.get("cadivor_auth_cookie_absent")),
             )
+
     log_auth_bounce(
         "cookie_read",
         cookie_manager=None,
         auth_status=auth_status_in,
         cookie_source=bootstrap_cookie_source,
-        transition_reason=(
-            "bootstrap_cookie_read_complete"
-            if bootstrap_cookie_source != "skipped"
-            else "bootstrap_cookie_read_skipped"
-        ),
+        transition_reason="bootstrap_cookie_read",
     )
 
     _restore_copilot_workflow_snapshot()
@@ -663,96 +680,36 @@ def ensure_authenticated_or_stop() -> None:
     if st.session_state.pop("cadivor_logout_requested", False):
         begin_logout(supabase, get_auth_cookie_manager(mount=True))
         if handle_explicit_logout_if_pending():
-            log_startup_phase("logout_redirect")
-            auth_surface_host.empty()
-            emit_timing(
-                "auth.boundary",
-                duration_ms=0.0,
-                outcome="redirected",
-                event="boundary",
-            )
+            set_auth_gate_state("login", reason="logout")
+            paint_auth_gate("login")
             st.stop()
 
-    # Never start a second cookie-hydration bootstrap while Login handoff owns
-    # the auth surface — those wait/rerun loops produce blank white gaps.
-    if not manual_login_in_flight() and not login_handoff_active():
+    # Hydration wait loops stay inside boot — never blank.
+    if get_auth_gate_state() == "boot" and not login_handoff_active():
         if cookie_manager is None:
             cookie_manager = get_auth_cookie_manager(mount=False)
-        if manager_fallback_hydration_pending(cookie_manager):
-            if cookie_manager is None:
-                cookie_manager = get_auth_cookie_manager(mount=True)
-            attempts = record_auth_hydration_attempt()
-            log_auth_restore(
-                "manager_fallback_hydration_pending",
-                attempt=attempts,
-                max_attempts=_MAX_HYDRATION_ATTEMPTS,
+        if manager_fallback_hydration_pending(cookie_manager) or (
+            not native_cookie_api_available()
+            and auth_cookie_hydration_pending(
+                cookie_manager or get_auth_cookie_manager(mount=True)
             )
+        ):
+            attempts = record_auth_hydration_attempt()
             if attempts >= _MAX_HYDRATION_ATTEMPTS:
-                with timed_phase(
-                    "auth.cookie_hydration",
-                    operation="hydrate",
-                    attempt=attempts,
-                    max_attempts=_MAX_HYDRATION_ATTEMPTS,
-                    outcome_on_success="settled",
-                ):
-                    finalize_manager_fallback_hydration_timeout(cookie_manager)
-            else:
-                _hyd_t0 = time.perf_counter()
-                with auth_surface_host.container():
-                    render_auth_boot()
-                log_auth_restore("manager_fallback_hydration_rerun", attempt=attempts)
-                time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
-                emit_timing(
-                    "auth.cookie_hydration",
-                    duration_ms=round((time.perf_counter() - _hyd_t0) * 1000.0, 1),
-                    outcome="continue",
-                    operation="hydrate",
-                    attempt=attempts,
-                    max_attempts=_MAX_HYDRATION_ATTEMPTS,
-                )
-                st.rerun()
-        elif not native_cookie_api_available():
-            if cookie_manager is None:
-                cookie_manager = get_auth_cookie_manager(mount=True)
-            if auth_cookie_hydration_pending(cookie_manager):
-                attempts = record_auth_hydration_attempt()
-                log_auth_restore(
-                    "hydration_pending",
-                    attempt=attempts,
-                    max_attempts=_MAX_HYDRATION_ATTEMPTS,
-                )
-                if attempts >= _MAX_HYDRATION_ATTEMPTS:
-                    with timed_phase(
-                        "auth.cookie_hydration",
-                        operation="hydrate",
-                        attempt=attempts,
-                        max_attempts=_MAX_HYDRATION_ATTEMPTS,
-                        outcome_on_success="settled",
-                    ):
-                        finalize_auth_cookie_hydration_timeout(cookie_manager)
-                else:
-                    _hyd_t0 = time.perf_counter()
-                    with auth_surface_host.container():
-                        render_auth_boot()
-                    log_auth_restore("hydration_wait_rerun", attempt=attempts)
-                    time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
-                    emit_timing(
-                        "auth.cookie_hydration",
-                        duration_ms=round((time.perf_counter() - _hyd_t0) * 1000.0, 1),
-                        outcome="continue",
-                        operation="hydrate",
-                        attempt=attempts,
-                        max_attempts=_MAX_HYDRATION_ATTEMPTS,
+                if manager_fallback_hydration_pending(cookie_manager):
+                    finalize_manager_fallback_hydration_timeout(
+                        cookie_manager or get_auth_cookie_manager(mount=True)
                     )
-                    st.rerun()
+                else:
+                    finalize_auth_cookie_hydration_timeout(
+                        cookie_manager or get_auth_cookie_manager(mount=True)
+                    )
+            else:
+                paint_auth_gate("boot")
+                time.sleep(_MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS)
+                st.rerun()
 
     log_startup_phase("resolve_auth_state")
-    log_auth_restore("validation_started")
-    log_auth_correlation(
-        "before_resolve_auth_state",
-        cookie_manager=cookie_manager,
-        transition_reason="pre_resolve",
-    )
     with timed_phase("auth.resolve_auth_state", operation="validate") as resolve_meta:
         auth_status = resolve_auth_state(supabase, cookie_manager)
         resolve_meta["outcome"] = (
@@ -761,82 +718,42 @@ def ensure_authenticated_or_stop() -> None:
     log_auth_correlation(
         "after_resolve_auth_state",
         cookie_manager=cookie_manager,
-        transition_reason=f"resolved_{auth_status}",
+        transition_reason=f"resolved_{auth_status}_gate_{get_auth_gate_state()}",
     )
-    log_auth_restore(
-        "validation_complete",
-        auth_status=auth_status,
-        has_user=bool(st.session_state.get("user")),
-    )
-    if auth_status != AUTH_AUTHENTICATED:
-        if auth_status == AUTH_SIGNING_IN:
-            auth_ui_reason = "manual_login_in_flight"
-        else:
-            log_auth_restore("auth_boundary_failed", reason=f"resolved_{auth_status}")
-            auth_ui_reason = "auth_boundary_failed"
-        log_startup_phase("render_auth_ui")
-        log_auth_correlation(
-            "before_show_auth_ui",
-            cookie_manager=cookie_manager,
-            auth_status_in=auth_status,
-            transition_reason=auth_ui_reason,
-        )
-        log_auth_bounce(
-            "login_boundary_reached",
-            cookie_manager=cookie_manager,
-            auth_status=auth_status,
-            transition_reason=auth_ui_reason,
-        )
-        _render_t0 = time.perf_counter()
-        with auth_surface_host.container():
-            show_auth_ui(supabase, cookie_manager)
-        # Same-run Login success: credentials committed inside show_auth_ui.
-        # Continue into the authenticated path without st.rerun() / host.empty()
-        # so the branded progress surface never yields a blank white page.
-        if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
-            auth_status = AUTH_AUTHENTICATED
-            emit_timing(
-                "auth.render_signed_out",
-                duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
-                outcome="continue_authenticated",
-                route="login_handoff",
-                operation="render",
-            )
-        else:
-            emit_timing(
-                "auth.render_signed_out",
-                duration_ms=round((time.perf_counter() - _render_t0) * 1000.0, 1),
-                outcome="stopped",
-                route="signed_out",
-                operation="render",
-            )
-            if _timing_enabled():
-                st.caption(f"Startup timing: {startup_phase_summary()}")
-            emit_timing(
-                "auth.boundary",
-                duration_ms=0.0,
-                outcome="signed_out",
-                route="signed_out",
-                event="boundary",
-            )
-            st.stop()
 
-    # Authenticated workspace: replace the Login/form surface with one branded
-    # progress paint in the SAME host. Never call host.empty() here — that is
-    # the blank-white regression between Login and the workspace.
-    if not login_handoff_active():
-        mark_authenticated_entry_shell(AUTH_ENTRY_SHELL_MESSAGE)
-    mount_auth_progress_surface(auth_surface_host)
+    if auth_status == AUTH_AUTHENTICATED or get_auth_gate_state() == "ready":
+        set_auth_gate_state("ready", reason="authenticated")
+        if cookie_manager is None:
+            cookie_manager = get_auth_cookie_manager(mount=True)
+        persist_session_auth_cookie(cookie_manager)
+        # Brief authenticating/boot surface already painted this run when needed.
+        # Do not paint competing startup shells — runtime mounts next.
+        clear_login_handoff()
+        try:
+            from src.auth_gate import retire_auth_gate_overlays
 
-    if cookie_manager is None:
-        cookie_manager = get_auth_cookie_manager(mount=True)
-    persist_session_auth_cookie(cookie_manager)
-    log_startup_phase("auth_boundary_passed")
-    log_auth_restore("restoration_complete", auth_status=auth_status)
-    emit_timing(
-        "auth.boundary",
-        duration_ms=0.0,
-        outcome="authenticated",
-        route="authenticated",
-        event="boundary",
-    )
+            retire_auth_gate_overlays()
+        except Exception:
+            pass
+        log_startup_phase("auth_boundary_passed")
+        emit_timing(
+            "auth.boundary",
+            duration_ms=0.0,
+            outcome="authenticated",
+            route="authenticated",
+            event="boundary",
+        )
+        return
+
+    # Signed-out / failed resolve → exclusive login surface.
+    set_auth_gate_state("login", reason=f"resolved_{auth_status}")
+    paint_auth_gate("login")
+    show_auth_ui(supabase, cookie_manager)
+    # If login submit stashed credentials, next run is authenticating.
+    if has_pending_credentials():
+        set_auth_gate_state("authenticating", reason="credentials_stashed")
+        st.rerun()
+    st.stop()
+
+
+# NOTE: auth gate owns paint — do not reintroduce empty-placeholder root hosts here.

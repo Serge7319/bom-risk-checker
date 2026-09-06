@@ -67,9 +67,10 @@ class AuthScrollAnchoringSourceGuards(unittest.TestCase):
             self.assertNotIn(banned, joined)
 
     def test_stable_host_contract_intact(self):
-        self.assertIn("auth_surface_host = st.empty()", self.bootstrap)
-        self.assertIn("with auth_surface_host.container():", self.bootstrap)
-        self.assertIn("render_auth_boot()", self.bootstrap)
+        # Auth gate replaced st.empty() host ownership.
+        self.assertIn("paint_auth_gate(", self.bootstrap)
+        self.assertIn("set_auth_gate_state(", self.bootstrap)
+        self.assertNotIn("auth_surface_host = st.empty()", self.bootstrap)
         self.assertIn("show_auth_ui", self.bootstrap)
 
     def test_hydration_and_cookie_manager_unchanged(self):

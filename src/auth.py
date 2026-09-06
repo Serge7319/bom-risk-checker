@@ -438,25 +438,27 @@ def _fail_manual_login_and_rerun(
 
 
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
-    """Authenticate credentials in the same script run as the Login submit."""
+    """Queue credentials into the auth gate authenticating state (no competing paint)."""
+    from src.auth_bootstrap import LOGIN_HANDOFF_STAGE_AUTHENTICATING, begin_login_handoff
+    from src.auth_gate import set_auth_gate_state, stash_pending_credentials
+
     begin_manual_login(cookie_manager)
     _clear_manual_login_error()
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
     st.session_state["cadivor_login_email_draft"] = str(email or "").strip()
-    try:
-        from src.auth_bootstrap import (
-            LOGIN_HANDOFF_STAGE_AUTHENTICATING,
-            begin_login_handoff,
-            login_handoff_message,
-            render_startup_loading_shell,
-        )
+    begin_login_handoff(LOGIN_HANDOFF_STAGE_AUTHENTICATING)
+    stash_pending_credentials(email, password)
+    set_auth_gate_state("authenticating", reason="login_submit_stash")
+    _log_manual_login_event("manual_login_credentials_stashed", cookie_manager)
+    # Next script run paints authenticating first, then executes provider I/O.
+    st.rerun()
 
-        begin_login_handoff(LOGIN_HANDOFF_STAGE_AUTHENTICATING)
-        # Same branded progress surface as post-auth init — not a second card.
-        render_startup_loading_shell(login_handoff_message())
-    except Exception:
-        render_auth_transition("Signing you in…")
+
+def execute_password_login(supabase, cookie_manager, email: str, password: str) -> bool:
+    """Run provider sign-in after the authenticating gate surface is already painted."""
+    from src.auth_bootstrap import LOGIN_HANDOFF_STAGE_INITIALIZING, advance_login_handoff
+    from src.auth_gate import set_auth_gate_state
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
@@ -471,7 +473,7 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             message=MANUAL_LOGIN_FAILURE_MESSAGE,
             email=email,
         )
-        return
+        return False
 
     _log_manual_login_event("manual_login_provider_completed", cookie_manager)
     session = getattr(response, "session", None)
@@ -485,17 +487,17 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
             message=MANUAL_LOGIN_NO_SESSION_MESSAGE,
             email=email,
         )
-        return
+        return False
 
     _log_manual_login_event("manual_login_provider_session_ready", cookie_manager)
     mark_authenticated(user, session, cookie_manager)
-    # Root state must leave APP_SIGNING_IN immediately after credentials succeed.
     st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
     st.session_state.pop("cadivor_login_email_draft", None)
     _clear_manual_login_error()
+    advance_login_handoff(LOGIN_HANDOFF_STAGE_INITIALIZING)
+    set_auth_gate_state("ready", reason="provider_login_success")
     _log_manual_login_event("manual_login_session_committed", cookie_manager)
-    # Do not st.rerun() on success. ensure_authenticated_or_stop continues in
-    # the same script run and remounts progress into auth_surface_host.
+    return True
 
 
 def _signup_response_get(obj, key: str, default=None):
@@ -1334,26 +1336,25 @@ def show_auth_ui(supabase, cookie_manager=None):
                 from src.auth_bootstrap import (
                     LOGIN_HANDOFF_TIMEOUT_MESSAGE,
                     fail_login_handoff,
-                    login_handoff_message,
                     login_handoff_timed_out,
-                    render_startup_loading_shell,
                 )
+                from src.auth_gate import paint_auth_gate, set_auth_gate_state
             except Exception:
                 login_handoff_timed_out = lambda: False  # noqa: E731
                 fail_login_handoff = None
-                login_handoff_message = lambda: "Signing you in…"  # noqa: E731
-                render_startup_loading_shell = None
+                paint_auth_gate = None
+                set_auth_gate_state = None
                 LOGIN_HANDOFF_TIMEOUT_MESSAGE = (
                     "Sign-in timed out while preparing your workspace. Please try again."
                 )
 
-            # Progress UI is allowed only while credentials are actually in flight.
-            # A stale APP_SIGNING_IN across reruns previously deadlocked Login.
+            # Gate owns authenticating paint. Never remount competing loaders here.
             if manual_login_in_flight() and not login_handoff_timed_out():
-                if render_startup_loading_shell is not None:
-                    render_startup_loading_shell(login_handoff_message())
+                if set_auth_gate_state is not None and paint_auth_gate is not None:
+                    set_auth_gate_state("authenticating", reason="show_auth_signing_in")
+                    paint_auth_gate("authenticating")
                 else:
-                    render_auth_transition(login_handoff_message())
+                    render_auth_transition("Signing you in…")
                 return
 
             draft = str(st.session_state.get("cadivor_login_email_draft") or "").strip()
@@ -1369,6 +1370,16 @@ def show_auth_ui(supabase, cookie_manager=None):
             else:
                 st.session_state["cadivor_root_state"] = APP_LOGIN
                 st.session_state.pop("cadivor_manual_login_in_progress", None)
+            if set_auth_gate_state is not None:
+                set_auth_gate_state(
+                    "login",
+                    reason="signing_in_timeout_or_stale",
+                    error_message=(
+                        LOGIN_HANDOFF_TIMEOUT_MESSAGE
+                        if login_handoff_timed_out()
+                        else MANUAL_LOGIN_FAILURE_MESSAGE
+                    ),
+                )
             state = APP_LOGIN
             _seed_auth_mode_widget(AUTH_MODE_LOGIN)
 

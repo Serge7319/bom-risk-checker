@@ -2,8 +2,8 @@
 
 Startup order:
 1. Minimal Streamlit configuration
-2. Lightweight auth bootstrap (Supabase session + login/signup UI)
-3. Authenticated runtime import only after auth succeeds
+2. Auth gate (boot|login|authenticating|ready|error) — sole auth painter
+3. Authenticated runtime only after gate is ready
 """
 from __future__ import annotations
 
@@ -35,15 +35,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-from src.auth_bootstrap import (
-    AUTHENTICATED_STARTUP_SHELL_MESSAGE,
-    auth_progress_surface_mounted,
-    ensure_authenticated_or_stop,
-    log_startup_phase,
-    login_handoff_message,
-    render_startup_loading_shell,
-    should_render_authenticated_startup_shell,
-)
+from src.auth_bootstrap import ensure_authenticated_or_stop, log_startup_phase
 
 log_startup_phase("entrypoint_ready")
 if st.session_state.pop("cadivor_logout_reload_pending", False):
@@ -69,10 +61,7 @@ from src.performance_timing import timed_phase
 with timed_phase("startup.ensure_authenticated", operation="resolve"):
     ensure_authenticated_or_stop()
 
-# Fallback only: bootstrap normally mounts progress into auth_surface_host.
-# Never paint a second competing shell when the host already owns progress.
-if should_render_authenticated_startup_shell() and not auth_progress_surface_mounted():
-    render_startup_loading_shell(login_handoff_message() or AUTHENTICATED_STARTUP_SHELL_MESSAGE)
+# Auth gate returned → ready. Never paint a competing startup shell here.
 log_startup_phase("load_authenticated_runtime")
 with timed_phase("startup.authenticated_runtime_import", operation="import"):
     from src.authenticated_runtime import run_authenticated_app
