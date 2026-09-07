@@ -70,11 +70,11 @@ def inject_unified_shell_css() -> None:
 
 
 def paint_authenticated_continuity_shell(*, page: str = "Dashboard") -> None:
-    """Paint Cadivor foundation chrome immediately so auth/workspace IO never blanks.
+    """Paint fixed Cadivor topbar chrome during auth→runtime handoff only.
 
-    Uses the real shell topbar classes (not a separate loader overlay). The later
-    full ``render_unified_shell`` mounts the durable chrome; continuity hides once
-    a non-continuity foundation topbar is present.
+    Must never reserve vertical space in the main document flow and must never
+    insert a global page skeleton. The durable ``render_unified_shell`` topbar
+    replaces this chrome; continuity hosts collapse once it is present.
     """
     inject_unified_shell_css()
     safe_page = html.escape(str(page or "Dashboard").strip() or "Dashboard")
@@ -94,9 +94,36 @@ def paint_authenticated_continuity_shell(*, page: str = "Dashboard") -> None:
           </div>
         </div>
         <style id="cadivor-continuity-shell-css">
-        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity)) .cv-foundation-continuity{{
+        /* Continuity topbar is fixed chrome only — its Streamlit host must not
+           push page content downward. */
+        div[data-testid="stElementContainer"]:has(.cv-foundation-continuity),
+        div[data-testid="stElementContainer"]:has([data-testid="cadivor-continuity-shell"]),
+        div.element-container:has(.cv-foundation-continuity){{
+          height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;
+          overflow:hidden!important;opacity:1
+        }}
+        /* Once durable shell exists, remove continuity entirely. */
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity)) .cv-foundation-continuity,
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity)) [data-testid="cadivor-continuity-shell"]{{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           height:0!important;overflow:hidden!important
+        }}
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity))
+          div[data-testid="stElementContainer"]:has(.cv-foundation-continuity),
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity))
+          div[data-testid="stElementContainer"]:has([data-testid="cadivor-continuity-shell"]),
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity))
+          div.element-container:has(.cv-foundation-continuity){{
+          display:none!important;height:0!important;min-height:0!important;
+          margin:0!important;padding:0!important;overflow:hidden!important
+        }}
+        /* Never leave a stray global skeleton band above page titles. */
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity)) .cv56-skeleton-page,
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity))
+          div[data-testid="stElementContainer"]:has(.cv56-skeleton-page){{
+          display:none!important;height:0!important;min-height:0!important;
+          margin:0!important;padding:0!important;overflow:hidden!important
         }}
         html,body,.stApp,[data-testid="stAppViewContainer"]{{
           background:#F5F7FB!important
@@ -105,12 +132,6 @@ def paint_authenticated_continuity_shell(*, page: str = "Dashboard") -> None:
         """,
         unsafe_allow_html=True,
     )
-    try:
-        from src.ui.sprint71_polish import render_page_skeleton
-
-        render_page_skeleton(kpis=3, panels=1)
-    except Exception:
-        pass
 
 
 def _escape(value: object) -> str:

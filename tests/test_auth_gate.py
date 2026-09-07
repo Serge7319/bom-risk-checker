@@ -52,6 +52,20 @@ class AuthGateModuleTests(unittest.TestCase):
             "ready",
         )
 
+    def test_continuity_shell_never_inserts_global_skeleton(self):
+        shell = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
+        fn = shell[
+            shell.find("def paint_authenticated_continuity_shell") : shell.find(
+                "def _escape"
+            )
+        ]
+        self.assertIn("cv-foundation-continuity", fn)
+        self.assertIn("cadivor-continuity-shell", fn)
+        self.assertNotIn("render_page_skeleton", fn)
+        self.assertNotIn("content_skeleton", fn)
+        self.assertNotIn("cv56-skeleton-page", fn.split("Never leave")[0])
+        self.assertIn("height:0!important", fn)
+
     def test_bootstrap_no_longer_uses_empty_host_root(self):
         bootstrap = (ROOT / "src" / "auth_bootstrap.py").read_text(encoding="utf-8")
         gate_fn = bootstrap[
