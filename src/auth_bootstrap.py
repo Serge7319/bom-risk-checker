@@ -536,15 +536,35 @@ def _ensure_authenticated_or_stop_impl() -> None:
         cookie_manager=None
     )
     has_restore_candidate = bool(access and refresh) or bool(cookie_tokens)
+    force_signed_out = bool(st.session_state.get("cadivor_force_signed_out"))
+    already_authenticated = (
+        str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED
+        and not force_signed_out
+    )
     gate_state = resolve_initial_gate_state(
-        force_signed_out=bool(st.session_state.get("cadivor_force_signed_out")),
+        force_signed_out=force_signed_out,
         handoff_active=bool(login_handoff_active() or manual_login_in_flight()),
         has_tokens=has_restore_candidate,
         pending_credentials=has_pending_credentials(),
+        already_authenticated=already_authenticated,
     )
     set_auth_gate_state(gate_state, reason="bootstrap_first_paint")
     # FIRST paint — before cookie I/O, resolve, or profile work.
     paint_auth_gate(gate_state)
+
+    # Already-authenticated workspace navigation: admit runtime immediately.
+    # Do not paint boot, do not retire overlays (nothing to clear), do not blank.
+    if gate_state == "ready" and already_authenticated:
+        clear_login_handoff()
+        log_startup_phase("auth_boundary_passed")
+        emit_timing(
+            "auth.boundary",
+            duration_ms=0.0,
+            outcome="authenticated",
+            route="authenticated",
+            event="boundary",
+        )
+        return
 
     log_auth_correlation(
         "bootstrap_entry",
@@ -584,6 +604,22 @@ def _ensure_authenticated_or_stop_impl() -> None:
         set_auth_gate_state("login", reason="recovery_or_signup_surface")
         paint_auth_gate("login")
         show_auth_ui(supabase, cookie_manager)
+        st.stop()
+
+    # Cold signed-out visitors: show final Login immediately — never wait on
+    # resolve_auth_state network I/O with only a blank #F5F7FB body.
+    if (
+        get_auth_gate_state() == "login"
+        and not has_pending_credentials()
+        and not login_handoff_active()
+        and not manual_login_in_flight()
+        and not has_restore_candidate
+    ):
+        paint_auth_gate("login")
+        show_auth_ui(supabase, cookie_manager)
+        if has_pending_credentials():
+            set_auth_gate_state("authenticating", reason="credentials_stashed")
+            st.rerun()
         st.stop()
 
     # Authenticating: process stashed credentials after the branded surface painted.
@@ -632,12 +668,8 @@ def _ensure_authenticated_or_stop_impl() -> None:
         except Exception:
             pass
         clear_login_handoff()
-        try:
-            from src.auth_gate import retire_auth_gate_overlays
-
-            retire_auth_gate_overlays()
-        except Exception:
-            pass
+        # Keep authenticating/boot surface visible until authenticated chrome paints.
+        # Premature retire_auth_gate_overlays() caused blank white frames.
         log_startup_phase("auth_boundary_passed")
         emit_timing(
             "auth.boundary",
@@ -735,14 +767,8 @@ def _ensure_authenticated_or_stop_impl() -> None:
             cookie_manager = get_auth_cookie_manager(mount=True)
         persist_session_auth_cookie(cookie_manager)
         # Brief authenticating/boot surface already painted this run when needed.
-        # Do not paint competing startup shells — runtime mounts next.
+        # Do not retire yet — authenticated runtime paints shell first, then retires.
         clear_login_handoff()
-        try:
-            from src.auth_gate import retire_auth_gate_overlays
-
-            retire_auth_gate_overlays()
-        except Exception:
-            pass
         log_startup_phase("auth_boundary_passed")
         emit_timing(
             "auth.boundary",

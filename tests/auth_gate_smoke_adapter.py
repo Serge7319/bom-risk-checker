@@ -158,11 +158,16 @@ def install_smoke_auth_patches() -> None:
         handoff_active: bool = False,
         has_tokens: bool = False,
         pending_credentials: bool = False,
+        already_authenticated: bool = False,
     ):
+        if already_authenticated and not force_signed_out and not pending_credentials:
+            return "ready"
         if _smoke_cookie_present() or (
             str(st.session_state.get("access_token") or "") == SMOKE_ACCESS_TOKEN
             and str(st.session_state.get("refresh_token") or "") == SMOKE_REFRESH_TOKEN
         ):
+            if already_authenticated:
+                return "ready"
             return "boot"
         if (
             not has_tokens
@@ -176,6 +181,7 @@ def install_smoke_auth_patches() -> None:
             handoff_active=handoff_active,
             has_tokens=has_tokens,
             pending_credentials=pending_credentials,
+            already_authenticated=already_authenticated,
         )
 
     auth_mod.execute_password_login = smoke_execute_password_login

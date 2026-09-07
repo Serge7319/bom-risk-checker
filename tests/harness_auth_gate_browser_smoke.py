@@ -68,6 +68,56 @@ def _assert_no_visible_markup(page, label: str) -> None:
             )
 
 
+def _assert_visible_branded_surface(page, label: str) -> None:
+    """Fail if the viewport has no Login, progress, or application-shell content."""
+    html = page.content()
+    try:
+        body = str(page.inner_text("body") or "")
+    except Exception as exc:
+        raise AssertionError(f"{label}: could not read visible text ({exc})") from exc
+    body_stripped = " ".join(body.split())
+    if len(body_stripped) < 8:
+        raise AssertionError(f"{label}: blank viewport (no visible text)")
+
+    has_login = (
+        'data-auth-gate="login"' in html
+        and (
+            "Login" in body
+            or "Sign in" in body
+            or "password" in body.casefold()
+            or "Email" in body
+        )
+    )
+    has_progress = (
+        'data-auth-gate="boot"' in html
+        or 'data-auth-gate="authenticating"' in html
+        or "Restoring your session" in body
+        or "Signing you in" in body
+    )
+    has_shell = (
+        "cv-foundation-topbar" in html
+        or "cadivor-continuity-shell" in html
+        or "Mock workspace" in body
+        or "Dashboard" in body
+        or "Settings" in body
+        or (
+            "Cadivor" in body
+            and ("Engineering" in body or "workspace" in body.casefold())
+        )
+    )
+    # Cadivor alone on a blank page is not enough without login/progress/shell cues.
+    if has_login or has_progress or has_shell:
+        return
+    if "Cadivor" in body and (
+        "Login" in html or "password" in html.casefold() or "cv-foundation" in html
+    ):
+        return
+    raise AssertionError(
+        f"{label}: no branded Login, progress, or application-shell content "
+        f"(body_preview={body_stripped[:180]!r})"
+    )
+
+
 def _find_login_fields(page):
     for frame in [page, *page.frames]:
         email = frame.locator(
@@ -155,8 +205,10 @@ def main() -> int:
             saw_restoring_before_login = False
             for _ in range(40):
                 html = page.content()
-                _assert_no_visible_markup(page, "cold_start_wait")
                 body = page.inner_text("body") or ""
+                if body.strip():
+                    _assert_no_visible_markup(page, "cold_start_wait")
+                    _assert_visible_branded_surface(page, "cold_start_wait")
                 if "Restoring your session" in body:
                     saw_restoring_before_login = True
                 target, email, password = _find_login_fields(page)
@@ -180,6 +232,7 @@ def main() -> int:
             html = page.content()
             _assert_not_blank_topbar(html, "frame1")
             _assert_no_visible_markup(page, "login")
+            _assert_visible_branded_surface(page, "login")
             (OUT / "01_boot_or_login.html").write_text(html[:200000], encoding="utf-8")
             assert 'data-auth-gate="login"' in html
             login_body = page.inner_text("body") or ""
@@ -196,6 +249,7 @@ def main() -> int:
             html_bad = page.content()
             _assert_not_blank_topbar(html_bad, "invalid_password")
             _assert_no_visible_markup(page, "invalid_login")
+            _assert_visible_branded_surface(page, "invalid_login")
             (OUT / "02_invalid_password.html").write_text(
                 html_bad[:200000], encoding="utf-8"
             )
@@ -209,37 +263,35 @@ def main() -> int:
             target.locator(
                 'button:has-text("Login"), button:has-text("Sign in"), button[type="submit"]'
             ).first.click(timeout=8000)
-            page.wait_for_timeout(1200)
-            page.screenshot(path=str(OUT / "03_authenticating.png"), full_page=True)
-            html_auth = page.content()
-            _assert_not_blank_topbar(html_auth, "authenticating")
-            _assert_no_visible_markup(page, "authenticating")
-            (OUT / "03_authenticating.html").write_text(
-                html_auth[:200000], encoding="utf-8"
-            )
-            if "cv-startup-shell-topbar" in html_auth:
-                raise AssertionError("authenticating: fake topbar present")
-
+            # Capture the complete login → dashboard transition; never blank.
             ready = False
-            for _ in range(40):
-                html_ready = page.content()
-                body = page.inner_text("body")
-                _assert_no_visible_markup(page, "ready_wait")
+            for i in range(50):
+                _assert_no_visible_markup(page, f"login_to_ready_{i}")
+                _assert_visible_branded_surface(page, f"login_to_ready_{i}")
+                html_auth = page.content()
+                body = page.inner_text("body") or ""
+                if i == 2:
+                    page.screenshot(
+                        path=str(OUT / "03_authenticating.png"), full_page=True
+                    )
+                    (OUT / "03_authenticating.html").write_text(
+                        html_auth[:200000], encoding="utf-8"
+                    )
+                if "cv-startup-shell-topbar" in html_auth:
+                    raise AssertionError("authenticating: fake topbar present")
                 if (
-                    "cv-foundation-topbar" in html_ready
-                    or "Dashboard" in html_ready
-                    or "Mock workspace" in html_ready
+                    "cv-foundation-topbar" in html_auth
+                    or "Dashboard" in html_auth
+                    or "Mock workspace" in html_auth
                 ) and "Signing you in" not in body:
                     ready = True
                     break
-                if "Sign in to continue" not in body and "Login" not in body:
-                    ready = True
-                    break
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(400)
             page.screenshot(path=str(OUT / "04_ready.png"), full_page=True)
             html_ready = page.content()
             _assert_not_blank_topbar(html_ready, "ready")
             _assert_no_visible_markup(page, "ready")
+            _assert_visible_branded_surface(page, "ready")
             (OUT / "04_ready.html").write_text(html_ready[:200000], encoding="utf-8")
             if not ready or (
                 "Mock workspace" not in html_ready and "Dashboard" not in html_ready
@@ -249,15 +301,41 @@ def main() -> int:
             if "cv-startup-shell-topbar" in html_ready:
                 raise AssertionError("ready: fake topbar present")
 
+            # Authenticated navigation transition: Dashboard → Settings.
+            settings_btn = page.locator('button:has-text("Open Settings")').first
+            settings_btn.click(timeout=8000)
+            nav_ok = False
+            for i in range(30):
+                _assert_no_visible_markup(page, f"nav_to_settings_{i}")
+                _assert_visible_branded_surface(page, f"nav_to_settings_{i}")
+                html_nav = page.content()
+                body_nav = page.inner_text("body") or ""
+                if "Settings" in body_nav and "cv-foundation-topbar" in html_nav:
+                    nav_ok = True
+                    break
+                page.wait_for_timeout(400)
+            page.screenshot(path=str(OUT / "06_nav_settings.png"), full_page=True)
+            (OUT / "06_nav_settings.html").write_text(
+                page.content()[:200000], encoding="utf-8"
+            )
+            if not nav_ok:
+                print("AUTH_SMOKE fail=nav_settings_blank")
+                return 8
+
             page.reload(wait_until="domcontentloaded")
             # Session restore may briefly show the full-page boot shell — never markup.
-            for _ in range(20):
-                _assert_no_visible_markup(page, "boot_restore_wait")
-                html_probe = page.content()
+            # Browser reload can yield an empty body until Streamlit paints; once text
+            # appears it must be branded Login/progress/shell (never a blank canvas).
+            for _ in range(40):
                 body_probe = page.inner_text("body") or ""
+                if body_probe.strip():
+                    _assert_no_visible_markup(page, "boot_restore_wait")
+                    _assert_visible_branded_surface(page, "boot_restore_wait")
+                html_probe = page.content()
                 if (
                     "Mock workspace" in html_probe
                     or "Dashboard" in html_probe
+                    or "Settings" in body_probe
                     or 'data-auth-gate="login"' in html_probe
                 ) and "Restoring your session" not in body_probe:
                     break
@@ -267,12 +345,17 @@ def main() -> int:
             html_restore = page.content()
             _assert_not_blank_topbar(html_restore, "session_restore")
             _assert_no_visible_markup(page, "session_restore")
+            _assert_visible_branded_surface(page, "session_restore")
             (OUT / "05_session_restore.html").write_text(
                 html_restore[:200000], encoding="utf-8"
             )
             if "cv-startup-shell-topbar" in html_restore:
                 raise AssertionError("session_restore: fake topbar present")
-            if "Mock workspace" not in html_restore and "Dashboard" not in html_restore:
+            if (
+                "Mock workspace" not in html_restore
+                and "Dashboard" not in html_restore
+                and "Settings" not in html_restore
+            ):
                 if 'data-auth-gate="login"' in html_restore and "Login" in html_restore:
                     print("AUTH_SMOKE warn=session_restore_returned_login")
                 else:

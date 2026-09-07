@@ -275,11 +275,17 @@ def render_full_page_gate_surface(
 
 
 def retire_auth_gate_overlays() -> None:
-    """Hide any leftover fixed gate overlays once the app is ready."""
+    """Hide leftover fixed gate overlays only after authenticated chrome exists.
+
+    Never blank the document: keep gate progress visible until the foundation
+    shell is present, then hide the gate (not the app body).
+    """
     st.markdown(
         """
         <style id="cadivor-auth-gate-retire">
-        div.cv-auth-gate,[data-testid="cadivor-auth-gate"]{
+        /* Retire gate only when Cadivor shell chrome is on screen. */
+        body:has(.cv-foundation-topbar) div.cv-auth-gate,
+        body:has(.cv-foundation-topbar) [data-testid="cadivor-auth-gate"]{
           display:none!important;visibility:hidden!important;pointer-events:none!important
         }
         </style>
@@ -334,16 +340,20 @@ def resolve_initial_gate_state(
     handoff_active: bool = False,
     has_tokens: bool = False,
     pending_credentials: bool = False,
+    already_authenticated: bool = False,
 ) -> AuthGateState:
     """Deterministic first paint choice before any network I/O.
 
     Unauthenticated visitors go straight to login — never a boot flash.
-    boot is reserved for an existing-session restore (tokens already present).
+    boot is reserved for an existing-session restore (tokens present, not yet ready).
+    already_authenticated skips boot so workspace navigation never blanks the shell.
     """
     if pending_credentials or handoff_active:
         return "authenticating"
     if force_signed_out:
         return "login"
+    if already_authenticated:
+        return "ready"
     if has_tokens:
         return "boot"
     return "login"

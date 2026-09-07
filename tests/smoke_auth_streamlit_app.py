@@ -57,22 +57,32 @@ if st.session_state.pop("cadivor_logout_reload_pending", False):
         })();
         </script>""",
         height=0,
-        width=0,
     )
     st.stop()
 
 ensure_authenticated_or_stop()
 
-# Gate returned ready — paint a deterministic smoke workspace (not production runtime).
-retire_auth_gate_overlays()
+# Gate returned ready — paint shell chrome BEFORE retiring the signing-in surface.
+page = str(st.session_state.get("cadivor_smoke_page") or "Dashboard").strip() or "Dashboard"
 st.markdown(
-    """
+    f"""
     <div data-testid="cadivor-auth-ready" data-auth-gate="ready"
          class="cv-foundation-topbar" style="padding:24px;font-family:Inter,system-ui,sans-serif">
       <div style="font-size:18px;font-weight:900;color:#0F172A">Cadivor</div>
       <div style="margin-top:8px;color:#475569;font-size:13px">Mock workspace ready</div>
-      <div style="margin-top:18px;font-size:22px;font-weight:900;color:#0F172A">Dashboard</div>
+      <div style="margin-top:18px;font-size:22px;font-weight:900;color:#0F172A">{page}</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+retire_auth_gate_overlays()
+
+col_a, col_b = st.columns(2)
+with col_a:
+    if st.button("Open Settings", key="smoke_nav_settings"):
+        st.session_state["cadivor_smoke_page"] = "Settings"
+        st.rerun()
+with col_b:
+    if st.button("Open Dashboard", key="smoke_nav_dashboard"):
+        st.session_state["cadivor_smoke_page"] = "Dashboard"
+        st.rerun()
