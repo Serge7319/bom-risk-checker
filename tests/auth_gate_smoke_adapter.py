@@ -51,7 +51,7 @@ def _persist_smoke_cookie() -> None:
 
 def _activate_smoke_session(*, email: str = SMOKE_EMAIL) -> None:
     import streamlit as st
-    from src.auth_bootstrap import LOGIN_HANDOFF_STAGE_INITIALIZING, begin_login_handoff
+    from src.auth_bootstrap import clear_login_handoff
     from src.auth_gate import set_auth_gate_state
     from src.auth_state import APP_AUTHENTICATED, AUTH_AUTHENTICATED
 
@@ -61,7 +61,9 @@ def _activate_smoke_session(*, email: str = SMOKE_EMAIL) -> None:
     st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
     st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
     st.session_state.pop("cadivor_force_signed_out", None)
-    begin_login_handoff(LOGIN_HANDOFF_STAGE_INITIALIZING)
+    # Never arm login handoff after a valid session — that remounts the centered
+    # authenticating card over the durable authenticated shell.
+    clear_login_handoff()
     set_auth_gate_state("ready", reason="smoke_login_success")
     _persist_smoke_cookie()
 
@@ -194,3 +196,179 @@ def install_smoke_auth_patches() -> None:
     import src.auth_bootstrap as boot_mod
 
     boot_mod.resolve_auth_state = smoke_resolve_auth_state
+
+
+def _smoke_user_row(*, email: str = SMOKE_EMAIL) -> dict[str, Any]:
+    return {
+        "id": "auth-smoke-user",
+        "email": email,
+        "full_name": "Auth Smoke",
+        "company": "Cadivor Smoke",
+        "company_name": "Cadivor Smoke",
+        "role": "user",
+        "role_title": "Engineer",
+        "plan": "Starter",
+        "monthly_upload_count": 0,
+        "profile_completed": True,
+        "workspace_completed": True,
+        "first_bom_completed": True,
+        "first_alternative_completed": True,
+        "first_report_completed": True,
+        "onboarding_completed": True,
+    }
+
+
+class _SmokeQuery:
+    def __init__(self, data: list | None = None, count: int = 0) -> None:
+        self._data = list(data or [])
+        self._count = count
+
+    def select(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def eq(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def neq(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def in_(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def order(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def limit(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def range(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def update(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def insert(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def upsert(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def delete(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        del args, kwargs
+        return self
+
+    def execute(self) -> Any:
+        return types.SimpleNamespace(data=list(self._data), count=self._count)
+
+
+class _SmokeSupabase:
+    def table(self, name: str) -> _SmokeQuery:
+        if name == "users":
+            return _SmokeQuery(data=[_smoke_user_row()])
+        return _SmokeQuery()
+
+    def rpc(self, *args: Any, **kwargs: Any) -> _SmokeQuery:
+        del args, kwargs
+        return _SmokeQuery(data=[{"account_status": "active", "maintenance_mode": False}])
+
+    @property
+    def auth(self) -> Any:
+        user = types.SimpleNamespace(id="auth-smoke-user", email=SMOKE_EMAIL)
+
+        class _Auth:
+            def get_user(self, *args: Any, **kwargs: Any) -> Any:
+                del args, kwargs
+                return types.SimpleNamespace(user=user)
+
+            def get_session(self, *args: Any, **kwargs: Any) -> Any:
+                del args, kwargs
+                return types.SimpleNamespace(
+                    session=types.SimpleNamespace(
+                        access_token=SMOKE_ACCESS_TOKEN,
+                        refresh_token=SMOKE_REFRESH_TOKEN,
+                        user=user,
+                    )
+                )
+
+            def set_session(self, *args: Any, **kwargs: Any) -> Any:
+                del args, kwargs
+                return types.SimpleNamespace(session=None, user=user)
+
+            def sign_out(self, *args: Any, **kwargs: Any) -> None:
+                del args, kwargs
+
+        return _Auth()
+
+
+def install_production_path_smoke_patches() -> None:
+    """Session-boundary + IO doubles for real streamlit_app / authenticated_runtime.
+
+    Does not replace the ready surface, routing, unified_shell, or page modules.
+    """
+    install_smoke_auth_patches()
+
+    import src.auth_bootstrap as boot_mod
+    import src.authenticated_runtime as runtime_mod
+
+    smoke_sb = _SmokeSupabase()
+
+    def smoke_get_supabase_client(*args: Any, **kwargs: Any) -> _SmokeSupabase:
+        del args, kwargs
+        return smoke_sb
+
+    def smoke_load_user_data() -> dict[str, Any]:
+        import streamlit as st
+
+        email = str(
+            getattr(st.session_state.get("user"), "email", None) or SMOKE_EMAIL
+        ).strip()
+        return _smoke_user_row(email=email)
+
+    boot_mod.get_supabase_client = smoke_get_supabase_client
+    runtime_mod.get_supabase_client = smoke_get_supabase_client
+    runtime_mod.load_user_data = smoke_load_user_data
+    runtime_mod.supabase = smoke_sb
+
+    def smoke_ensure_personal_workspace(*args: Any, **kwargs: Any):
+        del args, kwargs
+        return (
+            {
+                "id": "smoke-workspace",
+                "name": "Cadivor Smoke Workspace",
+                "plan": "Starter",
+            },
+            None,
+        )
+
+    def smoke_list_user_workspaces(*args: Any, **kwargs: Any):
+        del args, kwargs
+        return (
+            [
+                {
+                    "id": "smoke-workspace",
+                    "name": "Cadivor Smoke Workspace",
+                    "plan": "Starter",
+                }
+            ],
+            None,
+        )
+
+    runtime_mod.ensure_personal_workspace = smoke_ensure_personal_workspace
+    runtime_mod.list_user_workspaces = smoke_list_user_workspaces
+    try:
+        import src.workspace_service as workspace_mod
+
+        workspace_mod.ensure_personal_workspace = smoke_ensure_personal_workspace
+        workspace_mod.list_user_workspaces = smoke_list_user_workspaces
+    except Exception:
+        pass

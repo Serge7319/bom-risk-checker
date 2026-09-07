@@ -71,7 +71,7 @@ _DEVICE_FAMILIES: dict[str, frozenset[str]] = {
 }
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class DatasheetChunk:
     chunk_id: str
     page: int

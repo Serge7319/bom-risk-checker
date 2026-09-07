@@ -11,7 +11,6 @@ from typing import Callable
 
 import streamlit as st
 
-from src.urls import internal_app_href
 from src.ui.navigation import navigate_to
 
 
@@ -63,6 +62,20 @@ def inject_unified_shell_css() -> None:
         .cv-native-nav-button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:132px;max-width:100%;min-height:38px;padding:0 14px;border-radius:8px;background:#2563eb;color:#fff!important;font:700 13px/1.1 Inter,system-ui,sans-serif;white-space:nowrap;text-decoration:none!important;box-shadow:0 7px 16px rgba(37,99,235,.18)}
         .cv-native-nav-button:hover{background:#1d4ed8;color:#fff!important;text-decoration:none!important}.cv-native-nav-button--wide{display:inline-flex;width:auto;min-width:160px}.cv-native-nav-button--secondary{background:#fff;color:#1e3a5f!important;border:1px solid #b8c8df;box-shadow:none}.cv-native-nav-button--secondary:hover{background:#f4f8ff;color:#1e3a5f!important}
         .cv-foundation-nav-link{display:flex;align-items:center;width:100%;min-height:36px;padding:0 12px;border-radius:8px;color:#dbeafe!important;font:650 13px/1.1 Inter,system-ui,sans-serif;text-decoration:none!important}.cv-foundation-nav-link:hover{background:rgba(71,112,190,.28);color:#fff!important;text-decoration:none!important}.cv-foundation-nav-link.is-active{background:#173c81;color:#fff!important}
+        /* Session-safe nav buttons (replace hard-reload <a href>). */
+        [class*="st-key-cv_foundation_nav_"] button{
+          display:flex!important;align-items:center!important;justify-content:flex-start!important;
+          width:100%!important;min-height:36px!important;padding:0 12px!important;border-radius:8px!important;
+          border:0!important;box-shadow:none!important;background:transparent!important;
+          color:#dbeafe!important;font:650 13px/1.1 Inter,system-ui,sans-serif!important
+        }
+        [class*="st-key-cv_foundation_nav_"] button:hover{
+          background:rgba(71,112,190,.28)!important;color:#fff!important
+        }
+        [class*="st-key-cv_foundation_nav_"] button[kind="primary"],
+        [class*="st-key-cv_foundation_nav_"] button[data-testid="baseButton-primary"]{
+          background:#173c81!important;color:#fff!important
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -252,11 +265,16 @@ def render_unified_shell(
                 unsafe_allow_html=True,
             )
             for label, slug, destination in rows:
-                active_class = " is-active" if destination == current_page else ""
-                st.html(
-                    f'<a class="cv-foundation-nav-link{active_class}" '
-                    f'href="{html.escape(internal_app_href(destination), quote=True)}" '
-                    f'target="_self">{_escape(label)}</a>'
+                # Session navigation only — raw ?page= hrefs hard-reload the app and
+                # briefly clear the authenticated shell (blank white/black frames).
+                is_active = destination == current_page
+                st.button(
+                    label,
+                    key=f"cv_foundation_nav_{slug}",
+                    use_container_width=True,
+                    type="primary" if is_active else "secondary",
+                    on_click=_commit_navigation,
+                    args=(destination,),
                 )
 
         st.markdown(

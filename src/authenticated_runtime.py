@@ -87,7 +87,6 @@ from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import (
     render_unified_shell,
     inject_unified_shell_css,
-    paint_authenticated_continuity_shell,
 )
 from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.ui.premium_interaction_repair import inject_premium_interaction_css
@@ -1776,13 +1775,84 @@ def run_authenticated_app() -> None:
         unsafe_allow_html=True,
     )
 
-    # Fixed continuity chrome only (no in-flow skeleton) while profile IO runs.
-    _continuity_page = str(
+    # Paint the durable foundation shell BEFORE profile/workspace IO so Login→Dashboard
+    # and authenticated navigations never clear to a blank body or remount a gate card.
+    try:
+        _raw_qp_page = st.query_params.get("page", "")
+        if isinstance(_raw_qp_page, list):
+            _raw_qp_page = _raw_qp_page[0] if _raw_qp_page else ""
+    except Exception:
+        _raw_qp_page = ""
+    _shell_route = str(
         st.session_state.get("cadivor_route")
         or st.session_state.get("app_mode")
+        or _raw_qp_page
         or "Dashboard"
     ).strip() or "Dashboard"
-    paint_authenticated_continuity_shell(page=_continuity_page)
+    _shell_cache = dict(st.session_state.get("cadivor_shell_cache") or {})
+    _auth_user_early = st.session_state.get("user")
+    _shell_email = str(
+        getattr(_auth_user_early, "email", None) or _shell_cache.get("email") or ""
+    ).strip()
+    _shell_name = str(
+        _shell_cache.get("full_name")
+        or (_shell_email.split("@")[0].replace(".", " ").title() if _shell_email else "")
+        or "Cadivor user"
+    ).strip()
+    _shell_initials = str(
+        _shell_cache.get("initials")
+        or "".join(part[0] for part in _shell_name.split()[:2]).upper()[:2]
+        or "C"
+    )
+    _shell_profile = {
+        "full_name": _shell_name,
+        "email": _shell_email,
+        "initials": _shell_initials,
+        "company": _shell_cache.get("company") or "",
+        "company_name": _shell_cache.get("company_name") or _shell_cache.get("company") or "",
+        "role_title": _shell_cache.get("role_title") or "",
+    }
+
+    def _early_shell_clear_analysis() -> None:
+        for _key in (
+            "cadivor_active_analysis_id",
+            "cadivor_active_analysis_tab",
+            "analysis_id",
+            "results_df",
+            "analysis_saved",
+            "uploaded_filename",
+        ):
+            st.session_state.pop(_key, None)
+        navigate_to("BOM Analyzer")
+
+    def _early_shell_logout() -> None:
+        st.session_state.pop("cadivor_route_transition", None)
+        st.session_state.pop("cadivor_nav_params", None)
+        begin_logout(supabase, cookie_manager)
+
+    inject_premium_css()
+    render_unified_shell(
+        current_page=_shell_route,
+        profile=_shell_profile,
+        workspace_name=str(
+            _shell_cache.get("workspace_name") or "Cadivor Workspace"
+        ),
+        plan_name=str(_shell_cache.get("plan_name") or "Starter"),
+        usage_summary=str(_shell_cache.get("usage_summary") or "Loading workspace…"),
+        saved_summary=str(_shell_cache.get("saved_summary") or "Loading saved BOMs…"),
+        is_admin=bool(_shell_cache.get("is_admin")),
+        navigate=navigate_to,
+        clear_analysis=_early_shell_clear_analysis,
+        request_logout=_early_shell_logout,
+    )
+    try:
+        from src.auth_gate import retire_auth_gate_overlays
+
+        retire_auth_gate_overlays()
+    except Exception:
+        pass
+    mark_authenticated_surface_ready()
+    st.session_state["cadivor_foundation_shell_mounted"] = True
 
     log_startup_phase("authenticated_runtime_begin")
     from src.performance_timing import emit_timing, timed_phase
@@ -2556,7 +2626,15 @@ def run_authenticated_app() -> None:
         st.session_state.get("cadivor_last_url_page", ""),
         "",
     )
-    if _external_page and _external_page != _last_url_page:
+    # Browser Back/Forward / deep links may change ?page= independently of the
+    # session route. Sidebar navigate_to already wrote cadivor_route — do not let
+    # a stale query param from the previous page override that session commit
+    # (that painted early shell for route A while content rendered route B).
+    if (
+        _external_page
+        and _external_page != _last_url_page
+        and _external_page != app_mode
+    ):
         app_mode = _external_page
     st.session_state["cadivor_last_url_page"] = _external_page or app_mode
 
@@ -2690,44 +2768,35 @@ def run_authenticated_app() -> None:
     shell_email = profile_for_shell.get("email") or current_user.get("email", "")
     shell_initials = "".join([part[0] for part in shell_name.split()[:2]]).upper()[:2] or "C"
 
-    import urllib.parse as _urlparse
-
-
     # ---------- Cadivor Unified Application Shell ----------
-    # One deterministic shell authority. Internal navigation uses session state and
-    # the browser URL is not changed by ordinary sidebar interactions.
+    # Shell chrome was painted at the top of this run (before profile IO). Do not
+    # call render_unified_shell again — duplicate Streamlit widget keys would crash
+    # and a second paint is what allowed blank/gate flash between route content.
+    # Refresh the cache so the next rerun's early shell has accurate labels.
+    _usage_summary = (
+        f"{monthly_upload_count:,} / "
+        f"{format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month"
+    )
+    _saved_summary = (
+        f"{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')}"
+    )
+    st.session_state["cadivor_shell_cache"] = {
+        "full_name": shell_name,
+        "email": shell_email,
+        "initials": shell_initials,
+        "company": shell_company,
+        "company_name": shell_company,
+        "role_title": profile_for_shell.get("role_title") or "",
+        "workspace_name": shell_company,
+        "plan_name": selected_plan_name,
+        "usage_summary": _usage_summary,
+        "saved_summary": _saved_summary,
+        "is_admin": is_admin,
+    }
+    st.session_state["cadivor_foundation_shell_mounted"] = True
+
     inject_premium_css()
     st.markdown(readability_css(), unsafe_allow_html=True)
-
-
-    def _s55_clear_analysis():
-        for _key in (
-            "cadivor_active_analysis_id", "cadivor_active_analysis_tab", "analysis_id",
-            "results_df", "analysis_saved", "uploaded_filename",
-        ):
-            st.session_state.pop(_key, None)
-        navigate_to("BOM Analyzer")
-
-
-    def _s55_logout():
-        """End the local session immediately; never route through page handling."""
-        st.session_state.pop("cadivor_route_transition", None)
-        st.session_state.pop("cadivor_nav_params", None)
-        begin_logout(supabase, cookie_manager)
-
-
-    render_unified_shell(
-        current_page=app_mode,
-        profile=profile_for_shell,
-        workspace_name=shell_company,
-        plan_name=selected_plan_name,
-        usage_summary=f"{monthly_upload_count:,} / {format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month",
-        saved_summary=f"{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')}",
-        is_admin=is_admin,
-        navigate=navigate_to,
-        clear_analysis=_s55_clear_analysis,
-        request_logout=_s55_logout,
-    )
 
     # Design System v1 is deliberately injected after the application shell.
     with timed_phase("runtime.css_injection", operation="render"):

@@ -275,18 +275,20 @@ def render_full_page_gate_surface(
 
 
 def retire_auth_gate_overlays() -> None:
-    """Hide leftover fixed gate overlays only after authenticated chrome exists.
+    """Hide leftover gate overlays once authenticated foundation chrome exists.
 
-    Never blank the document: keep gate progress visible until the foundation
-    shell is present, then hide the gate (not the app body).
+    Never blank the document body — only remove gate cards/overlays when the
+    durable shell (topbar and/or nav rail) is present.
     """
     st.markdown(
         """
         <style id="cadivor-auth-gate-retire">
-        /* Retire gate only when Cadivor shell chrome is on screen. */
         body:has(.cv-foundation-topbar) div.cv-auth-gate,
-        body:has(.cv-foundation-topbar) [data-testid="cadivor-auth-gate"]{
-          display:none!important;visibility:hidden!important;pointer-events:none!important
+        body:has(.cv-foundation-topbar) [data-testid="cadivor-auth-gate"],
+        body:has(.st-key-cv_foundation_navigation) div.cv-auth-gate,
+        body:has(.st-key-cv_foundation_navigation) [data-testid="cadivor-auth-gate"]{
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          opacity:0!important;z-index:-1!important
         }
         </style>
         """,
@@ -345,15 +347,17 @@ def resolve_initial_gate_state(
     """Deterministic first paint choice before any network I/O.
 
     Unauthenticated visitors go straight to login — never a boot flash.
-    boot is reserved for an existing-session restore (tokens present, not yet ready).
-    already_authenticated skips boot so workspace navigation never blanks the shell.
+    Once a session is authenticated, always return ready — never boot or
+    authenticating (handoff must not remount the centered gate over the shell).
+    boot is reserved for cold session restore before the workspace is admitted.
     """
-    if pending_credentials or handoff_active:
-        return "authenticating"
     if force_signed_out:
         return "login"
-    if already_authenticated:
+    # Authenticated workspace admission wins over leftover login handoff flags.
+    if already_authenticated and not pending_credentials:
         return "ready"
+    if pending_credentials or handoff_active:
+        return "authenticating"
     if has_tokens:
         return "boot"
     return "login"
