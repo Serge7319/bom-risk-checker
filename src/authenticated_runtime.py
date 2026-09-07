@@ -7290,48 +7290,47 @@ def run_authenticated_app() -> None:
                 text-transform:uppercase;
                 margin:0 0 12px;
             }
-            /* Stateful Settings nav — compact tab-like radio (persists across reruns). */
-            .st-key-settings_active_tab{
-                margin:0 0 14px!important;
-            }
-            .st-key-settings_active_tab [data-testid="stRadio"] > label{
-                display:none!important;
-            }
-            .st-key-settings_active_tab [data-testid="stRadio"] [role="radiogroup"]{
-                gap:4px!important;
-                flex-wrap:wrap!important;
-                border-bottom:1px solid #DFE7F2!important;
-                padding:0 0 2px!important;
+            /* Stateful Settings nav — compact keyed tab buttons (no radio circles). */
+            .st-key-settings_tab_profile,
+            .st-key-settings_tab_preferences,
+            .st-key-settings_tab_workspace,
+            .st-key-settings_tab_security,
+            .st-key-settings_tab_billing{
                 margin:0!important;
             }
-            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"]{
+            .st-key-settings_tab_profile [data-testid="stButton"] > button,
+            .st-key-settings_tab_preferences [data-testid="stButton"] > button,
+            .st-key-settings_tab_workspace [data-testid="stButton"] > button,
+            .st-key-settings_tab_security [data-testid="stButton"] > button,
+            .st-key-settings_tab_billing [data-testid="stButton"] > button{
                 margin:0!important;
-                padding:10px 16px 12px!important;
+                padding:10px 12px 12px!important;
                 min-height:42px!important;
                 border-radius:10px 10px 0 0!important;
                 border:0!important;
+                border-bottom:2px solid transparent!important;
+                box-shadow:none!important;
                 background:transparent!important;
                 color:#475569!important;
                 font-size:14px!important;
                 font-weight:650!important;
             }
-            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child{
-                display:none!important;
-            }
-            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"][aria-checked="true"],
-            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){
+            .st-key-settings_tab_profile [data-testid="stButton"] > button[kind="primary"],
+            .st-key-settings_tab_preferences [data-testid="stButton"] > button[kind="primary"],
+            .st-key-settings_tab_workspace [data-testid="stButton"] > button[kind="primary"],
+            .st-key-settings_tab_security [data-testid="stButton"] > button[kind="primary"],
+            .st-key-settings_tab_billing [data-testid="stButton"] > button[kind="primary"]{
                 color:#0F172A!important;
                 font-weight:800!important;
-                box-shadow:inset 0 -2px 0 #2563EB!important;
+                border-bottom-color:#2563EB!important;
                 background:#F8FAFC!important;
             }
-            /* Scoped override: only the billing-panel link_button is primary.
-               Global premium_interactions.css keeps other stLinkButton anchors as text links. */
-            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton,
-            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > div{
+            /* Billing portal CTA — full-width Cadivor primary (1.37-compatible). */
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"],
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"] > div{
                 width:100%!important;
             }
-            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a{
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"] a{
                 display:inline-flex!important;
                 align-items:center!important;
                 justify-content:center!important;
@@ -7346,7 +7345,7 @@ def run_authenticated_app() -> None:
                 text-decoration:none!important;
                 font-weight:850!important;
             }
-            section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a:hover{
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"] a:hover{
                 background:#1D4ED8!important;
                 border-color:#1D4ED8!important;
                 color:#FFFFFF!important;
@@ -7458,8 +7457,8 @@ def run_authenticated_app() -> None:
             )
 
         # Persist Settings section across Streamlit button reruns (native st.tabs
-        # always resets to the first tab). Keyed radio keeps Billing selected after
-        # Manage billing creates the portal session.
+        # always resets to the first tab). Keyed tab buttons keep Billing selected
+        # after Manage billing creates the portal session — no st.radio circles.
         _settings_tab_options = (
             "Profile",
             "Preferences",
@@ -7467,15 +7466,33 @@ def run_authenticated_app() -> None:
             "Security",
             "Billing",
         )
+        _settings_tab_keys = {
+            "Profile": "settings_tab_profile",
+            "Preferences": "settings_tab_preferences",
+            "Workspace": "settings_tab_workspace",
+            "Security": "settings_tab_security",
+            "Billing": "settings_tab_billing",
+        }
         if st.session_state.get("settings_active_tab") not in _settings_tab_options:
             st.session_state["settings_active_tab"] = "Profile"
-        st.radio(
-            "Settings section",
-            options=_settings_tab_options,
-            horizontal=True,
-            key="settings_active_tab",
-            label_visibility="collapsed",
-        )
+
+        def _set_settings_active_tab(tab_label: str) -> None:
+            st.session_state["settings_active_tab"] = tab_label
+
+        settings_tab_cols = st.columns(len(_settings_tab_options), gap="small")
+        for tab_col, tab_label in zip(settings_tab_cols, _settings_tab_options):
+            with tab_col:
+                is_active_tab = (
+                    str(st.session_state.get("settings_active_tab") or "") == tab_label
+                )
+                st.button(
+                    tab_label,
+                    key=_settings_tab_keys[tab_label],
+                    type="primary" if is_active_tab else "secondary",
+                    use_container_width=True,
+                    on_click=_set_settings_active_tab,
+                    args=(tab_label,),
+                )
         settings_tab = str(st.session_state.get("settings_active_tab") or "Profile")
 
         if settings_tab == "Profile":
@@ -7877,56 +7894,55 @@ def run_authenticated_app() -> None:
                             portal_customer = ""
                             portal_ready = False
 
-                    if not portal_ready:
-                        cadivor_button_wrap("primary")
-                        if st.button(
-                            "Manage billing",
-                            key="settings_manage_billing",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            try:
-                                created_url = str(
-                                    create_billing_portal_session(
-                                        stored_stripe_customer_id,
-                                        app_url("", page="Settings"),
-                                    )
-                                    or ""
-                                ).strip()
-                                st.session_state[portal_url_key] = created_url
-                                st.session_state[portal_customer_key] = (
-                                    stored_stripe_customer_id
+                    def _start_billing_portal_session() -> None:
+                        # on_click runs before the next script run so session state is
+                        # ready when we re-render — Manage and Open stay mutually exclusive.
+                        try:
+                            created_url = str(
+                                create_billing_portal_session(
+                                    stored_stripe_customer_id,
+                                    app_url("", page="Settings"),
                                 )
-                                # Same-run handoff: render Open on Billing.
-                                # settings_active_tab already persists via the keyed radio
-                                # (do not mutate it after the widget is instantiated).
-                                portal_url = created_url
-                                portal_customer = stored_stripe_customer_id
-                                portal_ready = bool(
-                                    portal_url
-                                    and portal_customer == stored_stripe_customer_id
-                                )
-                            except Exception:
+                                or ""
+                            ).strip()
+                            if not created_url:
                                 _clear_billing_portal_session_state()
-                                portal_url = ""
-                                portal_customer = ""
-                                portal_ready = False
-                                st.error(
-                                    "Billing management could not be opened. "
-                                    "Please try again or contact support."
-                                )
-                        cadivor_button_wrap_end()
+                                st.session_state["settings_billing_portal_error"] = True
+                                return
+                            st.session_state[portal_url_key] = created_url
+                            st.session_state[portal_customer_key] = (
+                                stored_stripe_customer_id
+                            )
+                            st.session_state.pop("settings_billing_portal_error", None)
+                        except Exception:
+                            _clear_billing_portal_session_state()
+                            st.session_state["settings_billing_portal_error"] = True
 
                     if portal_ready:
                         st.caption(
                             "Manage payment methods, view invoices, or cancel your subscription securely through Stripe."
                         )
-                        cadivor_button_wrap("primary")
                         st.link_button(
                             "Open secure billing portal",
                             portal_url,
                             type="primary",
                             use_container_width=True,
+                        )
+                    else:
+                        if st.session_state.pop(
+                            "settings_billing_portal_error", False
+                        ):
+                            st.error(
+                                "Billing management could not be opened. "
+                                "Please try again or contact support."
+                            )
+                        cadivor_button_wrap("primary")
+                        st.button(
+                            "Manage billing",
+                            key="settings_manage_billing",
+                            type="primary",
+                            use_container_width=True,
+                            on_click=_start_billing_portal_session,
                         )
                         cadivor_button_wrap_end()
                 else:
