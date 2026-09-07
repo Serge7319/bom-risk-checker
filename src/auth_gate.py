@@ -108,15 +108,16 @@ def _log_gate_transition(previous: str, nxt: str, *, reason: str = "") -> None:
 
 
 def _inject_gate_css(*, interactive: bool, show_progress: bool) -> None:
-    """CSS-only injection — never mix style tags with card markup in one markdown."""
+    """CSS-only injection — never mix style tags with card markup in one markdown.
+
+    Interactive login/error chrome must never hide ``.cv-auth-gate`` with a
+    global ``display:none`` rule — that left an empty blue-border auth card
+    when authenticating markup was painted in the same document.
+    """
     if interactive:
         st.markdown(
             """
             <style id="cadivor-auth-gate-css">
-            div.cv-auth-gate{
-              display:none!important;visibility:hidden!important;pointer-events:none!important;
-              opacity:0!important;z-index:-1!important
-            }
             header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
             section[data-testid="stSidebar"],[data-testid="collapsedControl"]{
               display:none!important;visibility:hidden!important;height:0!important
@@ -163,6 +164,11 @@ def _inject_gate_css(*, interactive: bool, show_progress: bool) -> None:
           background:#F5F7FB!important;color:#0F172A!important
         }}
         .main .block-container{{max-width:none!important;padding:0!important;margin:0!important}}
+        /* Never leave the Login auth card visible beside the authenticating gate. */
+        .st-key-cadivor_auth_card,[class*="st-key-cadivor_auth_card"]{{
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          opacity:0!important;z-index:-1!important
+        }}
         .cv-auth-gate{{
           position:fixed;inset:0;z-index:1200;min-height:100vh;min-height:100dvh;
           display:grid;place-items:center;padding:24px;box-sizing:border-box;
@@ -275,18 +281,18 @@ def render_full_page_gate_surface(
 
 
 def retire_auth_gate_overlays() -> None:
-    """Hide leftover gate overlays once authenticated foundation chrome exists.
+    """Hide leftover gate overlays only after shell AND page content exist.
 
-    Never blank the document body — only remove gate cards/overlays when the
-    durable shell (topbar and/or nav rail) is present.
+    Never blank the document body. Do not retire merely because the foundation
+    topbar/nav mounted — that left an empty main while profile IO ran.
     """
     st.markdown(
         """
         <style id="cadivor-auth-gate-retire">
-        body:has(.cv-foundation-topbar) div.cv-auth-gate,
-        body:has(.cv-foundation-topbar) [data-testid="cadivor-auth-gate"],
-        body:has(.st-key-cv_foundation_navigation) div.cv-auth-gate,
-        body:has(.st-key-cv_foundation_navigation) [data-testid="cadivor-auth-gate"]{
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content]) div.cv-auth-gate,
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"],
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content]) div.cv-auth-gate,
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"]{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;z-index:-1!important
         }
@@ -294,6 +300,20 @@ def retire_auth_gate_overlays() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def mark_page_content_ready(page: str = "") -> None:
+    """Emit the page-content marker that allows auth-gate retirement."""
+    safe_page = html_lib.escape(str(page or "").strip() or "workspace")
+    try:
+        st.markdown(
+            f'<div data-cadivor-page-content="1" data-cadivor-page="{safe_page}" '
+            f'aria-hidden="true" style="position:absolute;width:1px;height:1px;margin:-1px;'
+            f'border:0;padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>',
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        pass
 
 
 def paint_auth_gate(state: AuthGateState) -> None:

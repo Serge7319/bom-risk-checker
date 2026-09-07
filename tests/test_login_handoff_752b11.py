@@ -11,7 +11,7 @@ from tests.test_manual_login_atomic import ManualLoginAtomicTests
 class LoginHandoff752B11Tests(unittest.TestCase):
     def setUp(self):
         self.helper = ManualLoginAtomicTests(
-            methodName="test_login_submit_calls_sign_in_in_same_script_run"
+            methodName="test_login_submit_stashes_and_reruns_without_provider"
         )
         self.helper.setUp()
 
@@ -30,7 +30,7 @@ class LoginHandoff752B11Tests(unittest.TestCase):
         events = []
 
         with patch.object(auth, "_log_manual_login_event", side_effect=lambda event, *_: events.append(event)):
-            auth._submit_manual_login(
+            auth.execute_password_login(
                 supabase, MagicMock(), "user@example.com", "password-value"
             )
 
@@ -56,7 +56,7 @@ class LoginHandoff752B11Tests(unittest.TestCase):
             session=None,
         )
 
-        auth._submit_manual_login(
+        auth.execute_password_login(
             supabase, MagicMock(), "user@example.com", "password-value"
         )
 
@@ -79,7 +79,7 @@ class LoginHandoff752B11Tests(unittest.TestCase):
         )
 
         with patch.object(auth, "mark_authenticated") as mark_mock:
-            auth._submit_manual_login(
+            auth.execute_password_login(
                 supabase, MagicMock(), "user@example.com", "password-value"
             )
 
@@ -110,7 +110,7 @@ class LoginHandoff752B11Tests(unittest.TestCase):
                 side_effect=lambda *_: order.append("mark_authenticated"),
             ),
         ):
-            auth._submit_manual_login(
+            auth.execute_password_login(
                 supabase, MagicMock(), "user@example.com", "password-value"
             )
 

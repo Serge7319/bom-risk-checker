@@ -5,6 +5,8 @@ boot → login → authenticating → ready without Supabase or env-based mock s
 """
 from __future__ import annotations
 
+import sys
+import time
 import types
 import uuid
 from typing import Any
@@ -92,6 +94,15 @@ def _activate_smoke_session(*, email: str = SMOKE_EMAIL) -> None:
     st.session_state["cadivor_auth_status"] = AUTH_AUTHENTICATED
     st.session_state["cadivor_root_state"] = APP_AUTHENTICATED
     st.session_state.pop("cadivor_force_signed_out", None)
+    # Mirror mark_authenticated route sync so deep-link ?page= survives login.
+    requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
+    route = requested or str(st.session_state.get("cadivor_route") or "").strip() or "Dashboard"
+    st.session_state["cadivor_route"] = route
+    st.session_state["app_mode"] = route
+    try:
+        st.query_params["page"] = route
+    except Exception:
+        pass
     # Never arm login handoff after a valid session — that remounts the centered
     # authenticating card over the durable authenticated shell.
     clear_login_handoff()
@@ -113,6 +124,9 @@ def install_smoke_auth_patches() -> None:
         supabase: Any, cookie_manager: Any, email: str, password: str
     ) -> bool:
         del supabase, cookie_manager
+        # Brief pause so the authenticating surface can paint before provider
+        # doubles resolve (production I/O is slower; smoke must still observe it).
+        time.sleep(0.45)
         email_n = str(email or "").strip()
         if email_n.casefold() == SMOKE_EMAIL and str(password or "") == SMOKE_PASSWORD:
             _activate_smoke_session(email=email_n)
@@ -362,6 +376,13 @@ def install_production_path_smoke_patches() -> None:
     Does not replace the ready surface, routing, unified_shell, or page modules.
     """
     install_smoke_auth_patches()
+
+    # BOM Analyzer imports stripe_helper at page entry; keep a minimal stub so
+    # smoke can exercise the real page without requiring the Stripe SDK.
+    if "stripe" not in sys.modules:
+        stripe_stub = types.ModuleType("stripe")
+        stripe_stub.error = types.SimpleNamespace(StripeError=Exception)
+        sys.modules["stripe"] = stripe_stub
 
     import src.auth_bootstrap as boot_mod
     import src.authenticated_runtime as runtime_mod

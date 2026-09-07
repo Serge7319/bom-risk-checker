@@ -1733,6 +1733,108 @@ def generate_bom_pdf_report(project_name, selected_parts, attention_parts, bom_h
 
 
 
+def _canonical_route_allowlist() -> frozenset[str]:
+    return frozenset(
+        {
+            "Dashboard",
+            "BOM Analyzer",
+            "Alternative Finder",
+            "Compare Parts",
+            "Datasheet Q&A",
+            "Monitoring",
+            "Engineering Decisions",
+            "Procurement Advisor",
+            "Portfolio Intelligence",
+            "Design Impact Analyzer",
+            "Cost Optimization",
+            "Supply Risk Scenario",
+            "Reports",
+            "Pricing",
+            "Settings",
+            "Workspace",
+            "Notifications",
+            "About",
+            "Admin Console",
+            "Help",
+            "Admin",
+            "Analysis Details",
+            "Onboarding",
+        }
+    )
+
+
+def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
+    """Resolve one route for URL, session, shell chrome, and page dispatch.
+
+    Priority:
+    1. Browser Back/Forward event page (when present)
+    2. Existing session route / app_mode
+    3. ``?page=`` query value
+    4. Dashboard
+
+    Always writes the same value to ``cadivor_route``, ``app_mode``, and
+    ``st.query_params["page"]`` so chrome and content cannot diverge in-run.
+    """
+    browser_page = ""
+    browser_event = consume_browser_navigation_event()
+    if browser_event:
+        event_id = _safe_text(browser_event.get("event_id"), "")
+        href = _safe_text(browser_event.get("href"), "")
+        if (
+            event_id
+            and event_id != st.session_state.get("cadivor_last_browser_navigation_event_id")
+            and href
+        ):
+            try:
+                params = {
+                    key: values[-1]
+                    for key, values in parse_qs(
+                        urlparse(href).query,
+                        keep_blank_values=True,
+                    ).items()
+                    if values
+                }
+            except Exception:
+                params = {}
+            browser_page = _safe_text(params.get("page"), "")
+            st.session_state["cadivor_last_browser_navigation_event_id"] = event_id
+
+    try:
+        raw_qp = st.query_params.get("page", "")
+        if isinstance(raw_qp, list):
+            raw_qp = raw_qp[0] if raw_qp else ""
+    except Exception:
+        raw_qp = ""
+    query_page = _safe_text(raw_qp, "")
+    session_page = _safe_text(
+        st.session_state.get("cadivor_route") or st.session_state.get("app_mode"),
+        "",
+    )
+
+    if browser_page:
+        route = browser_page
+    elif session_page:
+        route = session_page
+    elif query_page:
+        route = query_page
+    else:
+        route = "Dashboard"
+
+    allow = _canonical_route_allowlist()
+    if not allow_admin:
+        allow = allow - {"Admin Console", "Help", "Admin"}
+    if route not in allow:
+        route = "Dashboard"
+
+    st.session_state["cadivor_route"] = route
+    st.session_state["app_mode"] = route
+    try:
+        st.query_params["page"] = route
+    except Exception:
+        pass
+    return route
+
+
 def run_authenticated_app() -> None:
     global current_user, is_admin, app_mode, saved_bom_count
     global active_workspace_id, active_workspace_name, active_workspace_role
@@ -1775,20 +1877,13 @@ def run_authenticated_app() -> None:
         unsafe_allow_html=True,
     )
 
+    # One canonical route before shell chrome — reused for sidebar, topbar, and
+    # page dispatch. Never re-resolve later with a sticky last-URL guard.
+    _shell_route = resolve_canonical_app_route(allow_admin=True)
+    app_mode = _shell_route
+
     # Paint the durable foundation shell BEFORE profile/workspace IO so Login→Dashboard
     # and authenticated navigations never clear to a blank body or remount a gate card.
-    try:
-        _raw_qp_page = st.query_params.get("page", "")
-        if isinstance(_raw_qp_page, list):
-            _raw_qp_page = _raw_qp_page[0] if _raw_qp_page else ""
-    except Exception:
-        _raw_qp_page = ""
-    _shell_route = str(
-        st.session_state.get("cadivor_route")
-        or st.session_state.get("app_mode")
-        or _raw_qp_page
-        or "Dashboard"
-    ).strip() or "Dashboard"
     _shell_cache = dict(st.session_state.get("cadivor_shell_cache") or {})
     _auth_user_early = st.session_state.get("user")
     _shell_email = str(
@@ -1845,12 +1940,8 @@ def run_authenticated_app() -> None:
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
     )
-    try:
-        from src.auth_gate import retire_auth_gate_overlays
-
-        retire_auth_gate_overlays()
-    except Exception:
-        pass
+    # Do not retire the Signing-you-in gate merely because the shell mounted —
+    # keep progress visible through load_user_data until page content paints.
     mark_authenticated_surface_ready()
     st.session_state["cadivor_foundation_shell_mounted"] = True
 
@@ -2572,76 +2663,23 @@ def run_authenticated_app() -> None:
         except SupabaseReadTransportError:
             saved_bom_count = 0
 
-    # Route state is mirrored to the address bar by navigate_to.  Treat a changed
-    # URL page as an intentional route transition so browser Back/Forward restores
-    # the visible Cadivor page instead of only changing an obsolete query string.
-    _browser_navigation_event = consume_browser_navigation_event()
-    _browser_navigation_params = {}
-    _browser_navigation_event_id = ""
-    if _browser_navigation_event:
-        _browser_navigation_event_id = _safe_text(
-            _browser_navigation_event.get("event_id"), ""
-        )
-        _browser_navigation_href = _safe_text(
-            _browser_navigation_event.get("href"), ""
-        )
-        if (
-            _browser_navigation_event_id
-            and _browser_navigation_event_id
-            != st.session_state.get("cadivor_last_browser_navigation_event_id")
-            and _browser_navigation_href
-        ):
-            try:
-                _browser_navigation_params = {
-                    key: values[-1]
-                    for key, values in parse_qs(
-                        urlparse(_browser_navigation_href).query,
-                        keep_blank_values=True,
-                    ).items()
-                    if values
-                }
-            except Exception:
-                _browser_navigation_params = {}
-            st.session_state["cadivor_last_browser_navigation_event_id"] = (
-                _browser_navigation_event_id
-            )
-
-    try:
-        _raw_external_page = st.query_params.get("page", "")
-        if isinstance(_raw_external_page, list):
-            _raw_external_page = _raw_external_page[0] if _raw_external_page else ""
-    except Exception:
-        _raw_external_page = ""
-    _external_page = _safe_text(
-        _browser_navigation_params.get("page", _raw_external_page), ""
-    )
-
+    # Route was committed once before shell paint. Reuse that exact value for
+    # page dispatch — do not re-resolve via a sticky last-URL guard (that caused
+    # BOM Analyzer chrome with Dashboard content).
     app_mode = _safe_text(
-        st.session_state.get("cadivor_route")
-        or st.session_state.get("app_mode")
-        or "Dashboard",
+        st.session_state.get("cadivor_route") or st.session_state.get("app_mode") or _shell_route,
         "Dashboard",
     )
-    _last_url_page = _safe_text(
-        st.session_state.get("cadivor_last_url_page", ""),
-        "",
-    )
-    # Browser Back/Forward / deep links may change ?page= independently of the
-    # session route. Sidebar navigate_to already wrote cadivor_route — do not let
-    # a stale query param from the previous page override that session commit
-    # (that painted early shell for route A while content rendered route B).
-    if (
-        _external_page
-        and _external_page != _last_url_page
-        and _external_page != app_mode
-    ):
-        app_mode = _external_page
-    st.session_state["cadivor_last_url_page"] = _external_page or app_mode
-
+    if not is_admin and app_mode in {"Admin Console", "Help", "Admin"}:
+        app_mode = "Dashboard"
     if app_mode not in NAV_OPTIONS and app_mode not in {"Analysis Details", "Onboarding"}:
         app_mode = "Dashboard"
     st.session_state["cadivor_route"] = app_mode
     st.session_state["app_mode"] = app_mode  # compatibility mirror
+    try:
+        st.query_params["page"] = app_mode
+    except Exception:
+        pass
     if st.session_state.get("cadivor_support_last_page") != app_mode:
         _record_support_activity("page_viewed", {"page": app_mode})
         st.session_state["cadivor_support_last_page"] = app_mode
@@ -2808,13 +2846,8 @@ def run_authenticated_app() -> None:
         # Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
         inject_core_premium_ui()
         mark_authenticated_surface_ready()
-    try:
-        from src.auth_gate import retire_auth_gate_overlays
-
-        # Shell chrome is on screen — safe to hide signing-in / restore gate.
-        retire_auth_gate_overlays()
-    except Exception:
-        pass
+    # Keep Signing-you-in visible until page content marks itself ready below.
+    # Retiring here (shell-only) caused empty main during the handoff.
 
     with timed_phase("runtime.workspace_commands", operation="workspace_commands") as cmd_meta:
         try:
@@ -2839,6 +2872,15 @@ def run_authenticated_app() -> None:
         outcome="success",
         event="route_enter",
     )
+
+    # Shell + first page content: allow the authenticating gate to retire now.
+    try:
+        from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
+
+        mark_page_content_ready(app_mode)
+        retire_auth_gate_overlays()
+    except Exception:
+        pass
 
     if app_mode == "Onboarding":
         progress = onboarding_progress or {}

@@ -244,6 +244,16 @@ def _auth_css():
             width:100%!important;
             margin-top:18px!important;
         }
+        .st-key-cadivor_auth_card .cv-auth-card-progress{
+            height:4px;border-radius:999px;background:#E8EEF6;overflow:hidden;margin-top:8px;
+        }
+        .st-key-cadivor_auth_card .cv-auth-card-progress span{
+            display:block;width:42%;height:100%;border-radius:inherit;background:#2563EB;
+            animation:cv-auth-card-progress 1.1s ease-in-out infinite;
+        }
+        @keyframes cv-auth-card-progress{
+            0%{transform:translateX(-110%)}100%{transform:translateX(340%)}
+        }
         .cadivor-nav{
             width:100%;
             display:flex;
@@ -437,10 +447,29 @@ def _fail_manual_login_and_rerun(
     st.rerun()
 
 
+def _render_auth_card_signing_in() -> None:
+    """Replace the Login form body inside ``cadivor_auth_card`` with progress copy.
+
+    Never mounts a second ``.cv-auth-gate`` surface alongside the auth card.
+    """
+    st.markdown(
+        """
+        <div class="auth-card-header" data-testid="cadivor-auth-card-signing-in"
+             data-auth-progress="signing-in" role="status" aria-live="polite">
+          <div class="auth-card-logo">C</div>
+          <div class="auth-card-title">Cadivor</div>
+          <div class="auth-card-sub">Signing you in…</div>
+        </div>
+        <div class="cv-auth-card-progress" aria-hidden="true"><span></span></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
-    """Queue credentials into the auth gate authenticating state (no competing paint)."""
+    """Queue credentials and keep Signing-you-in visible inside the auth card."""
     from src.auth_bootstrap import LOGIN_HANDOFF_STAGE_AUTHENTICATING, begin_login_handoff
-    from src.auth_gate import paint_auth_gate, set_auth_gate_state, stash_pending_credentials
+    from src.auth_gate import set_auth_gate_state, stash_pending_credentials
 
     begin_manual_login(cookie_manager)
     _clear_manual_login_error()
@@ -450,9 +479,8 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     begin_login_handoff(LOGIN_HANDOFF_STAGE_AUTHENTICATING)
     stash_pending_credentials(email, password)
     set_auth_gate_state("authenticating", reason="login_submit_stash")
-    # Paint before rerun so the Login-click frame never clears to white while
-    # the next script run starts.
-    paint_auth_gate("authenticating")
+    # Own the same auth card — do not mount a competing .cv-auth-gate here.
+    _render_auth_card_signing_in()
     _log_manual_login_event("manual_login_credentials_stashed", cookie_manager)
     # Next script run keeps authenticating first, then executes provider I/O.
     st.rerun()
@@ -1341,23 +1369,20 @@ def show_auth_ui(supabase, cookie_manager=None):
                     fail_login_handoff,
                     login_handoff_timed_out,
                 )
-                from src.auth_gate import paint_auth_gate, set_auth_gate_state
+                from src.auth_gate import set_auth_gate_state
             except Exception:
                 login_handoff_timed_out = lambda: False  # noqa: E731
                 fail_login_handoff = None
-                paint_auth_gate = None
                 set_auth_gate_state = None
                 LOGIN_HANDOFF_TIMEOUT_MESSAGE = (
                     "Sign-in timed out while preparing your workspace. Please try again."
                 )
 
-            # Gate owns authenticating paint. Never remount competing loaders here.
+            # Keep progress inside this same auth card — never mount .cv-auth-gate here.
             if manual_login_in_flight() and not login_handoff_timed_out():
-                if set_auth_gate_state is not None and paint_auth_gate is not None:
+                if set_auth_gate_state is not None:
                     set_auth_gate_state("authenticating", reason="show_auth_signing_in")
-                    paint_auth_gate("authenticating")
-                else:
-                    render_auth_transition("Signing you in…")
+                _render_auth_card_signing_in()
                 return
 
             draft = str(st.session_state.get("cadivor_login_email_draft") or "").strip()

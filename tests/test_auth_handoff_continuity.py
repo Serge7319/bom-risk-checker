@@ -54,8 +54,14 @@ class AuthGateOwnerContracts(unittest.TestCase):
 
     def test_signing_in_branch_uses_gate(self):
         block = AUTH[AUTH.find("if state == APP_SIGNING_IN:") : AUTH.find("if state in (APP_LOGIN, APP_SIGNUP):")]
-        self.assertIn("paint_auth_gate(\"authenticating\")", block)
+        self.assertIn("_render_auth_card_signing_in()", block)
+        self.assertNotIn('paint_auth_gate("authenticating")', block)
         self.assertNotIn("mount_auth_progress_surface", block)
+        self.assertIn("Signing you in…", GATE)
+        self.assertNotIn(
+            "div.cv-auth-gate{\n              display:none!important",
+            GATE,
+        )
 
 
 if __name__ == "__main__":

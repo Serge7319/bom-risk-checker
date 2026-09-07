@@ -1,4 +1,5 @@
 import stripe
+from typing import Optional
 
 from src.secrets import get_secret
 
@@ -57,7 +58,9 @@ def create_billing_portal_session(customer_id: str, return_url: str) -> str:
     return str(session.url)
 
 
-def customer_may_manage_billing(*, role: str | None, stripe_customer_id: str | None) -> bool:
+def customer_may_manage_billing(
+    *, role: Optional[str], stripe_customer_id: Optional[str]
+) -> bool:
     """True when a non-admin customer has a stored Stripe customer id for portal access."""
     if str(role or "").strip().lower() == "admin":
         return False
