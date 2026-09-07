@@ -163,7 +163,7 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
         self.assertIn("st.container(border=True)", billing_block)
         self.assertIn("cv-billing-actions__label", billing_block)
         self.assertNotIn('class="cv-billing-actions"', billing_block)
-        # Same-run handoff: no Settings tab reset via rerun after Manage billing.
+        # Portal session lands in session state; Billing stays selected via keyed nav.
         self.assertNotIn("st.rerun()", billing_block)
         self.assertIn("portal_url = created_url", billing_block)
         self.assertIn("portal_customer = stored_stripe_customer_id", billing_block)
@@ -173,6 +173,50 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
             billing_block.count("_clear_billing_portal_session_state()"),
             2,
         )
+
+    def test_settings_uses_persistent_active_tab_not_native_tabs(self):
+        """Settings sections persist across Manage-billing reruns via keyed radio."""
+        settings_start = self.runtime.find('app_mode == "Settings"')
+        settings_end = self.runtime.find(
+            "# ---------- Workspace ----------",
+            settings_start,
+        )
+        self.assertGreater(settings_start, 0)
+        self.assertGreater(settings_end, settings_start)
+        settings_block = self.runtime[settings_start:settings_end]
+
+        self.assertIn('key="settings_active_tab"', settings_block)
+        self.assertIn("settings_active_tab", settings_block)
+        self.assertIn("st.radio(", settings_block)
+        self.assertIn("horizontal=True", settings_block)
+        for label in (
+            "Profile",
+            "Preferences",
+            "Workspace",
+            "Security",
+            "Billing",
+        ):
+            self.assertIn(f'"{label}"', settings_block)
+        # Native tabs reset to Profile on every button click — must not drive Settings.
+        self.assertNotIn("st.tabs(", settings_block)
+        self.assertNotIn("with profile_tab", settings_block)
+        self.assertNotIn("with billing_tab", settings_block)
+        self.assertIn('elif settings_tab == "Billing":', settings_block)
+        # Manage billing must not reset the Settings section selection.
+        manage_block = settings_block[
+            settings_block.find('"Manage billing"') : settings_block.find(
+                "Open secure billing portal"
+            )
+        ]
+        self.assertNotIn(
+            'settings_active_tab"] = "Profile"',
+            manage_block,
+        )
+        self.assertNotIn(
+            "settings_active_tab'] = 'Profile'",
+            manage_block,
+        )
+        self.assertNotIn("st.rerun()", manage_block)
 
     def test_billing_portal_link_button_has_scoped_primary_override(self):
         """Only the billing-panel link_button is primary; global link style stays."""

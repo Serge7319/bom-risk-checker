@@ -7202,6 +7202,41 @@ def run_authenticated_app() -> None:
                 text-transform:uppercase;
                 margin:0 0 12px;
             }
+            /* Stateful Settings nav — compact tab-like radio (persists across reruns). */
+            .st-key-settings_active_tab{
+                margin:0 0 14px!important;
+            }
+            .st-key-settings_active_tab [data-testid="stRadio"] > label{
+                display:none!important;
+            }
+            .st-key-settings_active_tab [data-testid="stRadio"] [role="radiogroup"]{
+                gap:4px!important;
+                flex-wrap:wrap!important;
+                border-bottom:1px solid #DFE7F2!important;
+                padding:0 0 2px!important;
+                margin:0!important;
+            }
+            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"]{
+                margin:0!important;
+                padding:10px 16px 12px!important;
+                min-height:42px!important;
+                border-radius:10px 10px 0 0!important;
+                border:0!important;
+                background:transparent!important;
+                color:#475569!important;
+                font-size:14px!important;
+                font-weight:650!important;
+            }
+            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child{
+                display:none!important;
+            }
+            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"][aria-checked="true"],
+            .st-key-settings_active_tab [data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked){
+                color:#0F172A!important;
+                font-weight:800!important;
+                box-shadow:inset 0 -2px 0 #2563EB!important;
+                background:#F8FAFC!important;
+            }
             /* Scoped override: only the billing-panel link_button is primary.
                Global premium_interactions.css keeps other stLinkButton anchors as text links. */
             section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton,
@@ -7334,11 +7369,28 @@ def run_authenticated_app() -> None:
                 "Your saved engineering data is unaffected. Please try again later."
             )
 
-        profile_tab, preferences_tab, workspace_tab, security_tab, billing_tab = st.tabs(
-            ["Profile", "Preferences", "Workspace", "Security", "Billing"]
+        # Persist Settings section across Streamlit button reruns (native st.tabs
+        # always resets to the first tab). Keyed radio keeps Billing selected after
+        # Manage billing creates the portal session.
+        _settings_tab_options = (
+            "Profile",
+            "Preferences",
+            "Workspace",
+            "Security",
+            "Billing",
         )
+        if st.session_state.get("settings_active_tab") not in _settings_tab_options:
+            st.session_state["settings_active_tab"] = "Profile"
+        st.radio(
+            "Settings section",
+            options=_settings_tab_options,
+            horizontal=True,
+            key="settings_active_tab",
+            label_visibility="collapsed",
+        )
+        settings_tab = str(st.session_state.get("settings_active_tab") or "Profile")
 
-        with profile_tab:
+        if settings_tab == "Profile":
             summary_col, form_col = st.columns([0.36, 0.64], gap="large")
 
             with summary_col:
@@ -7509,7 +7561,7 @@ def run_authenticated_app() -> None:
                             st.rerun()
                     cadivor_button_wrap_end()
 
-        with preferences_tab:
+        elif settings_tab == "Preferences":
             with st.container(border=True):
                 st.subheader("Application preferences")
                 st.caption(
@@ -7640,7 +7692,7 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-        with workspace_tab:
+        elif settings_tab == "Workspace":
             st.subheader("Workspace settings")
             st.caption(
                 "Workspace identity, members, invitations, and engineering defaults "
@@ -7653,7 +7705,7 @@ def run_authenticated_app() -> None:
                 use_container_width=True,
             )
 
-        with security_tab:
+        elif settings_tab == "Security":
             st.subheader("Security")
             st.markdown(
                 f"""
@@ -7674,7 +7726,7 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-        with billing_tab:
+        elif settings_tab == "Billing":
             st.subheader("Plan & billing")
             st.caption(
                 "Review Cadivor plans and upgrade the current account when the team "
@@ -7757,7 +7809,9 @@ def run_authenticated_app() -> None:
                                 st.session_state[portal_customer_key] = (
                                     stored_stripe_customer_id
                                 )
-                                # Same-run handoff: keep Billing tab and render Open immediately.
+                                # Same-run handoff: render Open on Billing.
+                                # settings_active_tab already persists via the keyed radio
+                                # (do not mutate it after the widget is instantiated).
                                 portal_url = created_url
                                 portal_customer = stored_stripe_customer_id
                                 portal_ready = bool(
