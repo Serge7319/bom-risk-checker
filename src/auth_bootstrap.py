@@ -634,7 +634,8 @@ def _ensure_authenticated_or_stop_impl() -> None:
         show_auth_ui(supabase, cookie_manager)
         if has_pending_credentials():
             set_auth_gate_state("authenticating", reason="credentials_stashed")
-            paint_auth_gate("authenticating")
+            # Submit already painted Signing-you-in inside the auth card.
+            # Do not mount a second .cv-auth-gate alongside it — just rerun.
             st.rerun()
         st.stop()
 

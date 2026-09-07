@@ -64,28 +64,40 @@ class AuthGateModuleTests(unittest.TestCase):
         smoke = (ROOT / "tests" / "smoke_production_streamlit_app.py").read_text(
             encoding="utf-8"
         )
+        entry = (ROOT / "streamlit_app.py").read_text(encoding="utf-8")
         harness = (ROOT / "tests" / "harness_auth_gate_browser_smoke.py").read_text(
             encoding="utf-8"
         )
+        site = (
+            ROOT / "tests" / "smoke_pythonpath" / "sitecustomize.py"
+        ).read_text(encoding="utf-8")
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         self.assertIn("install_production_path_smoke_patches", smoke)
         self.assertIn("ensure_authenticated_or_stop()", smoke)
         self.assertIn("run_authenticated_app()", smoke)
+        self.assertNotIn("CADIVOR_AUTH_SMOKE", entry)
+        self.assertNotIn("auth_gate_smoke_adapter", entry)
+        self.assertNotIn("install_production_path_smoke_patches", entry)
         self.assertNotIn("cadivor-auth-ready", smoke)
         self.assertNotIn("Mock workspace ready", smoke)
         self.assertNotIn("paint_authenticated_continuity_shell", smoke)
-        self.assertIn("smoke_production_streamlit_app.py", harness)
+        self.assertIn("streamlit_app.py", harness)
+        self.assertIn("smoke_pythonpath", harness)
+        self.assertIn("install_production_path_smoke_patches", site)
         self.assertIn("Procurement Advisor", harness)
         self.assertIn("Datasheet Q&A", harness)
+        self.assertIn("BOM Analyzer", harness)
         # Early durable shell before profile IO — single paint authority.
         self.assertIn("cadivor_shell_cache", runtime)
-        self.assertIn("retire_auth_gate_overlays", runtime)
+        self.assertIn("resolve_canonical_app_route", runtime)
+        self.assertNotIn("cadivor_last_url_page", runtime)
         early = runtime[
             runtime.find("Paint the durable foundation shell") : runtime.find(
                 "log_startup_phase(\"authenticated_runtime_begin\")"
             )
         ]
         self.assertIn("render_unified_shell(", early)
+        self.assertNotIn("retire_auth_gate_overlays()", early)
         # Must not call render_unified_shell a second time after profile IO.
         late = runtime[
             runtime.find("# ---------- Cadivor Unified Application Shell ----------") :
@@ -136,27 +148,35 @@ class AuthGateModuleTests(unittest.TestCase):
         ]
         self.assertIn("stash_pending_credentials", submit)
         self.assertIn('set_auth_gate_state("authenticating"', submit)
-        self.assertIn('paint_auth_gate("authenticating")', submit)
+        self.assertIn("_render_auth_card_signing_in()", submit)
+        self.assertNotIn('paint_auth_gate("authenticating")', submit)
         self.assertLess(
-            submit.find('paint_auth_gate("authenticating")'),
+            submit.find("_render_auth_card_signing_in()"),
             submit.find("st.rerun()"),
         )
         self.assertIn("st.rerun()", submit)
         self.assertNotIn("mount_auth_progress_surface", submit)
         self.assertNotIn("render_startup_loading_shell", submit)
         self.assertNotIn("mock_auth_enabled", auth)
+        gate = (ROOT / "src" / "auth_gate.py").read_text(encoding="utf-8")
+        self.assertNotIn("div.cv-auth-gate{\n              display:none!important", gate)
+        self.assertIn("data-cadivor-page-content", gate)
 
     def test_production_sources_have_no_mock_env_switch(self):
         for rel in (
             "src/auth_gate.py",
             "src/auth_bootstrap.py",
             "src/auth.py",
+            "src/auth_state.py",
+            "src/authenticated_runtime.py",
             "streamlit_app.py",
         ):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertNotIn("CADIVOR_AUTH_GATE_MOCK", text, rel)
+            self.assertNotIn("CADIVOR_AUTH_SMOKE", text, rel)
             self.assertNotIn("mock_auth_enabled", text, rel)
             self.assertNotIn("try_mock_password_login", text, rel)
+            self.assertNotIn("auth_gate_smoke_adapter", text, rel)
 
 
 class AuthGateLifecycleSmokeTests(unittest.TestCase):

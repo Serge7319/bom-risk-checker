@@ -4,9 +4,10 @@
 Usage:
   /opt/anaconda3/bin/python tests/harness_auth_gate_browser_smoke.py
 
-Starts tests/smoke_production_streamlit_app.py — real ensure_authenticated_or_stop,
-authenticated_runtime, unified_shell, and routing. Only the session boundary and
-network IO are doubled. Captures frames under /tmp/cadivor_auth_gate_smoke/.
+Launches real ``streamlit_app.py``. Provider-boundary doubles are injected only
+via test-only process configuration: PYTHONPATH prepends
+``tests/smoke_pythonpath`` (sitecustomize). Production never loads that path.
+Captures frames under /tmp/cadivor_auth_gate_smoke/.
 """
 from __future__ import annotations
 
@@ -26,7 +27,10 @@ MOCK_PASSWORD = "cadivor-auth-smoke"
 STREAMLIT_PY = str(ROOT / "venv" / "bin" / "python")
 if not Path(STREAMLIT_PY).exists():
     STREAMLIT_PY = sys.executable
-SMOKE_APP = str(ROOT / "tests" / "smoke_production_streamlit_app.py")
+SMOKE_APP = str(ROOT / "streamlit_app.py")
+SMOKE_PYTHONPATH = str(ROOT / "tests" / "smoke_pythonpath")
+SAMPLE_MS = 100
+AUTH_SURFACE_MAX_SECONDS_WITHOUT_PROGRESS = 2.0
 
 # Full authenticated nav circuit, ending back on Dashboard.
 AUTH_ROUTE_CIRCUIT = (
@@ -40,6 +44,7 @@ AUTH_ROUTE_CIRCUIT = (
 
 ROUTE_NAV_SLUGS = {
     "Dashboard": "dashboard",
+    "BOM Analyzer": "bom",
     "Alternative Finder": "alternatives",
     "Datasheet Q&A": "datasheet-qa",
     "Compare Parts": "compare",
@@ -50,6 +55,7 @@ ROUTE_NAV_SLUGS = {
 # Sidebar labels alone are not enough (every route name is always in the nav).
 ROUTE_CONTENT_MARKERS = {
     "Dashboard": ("Monitor portfolio health", "Welcome,"),
+    "BOM Analyzer": ("Upload engineering BOM", "Choose how to begin", "Analyze your BOM"),
     "Alternative Finder": ("Choose a better replacement", "Find Alternatives"),
     "Datasheet Q&A": ("Ask Cadivor about your datasheet", "Upload datasheet"),
     "Compare Parts": ("Compare any two parts", "Part A"),
@@ -133,6 +139,22 @@ def _viewport_probe(page) -> dict:
           const gateEl = gateNodes.find((el) => gateVisiblyPainted(el))
             || document.querySelector('[data-auth-gate]');
           const gateKind = (gateEl && gateEl.getAttribute('data-auth-gate')) || '';
+          const authCard = document.querySelector(
+            '.st-key-cadivor_auth_card, [class*="st-key-cadivor_auth_card"]'
+          );
+          const authCardVisible = visiblyPainted(authCard);
+          const authCardText = authCardVisible
+            ? ((authCard && authCard.innerText) || '').replace(/\\s+/g, ' ').trim()
+            : '';
+          const cardSigningIn = authCardVisible && /Signing you in/i.test(authCardText);
+          const emptyAuthCard = authCardVisible && authCardText.length < 8;
+          const gateCard = document.querySelector('.cv-auth-gate-card');
+          const gateCardVisible = gateVisiblyPainted(gateCard);
+          const gateCardText = gateCardVisible
+            ? ((gateCard && gateCard.innerText) || '').replace(/\\s+/g, ' ').trim()
+            : '';
+          const emptyGateCard = gateCardVisible && gateCardText.length < 8;
+          const pageContentReady = !!document.querySelector('[data-cadivor-page-content]');
           const topbar = document.querySelector(
             '.cv-foundation-topbar:not(.cv-foundation-continuity)'
           );
@@ -154,6 +176,8 @@ def _viewport_probe(page) -> dict:
             return Math.abs(cx - window.innerWidth / 2) < 220 &&
                    Math.abs(cy - window.innerHeight / 2) < 220;
           });
+          const duplicateAuthSurface =
+            authCardVisible && visibleGate && gateKind === 'authenticating';
           const blankCanvas =
             text.length < 8 &&
             !hasLogin &&
@@ -174,9 +198,61 @@ def _viewport_probe(page) -> dict:
             centeredLoader,
             blankCanvas,
             signingIn: /Signing you in|Restoring your session/i.test(text),
+            authCardVisible,
+            cardSigningIn,
+            emptyAuthCard,
+            emptyGateCard,
+            pageContentReady,
+            duplicateAuthSurface,
           };
         }"""
     )
+
+
+def _assert_auth_surface_invariants(page, label: str, *, auth_surface_started_at: float | None = None) -> None:
+    """Fail on empty auth cards, duplicate surfaces, or stalled auth without progress."""
+    probe = _viewport_probe(page)
+    if probe.get("blankCanvas"):
+        raise AssertionError(
+            f"{label}: blank black/white frame "
+            f"(bg={probe.get('bg')!r} preview={probe.get('textPreview')!r})"
+        )
+    if probe.get("emptyAuthCard"):
+        raise AssertionError(
+            f"{label}: .st-key-cadivor_auth_card visible with no readable text"
+        )
+    if probe.get("emptyGateCard"):
+        raise AssertionError(
+            f"{label}: .cv-auth-gate-card visible with no readable text"
+        )
+    if probe.get("duplicateAuthSurface"):
+        raise AssertionError(
+            f"{label}: auth card and .cv-auth-gate authenticating surface both visible"
+        )
+    auth_surface = bool(
+        probe.get("authCardVisible")
+        or (
+            probe.get("visibleGate")
+            and probe.get("gateKind") in {"boot", "authenticating", "login", "error"}
+        )
+    )
+    if (
+        auth_surface
+        and not probe.get("hasShell")
+        and not probe.get("signingIn")
+        and not probe.get("hasLogin")
+        and auth_surface_started_at is not None
+        and (time.monotonic() - auth_surface_started_at)
+        > AUTH_SURFACE_MAX_SECONDS_WITHOUT_PROGRESS
+    ):
+        raise AssertionError(
+            f"{label}: auth surface visible >{AUTH_SURFACE_MAX_SECONDS_WITHOUT_PROGRESS}s "
+            f"without Signing you in… / Login / recoverable error "
+            f"(preview={probe.get('textPreview')!r})"
+        )
+    # URL/sidebar/topbar/content agreement is enforced by _assert_settled_route
+    # once a route is expected to be settled — not on every in-flight nav frame.
+
 
 
 def _assert_no_forbidden_loading_ui(page, label: str, *, require_shell: bool = False) -> None:
@@ -292,8 +368,9 @@ def _assert_visible_branded_surface(page, label: str) -> None:
 
 
 def _assert_authenticated_continuity(page, label: str, *, allow_authenticating: bool = False) -> None:
-    """Post-login invariant: shell stays; gate/boot/centered loader must not overlay it."""
+    """Post-login invariant: shell stays; login/boot must not overlay settled content."""
     _assert_no_forbidden_loading_ui(page, label)
+    _assert_auth_surface_invariants(page, label)
     probe = _viewport_probe(page)
     if probe.get("blankCanvas"):
         raise AssertionError(f"{label}: blank black/white authenticated frame")
@@ -304,19 +381,27 @@ def _assert_authenticated_continuity(page, label: str, *, allow_authenticating: 
             f"{label}: authenticated foundation shell missing "
             f"(preview={probe.get('textPreview')!r})"
         )
+    # Progress gate may remain until page content marker is present.
+    if probe.get("signingIn") and not probe.get("pageContentReady"):
+        return
     if probe.get("visibleGate") and probe.get("gateKind") in {
         "boot",
         "authenticating",
         "login",
         "error",
     }:
+        if probe.get("gateKind") == "authenticating" and not probe.get("pageContentReady"):
+            return
         raise AssertionError(
-            f"{label}: visible .cv-auth-gate still present after shell mounted "
+            f"{label}: visible .cv-auth-gate still present after shell+content "
             f"(kind={probe.get('gateKind')!r})"
         )
-    if probe.get("centeredLoader") or probe.get("signingIn"):
+    if (
+        (probe.get("centeredLoader") or probe.get("signingIn"))
+        and probe.get("pageContentReady")
+    ):
         raise AssertionError(
-            f"{label}: centered auth/boot loader still visible after authentication"
+            f"{label}: centered auth/boot loader still visible after page content ready"
         )
 
 
@@ -354,12 +439,16 @@ def _assert_no_continuity_skeleton_above_content(page, label: str) -> None:
         raise AssertionError(f"{label}: continuity/skeleton still occupying layout {offenders!r}")
 
 
-def _assert_login_handoff_frame(page, label: str) -> None:
+def _assert_login_handoff_frame(page, label: str, *, auth_surface_started_at: float | None = None) -> None:
     """Fail if the Login→shell handoff exposes a frame with neither Login/progress nor shell."""
     _assert_no_forbidden_loading_ui(page, label)
+    _assert_auth_surface_invariants(
+        page, label, auth_surface_started_at=auth_surface_started_at
+    )
     probe = _viewport_probe(page)
     has_progress = bool(
         probe.get("signingIn")
+        or probe.get("cardSigningIn")
         or probe.get("gateKind") in {"authenticating", "boot"}
         or (
             probe.get("visibleGate")
@@ -367,9 +456,8 @@ def _assert_login_handoff_frame(page, label: str) -> None:
         )
     )
     if probe.get("hasShell") or probe.get("hasLogin") or has_progress:
-        # Early foundation shell may mount during Signing you in… — that is the
-        # intentional continuity path. Fail only when a Login/boot/error card is
-        # still painted over the shell (not the authenticating progress card).
+        # Shell may mount while Signing you in… remains until page content.
+        # Fail only when a Login/boot/error card overlays the shell without progress.
         if probe.get("hasShell") and (
             (
                 probe.get("visibleGate")
@@ -379,6 +467,7 @@ def _assert_login_handoff_frame(page, label: str) -> None:
                 probe.get("centeredLoader")
                 and not probe.get("signingIn")
                 and probe.get("gateKind") != "authenticating"
+                and not probe.get("cardSigningIn")
             )
         ):
             raise AssertionError(
@@ -632,9 +721,10 @@ def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: s
     ready = False
     markers = ROUTE_CONTENT_MARKERS.get(route, (route,))
     last_detail = ""
-    for i in range(50):
+    for i in range(120):
         _assert_no_visible_markup(page, f"{label}_{i}")
         _assert_visible_branded_surface(page, f"{label}_{i}")
+        _assert_auth_surface_invariants(page, f"{label}_{i}")
         _assert_authenticated_continuity(page, f"{label}_{i}")
         try:
             _assert_settled_route(page, route, f"{label}_settle_{i}")
@@ -646,7 +736,7 @@ def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: s
             page.screenshot(
                 path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
             )
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(SAMPLE_MS)
     page.screenshot(path=str(frames_dir / f"{prefix}_final.png"), full_page=True)
     (frames_dir / f"{prefix}_final.html").write_text(
         page.content()[:200000], encoding="utf-8"
@@ -658,7 +748,13 @@ def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: s
         )
 
 
-def _perform_valid_login(page, *, frames_dir: Path, prefix: str) -> None:
+def _perform_valid_login(
+    page,
+    *,
+    frames_dir: Path,
+    prefix: str,
+    expected_route: str = "Dashboard",
+) -> None:
     target, email, password = _find_login_fields(page)
     if target is None:
         raise AssertionError(f"{prefix}: login fields missing")
@@ -670,11 +766,23 @@ def _perform_valid_login(page, *, frames_dir: Path, prefix: str) -> None:
 
     saw_signing_in = False
     ready = False
-    for i in range(200):
+    auth_surface_started_at = time.monotonic()
+    for i in range(300):
         _assert_no_visible_markup(page, f"{prefix}_handoff_{i}")
-        _assert_login_handoff_frame(page, f"{prefix}_handoff_{i}")
+        _assert_login_handoff_frame(
+            page,
+            f"{prefix}_handoff_{i}",
+            auth_surface_started_at=auth_surface_started_at,
+        )
         probe = _viewport_probe(page)
-        if probe.get("signingIn") or probe.get("gateKind") == "authenticating":
+        if (
+            probe.get("signingIn")
+            or probe.get("cardSigningIn")
+            or (
+                probe.get("visibleGate")
+                and probe.get("gateKind") == "authenticating"
+            )
+        ):
             if not saw_signing_in:
                 page.screenshot(
                     path=str(frames_dir / f"{prefix}_signing_in.png"), full_page=True
@@ -682,7 +790,12 @@ def _perform_valid_login(page, *, frames_dir: Path, prefix: str) -> None:
                 (frames_dir / f"{prefix}_signing_in.html").write_text(
                     page.content()[:200000], encoding="utf-8"
                 )
+                page.screenshot(
+                    path=str(frames_dir / f"{prefix}_login_submit.png"), full_page=True
+                )
             saw_signing_in = True
+            auth_surface_started_at = time.monotonic()
+        # Capture immediate post-click frames even before probe catches copy.
         if i in {0, 1, 2, 3, 5, 10, 20, 40}:
             page.screenshot(
                 path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
@@ -690,21 +803,30 @@ def _perform_valid_login(page, *, frames_dir: Path, prefix: str) -> None:
             (frames_dir / f"{prefix}_t{i:02d}.html").write_text(
                 page.content()[:200000], encoding="utf-8"
             )
-        if probe.get("hasShell") and not probe.get("signingIn"):
+            if i == 0:
+                page.screenshot(
+                    path=str(frames_dir / f"{prefix}_login_submit_t00.png"),
+                    full_page=True,
+                )
+        if (
+            probe.get("hasShell")
+            and probe.get("pageContentReady")
+            and not probe.get("signingIn")
+        ):
             _assert_authenticated_continuity(page, f"{prefix}_shell_{i}")
             ready = True
             break
-        page.wait_for_timeout(100)
+        page.wait_for_timeout(SAMPLE_MS)
     if not saw_signing_in:
         raise AssertionError(f"{prefix}: never observed Signing you in… during handoff")
     if not ready:
-        raise AssertionError(f"{prefix}: stuck before authenticated shell")
+        raise AssertionError(f"{prefix}: stuck before authenticated shell+content")
     _wait_for_route(
         page,
-        "Dashboard",
-        label=f"{prefix}_dashboard",
+        expected_route,
+        label=f"{prefix}_{expected_route.lower().replace(' ', '_')}",
         frames_dir=frames_dir,
-        prefix=f"{prefix}_dashboard",
+        prefix=f"{prefix}_{expected_route.lower().replace(' ', '_')}",
     )
 
 
@@ -734,8 +856,16 @@ def main() -> int:
         except Exception:
             pass
         env = os.environ.copy()
-        # Deliberately do NOT set any mock-auth env switch — smoke uses DI only.
+        # Provider-boundary doubles via test-only PYTHONPATH sitecustomize only.
+        # Never set a production mock-auth env switch.
         env.pop("CADIVOR_AUTH_GATE_MOCK", None)
+        env.pop("CADIVOR_AUTH_SMOKE", None)
+        existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
+        env["PYTHONPATH"] = (
+            SMOKE_PYTHONPATH
+            if not existing_pythonpath
+            else f"{SMOKE_PYTHONPATH}{os.pathsep}{existing_pythonpath}"
+        )
         env.setdefault("SUPABASE_URL", "https://example.supabase.co")
         env.setdefault("SUPABASE_ANON_KEY", "public-anon-key-for-smoke")
         env.setdefault("SUPABASE_KEY", "public-anon-key-for-smoke")
@@ -871,6 +1001,47 @@ def main() -> int:
                     "ready: synthetic smoke ready surface still in use — "
                     "must exercise real authenticated_runtime / unified_shell"
                 )
+
+            # 3b) Logout, then deep-link login with ?page=BOM Analyzer.
+            try:
+                _click_sign_out(page, app_url=url)
+                _wait_for_login_surface(
+                    page, "before_deeplink", frames_dir=OUT, prefix="05_before_deeplink"
+                )
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=deeplink_prep detail={exc}")
+                return 7
+            deeplink_url = f"{url}?page=BOM%20Analyzer"
+            page.goto(deeplink_url, wait_until="domcontentloaded", timeout=90000)
+            for _ in range(60):
+                html = page.content()
+                target, _, _ = _find_login_fields(page)
+                if target is not None and 'data-auth-gate="login"' in html:
+                    break
+                page.wait_for_timeout(SAMPLE_MS)
+            else:
+                print("AUTH_SMOKE fail=deeplink_login_missing")
+                return 7
+            try:
+                _perform_valid_login(
+                    page,
+                    frames_dir=OUT,
+                    prefix="06_deeplink_bom",
+                    expected_route="BOM Analyzer",
+                )
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=deeplink_login detail={exc}")
+                return 7
+            page.screenshot(path=str(OUT / "06_deeplink_bom_final.png"), full_page=True)
+            # Return to Dashboard before the standard nav circuit.
+            _click_foundation_nav(page, "Dashboard")
+            _wait_for_route(
+                page,
+                "Dashboard",
+                label="deeplink_return_dashboard",
+                frames_dir=OUT,
+                prefix="06_deeplink_return_dashboard",
+            )
 
             # 4) Authenticated route circuit with four-way settled assertions.
             route_prefixes = {

@@ -1,7 +1,6 @@
-"""Sprint 71.10 — single-run atomic manual login tests."""
+"""Manual login two-phase gate tests (stash → authenticating → provider)."""
 from __future__ import annotations
 
-import ast
 import sys
 import types
 import unittest
@@ -51,15 +50,9 @@ class ManualLoginAtomicTests(unittest.TestCase):
         auth = importlib.import_module("src.auth")
         return st, auth, auth_state
 
-    def test_login_submit_calls_sign_in_in_same_script_run(self):
-        _st, auth, auth_state = self._load_auth()
+    def test_login_submit_stashes_and_reruns_without_provider(self):
+        st, auth, _auth_state = self._load_auth()
         supabase = MagicMock()
-        session = types.SimpleNamespace(access_token="a", refresh_token="r")
-        user = types.SimpleNamespace(id="user-1")
-        supabase.auth.sign_in_with_password.return_value = types.SimpleNamespace(
-            user=user,
-            session=session,
-        )
         cookie_manager = MagicMock()
 
         with patch.object(auth, "mark_authenticated") as mark_mock:
@@ -70,13 +63,23 @@ class ManualLoginAtomicTests(unittest.TestCase):
                 "secret",
             )
 
-        supabase.auth.sign_in_with_password.assert_called_once_with({
-            "email": "user@example.com",
-            "password": "secret",
-        })
-        mark_mock.assert_called_once_with(user, session, cookie_manager)
+        supabase.auth.sign_in_with_password.assert_not_called()
+        mark_mock.assert_not_called()
+        st.rerun.assert_called_once_with()
+        self.assertEqual(st.session_state["cadivor_root_state"], auth.APP_SIGNING_IN)
+        from src.auth_gate import AUTH_GATE_PENDING_EMAIL_KEY, has_pending_credentials
 
-    def test_login_submit_does_not_rerun_before_supabase(self):
+        self.assertTrue(has_pending_credentials())
+        self.assertEqual(
+            st.session_state.get(AUTH_GATE_PENDING_EMAIL_KEY),
+            "user@example.com",
+        )
+        # Submit paints Signing you in… inside the auth card (not a second gate).
+        markdown_calls = " ".join(str(c) for c in st.markdown.call_args_list)
+        self.assertIn("Signing you in…", markdown_calls)
+        self.assertNotIn('class="cv-auth-gate"', markdown_calls)
+
+    def test_login_submit_reruns_before_provider_io(self):
         st, auth, _auth_state = self._load_auth()
         supabase = MagicMock()
         calls: list[str] = []
@@ -97,29 +100,34 @@ class ManualLoginAtomicTests(unittest.TestCase):
 
         auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
 
-        # Success continues in the same script run — no blank-inducing rerun.
-        self.assertEqual(calls, ["sign_in"])
-        self.assertNotIn("rerun", calls)
+        self.assertEqual(calls, ["rerun"])
+        self.assertNotIn("sign_in", calls)
 
-    def test_password_is_never_stored_in_session_state(self):
+    def test_pending_password_is_popped_on_provider_login(self):
         st, auth, _auth_state = self._load_auth()
+        from src.auth_gate import (
+            has_pending_credentials,
+            pop_pending_credentials,
+            stash_pending_credentials,
+        )
+
+        stash_pending_credentials("user@example.com", "secret")
+        self.assertTrue(has_pending_credentials())
+        email, password = pop_pending_credentials()
+        self.assertFalse(has_pending_credentials())
+
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.return_value = types.SimpleNamespace(
             user=types.SimpleNamespace(id="u"),
             session=types.SimpleNamespace(access_token="a", refresh_token="r"),
         )
+        with patch.object(auth, "mark_authenticated"):
+            auth.execute_password_login(supabase, MagicMock(), email, password)
 
-        auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
-
+        self.assertFalse(has_pending_credentials())
         self.assertNotIn("cadivor_auth_submission", st.session_state)
-        self.assertFalse(
-            any(
-                "secret" in str(value)
-                for value in st.session_state.values()
-            )
-        )
 
-    def test_successful_login_calls_mark_authenticated_without_rerun(self):
+    def test_successful_provider_login_calls_mark_authenticated_without_rerun(self):
         st, auth, _auth_state = self._load_auth()
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.return_value = types.SimpleNamespace(
@@ -132,12 +140,15 @@ class ManualLoginAtomicTests(unittest.TestCase):
             order.append("mark_authenticated")
 
         with patch.object(auth, "mark_authenticated", side_effect=mark_authenticated):
-            auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "secret")
+            ok = auth.execute_password_login(
+                supabase, MagicMock(), "user@example.com", "secret"
+            )
 
+        self.assertTrue(ok)
         self.assertEqual(order, ["mark_authenticated"])
         st.rerun.assert_not_called()
 
-    def test_invalid_login_rebuilds_enabled_login_once(self):
+    def test_invalid_provider_login_rebuilds_enabled_login_once(self):
         st, auth, _auth_state = self._load_auth()
         supabase = MagicMock()
         supabase.auth.sign_in_with_password.return_value = types.SimpleNamespace(
@@ -146,8 +157,11 @@ class ManualLoginAtomicTests(unittest.TestCase):
         )
 
         with patch.object(auth, "mark_authenticated") as mark_mock:
-            auth._submit_manual_login(supabase, MagicMock(), "user@example.com", "bad")
+            ok = auth.execute_password_login(
+                supabase, MagicMock(), "user@example.com", "bad"
+            )
 
+        self.assertFalse(ok)
         mark_mock.assert_not_called()
         st.rerun.assert_called_once_with()
         self.assertEqual(st.session_state["cadivor_root_state"], auth.APP_LOGIN)
@@ -159,7 +173,7 @@ class ManualLoginAtomicTests(unittest.TestCase):
 
     def test_auth_source_has_no_pending_submission_storage(self):
         source = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
-        self.assertNotIn('cadivor_auth_submission', source)
+        self.assertNotIn("cadivor_auth_submission", source)
 
     def test_bootstrap_has_no_pending_password_dependency(self):
         bootstrap_source = (ROOT / "src" / "auth_bootstrap.py").read_text(encoding="utf-8")
@@ -173,6 +187,7 @@ class ManualLoginAtomicTests(unittest.TestCase):
         source = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
         self.assertIn("_submit_manual_login(", source)
         self.assertIn("_submit_manual_signup(", source)
+        self.assertIn("_render_auth_card_signing_in()", source)
         self.assertNotIn("cadivor_auth_submission", source)
 
 
