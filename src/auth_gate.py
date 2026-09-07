@@ -281,7 +281,12 @@ def render_full_page_gate_surface(
 
 
 def retire_auth_gate_overlays() -> None:
-    """Hide leftover gate overlays only after shell AND page content exist.
+    """Collapse leftover auth hosts only after shell AND page content exist.
+
+    Hiding the inner ``.cv-auth-gate`` alone is not enough: Streamlit
+    ``stElementContainer`` hosts for gate/style/auth-card markdown remain
+    ``display:block`` at height 0 and still consume vertical-block gap, which
+    pushed Dashboard ~90px lower on first login than after a full reload.
 
     Never blank the document body. Do not retire merely because the foundation
     topbar/nav mounted — that left an empty main while profile IO ran.
@@ -289,12 +294,58 @@ def retire_auth_gate_overlays() -> None:
     st.markdown(
         """
         <style id="cadivor-auth-gate-retire">
+        /* Inner gate surfaces (legacy). */
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content]) div.cv-auth-gate,
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"],
         body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content]) div.cv-auth-gate,
-        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"]{
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"],
+        /* Streamlit hosts that still participate in main-column gap/flow. */
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(.cv-auth-gate),
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(.cv-auth-gate-card),
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has([data-testid="cadivor-auth-gate"]),
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(#cadivor-auth-gate-css),
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(.cv-auth-card-progress),
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has([data-testid="cadivor-auth-card-signing-in"]),
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          .st-key-cadivor_auth_card,
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          [class*="st-key-cadivor_auth_card"],
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(.cv-auth-gate),
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(.cv-auth-gate-card),
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has([data-testid="cadivor-auth-gate"]),
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(#cadivor-auth-gate-css),
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has(.cv-auth-card-progress),
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has([data-testid="cadivor-auth-card-signing-in"]),
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          .st-key-cadivor_auth_card,
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          [class*="st-key-cadivor_auth_card"],
+        /* Zero-height browser Back/Forward bridge must not leave a skeleton band. */
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          .st-key-cadivor_browser_navigation_bridge,
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          [class*="st-key-cadivor_browser_navigation_bridge"],
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          .st-key-cadivor_browser_navigation_bridge,
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          [class*="st-key-cadivor_browser_navigation_bridge"]{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
-          opacity:0!important;z-index:-1!important
+          opacity:0!important;z-index:-1!important;
+          height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;
+          overflow:hidden!important
         }
         </style>
         """,

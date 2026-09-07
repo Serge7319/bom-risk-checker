@@ -11,6 +11,7 @@ Captures frames under /tmp/cadivor_auth_gate_smoke/.
 """
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -529,6 +530,148 @@ def _route_sync_probe(page, route: str) -> dict:
     )
 
 
+def _dashboard_heading_layout_probe(page) -> dict:
+    """Measure Dashboard heading geometry and leftover auth hosts above it."""
+    return page.evaluate(
+        """() => {
+          const dash =
+            document.querySelector('.cv672-dashboard-heading, .cv-page-header')
+            || Array.from(
+                 document.querySelectorAll(
+                   'section[data-testid="stMain"] h1, section[data-testid="stMain"] h2'
+                 )
+               ).find((el) => /^\\s*Dashboard\\s*$/i.test((el.innerText || '').trim()));
+          const dashTop = dash ? Math.round(dash.getBoundingClientRect().top) : null;
+          const authHosts = [];
+          const selectors = [
+            '.st-key-cadivor_auth_card',
+            '[class*="st-key-cadivor_auth_card"]',
+            '.cv-auth-card-progress',
+            '.cv-auth-gate',
+            '.cv-auth-gate-card',
+            '[data-testid="cadivor-auth-gate"]',
+            '.st-key-cadivor_browser_navigation_bridge',
+            '[class*="st-key-cadivor_browser_navigation_bridge"]',
+          ];
+          const isHost = (el) => {
+            if (!el || !el.getAttribute) return false;
+            if (el.getAttribute('data-testid') === 'stElementContainer') return true;
+            const cls = (el.className || '').toString();
+            return (
+              cls.includes('element-container')
+              || cls.includes('st-key-cadivor_auth_card')
+              || cls.includes('st-key-cadivor_browser_navigation_bridge')
+            );
+          };
+          for (const sel of selectors) {
+            for (const el of document.querySelectorAll(sel)) {
+              let cur = el;
+              for (let depth = 0; depth < 5 && cur; depth += 1) {
+                if (!isHost(cur) && depth > 0) {
+                  cur = cur.parentElement;
+                  continue;
+                }
+                const style = window.getComputedStyle(cur);
+                const rect = cur.getBoundingClientRect();
+                const inFlow =
+                  style.display !== 'none'
+                  && style.position !== 'fixed'
+                  && style.position !== 'absolute'
+                  && rect.height > 0.5;
+                // Ignore giant page wrappers; only blank host bands matter.
+                if (inFlow && rect.height < 220) {
+                  authHosts.push({
+                    sel,
+                    depth,
+                    height: Math.round(rect.height),
+                    top: Math.round(rect.top),
+                    display: style.display,
+                    cls: (cur.className || '').toString().slice(0, 120),
+                  });
+                }
+                cur = cur.parentElement;
+              }
+            }
+          }
+          return {
+            dashTop,
+            dashText: dash
+              ? (dash.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120)
+              : '',
+            authHostsInFlow: authHosts,
+            hasPageContent: !!document.querySelector('[data-cadivor-page-content]'),
+            hasFoundation: !!(
+              document.querySelector('.cv-foundation-topbar:not(.cv-foundation-continuity)')
+              || document.querySelector(
+                   '.st-key-cv_foundation_navigation, [class*="st-key-cv_foundation_navigation"]'
+                 )
+            ),
+          };
+        }"""
+    )
+
+
+def _assert_no_blank_auth_hosts_above_dashboard(page, label: str) -> None:
+    probe = _dashboard_heading_layout_probe(page)
+    if not probe.get("hasPageContent") or not probe.get("hasFoundation"):
+        raise AssertionError(
+            f"{label}: shell/page-content markers missing during layout probe "
+            f"(foundation={probe.get('hasFoundation')} content={probe.get('hasPageContent')})"
+        )
+    leftover = probe.get("authHostsInFlow") or []
+    if leftover:
+        raise AssertionError(
+            f"{label}: blank/empty auth (or bridge) host still in-flow above Dashboard: "
+            f"{leftover[:8]!r}"
+        )
+
+
+def _assert_first_login_matches_reload_dashboard_geometry(
+    page,
+    *,
+    frames_dir: Path,
+    tolerance_px: float = 4.0,
+) -> None:
+    """Cold first login Dashboard top must match a manual reload within tolerance."""
+    page.wait_for_timeout(400)
+    first = _dashboard_heading_layout_probe(page)
+    (frames_dir / "04_first_login_layout.json").write_text(
+        json.dumps(first, indent=2), encoding="utf-8"
+    )
+    page.screenshot(path=str(frames_dir / "04_first_login_layout.png"), full_page=True)
+    _assert_no_blank_auth_hosts_above_dashboard(page, "first_login_layout")
+    first_top = first.get("dashTop")
+    if first_top is None:
+        raise AssertionError("first_login_layout: Dashboard heading not found")
+
+    page.reload(wait_until="domcontentloaded", timeout=90000)
+    for i in range(200):
+        try:
+            _assert_settled_route(page, "Dashboard", f"reload_settle_{i}")
+            break
+        except AssertionError:
+            page.wait_for_timeout(SAMPLE_MS)
+    else:
+        raise AssertionError("reload_settle: Dashboard never settled after reload")
+
+    page.wait_for_timeout(400)
+    reload = _dashboard_heading_layout_probe(page)
+    (frames_dir / "04_reload_layout.json").write_text(
+        json.dumps(reload, indent=2), encoding="utf-8"
+    )
+    page.screenshot(path=str(frames_dir / "04_reload_layout.png"), full_page=True)
+    _assert_no_blank_auth_hosts_above_dashboard(page, "reload_layout")
+    reload_top = reload.get("dashTop")
+    if reload_top is None:
+        raise AssertionError("reload_layout: Dashboard heading not found")
+    delta = abs(float(first_top) - float(reload_top))
+    if delta > tolerance_px:
+        raise AssertionError(
+            f"first_login_layout: Dashboard top {first_top}px differs from reload "
+            f"{reload_top}px by {delta}px (max {tolerance_px}px)"
+        )
+
+
 def _assert_settled_route(page, route: str, label: str) -> None:
     """Require URL page, selected sidebar, topbar label, and main content to agree."""
     _assert_no_visible_markup(page, label)
@@ -1001,6 +1144,13 @@ def main() -> int:
                     "ready: synthetic smoke ready surface still in use — "
                     "must exercise real authenticated_runtime / unified_shell"
                 )
+            try:
+                _assert_first_login_matches_reload_dashboard_geometry(
+                    page, frames_dir=OUT, tolerance_px=4.0
+                )
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=first_login_layout detail={exc}")
+                return 6
 
             # 3b) Logout, then deep-link login with ?page=BOM Analyzer.
             try:
