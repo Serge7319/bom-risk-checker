@@ -51,6 +51,47 @@ class AuthGateModuleTests(unittest.TestCase):
             ),
             "ready",
         )
+        # Leftover login handoff must not remount authenticating over a valid session.
+        self.assertEqual(
+            resolve_initial_gate_state(
+                handoff_active=True,
+                already_authenticated=True,
+            ),
+            "ready",
+        )
+
+    def test_production_path_smoke_uses_real_runtime(self):
+        smoke = (ROOT / "tests" / "smoke_production_streamlit_app.py").read_text(
+            encoding="utf-8"
+        )
+        harness = (ROOT / "tests" / "harness_auth_gate_browser_smoke.py").read_text(
+            encoding="utf-8"
+        )
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("install_production_path_smoke_patches", smoke)
+        self.assertIn("ensure_authenticated_or_stop()", smoke)
+        self.assertIn("run_authenticated_app()", smoke)
+        self.assertNotIn("cadivor-auth-ready", smoke)
+        self.assertNotIn("Mock workspace ready", smoke)
+        self.assertNotIn("paint_authenticated_continuity_shell", smoke)
+        self.assertIn("smoke_production_streamlit_app.py", harness)
+        self.assertIn("Procurement Advisor", harness)
+        self.assertIn("Datasheet Q&A", harness)
+        # Early durable shell before profile IO — single paint authority.
+        self.assertIn("cadivor_shell_cache", runtime)
+        self.assertIn("retire_auth_gate_overlays", runtime)
+        early = runtime[
+            runtime.find("Paint the durable foundation shell") : runtime.find(
+                "log_startup_phase(\"authenticated_runtime_begin\")"
+            )
+        ]
+        self.assertIn("render_unified_shell(", early)
+        # Must not call render_unified_shell a second time after profile IO.
+        late = runtime[
+            runtime.find("# ---------- Cadivor Unified Application Shell ----------") :
+            runtime.find("with timed_phase(\"runtime.workspace_commands\"")
+        ]
+        self.assertNotIn("render_unified_shell(", late)
 
     def test_continuity_shell_never_inserts_global_skeleton(self):
         shell = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")

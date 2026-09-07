@@ -1,4 +1,8 @@
-"""Test-only Streamlit entrypoint for auth-gate browser smoke.
+"""Legacy synthetic ready-surface smoke entry — NOT production-path proof.
+
+Prefer tests/smoke_production_streamlit_app.py (real ensure_authenticated_or_stop →
+run_authenticated_app, unified_shell, routing). This file must not be treated as
+runtime continuity coverage.
 
 Never deploy. Production always uses streamlit_app.py with real Supabase auth.
 """

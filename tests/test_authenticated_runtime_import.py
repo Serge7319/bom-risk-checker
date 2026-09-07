@@ -163,12 +163,21 @@ class AuthenticatedRuntimeImportTests(unittest.TestCase):
             "src.auth_state.handle_explicit_logout_if_pending", return_value=False
         ), patch.object(
             runtime, "_init_runtime_clients", side_effect=_track_init
+        ), patch.object(
+            runtime, "render_unified_shell", MagicMock()
+        ), patch(
+            "src.ui.unified_shell.render_unified_shell", MagicMock()
         ), patch.object(runtime, "load_user_data", side_effect=_track_load):
             with self.assertRaises(RuntimeError):
                 runtime.run_authenticated_app()
 
         self.assertEqual(call_order, ["init", "load"])
-
+        # Early shell must paint before profile IO (init still precedes load).
+        self.assertIn("render_unified_shell(", _runtime_source())
+        self.assertLess(
+            _runtime_source().find("Paint the durable foundation shell"),
+            _runtime_source().find('timed_phase("runtime.load_user_data"'),
+        )
 
 if __name__ == "__main__":
     unittest.main()

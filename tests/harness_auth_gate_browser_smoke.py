@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Browser-level auth-gate smoke harness (test-only Streamlit entry).
+"""Browser-level production-path auth continuity smoke harness.
 
 Usage:
   /opt/anaconda3/bin/python tests/harness_auth_gate_browser_smoke.py
 
-Starts tests/smoke_auth_streamlit_app.py (monkeypatched auth doubles — never
-production streamlit_app.py). Captures screenshots under
-/tmp/cadivor_auth_gate_smoke/.
+Starts tests/smoke_production_streamlit_app.py — real ensure_authenticated_or_stop,
+authenticated_runtime, unified_shell, and routing. Only the session boundary and
+network IO are doubled. Captures frames under /tmp/cadivor_auth_gate_smoke/.
 """
 from __future__ import annotations
 
@@ -25,7 +25,25 @@ MOCK_PASSWORD = "cadivor-auth-smoke"
 STREAMLIT_PY = str(ROOT / "venv" / "bin" / "python")
 if not Path(STREAMLIT_PY).exists():
     STREAMLIT_PY = sys.executable
-SMOKE_APP = str(ROOT / "tests" / "smoke_auth_streamlit_app.py")
+SMOKE_APP = str(ROOT / "tests" / "smoke_production_streamlit_app.py")
+
+AUTH_ROUTES = (
+    "Dashboard",
+    "Alternative Finder",
+    "Datasheet Q&A",
+    "Compare Parts",
+    "Procurement Advisor",
+)
+
+# Distinctive main-canvas copy — must appear before a route is considered settled.
+# Sidebar labels alone are not enough (every route name is always in the nav).
+ROUTE_CONTENT_MARKERS = {
+    "Dashboard": ("Monitor portfolio health", "Welcome,"),
+    "Alternative Finder": ("Choose a better replacement", "Find Alternatives"),
+    "Datasheet Q&A": ("Ask Cadivor about your datasheet", "Upload datasheet"),
+    "Compare Parts": ("Compare any two parts", "Part A"),
+    "Procurement Advisor": ("Procurement Advisor", "Action Needed"),
+}
 
 
 def _assert_not_blank_topbar(html: str, label: str) -> None:
@@ -68,77 +86,137 @@ def _assert_no_visible_markup(page, label: str) -> None:
             )
 
 
+def _viewport_probe(page) -> dict:
+    return page.evaluate(
+        """() => {
+          const text = (document.body && document.body.innerText || '').replace(/\\s+/g, ' ').trim();
+          const bg = window.getComputedStyle(document.body).backgroundColor || '';
+          const gateNodes = Array.from(document.querySelectorAll(
+            '.cv-auth-gate, .cv-auth-gate-card, [data-testid="cadivor-auth-gate"], [data-auth-gate]'
+          ));
+          const visibleGate = gateNodes.some((el) => {
+            const style = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            return !(
+              style.display === 'none' ||
+              style.visibility === 'hidden' ||
+              Number(style.opacity || '1') === 0 ||
+              rect.height < 2 ||
+              rect.width < 2
+            );
+          });
+          const gateKind = (document.querySelector('[data-auth-gate]') || {})
+            .getAttribute?.('data-auth-gate') || '';
+          const topbar = document.querySelector(
+            '.cv-foundation-topbar:not(.cv-foundation-continuity)'
+          );
+          const nav = document.querySelector(
+            '.st-key-cv_foundation_navigation, [class*="st-key-cv_foundation_navigation"]'
+          );
+          const continuityOnly = !topbar && !!document.querySelector(
+            '.cv-foundation-continuity, [data-testid="cadivor-continuity-shell"]'
+          );
+          const hasLogin = gateKind === 'login' || /\\bLogin\\b|Sign in|password/i.test(text);
+          const hasShell = !!(topbar && nav);
+          const centeredLoader = Array.from(document.querySelectorAll(
+            '.cv-auth-gate-card, [data-testid="cadivor-auth-gate"] .cv-auth-card, .cv-boot-card'
+          )).some((el) => {
+            const style = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            if (style.display === 'none' || style.visibility === 'hidden') return false;
+            if (rect.height < 2 || rect.width < 2) return false;
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            return Math.abs(cx - window.innerWidth / 2) < 220 &&
+                   Math.abs(cy - window.innerHeight / 2) < 220;
+          });
+          const blankCanvas =
+            text.length < 8 &&
+            !hasLogin &&
+            !hasShell &&
+            (/rgb\\(\\s*255\\s*,\\s*255\\s*,\\s*255\\s*\\)/.test(bg) ||
+             /rgb\\(\\s*0\\s*,\\s*0\\s*,\\s*0\\s*\\)/.test(bg) ||
+             bg === 'rgba(0, 0, 0, 0)' ||
+             !bg);
+          return {
+            textLen: text.length,
+            textPreview: text.slice(0, 180),
+            bg,
+            hasLogin,
+            hasShell,
+            visibleGate,
+            gateKind,
+            continuityOnly,
+            centeredLoader,
+            blankCanvas,
+            signingIn: /Signing you in|Restoring your session/i.test(text),
+          };
+        }"""
+    )
+
+
 def _assert_visible_branded_surface(page, label: str) -> None:
-    """Fail if the viewport has no Login, progress, or application-shell content."""
-    html = page.content()
-    try:
-        body = str(page.inner_text("body") or "")
-    except Exception as exc:
-        raise AssertionError(f"{label}: could not read visible text ({exc})") from exc
-    body_stripped = " ".join(body.split())
-    if len(body_stripped) < 8:
+    """Fail if the viewport has neither Login nor the authenticated foundation shell."""
+    probe = _viewport_probe(page)
+    if probe.get("blankCanvas"):
+        raise AssertionError(
+            f"{label}: blank black/white frame "
+            f"(bg={probe.get('bg')!r} preview={probe.get('textPreview')!r})"
+        )
+    if probe.get("hasLogin") or probe.get("hasShell"):
+        return
+    # During the brief authenticating transition, a branded gate card is allowed.
+    if probe.get("visibleGate") and probe.get("gateKind") in {
+        "boot",
+        "authenticating",
+        "error",
+        "login",
+    }:
+        return
+    body = " ".join((page.inner_text("body") or "").split())
+    if len(body) < 8:
         raise AssertionError(f"{label}: blank viewport (no visible text)")
-
-    has_login = (
-        'data-auth-gate="login"' in html
-        and (
-            "Login" in body
-            or "Sign in" in body
-            or "password" in body.casefold()
-            or "Email" in body
-        )
-    )
-    has_progress = (
-        'data-auth-gate="boot"' in html
-        or 'data-auth-gate="authenticating"' in html
-        or "Restoring your session" in body
-        or "Signing you in" in body
-    )
-    has_shell = (
-        "cv-foundation-topbar" in html
-        or "cadivor-continuity-shell" in html
-        or "Mock workspace" in body
-        or "Dashboard" in body
-        or "Settings" in body
-        or (
-            "Cadivor" in body
-            and ("Engineering" in body or "workspace" in body.casefold())
-        )
-    )
-    # Cadivor alone on a blank page is not enough without login/progress/shell cues.
-    if has_login or has_progress or has_shell:
-        return
-    if "Cadivor" in body and (
-        "Login" in html or "password" in html.casefold() or "cv-foundation" in html
-    ):
-        return
     raise AssertionError(
-        f"{label}: no branded Login, progress, or application-shell content "
-        f"(body_preview={body_stripped[:180]!r})"
+        f"{label}: viewport has neither Login nor authenticated foundation shell "
+        f"(preview={probe.get('textPreview')!r})"
     )
 
 
-def _assert_no_continuity_skeleton_above_heading(page, label: str, route: str) -> None:
-    """After an authenticated route is ready, continuity/skeleton must not sit above the heading."""
-    heading = page.locator('[data-testid="cadivor-page-heading"]').first
-    heading.wait_for(state="visible", timeout=15000)
-    heading_text = (heading.inner_text() or "").strip()
-    if route not in heading_text:
-        raise AssertionError(f"{label}: expected heading for {route!r}, got {heading_text!r}")
+def _assert_authenticated_continuity(page, label: str, *, allow_authenticating: bool = False) -> None:
+    """Post-login invariant: shell stays; gate/boot/centered loader must not overlay it."""
+    probe = _viewport_probe(page)
+    if probe.get("blankCanvas"):
+        raise AssertionError(f"{label}: blank black/white authenticated frame")
+    if not probe.get("hasShell"):
+        if allow_authenticating and probe.get("signingIn"):
+            return
+        raise AssertionError(
+            f"{label}: authenticated foundation shell missing "
+            f"(preview={probe.get('textPreview')!r})"
+        )
+    if probe.get("visibleGate") and probe.get("gateKind") in {
+        "boot",
+        "authenticating",
+        "login",
+        "error",
+    }:
+        raise AssertionError(
+            f"{label}: visible .cv-auth-gate still present after shell mounted "
+            f"(kind={probe.get('gateKind')!r})"
+        )
+    if probe.get("centeredLoader") or probe.get("signingIn"):
+        raise AssertionError(
+            f"{label}: centered auth/boot loader still visible after authentication"
+        )
 
-    heading_box = heading.bounding_box()
-    if not heading_box:
-        raise AssertionError(f"{label}: page heading has no bounding box")
 
-    # Continuity / skeleton hosts must not occupy layout space above the heading.
+def _assert_no_continuity_skeleton_above_content(page, label: str) -> None:
     offenders = page.evaluate(
-        """(headingTop) => {
+        """() => {
           const selectors = [
             '[data-testid="cadivor-continuity-shell"]',
             '.cv-foundation-continuity',
             '.cv56-skeleton-page',
-            '[data-testid="stElementContainer"]:has(.cv56-skeleton-page)',
-            '[data-testid="stElementContainer"]:has(.cv-foundation-continuity)',
           ];
           const hits = [];
           for (const sel of selectors) {
@@ -154,31 +232,16 @@ def _assert_no_continuity_skeleton_above_heading(page, label: str, route: str) -
                 rect.height < 1 ||
                 rect.width < 1;
               if (hidden) continue;
-              if (rect.bottom > 8 && rect.top < headingTop - 4) {
-                hits.push({
-                  sel,
-                  top: rect.top,
-                  bottom: rect.bottom,
-                  height: rect.height,
-                });
+              if (rect.height > 8 && rect.top < 120) {
+                hits.push({ sel, top: rect.top, height: rect.height });
               }
             }
           }
           return hits;
-        }""",
-        heading_box["y"],
+        }"""
     )
     if offenders:
-        raise AssertionError(
-            f"{label}: continuity/skeleton occupies space above heading {offenders!r}"
-        )
-
-    # No centered auth/boot card after authentication.
-    body = page.inner_text("body") or ""
-    if "Signing you in" in body or "Restoring your session" in body:
-        raise AssertionError(f"{label}: auth/boot progress card still visible")
-    if 'data-auth-gate="authenticating"' in page.content() and "Signing you in" in body:
-        raise AssertionError(f"{label}: authenticating gate still visible")
+        raise AssertionError(f"{label}: continuity/skeleton still occupying layout {offenders!r}")
 
 
 def _find_login_fields(page):
@@ -198,6 +261,76 @@ def _find_login_fields(page):
             continue
     return None, None, None
 
+
+def _click_foundation_nav(page, route: str) -> None:
+    # Prefer session-safe foundation nav buttons; fall back to link text.
+    candidates = [
+        page.locator(f'.st-key-cv_foundation_navigation button:has-text("{route}")').first,
+        page.locator(f'[class*="st-key-cv_foundation_navigation"] button:has-text("{route}")').first,
+        page.locator(f'button:has-text("{route}")').first,
+        page.locator(f'a.cv-foundation-nav-link:has-text("{route}")').first,
+    ]
+    last_exc: Exception | None = None
+    for loc in candidates:
+        try:
+            if loc.count():
+                loc.click(timeout=8000)
+                return
+        except Exception as exc:
+            last_exc = exc
+            continue
+    raise AssertionError(f"foundation nav control for {route!r} not found ({last_exc})")
+
+
+def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: str) -> None:
+    ready = False
+    markers = ROUTE_CONTENT_MARKERS.get(route, (route,))
+    context_text = ""
+    for i in range(50):
+        _assert_no_visible_markup(page, f"{label}_{i}")
+        _assert_visible_branded_surface(page, f"{label}_{i}")
+        _assert_authenticated_continuity(page, f"{label}_{i}")
+        html = page.content()
+        body = page.inner_text("body") or ""
+        page_context = page.locator(".cv-foundation-page-context strong").first
+        try:
+            context_text = (
+                (page_context.inner_text() or "").strip() if page_context.count() else ""
+            )
+        except Exception:
+            context_text = ""
+        topbar_ok = context_text == route or context_text.replace("\xa0", " ") == route
+        content_ok = any(marker in body for marker in markers)
+        # Reject stale previous-route heroes still sitting in the main canvas.
+        stale = False
+        if route != "Alternative Finder" and "Choose a better replacement" in body:
+            stale = True
+        if route != "Compare Parts" and "Compare any two parts" in body:
+            stale = True
+        if (
+            ("cv-foundation-topbar" in html)
+            and topbar_ok
+            and content_ok
+            and not stale
+            and "Signing you in" not in body
+        ):
+            _assert_no_continuity_skeleton_above_content(page, f"{label}_{i}")
+            ready = True
+            break
+        if i in {0, 2, 5, 10, 20}:
+            page.screenshot(
+                path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
+            )
+        page.wait_for_timeout(400)
+    page.screenshot(path=str(frames_dir / f"{prefix}_final.png"), full_page=True)
+    (frames_dir / f"{prefix}_final.html").write_text(
+        page.content()[:200000], encoding="utf-8"
+    )
+    if not ready:
+        raise AssertionError(
+            f"{label}: route {route!r} never settled with matching content "
+            f"(topbar={context_text!r} markers={markers!r})"
+        )
 
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
@@ -326,102 +459,86 @@ def main() -> int:
             target.locator(
                 'button:has-text("Login"), button:has-text("Sign in"), button[type="submit"]'
             ).first.click(timeout=8000)
-            # Capture the complete login → dashboard transition; never blank.
+
+            # Capture Login → Dashboard transition frames; never blank / gate overlay.
             ready = False
-            for i in range(50):
-                _assert_no_visible_markup(page, f"login_to_ready_{i}")
-                _assert_visible_branded_surface(page, f"login_to_ready_{i}")
+            for i in range(60):
+                _assert_no_visible_markup(page, f"login_to_dashboard_{i}")
+                _assert_visible_branded_surface(page, f"login_to_dashboard_{i}")
+                probe = _viewport_probe(page)
                 html_auth = page.content()
-                body = page.inner_text("body") or ""
-                if i == 2:
+                if i in {0, 1, 2, 4, 8, 12}:
                     page.screenshot(
-                        path=str(OUT / "03_authenticating.png"), full_page=True
+                        path=str(OUT / f"03_login_to_dashboard_t{i:02d}.png"),
+                        full_page=True,
                     )
-                    (OUT / "03_authenticating.html").write_text(
+                    (OUT / f"03_login_to_dashboard_t{i:02d}.html").write_text(
                         html_auth[:200000], encoding="utf-8"
                     )
                 if "cv-startup-shell-topbar" in html_auth:
-                    raise AssertionError("authenticating: fake topbar present")
-                if (
-                    "cv-foundation-topbar" in html_auth
-                    or "Dashboard" in html_auth
-                    or "Mock workspace" in html_auth
-                ) and "Signing you in" not in body:
+                    raise AssertionError("login_to_dashboard: fake topbar present")
+                if probe.get("hasShell") and not probe.get("signingIn"):
+                    _assert_authenticated_continuity(page, f"login_to_dashboard_{i}")
                     ready = True
                     break
+                if probe.get("blankCanvas"):
+                    raise AssertionError(
+                        f"login_to_dashboard_{i}: blank black/white frame during transition"
+                    )
                 page.wait_for_timeout(400)
-            page.screenshot(path=str(OUT / "04_ready.png"), full_page=True)
+            page.screenshot(path=str(OUT / "04_dashboard_ready.png"), full_page=True)
             html_ready = page.content()
             _assert_not_blank_topbar(html_ready, "ready")
             _assert_no_visible_markup(page, "ready")
-            _assert_visible_branded_surface(page, "ready")
-            (OUT / "04_ready.html").write_text(html_ready[:200000], encoding="utf-8")
-            if not ready or (
-                "Mock workspace" not in html_ready and "Dashboard" not in html_ready
-            ):
+            _assert_authenticated_continuity(page, "ready")
+            (OUT / "04_dashboard_ready.html").write_text(
+                html_ready[:200000], encoding="utf-8"
+            )
+            if not ready:
                 print("AUTH_SMOKE fail=stuck_on_login")
                 return 6
-            if "cv-startup-shell-topbar" in html_ready:
-                raise AssertionError("ready: fake topbar present")
+            if "Mock workspace ready" in html_ready or "cadivor-auth-ready" in html_ready:
+                raise AssertionError(
+                    "ready: synthetic smoke ready surface still in use — "
+                    "must exercise real authenticated_runtime / unified_shell"
+                )
 
-            # Authenticated routes: no continuity/skeleton band above page heading.
-            route_shots = {
-                "Dashboard": "07_dashboard.png",
-                "Alternative Finder": "08_alternative_finder.png",
-                "Compare Parts": "09_compare_parts.png",
-                "Design Impact": "10_design_impact.png",
+            # Authenticated route chain via real foundation nav.
+            route_prefixes = {
+                "Dashboard": "07_dashboard",
+                "Alternative Finder": "08_alternative_finder",
+                "Datasheet Q&A": "09_datasheet_qa",
+                "Compare Parts": "10_compare_parts",
+                "Procurement Advisor": "11_procurement_advisor",
             }
-            for route, shot_name in route_shots.items():
-                btn = page.locator(f'button:has-text("Open {route}")').first
-                btn.click(timeout=8000)
-                ready_route = False
-                for i in range(30):
-                    _assert_no_visible_markup(page, f"nav_{route}_{i}")
-                    _assert_visible_branded_surface(page, f"nav_{route}_{i}")
-                    body_nav = page.inner_text("body") or ""
-                    html_nav = page.content()
-                    if route in body_nav and "cv-foundation-topbar" in html_nav:
-                        try:
-                            _assert_no_continuity_skeleton_above_heading(
-                                page, f"route_{route}", route
-                            )
-                            ready_route = True
-                            break
-                        except AssertionError:
-                            # Heading may still be mounting; keep polling.
-                            pass
-                    page.wait_for_timeout(400)
-                page.screenshot(path=str(OUT / shot_name), full_page=True)
-                (OUT / shot_name.replace(".png", ".html")).write_text(
-                    page.content()[:200000], encoding="utf-8"
-                )
-                if not ready_route:
-                    print(f"AUTH_SMOKE fail=route_layout route={route}")
+            for route in AUTH_ROUTES:
+                if route != "Dashboard":
+                    _click_foundation_nav(page, route)
+                try:
+                    _wait_for_route(
+                        page,
+                        route,
+                        label=f"nav_{route}",
+                        frames_dir=OUT,
+                        prefix=route_prefixes[route],
+                    )
+                except AssertionError as exc:
+                    print(f"AUTH_SMOKE fail=route_layout route={route} detail={exc}")
                     return 8
-                _assert_no_continuity_skeleton_above_heading(
-                    page, f"route_{route}_final", route
-                )
 
             page.reload(wait_until="domcontentloaded")
-            # Session restore may briefly show the full-page boot shell — never markup.
-            # Browser reload can yield an empty body until Streamlit paints; once text
-            # appears it must be branded Login/progress/shell (never a blank canvas).
             for _ in range(40):
                 body_probe = page.inner_text("body") or ""
                 if body_probe.strip():
                     _assert_no_visible_markup(page, "boot_restore_wait")
                     _assert_visible_branded_surface(page, "boot_restore_wait")
-                html_probe = page.content()
-                if (
-                    "Mock workspace" in html_probe
-                    or "Dashboard" in html_probe
-                    or "Design Impact" in body_probe
-                    or "Alternative Finder" in body_probe
-                    or 'data-auth-gate="login"' in html_probe
-                ) and "Restoring your session" not in body_probe:
+                probe = _viewport_probe(page)
+                if probe.get("hasShell") and not probe.get("signingIn"):
+                    break
+                if probe.get("hasLogin"):
                     break
                 page.wait_for_timeout(250)
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(1200)
             page.screenshot(path=str(OUT / "05_session_restore.png"), full_page=True)
             html_restore = page.content()
             _assert_not_blank_topbar(html_restore, "session_restore")
@@ -432,18 +549,14 @@ def main() -> int:
             )
             if "cv-startup-shell-topbar" in html_restore:
                 raise AssertionError("session_restore: fake topbar present")
-            if (
-                "Mock workspace" not in html_restore
-                and "Dashboard" not in html_restore
-                and "Design Impact" not in html_restore
-                and "Alternative Finder" not in html_restore
-                and "Compare Parts" not in html_restore
-            ):
-                if 'data-auth-gate="login"' in html_restore and "Login" in html_restore:
-                    print("AUTH_SMOKE warn=session_restore_returned_login")
-                else:
-                    print("AUTH_SMOKE fail=session_restore_blank")
-                    return 7
+            restore_probe = _viewport_probe(page)
+            if not restore_probe.get("hasShell") and not restore_probe.get("hasLogin"):
+                print("AUTH_SMOKE fail=session_restore_blank")
+                return 7
+            if restore_probe.get("hasLogin"):
+                print("AUTH_SMOKE warn=session_restore_returned_login")
+            else:
+                _assert_authenticated_continuity(page, "session_restore")
 
             browser.close()
         print(f"AUTH_SMOKE ok screenshots={OUT}")

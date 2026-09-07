@@ -261,10 +261,14 @@ def mount_auth_progress_surface(host: Any, message: str | None = None) -> None:
 
     Never paints the fake dashboard/topbar shell that caused blank production
     frames. The auth gate is the sole owner of boot/authenticating surfaces.
+    No-ops once the workspace session is already authenticated.
     """
     del host, message  # host.empty() paths are retired
+    from src.auth_state import AUTH_AUTHENTICATED
     from src.auth_gate import paint_auth_gate, set_auth_gate_state
 
+    if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
+        return
     set_auth_gate_state("authenticating", reason="legacy_mount_redirect")
     paint_auth_gate("authenticating")
     st.session_state[AUTH_PROGRESS_MOUNTED_KEY] = True
@@ -274,8 +278,11 @@ def mount_auth_progress_surface(host: Any, message: str | None = None) -> None:
 def paint_auth_surface(host: Any, *, kind: str = "auto", message: str | None = None) -> None:
     """Deprecated compatibility shim — redirects to the auth gate."""
     del host
+    from src.auth_state import AUTH_AUTHENTICATED
     from src.auth_gate import paint_auth_gate, set_auth_gate_state
 
+    if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
+        return
     resolved = str(kind or "auto").strip().lower()
     if resolved == "auto":
         resolved = (
@@ -298,9 +305,12 @@ def should_render_authenticated_startup_shell() -> bool:
 
 def render_startup_loading_shell(message: str = "Preparing your workspace…") -> None:
     """Deprecated — paints the auth-gate authenticating card (no fake topbar)."""
+    from src.auth_state import AUTH_AUTHENTICATED
     from src.auth_gate import paint_auth_gate, set_auth_gate_state
 
     del message
+    if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
+        return
     set_auth_gate_state("authenticating", reason="legacy_shell_redirect")
     paint_auth_gate("authenticating")
     st.session_state[AUTH_PROGRESS_MOUNTED_KEY] = True
@@ -549,12 +559,10 @@ def _ensure_authenticated_or_stop_impl() -> None:
         already_authenticated=already_authenticated,
     )
     set_auth_gate_state(gate_state, reason="bootstrap_first_paint")
-    # FIRST paint — before cookie I/O, resolve, or profile work.
-    paint_auth_gate(gate_state)
 
-    # Already-authenticated workspace navigation: admit runtime immediately.
-    # Do not paint boot, do not retire overlays (nothing to clear), do not blank.
-    if gate_state == "ready" and already_authenticated:
+    # Already-authenticated workspace navigation: never paint boot/authenticating
+    # over the durable shell — admit runtime with zero gate paint.
+    if gate_state == "ready" and already_authenticated and not has_pending_credentials():
         clear_login_handoff()
         log_startup_phase("auth_boundary_passed")
         emit_timing(
@@ -566,6 +574,8 @@ def _ensure_authenticated_or_stop_impl() -> None:
         )
         return
 
+    # FIRST paint for signed-out / restore / credential flows only.
+    paint_auth_gate(gate_state)
     log_auth_correlation(
         "bootstrap_entry",
         cookie_manager=None,
@@ -631,6 +641,8 @@ def _ensure_authenticated_or_stop_impl() -> None:
             ok = execute_password_login(supabase, cookie_manager, email, password)
             if ok:
                 set_auth_gate_state("ready", reason="provider_login_success")
+                # Drop handoff so the next run cannot remount authenticating over shell.
+                clear_login_handoff()
             else:
                 set_auth_gate_state(
                     "login",
