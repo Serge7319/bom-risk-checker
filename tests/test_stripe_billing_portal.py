@@ -203,6 +203,13 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
         self.assertIn("key=_settings_tab_keys[tab_label]", settings_block)
         self.assertIn("on_click=_set_settings_active_tab", settings_block)
         self.assertIn('type="primary" if is_active_tab else "secondary"', settings_block)
+        # Compact left-aligned row: five small columns + flexible spacer.
+        self.assertIn("st.columns([1, 1, 1, 1, 1, 8], gap=\"small\")", settings_block)
+        self.assertIn("zip(settings_tab_cols[:5], _settings_tab_options)", settings_block)
+        self.assertNotIn(
+            "st.columns(len(_settings_tab_options), gap=\"small\")",
+            settings_block,
+        )
         for label in (
             "Profile",
             "Preferences",
@@ -295,14 +302,27 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
         self.assertIn("Open secure billing portal", open_call)
         self.assertNotIn("key=", open_call)
         self.assertNotIn("settings_open_billing_portal", settings_block)
-        # Scoped descendant selector — not a fragile .stLinkButton > a override.
-        self.assertRegex(
-            self.runtime,
-            r'\[data-testid="stVerticalBlockBorderWrapper"\]:has\(\.cv-billing-actions__label\)\s*\[data-testid="stLinkButton"\]\s+a\s*\{',
-        )
-        self.assertNotIn(
+        # Streamlit 1.37: support both wrapper>a and anchor-as-testid forms.
+        self.assertIn(
             '[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a',
             self.runtime,
+        )
+        self.assertIn(
+            '[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) a[data-testid="stLinkButton"]',
+            self.runtime,
+        )
+        self.assertIn(
+            '[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a:hover',
+            self.runtime,
+        )
+        self.assertIn(
+            '[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) a[data-testid="stLinkButton"]:hover',
+            self.runtime,
+        )
+        # Do not leave the old nested-only selector as the sole rule.
+        self.assertNotRegex(
+            self.runtime,
+            r'\[data-testid="stVerticalBlockBorderWrapper"\]:has\(\.cv-billing-actions__label\)\s*\[data-testid="stLinkButton"\]\s+a\s*\{',
         )
         compact_runtime = re.sub(r"\s+", "", self.runtime)
         self.assertIn("background:#2563EB!important", compact_runtime)
