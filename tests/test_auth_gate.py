@@ -44,6 +44,13 @@ class AuthGateModuleTests(unittest.TestCase):
             resolve_initial_gate_state(pending_credentials=True),
             "authenticating",
         )
+        self.assertEqual(
+            resolve_initial_gate_state(
+                has_tokens=True,
+                already_authenticated=True,
+            ),
+            "ready",
+        )
 
     def test_bootstrap_no_longer_uses_empty_host_root(self):
         bootstrap = (ROOT / "src" / "auth_bootstrap.py").read_text(encoding="utf-8")

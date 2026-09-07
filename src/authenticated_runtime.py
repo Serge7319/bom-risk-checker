@@ -84,7 +84,11 @@ from src.ui.navigation import (
     reset_alternative_finder_prefill,
 )
 from src.browser_navigation import consume_browser_navigation_event
-from src.ui.unified_shell import render_unified_shell, inject_unified_shell_css
+from src.ui.unified_shell import (
+    render_unified_shell,
+    inject_unified_shell_css,
+    paint_authenticated_continuity_shell,
+)
 from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.ui.premium_interaction_repair import inject_premium_interaction_css
 from src.ui.premium_interactions import render_premium_interactions
@@ -1772,6 +1776,14 @@ def run_authenticated_app() -> None:
         unsafe_allow_html=True,
     )
 
+    # Keep Cadivor shell chrome visible while profile/workspace data initializes.
+    _continuity_page = str(
+        st.session_state.get("cadivor_route")
+        or st.session_state.get("app_mode")
+        or "Dashboard"
+    ).strip() or "Dashboard"
+    paint_authenticated_continuity_shell(page=_continuity_page)
+
     log_startup_phase("authenticated_runtime_begin")
     from src.performance_timing import emit_timing, timed_phase
 
@@ -2727,6 +2739,13 @@ def run_authenticated_app() -> None:
         # Core premium UI is the last stylesheet: tokens, buttons, tables, KPIs, badges.
         inject_core_premium_ui()
         mark_authenticated_surface_ready()
+    try:
+        from src.auth_gate import retire_auth_gate_overlays
+
+        # Shell chrome is on screen — safe to hide signing-in / restore gate.
+        retire_auth_gate_overlays()
+    except Exception:
+        pass
 
     with timed_phase("runtime.workspace_commands", operation="workspace_commands") as cmd_meta:
         try:

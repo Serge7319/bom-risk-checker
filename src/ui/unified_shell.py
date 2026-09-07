@@ -69,6 +69,50 @@ def inject_unified_shell_css() -> None:
     )
 
 
+def paint_authenticated_continuity_shell(*, page: str = "Dashboard") -> None:
+    """Paint Cadivor foundation chrome immediately so auth/workspace IO never blanks.
+
+    Uses the real shell topbar classes (not a separate loader overlay). The later
+    full ``render_unified_shell`` mounts the durable chrome; continuity hides once
+    a non-continuity foundation topbar is present.
+    """
+    inject_unified_shell_css()
+    safe_page = html.escape(str(page or "Dashboard").strip() or "Dashboard")
+    st.markdown(
+        f"""
+        <div class="cv-foundation-topbar cv-foundation-continuity"
+             data-testid="cadivor-continuity-shell"
+             aria-label="Cadivor application header">
+          <div class="cv-foundation-brand">
+            <span class="cv-foundation-brand-mark">C</span>
+            <span class="cv-foundation-brand-copy">
+              <strong>Cadivor</strong><small>Engineering Intelligence</small>
+            </span>
+          </div>
+          <div class="cv-foundation-page-context">
+            <strong>{safe_page}</strong>
+          </div>
+        </div>
+        <style id="cadivor-continuity-shell-css">
+        body:has(.cv-foundation-topbar:not(.cv-foundation-continuity)) .cv-foundation-continuity{{
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          height:0!important;overflow:hidden!important
+        }}
+        html,body,.stApp,[data-testid="stAppViewContainer"]{{
+          background:#F5F7FB!important
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    try:
+        from src.ui.sprint71_polish import render_page_skeleton
+
+        render_page_skeleton(kpis=3, panels=1)
+    except Exception:
+        pass
+
+
 def _escape(value: object) -> str:
     return html.escape(str(value or ""))
 

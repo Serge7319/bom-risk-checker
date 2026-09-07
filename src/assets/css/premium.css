@@ -201,9 +201,10 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecor
 
 /* Cadivor M4.19 top-gap fine tune.
    Collapse Streamlit rows that contain style-only markdown blocks. These blocks were
-   visually empty but still participated in the vertical layout in Chrome. */
-div[data-testid="stElementContainer"]:has(style),
-div.element-container:has(style),
+   visually empty but still participated in the vertical layout in Chrome.
+   Never hide branded auth-gate or foundation shell content. */
+div[data-testid="stElementContainer"]:has(style):not(:has(.cv-foundation-topbar)):not(:has(.cv-auth-gate)):not(:has(.cv-auth-gate-card)):not(:has([data-testid="cadivor-auth-gate"])),
+div.element-container:has(style):not(:has(.cv-foundation-topbar)):not(:has(.cv-auth-gate)):not(:has(.cv-auth-gate-card)):not(:has([data-testid="cadivor-auth-gate"])),
 div[data-testid="stMarkdownContainer"]:has(style:only-child) {
     display: none !important;
     height: 0 !important;
