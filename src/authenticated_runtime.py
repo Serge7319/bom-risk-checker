@@ -7320,17 +7320,19 @@ def run_authenticated_app() -> None:
             .st-key-settings_tab_workspace [data-testid="stButton"] > button[kind="primary"],
             .st-key-settings_tab_security [data-testid="stButton"] > button[kind="primary"],
             .st-key-settings_tab_billing [data-testid="stButton"] > button[kind="primary"]{
-                color:#0F172A!important;
+                color:#FFFFFF!important;
                 font-weight:800!important;
                 border-bottom-color:#2563EB!important;
-                background:#F8FAFC!important;
+                background:#2563EB!important;
             }
-            /* Billing portal CTA — full-width Cadivor primary (1.37-compatible). */
-            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"],
-            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"] > div{
+            /* Billing portal CTA — full-width Cadivor primary (Streamlit 1.37 forms). */
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton,
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > div,
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) a[data-testid="stLinkButton"]{
                 width:100%!important;
             }
-            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"] a{
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a,
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) a[data-testid="stLinkButton"]{
                 display:inline-flex!important;
                 align-items:center!important;
                 justify-content:center!important;
@@ -7345,9 +7347,14 @@ def run_authenticated_app() -> None:
                 text-decoration:none!important;
                 font-weight:850!important;
             }
-            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) [data-testid="stLinkButton"] a:hover{
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a:hover,
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) a[data-testid="stLinkButton"]:hover{
                 background:#1D4ED8!important;
                 border-color:#1D4ED8!important;
+                color:#FFFFFF!important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton > a *,
+            [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) a[data-testid="stLinkButton"] *{
                 color:#FFFFFF!important;
             }
             .cv-settings-note{
@@ -7479,8 +7486,9 @@ def run_authenticated_app() -> None:
         def _set_settings_active_tab(tab_label: str) -> None:
             st.session_state["settings_active_tab"] = tab_label
 
-        settings_tab_cols = st.columns(len(_settings_tab_options), gap="small")
-        for tab_col, tab_label in zip(settings_tab_cols, _settings_tab_options):
+        # Five compact tab columns + flexible spacer so labels sit adjacent, not spread.
+        settings_tab_cols = st.columns([1, 1, 1, 1, 1, 8], gap="small")
+        for tab_col, tab_label in zip(settings_tab_cols[:5], _settings_tab_options):
             with tab_col:
                 is_active_tab = (
                     str(st.session_state.get("settings_active_tab") or "") == tab_label
