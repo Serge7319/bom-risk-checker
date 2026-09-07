@@ -55,6 +55,14 @@ log_startup_phase("entrypoint_ready")
 if st.session_state.pop("cadivor_logout_reload_pending", False):
     st.session_state.pop("cadivor_explicit_logout", None)
     st.session_state.pop("cadivor_logout_in_progress", None)
+    # Drop the DI smoke session cookie before same-tab reload so logout cannot
+    # silently re-admit (production clears real auth cookies in begin_logout).
+    try:
+        from tests.auth_gate_smoke_adapter import _clear_smoke_cookie
+
+        _clear_smoke_cookie()
+    except Exception:
+        pass
     components.html(
         """<script>
         (function () {
@@ -62,6 +70,13 @@ if st.session_state.pop("cadivor_logout_reload_pending", False):
           if (!view || !view.location) {
             return;
           }
+          try {
+            const clear = (doc) => {
+              if (!doc) return;
+              doc.cookie = "cadivor_auth_gate_smoke=; path=/; Max-Age=0; SameSite=Lax";
+            };
+            clear(view.document);
+          } catch (error) {}
           view.location.replace(view.location.pathname + view.location.search);
         })();
         </script>""",

@@ -87,9 +87,6 @@ from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import (
     render_unified_shell,
     inject_unified_shell_css,
-    paint_authenticated_main_placeholder,
-    mark_authenticated_page_content_ready,
-    MAIN_CONTENT_READY_KEY,
 )
 from src.ui.workspace_consistency import inject_workspace_consistency_css
 from src.ui.premium_interaction_repair import inject_premium_interaction_css
@@ -1856,14 +1853,6 @@ def run_authenticated_app() -> None:
         pass
     mark_authenticated_surface_ready()
     st.session_state["cadivor_foundation_shell_mounted"] = True
-    # First post-login admit only: fill the main canvas while profile/workspace IO
-    # runs. Ordinary authenticated navigations skip this (content already ready).
-    # Hosted in st.empty() so the same run can fully clear it before Dashboard.
-    _main_content_ph_host = None
-    if not st.session_state.get(MAIN_CONTENT_READY_KEY):
-        _main_content_ph_host = st.empty()
-        with _main_content_ph_host.container():
-            paint_authenticated_main_placeholder(page=_shell_route)
 
     log_startup_phase("authenticated_runtime_begin")
     from src.performance_timing import emit_timing, timed_phase
@@ -2850,11 +2839,6 @@ def run_authenticated_app() -> None:
         outcome="success",
         event="route_enter",
     )
-
-    # Real route content is about to paint — fully clear the temporary placeholder.
-    if _main_content_ph_host is not None:
-        _main_content_ph_host.empty()
-    mark_authenticated_page_content_ready()
 
     if app_mode == "Onboarding":
         progress = onboarding_progress or {}

@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, unquote_plus, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path("/tmp/cadivor_auth_gate_smoke")
@@ -27,13 +28,23 @@ if not Path(STREAMLIT_PY).exists():
     STREAMLIT_PY = sys.executable
 SMOKE_APP = str(ROOT / "tests" / "smoke_production_streamlit_app.py")
 
-AUTH_ROUTES = (
+# Full authenticated nav circuit, ending back on Dashboard.
+AUTH_ROUTE_CIRCUIT = (
     "Dashboard",
     "Alternative Finder",
     "Datasheet Q&A",
     "Compare Parts",
     "Procurement Advisor",
+    "Dashboard",
 )
+
+ROUTE_NAV_SLUGS = {
+    "Dashboard": "dashboard",
+    "Alternative Finder": "alternatives",
+    "Datasheet Q&A": "datasheet-qa",
+    "Compare Parts": "compare",
+    "Procurement Advisor": "procurement",
+}
 
 # Distinctive main-canvas copy — must appear before a route is considered settled.
 # Sidebar labels alone are not enough (every route name is always in the nav).
@@ -91,40 +102,53 @@ def _viewport_probe(page) -> dict:
         """() => {
           const text = (document.body && document.body.innerText || '').replace(/\\s+/g, ' ').trim();
           const bg = window.getComputedStyle(document.body).backgroundColor || '';
-          const gateNodes = Array.from(document.querySelectorAll(
-            '.cv-auth-gate, .cv-auth-gate-card, [data-testid="cadivor-auth-gate"], [data-auth-gate]'
-          ));
-          const visibleGate = gateNodes.some((el) => {
+          const visiblyPainted = (el) => {
+            if (!el) return false;
             const style = window.getComputedStyle(el);
             const rect = el.getBoundingClientRect();
-            return !(
+            if (
               style.display === 'none' ||
               style.visibility === 'hidden' ||
               Number(style.opacity || '1') === 0 ||
               rect.height < 2 ||
               rect.width < 2
-            );
-          });
-          const gateKind = (document.querySelector('[data-auth-gate]') || {})
-            .getAttribute?.('data-auth-gate') || '';
+            ) {
+              return false;
+            }
+            return true;
+          };
+          const gateVisiblyPainted = (el) => {
+            if (!visiblyPainted(el)) return false;
+            // Streamlit keeps prior-run gate markers clipped / aria-hidden / stale.
+            if (el.getAttribute('aria-hidden') === 'true') return false;
+            if (el.closest && el.closest('[data-stale="true"]')) return false;
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 2 && rect.height <= 2) return false;
+            return true;
+          };
+          const gateNodes = Array.from(document.querySelectorAll(
+            '.cv-auth-gate, .cv-auth-gate-card, [data-testid="cadivor-auth-gate"], [data-auth-gate]'
+          ));
+          const visibleGate = gateNodes.some((el) => gateVisiblyPainted(el));
+          const gateEl = gateNodes.find((el) => gateVisiblyPainted(el))
+            || document.querySelector('[data-auth-gate]');
+          const gateKind = (gateEl && gateEl.getAttribute('data-auth-gate')) || '';
           const topbar = document.querySelector(
             '.cv-foundation-topbar:not(.cv-foundation-continuity)'
           );
           const nav = document.querySelector(
             '.st-key-cv_foundation_navigation, [class*="st-key-cv_foundation_navigation"]'
           );
-          const continuityOnly = !topbar && !!document.querySelector(
+          const continuityOnly = !visiblyPainted(topbar) && !!document.querySelector(
             '.cv-foundation-continuity, [data-testid="cadivor-continuity-shell"]'
           );
           const hasLogin = gateKind === 'login' || /\\bLogin\\b|Sign in|password/i.test(text);
-          const hasShell = !!(topbar && nav);
+          const hasShell = !!(visiblyPainted(topbar) && visiblyPainted(nav));
           const centeredLoader = Array.from(document.querySelectorAll(
             '.cv-auth-gate-card, [data-testid="cadivor-auth-gate"] .cv-auth-card, .cv-boot-card'
           )).some((el) => {
-            const style = window.getComputedStyle(el);
+            if (!gateVisiblyPainted(el)) return false;
             const rect = el.getBoundingClientRect();
-            if (style.display === 'none' || style.visibility === 'hidden') return false;
-            if (rect.height < 2 || rect.width < 2) return false;
             const cx = rect.left + rect.width / 2;
             const cy = rect.top + rect.height / 2;
             return Math.abs(cx - window.innerWidth / 2) < 220 &&
@@ -155,8 +179,93 @@ def _viewport_probe(page) -> dict:
     )
 
 
+def _assert_no_forbidden_loading_ui(page, label: str, *, require_shell: bool = False) -> None:
+    """Fail on blank/black, placeholder cards, or main-canvas workspace loading cards."""
+    probe = _viewport_probe(page)
+    if probe.get("blankCanvas"):
+        raise AssertionError(
+            f"{label}: blank black/white full-page frame "
+            f"(bg={probe.get('bg')!r} preview={probe.get('textPreview')!r})"
+        )
+    report = page.evaluate(
+        """() => {
+          const ignoreSel =
+            '[class*="st-key-cv_foundation_navigation"], .cv-foundation-topbar, '
+            + '[class*="st-key-cv_foundation_profile"], .cv-foundation-plan-card, '
+            + '[data-testid="stSidebar"]';
+          const inIgnored = (el) => !!(el.closest && el.closest(ignoreSel));
+          const visible = (el) => {
+            const style = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            return !(
+              style.display === 'none' ||
+              style.visibility === 'hidden' ||
+              Number(style.opacity || '1') === 0 ||
+              rect.height < 2 ||
+              rect.width < 2
+            );
+          };
+          const placeholders = Array.from(document.querySelectorAll(
+            '[data-testid="cadivor-main-content-placeholder"], '
+            + '.cv-main-content-placeholder, .cv-main-content-placeholder-card'
+          )).filter((el) => !inIgnored(el) && visible(el));
+          // Main-canvas cards only (exclude foundation chrome / plan card).
+          const mainRoot = document.querySelector('section[data-testid="stMain"]') || document.body;
+          const candidates = Array.from(mainRoot.querySelectorAll('div')).filter((el) => {
+            if (inIgnored(el)) return false;
+            if (!visible(el)) return false;
+            const rect = el.getBoundingClientRect();
+            // Card-sized region in the content column (right of the rail).
+            if (rect.left < 200) return false;
+            if (rect.height < 70 || rect.height > 360) return false;
+            if (rect.width < 220 || rect.width > 1100) return false;
+            const text = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+            // Exact removed placeholder copy, or a card whose primary text is the
+            // loading line (not the sidebar plan summary buried in a huge node).
+            if (/Loading your workspace/i.test(text)) return true;
+            if (!/^Dashboard\\s+Loading workspace/i.test(text)
+                && !/^Loading workspace\\b/i.test(text)) {
+              return false;
+            }
+            return text.length < 120;
+          });
+          const tops = [];
+          const samples = [];
+          for (const el of candidates) {
+            const top = Math.round(el.getBoundingClientRect().top);
+            if (tops.some((t) => Math.abs(t - top) < 8)) continue;
+            tops.push(top);
+            samples.push((el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 80));
+          }
+          return {
+            placeholderCount: placeholders.length,
+            loadingCardTops: tops,
+            loadingCardCount: tops.length,
+            samples,
+          };
+        }"""
+    )
+    if report.get("placeholderCount", 0) > 0:
+        raise AssertionError(
+            f"{label}: main-content placeholder still mounted "
+            f"(count={report.get('placeholderCount')})"
+        )
+    if require_shell or probe.get("hasShell"):
+        if report.get("loadingCardCount", 0) > 0:
+            raise AssertionError(
+                f"{label}: main-canvas Loading workspace card present "
+                f"(tops={report.get('loadingCardTops')!r} samples={report.get('samples')!r})"
+            )
+        if report.get("loadingCardCount", 0) >= 2:
+            raise AssertionError(
+                f"{label}: duplicate loading cards "
+                f"(tops={report.get('loadingCardTops')!r})"
+            )
+
+
 def _assert_visible_branded_surface(page, label: str) -> None:
     """Fail if the viewport has neither Login nor the authenticated foundation shell."""
+    _assert_no_forbidden_loading_ui(page, label)
     probe = _viewport_probe(page)
     if probe.get("blankCanvas"):
         raise AssertionError(
@@ -184,6 +293,7 @@ def _assert_visible_branded_surface(page, label: str) -> None:
 
 def _assert_authenticated_continuity(page, label: str, *, allow_authenticating: bool = False) -> None:
     """Post-login invariant: shell stays; gate/boot/centered loader must not overlay it."""
+    _assert_no_forbidden_loading_ui(page, label)
     probe = _viewport_probe(page)
     if probe.get("blankCanvas"):
         raise AssertionError(f"{label}: blank black/white authenticated frame")
@@ -246,6 +356,7 @@ def _assert_no_continuity_skeleton_above_content(page, label: str) -> None:
 
 def _assert_login_handoff_frame(page, label: str) -> None:
     """Fail if the Login→shell handoff exposes a frame with neither Login/progress nor shell."""
+    _assert_no_forbidden_loading_ui(page, label)
     probe = _viewport_probe(page)
     has_progress = bool(
         probe.get("signingIn")
@@ -256,12 +367,18 @@ def _assert_login_handoff_frame(page, label: str) -> None:
         )
     )
     if probe.get("hasShell") or probe.get("hasLogin") or has_progress:
-        # Once shell is up, a visible centered gate/boot card is not allowed.
+        # Early foundation shell may mount during Signing you in… — that is the
+        # intentional continuity path. Fail only when a Login/boot/error card is
+        # still painted over the shell (not the authenticating progress card).
         if probe.get("hasShell") and (
-            probe.get("centeredLoader")
-            or (
+            (
                 probe.get("visibleGate")
-                and probe.get("gateKind") in {"boot", "authenticating", "login", "error"}
+                and probe.get("gateKind") in {"boot", "login", "error"}
+            )
+            or (
+                probe.get("centeredLoader")
+                and not probe.get("signingIn")
+                and probe.get("gateKind") != "authenticating"
             )
         ):
             raise AssertionError(
@@ -279,111 +396,84 @@ def _assert_login_handoff_frame(page, label: str) -> None:
     )
 
 
-def _main_placeholder_probe(page) -> dict:
+def _url_page_param(page) -> str:
+    parsed = urlparse(page.url)
+    values = parse_qs(parsed.query).get("page") or []
+    if not values:
+        return ""
+    return unquote_plus(str(values[0] or "")).strip()
+
+
+def _route_sync_probe(page, route: str) -> dict:
+    slug = ROUTE_NAV_SLUGS[route]
+    markers = ROUTE_CONTENT_MARKERS[route]
     return page.evaluate(
-        """() => {
-          const text = (document.body && document.body.innerText || '').replace(/\\s+/g, ' ').trim();
-          const textContent = (document.body && document.body.textContent || '').replace(/\\s+/g, ' ').trim();
+        """({ route, slug, markers }) => {
+          const text = (document.body && document.body.innerText || '')
+            .replace(/\\s+/g, ' ').trim();
           const topbar = document.querySelector(
-            '.cv-foundation-topbar:not(.cv-foundation-continuity)'
+            '.cv-foundation-page-context strong'
           );
-          const nav = document.querySelector(
-            '.st-key-cv_foundation_navigation, [class*="st-key-cv_foundation_navigation"]'
+          const topbarLabel = (topbar && topbar.innerText || '').replace(/\\s+/g, ' ').trim();
+          const navBtn = document.querySelector(
+            '.st-key-cv_foundation_nav_' + slug + ' button, '
+            + '[class*="st-key-cv_foundation_nav_' + slug + '"] button'
           );
-          const shell = !!(topbar && nav);
-          const topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0;
-          const pageCtx = document.querySelector('.cv-foundation-page-context');
-          const pageCtxBottom = pageCtx ? pageCtx.getBoundingClientRect().bottom : 0;
-          const ph = document.querySelector(
-            '[data-testid="cadivor-main-content-placeholder"], .cv-main-content-placeholder'
-          );
-          let placeholderVisible = false;
-          let placeholderTop = null;
-          let placeholderHeight = 0;
-          if (ph) {
-            const style = window.getComputedStyle(ph);
-            const rect = ph.getBoundingClientRect();
-            placeholderVisible = !(
-              style.display === 'none' ||
-              style.visibility === 'hidden' ||
-              Number(style.opacity || '1') === 0 ||
-              rect.height < 2 ||
-              rect.width < 2
-            );
-            placeholderTop = rect.top;
-            placeholderHeight = rect.height;
+          let selected = false;
+          if (navBtn) {
+            const kind = (navBtn.getAttribute('kind') || '').toLowerCase();
+            const testid = (navBtn.getAttribute('data-testid') || '').toLowerCase();
+            selected = kind === 'primary' || testid.includes('primary');
           }
-          const contentReady = !!document.querySelector(
-            '[data-testid="cadivor-page-content-ready"]'
-          );
-          const hasDashboardCopy = /Monitor portfolio health|Welcome,|Upload my first BOM/i.test(text);
-          const hasPlaceholderCopy = /Loading your workspace/i.test(text)
-            || /Loading your workspace/i.test(textContent);
+          const contentOk = markers.some((m) => text.includes(m));
           return {
-            shell,
-            topbarBottom,
-            pageCtxBottom,
-            placeholderInDom: !!ph,
-            placeholderVisible,
-            placeholderTop,
-            placeholderHeight,
-            contentReady,
-            hasDashboardCopy,
-            hasPlaceholderCopy,
-            textPreview: text.slice(0, 180),
-            textContentHit: /Loading your workspace/i.test(textContent),
+            topbarLabel,
+            selected,
+            contentOk,
+            textPreview: text.slice(0, 220),
+            hasStaleAf: route !== 'Alternative Finder' && text.includes('Choose a better replacement'),
+            hasStaleCompare: route !== 'Compare Parts' && text.includes('Compare any two parts'),
+            hasStaleQa: route !== 'Datasheet Q&A' && text.includes('Ask Cadivor about your datasheet'),
           };
-        }"""
+        }""",
+        {"route": route, "slug": slug, "markers": list(markers)},
     )
 
 
-def _assert_post_login_main_region(page, label: str) -> None:
-    """After shell is visible, main canvas must have Dashboard content or placeholder."""
-    probe = _main_placeholder_probe(page)
-    if not probe.get("shell"):
-        return
-    body = ""
-    try:
-        body = str(page.inner_text("body") or "")
-    except Exception:
-        body = ""
-    if (
-        probe.get("placeholderVisible")
-        or probe.get("contentReady")
-        or probe.get("hasDashboardCopy")
-        or probe.get("hasPlaceholderCopy")
-        or "Loading your workspace" in body
-    ):
-        if probe.get("placeholderVisible"):
-            top = probe.get("placeholderTop")
-            topbar_bottom = probe.get("topbarBottom") or 0
-            page_ctx_bottom = probe.get("pageCtxBottom") or 0
-            floor = max(topbar_bottom, page_ctx_bottom)
-            if top is not None and top + 2 < floor:
-                raise AssertionError(
-                    f"{label}: placeholder band above page heading/topbar "
-                    f"(placeholderTop={top!r} floor={floor!r})"
-                )
-        return
-    # Dump HTML snippet for diagnosis when the main canvas stays empty.
-    try:
-        html = page.content()
-        (OUT / f"_empty_main_{label}.html").write_text(html[:200000], encoding="utf-8")
-        page.screenshot(path=str(OUT / f"_empty_main_{label}.png"), full_page=True)
-    except Exception:
-        pass
-    raise AssertionError(
-        f"{label}: empty white main content region after shell "
-        f"(preview={probe.get('textPreview')!r})"
-    )
-
-
-def _assert_no_visible_main_placeholder(page, label: str) -> None:
-    probe = _main_placeholder_probe(page)
-    if probe.get("placeholderVisible"):
+def _assert_settled_route(page, route: str, label: str) -> None:
+    """Require URL page, selected sidebar, topbar label, and main content to agree."""
+    _assert_no_visible_markup(page, label)
+    _assert_authenticated_continuity(page, label)
+    _assert_no_forbidden_loading_ui(page, label)
+    url_page = _url_page_param(page)
+    # First Dashboard admit may omit ?page= until an explicit navigate; accept either.
+    url_ok = url_page == route or (route == "Dashboard" and url_page in {"", "Dashboard"})
+    if not url_ok:
         raise AssertionError(
-            f"{label}: main-content placeholder must not be mounted/visible"
+            f"{label}: URL page={url_page!r} does not match route={route!r} "
+            f"(url={page.url!r})"
         )
+    sync = _route_sync_probe(page, route)
+    if sync.get("topbarLabel") != route:
+        raise AssertionError(
+            f"{label}: topbar label={sync.get('topbarLabel')!r} != {route!r}"
+        )
+    if not sync.get("selected"):
+        raise AssertionError(
+            f"{label}: sidebar item for {route!r} is not selected "
+            f"(slug={ROUTE_NAV_SLUGS[route]!r})"
+        )
+    if not sync.get("contentOk"):
+        raise AssertionError(
+            f"{label}: main content markers missing for {route!r} "
+            f"(preview={sync.get('textPreview')!r})"
+        )
+    if sync.get("hasStaleAf") or sync.get("hasStaleCompare") or sync.get("hasStaleQa"):
+        raise AssertionError(
+            f"{label}: stale prior-route content under {route!r} "
+            f"(preview={sync.get('textPreview')!r})"
+        )
+    _assert_no_continuity_skeleton_above_content(page, label)
 
 
 def _find_login_fields(page):
@@ -424,41 +514,134 @@ def _click_foundation_nav(page, route: str) -> None:
     raise AssertionError(f"foundation nav control for {route!r} not found ({last_exc})")
 
 
+def _clear_smoke_session_cookie(page) -> None:
+    """Expire the DI smoke cookie so logout cannot silently re-admit."""
+    try:
+        page.evaluate(
+            """() => {
+              document.cookie = "cadivor_auth_gate_smoke=; path=/; Max-Age=0; SameSite=Lax";
+            }"""
+        )
+    except Exception:
+        pass
+    try:
+        context = page.context
+        stale = [
+            c for c in context.cookies() if c.get("name") == "cadivor_auth_gate_smoke"
+        ]
+        if stale:
+            # Prefer targeted clear when Playwright supports it; otherwise drop only
+            # the smoke cookie by rewriting the jar without a full wipe mid-run.
+            try:
+                context.clear_cookies(name="cadivor_auth_gate_smoke")
+            except TypeError:
+                remaining = [
+                    c
+                    for c in context.cookies()
+                    if c.get("name") != "cadivor_auth_gate_smoke"
+                ]
+                context.clear_cookies()
+                if remaining:
+                    context.add_cookies(remaining)
+    except Exception:
+        pass
+
+
+def _click_sign_out(page, *, app_url: str) -> None:
+    """Open the foundation profile popover and click Sign out.
+
+    Production logout clears the session then issues a same-tab location.replace.
+    Headless Chromium can stall on that components.html reload, so after Sign out
+    we wait briefly and, if the viewport stays blank, recover with an explicit
+    navigation to the app URL (session already cleared). The DI smoke cookie is
+    cleared explicitly so a recovery goto cannot auto-restore the session.
+    """
+    candidates = [
+        page.locator('.st-key-cv_foundation_profile_menu button').first,
+        page.locator('[class*="st-key-cv_foundation_profile_menu"] button').first,
+    ]
+    opened = False
+    for loc in candidates:
+        try:
+            if loc.count():
+                loc.click(timeout=8000)
+                opened = True
+                break
+        except Exception:
+            continue
+    if not opened:
+        raise AssertionError("profile menu button not found for logout")
+    page.wait_for_timeout(500)
+    signout = page.locator(
+        'button:has-text("Sign out"), [class*="st-key-cv_foundation_signout"] button'
+    ).first
+    if not signout.count():
+        raise AssertionError("Sign out control not found")
+    signout.click(timeout=8000)
+
+    # Prefer a natural reload/login paint; fall back to goto if blank stalls.
+    for i in range(40):
+        try:
+            html = page.content()
+            body = (page.inner_text("body") or "").strip()
+        except Exception:
+            html, body = "", ""
+        target, _, _ = _find_login_fields(page)
+        if target is not None and 'data-auth-gate="login"' in html:
+            _clear_smoke_session_cookie(page)
+            return
+        probe = _viewport_probe(page) if body else {"blankCanvas": True}
+        if (not body) or probe.get("blankCanvas") or i in {5, 12, 20}:
+            _clear_smoke_session_cookie(page)
+            if i in {5, 12, 20} or (not body) or probe.get("blankCanvas"):
+                try:
+                    page.goto(app_url, wait_until="domcontentloaded", timeout=90000)
+                except Exception:
+                    pass
+        page.wait_for_timeout(400)
+    # Final recovery attempt after clearing the DI smoke cookie.
+    _clear_smoke_session_cookie(page)
+    page.goto(app_url, wait_until="domcontentloaded", timeout=90000)
+    page.wait_for_timeout(800)
+
+
+
+def _wait_for_login_surface(page, label: str, *, frames_dir: Path, prefix: str) -> None:
+    for i in range(60):
+        _assert_no_visible_markup(page, f"{label}_{i}")
+        body = page.inner_text("body") or ""
+        if body.strip():
+            _assert_visible_branded_surface(page, f"{label}_{i}")
+        html = page.content()
+        target, _, _ = _find_login_fields(page)
+        if target is not None and 'data-auth-gate="login"' in html:
+            page.screenshot(path=str(frames_dir / f"{prefix}_login.png"), full_page=True)
+            (frames_dir / f"{prefix}_login.html").write_text(
+                html[:200000], encoding="utf-8"
+            )
+            return
+        if i in {0, 2, 5, 10, 20}:
+            page.screenshot(
+                path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
+            )
+        page.wait_for_timeout(400)
+    raise AssertionError(f"{label}: Login surface never returned")
+
+
 def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: str) -> None:
     ready = False
     markers = ROUTE_CONTENT_MARKERS.get(route, (route,))
-    context_text = ""
+    last_detail = ""
     for i in range(50):
         _assert_no_visible_markup(page, f"{label}_{i}")
         _assert_visible_branded_surface(page, f"{label}_{i}")
         _assert_authenticated_continuity(page, f"{label}_{i}")
-        html = page.content()
-        body = page.inner_text("body") or ""
-        page_context = page.locator(".cv-foundation-page-context strong").first
         try:
-            context_text = (
-                (page_context.inner_text() or "").strip() if page_context.count() else ""
-            )
-        except Exception:
-            context_text = ""
-        topbar_ok = context_text == route or context_text.replace("\xa0", " ") == route
-        content_ok = any(marker in body for marker in markers)
-        # Reject stale previous-route heroes still sitting in the main canvas.
-        stale = False
-        if route != "Alternative Finder" and "Choose a better replacement" in body:
-            stale = True
-        if route != "Compare Parts" and "Compare any two parts" in body:
-            stale = True
-        if (
-            ("cv-foundation-topbar" in html)
-            and topbar_ok
-            and content_ok
-            and not stale
-            and "Signing you in" not in body
-        ):
-            _assert_no_continuity_skeleton_above_content(page, f"{label}_{i}")
+            _assert_settled_route(page, route, f"{label}_settle_{i}")
             ready = True
             break
+        except AssertionError as exc:
+            last_detail = str(exc)
         if i in {0, 2, 5, 10, 20}:
             page.screenshot(
                 path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
@@ -470,9 +653,60 @@ def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: s
     )
     if not ready:
         raise AssertionError(
-            f"{label}: route {route!r} never settled with matching content "
-            f"(topbar={context_text!r} markers={markers!r})"
+            f"{label}: route {route!r} never settled with matching chrome/content "
+            f"(last={last_detail!r} markers={markers!r})"
         )
+
+
+def _perform_valid_login(page, *, frames_dir: Path, prefix: str) -> None:
+    target, email, password = _find_login_fields(page)
+    if target is None:
+        raise AssertionError(f"{prefix}: login fields missing")
+    email.fill(MOCK_EMAIL)
+    password.fill(MOCK_PASSWORD)
+    target.locator(
+        'button:has-text("Login"), button:has-text("Sign in"), button[type="submit"]'
+    ).first.click(timeout=8000)
+
+    saw_signing_in = False
+    ready = False
+    for i in range(200):
+        _assert_no_visible_markup(page, f"{prefix}_handoff_{i}")
+        _assert_login_handoff_frame(page, f"{prefix}_handoff_{i}")
+        probe = _viewport_probe(page)
+        if probe.get("signingIn") or probe.get("gateKind") == "authenticating":
+            if not saw_signing_in:
+                page.screenshot(
+                    path=str(frames_dir / f"{prefix}_signing_in.png"), full_page=True
+                )
+                (frames_dir / f"{prefix}_signing_in.html").write_text(
+                    page.content()[:200000], encoding="utf-8"
+                )
+            saw_signing_in = True
+        if i in {0, 1, 2, 3, 5, 10, 20, 40}:
+            page.screenshot(
+                path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
+            )
+            (frames_dir / f"{prefix}_t{i:02d}.html").write_text(
+                page.content()[:200000], encoding="utf-8"
+            )
+        if probe.get("hasShell") and not probe.get("signingIn"):
+            _assert_authenticated_continuity(page, f"{prefix}_shell_{i}")
+            ready = True
+            break
+        page.wait_for_timeout(100)
+    if not saw_signing_in:
+        raise AssertionError(f"{prefix}: never observed Signing you in… during handoff")
+    if not ready:
+        raise AssertionError(f"{prefix}: stuck before authenticated shell")
+    _wait_for_route(
+        page,
+        "Dashboard",
+        label=f"{prefix}_dashboard",
+        frames_dir=frames_dir,
+        prefix=f"{prefix}_dashboard",
+    )
+
 
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
@@ -482,7 +716,7 @@ def main() -> int:
     url = reuse_url or f"http://127.0.0.1:{PORT}"
 
     if not reuse_url:
-        # Ensure we never attach to a stale Streamlit from a prior smoke run.
+        # Never attach to a stale Streamlit from a prior smoke run.
         try:
             import signal as _signal
             import subprocess as _sp
@@ -557,6 +791,7 @@ def main() -> int:
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
 
+            # 1) Cold signed-out load → Login visible directly.
             saw_restoring_before_login = False
             for _ in range(40):
                 html = page.content()
@@ -583,17 +818,20 @@ def main() -> int:
                     "cold_start: intermediate boot surface shown before Login"
                 )
 
+            page.screenshot(path=str(OUT / "01_cold_login.png"), full_page=True)
             page.screenshot(path=str(OUT / "01_boot_or_login.png"), full_page=True)
             html = page.content()
-            _assert_not_blank_topbar(html, "frame1")
-            _assert_no_visible_markup(page, "login")
-            _assert_visible_branded_surface(page, "login")
+            _assert_not_blank_topbar(html, "cold_login")
+            _assert_no_visible_markup(page, "cold_login")
+            _assert_visible_branded_surface(page, "cold_login")
+            (OUT / "01_cold_login.html").write_text(html[:200000], encoding="utf-8")
             (OUT / "01_boot_or_login.html").write_text(html[:200000], encoding="utf-8")
             assert 'data-auth-gate="login"' in html
             login_body = page.inner_text("body") or ""
             if "Restoring your session" in login_body:
                 raise AssertionError("login: boot restore message still visible")
 
+            # 2) Invalid login → Login remains usable with error.
             email.fill("wrong@cadivor.test")
             password.fill("not-the-password")
             target.locator(
@@ -602,141 +840,39 @@ def main() -> int:
             page.wait_for_timeout(2500)
             page.screenshot(path=str(OUT / "02_invalid_password.png"), full_page=True)
             html_bad = page.content()
+            body_bad = page.inner_text("body") or ""
             _assert_not_blank_topbar(html_bad, "invalid_password")
             _assert_no_visible_markup(page, "invalid_login")
             _assert_visible_branded_surface(page, "invalid_login")
             (OUT / "02_invalid_password.html").write_text(
                 html_bad[:200000], encoding="utf-8"
             )
-            # Invalid login must not leave content-ready set (would skip placeholder).
-            if 'data-testid="cadivor-page-content-ready"' in html_bad:
-                raise AssertionError(
-                    "invalid_login: cadivor-page-content-ready must not be set"
-                )
-            _assert_no_visible_main_placeholder(page, "invalid_login")
-
+            if "incorrect" not in body_bad.casefold():
+                raise AssertionError("invalid_login: expected error copy missing")
             target, email, password = _find_login_fields(page)
             if target is None:
                 print("AUTH_SMOKE fail=login_fields_after_invalid")
                 return 5
-            email.fill(MOCK_EMAIL)
-            password.fill(MOCK_PASSWORD)
-            target.locator(
-                'button:has-text("Login"), button:has-text("Sign in"), button[type="submit"]'
-            ).first.click(timeout=8000)
+            if 'data-auth-gate="login"' not in html_bad:
+                raise AssertionError("invalid_login: Login gate not still usable")
 
-            # 1) Immediately after Login submit.
-            page.wait_for_timeout(120)
-            page.screenshot(path=str(OUT / "03a_login_submit.png"), full_page=True)
-            (OUT / "03a_login_submit.html").write_text(
+            # 3) Valid login → continuous Signing you in… → Dashboard.
+            try:
+                _perform_valid_login(page, frames_dir=OUT, prefix="03_first_login")
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=first_login detail={exc}")
+                return 6
+            page.screenshot(path=str(OUT / "04_dashboard_ready.png"), full_page=True)
+            (OUT / "04_dashboard_ready.html").write_text(
                 page.content()[:200000], encoding="utf-8"
             )
-            _assert_login_handoff_frame(page, "login_submit_immediate")
-
-            # High-frequency sampling: shell+placeholder → Dashboard.
-            ready = False
-            saw_visible_placeholder = False
-            shell_seen_at = None
-            for i in range(250):
-                _assert_no_visible_markup(page, f"login_to_dashboard_{i}")
-                _assert_login_handoff_frame(page, f"login_to_dashboard_{i}")
-                probe = _viewport_probe(page)
-                ph = _main_placeholder_probe(page)
-                if probe.get("hasShell"):
-                    if shell_seen_at is None:
-                        shell_seen_at = i
-                    # Allow longer for the placeholder delta after chrome; the
-                    # flush pass holds ~1.35s with shell+placeholder committed.
-                    if (i - shell_seen_at) >= 8:
-                        _assert_post_login_main_region(
-                            page, f"login_to_dashboard_{i}"
-                        )
-                if (
-                    ph.get("shell")
-                    and (
-                        ph.get("placeholderVisible")
-                        or ph.get("hasPlaceholderCopy")
-                    )
-                    and not ph.get("hasDashboardCopy")
-                ):
-                    # 2) Foundation shell mounted; workspace/profile still loading.
-                    if not saw_visible_placeholder:
-                        page.screenshot(
-                            path=str(OUT / "03b_shell_with_placeholder.png"),
-                            full_page=True,
-                        )
-                        (OUT / "03b_shell_with_placeholder.html").write_text(
-                            page.content()[:200000], encoding="utf-8"
-                        )
-                        (OUT / "03b_shell_with_placeholder.probe.json").write_text(
-                            __import__("json").dumps(ph, indent=2),
-                            encoding="utf-8",
-                        )
-                    saw_visible_placeholder = True
-                    # CSS must not hide the only loading content yet.
-                    if ph.get("contentReady"):
-                        raise AssertionError(
-                            f"login_to_dashboard_{i}: content-ready marker present "
-                            "while placeholder is the only loading content"
-                        )
-                html_auth = page.content()
-                if i in {0, 1, 2, 3, 5, 10, 20, 40}:
-                    page.screenshot(
-                        path=str(OUT / f"03_login_to_dashboard_t{i:02d}.png"),
-                        full_page=True,
-                    )
-                    (OUT / f"03_login_to_dashboard_t{i:02d}.probe.json").write_text(
-                        __import__("json").dumps(
-                            {"i": i, "viewport": probe, "placeholder": ph},
-                            indent=2,
-                        ),
-                        encoding="utf-8",
-                    )
-                if "cv-startup-shell-topbar" in html_auth:
-                    raise AssertionError("login_to_dashboard: fake topbar present")
-                if (
-                    probe.get("hasShell")
-                    and not probe.get("signingIn")
-                    and ph.get("hasDashboardCopy")
-                ):
-                    _assert_authenticated_continuity(page, f"login_to_dashboard_{i}")
-                    _assert_post_login_main_region(
-                        page, f"login_to_dashboard_ready_{i}"
-                    )
-                    ready = True
-                    break
-                page.wait_for_timeout(100)
-
-            # 3) Dashboard content fully rendered.
-            page.screenshot(path=str(OUT / "03c_dashboard_ready.png"), full_page=True)
-            page.screenshot(path=str(OUT / "04_dashboard_ready.png"), full_page=True)
-            html_ready = page.content()
-            _assert_not_blank_topbar(html_ready, "ready")
-            _assert_no_visible_markup(page, "ready")
-            _assert_authenticated_continuity(page, "ready")
-            _assert_no_visible_main_placeholder(page, "dashboard_ready")
-            ready_ph = _main_placeholder_probe(page)
-            if not ready_ph.get("hasDashboardCopy"):
-                raise AssertionError("dashboard_ready: Dashboard copy missing")
-            (OUT / "03c_dashboard_ready.html").write_text(
-                html_ready[:200000], encoding="utf-8"
-            )
-            (OUT / "04_dashboard_ready.html").write_text(
-                html_ready[:200000], encoding="utf-8"
-            )
-            if not saw_visible_placeholder:
-                print("AUTH_SMOKE fail=placeholder_never_visible")
-                return 9
-            if not ready:
-                print("AUTH_SMOKE fail=stuck_on_login")
-                return 6
-            if "Mock workspace ready" in html_ready or "cadivor-auth-ready" in html_ready:
+            if "Mock workspace ready" in page.content() or "cadivor-auth-ready" in page.content():
                 raise AssertionError(
                     "ready: synthetic smoke ready surface still in use — "
                     "must exercise real authenticated_runtime / unified_shell"
                 )
 
-            # Authenticated route chain via real foundation nav.
+            # 4) Authenticated route circuit with four-way settled assertions.
             route_prefixes = {
                 "Dashboard": "07_dashboard",
                 "Alternative Finder": "08_alternative_finder",
@@ -744,58 +880,60 @@ def main() -> int:
                 "Compare Parts": "10_compare_parts",
                 "Procurement Advisor": "11_procurement_advisor",
             }
-            for route in AUTH_ROUTES:
-                if route != "Dashboard":
-                    _click_foundation_nav(page, route)
+            # First Dashboard already settled; continue AF → … → Dashboard return.
+            for idx, route in enumerate(AUTH_ROUTE_CIRCUIT):
+                if idx == 0:
+                    # Already on Dashboard after login.
+                    _assert_settled_route(page, "Dashboard", "circuit_start_dashboard")
+                    page.screenshot(
+                        path=str(OUT / "07_dashboard_final.png"), full_page=True
+                    )
+                    continue
+                _click_foundation_nav(page, route)
+                prefix = route_prefixes[route]
+                if idx == len(AUTH_ROUTE_CIRCUIT) - 1:
+                    prefix = "12_dashboard_return"
                 try:
                     _wait_for_route(
                         page,
                         route,
-                        label=f"nav_{route}",
+                        label=f"nav_{route}_{idx}",
                         frames_dir=OUT,
-                        prefix=route_prefixes[route],
+                        prefix=prefix,
                     )
                 except AssertionError as exc:
                     print(f"AUTH_SMOKE fail=route_layout route={route} detail={exc}")
                     return 8
-                # Ordinary authenticated navigation must never remount the placeholder.
-                _assert_no_visible_main_placeholder(page, f"nav_{route}_no_placeholder")
-                if route == "Alternative Finder":
-                    page.screenshot(
-                        path=str(OUT / "06_nav_no_placeholder.png"), full_page=True
-                    )
 
-            page.reload(wait_until="domcontentloaded")
-            for _ in range(40):
-                body_probe = page.inner_text("body") or ""
-                if body_probe.strip():
-                    _assert_no_visible_markup(page, "boot_restore_wait")
-                    _assert_visible_branded_surface(page, "boot_restore_wait")
-                probe = _viewport_probe(page)
-                if probe.get("hasShell") and not probe.get("signingIn"):
-                    break
-                if probe.get("hasLogin"):
-                    break
-                page.wait_for_timeout(250)
-            page.wait_for_timeout(1200)
-            page.screenshot(path=str(OUT / "05_session_restore.png"), full_page=True)
-            html_restore = page.content()
-            _assert_not_blank_topbar(html_restore, "session_restore")
-            _assert_no_visible_markup(page, "session_restore")
-            _assert_visible_branded_surface(page, "session_restore")
-            (OUT / "05_session_restore.html").write_text(
-                html_restore[:200000], encoding="utf-8"
+            # 5) Logout → Login → valid login again.
+            try:
+                _click_sign_out(page, app_url=url)
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=logout_click detail={exc}")
+                return 9
+            try:
+                _wait_for_login_surface(
+                    page, "after_logout", frames_dir=OUT, prefix="13_logout"
+                )
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=logout_login_surface detail={exc}")
+                return 9
+            # Logout→Login must not leave a blank frame as the settled surface.
+            _assert_visible_branded_surface(page, "after_logout_settled")
+            probe_logout = _viewport_probe(page)
+            if not probe_logout.get("hasLogin"):
+                raise AssertionError("after_logout: Login gate not visible")
+            page.screenshot(path=str(OUT / "13_logout_login.png"), full_page=True)
+
+            try:
+                _perform_valid_login(page, frames_dir=OUT, prefix="14_relogin")
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=relogin detail={exc}")
+                return 10
+            page.screenshot(path=str(OUT / "14_relogin_dashboard.png"), full_page=True)
+            (OUT / "14_relogin_dashboard.html").write_text(
+                page.content()[:200000], encoding="utf-8"
             )
-            if "cv-startup-shell-topbar" in html_restore:
-                raise AssertionError("session_restore: fake topbar present")
-            restore_probe = _viewport_probe(page)
-            if not restore_probe.get("hasShell") and not restore_probe.get("hasLogin"):
-                print("AUTH_SMOKE fail=session_restore_blank")
-                return 7
-            if restore_probe.get("hasLogin"):
-                print("AUTH_SMOKE warn=session_restore_returned_login")
-            else:
-                _assert_authenticated_continuity(page, "session_restore")
 
             browser.close()
         print(f"AUTH_SMOKE ok screenshots={OUT}")

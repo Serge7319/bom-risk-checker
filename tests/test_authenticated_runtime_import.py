@@ -56,24 +56,7 @@ class AuthenticatedRuntimeImportTests(unittest.TestCase):
         st.session_state = {}
         st.query_params = {}
         st.markdown = MagicMock()
-        st.rerun = MagicMock(side_effect=RuntimeError("rerun"))
         st.stop = MagicMock(side_effect=RuntimeError("stop"))
-
-        class _EmptyHost:
-            def container(self):
-                return self
-
-            def empty(self):
-                return None
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-        st.empty = MagicMock(return_value=_EmptyHost())
-        st.container = MagicMock(return_value=_EmptyHost())
         st.cache_data = lambda *args, **kwargs: (lambda fn: fn)
         st.cache_resource = lambda *args, **kwargs: (lambda fn: fn)
         components_v1 = types.ModuleType("streamlit.components.v1")

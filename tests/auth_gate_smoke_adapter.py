@@ -49,6 +49,37 @@ def _persist_smoke_cookie() -> None:
         pass
 
 
+def _clear_smoke_cookie() -> None:
+    """Drop the DI smoke session so explicit logout cannot auto-restore."""
+    import streamlit as st
+    import streamlit.components.v1 as components
+
+    st.session_state.pop(SMOKE_SESSION_KEY, None)
+    cookie_name = SMOKE_COOKIE.split("=", 1)[0]
+    try:
+        components.html(
+            f"""
+            <script>
+            (function () {{
+              const clear = (doc) => {{
+                if (!doc) return;
+                try {{
+                  doc.cookie = "{cookie_name}=; path=/; Max-Age=0; SameSite=Lax";
+                }} catch (error) {{}}
+              }};
+              try {{ clear(window.top && window.top.document); }} catch (error) {{}}
+              try {{ clear(window.parent && window.parent.document); }} catch (error) {{}}
+              clear(document);
+            }})();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
+    except Exception:
+        pass
+
+
 def _activate_smoke_session(*, email: str = SMOKE_EMAIL) -> None:
     import streamlit as st
     from src.auth_bootstrap import clear_login_handoff
@@ -197,6 +228,21 @@ def install_smoke_auth_patches() -> None:
 
     boot_mod.resolve_auth_state = smoke_resolve_auth_state
 
+    _orig_begin_logout = state_mod.begin_logout
+
+    def smoke_begin_logout(supabase: Any, cookie_manager: Any) -> None:
+        _clear_smoke_cookie()
+        _orig_begin_logout(supabase, cookie_manager)
+
+    state_mod.begin_logout = smoke_begin_logout
+    boot_mod.begin_logout = smoke_begin_logout
+    try:
+        import src.authenticated_runtime as runtime_mod
+
+        runtime_mod.begin_logout = smoke_begin_logout
+    except Exception:
+        pass
+
 
 def _smoke_user_row(*, email: str = SMOKE_EMAIL) -> dict[str, Any]:
     return {
@@ -327,13 +373,8 @@ def install_production_path_smoke_patches() -> None:
         return smoke_sb
 
     def smoke_load_user_data() -> dict[str, Any]:
-        import time
-
         import streamlit as st
 
-        # Hold so browser smoke can capture the in-shell main placeholder after
-        # foundation chrome mounts and before Dashboard content paints.
-        time.sleep(1.25)
         email = str(
             getattr(st.session_state.get("user"), "email", None) or SMOKE_EMAIL
         ).strip()
