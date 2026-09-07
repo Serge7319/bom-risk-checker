@@ -93,6 +93,30 @@ class AuthGateModuleTests(unittest.TestCase):
         ]
         self.assertNotIn("render_unified_shell(", late)
 
+    def test_main_content_placeholder_is_in_flow_only(self):
+        shell = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
+        fn = shell[
+            shell.find("def paint_authenticated_main_placeholder") : shell.find(
+                "def mark_authenticated_page_content_ready"
+            )
+        ]
+        self.assertIn("cadivor-main-content-placeholder", fn)
+        self.assertIn("Loading your workspace", fn)
+        self.assertIn("cadivor-page-content-ready", fn)
+        self.assertNotIn("position:fixed", fn)
+        self.assertNotIn("cv56-skeleton-page", fn)
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("paint_authenticated_main_placeholder", runtime)
+        self.assertIn("mark_authenticated_page_content_ready", runtime)
+        self.assertIn("MAIN_CONTENT_READY_KEY", runtime)
+        self.assertIn("_main_content_ph_host", runtime)
+        self.assertIn("_main_content_ph_host.empty()", runtime)
+        auth = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
+        submit = auth[
+            auth.find("def _submit_manual_login") : auth.find("def execute_password_login")
+        ]
+        self.assertIn('pop("cadivor_main_content_ready"', submit)
+
     def test_continuity_shell_never_inserts_global_skeleton(self):
         shell = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
         fn = shell[

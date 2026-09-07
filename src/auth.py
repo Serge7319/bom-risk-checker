@@ -450,6 +450,8 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     begin_login_handoff(LOGIN_HANDOFF_STAGE_AUTHENTICATING)
     stash_pending_credentials(email, password)
     set_auth_gate_state("authenticating", reason="login_submit_stash")
+    # Allow a one-shot in-shell main placeholder on the coming Dashboard admit.
+    st.session_state.pop("cadivor_main_content_ready", None)
     # Paint before rerun so the Login-click frame never clears to white while
     # the next script run starts.
     paint_auth_gate("authenticating")

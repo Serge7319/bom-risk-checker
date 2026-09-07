@@ -327,8 +327,13 @@ def install_production_path_smoke_patches() -> None:
         return smoke_sb
 
     def smoke_load_user_data() -> dict[str, Any]:
+        import time
+
         import streamlit as st
 
+        # Hold so browser smoke can capture the in-shell main placeholder after
+        # foundation chrome mounts and before Dashboard content paints.
+        time.sleep(1.25)
         email = str(
             getattr(st.session_state.get("user"), "email", None) or SMOKE_EMAIL
         ).strip()
