@@ -118,6 +118,69 @@ def _assert_visible_branded_surface(page, label: str) -> None:
     )
 
 
+def _assert_no_continuity_skeleton_above_heading(page, label: str, route: str) -> None:
+    """After an authenticated route is ready, continuity/skeleton must not sit above the heading."""
+    heading = page.locator('[data-testid="cadivor-page-heading"]').first
+    heading.wait_for(state="visible", timeout=15000)
+    heading_text = (heading.inner_text() or "").strip()
+    if route not in heading_text:
+        raise AssertionError(f"{label}: expected heading for {route!r}, got {heading_text!r}")
+
+    heading_box = heading.bounding_box()
+    if not heading_box:
+        raise AssertionError(f"{label}: page heading has no bounding box")
+
+    # Continuity / skeleton hosts must not occupy layout space above the heading.
+    offenders = page.evaluate(
+        """(headingTop) => {
+          const selectors = [
+            '[data-testid="cadivor-continuity-shell"]',
+            '.cv-foundation-continuity',
+            '.cv56-skeleton-page',
+            '[data-testid="stElementContainer"]:has(.cv56-skeleton-page)',
+            '[data-testid="stElementContainer"]:has(.cv-foundation-continuity)',
+          ];
+          const hits = [];
+          for (const sel of selectors) {
+            let nodes = [];
+            try { nodes = Array.from(document.querySelectorAll(sel)); } catch (e) { continue; }
+            for (const el of nodes) {
+              const style = window.getComputedStyle(el);
+              const rect = el.getBoundingClientRect();
+              const hidden =
+                style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                Number(style.opacity || '1') === 0 ||
+                rect.height < 1 ||
+                rect.width < 1;
+              if (hidden) continue;
+              if (rect.bottom > 8 && rect.top < headingTop - 4) {
+                hits.push({
+                  sel,
+                  top: rect.top,
+                  bottom: rect.bottom,
+                  height: rect.height,
+                });
+              }
+            }
+          }
+          return hits;
+        }""",
+        heading_box["y"],
+    )
+    if offenders:
+        raise AssertionError(
+            f"{label}: continuity/skeleton occupies space above heading {offenders!r}"
+        )
+
+    # No centered auth/boot card after authentication.
+    body = page.inner_text("body") or ""
+    if "Signing you in" in body or "Restoring your session" in body:
+        raise AssertionError(f"{label}: auth/boot progress card still visible")
+    if 'data-auth-gate="authenticating"' in page.content() and "Signing you in" in body:
+        raise AssertionError(f"{label}: authenticating gate still visible")
+
+
 def _find_login_fields(page):
     for frame in [page, *page.frames]:
         email = frame.locator(
@@ -301,26 +364,43 @@ def main() -> int:
             if "cv-startup-shell-topbar" in html_ready:
                 raise AssertionError("ready: fake topbar present")
 
-            # Authenticated navigation transition: Dashboard → Settings.
-            settings_btn = page.locator('button:has-text("Open Settings")').first
-            settings_btn.click(timeout=8000)
-            nav_ok = False
-            for i in range(30):
-                _assert_no_visible_markup(page, f"nav_to_settings_{i}")
-                _assert_visible_branded_surface(page, f"nav_to_settings_{i}")
-                html_nav = page.content()
-                body_nav = page.inner_text("body") or ""
-                if "Settings" in body_nav and "cv-foundation-topbar" in html_nav:
-                    nav_ok = True
-                    break
-                page.wait_for_timeout(400)
-            page.screenshot(path=str(OUT / "06_nav_settings.png"), full_page=True)
-            (OUT / "06_nav_settings.html").write_text(
-                page.content()[:200000], encoding="utf-8"
-            )
-            if not nav_ok:
-                print("AUTH_SMOKE fail=nav_settings_blank")
-                return 8
+            # Authenticated routes: no continuity/skeleton band above page heading.
+            route_shots = {
+                "Dashboard": "07_dashboard.png",
+                "Alternative Finder": "08_alternative_finder.png",
+                "Compare Parts": "09_compare_parts.png",
+                "Design Impact": "10_design_impact.png",
+            }
+            for route, shot_name in route_shots.items():
+                btn = page.locator(f'button:has-text("Open {route}")').first
+                btn.click(timeout=8000)
+                ready_route = False
+                for i in range(30):
+                    _assert_no_visible_markup(page, f"nav_{route}_{i}")
+                    _assert_visible_branded_surface(page, f"nav_{route}_{i}")
+                    body_nav = page.inner_text("body") or ""
+                    html_nav = page.content()
+                    if route in body_nav and "cv-foundation-topbar" in html_nav:
+                        try:
+                            _assert_no_continuity_skeleton_above_heading(
+                                page, f"route_{route}", route
+                            )
+                            ready_route = True
+                            break
+                        except AssertionError:
+                            # Heading may still be mounting; keep polling.
+                            pass
+                    page.wait_for_timeout(400)
+                page.screenshot(path=str(OUT / shot_name), full_page=True)
+                (OUT / shot_name.replace(".png", ".html")).write_text(
+                    page.content()[:200000], encoding="utf-8"
+                )
+                if not ready_route:
+                    print(f"AUTH_SMOKE fail=route_layout route={route}")
+                    return 8
+                _assert_no_continuity_skeleton_above_heading(
+                    page, f"route_{route}_final", route
+                )
 
             page.reload(wait_until="domcontentloaded")
             # Session restore may briefly show the full-page boot shell — never markup.
@@ -335,7 +415,8 @@ def main() -> int:
                 if (
                     "Mock workspace" in html_probe
                     or "Dashboard" in html_probe
-                    or "Settings" in body_probe
+                    or "Design Impact" in body_probe
+                    or "Alternative Finder" in body_probe
                     or 'data-auth-gate="login"' in html_probe
                 ) and "Restoring your session" not in body_probe:
                     break
@@ -354,7 +435,9 @@ def main() -> int:
             if (
                 "Mock workspace" not in html_restore
                 and "Dashboard" not in html_restore
-                and "Settings" not in html_restore
+                and "Design Impact" not in html_restore
+                and "Alternative Finder" not in html_restore
+                and "Compare Parts" not in html_restore
             ):
                 if 'data-auth-gate="login"' in html_restore and "Login" in html_restore:
                     print("AUTH_SMOKE warn=session_restore_returned_login")

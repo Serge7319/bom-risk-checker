@@ -1776,7 +1776,7 @@ def run_authenticated_app() -> None:
         unsafe_allow_html=True,
     )
 
-    # Keep Cadivor shell chrome visible while profile/workspace data initializes.
+    # Fixed continuity chrome only (no in-flow skeleton) while profile IO runs.
     _continuity_page = str(
         st.session_state.get("cadivor_route")
         or st.session_state.get("app_mode")
