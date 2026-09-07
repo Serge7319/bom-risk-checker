@@ -161,6 +161,14 @@ class AuthGateModuleTests(unittest.TestCase):
         gate = (ROOT / "src" / "auth_gate.py").read_text(encoding="utf-8")
         self.assertNotIn("div.cv-auth-gate{\n              display:none!important", gate)
         self.assertIn("data-cadivor-page-content", gate)
+        # First-login Dashboard offset: retire must collapse Streamlit hosts, not
+        # only hide the inner fixed gate (height-0 hosts still consume block gap).
+        self.assertIn(
+            'div[data-testid="stElementContainer"]:has(.cv-auth-gate)',
+            gate,
+        )
+        self.assertIn("st-key-cadivor_auth_card", gate)
+        self.assertIn("height:0!important;min-height:0!important;max-height:0!important", gate)
 
     def test_production_sources_have_no_mock_env_switch(self):
         for rel in (
