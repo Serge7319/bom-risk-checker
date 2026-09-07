@@ -61,7 +61,19 @@ from src.performance_timing import timed_phase
 with timed_phase("startup.ensure_authenticated", operation="resolve"):
     ensure_authenticated_or_stop()
 
-# Auth gate returned → ready. Never paint a competing startup shell here.
+# Auth gate returned → ready. Bridge Login→shell: keep Signing-you-in visible
+# while the authenticated runtime module imports (first admit only).
+if not st.session_state.get("cadivor_foundation_shell_mounted"):
+    try:
+        from src.auth_gate import paint_auth_gate
+        from src.auth_state import AUTH_AUTHENTICATED
+
+        if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
+            paint_auth_gate("authenticating")
+    except Exception:
+        pass
+
+# Never paint a competing startup shell here.
 log_startup_phase("load_authenticated_runtime")
 with timed_phase("startup.authenticated_runtime_import", operation="import"):
     from src.authenticated_runtime import run_authenticated_app

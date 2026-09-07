@@ -244,6 +244,41 @@ def _assert_no_continuity_skeleton_above_content(page, label: str) -> None:
         raise AssertionError(f"{label}: continuity/skeleton still occupying layout {offenders!r}")
 
 
+def _assert_login_handoff_frame(page, label: str) -> None:
+    """Fail if the Login→shell handoff exposes a frame with neither Login/progress nor shell."""
+    probe = _viewport_probe(page)
+    has_progress = bool(
+        probe.get("signingIn")
+        or probe.get("gateKind") in {"authenticating", "boot"}
+        or (
+            probe.get("visibleGate")
+            and probe.get("gateKind") in {"authenticating", "boot", "login", "error"}
+        )
+    )
+    if probe.get("hasShell") or probe.get("hasLogin") or has_progress:
+        # Once shell is up, a visible centered gate/boot card is not allowed.
+        if probe.get("hasShell") and (
+            probe.get("centeredLoader")
+            or (
+                probe.get("visibleGate")
+                and probe.get("gateKind") in {"boot", "authenticating", "login", "error"}
+            )
+        ):
+            raise AssertionError(
+                f"{label}: gate/boot card still visible after foundation shell mounted"
+            )
+        return
+    if probe.get("blankCanvas"):
+        raise AssertionError(
+            f"{label}: white/blank handoff frame "
+            f"(bg={probe.get('bg')!r} preview={probe.get('textPreview')!r})"
+        )
+    raise AssertionError(
+        f"{label}: handoff frame has neither Login/progress nor foundation shell "
+        f"(preview={probe.get('textPreview')!r})"
+    )
+
+
 def _find_login_fields(page):
     for frame in [page, *page.frames]:
         email = frame.locator(
@@ -460,14 +495,15 @@ def main() -> int:
                 'button:has-text("Login"), button:has-text("Sign in"), button[type="submit"]'
             ).first.click(timeout=8000)
 
-            # Capture Login → Dashboard transition frames; never blank / gate overlay.
+            # High-frequency Login→shell sampling: every ~100ms must show Login,
+            # Signing-you-in progress, or the authenticated foundation shell.
             ready = False
-            for i in range(60):
+            for i in range(200):
                 _assert_no_visible_markup(page, f"login_to_dashboard_{i}")
-                _assert_visible_branded_surface(page, f"login_to_dashboard_{i}")
+                _assert_login_handoff_frame(page, f"login_to_dashboard_{i}")
                 probe = _viewport_probe(page)
                 html_auth = page.content()
-                if i in {0, 1, 2, 4, 8, 12}:
+                if i in {0, 1, 2, 3, 5, 10, 20, 40}:
                     page.screenshot(
                         path=str(OUT / f"03_login_to_dashboard_t{i:02d}.png"),
                         full_page=True,
@@ -481,11 +517,7 @@ def main() -> int:
                     _assert_authenticated_continuity(page, f"login_to_dashboard_{i}")
                     ready = True
                     break
-                if probe.get("blankCanvas"):
-                    raise AssertionError(
-                        f"login_to_dashboard_{i}: blank black/white frame during transition"
-                    )
-                page.wait_for_timeout(400)
+                page.wait_for_timeout(100)
             page.screenshot(path=str(OUT / "04_dashboard_ready.png"), full_page=True)
             html_ready = page.content()
             _assert_not_blank_topbar(html_ready, "ready")

@@ -136,6 +136,11 @@ class AuthGateModuleTests(unittest.TestCase):
         ]
         self.assertIn("stash_pending_credentials", submit)
         self.assertIn('set_auth_gate_state("authenticating"', submit)
+        self.assertIn('paint_auth_gate("authenticating")', submit)
+        self.assertLess(
+            submit.find('paint_auth_gate("authenticating")'),
+            submit.find("st.rerun()"),
+        )
         self.assertIn("st.rerun()", submit)
         self.assertNotIn("mount_auth_progress_surface", submit)
         self.assertNotIn("render_startup_loading_shell", submit)
