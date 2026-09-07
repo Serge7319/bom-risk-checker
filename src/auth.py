@@ -440,7 +440,7 @@ def _fail_manual_login_and_rerun(
 def _submit_manual_login(supabase, cookie_manager, email: str, password: str) -> None:
     """Queue credentials into the auth gate authenticating state (no competing paint)."""
     from src.auth_bootstrap import LOGIN_HANDOFF_STAGE_AUTHENTICATING, begin_login_handoff
-    from src.auth_gate import set_auth_gate_state, stash_pending_credentials
+    from src.auth_gate import paint_auth_gate, set_auth_gate_state, stash_pending_credentials
 
     begin_manual_login(cookie_manager)
     _clear_manual_login_error()
@@ -450,8 +450,11 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     begin_login_handoff(LOGIN_HANDOFF_STAGE_AUTHENTICATING)
     stash_pending_credentials(email, password)
     set_auth_gate_state("authenticating", reason="login_submit_stash")
+    # Paint before rerun so the Login-click frame never clears to white while
+    # the next script run starts.
+    paint_auth_gate("authenticating")
     _log_manual_login_event("manual_login_credentials_stashed", cookie_manager)
-    # Next script run paints authenticating first, then executes provider I/O.
+    # Next script run keeps authenticating first, then executes provider I/O.
     st.rerun()
 
 

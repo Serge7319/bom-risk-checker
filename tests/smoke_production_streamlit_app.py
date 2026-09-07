@@ -73,6 +73,17 @@ if st.session_state.pop("cadivor_logout_reload_pending", False):
 with timed_phase("startup.ensure_authenticated", operation="resolve"):
     ensure_authenticated_or_stop()
 
+# Mirror production streamlit_app Login→shell bridge during runtime import.
+if not st.session_state.get("cadivor_foundation_shell_mounted"):
+    try:
+        from src.auth_gate import paint_auth_gate
+        from src.auth_state import AUTH_AUTHENTICATED
+
+        if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
+            paint_auth_gate("authenticating")
+    except Exception:
+        pass
+
 log_startup_phase("load_authenticated_runtime")
 with timed_phase("startup.authenticated_runtime_import", operation="import"):
     from src.authenticated_runtime import run_authenticated_app
