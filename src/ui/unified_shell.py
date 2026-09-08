@@ -11,7 +11,7 @@ from typing import Callable
 
 import streamlit as st
 
-from src.ui.navigation import navigate_to
+from src.ui.navigation import inject_route_loading_css, navigate_to, route_loading_markup
 
 
 NAV_GROUPS = (
@@ -174,14 +174,33 @@ def render_unified_shell(
     navigate: Callable[..., None],
     clear_analysis: Callable[[], None],
     request_logout: Callable[[], None],
+    route_loading: str = "",
 ) -> None:
-    """Render exactly one top bar and one custom fixed navigation rail."""
+    """Render exactly one top bar and one custom fixed navigation rail.
+
+    When ``route_loading`` is set, the in-shell target-route surface is emitted in
+    the same markdown as the topbar so chrome and main never disagree across
+    Streamlit progressive-paint deltas. Transition CSS is injected separately so
+    the topbar host never becomes a style-bearing container that premium.css can
+    collapse.
+    """
     inject_unified_shell_css()
+    inject_route_loading_css()
 
     full_name = profile.get("full_name") or profile.get("email") or "Cadivor user"
     email = profile.get("email") or ""
     initials = profile.get("initials") or "C"
     secondary = profile.get("company") or profile.get("role_title") or plan_name
+    loading_route = str(route_loading or "").strip()
+    # Keep a stable sibling slot so Streamlit updates the topbar delta in place
+    # whether or not a transition surface is active.
+    loading_block = (
+        route_loading_markup(loading_route)
+        if loading_route
+        else '<div data-cadivor-route-loading-slot="idle" aria-hidden="true" '
+        'style="position:absolute;width:1px;height:1px;margin:-1px;border:0;'
+        'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>'
+    )
 
     st.markdown(
         f"""
@@ -200,6 +219,7 @@ def render_unified_shell(
             <small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em>
           </div>
         </div>
+        {loading_block}
         """,
         unsafe_allow_html=True,
     )

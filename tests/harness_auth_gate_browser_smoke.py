@@ -34,11 +34,13 @@ SAMPLE_MS = 100
 AUTH_SURFACE_MAX_SECONDS_WITHOUT_PROGRESS = 2.0
 
 # Full authenticated nav circuit, ending back on Dashboard.
+# Includes Dashboard → BOM Analyzer → Compare Parts to catch chrome/content races.
 AUTH_ROUTE_CIRCUIT = (
     "Dashboard",
+    "BOM Analyzer",
+    "Compare Parts",
     "Alternative Finder",
     "Datasheet Q&A",
-    "Compare Parts",
     "Procurement Advisor",
     "Dashboard",
 )
@@ -61,6 +63,16 @@ ROUTE_CONTENT_MARKERS = {
     "Datasheet Q&A": ("Ask Cadivor about your datasheet", "Upload datasheet"),
     "Compare Parts": ("Compare any two parts", "Part A"),
     "Procurement Advisor": ("Procurement Advisor", "Action Needed"),
+}
+
+# Main-canvas markers that must not appear when chrome is already on the target.
+ROUTE_FORBIDDEN_STALE_MARKERS = {
+    "BOM Analyzer": ("Monitor portfolio health",),
+    "Compare Parts": ("Monitor portfolio health", "Upload engineering BOM"),
+    "Alternative Finder": ("Monitor portfolio health", "Upload engineering BOM"),
+    "Datasheet Q&A": ("Monitor portfolio health", "Upload engineering BOM"),
+    "Procurement Advisor": ("Monitor portfolio health", "Upload engineering BOM"),
+    "Dashboard": ("Upload engineering BOM", "Compare any two parts"),
 }
 
 
@@ -269,7 +281,8 @@ def _assert_no_forbidden_loading_ui(page, label: str, *, require_shell: bool = F
           const ignoreSel =
             '[class*="st-key-cv_foundation_navigation"], .cv-foundation-topbar, '
             + '[class*="st-key-cv_foundation_profile"], .cv-foundation-plan-card, '
-            + '[data-testid="stSidebar"]';
+            + '[data-testid="stSidebar"], .cv-route-loading, '
+            + '[data-cadivor-route-loading], [data-testid="cadivor-route-loading"]';
           const inIgnored = (el) => !!(el.closest && el.closest(ignoreSel));
           const visible = (el) => {
             const style = window.getComputedStyle(el);
@@ -497,10 +510,11 @@ def _url_page_param(page) -> str:
 def _route_sync_probe(page, route: str) -> dict:
     slug = ROUTE_NAV_SLUGS[route]
     markers = ROUTE_CONTENT_MARKERS[route]
+    stale = ROUTE_FORBIDDEN_STALE_MARKERS.get(route, ())
     return page.evaluate(
-        """({ route, slug, markers }) => {
-          const text = (document.body && document.body.innerText || '')
-            .replace(/\\s+/g, ' ').trim();
+        """({ route, slug, markers, stale }) => {
+          const main = document.querySelector('section[data-testid="stMain"]') || document.body;
+          const text = (main && main.innerText || '').replace(/\\s+/g, ' ').trim();
           const topbar = document.querySelector(
             '.cv-foundation-page-context strong'
           );
@@ -515,19 +529,115 @@ def _route_sync_probe(page, route: str) -> dict:
             const testid = (navBtn.getAttribute('data-testid') || '').toLowerCase();
             selected = kind === 'primary' || testid.includes('primary');
           }
+          const loadingEl = document.querySelector(
+            '[data-cadivor-route-loading], [data-testid="cadivor-route-loading"], .cv-route-loading'
+          );
+          let loadingVisible = false;
+          let loadingRoute = '';
+          if (loadingEl) {
+            const style = window.getComputedStyle(loadingEl);
+            const rect = loadingEl.getBoundingClientRect();
+            loadingVisible = !(
+              style.display === 'none' ||
+              style.visibility === 'hidden' ||
+              Number(style.opacity || '1') === 0 ||
+              rect.height < 2
+            );
+            loadingRoute = (
+              loadingEl.getAttribute('data-cadivor-route-loading') || ''
+            ).trim();
+          }
           const contentOk = markers.some((m) => text.includes(m));
+          const loadingOk = loadingVisible && loadingRoute === route;
+          const staleHit = stale.find((m) => text.includes(m)) || '';
+          // Blank main: foundation chrome present but neither body markers nor
+          // explicit target-route loading surface.
+          const hasFoundation = !!(
+            document.querySelector('.cv-foundation-topbar:not(.cv-foundation-continuity)')
+            || document.querySelector(
+                 '.st-key-cv_foundation_navigation, [class*="st-key-cv_foundation_navigation"]'
+               )
+          );
+          const blankMain = hasFoundation && !contentOk && !loadingOk && text.length < 40;
           return {
             topbarLabel,
             selected,
             contentOk,
+            loadingOk,
+            loadingVisible,
+            loadingRoute,
+            blankMain,
+            staleHit,
             textPreview: text.slice(0, 220),
             hasStaleAf: route !== 'Alternative Finder' && text.includes('Choose a better replacement'),
             hasStaleCompare: route !== 'Compare Parts' && text.includes('Compare any two parts'),
             hasStaleQa: route !== 'Datasheet Q&A' && text.includes('Ask Cadivor about your datasheet'),
+            hasStaleDashboard: route !== 'Dashboard' && text.includes('Monitor portfolio health'),
           };
         }""",
-        {"route": route, "slug": slug, "markers": list(markers)},
+        {"route": route, "slug": slug, "markers": list(markers), "stale": list(stale)},
     )
+
+
+def _assert_in_flight_route_frame(page, route: str, label: str) -> None:
+    """Every sampled nav frame: chrome agrees, main is not blank, no stale body."""
+    _assert_no_visible_markup(page, label)
+    probe = _viewport_probe(page)
+    if probe.get("blankCanvas"):
+        raise AssertionError(
+            f"{label}: blank main/full-page canvas during route transition "
+            f"(bg={probe.get('bg')!r} preview={probe.get('textPreview')!r})"
+        )
+    sync = _route_sync_probe(page, route)
+    url_page = _url_page_param(page)
+    url_ok = url_page == route or (route == "Dashboard" and url_page in {"", "Dashboard"})
+    chrome_committed = (
+        sync.get("topbarLabel") == route
+        or sync.get("selected")
+        or url_ok
+    )
+    if not chrome_committed:
+        # Early click frames may not have flipped chrome yet — still forbid blank.
+        if sync.get("blankMain"):
+            raise AssertionError(
+                f"{label}: blank main before chrome commit "
+                f"(preview={sync.get('textPreview')!r})"
+            )
+        return
+    # Once topbar shows the target, main must be target content or explicit loading.
+    if sync.get("topbarLabel") == route:
+        if sync.get("blankMain"):
+            raise AssertionError(
+                f"{label}: blank main while {route!r} chrome is active "
+                f"(preview={sync.get('textPreview')!r})"
+            )
+        if not sync.get("contentOk") and not sync.get("loadingOk"):
+            raise AssertionError(
+                f"{label}: {route!r} chrome without target content or in-shell loading "
+                f"(topbar={sync.get('topbarLabel')!r} preview={sync.get('textPreview')!r})"
+            )
+        if sync.get("staleHit") and not sync.get("loadingOk"):
+            raise AssertionError(
+                f"{label}: stale content {sync.get('staleHit')!r} under {route!r} chrome "
+                f"(preview={sync.get('textPreview')!r})"
+            )
+        if sync.get("hasStaleDashboard") and not sync.get("loadingOk"):
+            raise AssertionError(
+                f"{label}: Dashboard content visible while {route!r} chrome is active "
+                f"(preview={sync.get('textPreview')!r})"
+            )
+    elif sync.get("selected") and url_ok:
+        # Sidebar + URL flipped before topbar markdown — still forbid blank/stale.
+        if sync.get("blankMain"):
+            raise AssertionError(
+                f"{label}: blank main while sidebar/URL show {route!r} "
+                f"(preview={sync.get('textPreview')!r})"
+            )
+        if sync.get("hasStaleDashboard") and not sync.get("loadingOk"):
+            raise AssertionError(
+                f"{label}: Dashboard content with {route!r} sidebar/URL "
+                f"(preview={sync.get('textPreview')!r})"
+            )
 
 
 def _dashboard_heading_layout_probe(page) -> dict:
@@ -705,6 +815,16 @@ def _assert_settled_route(page, route: str, label: str) -> None:
             f"{label}: stale prior-route content under {route!r} "
             f"(preview={sync.get('textPreview')!r})"
         )
+    if sync.get("hasStaleDashboard"):
+        raise AssertionError(
+            f"{label}: Dashboard content under {route!r} chrome "
+            f"(preview={sync.get('textPreview')!r})"
+        )
+    if sync.get("staleHit"):
+        raise AssertionError(
+            f"{label}: forbidden stale marker {sync.get('staleHit')!r} under {route!r} "
+            f"(preview={sync.get('textPreview')!r})"
+        )
     _assert_no_continuity_skeleton_above_content(page, label)
 
 
@@ -868,14 +988,35 @@ def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: s
         _assert_no_visible_markup(page, f"{label}_{i}")
         _assert_visible_branded_surface(page, f"{label}_{i}")
         _assert_auth_surface_invariants(page, f"{label}_{i}")
-        _assert_authenticated_continuity(page, f"{label}_{i}")
+        try:
+            _assert_authenticated_continuity(page, f"{label}_{i}")
+        except AssertionError:
+            page.screenshot(
+                path=str(frames_dir / f"{prefix}_continuity_fail_{i:02d}.png"),
+                full_page=True,
+            )
+            (frames_dir / f"{prefix}_continuity_fail_{i:02d}.html").write_text(
+                page.content()[:200000], encoding="utf-8"
+            )
+            raise
+        try:
+            _assert_in_flight_route_frame(page, route, f"{label}_inflight_{i}")
+        except AssertionError as exc:
+            page.screenshot(
+                path=str(frames_dir / f"{prefix}_inflight_fail_{i:02d}.png"),
+                full_page=True,
+            )
+            (frames_dir / f"{prefix}_inflight_fail_{i:02d}.html").write_text(
+                page.content()[:200000], encoding="utf-8"
+            )
+            raise AssertionError(f"{label}: in-flight route frame failed: {exc}") from exc
         try:
             _assert_settled_route(page, route, f"{label}_settle_{i}")
             ready = True
             break
         except AssertionError as exc:
             last_detail = str(exc)
-        if i in {0, 2, 5, 10, 20}:
+        if i in {0, 2, 5, 10, 20, 40}:
             page.screenshot(
                 path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
             )
@@ -1196,12 +1337,13 @@ def main() -> int:
             # 4) Authenticated route circuit with four-way settled assertions.
             route_prefixes = {
                 "Dashboard": "07_dashboard",
-                "Alternative Finder": "08_alternative_finder",
-                "Datasheet Q&A": "09_datasheet_qa",
-                "Compare Parts": "10_compare_parts",
-                "Procurement Advisor": "11_procurement_advisor",
+                "BOM Analyzer": "08_bom_analyzer",
+                "Compare Parts": "09_compare_parts",
+                "Alternative Finder": "10_alternative_finder",
+                "Datasheet Q&A": "11_datasheet_qa",
+                "Procurement Advisor": "12_procurement_advisor",
             }
-            # First Dashboard already settled; continue AF → … → Dashboard return.
+            # First Dashboard already settled; continue BOM → Compare → … → Dashboard.
             for idx, route in enumerate(AUTH_ROUTE_CIRCUIT):
                 if idx == 0:
                     # Already on Dashboard after login.
@@ -1213,7 +1355,7 @@ def main() -> int:
                 _click_foundation_nav(page, route)
                 prefix = route_prefixes[route]
                 if idx == len(AUTH_ROUTE_CIRCUIT) - 1:
-                    prefix = "12_dashboard_return"
+                    prefix = "13_dashboard_return"
                 try:
                     _wait_for_route(
                         page,
@@ -1234,7 +1376,7 @@ def main() -> int:
                 return 9
             try:
                 _wait_for_login_surface(
-                    page, "after_logout", frames_dir=OUT, prefix="13_logout"
+                    page, "after_logout", frames_dir=OUT, prefix="14_logout"
                 )
             except AssertionError as exc:
                 print(f"AUTH_SMOKE fail=logout_login_surface detail={exc}")
@@ -1244,15 +1386,15 @@ def main() -> int:
             probe_logout = _viewport_probe(page)
             if not probe_logout.get("hasLogin"):
                 raise AssertionError("after_logout: Login gate not visible")
-            page.screenshot(path=str(OUT / "13_logout_login.png"), full_page=True)
+            page.screenshot(path=str(OUT / "14_logout_login.png"), full_page=True)
 
             try:
-                _perform_valid_login(page, frames_dir=OUT, prefix="14_relogin")
+                _perform_valid_login(page, frames_dir=OUT, prefix="15_relogin")
             except AssertionError as exc:
                 print(f"AUTH_SMOKE fail=relogin detail={exc}")
                 return 10
-            page.screenshot(path=str(OUT / "14_relogin_dashboard.png"), full_page=True)
-            (OUT / "14_relogin_dashboard.html").write_text(
+            page.screenshot(path=str(OUT / "15_relogin_dashboard.png"), full_page=True)
+            (OUT / "15_relogin_dashboard.html").write_text(
                 page.content()[:200000], encoding="utf-8"
             )
 

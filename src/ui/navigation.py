@@ -77,6 +77,165 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
         st.rerun()
 
 
+PRESENTED_ROUTE_KEY = "cadivor_presented_route"
+
+# Routes that participate in in-shell transition loading. Keep CSS out of the
+# topbar markdown host — premium.css collapses style-only / style-bearing
+# Streamlit containers that do not also carry .cv-foundation-topbar, and a
+# <style> sibling inside the topbar delta has caused the durable topbar to
+# vanish mid-navigation.
+ROUTE_LOADING_TARGETS = (
+    "Dashboard",
+    "BOM Analyzer",
+    "Alternative Finder",
+    "Compare Parts",
+    "Datasheet Q&A",
+    "Design Impact Analyzer",
+    "Engineering Decisions",
+    "Procurement Advisor",
+    "Cost Optimization",
+    "Supply Risk Scenario",
+    "Monitoring",
+    "Portfolio Intelligence",
+    "Reports",
+    "Settings",
+    "Help",
+    "Onboarding",
+    "Pricing",
+    "Admin Console",
+)
+
+
+def get_presented_route() -> str:
+    """Last route whose main body was allowed to paint (chrome/content lock)."""
+    return str(st.session_state.get(PRESENTED_ROUTE_KEY) or "").strip()
+
+
+def inject_route_loading_css() -> None:
+    """Inject route-scoped transition CSS once per run (not inside topbar HTML)."""
+    per_route: list[str] = []
+    for route in ROUTE_LOADING_TARGETS:
+        esc = html.escape(route, quote=True)
+        per_route.append(
+            f"""
+        body:has([data-cadivor-page-body="{esc}"]) [data-cadivor-route-loading="{esc}"],
+        body:has([data-cadivor-page-body="{esc}"])
+          .cv-route-loading[data-cadivor-route-loading="{esc}"]{{
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;overflow:hidden!important
+        }}
+        body:has([data-cadivor-page-body="{esc}"])
+          div[data-testid="stElementContainer"]:has([data-cadivor-route-loading="{esc}"]):not(:has(.cv-foundation-topbar)),
+        body:has([data-cadivor-page-body="{esc}"])
+          div[data-testid="stElementContainer"]:has(.cv-route-loading[data-cadivor-route-loading="{esc}"]):not(:has(.cv-foundation-topbar)){{
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;overflow:hidden!important
+        }}
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .cv-page,
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .cv-dashboard-page,
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .cv-page-header,
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .bom8-hero,
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .cv672-dashboard-heading{{
+          display:none!important;visibility:hidden!important;height:0!important;
+          min-height:0!important;max-height:0!important;margin:0!important;
+          padding:0!important;overflow:hidden!important;pointer-events:none!important
+        }}
+            """
+        )
+    st.markdown(
+        f"""
+        <style id="cadivor-route-loading-css">
+        .cv-route-loading{{
+          box-sizing:border-box;width:100%;max-width:720px;margin:8px 0 18px;
+          padding:22px 24px;border:1px solid #D6E3F5;border-radius:18px;
+          background:linear-gradient(180deg,#FFFFFF 0%,#F7FAFF 100%);
+          box-shadow:0 12px 28px rgba(15,23,42,.05);
+          font-family:Inter,system-ui,sans-serif
+        }}
+        .cv-route-loading strong{{
+          display:block;color:#0F172A;font-size:18px;font-weight:850;
+          letter-spacing:-.02em;margin:0 0 6px
+        }}
+        .cv-route-loading p{{
+          margin:0;color:#64748B;font-size:13px;line-height:1.45;font-weight:650
+        }}
+        {"".join(per_route)}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def route_loading_markup(target_route: str) -> str:
+    """Return in-shell target-route loading HTML (no <style> — CSS is injected separately)."""
+    safe_route = html.escape(str(target_route or "").strip() or "workspace")
+    return f"""
+        <div class="cv-route-loading" data-cadivor-route-loading="{safe_route}"
+             data-testid="cadivor-route-loading" role="status" aria-live="polite">
+          <strong>Opening {safe_route}…</strong>
+          <p>Preparing this page in your Cadivor workspace.</p>
+        </div>
+        """
+
+
+def paint_in_shell_route_loading(target_route: str) -> None:
+    """Paint an explicit in-shell target-route surface during workspace IO.
+
+    Prefer embedding via ``render_unified_shell(..., route_loading=...)`` so the
+    topbar and loading surface share one Streamlit markdown delta. This helper
+    remains for callers that cannot pass through the shell render.
+    """
+    inject_route_loading_css()
+    st.markdown(route_loading_markup(target_route), unsafe_allow_html=True)
+
+
+def begin_authenticated_page(route: str, *, reveal_body: bool = True) -> None:
+    """Mark the committed route as presented and retire auth gates.
+
+    Call immediately before the page branch paints real main content so
+    ``data-cadivor-page-content``, topbar, sidebar, and URL stay in lockstep.
+
+    When ``reveal_body`` is False (heavy import pages like BOM Analyzer), the
+    in-shell route-loading surface stays visible until
+    ``reveal_authenticated_page_body()`` runs after imports.
+    """
+    safe_route = str(route or "").strip()
+    if safe_route:
+        st.session_state[PRESENTED_ROUTE_KEY] = safe_route
+    try:
+        from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
+
+        mark_page_content_ready(safe_route)
+        retire_auth_gate_overlays()
+    except Exception:
+        pass
+    if reveal_body:
+        reveal_authenticated_page_body(safe_route)
+
+
+def reveal_authenticated_page_body(route: str = "") -> None:
+    """Allow the matching in-shell route-loading host to collapse; body is mounting."""
+    safe_route = html.escape(
+        str(route or st.session_state.get(PRESENTED_ROUTE_KEY) or "").strip() or "1"
+    )
+    try:
+        st.markdown(
+            f'<div data-cadivor-page-body="{safe_route}" aria-hidden="true" '
+            'style="position:absolute;width:1px;height:1px;margin:-1px;border:0;'
+            'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>',
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        pass
+
+
 def build_alternative_finder_context(
     *,
     mpn: str,

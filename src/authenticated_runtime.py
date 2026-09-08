@@ -76,12 +76,15 @@ from src.secrets import get_secret
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
     apply_alternative_finder_prefill,
+    begin_authenticated_page,
     consume_alternative_finder_context,
+    get_presented_route,
     internal_nav_button,
     navigate_to,
     navigate_to_alternative_finder,
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
+    reveal_authenticated_page_body,
 )
 from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import (
@@ -1926,6 +1929,14 @@ def run_authenticated_app() -> None:
         begin_logout(supabase, cookie_manager)
 
     inject_premium_css()
+    _presented_route = get_presented_route()
+    # Only during authenticated navigations (prior page already presented). First
+    # admit keeps Signing-you-in / gate ownership — never an "Opening …" surface.
+    _route_loading = (
+        _shell_route
+        if _presented_route and _presented_route != _shell_route
+        else ""
+    )
     render_unified_shell(
         current_page=_shell_route,
         profile=_shell_profile,
@@ -1939,6 +1950,7 @@ def run_authenticated_app() -> None:
         navigate=navigate_to,
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
+        route_loading=_route_loading,
     )
     # Do not retire the Signing-you-in gate merely because the shell mounted —
     # keep progress visible through load_user_data until page content paints.
@@ -2873,14 +2885,13 @@ def run_authenticated_app() -> None:
         event="route_enter",
     )
 
-    # Shell + first page content: allow the authenticating gate to retire now.
-    try:
-        from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
-
-        mark_page_content_ready(app_mode)
-        retire_auth_gate_overlays()
-    except Exception:
-        pass
+    # Page body is about to paint: lock presented route to chrome/URL and allow
+    # auth-gate retirement. Heavy-import pages keep the in-shell route-loading
+    # surface until reveal_authenticated_page_body() after their imports.
+    begin_authenticated_page(
+        app_mode,
+        reveal_body=app_mode not in {"BOM Analyzer", "Alternative Finder"},
+    )
 
     if app_mode == "Onboarding":
         progress = onboarding_progress or {}
@@ -9237,6 +9248,7 @@ def run_authenticated_app() -> None:
             set_alternative_finder_selected_candidate,
             should_start_new_alternative_search,
         )
+        reveal_authenticated_page_body("Alternative Finder")
         return_analysis_id = str(
             _qp_value("return_analysis_id")
             or st.session_state.get("cadivor_alt_finder_return_analysis_id", "")
@@ -12382,6 +12394,7 @@ def run_authenticated_app() -> None:
         )
         from src.report_generator import save_results_to_excel
         from src.stripe_helper import create_checkout_session
+        reveal_authenticated_page_body("BOM Analyzer")
         # Sprint 50.1.2 — returning through navigation resumes the active engineering
         # analysis instead of reopening the Saved BOM selector. A deliberate New
         # Analysis request clears this context above and continues to the selector.
