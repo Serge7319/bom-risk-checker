@@ -58,7 +58,14 @@ ROUTE_NAV_SLUGS = {
 # Sidebar labels alone are not enough (every route name is always in the nav).
 ROUTE_CONTENT_MARKERS = {
     "Dashboard": ("Monitor portfolio health", "Welcome,"),
-    "BOM Analyzer": ("Upload engineering BOM", "Choose how to begin", "Analyze your BOM"),
+    # Include the first-painted hero copy so settled/inflight checks lock as soon as
+    # real BOM body mounts (not only the later upload-path cards).
+    "BOM Analyzer": (
+        "Turn a parts list into an engineering risk decision",
+        "Upload engineering BOM",
+        "Choose how to begin",
+        "Analyze your BOM",
+    ),
     "Alternative Finder": ("Choose a better replacement", "Find Alternatives"),
     "Datasheet Q&A": ("Ask Cadivor about your datasheet", "Upload datasheet"),
     "Compare Parts": ("Compare any two parts", "Part A"),

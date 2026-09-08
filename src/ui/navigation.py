@@ -78,6 +78,7 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
 
 
 PRESENTED_ROUTE_KEY = "cadivor_presented_route"
+DELAY_ROUTE_BODY_REVEAL_KEY = "cadivor_delay_route_body_reveal"
 
 # Routes that participate in in-shell transition loading. Keep CSS out of the
 # topbar markdown host — premium.css collapses style-only / style-bearing
@@ -142,6 +143,14 @@ def inject_route_loading_css() -> None:
         body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
           section[data-testid="stMain"] .bom8-hero,
         body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] [class*="bom8-"],
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .cv64-section,
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .cv64-page-shell,
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
+          section[data-testid="stMain"] .cp-workspace,
+        body:has([data-cadivor-route-loading="{esc}"]):not(:has([data-cadivor-page-body="{esc}"]))
           section[data-testid="stMain"] .cv672-dashboard-heading{{
           display:none!important;visibility:hidden!important;height:0!important;
           min-height:0!important;max-height:0!important;margin:0!important;
@@ -204,7 +213,8 @@ def begin_authenticated_page(route: str, *, reveal_body: bool = True) -> None:
 
     When ``reveal_body`` is False (heavy import pages like BOM Analyzer), the
     in-shell route-loading surface stays visible until
-    ``reveal_authenticated_page_body()`` runs after imports.
+    ``reveal_authenticated_page_body()`` runs immediately after the first
+    distinctive page content paints.
     """
     safe_route = str(route or "").strip()
     if safe_route:
@@ -225,6 +235,7 @@ def reveal_authenticated_page_body(route: str = "") -> None:
     safe_route = html.escape(
         str(route or st.session_state.get(PRESENTED_ROUTE_KEY) or "").strip() or "1"
     )
+    st.session_state.pop(DELAY_ROUTE_BODY_REVEAL_KEY, None)
     try:
         st.markdown(
             f'<div data-cadivor-page-body="{safe_route}" aria-hidden="true" '

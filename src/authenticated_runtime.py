@@ -78,6 +78,7 @@ from src.ui.navigation import (
     apply_alternative_finder_prefill,
     begin_authenticated_page,
     consume_alternative_finder_context,
+    DELAY_ROUTE_BODY_REVEAL_KEY,
     get_presented_route,
     internal_nav_button,
     navigate_to,
@@ -1937,6 +1938,12 @@ def run_authenticated_app() -> None:
         if _presented_route and _presented_route != _shell_route
         else ""
     )
+    # Keep in-shell loading up until first distinctive content paints. Revealing in
+    # begin_authenticated_page collapses loading and un-hides prior-route DOM.
+    st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_route_loading) or _shell_route in {
+        "BOM Analyzer",
+        "Alternative Finder",
+    }
     render_unified_shell(
         current_page=_shell_route,
         profile=_shell_profile,
@@ -2886,11 +2893,12 @@ def run_authenticated_app() -> None:
     )
 
     # Page body is about to paint: lock presented route to chrome/URL and allow
-    # auth-gate retirement. Heavy-import pages keep the in-shell route-loading
-    # surface until reveal_authenticated_page_body() after their imports.
+    # auth-gate retirement. When a transition loading surface is active (or the
+    # page is import-heavy), keep loading until reveal_authenticated_page_body()
+    # runs immediately after first distinctive content.
     begin_authenticated_page(
         app_mode,
-        reveal_body=app_mode not in {"BOM Analyzer", "Alternative Finder"},
+        reveal_body=not bool(st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)),
     )
 
     if app_mode == "Onboarding":
@@ -3114,6 +3122,7 @@ def run_authenticated_app() -> None:
     if app_mode == "Dashboard":
         inject_dashboard_workspace_styles()
         render_dashboard_page_heading()
+        reveal_authenticated_page_body("Dashboard")
 
         if (
             onboarding_progress
@@ -4000,6 +4009,7 @@ def run_authenticated_app() -> None:
             description=advisor["summary"],
             icon="shopping-cart",
         )
+        reveal_authenticated_page_body("Procurement Advisor")
 
         render_kpi_row_safe(
             [
@@ -9195,12 +9205,14 @@ def run_authenticated_app() -> None:
         from src.pages.compare_parts import render_compare_parts_page
 
         render_compare_parts_page(is_admin=bool(is_admin), role=str(current_user.get("role") or ""))
+        reveal_authenticated_page_body("Compare Parts")
         stop_authenticated_page()
 
     if app_mode == "Datasheet Q&A":
         from src.pages.datasheet_qa import render_datasheet_qa_page
 
         render_datasheet_qa_page()
+        reveal_authenticated_page_body("Datasheet Q&A")
         stop_authenticated_page()
 
     if app_mode == "Alternative Finder":
@@ -9248,7 +9260,6 @@ def run_authenticated_app() -> None:
             set_alternative_finder_selected_candidate,
             should_start_new_alternative_search,
         )
-        reveal_authenticated_page_body("Alternative Finder")
         return_analysis_id = str(
             _qp_value("return_analysis_id")
             or st.session_state.get("cadivor_alt_finder_return_analysis_id", "")
@@ -10446,6 +10457,8 @@ def run_authenticated_app() -> None:
                 ),
                 icon="arrow-right-left",
             )
+            # Collapse in-shell loading only after distinctive AF content has painted.
+            reveal_authenticated_page_body("Alternative Finder")
 
         with st.container(border=True, key="af62_search"):
             st.markdown(
@@ -12394,7 +12407,6 @@ def run_authenticated_app() -> None:
         )
         from src.report_generator import save_results_to_excel
         from src.stripe_helper import create_checkout_session
-        reveal_authenticated_page_body("BOM Analyzer")
         # Sprint 50.1.2 — returning through navigation resumes the active engineering
         # analysis instead of reopening the Saved BOM selector. A deliberate New
         # Analysis request clears this context above and continues to the selector.
@@ -12880,6 +12892,10 @@ def run_authenticated_app() -> None:
             ),
             icon="cpu",
         )
+        # Collapse in-shell loading only after distinctive BOM content has painted.
+        # Revealing after imports (before this header) left BOM chrome with neither
+        # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
+        reveal_authenticated_page_body("BOM Analyzer")
         cadivor_metric_row(
             [
                 MetricCard(
