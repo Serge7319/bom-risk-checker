@@ -76,12 +76,16 @@ from src.secrets import get_secret
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
     apply_alternative_finder_prefill,
+    begin_authenticated_page,
     consume_alternative_finder_context,
+    DELAY_ROUTE_BODY_REVEAL_KEY,
+    get_presented_route,
     internal_nav_button,
     navigate_to,
     navigate_to_alternative_finder,
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
+    reveal_authenticated_page_body,
 )
 from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import (
@@ -1926,6 +1930,20 @@ def run_authenticated_app() -> None:
         begin_logout(supabase, cookie_manager)
 
     inject_premium_css()
+    _presented_route = get_presented_route()
+    # Only during authenticated navigations (prior page already presented). First
+    # admit keeps Signing-you-in / gate ownership — never an "Opening …" surface.
+    _route_loading = (
+        _shell_route
+        if _presented_route and _presented_route != _shell_route
+        else ""
+    )
+    # Keep in-shell loading up until first distinctive content paints. Revealing in
+    # begin_authenticated_page collapses loading and un-hides prior-route DOM.
+    st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_route_loading) or _shell_route in {
+        "BOM Analyzer",
+        "Alternative Finder",
+    }
     render_unified_shell(
         current_page=_shell_route,
         profile=_shell_profile,
@@ -1939,6 +1957,7 @@ def run_authenticated_app() -> None:
         navigate=navigate_to,
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
+        route_loading=_route_loading,
     )
     # Do not retire the Signing-you-in gate merely because the shell mounted —
     # keep progress visible through load_user_data until page content paints.
@@ -2873,14 +2892,14 @@ def run_authenticated_app() -> None:
         event="route_enter",
     )
 
-    # Shell + first page content: allow the authenticating gate to retire now.
-    try:
-        from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
-
-        mark_page_content_ready(app_mode)
-        retire_auth_gate_overlays()
-    except Exception:
-        pass
+    # Page body is about to paint: lock presented route to chrome/URL and allow
+    # auth-gate retirement. When a transition loading surface is active (or the
+    # page is import-heavy), keep loading until reveal_authenticated_page_body()
+    # runs immediately after first distinctive content.
+    begin_authenticated_page(
+        app_mode,
+        reveal_body=not bool(st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)),
+    )
 
     if app_mode == "Onboarding":
         progress = onboarding_progress or {}
@@ -3103,6 +3122,7 @@ def run_authenticated_app() -> None:
     if app_mode == "Dashboard":
         inject_dashboard_workspace_styles()
         render_dashboard_page_heading()
+        reveal_authenticated_page_body("Dashboard")
 
         if (
             onboarding_progress
@@ -3989,6 +4009,7 @@ def run_authenticated_app() -> None:
             description=advisor["summary"],
             icon="shopping-cart",
         )
+        reveal_authenticated_page_body("Procurement Advisor")
 
         render_kpi_row_safe(
             [
@@ -9184,12 +9205,14 @@ def run_authenticated_app() -> None:
         from src.pages.compare_parts import render_compare_parts_page
 
         render_compare_parts_page(is_admin=bool(is_admin), role=str(current_user.get("role") or ""))
+        reveal_authenticated_page_body("Compare Parts")
         stop_authenticated_page()
 
     if app_mode == "Datasheet Q&A":
         from src.pages.datasheet_qa import render_datasheet_qa_page
 
         render_datasheet_qa_page()
+        reveal_authenticated_page_body("Datasheet Q&A")
         stop_authenticated_page()
 
     if app_mode == "Alternative Finder":
@@ -10434,6 +10457,8 @@ def run_authenticated_app() -> None:
                 ),
                 icon="arrow-right-left",
             )
+            # Collapse in-shell loading only after distinctive AF content has painted.
+            reveal_authenticated_page_body("Alternative Finder")
 
         with st.container(border=True, key="af62_search"):
             st.markdown(
@@ -12867,6 +12892,10 @@ def run_authenticated_app() -> None:
             ),
             icon="cpu",
         )
+        # Collapse in-shell loading only after distinctive BOM content has painted.
+        # Revealing after imports (before this header) left BOM chrome with neither
+        # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
+        reveal_authenticated_page_body("BOM Analyzer")
         cadivor_metric_row(
             [
                 MetricCard(

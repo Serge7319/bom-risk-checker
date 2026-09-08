@@ -170,6 +170,47 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertIn("st-key-cadivor_auth_card", gate)
         self.assertIn("height:0!important;min-height:0!important;max-height:0!important", gate)
 
+    def test_route_transition_keeps_in_shell_target_loading(self):
+        nav = (ROOT / "src" / "ui" / "navigation.py").read_text(encoding="utf-8")
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        shell = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
+        harness = (
+            ROOT / "tests" / "harness_auth_gate_browser_smoke.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("paint_in_shell_route_loading", nav)
+        self.assertIn("inject_route_loading_css", nav)
+        self.assertIn("DELAY_ROUTE_BODY_REVEAL_KEY", nav)
+        self.assertIn("data-cadivor-route-loading", nav)
+        self.assertIn("data-cadivor-page-body", nav)
+        self.assertIn("begin_authenticated_page", nav)
+        self.assertIn("reveal_authenticated_page_body", nav)
+        self.assertIn("route_loading=", runtime)
+        self.assertIn("begin_authenticated_page(", runtime)
+        self.assertIn("DELAY_ROUTE_BODY_REVEAL_KEY", runtime)
+        self.assertIn(
+            "reveal_body=not bool(st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY))",
+            runtime,
+        )
+        self.assertIn('reveal_authenticated_page_body("BOM Analyzer")', runtime)
+        self.assertIn('reveal_authenticated_page_body("Alternative Finder")', runtime)
+        self.assertIn('reveal_authenticated_page_body("Compare Parts")', runtime)
+        self.assertIn('reveal_authenticated_page_body("Dashboard")', runtime)
+        # Reveal must follow first distinctive content, not the import block alone.
+        bom_branch = runtime.split('if app_mode == "BOM Analyzer":', 1)[1]
+        bom_reveal_at = bom_branch.find('reveal_authenticated_page_body("BOM Analyzer")')
+        bom_hero_at = bom_branch.find("Turn a parts list into an engineering risk decision")
+        self.assertGreater(bom_reveal_at, 0)
+        self.assertGreater(bom_hero_at, 0)
+        self.assertGreater(bom_reveal_at, bom_hero_at)
+        self.assertIn("inject_route_loading_css", shell)
+        self.assertIn("route_loading", shell)
+        self.assertIn("_assert_in_flight_route_frame", harness)
+        self.assertIn('"BOM Analyzer"', harness)
+        self.assertIn("Opening", nav)
+        self.assertIn("Turn a parts list into an engineering risk decision", harness)
+        # Topbar markdown must not embed <style> (premium.css collapses style hosts).
+        self.assertNotIn("<style id=\"cadivor-route-loading-css\">", nav.split("def route_loading_markup")[1].split("def paint_in_shell")[0])
+
     def test_production_sources_have_no_mock_env_switch(self):
         for rel in (
             "src/auth_gate.py",
