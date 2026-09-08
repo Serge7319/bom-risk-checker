@@ -1950,8 +1950,9 @@ def run_authenticated_app() -> None:
     # Skipping first-admit loading left Dashboard chrome with an empty canvas.
     _needs_main_transition = route_needs_main_transition(_shell_route, _presented_route)
     st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_needs_main_transition)
-    # Prepare Opening… before chrome so the shell can embed the overlay in the
-    # same fixed-position markdown host as the topbar (never a blank/stale main).
+    # Prepare transition CSS/state, then let the shell emit Opening… as a
+    # main-scoped sibling of the topbar (separate later hosts collapse to 0x0).
+    # Chrome-lock CSS keeps topbar/sidebar sharp while Opening covers main only.
     if _needs_main_transition:
         mount_main_transition_loading(_shell_route, paint_markup=False)
     render_unified_shell(
@@ -1971,7 +1972,7 @@ def run_authenticated_app() -> None:
     )
     mark_authenticated_surface_ready()
     st.session_state["cadivor_foundation_shell_mounted"] = True
-    # Keep Signing you in until Opening… exists in chrome, then hand off.
+    # Keep Signing you in until Opening… exists, then hand off.
     if _needs_main_transition:
         try:
             from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays

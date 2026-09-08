@@ -178,10 +178,10 @@ def render_unified_shell(
 ) -> None:
     """Render exactly one top bar and one custom fixed navigation rail.
 
-    When ``route_loading`` is set, the in-main ``Opening {route}…`` overlay is
-    painted in the same markdown host as the fixed topbar so it shares that
-    working ``position:fixed`` stacking context (a separate main-column host
-    can collapse to zero height during Streamlit navigations).
+    When ``route_loading`` is set, paint the main-panel Opening… surface as a
+    sibling of the topbar markdown (needed so ``position:fixed`` does not
+    collapse inside a later Streamlit host). CSS keeps the surface scoped to
+    the main panel and forces chrome to stay sharp (no shared blur/dim).
     """
     inject_unified_shell_css()
 
@@ -204,7 +204,6 @@ def render_unified_shell(
         except (TypeError, ValueError):
             gen = 0
         if gen <= 0:
-            # Shell-only paint path (tests / unexpected call order).
             from src.ui.main_transition import prepare_main_transition
 
             gen = prepare_main_transition(loading_route)
