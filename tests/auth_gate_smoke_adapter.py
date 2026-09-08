@@ -5,6 +5,7 @@ boot → login → authenticating → ready without Supabase or env-based mock s
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 import types
@@ -396,6 +397,11 @@ def install_production_path_smoke_patches() -> None:
     def smoke_load_user_data() -> dict[str, Any]:
         import streamlit as st
 
+        # Deterministic workspace/profile delay so first-admit Opening Dashboard…
+        # is observable (production load_user_data is slower).
+        delay = float(os.environ.get("CADIVOR_SMOKE_LOAD_USER_DELAY") or "0.85")
+        if delay > 0:
+            time.sleep(delay)
         email = str(
             getattr(st.session_state.get("user"), "email", None) or SMOKE_EMAIL
         ).strip()
@@ -405,6 +411,25 @@ def install_production_path_smoke_patches() -> None:
     runtime_mod.get_supabase_client = smoke_get_supabase_client
     runtime_mod.load_user_data = smoke_load_user_data
     runtime_mod.supabase = smoke_sb
+
+    _orig_begin = None
+    try:
+        import src.ui.navigation as nav_mod
+
+        _orig_begin = nav_mod.begin_authenticated_page
+
+        def smoke_begin_authenticated_page(route: str, *, reveal_body: bool = True) -> None:
+            # Deterministic route-dispatch delay so Opening {route}… is observable
+            # before distinctive content (production imports/IO are slower).
+            delay = float(os.environ.get("CADIVOR_SMOKE_ROUTE_DISPATCH_DELAY") or "0.55")
+            if delay > 0:
+                time.sleep(delay)
+            return _orig_begin(route, reveal_body=reveal_body)
+
+        nav_mod.begin_authenticated_page = smoke_begin_authenticated_page
+        runtime_mod.begin_authenticated_page = smoke_begin_authenticated_page
+    except Exception:
+        pass
 
     def smoke_ensure_personal_workspace(*args: Any, **kwargs: Any):
         del args, kwargs

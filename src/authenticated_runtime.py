@@ -81,11 +81,13 @@ from src.ui.navigation import (
     DELAY_ROUTE_BODY_REVEAL_KEY,
     get_presented_route,
     internal_nav_button,
+    mount_main_transition_loading,
     navigate_to,
     navigate_to_alternative_finder,
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
     reveal_authenticated_page_body,
+    route_needs_main_transition,
 )
 from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import (
@@ -102,8 +104,21 @@ from src.ui.core_premium_ui import (
     inject_core_premium_ui,
     inject_workspace_geometry_final,
     mark_authenticated_surface_ready,
-    stop_authenticated_page,
+    stop_authenticated_page as _stop_authenticated_page_impl,
 )
+
+
+def stop_authenticated_page(*args, **kwargs):
+    """End the page; never leave Opening… mounted without a body reveal."""
+    if st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY):
+        reveal_authenticated_page_body(
+            str(
+                st.session_state.get("cadivor_route")
+                or st.session_state.get("app_mode")
+                or ""
+            )
+        )
+    return _stop_authenticated_page_impl(*args, **kwargs)
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
@@ -1931,19 +1946,14 @@ def run_authenticated_app() -> None:
 
     inject_premium_css()
     _presented_route = get_presented_route()
-    # Only during authenticated navigations (prior page already presented). First
-    # admit keeps Signing-you-in / gate ownership — never an "Opening …" surface.
-    _route_loading = (
-        _shell_route
-        if _presented_route and _presented_route != _shell_route
-        else ""
-    )
-    # Keep in-shell loading up until first distinctive content paints. Revealing in
-    # begin_authenticated_page collapses loading and un-hides prior-route DOM.
-    st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_route_loading) or _shell_route in {
-        "BOM Analyzer",
-        "Alternative Finder",
-    }
+    # First admit AND every chrome-changing navigation need the in-main owner.
+    # Skipping first-admit loading left Dashboard chrome with an empty canvas.
+    _needs_main_transition = route_needs_main_transition(_shell_route, _presented_route)
+    st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_needs_main_transition)
+    # Prepare Opening… before chrome so the shell can embed the overlay in the
+    # same fixed-position markdown host as the topbar (never a blank/stale main).
+    if _needs_main_transition:
+        mount_main_transition_loading(_shell_route, paint_markup=False)
     render_unified_shell(
         current_page=_shell_route,
         profile=_shell_profile,
@@ -1957,12 +1967,19 @@ def run_authenticated_app() -> None:
         navigate=navigate_to,
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
-        route_loading=_route_loading,
+        route_loading=_shell_route if _needs_main_transition else "",
     )
-    # Do not retire the Signing-you-in gate merely because the shell mounted —
-    # keep progress visible through load_user_data until page content paints.
     mark_authenticated_surface_ready()
     st.session_state["cadivor_foundation_shell_mounted"] = True
+    # Keep Signing you in until Opening… exists in chrome, then hand off.
+    if _needs_main_transition:
+        try:
+            from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
+
+            mark_page_content_ready(_shell_route)
+            retire_auth_gate_overlays()
+        except Exception:
+            pass
 
     log_startup_phase("authenticated_runtime_begin")
     from src.performance_timing import emit_timing, timed_phase
@@ -3121,8 +3138,9 @@ def run_authenticated_app() -> None:
     # ---------- Dashboard ----------
     if app_mode == "Dashboard":
         inject_dashboard_workspace_styles()
+        # Keep Opening Dashboard… through workspace IO. Heading alone must not
+        # collapse the main transition owner (production empty-canvas gap).
         render_dashboard_page_heading()
-        reveal_authenticated_page_body("Dashboard")
 
         if (
             onboarding_progress
@@ -3282,6 +3300,7 @@ def run_authenticated_app() -> None:
                         navigate_to("Dashboard")
             # Sprint 30.4: use the normalized, persistent customer profile so
             # onboarding and onboarding preview match the shell/dashboard identity.
+            reveal_authenticated_page_body("Dashboard")
             render_first_run_dashboard(
                 current_user=profile_for_shell,
                 workspace_name=active_workspace_name,
@@ -3316,6 +3335,7 @@ def run_authenticated_app() -> None:
                         monthly_limit=selected_plan.get("monthly_bom_limit"),
                     )
 
+            reveal_authenticated_page_body("Dashboard")
             render_engineering_overview_workspace(
                 overview=overview,
                 metrics=dashboard_metrics,
@@ -3331,6 +3351,7 @@ def run_authenticated_app() -> None:
                     preloaded_alerts=overview_alerts,
                     fallback_analyses=real_overview_analyses,
                 )
+            reveal_authenticated_page_body("Dashboard")
             render_portfolio_intelligence_workspace(
                 ctx=st.session_state[portfolio_cache_key],
                 overview=overview,
@@ -3345,11 +3366,13 @@ def run_authenticated_app() -> None:
                     preloaded_alerts=overview_alerts,
                     fallback_analyses=real_overview_analyses,
                 )
+            reveal_authenticated_page_body("Dashboard")
             render_dashboard_analytics_workspace(
                 ctx=st.session_state[portfolio_cache_key],
                 light_plotly_layout=light_plotly_layout,
             )
         elif workspace_category == "Monitoring":
+            reveal_authenticated_page_body("Dashboard")
             render_dashboard_monitoring_workspace(
                 overview=overview,
                 parts=overview_parts,

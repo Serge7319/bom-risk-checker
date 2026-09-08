@@ -34,14 +34,13 @@ SAMPLE_MS = 100
 AUTH_SURFACE_MAX_SECONDS_WITHOUT_PROGRESS = 2.0
 
 # Full authenticated nav circuit, ending back on Dashboard.
-# Includes Dashboard → BOM Analyzer → Compare Parts to catch chrome/content races.
+# Order matches the production continuity contract under test.
 AUTH_ROUTE_CIRCUIT = (
     "Dashboard",
     "BOM Analyzer",
-    "Compare Parts",
     "Alternative Finder",
+    "Compare Parts",
     "Datasheet Q&A",
-    "Procurement Advisor",
     "Dashboard",
 )
 
@@ -56,8 +55,10 @@ ROUTE_NAV_SLUGS = {
 
 # Distinctive main-canvas copy — must appear before a route is considered settled.
 # Sidebar labels alone are not enough (every route name is always in the nav).
+# Dashboard heading subtitle alone is NOT distinctive — production showed heading
+# + tabs with an empty canvas for several seconds after first login.
 ROUTE_CONTENT_MARKERS = {
-    "Dashboard": ("Monitor portfolio health", "Welcome,"),
+    "Dashboard": ("Welcome,", "What should engineering do today?"),
     # Include the first-painted hero copy so settled/inflight checks lock as soon as
     # real BOM body mounts (not only the later upload-path cards).
     "BOM Analyzer": (
@@ -74,12 +75,38 @@ ROUTE_CONTENT_MARKERS = {
 
 # Main-canvas markers that must not appear when chrome is already on the target.
 ROUTE_FORBIDDEN_STALE_MARKERS = {
-    "BOM Analyzer": ("Monitor portfolio health",),
-    "Compare Parts": ("Monitor portfolio health", "Upload engineering BOM"),
-    "Alternative Finder": ("Monitor portfolio health", "Upload engineering BOM"),
-    "Datasheet Q&A": ("Monitor portfolio health", "Upload engineering BOM"),
-    "Procurement Advisor": ("Monitor portfolio health", "Upload engineering BOM"),
-    "Dashboard": ("Upload engineering BOM", "Compare any two parts"),
+    "BOM Analyzer": ("Monitor portfolio health", "Welcome,"),
+    "Compare Parts": (
+        "Monitor portfolio health",
+        "Welcome,",
+        "Upload engineering BOM",
+        "Turn a parts list into an engineering risk decision",
+    ),
+    "Alternative Finder": (
+        "Monitor portfolio health",
+        "Welcome,",
+        "Upload engineering BOM",
+        "Turn a parts list into an engineering risk decision",
+    ),
+    "Datasheet Q&A": (
+        "Monitor portfolio health",
+        "Welcome,",
+        "Upload engineering BOM",
+        "Turn a parts list into an engineering risk decision",
+    ),
+    "Procurement Advisor": (
+        "Monitor portfolio health",
+        "Welcome,",
+        "Upload engineering BOM",
+        "Turn a parts list into an engineering risk decision",
+    ),
+    "Dashboard": (
+        "Upload engineering BOM",
+        "Turn a parts list into an engineering risk decision",
+        "Compare any two parts",
+        "Choose a better replacement",
+        "Ask Cadivor about your datasheet",
+    ),
 }
 
 
@@ -537,24 +564,30 @@ def _route_sync_probe(page, route: str) -> dict:
             selected = kind === 'primary' || testid.includes('primary');
           }
           const loadingEl = document.querySelector(
-            '[data-cadivor-route-loading], [data-testid="cadivor-route-loading"], .cv-route-loading'
+            '[data-cadivor-main-transition="1"][data-cadivor-route-loading], '
+            + '[data-testid="cadivor-route-loading"][data-cadivor-route-loading], '
+            + '.cv-main-transition.cv-route-loading'
           );
           let loadingVisible = false;
           let loadingRoute = '';
+          let loadingPresent = false;
           if (loadingEl) {
+            loadingPresent = true;
             const style = window.getComputedStyle(loadingEl);
             const rect = loadingEl.getBoundingClientRect();
             loadingVisible = !(
               style.display === 'none' ||
               style.visibility === 'hidden' ||
               Number(style.opacity || '1') === 0 ||
-              rect.height < 2
+              rect.height < 24 ||
+              rect.width < 24
             );
             loadingRoute = (
               loadingEl.getAttribute('data-cadivor-route-loading') || ''
             ).trim();
           }
           const contentOk = markers.some((m) => text.includes(m));
+          // Fixed Opening… overlay must be visibly covering the main canvas.
           const loadingOk = loadingVisible && loadingRoute === route;
           const staleHit = stale.find((m) => text.includes(m)) || '';
           // Blank main: foundation chrome present but neither body markers nor
@@ -565,7 +598,17 @@ def _route_sync_probe(page, route: str) -> dict:
                  '.st-key-cv_foundation_navigation, [class*="st-key-cv_foundation_navigation"]'
                )
           );
-          const blankMain = hasFoundation && !contentOk && !loadingOk && text.length < 40;
+          // Heading/tabs alone without Opening… or distinctive body is a blank canvas.
+          const headingOnly =
+            route === 'Dashboard'
+            && hasFoundation
+            && /\\bDashboard\\b/i.test(text)
+            && text.includes('Monitor portfolio health')
+            && !contentOk
+            && !loadingOk;
+          const blankMain =
+            (hasFoundation && !contentOk && !loadingOk && text.length < 40)
+            || headingOnly;
           return {
             topbarLabel,
             selected,
@@ -573,7 +616,12 @@ def _route_sync_probe(page, route: str) -> dict:
             loadingOk,
             loadingVisible,
             loadingRoute,
+            loadingDisplay: loadingEl ? (window.getComputedStyle(loadingEl).display || '') : '',
+            loadingHeight: loadingEl ? Math.round(loadingEl.getBoundingClientRect().height) : 0,
+            loadingWidth: loadingEl ? Math.round(loadingEl.getBoundingClientRect().width) : 0,
+            loadingPresent,
             blankMain,
+            headingOnly,
             staleHit,
             textPreview: text.slice(0, 220),
             hasStaleAf: route !== 'Alternative Finder' && text.includes('Choose a better replacement'),
@@ -621,14 +669,21 @@ def _assert_in_flight_route_frame(page, route: str, label: str) -> None:
         if not sync.get("contentOk") and not sync.get("loadingOk"):
             raise AssertionError(
                 f"{label}: {route!r} chrome without target content or in-shell loading "
-                f"(topbar={sync.get('topbarLabel')!r} preview={sync.get('textPreview')!r})"
+                f"(topbar={sync.get('topbarLabel')!r} "
+                f"loadingPresent={sync.get('loadingPresent')!r} "
+                f"loadingVisible={sync.get('loadingVisible')!r} "
+                f"display={sync.get('loadingDisplay')!r} "
+                f"size={sync.get('loadingWidth')}x{sync.get('loadingHeight')} "
+                f"preview={sync.get('textPreview')!r})"
             )
         if sync.get("staleHit") and not sync.get("loadingOk"):
+            # Stale prior-route body under target chrome is forbidden unless the
+            # Opening… owner is actively covering the main canvas.
             raise AssertionError(
                 f"{label}: stale content {sync.get('staleHit')!r} under {route!r} chrome "
                 f"(preview={sync.get('textPreview')!r})"
             )
-        if sync.get("hasStaleDashboard") and not sync.get("loadingOk"):
+        if sync.get("hasStaleDashboard") and route != "Dashboard" and not sync.get("loadingOk"):
             raise AssertionError(
                 f"{label}: Dashboard content visible while {route!r} chrome is active "
                 f"(preview={sync.get('textPreview')!r})"

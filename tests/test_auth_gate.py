@@ -97,7 +97,13 @@ class AuthGateModuleTests(unittest.TestCase):
             )
         ]
         self.assertIn("render_unified_shell(", early)
-        self.assertNotIn("retire_auth_gate_overlays()", early)
+        # Retire auth gate only after the in-main Opening… owner is mounted.
+        self.assertIn("mount_main_transition_loading(", early)
+        self.assertIn("retire_auth_gate_overlays()", early)
+        self.assertGreater(
+            early.find("retire_auth_gate_overlays()"),
+            early.find("mount_main_transition_loading("),
+        )
         # Must not call render_unified_shell a second time after profile IO.
         late = runtime[
             runtime.find("# ---------- Cadivor Unified Application Shell ----------") :
@@ -174,17 +180,22 @@ class AuthGateModuleTests(unittest.TestCase):
         nav = (ROOT / "src" / "ui" / "navigation.py").read_text(encoding="utf-8")
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         shell = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
+        transition = (ROOT / "src" / "ui" / "main_transition.py").read_text(encoding="utf-8")
         harness = (
             ROOT / "tests" / "harness_auth_gate_browser_smoke.py"
         ).read_text(encoding="utf-8")
         self.assertIn("paint_in_shell_route_loading", nav)
         self.assertIn("inject_route_loading_css", nav)
         self.assertIn("DELAY_ROUTE_BODY_REVEAL_KEY", nav)
-        self.assertIn("data-cadivor-route-loading", nav)
-        self.assertIn("data-cadivor-page-body", nav)
+        self.assertIn("mount_main_transition_loading", nav)
+        self.assertIn("arm_main_transition", nav)
+        self.assertIn("data-cadivor-route-loading", transition)
+        self.assertIn("data-cadivor-main-transition", transition)
+        self.assertIn("data-cadivor-page-body", transition)
         self.assertIn("begin_authenticated_page", nav)
         self.assertIn("reveal_authenticated_page_body", nav)
-        self.assertIn("route_loading=", runtime)
+        self.assertIn("mount_main_transition_loading(", runtime)
+        self.assertIn("route_needs_main_transition(", runtime)
         self.assertIn("begin_authenticated_page(", runtime)
         self.assertIn("DELAY_ROUTE_BODY_REVEAL_KEY", runtime)
         self.assertIn(
@@ -195,6 +206,24 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertIn('reveal_authenticated_page_body("Alternative Finder")', runtime)
         self.assertIn('reveal_authenticated_page_body("Compare Parts")', runtime)
         self.assertIn('reveal_authenticated_page_body("Dashboard")', runtime)
+        # First admit must not skip Opening Dashboard… (empty-canvas production bug).
+        early = runtime[
+            runtime.find("Paint the durable foundation shell") : runtime.find(
+                "log_startup_phase(\"authenticated_runtime_begin\")"
+            )
+        ]
+        self.assertIn("route_needs_main_transition(", early)
+        self.assertIn("mount_main_transition_loading(", early)
+        self.assertNotIn(
+            "First admit keeps Signing-you-in / gate ownership — never an \"Opening",
+            early,
+        )
+        # Dashboard reveal must follow workspace IO / distinctive body, not heading alone.
+        dash_branch = runtime.split('if app_mode == "Dashboard":', 1)[1]
+        dash_heading_at = dash_branch.find("render_dashboard_page_heading()")
+        dash_reveal_at = dash_branch.find('reveal_authenticated_page_body("Dashboard")')
+        self.assertGreater(dash_heading_at, 0)
+        self.assertGreater(dash_reveal_at, dash_heading_at)
         # Reveal must follow first distinctive content, not the import block alone.
         bom_branch = runtime.split('if app_mode == "BOM Analyzer":', 1)[1]
         bom_reveal_at = bom_branch.find('reveal_authenticated_page_body("BOM Analyzer")')
@@ -202,14 +231,21 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertGreater(bom_reveal_at, 0)
         self.assertGreater(bom_hero_at, 0)
         self.assertGreater(bom_reveal_at, bom_hero_at)
-        self.assertIn("inject_route_loading_css", shell)
+        # Topbar markdown hosts Opening… beside chrome (same fixed stacking context);
+        # it must not ignore route_loading.
         self.assertIn("route_loading", shell)
+        self.assertIn("loading_html", shell)
+        self.assertIn("route_loading_markup", shell)
+        self.assertNotIn("del route_loading", shell)
         self.assertIn("_assert_in_flight_route_frame", harness)
         self.assertIn('"BOM Analyzer"', harness)
-        self.assertIn("Opening", nav)
+        self.assertIn("Opening", transition)
         self.assertIn("Turn a parts list into an engineering risk decision", harness)
-        # Topbar markdown must not embed <style> (premium.css collapses style hosts).
-        self.assertNotIn("<style id=\"cadivor-route-loading-css\">", nav.split("def route_loading_markup")[1].split("def paint_in_shell")[0])
+        adapter = (ROOT / "tests" / "auth_gate_smoke_adapter.py").read_text(encoding="utf-8")
+        self.assertIn("CADIVOR_SMOKE_LOAD_USER_DELAY", adapter)
+        self.assertIn("CADIVOR_SMOKE_ROUTE_DISPATCH_DELAY", adapter)
+        # Transition owner markup must not embed a <style> element.
+        self.assertNotIn("<style", transition.split("return f\"\"\"")[1].split("\"\"\"")[0])
 
     def test_production_sources_have_no_mock_env_switch(self):
         for rel in (
