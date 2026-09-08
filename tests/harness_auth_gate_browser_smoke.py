@@ -548,7 +548,16 @@ def _route_sync_probe(page, route: str) -> dict:
     return page.evaluate(
         """({ route, slug, markers, stale }) => {
           const main = document.querySelector('section[data-testid="stMain"]') || document.body;
-          const text = (main && main.innerText || '').replace(/\\s+/g, ' ').trim();
+          const rawText = (main && main.innerText || '').replace(/\\s+/g, ' ').trim();
+          // Exclude Streamlit stale hosts so prior-route leftovers do not count as
+          // visible stale content once the target body has painted.
+          const freshRoot = main ? main.cloneNode(true) : null;
+          if (freshRoot) {
+            freshRoot.querySelectorAll('[data-stale="true"]').forEach((el) => el.remove());
+          }
+          const text = ((freshRoot && freshRoot.innerText) || rawText)
+            .replace(/\\s+/g, ' ')
+            .trim();
           const topbar = document.querySelector(
             '.cv-foundation-page-context strong'
           );
@@ -589,6 +598,70 @@ def _route_sync_probe(page, route: str) -> dict:
           const contentOk = markers.some((m) => text.includes(m));
           // Fixed Opening… overlay must be visibly covering the main canvas.
           const loadingOk = loadingVisible && loadingRoute === route;
+          let loadingLeft = 0;
+          let loadingTop = 0;
+          if (loadingEl) {
+            const rect = loadingEl.getBoundingClientRect();
+            loadingLeft = Math.round(rect.left);
+            loadingTop = Math.round(rect.top);
+          }
+          const chromeSel = {
+            topbar: document.querySelector(
+              '.cv-foundation-topbar:not(.cv-foundation-continuity)'
+            ),
+            nav: document.querySelector(
+              '.st-key-cv_foundation_navigation, [class*="st-key-cv_foundation_navigation"]'
+            ),
+          };
+          const chromeStyle = (el) => {
+            if (!el) return null;
+            const s = window.getComputedStyle(el);
+            let ancestorHit = '';
+            let n = el.parentElement;
+            while (n && n !== document.documentElement) {
+              const ps = window.getComputedStyle(n);
+              const filt = String(ps.filter || 'none').trim().toLowerCase();
+              const back = String(ps.backdropFilter || ps.webkitBackdropFilter || 'none')
+                .trim()
+                .toLowerCase();
+              const op = String(ps.opacity || '1');
+              if (
+                (filt && filt !== 'none') ||
+                (back && back !== 'none') ||
+                (op && op !== '1' && op !== '1.0')
+              ) {
+                ancestorHit =
+                  (n.className || n.tagName || '').toString().slice(0, 80)
+                  + `|opacity=${op}|filter=${filt}|backdrop=${back}`;
+                break;
+              }
+              n = n.parentElement;
+            }
+            return {
+              opacity: String(s.opacity || ''),
+              filter: String(s.filter || 'none'),
+              backdrop: String(s.backdropFilter || s.webkitBackdropFilter || 'none'),
+              pointerEvents: String(s.pointerEvents || ''),
+              visibility: String(s.visibility || ''),
+              ancestorHit,
+            };
+          };
+          const topbarChrome = chromeStyle(chromeSel.topbar);
+          const navChrome = chromeStyle(chromeSel.nav);
+          const railWidth = (() => {
+            const raw = getComputedStyle(document.documentElement)
+              .getPropertyValue('--cv-foundation-rail')
+              .trim();
+            const n = parseFloat(raw);
+            return Number.isFinite(n) ? n : 228;
+          })();
+          const topbarHeight = (() => {
+            const raw = getComputedStyle(document.documentElement)
+              .getPropertyValue('--cv-foundation-top')
+              .trim();
+            const n = parseFloat(raw);
+            return Number.isFinite(n) ? n : 64;
+          })();
           const staleHit = stale.find((m) => text.includes(m)) || '';
           // Blank main: foundation chrome present but neither body markers nor
           // explicit target-route loading surface.
@@ -619,7 +692,13 @@ def _route_sync_probe(page, route: str) -> dict:
             loadingDisplay: loadingEl ? (window.getComputedStyle(loadingEl).display || '') : '',
             loadingHeight: loadingEl ? Math.round(loadingEl.getBoundingClientRect().height) : 0,
             loadingWidth: loadingEl ? Math.round(loadingEl.getBoundingClientRect().width) : 0,
+            loadingLeft,
+            loadingTop,
             loadingPresent,
+            topbarChrome,
+            navChrome,
+            railWidth,
+            topbarHeight,
             blankMain,
             headingOnly,
             staleHit,
@@ -632,6 +711,53 @@ def _route_sync_probe(page, route: str) -> dict:
         }""",
         {"route": route, "slug": slug, "markers": list(markers), "stale": list(stale)},
     )
+
+
+def _assert_chrome_sharp_during_opening(sync: dict, label: str) -> None:
+    """Opening frames must keep topbar/sidebar fully sharp and main-scoped."""
+    for name, chrome in (("topbar", sync.get("topbarChrome")), ("sidebar", sync.get("navChrome"))):
+        if not chrome:
+            raise AssertionError(f"{label}: missing {name} chrome while Opening… is visible")
+        if str(chrome.get("opacity") or "") not in {"1", "1.0"}:
+            raise AssertionError(
+                f"{label}: {name} opacity must be 1 during Opening… "
+                f"(got {chrome.get('opacity')!r})"
+            )
+        filt = str(chrome.get("filter") or "none").strip().lower()
+        if filt not in {"none", ""}:
+            raise AssertionError(
+                f"{label}: {name} filter must be none during Opening… (got {filt!r})"
+            )
+        backdrop = str(chrome.get("backdrop") or "none").strip().lower()
+        if backdrop not in {"none", ""}:
+            raise AssertionError(
+                f"{label}: {name} backdrop-filter must be none during Opening… "
+                f"(got {backdrop!r})"
+            )
+        if str(chrome.get("visibility") or "") == "hidden":
+            raise AssertionError(f"{label}: {name} is visibility:hidden during Opening…")
+        if str(chrome.get("pointerEvents") or "") == "none":
+            raise AssertionError(f"{label}: {name} is pointer-events:none during Opening…")
+        if chrome.get("ancestorHit"):
+            raise AssertionError(
+                f"{label}: {name} ancestor applies dim/blur during Opening… "
+                f"({chrome.get('ancestorHit')!r})"
+            )
+    rail = float(sync.get("railWidth") or 228)
+    top_h = float(sync.get("topbarHeight") or 64)
+    left = float(sync.get("loadingLeft") or 0)
+    top = float(sync.get("loadingTop") or 0)
+    # Allow 2px raster tolerance; Opening must not cover the rail or topbar.
+    if left + 2 < rail:
+        raise AssertionError(
+            f"{label}: Opening… left {left}px overlaps sidebar "
+            f"(rail starts at {rail}px)"
+        )
+    if top + 2 < top_h:
+        raise AssertionError(
+            f"{label}: Opening… top {top}px overlaps topbar "
+            f"(topbar height {top_h}px)"
+        )
 
 
 def _assert_in_flight_route_frame(page, route: str, label: str) -> None:
@@ -676,6 +802,8 @@ def _assert_in_flight_route_frame(page, route: str, label: str) -> None:
                 f"size={sync.get('loadingWidth')}x{sync.get('loadingHeight')} "
                 f"preview={sync.get('textPreview')!r})"
             )
+        if sync.get("loadingOk"):
+            _assert_chrome_sharp_during_opening(sync, label)
         if sync.get("staleHit") and not sync.get("loadingOk"):
             # Stale prior-route body under target chrome is forbidden unless the
             # Opening… owner is actively covering the main canvas.
@@ -695,6 +823,8 @@ def _assert_in_flight_route_frame(page, route: str, label: str) -> None:
                 f"{label}: blank main while sidebar/URL show {route!r} "
                 f"(preview={sync.get('textPreview')!r})"
             )
+        if sync.get("loadingOk"):
+            _assert_chrome_sharp_during_opening(sync, label)
         if sync.get("hasStaleDashboard") and not sync.get("loadingOk"):
             raise AssertionError(
                 f"{label}: Dashboard content with {route!r} sidebar/URL "

@@ -231,12 +231,18 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertGreater(bom_reveal_at, 0)
         self.assertGreater(bom_hero_at, 0)
         self.assertGreater(bom_reveal_at, bom_hero_at)
-        # Topbar markdown hosts Opening… beside chrome (same fixed stacking context);
-        # it must not ignore route_loading.
+        # Opening… is emitted beside topbar markdown for fixed-position reliability,
+        # but CSS scopes it to the main panel and locks chrome sharpness.
         self.assertIn("route_loading", shell)
         self.assertIn("loading_html", shell)
         self.assertIn("route_loading_markup", shell)
         self.assertNotIn("del route_loading", shell)
+        self.assertIn("backdrop-filter:none", transition)
+        self.assertIn("cv-main-transition-mark", transition)
+        self.assertIn(
+            'body:has([data-cadivor-main-transition="1"]) .cv-foundation-topbar',
+            transition,
+        )
         self.assertIn("_assert_in_flight_route_frame", harness)
         self.assertIn('"BOM Analyzer"', harness)
         self.assertIn("Opening", transition)
