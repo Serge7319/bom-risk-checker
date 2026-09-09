@@ -68,7 +68,7 @@ section[data-testid="stMain"] .main .block-container {
   max-width: none !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
-  padding-top: calc(var(--cv-foundation-top, 64px) + 16px) !important;
+  padding-top: calc(var(--cv-foundation-top, 64px) + 24px) !important;
   padding-left: var(--cv-foundation-gutter, 28px) !important;
   padding-right: var(--cv-foundation-gutter, 28px) !important;
   box-sizing: border-box !important;

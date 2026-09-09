@@ -1094,6 +1094,161 @@ def _dashboard_heading_layout_probe(page) -> dict:
     )
 
 
+CONTENT_INSET_MAX_GAP_PX = 28
+CONTENT_INSET_TOLERANCE_PX = 4
+
+
+def _compact_content_inset_probe(page) -> dict:
+    """Measure topbar→first route surface gap and non-route shell flex siblings."""
+    return page.evaluate(
+        """() => {
+          const topbar = document.querySelector(
+            '.cv-foundation-topbar:not(.cv-foundation-continuity)'
+          );
+          const topbarBottom = topbar
+            ? Math.round(topbar.getBoundingClientRect().bottom)
+            : null;
+          const block = document.querySelector(
+            '[data-testid="stMainBlockContainer"], .main .block-container'
+          );
+          const blockStyle = block ? window.getComputedStyle(block) : null;
+          const surfaceSels = [
+            ['.cv672-dashboard-heading, .cv-page-header', 'page-header'],
+            ['[class*="st-key-af62_hero"]', 'af-hero'],
+            ['.cv-customer-hero', 'customer-hero'],
+            ['.cv64-section', 'cv64-section'],
+            ['.cv-command-hero', 'command-hero'],
+          ];
+          const candidates = [];
+          for (const [sel, kind] of surfaceSels) {
+            const el = document.querySelector(sel);
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            if (r.height < 1) continue;
+            if (topbarBottom != null && r.top < topbarBottom - 1) continue;
+            candidates.push({
+              kind,
+              top: Math.round(r.top),
+              text: (el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 80),
+            });
+          }
+          if (!candidates.length) {
+            const h1 = Array.from(
+              document.querySelectorAll('section[data-testid="stMain"] h1')
+            ).find((el) => {
+              const r = el.getBoundingClientRect();
+              return (
+                (el.innerText || '').trim().length > 0
+                && r.height > 1
+                && (topbarBottom == null || r.top >= topbarBottom - 1)
+              );
+            });
+            if (h1) {
+              candidates.push({
+                kind: 'h1',
+                top: Math.round(h1.getBoundingClientRect().top),
+                text: (h1.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 80),
+              });
+            }
+          }
+          candidates.sort((a, b) => a.top - b.top);
+          const first = candidates[0] || null;
+          const gap = (topbarBottom != null && first)
+            ? (first.top - topbarBottom)
+            : null;
+          const shellWrappers = [];
+          if (block && first) {
+            let best = null;
+            for (const el of block.querySelectorAll('[data-testid="stVerticalBlock"]')) {
+              if (el.children.length > (best ? best.children.length : 0)) best = el;
+            }
+            if (best) {
+              for (const kid of best.children) {
+                const style = window.getComputedStyle(kid);
+                const rect = kid.getBoundingClientRect();
+                if (style.display === 'none') continue;
+                if (style.position === 'fixed' || style.position === 'absolute') continue;
+                if (rect.top >= first.top - 0.5) continue;
+                const isShell = !!kid.querySelector(
+                  '[data-cadivor-topbar-flow-host],[data-cadivor-route-root],'
+                  + '[data-cadivor-page-body],[data-cadivor-page-content],'
+                  + '[class*="st-key-cv_foundation_"],'
+                  + '[class*="st-key-cadivor_main_transition"],iframe,style,.cv64-page-shell'
+                );
+                const isRoute = !!kid.querySelector(
+                  '.cv64-section,.cv-page-header,.cv-customer-hero,'
+                  + '[class*="st-key-af62_hero"],.cv672-dashboard-heading'
+                );
+                if (isShell && !isRoute) {
+                  shellWrappers.push({
+                    height: Math.round(rect.height),
+                    top: Math.round(rect.top),
+                    testId: kid.getAttribute('data-testid') || '',
+                    cls: String(kid.className || '').slice(0, 120),
+                  });
+                }
+              }
+            }
+          }
+          return {
+            viewportH: window.innerHeight,
+            topbarBottom,
+            firstKind: first ? first.kind : null,
+            firstTop: first ? first.top : null,
+            firstText: first ? first.text : '',
+            gap,
+            blockPaddingTop: blockStyle ? blockStyle.paddingTop : null,
+            blockMarginTop: blockStyle ? blockStyle.marginTop : null,
+            shellWrappers,
+            routeRoot: !!document.querySelector(
+              '[data-cadivor-route-root="1"], [data-testid="cadivor-route-root"]'
+            ),
+            compactCss: !!document.getElementById('cadivor-compact-content-inset'),
+          };
+        }"""
+    )
+
+
+def _assert_compact_content_inset(
+    page,
+    label: str,
+    *,
+    baseline: dict | None = None,
+    max_gap_px: float = CONTENT_INSET_MAX_GAP_PX,
+    tolerance_px: float = CONTENT_INSET_TOLERANCE_PX,
+) -> dict:
+    """Fail if heading/hero is >28px below topbar or shell wrappers occupy the gap."""
+    probe = _compact_content_inset_probe(page)
+    if not probe.get("routeRoot"):
+        raise AssertionError(f"{label}: missing data-cadivor-route-root marker")
+    gap = probe.get("gap")
+    if gap is None:
+        raise AssertionError(
+            f"{label}: could not measure topbar→route-surface gap "
+            f"(topbarBottom={probe.get('topbarBottom')!r} first={probe.get('firstKind')!r})"
+        )
+    if gap < 0 or float(gap) > float(max_gap_px):
+        raise AssertionError(
+            f"{label}: content inset gap {gap}px exceeds max {max_gap_px}px "
+            f"(first={probe.get('firstKind')!r}@{probe.get('firstTop')} "
+            f"topbarBottom={probe.get('topbarBottom')} pad={probe.get('blockPaddingTop')})"
+        )
+    leftover = probe.get("shellWrappers") or []
+    if leftover:
+        raise AssertionError(
+            f"{label}: non-route shell wrapper(s) still in-flow above route surface: "
+            f"{leftover[:8]!r}"
+        )
+    if baseline is not None and baseline.get("gap") is not None:
+        delta = abs(float(gap) - float(baseline["gap"]))
+        if delta > float(tolerance_px):
+            raise AssertionError(
+                f"{label}: content inset gap {gap}px differs from baseline "
+                f"{baseline.get('gap')}px by {delta}px (max {tolerance_px}px)"
+            )
+    return probe
+
+
 def _assert_transition_host_collapsed(page, label: str) -> None:
     probe = _dashboard_heading_layout_probe(page)
     leftover = probe.get("transitionHostsInFlow") or []
@@ -1255,8 +1410,10 @@ def _assert_first_login_matches_reload_dashboard_geometry(
     """Cold first login Dashboard top must match a manual reload within tolerance."""
     page.wait_for_timeout(400)
     first = _dashboard_heading_layout_probe(page)
+    first_inset = _assert_compact_content_inset(page, "first_login_content_inset")
     (frames_dir / "04_first_login_layout.json").write_text(
-        json.dumps(first, indent=2), encoding="utf-8"
+        json.dumps({"layout": first, "content_inset": first_inset}, indent=2),
+        encoding="utf-8",
     )
     page.screenshot(path=str(frames_dir / "04_first_login_layout.png"), full_page=True)
     _assert_no_blank_auth_hosts_above_dashboard(page, "first_login_layout")
@@ -1276,8 +1433,12 @@ def _assert_first_login_matches_reload_dashboard_geometry(
 
     page.wait_for_timeout(400)
     reload = _dashboard_heading_layout_probe(page)
+    reload_inset = _assert_compact_content_inset(
+        page, "reload_content_inset", baseline=first_inset
+    )
     (frames_dir / "04_reload_layout.json").write_text(
-        json.dumps(reload, indent=2), encoding="utf-8"
+        json.dumps({"layout": reload, "content_inset": reload_inset}, indent=2),
+        encoding="utf-8",
     )
     page.screenshot(path=str(frames_dir / "04_reload_layout.png"), full_page=True)
     _assert_no_blank_auth_hosts_above_dashboard(page, "reload_layout")
@@ -1338,6 +1499,7 @@ def _assert_settled_route(page, route: str, label: str) -> None:
         )
     _assert_transition_host_collapsed(page, label)
     _assert_no_continuity_skeleton_above_content(page, label)
+    _assert_compact_content_inset(page, f"{label}_content_inset")
 
 
 def _find_login_fields(page):

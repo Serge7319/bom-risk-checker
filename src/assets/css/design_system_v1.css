@@ -13,7 +13,7 @@
  --cvds-space-3:24px;--cvds-space-4:32px;
 }
 [data-testid="stAppViewContainer"],.stApp{background:var(--cvds-bg)!important;color:var(--cvds-text)!important}
-[data-testid="stMainBlockContainer"]{max-width:none!important;padding-top:calc(var(--cv-foundation-top, 64px) + 16px)!important;padding-bottom:56px!important}
+[data-testid="stMainBlockContainer"]{max-width:none!important;padding-top:calc(var(--cv-foundation-top, 64px) + 24px)!important;padding-bottom:56px!important}
 [data-testid="stMainBlockContainer"]>*{min-width:0!important}
 [data-testid="stMainBlockContainer"] h1{font-size:34px!important;line-height:1.12!important;font-weight:850!important;letter-spacing:-.035em!important;margin:0 0 8px!important}
 [data-testid="stMainBlockContainer"] h2{font-size:23px!important;line-height:1.22!important;font-weight:820!important;letter-spacing:-.025em!important;margin:28px 0 12px!important}
