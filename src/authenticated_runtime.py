@@ -146,6 +146,10 @@ from src.components.onboarding import (
 )
 from src.components.upgrade_prompt import render_upgrade_prompt
 from src.components.first_analysis_brief import render_first_analysis_brief
+from src.shell_admin_entitlement import (
+    is_admin_from_users_role,
+    maybe_resync_shell_admin_after_profile,
+)
 from src.onboarding_service import (
     ensure_onboarding_progress,
     update_onboarding_progress,
@@ -1960,6 +1964,8 @@ def run_authenticated_app() -> None:
     # Opening when profile + admit caches make the path sub-300ms.
     if _paint_opening:
         mount_main_transition_loading(_shell_route, paint_markup=False)
+    # Cold admit may paint before load_user_data; cache may still lack is_admin.
+    _early_shell_is_admin = bool(_shell_cache.get("is_admin"))
     render_unified_shell(
         current_page=_shell_route,
         profile=_shell_profile,
@@ -1969,7 +1975,7 @@ def run_authenticated_app() -> None:
         plan_name=str(_shell_cache.get("plan_name") or "Starter"),
         usage_summary=str(_shell_cache.get("usage_summary") or "Loading workspace…"),
         saved_summary=str(_shell_cache.get("saved_summary") or "Loading saved BOMs…"),
-        is_admin=bool(_shell_cache.get("is_admin")),
+        is_admin=_early_shell_is_admin,
         navigate=navigate_to,
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
@@ -2025,7 +2031,14 @@ def run_authenticated_app() -> None:
         st.session_state.pop("cadivor_auth_entry_shell", None)
         st.session_state.pop("cadivor_auth_entry_shell_message", None)
 
-    is_admin = str(current_user.get("role", "")).lower() == "admin"
+    is_admin = is_admin_from_users_role(current_user)
+    # Early shell may have painted without Admin Console; resync cache once.
+    maybe_resync_shell_admin_after_profile(
+        st.session_state,
+        early_shell_is_admin=_early_shell_is_admin,
+        loaded_user=current_user if isinstance(current_user, dict) else {},
+        rerun=st.rerun,
+    )
     # Admin Console v2.1 records only a timestamped authenticated heartbeat.
     # It deliberately stores no BOM content, page history, or client metadata.
     # A short throttle avoids adding a database write to every Streamlit rerun.

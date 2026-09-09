@@ -41,6 +41,19 @@ NAV_GROUPS = (
 )
 
 
+def workspace_nav_rows(*, is_admin: bool) -> tuple[tuple[str, str, str], ...]:
+    """Workspace sidebar destinations for the foundation shell.
+
+    Admin Console is injected only when ``is_admin`` is true (from
+    ``public.users.role`` via the authenticated runtime). Non-admins never
+    receive the Admin Console destination.
+    """
+    rows = next(group for name, group in NAV_GROUPS if name == "Workspace")
+    if is_admin:
+        return (("Admin Console", "admin", "Admin Console"),) + rows
+    return tuple(row for row in rows if row[2] != "Help")
+
+
 def _load_css() -> str:
     path = Path(__file__).resolve().parents[1] / "assets" / "css" / "app_shell.css"
     try:
@@ -286,11 +299,11 @@ def render_unified_shell(
         )
 
         for group_name, configured_rows in NAV_GROUPS:
-            rows = configured_rows
-            if group_name == "Workspace" and is_admin:
-                rows = (("Admin Console", "admin", "Admin Console"),) + rows
-            elif group_name == "Workspace":
-                rows = tuple(row for row in rows if row[2] != "Help")
+            rows = (
+                workspace_nav_rows(is_admin=is_admin)
+                if group_name == "Workspace"
+                else configured_rows
+            )
             st.markdown(
                 f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
                 unsafe_allow_html=True,

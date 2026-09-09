@@ -12,7 +12,7 @@ class AdminConsoleV1ContractTests(unittest.TestCase):
         shell_source = (ROOT / "src" / "ui" / "unified_shell.py").read_text()
         self.assertIn('if is_admin:\n        NAV_OPTIONS.insert(NAV_OPTIONS.index("Settings"), "Admin Console")', source)
         self.assertIn("is_admin=is_admin", source)
-        self.assertIn('if group_name == "Workspace" and is_admin:', shell_source)
+        self.assertIn("workspace_nav_rows(is_admin=is_admin)", shell_source)
         self.assertIn('("Admin Console", "admin", "Admin Console")', shell_source)
         self.assertIn('if app_mode == "Admin Console":', source)
         self.assertIn('if not is_admin:', source)
