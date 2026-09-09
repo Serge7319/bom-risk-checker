@@ -39,18 +39,16 @@ from src.auth_bootstrap import ensure_authenticated_or_stop, log_startup_phase
 
 log_startup_phase("entrypoint_ready")
 if st.session_state.pop("cadivor_logout_reload_pending", False):
-    st.session_state.pop("cadivor_explicit_logout", None)
+    # Keep signed-out suppression across hard reload so a stale Secure cookie
+    # cannot re-admit or stall forever on boot restore.
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_explicit_logout"] = True
+    st.session_state["cadivor_auth_status"] = "signed_out"
     st.session_state.pop("cadivor_logout_in_progress", None)
+    from src.auth_cookies import top_frame_auth_cookie_clear_script
+
     components.html(
-        """<script>
-        (function () {
-          const view = window.top || window.parent || window;
-          if (!view || !view.location) {
-            return;
-          }
-          view.location.replace(view.location.pathname + view.location.search);
-        })();
-        </script>""",
+        top_frame_auth_cookie_clear_script(redirect_path="/?cadivor_signed_out=1"),
         height=0,
         width=0,
     )

@@ -178,10 +178,10 @@ def render_unified_shell(
 ) -> None:
     """Render exactly one top bar and one custom fixed navigation rail.
 
-    When ``route_loading`` is set, paint the main-panel Opening… surface as a
-    sibling of the topbar markdown (needed so ``position:fixed`` does not
-    collapse inside a later Streamlit host). CSS keeps the surface scoped to
-    the main panel and forces chrome to stay sharp (no shared blur/dim).
+    When ``route_loading`` is set, paint Opening in a dedicated Streamlit host
+    after the topbar (never co-located). Topbar markdown uses a stable flow-host
+    marker so only that wrapper is zeroed in-flow while the fixed topbar stays
+    visible.
     """
     inject_unified_shell_css()
 
@@ -190,13 +190,12 @@ def render_unified_shell(
     initials = profile.get("initials") or "C"
     secondary = profile.get("company") or profile.get("role_title") or plan_name
 
-    loading_html = ""
     loading_route = str(route_loading or "").strip()
     if loading_route:
         from src.ui.main_transition import (
             MAIN_TRANSITION_GEN_KEY,
             inject_main_transition_css,
-            route_loading_markup,
+            prepare_main_transition,
         )
 
         try:
@@ -204,15 +203,13 @@ def render_unified_shell(
         except (TypeError, ValueError):
             gen = 0
         if gen <= 0:
-            from src.ui.main_transition import prepare_main_transition
-
-            gen = prepare_main_transition(loading_route)
+            prepare_main_transition(loading_route)
         else:
             inject_main_transition_css(gen)
-        loading_html = route_loading_markup(loading_route, gen)
 
     st.markdown(
         f"""
+        <div data-cadivor-topbar-flow-host="1" data-testid="cadivor-topbar-flow-host">
         <div class="cv-foundation-topbar" aria-label="Cadivor application header">
           <div class="cv-foundation-brand">
             <span class="cv-foundation-brand-mark">C</span>
@@ -228,10 +225,15 @@ def render_unified_shell(
             <small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em>
           </div>
         </div>
-        {loading_html}
+        </div>
         """,
         unsafe_allow_html=True,
     )
+
+    if loading_route:
+        from src.ui.main_transition import paint_prepared_main_transition
+
+        paint_prepared_main_transition(loading_route)
 
     with st.container(key="cv_foundation_profile_menu"):
         with st.popover(initials, use_container_width=False):

@@ -53,12 +53,19 @@ from src.ui.unified_shell import paint_authenticated_continuity_shell
 
 log_startup_phase("smoke_entrypoint_ready")
 if st.session_state.pop("cadivor_logout_reload_pending", False):
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_explicit_logout"] = True
+    st.session_state["cadivor_auth_status"] = "signed_out"
+    st.session_state.pop("cadivor_logout_in_progress", None)
     components.html(
         """<script>
         (function () {
           const view = window.top || window.parent || window;
           if (!view || !view.location) { return; }
-          view.location.replace(view.location.pathname + view.location.search);
+          try {
+            view.document.cookie = "cadivor_auth=; path=/; Max-Age=0; SameSite=Lax";
+          } catch (error) {}
+          view.location.replace("/?cadivor_signed_out=1");
         })();
         </script>""",
         height=0,

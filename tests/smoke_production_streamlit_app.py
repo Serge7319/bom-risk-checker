@@ -53,7 +53,9 @@ from src.performance_timing import timed_phase
 
 log_startup_phase("entrypoint_ready")
 if st.session_state.pop("cadivor_logout_reload_pending", False):
-    st.session_state.pop("cadivor_explicit_logout", None)
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_explicit_logout"] = True
+    st.session_state["cadivor_auth_status"] = "signed_out"
     st.session_state.pop("cadivor_logout_in_progress", None)
     # Drop the DI smoke session cookie before same-tab reload so logout cannot
     # silently re-admit (production clears real auth cookies in begin_logout).
@@ -74,10 +76,11 @@ if st.session_state.pop("cadivor_logout_reload_pending", False):
             const clear = (doc) => {
               if (!doc) return;
               doc.cookie = "cadivor_auth_gate_smoke=; path=/; Max-Age=0; SameSite=Lax";
+              doc.cookie = "cadivor_auth=; path=/; Max-Age=0; SameSite=Lax";
             };
             clear(view.document);
           } catch (error) {}
-          view.location.replace(view.location.pathname + view.location.search);
+          view.location.replace("/?cadivor_signed_out=1");
         })();
         </script>""",
         height=0,

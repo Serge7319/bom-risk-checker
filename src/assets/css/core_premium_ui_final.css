@@ -607,6 +607,8 @@ section[data-testid="stMain"] .main .block-container .block-container {
 }
 
 section[data-testid="stMain"] .stMarkdown:has(.cv-foundation-topbar),
+section[data-testid="stMain"] .stMarkdown:has([data-cadivor-topbar-flow-host="1"]),
+section[data-testid="stMain"] div[data-testid="stElementContainer"]:has([data-cadivor-topbar-flow-host="1"]),
 section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_navigation),
 section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_menu),
 section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_navigation),

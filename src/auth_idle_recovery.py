@@ -258,6 +258,15 @@ def render_retryable_profile_error(*, message: str) -> None:
     st.error(message)
     st.caption("Your signed-in session was kept. Retry when the connection is available.")
     if st.button("Retry workspace load", type="primary", key="cadivor_retry_workspace_profile"):
+        try:
+            from src.services.authenticated_profile_cache import clear_verified_profile
+            from src.services.workspace_admit_cache import clear_workspace_admit_cache
+
+            clear_verified_profile(st.session_state)
+            clear_workspace_admit_cache(st.session_state)
+        except Exception:
+            st.session_state.pop("cadivor_verified_profile", None)
+            st.session_state.pop("cadivor_workspace_admit_cache", None)
         st.rerun()
     stop_authenticated_page()
 
@@ -289,6 +298,12 @@ def load_workspace_profile(
     access_token = str(session_state.get("access_token") or "").strip()
     refresh_token = str(session_state.get("refresh_token") or "").strip()
     session_refreshed = False
+
+    # Happy-path warm nav: reuse session profile while the access token is fresh.
+    if access_token_is_fresh(access_token):
+        cached_profile = recent_profile(session_state, user_id)
+        if cached_profile:
+            return cached_profile
 
     outcome, refreshed_user, new_access, new_refresh = refresh_authenticated_session(
         supabase,

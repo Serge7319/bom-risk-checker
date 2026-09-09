@@ -231,11 +231,12 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertGreater(bom_reveal_at, 0)
         self.assertGreater(bom_hero_at, 0)
         self.assertGreater(bom_reveal_at, bom_hero_at)
-        # Opening… is emitted beside topbar markdown for fixed-position reliability,
-        # but CSS scopes it to the main panel and locks chrome sharpness.
+        # Opening… is painted in a dedicated transition host (not co-located with
+        # the topbar) so post-reveal collapse can remove only that spacer.
         self.assertIn("route_loading", shell)
-        self.assertIn("loading_html", shell)
-        self.assertIn("route_loading_markup", shell)
+        self.assertIn("paint_prepared_main_transition", shell)
+        self.assertIn("data-cadivor-transition-host", transition)
+        self.assertIn("data-cadivor-topbar-flow-host", shell)
         self.assertNotIn("del route_loading", shell)
         self.assertIn("backdrop-filter:none", transition)
         self.assertIn("cv-main-transition-mark", transition)

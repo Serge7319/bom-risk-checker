@@ -565,17 +565,33 @@ def _set_logout_marker(cookie_manager: Any) -> None:
 def _clear_logout_marker(cookie_manager: Any) -> None:
     if cookie_manager is None:
         return
+    expired = datetime.now(timezone.utc) - timedelta(days=1)
     try:
         cookie_manager.delete(cookie=AUTH_LOGOUT_COOKIE_NAME, key="cadivor_delete_logout_marker")
     except Exception:
         pass
+    clear_kwargs: dict[str, Any] = {
+        "cookie": AUTH_LOGOUT_COOKIE_NAME,
+        "val": "",
+        "key": "cadivor_clear_logout_marker",
+        "path": "/",
+        "expires_at": expired,
+        "same_site": "lax",
+    }
+    if cookie_secure_flag():
+        clear_kwargs["secure"] = True
     try:
-        cookie_manager.set(
-            cookie=AUTH_LOGOUT_COOKIE_NAME,
-            val="",
-            key="cadivor_clear_logout_marker",
-            expires_at=datetime.now(timezone.utc) - timedelta(days=1),
-        )
+        cookie_manager.set(**clear_kwargs)
+    except TypeError:
+        try:
+            cookie_manager.set(
+                cookie=AUTH_LOGOUT_COOKIE_NAME,
+                val="",
+                key="cadivor_clear_logout_marker",
+                expires_at=expired,
+            )
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -819,25 +835,95 @@ def persist_session_auth_cookie(cookie_manager: Any) -> None:
 
 
 def clear_auth_cookie(cookie_manager: Any) -> None:
-    """Remove durable browser auth so future Streamlit sessions stay signed out."""
+    """Remove durable browser auth so future Streamlit sessions stay signed out.
+
+    Expire-set must mirror write attributes (path/same_site/secure). Safari will
+    keep a Secure cookie when a clear omits those attributes.
+    """
     if cookie_manager is None:
         return
     st.session_state["cadivor_auth_cookie_absent"] = True
     _set_logout_marker(cookie_manager)
+    expired = datetime.now(timezone.utc) - timedelta(days=1)
     for name in (AUTH_COOKIE_NAME, AUTH_COOKIE_LEGACY_NAME):
         try:
             cookie_manager.delete(cookie=name, key=f"cadivor_delete_auth_cookie_{name}")
         except Exception:
             pass
+        clear_kwargs: dict[str, Any] = {
+            "cookie": name,
+            "val": "",
+            "key": f"cadivor_clear_auth_cookie_{name}",
+            "path": "/",
+            "expires_at": expired,
+            "same_site": "lax",
+        }
+        if cookie_secure_flag():
+            clear_kwargs["secure"] = True
         try:
-            cookie_manager.set(
-                cookie=name,
-                val="",
-                key=f"cadivor_clear_auth_cookie_{name}",
-                expires_at=datetime.now(timezone.utc) - timedelta(days=1),
-            )
+            cookie_manager.set(**clear_kwargs)
+        except TypeError:
+            try:
+                cookie_manager.set(
+                    cookie=name,
+                    val="",
+                    key=f"cadivor_clear_auth_cookie_{name}",
+                    expires_at=expired,
+                )
+            except Exception:
+                pass
         except Exception:
             pass
+
+
+def top_frame_auth_cookie_clear_script(*, redirect_path: str = "") -> str:
+    """JS: expire durable auth cookies on window.top, then redirect.
+
+    CookieManager is iframe-scoped; Safari often ignores those clears for
+    top-document Secure cookies. Expire credential cookies only — keep the
+    logout suppression marker.
+    """
+    path_json = json.dumps(str(redirect_path or "").strip() or "/")
+    names_json = json.dumps([AUTH_COOKIE_NAME, AUTH_COOKIE_LEGACY_NAME])
+    return f"""
+    <script>
+    (function () {{
+      const view = window.top || window.parent || window;
+      if (!view || !view.location) {{
+        return;
+      }}
+      const secure = (view.location.protocol === "https:");
+      const names = {names_json};
+      const expire = (doc, name, withSecure) => {{
+        if (!doc) return;
+        let line = name + "=; path=/; Max-Age=0; SameSite=Lax";
+        if (withSecure) {{
+          line += "; Secure";
+        }}
+        try {{ doc.cookie = line; }} catch (error) {{}}
+        try {{
+          doc.cookie = name + "=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax"
+            + (withSecure ? "; Secure" : "");
+        }} catch (error) {{}}
+      }};
+      try {{
+        const doc = view.document;
+        for (const name of names) {{
+          expire(doc, name, false);
+          if (secure) {{
+            expire(doc, name, true);
+          }}
+        }}
+      }} catch (error) {{}}
+      const target = {path_json};
+      try {{
+        view.location.replace(target);
+      }} catch (error) {{
+        try {{ view.location.href = target; }} catch (error2) {{}}
+      }}
+    }})();
+    </script>
+    """
 
 
 def logout_blocks_auth_restore(cookie_manager: Any) -> bool:

@@ -21,6 +21,8 @@ DELAY_ROUTE_BODY_REVEAL_KEY = "cadivor_delay_route_body_reveal"
 MAIN_TRANSITION_ACTIVE_KEY = "cadivor_main_transition_active"
 MAIN_TRANSITION_ROUTE_KEY = "cadivor_main_transition_route"
 MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
+# Opening is skipped when warm session caches make nav cheaper than this budget.
+FAST_CACHED_NAV_OPENING_MS = 300
 
 
 def get_presented_route(session_state: MutableMapping[str, Any] | None = None) -> str:
@@ -59,6 +61,43 @@ def route_needs_main_transition(target_route: str, presented_route: str = "") ->
     return (not presented) or (presented != target)
 
 
+def warm_session_nav_ready(session_state: MutableMapping[str, Any] | None = None) -> bool:
+    """True when ordinary nav can skip Opening (profile + admit already warm)."""
+    state = session_state if session_state is not None else st.session_state
+    user = state.get("user")
+    user_id = getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None)
+    if not user_id:
+        return False
+    try:
+        from src.services.authenticated_profile_cache import recent_verified_profile
+        from src.services.workspace_admit_cache import warm_workspace_admit_ready
+
+        if recent_verified_profile(state, user_id) is None:
+            return False
+        return warm_workspace_admit_ready(state, user_id)
+    except Exception:
+        return False
+
+
+def should_paint_opening_overlay(
+    *,
+    needs_transition: bool,
+    session_state: MutableMapping[str, Any] | None = None,
+) -> bool:
+    """Paint Opening only for slow/cold work — not routine warm cached nav."""
+    if not needs_transition:
+        return False
+    state = session_state if session_state is not None else st.session_state
+    # First admit (no foundation shell yet) always needs a continuity surface.
+    if not state.get("cadivor_foundation_shell_mounted"):
+        return True
+    if warm_session_nav_ready(state):
+        # Budget documented for metrics; warm path is treated as < FAST_CACHED_NAV_OPENING_MS.
+        state["cadivor_last_nav_opening_skipped_ms"] = FAST_CACHED_NAV_OPENING_MS
+        return False
+    return True
+
+
 def _next_transition_gen() -> int:
     try:
         current = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
@@ -74,7 +113,9 @@ def inject_main_transition_css(transition_gen: int) -> None:
     gen = int(transition_gen)
     st.markdown(
         f"""
-        <style id="cadivor-main-transition-css">
+        <style id="cadivor-main-transition-css"
+               data-cadivor-transition-style-host="cadivor-main-transition-style"
+               data-cadivor-transition-gen="{gen}">
         /*
           Main-panel owner only: below topbar, right of sidebar.
           Never cover foundation chrome. Never apply filter/blur/opacity to chrome.
@@ -92,7 +133,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           min-height:calc(100vh - var(--cv-foundation-top,64px))!important;
           min-height:calc(100dvh - var(--cv-foundation-top,64px))!important;
           height:auto!important;
-          /* Below foundation chrome (rail 999999 / topbar 1000000), above page body. */
+          /* Below foundation chrome; profile menu stays above at 1000010. */
           z-index:999990!important;
           margin:0!important;border-radius:0!important;border:0!important;
           padding:0!important;
@@ -144,11 +185,6 @@ def inject_main_transition_css(transition_gen: int) -> None:
           0%{{transform:translateX(-120%)}}
           100%{{transform:translateX(280%)}}
         }}
-        /*
-          Chrome lock while Opening is mounted:
-          keep foundation topbar/sidebar sharp and remove stale duplicate chrome
-          hosts that Streamlit leaves behind (ghosted/dimmed rail).
-        */
         body:has([data-cadivor-main-transition="1"]) .cv-foundation-topbar,
         body:has([data-cadivor-main-transition="1"]) .cv-foundation-topbar *,
         body:has([data-cadivor-main-transition="1"])
@@ -162,7 +198,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
         body:has([data-cadivor-main-transition="1"])
           [class*="st-key-cv_foundation_profile"],
         body:has([data-cadivor-main-transition="1"])
-          [data-testid="stElementContainer"]:has(.cv-foundation-topbar),
+          [data-testid="stElementContainer"]:has([data-cadivor-topbar-flow-host="1"]),
         body:has([data-cadivor-main-transition="1"])
           [data-testid="stElementContainer"][data-stale="true"]:has(.cv-foundation-topbar),
         body:has([data-cadivor-main-transition="1"])
@@ -170,42 +206,66 @@ def inject_main_transition_css(transition_gen: int) -> None:
             [class*="st-key-cv_foundation_navigation"]
           ),
         body:has([data-cadivor-main-transition="1"])
-          [data-testid="stElementContainer"][data-stale="true"]:has(
-            [class*="st-key-cv_foundation_nav_"]
-          ),
-        body:has([data-cadivor-main-transition="1"])
-          [data-stale="true"][class*="st-key-cv_foundation_navigation"],
-        body:has([data-cadivor-main-transition="1"])
-          [data-testid="stVerticalBlock"][data-stale="true"][class*="st-key-cv_foundation_navigation"]{{
+          [data-stale="true"][class*="st-key-cv_foundation_navigation"]{{
           opacity:1!important;
           filter:none!important;
           backdrop-filter:none!important;
           -webkit-backdrop-filter:none!important
         }}
-        /* Drop stale duplicate rails/topbars once a fresh host exists. */
+        /* Drop only explicit stale duplicate rails/topbars. */
         body:has([data-cadivor-main-transition="1"]):has(
           [class*="st-key-cv_foundation_navigation"]:not([data-stale="true"])
         )
           [data-stale="true"][class*="st-key-cv_foundation_navigation"],
         body:has([data-cadivor-main-transition="1"]):has(
-          [data-testid="stElementContainer"][data-stale="false"] .cv-foundation-topbar
+          [data-testid="stElementContainer"][data-stale="false"]
+            [data-cadivor-topbar-flow-host="1"]
         )
-          [data-testid="stElementContainer"][data-stale="true"]:has(.cv-foundation-topbar):not(
-            :has([data-cadivor-main-transition="1"])
+          [data-testid="stElementContainer"][data-stale="true"]:has(
+            [data-cadivor-topbar-flow-host="1"]
           ){{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;height:0!important;overflow:hidden!important
         }}
-        /* Collapse ONLY this generation once its matching page-body marker exists.
-           Never collapse the topbar host. */
+        /*
+          Active transition wrappers: zero in-flow height; fixed Opening still paints.
+          Do not apply height:0 to the Opening node itself.
+        */
+        [class*="st-key-cadivor_main_transition_owner"],
+        div[data-testid="stElementContainer"]:has(
+          [data-cadivor-transition-host="cadivor-main-transition"]
+        ):not(:has([data-cadivor-topbar-flow-host])),
+        div[data-testid="stElementContainer"]:has(
+          [class*="st-key-cadivor_main_transition_owner"]
+        ){{
+          height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;
+          overflow:visible!important;transform:none!important;filter:none!important
+        }}
+        /* Style inject ElementContainer only — keep <style> active. */
+        div[data-testid="stElementContainer"]:has(
+          style#cadivor-main-transition-css
+        ),
+        div[data-testid="stElementContainer"]:has(
+          [data-cadivor-transition-style-host="cadivor-main-transition-style"]
+        ){{
+          height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;
+          overflow:hidden!important
+        }}
+        /*
+          After reveal: collapse ONLY this transition generation's owner/wrappers.
+          pointer-events:none so no leftover overlay intercepts the account menu.
+          Never target shared st-key alone (stale gen CSS would hide the next Opening).
+        */
         body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
           [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"],
         body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
+          [data-cadivor-transition-host="cadivor-main-transition"][data-cadivor-transition-gen="{gen}"],
+        body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
           div[data-testid="stElementContainer"]:has(
             [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"]
-          ):not(:has(.cv-foundation-topbar)),
-        body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
-          [class*="st-key-cadivor_main_transition_owner"]{{
+          ):not(:has([data-cadivor-topbar-flow-host])):not(:has([class*="st-key-cv_foundation_"])){{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;z-index:-1!important;
           height:0!important;min-height:0!important;max-height:0!important;
@@ -225,6 +285,9 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
     safe_route = html.escape(str(target_route or "").strip() or "workspace")
     gen = int(transition_gen)
     return f"""
+        <div data-cadivor-transition-host="cadivor-main-transition"
+             data-cadivor-transition-gen="{gen}"
+             data-testid="cadivor-main-transition-host">
         <div class="cv-main-transition cv-route-loading"
              data-cadivor-main-transition="1"
              data-cadivor-route-loading="{safe_route}"
@@ -237,6 +300,7 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
             <p>Preparing this page in your Cadivor workspace.</p>
             <div class="cv-main-transition-progress" aria-hidden="true"><i></i></div>
           </div>
+        </div>
         </div>
         """
 
@@ -257,9 +321,10 @@ def prepare_main_transition(target_route: str) -> int:
 def _paint_main_transition_markup(route: str, gen: int) -> None:
     markup = route_loading_markup(route, gen)
     container = getattr(st, "container", None)
+    owner_key = f"cadivor_main_transition_owner_{int(gen)}"
     if callable(container):
         try:
-            with container(key="cadivor_main_transition_owner"):
+            with container(key=owner_key):
                 st.markdown(markup, unsafe_allow_html=True)
             return
         except TypeError:

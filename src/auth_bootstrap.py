@@ -117,6 +117,77 @@ def qp_value(name: str, default: str = "") -> str:
         return default
 
 
+SIGNED_OUT_QUERY_KEY = "cadivor_signed_out"
+BOOT_RESTORE_STARTED_AT_KEY = "cadivor_boot_restore_started_at"
+BOOT_RESTORE_TIMEOUT_SECONDS = 8.0
+BOOT_RESTORE_TIMEOUT_MESSAGE = (
+    "Session restore took too long. Sign in again to continue."
+)
+
+
+def apply_signed_out_query_marker() -> bool:
+    """Honor durable logout redirect marker across hard reloads (Safari-safe)."""
+    marker = str(qp_value(SIGNED_OUT_QUERY_KEY, "") or "").strip()
+    if marker not in {"1", "true", "yes"}:
+        return bool(st.session_state.get("cadivor_force_signed_out"))
+
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state["cadivor_explicit_logout"] = True
+    st.session_state["cadivor_auth_status"] = "signed_out"
+    st.session_state["cadivor_auth_resolved"] = True
+    st.session_state.pop("access_token", None)
+    st.session_state.pop("refresh_token", None)
+    st.session_state.pop("user", None)
+    st.session_state.pop(BOOT_RESTORE_STARTED_AT_KEY, None)
+    try:
+        if SIGNED_OUT_QUERY_KEY in st.query_params:
+            del st.query_params[SIGNED_OUT_QUERY_KEY]
+    except Exception:
+        pass
+    return True
+
+
+def clear_signed_out_markers_after_login_mounted() -> None:
+    """Drop logout suppression once Login UI is mounted (or after success)."""
+    st.session_state.pop("cadivor_explicit_logout", None)
+    try:
+        if SIGNED_OUT_QUERY_KEY in st.query_params:
+            del st.query_params[SIGNED_OUT_QUERY_KEY]
+    except Exception:
+        pass
+
+
+def _boot_restore_timed_out() -> bool:
+    raw = st.session_state.get(BOOT_RESTORE_STARTED_AT_KEY)
+    if raw is None:
+        return False
+    try:
+        started = float(raw)
+    except (TypeError, ValueError):
+        return False
+    return (time.monotonic() - started) >= BOOT_RESTORE_TIMEOUT_SECONDS
+
+
+def _fail_boot_restore_to_login(*, message: str = BOOT_RESTORE_TIMEOUT_MESSAGE) -> None:
+    from src.auth_gate import paint_auth_gate, set_auth_gate_state
+    from src.auth_state import AUTH_SIGNED_OUT, clear_auth_session
+
+    clear_auth_session(keep_status=True, transition_reason="boot_restore_timeout")
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state["cadivor_force_signed_out"] = True
+    st.session_state.pop(BOOT_RESTORE_STARTED_AT_KEY, None)
+    st.session_state.pop("cadivor_auth_restore_attempts", None)
+    st.session_state.pop("access_token", None)
+    st.session_state.pop("refresh_token", None)
+    st.session_state.pop("user", None)
+    set_auth_gate_state(
+        "login",
+        reason="boot_restore_timeout",
+        error_message=str(message or BOOT_RESTORE_TIMEOUT_MESSAGE),
+    )
+    paint_auth_gate("login")
+
+
 def apply_auth_intent_from_query() -> None:
     """Translate marketing auth links into the signed-out auth state once.
 
@@ -538,15 +609,24 @@ def _ensure_authenticated_or_stop_impl() -> None:
     st.session_state.pop(AUTH_PROGRESS_MOUNTED_KEY, None)
     st.session_state.pop(_AUTH_SURFACE_KIND_KEY, None)
 
+    # Durable logout marker from hard reload (?cadivor_signed_out=1) must win
+    # before any cookie peek can send the gate to boot restore.
+    force_signed_out = apply_signed_out_query_marker()
+
     access = str(st.session_state.get("access_token") or "").strip()
     refresh = str(st.session_state.get("refresh_token") or "").strip()
     # Peek durable cookies before first paint so a real session restore uses boot,
     # while cold visitors (no tokens, no cookie) go straight to Login.
-    cookie_tokens, _cookie_peek_source = read_auth_cookie_tokens_with_source(
-        cookie_manager=None
+    cookie_tokens, _cookie_peek_source = (
+        (None, "none")
+        if force_signed_out
+        else read_auth_cookie_tokens_with_source(cookie_manager=None)
     )
-    has_restore_candidate = bool(access and refresh) or bool(cookie_tokens)
-    force_signed_out = bool(st.session_state.get("cadivor_force_signed_out"))
+    has_restore_candidate = (
+        False
+        if force_signed_out
+        else (bool(access and refresh) or bool(cookie_tokens))
+    )
     already_authenticated = (
         str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED
         and not force_signed_out
@@ -749,6 +829,13 @@ def _ensure_authenticated_or_stop_impl() -> None:
 
     # Hydration wait loops stay inside boot — never blank.
     if get_auth_gate_state() == "boot" and not login_handoff_active():
+        st.session_state.setdefault(BOOT_RESTORE_STARTED_AT_KEY, time.monotonic())
+        if _boot_restore_timed_out():
+            _fail_boot_restore_to_login()
+            cookie_manager = cookie_manager or get_auth_cookie_manager(mount=True)
+            show_auth_ui(supabase, cookie_manager)
+            clear_signed_out_markers_after_login_mounted()
+            st.stop()
         if cookie_manager is None:
             cookie_manager = get_auth_cookie_manager(mount=False)
         if manager_fallback_hydration_pending(cookie_manager) or (
@@ -773,11 +860,40 @@ def _ensure_authenticated_or_stop_impl() -> None:
                 st.rerun()
 
     log_startup_phase("resolve_auth_state")
+    if get_auth_gate_state() == "boot" and not login_handoff_active():
+        st.session_state.setdefault(BOOT_RESTORE_STARTED_AT_KEY, time.monotonic())
+        if _boot_restore_timed_out():
+            _fail_boot_restore_to_login()
+            cookie_manager = cookie_manager or get_auth_cookie_manager(mount=True)
+            show_auth_ui(supabase, cookie_manager)
+            clear_signed_out_markers_after_login_mounted()
+            st.stop()
     with timed_phase("auth.resolve_auth_state", operation="validate") as resolve_meta:
         auth_status = resolve_auth_state(supabase, cookie_manager)
         resolve_meta["outcome"] = (
             "authenticated" if auth_status == AUTH_AUTHENTICATED else "signed_out"
         )
+    emit_timing(
+        "auth.restore",
+        duration_ms=0.0,
+        outcome=(
+            "authenticated" if auth_status == AUTH_AUTHENTICATED else "signed_out"
+        ),
+        route="auth",
+        event="restore",
+    )
+    if auth_status == AUTH_AUTHENTICATED:
+        st.session_state.pop(BOOT_RESTORE_STARTED_AT_KEY, None)
+    elif (
+        str(st.session_state.get(BOOT_RESTORE_STARTED_AT_KEY) or "")
+        and _boot_restore_timed_out()
+        and not login_handoff_active()
+    ):
+        _fail_boot_restore_to_login()
+        cookie_manager = cookie_manager or get_auth_cookie_manager(mount=True)
+        show_auth_ui(supabase, cookie_manager)
+        clear_signed_out_markers_after_login_mounted()
+        st.stop()
     log_auth_correlation(
         "after_resolve_auth_state",
         cookie_manager=cookie_manager,
@@ -808,6 +924,7 @@ def _ensure_authenticated_or_stop_impl() -> None:
     set_auth_gate_state("login", reason=f"resolved_{auth_status}")
     paint_auth_gate("login")
     show_auth_ui(supabase, cookie_manager)
+    clear_signed_out_markers_after_login_mounted()
     # If login submit stashed credentials, next run is authenticating.
     if has_pending_credentials():
         set_auth_gate_state("authenticating", reason="credentials_stashed")
