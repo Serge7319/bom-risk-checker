@@ -28,6 +28,11 @@ def remember_verified_profile(
     return cached
 
 
+def clear_verified_profile(session_state: MutableMapping[str, Any]) -> None:
+    """Drop the session profile cache (logout, user change, explicit refresh)."""
+    session_state.pop(PROFILE_CACHE_KEY, None)
+
+
 def recent_verified_profile(
     session_state: Mapping[str, Any],
     user_id: Any,

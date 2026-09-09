@@ -18,6 +18,32 @@ SMOKE_ACCESS_TOKEN = "smoke_access_token"
 SMOKE_REFRESH_TOKEN = "smoke_refresh_token"
 SMOKE_COOKIE = "cadivor_auth_gate_smoke=1"
 SMOKE_SESSION_KEY = "cadivor_auth_gate_smoke_session"
+SMOKE_IO_COUNTERS_PATH = str(
+    os.environ.get("CADIVOR_SMOKE_IO_COUNTERS")
+    or "/tmp/cadivor_auth_gate_smoke/io_counters.json"
+)
+
+
+def _bump_smoke_io(key: str, n: int = 1) -> None:
+    """Persist admission/profile IO counters for warm-cache smoke assertions."""
+    import json
+    from pathlib import Path
+
+    path = Path(SMOKE_IO_COUNTERS_PATH)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8") or "{}")
+            except Exception:
+                data = {}
+        if not isinstance(data, dict):
+            data = {}
+        data[key] = int(data.get(key) or 0) + int(n)
+        path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _smoke_cookie_present() -> bool:
@@ -397,15 +423,34 @@ def install_production_path_smoke_patches() -> None:
     def smoke_load_user_data() -> dict[str, Any]:
         import streamlit as st
 
-        # Deterministic workspace/profile delay so first-admit Opening Dashboard…
-        # is observable (production load_user_data is slower).
-        delay = float(os.environ.get("CADIVOR_SMOKE_LOAD_USER_DELAY") or "0.85")
-        if delay > 0:
-            time.sleep(delay)
+        from src.services.authenticated_profile_cache import (
+            recent_verified_profile,
+            remember_verified_profile,
+        )
+
         email = str(
             getattr(st.session_state.get("user"), "email", None) or SMOKE_EMAIL
         ).strip()
-        return _smoke_user_row(email=email)
+        user = st.session_state.get("user")
+        user_id = getattr(user, "id", None) or (
+            user.get("id") if isinstance(user, dict) else None
+        )
+        cached = recent_verified_profile(st.session_state, user_id) if user_id else None
+        if cached:
+            _bump_smoke_io("load_user_data_cache_hit")
+            return cached
+
+        # Cold/miss path only: deterministic delay so first-admit Opening is observable.
+        _bump_smoke_io("load_user_data_miss")
+        delay = float(os.environ.get("CADIVOR_SMOKE_LOAD_USER_DELAY") or "0.85")
+        if delay > 0:
+            time.sleep(delay)
+        profile = _smoke_user_row(email=email)
+        if user_id:
+            profile = dict(profile)
+            profile["id"] = str(user_id)
+            remember_verified_profile(st.session_state, profile)
+        return profile
 
     boot_mod.get_supabase_client = smoke_get_supabase_client
     runtime_mod.get_supabase_client = smoke_get_supabase_client
@@ -433,34 +478,60 @@ def install_production_path_smoke_patches() -> None:
 
     def smoke_ensure_personal_workspace(*args: Any, **kwargs: Any):
         del args, kwargs
+        _bump_smoke_io("ensure_personal_workspace")
         return (
             {
                 "id": "smoke-workspace",
                 "name": "Cadivor Smoke Workspace",
                 "plan": "Starter",
+                "current_role": "owner",
             },
             None,
         )
 
     def smoke_list_user_workspaces(*args: Any, **kwargs: Any):
         del args, kwargs
+        _bump_smoke_io("list_user_workspaces")
         return (
             [
                 {
                     "id": "smoke-workspace",
                     "name": "Cadivor Smoke Workspace",
                     "plan": "Starter",
+                    "current_role": "owner",
                 }
             ],
             None,
         )
 
+    def smoke_get_active_workspace_preference(*args: Any, **kwargs: Any):
+        del args, kwargs
+        _bump_smoke_io("get_active_workspace_preference")
+        return ("smoke-workspace", None)
+
+    def smoke_get_workspace_by_id(*args: Any, **kwargs: Any):
+        del args, kwargs
+        _bump_smoke_io("get_workspace_by_id")
+        return (
+            {
+                "id": "smoke-workspace",
+                "name": "Cadivor Smoke Workspace",
+                "plan": "Starter",
+                "current_role": "owner",
+            },
+            None,
+        )
+
     runtime_mod.ensure_personal_workspace = smoke_ensure_personal_workspace
     runtime_mod.list_user_workspaces = smoke_list_user_workspaces
+    runtime_mod.get_active_workspace_preference = smoke_get_active_workspace_preference
+    runtime_mod.get_workspace_by_id = smoke_get_workspace_by_id
     try:
         import src.workspace_service as workspace_mod
 
         workspace_mod.ensure_personal_workspace = smoke_ensure_personal_workspace
         workspace_mod.list_user_workspaces = smoke_list_user_workspaces
+        workspace_mod.get_active_workspace_preference = smoke_get_active_workspace_preference
+        workspace_mod.get_workspace_by_id = smoke_get_workspace_by_id
     except Exception:
         pass

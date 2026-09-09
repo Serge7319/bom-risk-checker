@@ -32,6 +32,10 @@ SMOKE_APP = str(ROOT / "streamlit_app.py")
 SMOKE_PYTHONPATH = str(ROOT / "tests" / "smoke_pythonpath")
 SAMPLE_MS = 100
 AUTH_SURFACE_MAX_SECONDS_WITHOUT_PROGRESS = 2.0
+SMOKE_BROWSER = str(os.environ.get("CADIVOR_SMOKE_BROWSER") or "chromium").strip().lower()
+IO_COUNTERS_PATH = Path(
+    os.environ.get("CADIVOR_SMOKE_IO_COUNTERS") or str(OUT / "io_counters.json")
+)
 
 # Full authenticated nav circuit, ending back on Dashboard.
 # Order matches the production continuity contract under test.
@@ -832,6 +836,129 @@ def _assert_in_flight_route_frame(page, route: str, label: str) -> None:
             )
 
 
+def _read_io_counters() -> dict:
+    if not IO_COUNTERS_PATH.exists():
+        return {}
+    try:
+        data = json.loads(IO_COUNTERS_PATH.read_text(encoding="utf-8") or "{}")
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _opening_overlay_visible(page) -> dict:
+    return page.evaluate(
+        """() => {
+          const el = document.querySelector(
+            '[data-cadivor-main-transition="1"], [data-testid="cadivor-route-loading"], '
+            + '.cv-main-transition.cv-route-loading'
+          );
+          if (!el) {
+            return { visible: false, text: '' };
+          }
+          const style = window.getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
+          const visible =
+            style.display !== 'none'
+            && style.visibility !== 'hidden'
+            && Number(style.opacity || '1') > 0.05
+            && rect.width > 8
+            && rect.height > 8
+            && style.pointerEvents !== 'none';
+          const text = (el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+          return { visible, text, top: Math.round(rect.top), left: Math.round(rect.left) };
+        }"""
+    )
+
+
+def _wait_for_route_sampling_opening(
+    page,
+    route: str,
+    label: str,
+    *,
+    frames_dir: Path,
+    prefix: str,
+    expect_no_opening: bool,
+) -> dict:
+    """Settle a route while sampling Opening visibility for warm-cache proof."""
+    opening_hits = 0
+    samples = 0
+    markers = ROUTE_CONTENT_MARKERS.get(route, (route,))
+    last_detail = ""
+    for i in range(120):
+        probe = _opening_overlay_visible(page)
+        samples += 1
+        if probe.get("visible") and "Opening" in str(probe.get("text") or ""):
+            opening_hits += 1
+            if expect_no_opening:
+                page.screenshot(
+                    path=str(frames_dir / f"{prefix}_unexpected_opening.png"),
+                    full_page=True,
+                )
+                raise AssertionError(
+                    f"{label}: warm nav showed Opening overlay for {route!r}: {probe!r}"
+                )
+            sync = _route_sync_probe(page, route)
+            if sync.get("loadingPresent"):
+                _assert_chrome_sharp_during_opening(sync, f"{label}_opening_{i}")
+        try:
+            _assert_settled_route(page, route, f"{label}_settle_{i}")
+            break
+        except AssertionError as exc:
+            last_detail = str(exc)
+            if i in {0, 2, 5, 10, 20, 40}:
+                page.screenshot(
+                    path=str(frames_dir / f"{prefix}_t{i:02d}.png"), full_page=True
+                )
+            page.wait_for_timeout(SAMPLE_MS)
+    else:
+        raise AssertionError(f"{label}: never settled on {route!r} ({last_detail})")
+    page.screenshot(path=str(frames_dir / f"{prefix}_final.png"), full_page=True)
+    return {
+        "route": route,
+        "samples": samples,
+        "opening_hits": opening_hits,
+        "expect_no_opening": expect_no_opening,
+        "markers": list(markers),
+    }
+
+
+def _assert_admit_counters_unchanged(before: dict, after: dict, label: str) -> None:
+    keys = (
+        "ensure_personal_workspace",
+        "list_user_workspaces",
+        "get_active_workspace_preference",
+        "get_workspace_by_id",
+        "load_user_data_miss",
+    )
+    deltas = {
+        key: int(after.get(key) or 0) - int(before.get(key) or 0) for key in keys
+    }
+    bad = {k: v for k, v in deltas.items() if v != 0}
+    if bad:
+        raise AssertionError(
+            f"{label}: warm nav repeated admission/profile miss IO: deltas={bad} "
+            f"before={before} after={after}"
+        )
+
+
+def _assert_login_stable_not_restoring(page, label: str, *, hold_seconds: float = 10.0) -> None:
+    """Hold on Login and ensure Restoring… never appears (Safari hang regression)."""
+    deadline = time.time() + float(hold_seconds)
+    while time.time() < deadline:
+        html = page.content()
+        body = page.inner_text("body") or ""
+        if "Restoring your session" in body:
+            raise AssertionError(
+                f"{label}: saw 'Restoring your session…' while signed out "
+                f"(elapsed hold for Safari logout)"
+            )
+        target, _, _ = _find_login_fields(page)
+        if target is None or 'data-auth-gate="login"' not in html:
+            raise AssertionError(f"{label}: Login surface lost during hold")
+        page.wait_for_timeout(500)
+
+
 def _dashboard_heading_layout_probe(page) -> dict:
     """Measure Dashboard heading geometry and leftover auth hosts above it."""
     return page.evaluate(
@@ -844,6 +971,58 @@ def _dashboard_heading_layout_probe(page) -> dict:
                  )
                ).find((el) => /^\\s*Dashboard\\s*$/i.test((el.innerText || '').trim()));
           const dashTop = dash ? Math.round(dash.getBoundingClientRect().top) : null;
+          const firstCard =
+            document.querySelector(
+              '[data-cadivor-page-content] [data-testid="stMetric"],'
+              + '[data-cadivor-page-content] .cv-kpi-card,'
+              + '[data-cadivor-page-content] .cv672-kpi,'
+              + '[data-cadivor-page-content] [class*="st-key-"]'
+            )
+            || dash;
+          const firstCardTop = firstCard
+            ? Math.round(firstCard.getBoundingClientRect().top)
+            : null;
+          const transitionHosts = [];
+          for (const el of document.querySelectorAll(
+            '[data-cadivor-transition-host="cadivor-main-transition"],'
+            + '[data-testid="cadivor-main-transition-host"],'
+            + '[class*="st-key-cadivor_main_transition_owner"],'
+            + '[data-cadivor-transition-style-host]'
+          )) {
+            let cur = el;
+            for (let depth = 0; depth < 4 && cur; depth += 1) {
+              const testId = cur.getAttribute && cur.getAttribute('data-testid');
+              const cls = (cur.className || '').toString();
+              if (
+                testId === 'stMain'
+                || testId === 'stMainBlockContainer'
+                || testId === 'stAppViewContainer'
+                || testId === 'stVerticalBlockBorderWrapper'
+              ) {
+                break;
+              }
+              const style = window.getComputedStyle(cur);
+              const rect = cur.getBoundingClientRect();
+              const inFlow =
+                style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.position !== 'fixed'
+                && style.position !== 'absolute'
+                && rect.height > 0.5;
+              if (inFlow && rect.height < 220) {
+                transitionHosts.push({
+                  depth,
+                  height: Math.round(rect.height),
+                  top: Math.round(rect.top),
+                  display: style.display,
+                  marker: cur.getAttribute('data-cadivor-transition-host')
+                    || cur.getAttribute('data-testid')
+                    || cls.slice(0, 80),
+                });
+              }
+              cur = cur.parentElement;
+            }
+          }
           const authHosts = [];
           const selectors = [
             '.st-key-cadivor_auth_card',
@@ -897,10 +1076,12 @@ def _dashboard_heading_layout_probe(page) -> dict:
           }
           return {
             dashTop,
+            firstCardTop,
             dashText: dash
               ? (dash.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120)
               : '',
             authHostsInFlow: authHosts,
+            transitionHostsInFlow: transitionHosts,
             hasPageContent: !!document.querySelector('[data-cadivor-page-content]'),
             hasFoundation: !!(
               document.querySelector('.cv-foundation-topbar:not(.cv-foundation-continuity)')
@@ -912,6 +1093,142 @@ def _dashboard_heading_layout_probe(page) -> dict:
         }"""
     )
 
+
+def _assert_transition_host_collapsed(page, label: str) -> None:
+    probe = _dashboard_heading_layout_probe(page)
+    leftover = probe.get("transitionHostsInFlow") or []
+    if leftover:
+        raise AssertionError(
+            f"{label}: transition host still in-flow after reveal: {leftover[:6]!r}"
+        )
+
+
+def _route_first_card_top(page, route: str) -> int | None:
+    markers = ROUTE_CONTENT_MARKERS.get(route, (route,))
+    return page.evaluate(
+        """(markers) => {
+          const main = document.querySelector('section[data-testid="stMain"]');
+          if (!main) return null;
+          const nodes = Array.from(
+            main.querySelectorAll(
+              '[data-cadivor-page-content], [data-testid="stMetric"], h1, h2, h3,'
+              + ' .cv-kpi-card, .element-container'
+            )
+          );
+          for (const el of nodes) {
+            const text = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+            if (!text) continue;
+            if (!markers.some((m) => text.includes(m))) continue;
+            const style = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            if (style.display === 'none' || rect.height < 8) continue;
+            if (style.position === 'fixed') continue;
+            return Math.round(rect.top);
+          }
+          return null;
+        }""",
+        list(markers),
+    )
+
+
+def _assert_profile_menu_clickable(page, label: str) -> None:
+    """Assert account trigger is topmost at its center and the menu opens above chrome."""
+    probe = page.evaluate(
+        """() => {
+          const trigger =
+            document.querySelector('.st-key-cv_foundation_profile_menu button')
+            || document.querySelector('[class*="st-key-cv_foundation_profile_menu"] button');
+          if (!trigger) {
+            return { ok: false, reason: 'missing_trigger' };
+          }
+          const rect = trigger.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          const topEl = document.elementFromPoint(x, y);
+          const hit =
+            !!topEl
+            && (
+              topEl === trigger
+              || trigger.contains(topEl)
+              || !!(topEl.closest
+                && topEl.closest(
+                  '.st-key-cv_foundation_profile_menu, [class*="st-key-cv_foundation_profile_menu"]'
+                ))
+            );
+          const opening = document.querySelector(
+            '[data-cadivor-main-transition="1"], [data-testid="cadivor-route-loading"]'
+          );
+          let openingBlocks = false;
+          if (opening) {
+            const os = window.getComputedStyle(opening);
+            const or = opening.getBoundingClientRect();
+            openingBlocks =
+              os.display !== 'none'
+              && os.visibility !== 'hidden'
+              && Number(os.opacity || '1') > 0.05
+              && or.width > 2
+              && or.height > 2
+              && x >= or.left
+              && x <= or.right
+              && y >= or.top
+              && y <= or.bottom;
+          }
+          return {
+            ok: hit && !openingBlocks,
+            hit,
+            openingBlocks,
+            x: Math.round(x),
+            y: Math.round(y),
+            topTag: topEl ? topEl.tagName : null,
+            topCls: topEl ? String(topEl.className || '').slice(0, 120) : null,
+            zIndex: window.getComputedStyle(
+              trigger.closest('[class*="st-key-cv_foundation_profile_menu"]') || trigger
+            ).zIndex,
+          };
+        }"""
+    )
+    if not probe.get("ok"):
+        raise AssertionError(f"{label}: profile menu not clickable via elementFromPoint: {probe!r}")
+    candidates = [
+        page.locator('.st-key-cv_foundation_profile_menu button').first,
+        page.locator('[class*="st-key-cv_foundation_profile_menu"] button').first,
+    ]
+    opened = False
+    for loc in candidates:
+        try:
+            if loc.count():
+                loc.click(timeout=5000)
+                opened = True
+                break
+        except Exception:
+            continue
+    if not opened:
+        raise AssertionError(f"{label}: profile menu trigger click failed")
+    page.wait_for_timeout(300)
+    menu_visible = page.evaluate(
+        """() => {
+          const signout = Array.from(document.querySelectorAll('button')).find((b) =>
+            /sign\\s*out/i.test((b.innerText || '').trim())
+          );
+          if (!signout) return false;
+          const style = window.getComputedStyle(signout);
+          const rect = signout.getBoundingClientRect();
+          return (
+            style.display !== 'none'
+            && style.visibility !== 'hidden'
+            && rect.width > 2
+            && rect.height > 2
+          );
+        }"""
+    )
+    if not menu_visible:
+        raise AssertionError(f"{label}: profile menu did not expose Sign out")
+    # Close popover without signing out (Escape / click away).
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+    page.wait_for_timeout(200)
 
 def _assert_no_blank_auth_hosts_above_dashboard(page, label: str) -> None:
     probe = _dashboard_heading_layout_probe(page)
@@ -926,6 +1243,7 @@ def _assert_no_blank_auth_hosts_above_dashboard(page, label: str) -> None:
             f"{label}: blank/empty auth (or bridge) host still in-flow above Dashboard: "
             f"{leftover[:8]!r}"
         )
+    _assert_transition_host_collapsed(page, label)
 
 
 def _assert_first_login_matches_reload_dashboard_geometry(
@@ -942,9 +1260,9 @@ def _assert_first_login_matches_reload_dashboard_geometry(
     )
     page.screenshot(path=str(frames_dir / "04_first_login_layout.png"), full_page=True)
     _assert_no_blank_auth_hosts_above_dashboard(page, "first_login_layout")
-    first_top = first.get("dashTop")
+    first_top = first.get("firstCardTop") or first.get("dashTop")
     if first_top is None:
-        raise AssertionError("first_login_layout: Dashboard heading not found")
+        raise AssertionError("first_login_layout: first content card not found")
 
     page.reload(wait_until="domcontentloaded", timeout=90000)
     for i in range(200):
@@ -963,15 +1281,16 @@ def _assert_first_login_matches_reload_dashboard_geometry(
     )
     page.screenshot(path=str(frames_dir / "04_reload_layout.png"), full_page=True)
     _assert_no_blank_auth_hosts_above_dashboard(page, "reload_layout")
-    reload_top = reload.get("dashTop")
+    reload_top = reload.get("firstCardTop") or reload.get("dashTop")
     if reload_top is None:
-        raise AssertionError("reload_layout: Dashboard heading not found")
+        raise AssertionError("reload_layout: first content card not found")
     delta = abs(float(first_top) - float(reload_top))
     if delta > tolerance_px:
         raise AssertionError(
-            f"first_login_layout: Dashboard top {first_top}px differs from reload "
+            f"first_login_layout: first card top {first_top}px differs from reload "
             f"{reload_top}px by {delta}px (max {tolerance_px}px)"
         )
+    return float(first_top)
 
 
 def _assert_settled_route(page, route: str, label: str) -> None:
@@ -1017,6 +1336,7 @@ def _assert_settled_route(page, route: str, label: str) -> None:
             f"{label}: forbidden stale marker {sync.get('staleHit')!r} under {route!r} "
             f"(preview={sync.get('textPreview')!r})"
         )
+    _assert_transition_host_collapsed(page, label)
     _assert_no_continuity_skeleton_above_content(page, label)
 
 
@@ -1194,6 +1514,13 @@ def _wait_for_route(page, route: str, label: str, *, frames_dir: Path, prefix: s
         try:
             _assert_in_flight_route_frame(page, route, f"{label}_inflight_{i}")
         except AssertionError as exc:
+            detail = str(exc)
+            # Warm-cache navigations skip Opening…; chrome can lead content by a
+            # few frames. Keep polling for settle instead of failing immediately.
+            if "without target content or in-shell loading" in detail:
+                last_detail = detail
+                page.wait_for_timeout(SAMPLE_MS)
+                continue
             page.screenshot(
                 path=str(frames_dir / f"{prefix}_inflight_fail_{i:02d}.png"),
                 full_page=True,
@@ -1345,6 +1672,10 @@ def main() -> int:
         env.setdefault("SUPABASE_URL", "https://example.supabase.co")
         env.setdefault("SUPABASE_ANON_KEY", "public-anon-key-for-smoke")
         env.setdefault("SUPABASE_KEY", "public-anon-key-for-smoke")
+        env["CADIVOR_SMOKE_IO_COUNTERS"] = str(IO_COUNTERS_PATH)
+        OUT.mkdir(parents=True, exist_ok=True)
+        if IO_COUNTERS_PATH.exists():
+            IO_COUNTERS_PATH.unlink()
         log_fh = open(log_path, "w", encoding="utf-8")
         proc = subprocess.Popen(
             [
@@ -1393,7 +1724,11 @@ def main() -> int:
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            if SMOKE_BROWSER == "webkit":
+                browser = p.webkit.launch(headless=True)
+            else:
+                browser = p.chromium.launch(headless=True)
+            print(f"AUTH_SMOKE browser={SMOKE_BROWSER}")
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
 
@@ -1536,14 +1871,21 @@ def main() -> int:
                 "Procurement Advisor": "12_procurement_advisor",
             }
             # First Dashboard already settled; continue BOM → Compare → … → Dashboard.
+            baseline_card_tops: dict[str, float] = {}
+            nav_timings: dict[str, float] = {}
             for idx, route in enumerate(AUTH_ROUTE_CIRCUIT):
                 if idx == 0:
                     # Already on Dashboard after login.
                     _assert_settled_route(page, "Dashboard", "circuit_start_dashboard")
+                    _assert_profile_menu_clickable(page, "circuit_start_dashboard_profile")
+                    top = _route_first_card_top(page, "Dashboard")
+                    if top is not None:
+                        baseline_card_tops["Dashboard"] = float(top)
                     page.screenshot(
                         path=str(OUT / "07_dashboard_final.png"), full_page=True
                     )
                     continue
+                t0 = time.perf_counter()
                 _click_foundation_nav(page, route)
                 prefix = route_prefixes[route]
                 if idx == len(AUTH_ROUTE_CIRCUIT) - 1:
@@ -1559,8 +1901,111 @@ def main() -> int:
                 except AssertionError as exc:
                     print(f"AUTH_SMOKE fail=route_layout route={route} detail={exc}")
                     return 8
+                nav_timings[f"to:{route}"] = round(
+                    (time.perf_counter() - t0) * 1000.0, 1
+                )
+                _assert_profile_menu_clickable(page, f"profile_after_{route}")
+                top = _route_first_card_top(page, route)
+                if top is None:
+                    raise AssertionError(
+                        f"nav_{route}: first distinctive content Y missing after settle"
+                    )
+                if route == "Dashboard" and "Dashboard" in baseline_card_tops:
+                    delta = abs(float(top) - baseline_card_tops["Dashboard"])
+                    if delta > 4.0:
+                        raise AssertionError(
+                            f"nav_Dashboard: first card Y {top}px vs first-login "
+                            f"{baseline_card_tops['Dashboard']}px delta={delta}px"
+                        )
+                baseline_card_tops[route] = float(top)
 
-            # 5) Logout → Login → valid login again.
+            (OUT / "nav_timings.json").write_text(
+                json.dumps(
+                    {"nav_timings_ms": nav_timings, "card_tops": baseline_card_tops},
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            print(f"AUTH_SMOKE nav_timings_ms={nav_timings}")
+            counters_after_first = _read_io_counters()
+            (OUT / "io_counters_after_first_circuit.json").write_text(
+                json.dumps(counters_after_first, indent=2), encoding="utf-8"
+            )
+            print(f"AUTH_SMOKE io_counters_after_first={counters_after_first}")
+
+            # 4b) Second warm circuit: no Opening, no repeated admit/profile-miss IO.
+            warm_evidence = []
+            for idx, route in enumerate(AUTH_ROUTE_CIRCUIT):
+                if idx == 0:
+                    continue
+                before = _read_io_counters()
+                _click_foundation_nav(page, route)
+                try:
+                    evidence = _wait_for_route_sampling_opening(
+                        page,
+                        route,
+                        label=f"warm_nav_{route}_{idx}",
+                        frames_dir=OUT,
+                        prefix=f"16_warm_{ROUTE_NAV_SLUGS.get(route, route)}",
+                        expect_no_opening=True,
+                    )
+                except AssertionError as exc:
+                    print(f"AUTH_SMOKE fail=warm_cache_opening route={route} detail={exc}")
+                    return 8
+                after = _read_io_counters()
+                try:
+                    _assert_admit_counters_unchanged(
+                        before, after, f"warm_nav_{route}"
+                    )
+                except AssertionError as exc:
+                    print(f"AUTH_SMOKE fail=warm_cache_io route={route} detail={exc}")
+                    return 8
+                hits = int(after.get("load_user_data_cache_hit") or 0) - int(
+                    before.get("load_user_data_cache_hit") or 0
+                )
+                evidence["profile_cache_hits"] = hits
+                evidence["io_before"] = before
+                evidence["io_after"] = after
+                warm_evidence.append(evidence)
+            (OUT / "warm_cache_evidence.json").write_text(
+                json.dumps(warm_evidence, indent=2), encoding="utf-8"
+            )
+            print(f"AUTH_SMOKE warm_cache_routes={len(warm_evidence)}")
+
+            # Settings via account menu.
+            trigger = page.locator(
+                '.st-key-cv_foundation_profile_menu button, '
+                '[class*="st-key-cv_foundation_profile_menu"] button'
+            ).first
+            trigger.click(timeout=8000)
+            page.wait_for_timeout(400)
+            settings_btn = page.locator('button:has-text("Profile & preferences")').first
+            try:
+                settings_btn.click(timeout=8000)
+            except Exception as exc:
+                print(f"AUTH_SMOKE fail=settings_nav detail={exc}")
+                return 8
+            for i in range(80):
+                topbar = page.evaluate(
+                    """() => {
+                      const el = document.querySelector('.cv-foundation-page-context strong');
+                      return el ? (el.innerText || '').trim() : '';
+                    }"""
+                ) or ""
+                if topbar == "Settings":
+                    break
+                page.wait_for_timeout(SAMPLE_MS)
+            else:
+                print("AUTH_SMOKE fail=settings_route")
+                return 8
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            page.wait_for_timeout(200)
+            _assert_profile_menu_clickable(page, "profile_after_Settings")
+
+            # 5) Logout → Login → hold ≥10s (Safari) → reload → Login → relogin.
             try:
                 _click_sign_out(page, app_url=url)
             except AssertionError as exc:
@@ -1579,6 +2024,25 @@ def main() -> int:
             if not probe_logout.get("hasLogin"):
                 raise AssertionError("after_logout: Login gate not visible")
             page.screenshot(path=str(OUT / "14_logout_login.png"), full_page=True)
+            try:
+                _assert_login_stable_not_restoring(
+                    page, "after_logout_hold_10s", hold_seconds=10.0
+                )
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=logout_hold detail={exc}")
+                return 9
+            page.reload(wait_until="domcontentloaded", timeout=90000)
+            try:
+                _wait_for_login_surface(
+                    page, "after_logout_reload", frames_dir=OUT, prefix="14b_logout_reload"
+                )
+                _assert_login_stable_not_restoring(
+                    page, "after_logout_reload_hold", hold_seconds=3.0
+                )
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=logout_reload_login detail={exc}")
+                return 9
+            page.screenshot(path=str(OUT / "14b_logout_reload_login.png"), full_page=True)
 
             try:
                 _perform_valid_login(page, frames_dir=OUT, prefix="15_relogin")

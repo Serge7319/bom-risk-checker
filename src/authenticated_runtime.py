@@ -88,6 +88,7 @@ from src.ui.navigation import (
     reset_alternative_finder_prefill,
     reveal_authenticated_page_body,
     route_needs_main_transition,
+    should_paint_opening_overlay,
 )
 from src.browser_navigation import consume_browser_navigation_event
 from src.ui.unified_shell import (
@@ -1949,11 +1950,12 @@ def run_authenticated_app() -> None:
     # First admit AND every chrome-changing navigation need the in-main owner.
     # Skipping first-admit loading left Dashboard chrome with an empty canvas.
     _needs_main_transition = route_needs_main_transition(_shell_route, _presented_route)
-    st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_needs_main_transition)
+    _paint_opening = should_paint_opening_overlay(needs_transition=_needs_main_transition)
+    st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_paint_opening)
     # Prepare transition CSS/state, then let the shell emit Opening… as a
-    # main-scoped sibling of the topbar (separate later hosts collapse to 0x0).
-    # Chrome-lock CSS keeps topbar/sidebar sharp while Opening covers main only.
-    if _needs_main_transition:
+    # dedicated host after the topbar (never co-located). Warm cached nav skips
+    # Opening when profile + admit caches make the path sub-300ms.
+    if _paint_opening:
         mount_main_transition_loading(_shell_route, paint_markup=False)
     render_unified_shell(
         current_page=_shell_route,
@@ -1968,12 +1970,33 @@ def run_authenticated_app() -> None:
         navigate=navigate_to,
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
-        route_loading=_shell_route if _needs_main_transition else "",
+        route_loading=_shell_route if _paint_opening else "",
     )
     mark_authenticated_surface_ready()
     st.session_state["cadivor_foundation_shell_mounted"] = True
+    try:
+        from src.performance_timing import emit_timing as _emit_shell_timing
+
+        _emit_shell_timing(
+            "runtime.shell_mount",
+            duration_ms=0.0,
+            route=_shell_route,
+            outcome="success",
+            event="shell_mount",
+        )
+    except Exception:
+        pass
     # Keep Signing you in until Opening… exists, then hand off.
-    if _needs_main_transition:
+    if _paint_opening:
+        try:
+            from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
+
+            mark_page_content_ready(_shell_route)
+            retire_auth_gate_overlays()
+        except Exception:
+            pass
+    elif _needs_main_transition:
+        # Warm nav: chrome already target-route; retire gate without Opening.
         try:
             from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
 
@@ -2631,75 +2654,124 @@ def run_authenticated_app() -> None:
     )
 
     with timed_phase("runtime.workspace_init", operation="init"):
-        _default_context_workspace, _default_context_error = ensure_personal_workspace(
-            supabase,
-            _context_user_id,
-            _context_email,
-            _context_name,
-            _context_workspace_name,
-            selected_plan_name,
+        from src.services.workspace_admit_cache import (
+            recent_workspace_admit,
+            remember_workspace_admit,
         )
 
-        _context_workspaces, _context_workspaces_error = list_user_workspaces(
-            supabase,
-            _context_user_id,
-        )
-        _preferred_context_workspace_id, _context_preference_error = (
-            get_active_workspace_preference(
-                supabase,
-                _context_user_id,
+        _cached_admit = recent_workspace_admit(st.session_state, _context_user_id)
+        if (
+            _cached_admit is not None
+            and str(_cached_admit.get("plan_name") or "") != str(selected_plan_name or "")
+        ):
+            _cached_admit = None
+        if _cached_admit is not None:
+            _default_context_workspace = _cached_admit.get("default_workspace") or {}
+            _default_context_error = _cached_admit.get("default_error")
+            _context_workspaces = list(_cached_admit.get("workspaces") or [])
+            _context_workspaces_error = _cached_admit.get("workspaces_error")
+            _preferred_context_workspace_id = _cached_admit.get("preferred_workspace_id")
+            _context_preference_error = _cached_admit.get("preference_error")
+            active_workspace = dict(_cached_admit.get("active_workspace") or {})
+            active_workspace_id = str(active_workspace.get("id") or "")
+            active_workspace_name = _safe_text(
+                active_workspace.get("name"),
+                "Cadivor Workspace",
             )
-        )
-
-        _context_available_ids = {
-            str(item.get("id"))
-            for item in (_context_workspaces or [])
-            if item.get("id")
-        }
-        _context_requested_id = str(
-            st.session_state.get("active_workspace_id")
-            or _preferred_context_workspace_id
-            or ""
-        )
-
-        if _context_requested_id in _context_available_ids:
-            active_workspace, _active_workspace_error = get_workspace_by_id(
-                supabase,
-                _context_user_id,
-                _context_requested_id,
-            )
+            active_workspace_role = _safe_text(
+                active_workspace.get("current_role"),
+                "owner",
+            ).lower()
+            if active_workspace_id:
+                st.session_state["active_workspace_id"] = active_workspace_id
+                st.session_state["active_workspace_name"] = active_workspace_name
+                st.session_state["active_workspace_role"] = active_workspace_role
+            saved_bom_count = int(_cached_admit.get("saved_bom_count") or 0)
         else:
-            active_workspace = _default_context_workspace or (
-                _context_workspaces[0] if _context_workspaces else {}
+            _default_context_workspace, _default_context_error = ensure_personal_workspace(
+                supabase,
+                _context_user_id,
+                _context_email,
+                _context_name,
+                _context_workspace_name,
+                selected_plan_name,
             )
 
-        active_workspace = active_workspace or {}
-        active_workspace_id = str(active_workspace.get("id") or "")
-        active_workspace_name = _safe_text(
-            active_workspace.get("name"),
-            "Cadivor Workspace",
-        )
-        active_workspace_role = _safe_text(
-            active_workspace.get("current_role"),
-            "owner",
-        ).lower()
-
-        if active_workspace_id:
-            st.session_state["active_workspace_id"] = active_workspace_id
-            st.session_state["active_workspace_name"] = active_workspace_name
-            st.session_state["active_workspace_role"] = active_workspace_role
-
-        try:
-            saved_bom_count_response = execute_supabase_read(
-                _workspace_query(supabase.table("analyses").select("id", count="exact")).eq(
-                    "user_id", current_user["id"]
-                ),
-                operation="saved_bom_count",
+            _context_workspaces, _context_workspaces_error = list_user_workspaces(
+                supabase,
+                _context_user_id,
             )
-            saved_bom_count = saved_bom_count_response.count or 0
-        except SupabaseReadTransportError:
-            saved_bom_count = 0
+            _preferred_context_workspace_id, _context_preference_error = (
+                get_active_workspace_preference(
+                    supabase,
+                    _context_user_id,
+                )
+            )
 
+            _context_available_ids = {
+                str(item.get("id"))
+                for item in (_context_workspaces or [])
+                if item.get("id")
+            }
+            _context_requested_id = str(
+                st.session_state.get("active_workspace_id")
+                or _preferred_context_workspace_id
+                or ""
+            )
+
+            if _context_requested_id in _context_available_ids:
+                active_workspace, _active_workspace_error = get_workspace_by_id(
+                    supabase,
+                    _context_user_id,
+                    _context_requested_id,
+                )
+            else:
+                active_workspace = _default_context_workspace or (
+                    _context_workspaces[0] if _context_workspaces else {}
+                )
+
+            active_workspace = active_workspace or {}
+            active_workspace_id = str(active_workspace.get("id") or "")
+            active_workspace_name = _safe_text(
+                active_workspace.get("name"),
+                "Cadivor Workspace",
+            )
+            active_workspace_role = _safe_text(
+                active_workspace.get("current_role"),
+                "owner",
+            ).lower()
+
+            if active_workspace_id:
+                st.session_state["active_workspace_id"] = active_workspace_id
+                st.session_state["active_workspace_name"] = active_workspace_name
+                st.session_state["active_workspace_role"] = active_workspace_role
+
+            try:
+                saved_bom_count_response = execute_supabase_read(
+                    _workspace_query(supabase.table("analyses").select("id", count="exact")).eq(
+                        "user_id", current_user["id"]
+                    ),
+                    operation="saved_bom_count",
+                )
+                saved_bom_count = saved_bom_count_response.count or 0
+            except SupabaseReadTransportError:
+                saved_bom_count = 0
+
+            remember_workspace_admit(
+                st.session_state,
+                user_id=_context_user_id,
+                payload={
+                    "plan_name": selected_plan_name,
+                    "default_workspace": _default_context_workspace or {},
+                    "default_error": _default_context_error,
+                    "workspaces": list(_context_workspaces or []),
+                    "workspaces_error": _context_workspaces_error,
+                    "preferred_workspace_id": _preferred_context_workspace_id,
+                    "preference_error": _context_preference_error,
+                    "active_workspace": active_workspace,
+                    "saved_bom_count": saved_bom_count,
+                },
+            )
     # Route was committed once before shell paint. Reuse that exact value for
     # page dispatch — do not re-resolve via a sticky last-URL guard (that caused
     # BOM Analyzer chrome with Dashboard content).
@@ -2908,6 +2980,13 @@ def run_authenticated_app() -> None:
         route=app_mode,
         outcome="success",
         event="route_enter",
+    )
+    emit_timing(
+        "runtime.first_route_content",
+        duration_ms=0.0,
+        route=app_mode,
+        outcome="success",
+        event="first_route_content",
     )
 
     # Page body is about to paint: lock presented route to chrome/URL and allow
@@ -8438,6 +8517,14 @@ def run_authenticated_app() -> None:
                                 st.error(preference_save_error)
                             else:
                                 st.session_state["active_workspace_id"] = selected_organization_id
+                                try:
+                                    from src.services.workspace_admit_cache import (
+                                        clear_workspace_admit_cache,
+                                    )
+
+                                    clear_workspace_admit_cache(st.session_state)
+                                except Exception:
+                                    st.session_state.pop("cadivor_workspace_admit_cache", None)
                                 st.success("Active organization changed.")
                                 st.rerun()
                     with status_col:
@@ -8494,6 +8581,14 @@ def run_authenticated_app() -> None:
                     created_id = str(created_org.get("id"))
                     set_active_workspace_preference(supabase, user_id, created_id)
                     st.session_state["active_workspace_id"] = created_id
+                    try:
+                        from src.services.workspace_admit_cache import (
+                            clear_workspace_admit_cache,
+                        )
+
+                        clear_workspace_admit_cache(st.session_state)
+                    except Exception:
+                        st.session_state.pop("cadivor_workspace_admit_cache", None)
                     st.success(f"{_safe_text(created_org.get('name'), 'Organization')} was created.")
                     st.rerun()
 

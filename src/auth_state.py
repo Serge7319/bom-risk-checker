@@ -248,6 +248,28 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     st.session_state.pop("cadivor_logout_committed", None)
     st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state.pop("cadivor_auth_submission", None)
+    try:
+        from src.auth_bootstrap import (
+            BOOT_RESTORE_STARTED_AT_KEY,
+            SIGNED_OUT_QUERY_KEY,
+            clear_signed_out_markers_after_login_mounted,
+        )
+
+        st.session_state.pop(BOOT_RESTORE_STARTED_AT_KEY, None)
+        clear_signed_out_markers_after_login_mounted()
+        if SIGNED_OUT_QUERY_KEY in st.query_params:
+            del st.query_params[SIGNED_OUT_QUERY_KEY]
+    except Exception:
+        st.session_state.pop("cadivor_boot_restore_started_at", None)
+    try:
+        from src.services.authenticated_profile_cache import clear_verified_profile
+        from src.services.workspace_admit_cache import clear_workspace_admit_cache
+
+        clear_verified_profile(st.session_state)
+        clear_workspace_admit_cache(st.session_state)
+    except Exception:
+        st.session_state.pop("cadivor_verified_profile", None)
+        st.session_state.pop("cadivor_workspace_admit_cache", None)
     if manual_login_success:
         # Bound the branded handoff across the authenticated startup rerun.
         # Stage=initializing so streamlit_app can paint the workspace shell

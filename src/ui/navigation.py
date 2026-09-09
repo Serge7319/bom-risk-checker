@@ -92,6 +92,7 @@ from src.ui.main_transition import (  # noqa: E402
     reveal_main_transition,
     route_loading_markup,
     route_needs_main_transition,
+    should_paint_opening_overlay,
 )
 
 
