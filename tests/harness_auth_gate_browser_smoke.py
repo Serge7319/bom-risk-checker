@@ -217,6 +217,43 @@ def _viewport_probe(page) -> dict:
           );
           const hasLogin = gateKind === 'login' || /\\bLogin\\b|Sign in|password/i.test(text);
           const hasShell = !!(visiblyPainted(topbar) && visiblyPainted(nav));
+          const shellHostVisible = [
+            topbar,
+            nav,
+            document.querySelector('[data-cadivor-page-body]'),
+            document.querySelector('[data-cadivor-route-root]'),
+            document.querySelector('[data-cadivor-transition-host]'),
+            document.querySelector('.cv56-skeleton-page'),
+            document.querySelector('[data-testid="cadivor-main-transition-host"]'),
+          ].some((el) => visiblyPainted(el));
+          const shellHitTestable = (() => {
+            const candidates = [
+              document.querySelector('.cv-foundation-topbar:not(.cv-foundation-continuity)'),
+              document.querySelector('[class*="st-key-cv_foundation_nav_dashboard"] button'),
+              document.querySelector('[class*="st-key-cv_foundation_profile_menu"] button'),
+            ].filter(Boolean);
+            for (const el of candidates) {
+              if (!visiblyPainted(el)) continue;
+              const r = el.getBoundingClientRect();
+              const x = Math.min(window.innerWidth - 2, Math.max(1, r.left + r.width / 2));
+              const y = Math.min(window.innerHeight - 2, Math.max(1, r.top + r.height / 2));
+              const hit = document.elementFromPoint(x, y);
+              if (
+                hit &&
+                (hit === el || (el.contains && el.contains(hit)) ||
+                  !!(hit.closest && (
+                    hit.closest('.cv-foundation-topbar') ||
+                    hit.closest('[class*="st-key-cv_foundation_"]')
+                  )))
+              ) {
+                return true;
+              }
+            }
+            return false;
+          })();
+          const signedOutMarker = !!document.querySelector(
+            '[data-cadivor-signed-out-surface="1"], [data-testid="cadivor-signed-out-surface"]'
+          );
           const centeredLoader = Array.from(document.querySelectorAll(
             '.cv-auth-gate-card, [data-testid="cadivor-auth-gate"] .cv-auth-card, .cv-boot-card'
           )).some((el) => {
@@ -255,9 +292,35 @@ def _viewport_probe(page) -> dict:
             emptyGateCard,
             pageContentReady,
             duplicateAuthSurface,
+            shellHostVisible,
+            shellHitTestable,
+            signedOutMarker,
           };
         }"""
     )
+
+
+def _assert_signed_out_surface_atomic(page, label: str) -> None:
+    """Login must be the only visible/interactive app surface after logout."""
+    probe = _viewport_probe(page)
+    if not probe.get("hasLogin") and not probe.get("authCardVisible"):
+        raise AssertionError(
+            f"{label}: Login card/gate not visible "
+            f"(preview={probe.get('textPreview')!r})"
+        )
+    if probe.get("hasShell"):
+        raise AssertionError(f"{label}: foundation shell still visibly painted")
+    if probe.get("shellHostVisible"):
+        raise AssertionError(
+            f"{label}: authenticated shell/route/transition/skeleton host still visible"
+        )
+    if probe.get("shellHitTestable"):
+        raise AssertionError(
+            f"{label}: authenticated shell control still hit-testable behind Login"
+        )
+    # Stale Login must not remain under Dashboard after successful auth — handled
+    # separately on relogin. Here we only enforce signed-out cleanliness.
+
 
 
 def _assert_auth_surface_invariants(page, label: str, *, auth_surface_started_at: float | None = None) -> None:
@@ -1616,7 +1679,11 @@ def _click_sign_out(page, *, app_url: str) -> None:
         if target is not None and 'data-auth-gate="login"' in html:
             _clear_smoke_session_cookie(page)
             return
-        probe = _viewport_probe(page) if body else {"blankCanvas": True}
+        try:
+            probe = _viewport_probe(page) if body else {"blankCanvas": True}
+        except Exception:
+            # Logout can navigate mid-evaluate (WebKit); treat as unsettled.
+            probe = {"blankCanvas": True}
         if (not body) or probe.get("blankCanvas") or i in {5, 12, 20}:
             _clear_smoke_session_cookie(page)
             if i in {5, 12, 20} or (not body) or probe.get("blankCanvas"):
@@ -2164,7 +2231,45 @@ def main() -> int:
                 page.keyboard.press("Escape")
             except Exception:
                 pass
-            page.wait_for_timeout(200)
+            page.wait_for_timeout(300)
+            for _ in range(40):
+                ready = page.evaluate(
+                    """() => {
+                      const body = (document.body && document.body.innerText) || '';
+                      return /Profile & preferences|Profile information|Your subscription/i.test(body)
+                        && /Customer account|Profile summary|cv-profile-card/i.test(
+                             document.documentElement.innerHTML || ''
+                           );
+                    }"""
+                )
+                if ready:
+                    break
+                page.wait_for_timeout(SAMPLE_MS)
+            page.screenshot(path=str(OUT / "13_settings_profile.png"), full_page=True)
+            (OUT / "13_settings_profile.html").write_text(
+                page.content()[:200000], encoding="utf-8"
+            )
+            settings_probe = page.evaluate(
+                """() => {
+                  const body = (document.body && document.body.innerText) || '';
+                  const facts = Array.from(document.querySelectorAll('.cv-profile-fact'))
+                    .map((el) => (el.innerText || '').replace(/\\s+/g, ' ').trim());
+                  const setupCta = Array.from(document.querySelectorAll('button'))
+                    .some((b) => /Continue Customer Setup/i.test((b.innerText || '').trim())
+                      && !!(b.offsetParent || b.getClientRects().length));
+                  return {
+                    hasYourSubscription: /Your subscription/i.test(body),
+                    facts,
+                    setupCtaVisible: setupCta,
+                  };
+                }"""
+            )
+            if not settings_probe.get("hasYourSubscription"):
+                print(
+                    "AUTH_SMOKE fail=settings_plan_label "
+                    f"detail={settings_probe!r}"
+                )
+                return 8
             _assert_profile_menu_clickable(page, "profile_after_Settings")
 
             # 5) Logout → Login → hold ≥10s (Safari) → reload → Login → relogin.
@@ -2185,6 +2290,11 @@ def main() -> int:
             probe_logout = _viewport_probe(page)
             if not probe_logout.get("hasLogin"):
                 raise AssertionError("after_logout: Login gate not visible")
+            try:
+                _assert_signed_out_surface_atomic(page, "after_logout_atomic")
+            except AssertionError as exc:
+                print(f"AUTH_SMOKE fail=logout_atomic_surface detail={exc}")
+                return 9
             page.screenshot(path=str(OUT / "14_logout_login.png"), full_page=True)
             try:
                 _assert_login_stable_not_restoring(
@@ -2201,6 +2311,7 @@ def main() -> int:
                 _assert_login_stable_not_restoring(
                     page, "after_logout_reload_hold", hold_seconds=3.0
                 )
+                _assert_signed_out_surface_atomic(page, "after_logout_reload_atomic")
             except AssertionError as exc:
                 print(f"AUTH_SMOKE fail=logout_reload_login detail={exc}")
                 return 9
@@ -2215,6 +2326,15 @@ def main() -> int:
             (OUT / "15_relogin_dashboard.html").write_text(
                 page.content()[:200000], encoding="utf-8"
             )
+            # Relogin must reach Dashboard without a live Login card underneath.
+            probe_relogin = _viewport_probe(page)
+            if probe_relogin.get("authCardVisible") and probe_relogin.get("hasLogin"):
+                raise AssertionError(
+                    "relogin: Login card still visible under authenticated Dashboard"
+                )
+            if not probe_relogin.get("hasShell"):
+                raise AssertionError("relogin: foundation shell not visible on Dashboard")
+
 
             browser.close()
         print(f"AUTH_SMOKE ok screenshots={OUT}")

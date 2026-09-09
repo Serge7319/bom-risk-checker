@@ -280,6 +280,79 @@ def render_full_page_gate_surface(
             pass
 
 
+def retire_authenticated_shell_hosts() -> None:
+    """Collapse authenticated foundation hosts while Login/error is the active surface.
+
+    Logout clears session state but Streamlit can leave prior-run topbar, rail,
+    page-body, transition, and skeleton hosts in the DOM. Login alone is a fixed
+    overlay and cannot structurally remove those hosts — this CSS does.
+
+    Counterpart of ``retire_auth_gate_overlays`` (gate→shell). When the
+    authenticated shell remounts, that helper retires this signed-out marker.
+    """
+    st.markdown(
+        """
+        <div data-cadivor-signed-out-surface="1" data-testid="cadivor-signed-out-surface"
+             aria-hidden="true"
+             style="position:absolute;width:1px;height:1px;margin:-1px;border:0;padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>
+        <style id="cadivor-authenticated-shell-retire">
+        /* Foundation chrome */
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-foundation-topbar,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-foundation-continuity,
+        body:has([data-cadivor-signed-out-surface="1"]) [data-testid="cadivor-continuity-shell"],
+        body:has([data-cadivor-signed-out-surface="1"]) [data-cadivor-topbar-flow-host],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_navigation"],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_profile_menu"],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_nav_"],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_compare_plans"],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_new_analysis"],
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-foundation-workspace,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-foundation-nav-group,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-foundation-plan-card,
+        /* Route / transition / skeleton */
+        body:has([data-cadivor-signed-out-surface="1"]) [data-cadivor-page-content],
+        body:has([data-cadivor-signed-out-surface="1"]) [data-cadivor-page-body],
+        body:has([data-cadivor-signed-out-surface="1"]) [data-cadivor-route-root],
+        body:has([data-cadivor-signed-out-surface="1"]) [data-testid="cadivor-route-root"],
+        body:has([data-cadivor-signed-out-surface="1"]) [data-cadivor-transition-host],
+        body:has([data-cadivor-signed-out-surface="1"]) [data-testid="cadivor-main-transition-host"],
+        body:has([data-cadivor-signed-out-surface="1"]) [data-cadivor-transition-style-host],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cadivor_main_transition"],
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-main-transition,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv56-skeleton-page,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-page-header,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv672-dashboard-heading,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv64-section,
+        body:has([data-cadivor-signed-out-surface="1"]) .cv-customer-hero,
+        /* Streamlit wrappers that still own layout / hit-testing */
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stElementContainer"]:has(.cv-foundation-topbar),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stElementContainer"]:has([data-cadivor-topbar-flow-host]),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stElementContainer"]:has([data-cadivor-page-content]),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stElementContainer"]:has([data-cadivor-page-body]),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stElementContainer"]:has([data-cadivor-transition-host]),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_navigation"]),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_menu"]),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cadivor_main_transition"]) {
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          opacity:0!important;z-index:-1!important;
+          height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;
+          overflow:hidden!important
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def retire_auth_gate_overlays() -> None:
     """Collapse leftover auth hosts only after shell AND page content exist.
 
@@ -299,6 +372,17 @@ def retire_auth_gate_overlays() -> None:
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"],
         body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content]) div.cv-auth-gate,
         body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"],
+        /* Signed-out shell-retire marker must not hide the remounted shell. */
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          [data-cadivor-signed-out-surface],
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has([data-cadivor-signed-out-surface]),
+        body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
+          #cadivor-authenticated-shell-retire,
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          [data-cadivor-signed-out-surface],
+        body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
+          div[data-testid="stElementContainer"]:has([data-cadivor-signed-out-surface]),
         /* Streamlit hosts that still participate in main-column gap/flow. */
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
           div[data-testid="stElementContainer"]:has(.cv-auth-gate),
@@ -372,6 +456,12 @@ def paint_auth_gate(state: AuthGateState) -> None:
     """Render the exclusive surface for the current gate state (except ready)."""
     if state == "ready":
         return
+    # Structurally retire leftover authenticated shell only on exclusive
+    # signed-out surfaces. Do NOT retire during boot/authenticating — those
+    # states hand off into the foundation shell on the same run, and the
+    # signed-out CSS marker would hide the newly mounted chrome.
+    if state in {"login", "error"}:
+        retire_authenticated_shell_hosts()
     if state == "boot":
         render_full_page_gate_surface(
             title="Cadivor",

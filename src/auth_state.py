@@ -433,6 +433,29 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
 
     st.session_state["cadivor_logout_in_progress"] = True
     st.session_state["cadivor_explicit_logout"] = True
+    # Drop shell/cache ownership before wipe so a mid-run paint cannot remount chrome.
+    st.session_state.pop("cadivor_shell_cache", None)
+    st.session_state.pop("cadivor_verified_profile", None)
+    st.session_state.pop("cadivor_workspace_admit_cache", None)
+    st.session_state["cadivor_foundation_shell_mounted"] = False
+    try:
+        from src.services.authenticated_profile_cache import clear_verified_profile
+
+        clear_verified_profile(st.session_state)
+    except Exception:
+        pass
+    try:
+        from src.services.workspace_admit_cache import clear_workspace_admit_cache
+
+        clear_workspace_admit_cache(st.session_state)
+    except Exception:
+        st.session_state.pop("cadivor_workspace_admit_cache", None)
+    try:
+        from src.auth_gate import retire_authenticated_shell_hosts
+
+        retire_authenticated_shell_hosts()
+    except Exception:
+        pass
 
     log_logout_phase("local_session_clear_started")
     _clear_user_session_for_logout()

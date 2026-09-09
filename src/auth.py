@@ -1322,6 +1322,12 @@ def show_auth_ui(supabase, cookie_manager=None):
         )
     except Exception:
         pass
+    try:
+        from src.auth_gate import retire_authenticated_shell_hosts
+
+        retire_authenticated_shell_hosts()
+    except Exception:
+        pass
     # CSS and premium inject stay outside the white card so markdown/style
     # blocks cannot inflate the card shell.
     _auth_css()
