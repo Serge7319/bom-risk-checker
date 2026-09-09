@@ -277,7 +277,7 @@ def render_unified_shell(
               <span class="cv-foundation-workspace-copy">
                 <small>Workspace</small>
                 <strong>{_escape(workspace_name or 'Cadivor Workspace')}</strong>
-                <em>{_escape(plan_name)} plan</em>
+                <em>Subscription · {_escape(plan_name)}</em>
               </span>
               <span class="cv-foundation-workspace-chevron" aria-hidden="true">⌄</span>
             </div>
@@ -309,7 +309,7 @@ def render_unified_shell(
                 )
 
         st.markdown(
-            f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
+            f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>Your subscription</span><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
             unsafe_allow_html=True,
         )
         if str(plan_name).lower() in {"starter", "free", "trial", "student"}:

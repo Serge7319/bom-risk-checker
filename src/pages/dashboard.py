@@ -1130,8 +1130,13 @@ def render_dashboard(
         has_report=False,
     )
 
+    from src.plans import resolve_effective_plan
+
+    effective_plan_name, _ = resolve_effective_plan(
+        {**(current_user or {}), **(profile or {})}
+    )
     render_upgrade_prompt(
-        plan_name=str(profile.get("plan") or current_user.get("plan") or "Starter"),
+        plan_name=str(effective_plan_name or "Starter"),
         monthly_used=total_analyses,
         monthly_limit=5,
     )

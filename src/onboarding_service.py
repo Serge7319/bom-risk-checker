@@ -114,3 +114,64 @@ def completion_count(progress: Dict[str, Any]) -> int:
         "first_report_completed",
     )
     return sum(bool(progress.get(key)) for key in keys)
+
+
+# Steps that block account readiness. Optional profile fields (phone, bio, avatar)
+# are never included here.
+REQUIRED_SETUP_KEYS = (
+    "profile_completed",
+    "workspace_completed",
+    "first_bom_completed",
+)
+
+OPTIONAL_SETUP_KEYS = (
+    "first_alternative_completed",
+    "first_report_completed",
+)
+
+REQUIRED_SETUP_LABELS = {
+    "profile_completed": "Profile name and company or role",
+    "workspace_completed": "Workspace membership",
+    "first_bom_completed": "First saved BOM analysis",
+}
+
+
+def required_setup_incomplete(progress: Dict[str, Any] | None) -> bool:
+    """True when a required readiness step is still missing."""
+    row = progress or {}
+    return any(not bool(row.get(key)) for key in REQUIRED_SETUP_KEYS)
+
+
+def required_setup_missing(progress: Dict[str, Any] | None) -> list[str]:
+    """Human labels for incomplete required setup steps."""
+    row = progress or {}
+    return [
+        REQUIRED_SETUP_LABELS[key]
+        for key in REQUIRED_SETUP_KEYS
+        if not bool(row.get(key))
+    ]
+
+
+def should_show_setup_continuation(progress: Dict[str, Any] | None) -> bool:
+    """Show Continue setup only for undismissed accounts with required gaps."""
+    row = progress or {}
+    if bool(row.get("dismissed")):
+        return False
+    if row.get("completed_at"):
+        return False
+    return required_setup_incomplete(row)
+
+
+def monotonic_progress_updates(
+    progress: Dict[str, Any] | None,
+    inferred: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Never downgrade a completed DB flag from ephemeral session signals."""
+    row = progress or {}
+    updates: Dict[str, Any] = {}
+    for key, value in inferred.items():
+        previous = bool(row.get(key))
+        nxt = previous or bool(value)
+        if nxt != previous:
+            updates[key] = nxt
+    return updates

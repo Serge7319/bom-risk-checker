@@ -150,6 +150,9 @@ from src.onboarding_service import (
     ensure_onboarding_progress,
     update_onboarding_progress,
     completion_count,
+    monotonic_progress_updates,
+    required_setup_missing,
+    should_show_setup_continuation,
 )
 from src.customer_profile_service import (
     ensure_customer_profile,
@@ -2890,19 +2893,18 @@ def run_authenticated_app() -> None:
         except Exception:
             pass
 
-        sync_updates = {
+        sync_inferred = {
             "profile_completed": inferred_profile_complete,
             "workspace_completed": inferred_workspace_complete,
             "first_bom_completed": saved_bom_count > 0,
             "first_alternative_completed": inferred_alternative_complete,
+            # Reports history is session-ephemeral; never downgrade a durable True.
             "first_report_completed": bool(
                 st.session_state.get("reports_session_history")
             ),
         }
-        if any(
-            bool(onboarding_progress.get(key)) != bool(value)
-            for key, value in sync_updates.items()
-        ):
+        sync_updates = monotonic_progress_updates(onboarding_progress, sync_inferred)
+        if sync_updates:
             synced, sync_error = update_onboarding_progress(
                 supabase,
                 onboarding_user_id,
@@ -3222,13 +3224,15 @@ def run_authenticated_app() -> None:
         # collapse the main transition owner (production empty-canvas gap).
         render_dashboard_page_heading()
 
-        if (
-            onboarding_progress
-            and not onboarding_progress.get("dismissed")
-            and completion_count(onboarding_progress) < 5
-        ):
+        if should_show_setup_continuation(onboarding_progress):
             onboarding_done = completion_count(onboarding_progress)
             onboarding_percent = int((onboarding_done / 5) * 100)
+            missing_setup = required_setup_missing(onboarding_progress)
+            missing_copy = (
+                "; ".join(missing_setup)
+                if missing_setup
+                else "Finish remaining Cadivor readiness steps."
+            )
             st.markdown(
                 f"""
                 <style id="cadivor-dashboard-setup-v11a3">
@@ -3265,8 +3269,7 @@ def run_authenticated_app() -> None:
                     <strong>{onboarding_done}/5 complete</strong>
                   </div>
                   <p>
-                    Finish customer setup to complete your profile, workspace,
-                    first BOM, replacement review, and first report.
+                    {html.escape(missing_copy)}
                   </p>
                   <div class="cv-setup-reminder-bar"><i></i></div>
                 </section>
@@ -7572,52 +7575,78 @@ def run_authenticated_app() -> None:
         )
 
         settings_setup_done = completion_count(onboarding_progress or {})
-        settings_setup_percent = int((settings_setup_done / 5) * 100)
-        st.markdown(
-            f"""
-            <style id="cadivor-settings-setup-v11a3">
-            .cv-settings-setup{{
-                display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;
-                border:1px solid #DBEAFE;border-radius:17px;background:#FFFFFF;
-                padding:15px 17px;margin:0 0 14px;
-                box-shadow:0 12px 28px rgba(15,23,42,.05);
-            }}
-            .cv-settings-setup strong{{
-                display:block;color:#0F172A!important;font-size:13px;font-weight:950;
-                margin-bottom:4px;
-            }}
-            .cv-settings-setup span{{
-                color:#64748B!important;font-size:10px;font-weight:750;
-            }}
-            .cv-settings-setup b{{
-                color:#2563EB!important;font-size:12px;font-weight:950;
-            }}
-            .cv-settings-setup-bar{{
-                grid-column:1/-1;height:7px;border-radius:999px;background:#E2E8F0;
-                overflow:hidden;
-            }}
-            .cv-settings-setup-bar i{{
-                display:block;height:100%;width:{settings_setup_percent}%;
-                background:#2563EB;border-radius:999px;
-            }}
-            </style>
-            <section class="cv-settings-setup">
-              <div>
-                <strong>Customer setup</strong>
-                <span>Profile, workspace, BOM, replacement, and reporting readiness</span>
-              </div>
-              <b>{settings_setup_done}/5 complete</b>
-              <div class="cv-settings-setup-bar"><i></i></div>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-        internal_nav_button(
-            "Continue Customer Setup",
-            "Onboarding",
-            key="settings_open_onboarding",
-            type="secondary",
-        )
+        settings_show_setup = should_show_setup_continuation(onboarding_progress)
+        if settings_show_setup:
+            settings_setup_percent = int((settings_setup_done / 5) * 100)
+            missing_labels = required_setup_missing(onboarding_progress)
+            missing_html = "".join(
+                f"<li>{html.escape(label)}</li>" for label in missing_labels
+            ) or "<li>Required account readiness steps</li>"
+            st.markdown(
+                f"""
+                <style id="cadivor-settings-setup-v11a3">
+                .cv-settings-setup{{
+                    display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;
+                    border:1px solid #DBEAFE;border-radius:17px;background:#FFFFFF;
+                    padding:15px 17px;margin:0 0 14px;
+                    box-shadow:0 12px 28px rgba(15,23,42,.05);
+                }}
+                .cv-settings-setup strong{{
+                    display:block;color:#0F172A!important;font-size:13px;font-weight:950;
+                    margin-bottom:4px;
+                }}
+                .cv-settings-setup span{{
+                    color:#64748B!important;font-size:10px;font-weight:750;
+                }}
+                .cv-settings-setup b{{
+                    color:#2563EB!important;font-size:12px;font-weight:950;
+                }}
+                .cv-settings-setup ul{{
+                    grid-column:1/-1;margin:0;padding-left:18px;color:#475569;font-size:12px;
+                }}
+                .cv-settings-setup-bar{{
+                    grid-column:1/-1;height:7px;border-radius:999px;background:#E2E8F0;
+                    overflow:hidden;
+                }}
+                .cv-settings-setup-bar i{{
+                    display:block;height:100%;width:{settings_setup_percent}%;
+                    background:#2563EB;border-radius:999px;
+                }}
+                </style>
+                <section class="cv-settings-setup">
+                  <div>
+                    <strong>Customer setup</strong>
+                    <span>Required readiness steps still open for this account</span>
+                  </div>
+                  <b>{settings_setup_done}/5 complete</b>
+                  <ul>{missing_html}</ul>
+                  <div class="cv-settings-setup-bar"><i></i></div>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
+            setup_cols = st.columns([1, 1, 2])
+            with setup_cols[0]:
+                internal_nav_button(
+                    "Continue Customer Setup",
+                    "Onboarding",
+                    key="settings_open_onboarding",
+                    type="secondary",
+                )
+            with setup_cols[1]:
+                if st.button(
+                    "Dismiss setup",
+                    key="settings_dismiss_onboarding",
+                    type="secondary",
+                ):
+                    if onboarding_user_id:
+                        update_onboarding_progress(
+                            supabase,
+                            onboarding_user_id,
+                            {"welcome_seen": True, "dismissed": True},
+                        )
+                    st.rerun()
+
 
         migration_required = (
             profile_error == "migration_required"
@@ -7716,8 +7745,8 @@ def run_authenticated_app() -> None:
                           <strong>{html.escape(display_company)}</strong>
                         </div>
                         <div class="cv-profile-fact">
-                          <span>Plan</span>
-                          <strong>{html.escape(profile.get("plan", "Starter"))}</strong>
+                          <span>Your subscription</span>
+                          <strong>{html.escape(str(selected_plan_name or profile.get("plan", "Starter")))}</strong>
                         </div>
                       </div>
                     </div>
@@ -8015,8 +8044,8 @@ def run_authenticated_app() -> None:
                 f"""
                 <div class="cv-profile-card">
                   <div class="cv-profile-fact">
-                    <span>Current plan</span>
-                    <strong>{html.escape(profile.get("plan", "Starter"))}</strong>
+                    <span>Your subscription</span>
+                    <strong>{html.escape(str(selected_plan_name or profile.get("plan", "Starter")))}</strong>
                   </div>
                 </div>
                 """,
@@ -8283,7 +8312,7 @@ def run_authenticated_app() -> None:
               <p>Manage workspace identity, engineering access, team invitations, collaboration activity, and notification readiness from one controlled workspace.</p>
             </div>
             <div class="cv-ws-metrics">
-              <div class="cv-ws-metric"><div class="cv-ws-label">Plan</div><div class="cv-ws-value">{html.escape(selected_plan_name)}</div><div class="cv-ws-note">Current subscription</div></div>
+              <div class="cv-ws-metric"><div class="cv-ws-label">Your subscription</div><div class="cv-ws-value">{html.escape(selected_plan_name)}</div><div class="cv-ws-note">Account entitlement</div></div>
               <div class="cv-ws-metric"><div class="cv-ws-label">Members</div><div class="cv-ws-value">{len(active_members)}</div><div class="cv-ws-note">Active workspace users</div></div>
               <div class="cv-ws-metric"><div class="cv-ws-label">Pending Invites</div><div class="cv-ws-value">{len(pending_invites)}</div><div class="cv-ws-note">Awaiting acceptance</div></div>
               <div class="cv-ws-metric"><div class="cv-ws-label">Saved Analyses</div><div class="cv-ws-value">{saved_bom_count}</div><div class="cv-ws-note">Shared engineering records</div></div>
@@ -8545,7 +8574,7 @@ def run_authenticated_app() -> None:
                             f"""
                             <div class="cv-org-card">
                               <strong>{html.escape(_safe_text(item.get('name'), 'Cadivor Workspace'))}</strong>
-                              <span>{html.escape(_safe_text(item.get('current_role'), 'viewer').title())} access · {html.escape(_safe_text(item.get('plan'), 'starter').title())} plan</span>
+                              <span>{html.escape(_safe_text(item.get('current_role'), 'viewer').title())} access · Workspace plan: {html.escape(_safe_text(item.get('plan'), 'starter').title())}</span>
                               {'<span class="cv-org-active">Active organization</span>' if is_active_org else ''}
                             </div>
                             """,
