@@ -354,11 +354,12 @@ def retire_auth_gate_overlays() -> None:
 
 
 def mark_page_content_ready(page: str = "") -> None:
-    """Emit the page-content marker that allows auth-gate retirement."""
+    """Emit the page-content / route-root marker that allows auth-gate retirement."""
     safe_page = html_lib.escape(str(page or "").strip() or "workspace")
     try:
         st.markdown(
-            f'<div data-cadivor-page-content="1" data-cadivor-page="{safe_page}" '
+            f'<div data-cadivor-page-content="1" data-cadivor-route-root="1" '
+            f'data-cadivor-page="{safe_page}" data-testid="cadivor-route-root" '
             f'aria-hidden="true" style="position:absolute;width:1px;height:1px;margin:-1px;'
             f'border:0;padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>',
             unsafe_allow_html=True,

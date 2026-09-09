@@ -123,6 +123,61 @@ def inject_workspace_geometry_final() -> None:
     from src.ui.sprint71_polish import inject_sprint71_polish
 
     inject_sprint71_polish()
+    # Re-assert compact inset + flex-gap chrome collapse after late polish CSS.
+    st.markdown(
+        """
+        <style id="cadivor-compact-content-inset">
+        section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+        section[data-testid="stMain"] .main .block-container {
+          padding-top: calc(var(--cv-foundation-top, 64px) + 24px) !important;
+        }
+        @media (max-width: 768px) {
+          section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+          section[data-testid="stMain"] .main .block-container {
+            padding-top: calc(var(--cv-foundation-top, 64px) + 16px + env(safe-area-inset-top, 0px)) !important;
+          }
+        }
+        /* Root flex siblings only — removes Streamlit row-gap above route content. */
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_navigation"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_menu"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cadivor_main_transition_owner"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-topbar-flow-host="1"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(.cv-foundation-topbar),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-route-root="1"]):not(:has(.cv-page)):not(:has(.cv-page-header)):not(:has(.cv64-section)):not(:has(h1)),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-page-content="1"]):not(:has(.cv-page)):not(:has(.cv-page-header)):not(:has(.cv64-section)):not(:has(h1)),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-page-body]):not(:has(.cv-page)):not(:has(.cv-page-header)):not(:has(.cv64-section)):not(:has(h1)),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(.cv64-page-shell):not(:has(.cv64-section)):not(:has(.cv-customer-hero)):not(:has(.cv-page-header)):not(:has(h1)):not(:has([class*="st-key-af62_hero"])),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(> [data-testid="stIFrame"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-core-premium-ui-final),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-compact-content-inset),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-main-transition-css),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-transition-style-host]) {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 0 !important;
+          height: 0 !important;
+          min-height: 0 !important;
+          max-height: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+          overflow: visible !important;
+          flex: 0 0 auto !important;
+          pointer-events: none !important;
+        }
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_navigation"],
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_navigation"] *,
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_menu"],
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_menu"] *,
+        section[data-testid="stMain"] .cv-foundation-topbar,
+        section[data-testid="stMain"] .cv-foundation-topbar * {
+          pointer-events: auto !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def authenticated_surface_ready() -> bool:
