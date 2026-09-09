@@ -286,15 +286,17 @@ def install_smoke_auth_patches() -> None:
 
 
 def _smoke_user_row(*, email: str = SMOKE_EMAIL) -> dict[str, Any]:
+    role = str(os.environ.get("CADIVOR_SMOKE_ROLE") or "user").strip().lower() or "user"
+    plan = str(os.environ.get("CADIVOR_SMOKE_PLAN") or "Starter").strip() or "Starter"
     return {
         "id": "auth-smoke-user",
         "email": email,
         "full_name": "Auth Smoke",
         "company": "Cadivor Smoke",
         "company_name": "Cadivor Smoke",
-        "role": "user",
+        "role": role,
         "role_title": "Engineer",
-        "plan": "Starter",
+        "plan": plan,
         "monthly_upload_count": 0,
         "profile_completed": True,
         "workspace_completed": True,
@@ -456,6 +458,41 @@ def install_production_path_smoke_patches() -> None:
     runtime_mod.get_supabase_client = smoke_get_supabase_client
     runtime_mod.load_user_data = smoke_load_user_data
     runtime_mod.supabase = smoke_sb
+
+    # Count shell paints + admin entitlement resyncs for first-admit proofs.
+    try:
+        import src.ui.unified_shell as shell_mod
+
+        _orig_render_shell = shell_mod.render_unified_shell
+
+        def smoke_render_unified_shell(*args: Any, **kwargs: Any):
+            _bump_smoke_io("render_unified_shell")
+            return _orig_render_shell(*args, **kwargs)
+
+        shell_mod.render_unified_shell = smoke_render_unified_shell
+        runtime_mod.render_unified_shell = smoke_render_unified_shell
+    except Exception:
+        pass
+    try:
+        import src.shell_admin_entitlement as entitlement_mod
+
+        _orig_resync = entitlement_mod.maybe_resync_shell_admin_after_profile
+
+        def smoke_maybe_resync_shell_admin_after_profile(*args: Any, **kwargs: Any):
+            invoked = _orig_resync(*args, **kwargs)
+            if invoked:
+                _bump_smoke_io("shell_admin_resync_rerun")
+            _bump_smoke_io("shell_admin_resync_check")
+            return invoked
+
+        entitlement_mod.maybe_resync_shell_admin_after_profile = (
+            smoke_maybe_resync_shell_admin_after_profile
+        )
+        runtime_mod.maybe_resync_shell_admin_after_profile = (
+            smoke_maybe_resync_shell_admin_after_profile
+        )
+    except Exception:
+        pass
 
     _orig_begin = None
     try:
