@@ -9,6 +9,7 @@ from io import BytesIO
 
 from src.datasheet_qa import (
     DATASHEET_QA_DOC_KEY,
+    DATASHEET_QA_QUESTION_WIDGET_KEY,
     DATASHEET_QA_THREAD_KEY,
     NOT_FOUND_ANSWER,
     answer_datasheet_question,
@@ -291,13 +292,15 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn("render_datasheet_qa_page", runtime)
         self.assertIn("datasheet_qa_form", page)
         self.assertIn("Ask Cadivor", page)
-        self.assertIn("Remove document", page)
+        self.assertIn("Remove", page)
+        self.assertIn("datasheet_qa_remove", page)
         self.assertIn("MAX_DATASHEET_BYTES", page)
         self.assertIn("MAX_DATASHEET_PAGES", page)
         self.assertIn("suggest_datasheet_follow_ups", (root / "src" / "datasheet_qa.py").read_text())
         self.assertIn("queue_datasheet_follow_up", page)
-        self.assertIn("dq-primary-evidence", page)
-
+        self.assertIn("consume_datasheet_pending_question", page)
+        self.assertIn("dq-evidence", page)
+        self.assertIn("dq-composer", page)
 
 class ConversationalDatasheetQaV1Tests(unittest.TestCase):
     """Acceptance coverage T1–T8 for Conversational Datasheet Q&A v1."""
@@ -423,6 +426,8 @@ class ConversationalDatasheetQaV1Tests(unittest.TestCase):
         self.assertGreaterEqual(len(suggestions), 3)
 
         self.assertTrue(queue_datasheet_follow_up(session, suggestions[0], now=50.0))
+        # Chip queue must not mutate the composer widget key.
+        self.assertNotIn(DATASHEET_QA_QUESTION_WIDGET_KEY, session)
         second_q = session["datasheet_qa_pending_question"]
         second = answer_datasheet_question(
             document,
@@ -431,6 +436,7 @@ class ConversationalDatasheetQaV1Tests(unittest.TestCase):
         )
         append_thread_turn(session, question=second_q, result=second, document=document)
         session["datasheet_qa_status"] = "ready"
+        session.pop("datasheet_qa_pending_question", None)
 
         third_suggestions = suggest_datasheet_follow_ups(
             question=second_q,
@@ -505,6 +511,142 @@ class ConversationalDatasheetQaV1Tests(unittest.TestCase):
         self.assertEqual(
             session["datasheet_qa_active_fingerprint"],
             restored_doc["content_fingerprint"],
+        )
+
+
+class DatasheetQaFollowUpLifecycleTests(unittest.TestCase):
+    """Prove chip clicks never mutate an instantiated composer widget key."""
+
+    def test_queue_follow_up_does_not_write_composer_widget_key(self):
+        from src.datasheet_qa import queue_datasheet_follow_up
+
+        session = {
+            DATASHEET_QA_QUESTION_WIDGET_KEY: "original composer text",
+        }
+        # Simulate Streamlit: widget already instantiated → key is locked.
+        locked = {"datasheet_qa_question"}
+
+        class _GuardedSession(dict):
+            def __setitem__(self, key, value):
+                if key in locked:
+                    raise AssertionError(
+                        f"st.session_state.{key} cannot be modified after the "
+                        f"widget with key {key} is instantiated."
+                    )
+                return super().__setitem__(key, value)
+
+        guarded = _GuardedSession(session)
+        self.assertTrue(
+            queue_datasheet_follow_up(
+                guarded, "What package options are listed?", now=10.0
+            )
+        )
+        self.assertEqual(
+            guarded["datasheet_qa_pending_question"],
+            "What package options are listed?",
+        )
+        self.assertEqual(guarded[DATASHEET_QA_QUESTION_WIDGET_KEY], "original composer text")
+
+    def test_consume_pending_then_one_turn_without_widget_mutation(self):
+        from src.datasheet_qa import (
+            DATASHEET_QA_STORE_COUNT_KEY,
+            consume_datasheet_pending_question,
+            queue_datasheet_follow_up,
+        )
+
+        session = {
+            DATASHEET_QA_QUESTION_WIDGET_KEY: "typed but not submitted",
+        }
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(
+                [
+                    "Absolute maximum VCC is 5.5 V.",
+                    "Package options include SOIC-8.",
+                ]
+            ),
+            filename="spec.pdf",
+        )
+        store_document_in_session(session, document)
+        stores = int(session.get(DATASHEET_QA_STORE_COUNT_KEY) or 0)
+        first = answer_datasheet_question(document, "What is the absolute maximum VCC?")
+        append_thread_turn(
+            session,
+            question="What is the absolute maximum VCC?",
+            result=first,
+            document=document,
+        )
+        self.assertEqual(len(session[DATASHEET_QA_THREAD_KEY]), 1)
+
+        locked = {DATASHEET_QA_QUESTION_WIDGET_KEY}
+
+        class _GuardedSession(dict):
+            def __setitem__(self, key, value):
+                if key in locked:
+                    raise AssertionError(
+                        f"st.session_state.{key} cannot be modified after the "
+                        f"widget with key {key} is instantiated."
+                    )
+                return super().__setitem__(key, value)
+
+        guarded = _GuardedSession(session)
+        suggestion = "What package options are listed?"
+        self.assertTrue(queue_datasheet_follow_up(guarded, suggestion, now=20.0))
+        # Next render starts: consume pending before widget construction.
+        queued = consume_datasheet_pending_question(guarded)
+        self.assertEqual(queued, suggestion)
+        self.assertNotIn("datasheet_qa_pending_question", guarded)
+        second = answer_datasheet_question(document, queued)
+        append_thread_turn(
+            guarded, question=queued, result=second, document=document
+        )
+        self.assertEqual(len(guarded[DATASHEET_QA_THREAD_KEY]), 2)
+        self.assertEqual(guarded[DATASHEET_QA_QUESTION_WIDGET_KEY], "typed but not submitted")
+        self.assertEqual(int(guarded.get(DATASHEET_QA_STORE_COUNT_KEY) or 0), stores)
+
+    def test_mmbt4124_supply_voltage_not_mislabel_vceo(self):
+        from src.datasheet_qa import suggest_datasheet_follow_ups
+
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(
+                [
+                    "MMBT4124 NPN General Purpose Amplifier Transistor.",
+                    "Absolute maximum ratings include Collector-Emitter Voltage VCEO 25 V "
+                    "and Collector Current continuous 200 mA. Package SOT-23.",
+                    "Electrical characteristics for this NPN transistor. Not marked obsolete.",
+                ]
+            ),
+            filename="MMBT4124.pdf",
+        )
+        self.assertTrue(document["available"])
+        result = answer_datasheet_question(
+            document, "What is the absolute maximum supply voltage?"
+        )
+        self.assertTrue(result["ok"])
+        answer = str(result["answer"])
+        lowered = answer.casefold()
+        self.assertIn("does not specify a supply-voltage rating", lowered)
+        self.assertIn("vceo", lowered)
+        self.assertIn("25", answer)
+        self.assertNotRegex(
+            answer,
+            r"(?i)supply voltage[^.]{0,40}25\s*V",
+        )
+        self.assertNotIn("supply voltage is 25", lowered)
+        suggestions = suggest_datasheet_follow_ups(
+            question="What is the absolute maximum supply voltage?",
+            answer=answer,
+            answer_kind=result.get("answer_kind") or "wrong_premise",
+            evidence=result.get("evidence"),
+            document=document,
+        )
+        self.assertGreaterEqual(len(suggestions), 3)
+        joined = " ".join(suggestions).casefold()
+        self.assertNotIn("supply voltage", joined)
+        self.assertTrue(
+            any("vceo" in item.casefold() or "collector" in item.casefold() for item in suggestions)
+            or "package" in joined
+            or "obsolete" in joined
+            or "electrical" in joined
         )
 
 

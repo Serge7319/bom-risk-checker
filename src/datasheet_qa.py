@@ -42,10 +42,20 @@ MAX_RETRIEVED_CHUNKS = 6
 MAX_IDENTITY_ANCHOR_CHUNKS = 2
 MAX_QUESTION_CHARS = 800
 MAX_FOLLOW_UPS = 5
+VISIBLE_FOLLOW_UPS = 3
 MIN_FOLLOW_UPS = 3
 PRIMARY_EXCERPT_CHARS = 220
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9.+/-]{1,24}", re.IGNORECASE)
+_VCEO_RE = re.compile(
+    r"\bV\s*C\s*E\s*O\b[^0-9]{0,24}(-?\d+(?:\.\d+)?)(?:\s*V\b)?|"
+    r"\bcollector[-\s]?emitter\b[^0-9]{0,48}(-?\d+(?:\.\d+)?)(?:\s*V\b)?",
+    re.IGNORECASE,
+)
+_SUPPLY_QUESTION_RE = re.compile(
+    r"\b(supply\s+voltage|vcc|vdd|vin\b|operating\s+supply)\b",
+    re.IGNORECASE,
+)
 
 # Datasheet-only follow-up banks (never BOM-risk / portfolio prompts).
 _FOLLOW_UP_BANK: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -96,6 +106,41 @@ _FOLLOW_UP_BANK: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
 )
+
+# Component-aware banks — preferred when the datasheet identity is clear.
+_FOLLOW_UP_BY_FAMILY: dict[str, tuple[str, ...]] = {
+    "transistor": (
+        "What are the absolute maximum collector current and VCEO ratings?",
+        "What package and pinout does this device use?",
+        "Is this part marked obsolete or discontinued?",
+        "What are the key electrical characteristics?",
+        "What is the absolute maximum junction or storage temperature?",
+    ),
+    "diode": (
+        "What is the absolute maximum reverse voltage?",
+        "What continuous forward current is specified?",
+        "What package options are listed?",
+        "What are the key electrical characteristics?",
+    ),
+    "regulator": (
+        "What is the absolute maximum supply voltage?",
+        "What is the recommended operating supply voltage?",
+        "What continuous output current is specified?",
+        "What package options are listed?",
+    ),
+    "op-amp": (
+        "What is the absolute maximum supply voltage?",
+        "What is the recommended operating supply voltage range?",
+        "What package options are listed?",
+        "What are the key electrical characteristics?",
+    ),
+    "ic": (
+        "What is the absolute maximum supply voltage?",
+        "What package options are listed?",
+        "What are the key absolute maximum ratings?",
+        "What device type or family does page 1 describe?",
+    ),
+}
 
 # Customer-facing device families used only for wrong-premise grounding.
 _DEVICE_FAMILIES: dict[str, frozenset[str]] = {
@@ -236,6 +281,99 @@ def primary_evidence_line(evidence: list[Mapping[str, Any]] | None) -> dict[str,
     return None
 
 
+def _document_corpus(document: Mapping[str, Any] | None, evidence: list[Mapping[str, Any]] | None = None) -> str:
+    parts: list[str] = []
+    for item in evidence or []:
+        if isinstance(item, Mapping):
+            parts.append(str(item.get("excerpt") or ""))
+    if isinstance(document, Mapping):
+        for chunk in list(document.get("chunks") or [])[:12]:
+            if isinstance(chunk, Mapping):
+                parts.append(str(chunk.get("text") or "")[:500])
+            else:
+                parts.append(str(chunk)[:500])
+        parts.append(str(document.get("filename") or ""))
+    return " ".join(parts)
+
+
+def infer_document_device_families(
+    document: Mapping[str, Any] | None,
+    *,
+    evidence: list[Mapping[str, Any]] | None = None,
+    extra_text: str = "",
+) -> set[str]:
+    """Infer device families from datasheet text (not from the question alone)."""
+    corpus = f"{_document_corpus(document, evidence)} {extra_text}"
+    return _family_hits(set(_tokenize(corpus)))
+
+
+def _extract_vceo_volts(corpus: str) -> str | None:
+    match = _VCEO_RE.search(str(corpus or ""))
+    if not match:
+        return None
+    value = match.group(1) or match.group(2)
+    return str(value).strip() if value else None
+
+
+def _corpus_has_supply_rating(corpus: str) -> bool:
+    lowered = str(corpus or "").casefold()
+    supply_markers = (
+        "supply voltage",
+        "vcc",
+        "vdd",
+        "operating supply",
+        "input voltage range",
+        "vin ",
+        "vin=",
+    )
+    if not any(marker in lowered for marker in supply_markers):
+        return False
+    # Transistor VCEO language alone is not a supply rating.
+    if "vceo" in lowered and "supply" not in lowered and "vcc" not in lowered and "vdd" not in lowered:
+        return False
+    return True
+
+
+def correct_inapplicable_supply_voltage_answer(
+    *,
+    question: str,
+    answer: str,
+    document: Mapping[str, Any] | None = None,
+    evidence: list[Mapping[str, Any]] | None = None,
+    chunks: list[Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Rewrite misleading supply-voltage answers for transistors (e.g. VCEO ≠ VCC)."""
+    if not _SUPPLY_QUESTION_RE.search(str(question or "")):
+        return None
+    chunk_corpus = " ".join(
+        str(item.get("text") or "") for item in (chunks or []) if isinstance(item, Mapping)
+    )
+    doc_corpus = f"{_document_corpus(document, evidence)} {chunk_corpus}"
+    families = infer_document_device_families(
+        document, evidence=evidence, extra_text=doc_corpus
+    )
+    if "transistor" not in families:
+        return None
+    if _corpus_has_supply_rating(doc_corpus):
+        return None
+    vceo = _extract_vceo_volts(f"{doc_corpus} {answer}")
+    if vceo:
+        corrected = (
+            "This datasheet does not specify a supply-voltage rating. "
+            f"For this transistor, the relevant rating is collector-emitter voltage (VCEO): {vceo} V."
+        )
+    else:
+        corrected = (
+            "This datasheet does not specify a supply-voltage rating. "
+            "For this transistor, use the stated collector-emitter (VCEO) and related "
+            "absolute maximum ratings rather than treating them as a supply voltage."
+        )
+    return {
+        "answer": corrected,
+        "answer_kind": "wrong_premise",
+    }
+
+
 def suggest_datasheet_follow_ups(
     *,
     question: str,
@@ -248,15 +386,11 @@ def suggest_datasheet_follow_ups(
     kind = str(answer_kind or "").strip().lower()
     asked = str(question or "").strip()
     asked_cf = asked.casefold()
-    corpus_parts = [asked, str(answer or "")]
-    for item in evidence or []:
-        if isinstance(item, Mapping):
-            corpus_parts.append(str(item.get("excerpt") or ""))
-    if isinstance(document, Mapping):
-        for chunk in list(document.get("chunks") or [])[:8]:
-            if isinstance(chunk, Mapping):
-                corpus_parts.append(str(chunk.get("text") or "")[:400])
-    corpus = " ".join(corpus_parts).casefold()
+    doc_corpus = _document_corpus(document, evidence).casefold()
+    corpus = f"{asked} {answer} {doc_corpus}".casefold()
+    families = infer_document_device_families(
+        document, evidence=evidence, extra_text=f"{answer}"
+    )
 
     suggestions: list[str] = []
 
@@ -268,7 +402,6 @@ def suggest_datasheet_follow_ups(
             return
         if any(text.casefold() == existing.casefold() for existing in suggestions):
             return
-        # Hard ban BOM / portfolio phrasing.
         banned = (
             "ranked first",
             "engineering owner",
@@ -280,15 +413,40 @@ def suggest_datasheet_follow_ups(
         lowered = text.casefold()
         if any(token in lowered for token in banned):
             return
+        # Do not suggest supply-voltage prompts for transistors without supply ratings.
+        if "transistor" in families and _SUPPLY_QUESTION_RE.search(text):
+            if not _corpus_has_supply_rating(doc_corpus):
+                return
         suggestions.append(text)
 
-    if kind == "insufficient_evidence":
+    family_priority = (
+        "transistor",
+        "diode",
+        "regulator",
+        "op-amp",
+        "ic",
+    )
+    primary_family = next((name for name in family_priority if name in families), "")
+    # Discrete BJT bank is for collector/VCEO devices. Powered ICs / MOSFET drivers
+    # that actually state supply ratings should not get VCEO-first chips.
+    if primary_family == "transistor":
+        has_bjt_ratings = any(
+            token in doc_corpus for token in ("vceo", "vcbo", "collector-emitter", "collector emitter")
+        )
+        if _corpus_has_supply_rating(doc_corpus) and not has_bjt_ratings:
+            primary_family = "ic"
+        elif not has_bjt_ratings and "mosfet" in doc_corpus and "transistor" in doc_corpus:
+            primary_family = "ic"
+
+    if primary_family and primary_family in _FOLLOW_UP_BY_FAMILY:
+        for item in _FOLLOW_UP_BY_FAMILY[primary_family]:
+            _add(item)
+    elif kind == "insufficient_evidence":
         for item in (
             "What absolute maximum ratings are listed?",
             "What package options are specified?",
             "What is the recommended operating temperature range?",
             "What device type or description appears on the first pages?",
-            "What supply voltage limits are stated?",
         ):
             _add(item)
     elif kind == "wrong_premise":
@@ -296,7 +454,7 @@ def suggest_datasheet_follow_ups(
             "What device type does this datasheet describe?",
             "What are the absolute maximum ratings?",
             "What package options are listed?",
-            "What is the recommended operating temperature range?",
+            "What are the key electrical characteristics?",
         ):
             _add(item)
     else:
@@ -304,10 +462,14 @@ def suggest_datasheet_follow_ups(
             topic
             for topic, _prompts in _FOLLOW_UP_BANK
             if topic in corpus
-            or any(token in corpus for token in (topic, topic[:4]))
         ]
+        # Avoid generic supply-voltage prompts for discrete transistors.
+        if "transistor" in families and not _corpus_has_supply_rating(doc_corpus):
+            topic_hits = [topic for topic in topic_hits if topic != "voltage"]
+            for item in _FOLLOW_UP_BY_FAMILY["transistor"]:
+                _add(item)
         if not topic_hits:
-            topic_hits = ["voltage", "temperature", "package", "identity"]
+            topic_hits = ["temperature", "package", "identity"]
         for topic in topic_hits:
             for prompt in dict(_FOLLOW_UP_BANK).get(topic, ()):
                 _add(prompt)
@@ -315,18 +477,16 @@ def suggest_datasheet_follow_ups(
                     break
             if len(suggestions) >= MAX_FOLLOW_UPS:
                 break
-        # Ensure package/identity coverage when evidence mentions pins/packages.
         if "pin" in corpus or "package" in corpus:
             _add("What is the pinout or pin 1 function?")
             _add("What package options are listed?")
 
-    # Pad to minimum with safe datasheet prompts.
     for fallback in (
-        "What is the absolute maximum supply voltage?",
+        "What are the absolute maximum ratings?",
         "What is the recommended operating temperature range?",
         "What package options are listed?",
         "What device type does page 1 describe?",
-        "What continuous current rating is specified?",
+        "What are the key electrical characteristics?",
     ):
         if len(suggestions) >= MIN_FOLLOW_UPS:
             break
@@ -341,14 +501,26 @@ def queue_datasheet_follow_up(
     *,
     now: float | None = None,
 ) -> bool:
-    """Queue a chip click through the same claim path as the composer submit."""
+    """Queue a chip click without mutating the composer widget session key.
+
+    Streamlit forbids writing ``datasheet_qa_question`` after the text-area
+    widget is instantiated. Chip clicks only store
+    ``datasheet_qa_pending_question``; the page consumes it at the start of the
+    next render, before the composer widget is constructed.
+    """
     question = str(suggestion or "").strip()
     if not claim_datasheet_question_submit(session_state, question, now=now):
         return False
     session_state[DATASHEET_QA_PENDING_QUESTION_KEY] = question
-    session_state[DATASHEET_QA_QUESTION_WIDGET_KEY] = question
-    session_state[DATASHEET_QA_STATUS_KEY] = STATUS_PROCESSING
     return True
+
+
+def consume_datasheet_pending_question(
+    session_state: MutableMapping[str, Any],
+) -> str:
+    """Pop a queued follow-up/pending question before composer widget creation."""
+    question = str(session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, "") or "").strip()
+    return question
 
 
 def _tokenize(text: str) -> list[str]:
@@ -673,6 +845,15 @@ def _local_grounded_answer(question: str, chunks: list[Mapping[str, Any]]) -> tu
     if mismatch:
         return str(mismatch["answer"]), evidence
 
+    supply_fix = correct_inapplicable_supply_voltage_answer(
+        question=question,
+        answer="",
+        evidence=evidence,
+        chunks=chunks,
+    )
+    if supply_fix:
+        return str(supply_fix["answer"]), evidence
+
     lowered_q = question.casefold()
     if any(token in lowered_q for token in ("drop-in", "drop in", "equivalent", "suitable substitute")):
         answer = (
@@ -692,6 +873,15 @@ def _local_grounded_answer(question: str, chunks: list[Mapping[str, Any]]) -> tu
     if not snippets:
         return NOT_FOUND_ANSWER, evidence if evidence else []
     answer = "Based on the uploaded datasheet: " + " ".join(snippets)[:900]
+    # Final guard: never present VCEO as a generic supply voltage.
+    supply_fix = correct_inapplicable_supply_voltage_answer(
+        question=question,
+        answer=answer,
+        evidence=evidence,
+        chunks=chunks,
+    )
+    if supply_fix:
+        return str(supply_fix["answer"]), evidence
     citations = [item.get("citation") for item in evidence if item.get("citation")]
     if citations:
         answer = f"{answer.rstrip()} ({', '.join(str(c) for c in citations[:4])})"
@@ -750,6 +940,10 @@ def build_datasheet_qa_context(chunks: list[Mapping[str, Any]]) -> dict[str, Any
             "(3) wrong premise — if the excerpts identify a different device type than "
             "the question assumes, explain the mismatch with citations instead of only "
             "saying not found. "
+            "Never present collector-emitter voltage (VCEO), VCES, or similar transistor "
+            "ratings as a generic supply voltage, VCC, or VDD. If the user asks for supply "
+            "voltage on a transistor datasheet that only lists VCEO, say the datasheet does "
+            "not specify a supply-voltage rating and report VCEO separately. "
             "Cite pages like 'Page 7'. Do not claim drop-in compatibility or "
             "electrical equivalence unless the cited text explicitly says so. "
             "Do not invent specifications or application suitability."
@@ -855,6 +1049,15 @@ def answer_datasheet_question(
                     "assisted_fallback": False,
                 }
             local_answer, evidence = _local_grounded_answer(cleaned, chunks)
+            supply_fix = correct_inapplicable_supply_voltage_answer(
+                question=cleaned,
+                answer=local_answer,
+                document=document,
+                evidence=evidence,
+                chunks=chunks,
+            )
+            if supply_fix:
+                local_answer = str(supply_fix["answer"])
             return {
                 "ok": True,
                 "error": "",
@@ -866,8 +1069,11 @@ def answer_datasheet_question(
                 "assisted_fallback": True,
                 "answer_kind": (
                     "wrong_premise"
-                    if local_answer != NOT_FOUND_ANSWER
-                    and _detect_premise_mismatch(cleaned, chunks)
+                    if supply_fix
+                    or (
+                        local_answer != NOT_FOUND_ANSWER
+                        and _detect_premise_mismatch(cleaned, chunks)
+                    )
                     else (
                         "insufficient_evidence"
                         if local_answer == NOT_FOUND_ANSWER
@@ -891,6 +1097,16 @@ def answer_datasheet_question(
                 if not evidence:
                     evidence = _evidence_from_chunks(cleaned, chunks)
 
+    supply_fix = correct_inapplicable_supply_voltage_answer(
+        question=cleaned,
+        answer=answer,
+        document=document,
+        evidence=evidence,
+        chunks=chunks,
+    )
+    if supply_fix:
+        answer = str(supply_fix["answer"])
+
     if answer == NOT_FOUND_ANSWER and not _detect_premise_mismatch(cleaned, chunks):
         citations: list[str] = []
         # Keep supporting passages empty for pure insufficient-evidence answers.
@@ -903,7 +1119,7 @@ def answer_datasheet_question(
     answer_kind = "supported"
     if answer == NOT_FOUND_ANSWER:
         answer_kind = "insufficient_evidence"
-    elif _detect_premise_mismatch(cleaned, chunks):
+    elif supply_fix or _detect_premise_mismatch(cleaned, chunks):
         answer_kind = "wrong_premise"
 
     return {
