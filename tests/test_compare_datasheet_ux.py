@@ -206,7 +206,11 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
         self.assertIn("Document ready", DATASHEET_PAGE)
         self.assertIn("Page references:", DATASHEET_PAGE)
         self.assertIn("Supporting passages", DATASHEET_PAGE)
-        self.assertIn("Cadivor’s answer", DATASHEET_PAGE)
+        self.assertIn(">You<", DATASHEET_PAGE)
+        self.assertIn(">Cadivor<", DATASHEET_PAGE)
+        self.assertIn("Suggested follow-ups", DATASHEET_PAGE)
+        self.assertIn("dq-primary-evidence", DATASHEET_PAGE)
+        self.assertIn("Continuing conversation for this datasheet", DATASHEET_PAGE)
         self.assertIn("Retrieving relevant pages", DATASHEET_PAGE)
         self.assertIn("Ask Cadivor is analyzing the datasheet", DATASHEET_PAGE)
         self.assertIn("NOT_FOUND_ANSWER", DATASHEET_PAGE)
@@ -220,10 +224,14 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
         self.assertIn("DATASHEET_QA_CLEAR_QUESTION_KEY", DATASHEET_PAGE)
         self.assertIn("DATASHEET_QA_QUESTION_WIDGET_KEY", DATASHEET_PAGE)
         self.assertIn("resolve_datasheet_question", DATASHEET_PAGE)
-        self.assertIn("disabled=status == STATUS_PROCESSING", DATASHEET_PAGE)
+        self.assertIn("queue_datasheet_follow_up", DATASHEET_PAGE)
+        self.assertIn("disabled=processing", DATASHEET_PAGE)
+        # Composer remains in-flow under the thread (not fixed overlay).
+        self.assertNotIn("position:fixed", DATASHEET_PAGE)
+        self.assertNotIn("position: fixed", DATASHEET_PAGE)
 
     def test_chronological_thread_not_reversed(self):
-        self.assertIn("for turn in thread:", DATASHEET_PAGE)
+        self.assertIn("for turn_index, turn in enumerate(thread):", DATASHEET_PAGE)
         self.assertNotIn("reversed(thread)", DATASHEET_PAGE)
 
 

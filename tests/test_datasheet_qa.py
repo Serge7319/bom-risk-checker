@@ -14,6 +14,7 @@ from src.datasheet_qa import (
     answer_datasheet_question,
     claim_datasheet_question_submit,
     clear_datasheet_document,
+    compact_datasheet_history,
     extract_uploaded_datasheet,
     retrieve_relevant_chunks,
     store_document_in_session,
@@ -293,6 +294,218 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn("Remove document", page)
         self.assertIn("MAX_DATASHEET_BYTES", page)
         self.assertIn("MAX_DATASHEET_PAGES", page)
+        self.assertIn("suggest_datasheet_follow_ups", (root / "src" / "datasheet_qa.py").read_text())
+        self.assertIn("queue_datasheet_follow_up", page)
+        self.assertIn("dq-primary-evidence", page)
+
+
+class ConversationalDatasheetQaV1Tests(unittest.TestCase):
+    """Acceptance coverage T1–T8 for Conversational Datasheet Q&A v1."""
+
+    def _doc(self, pages: list[str], filename: str = "part.pdf") -> dict:
+        document = extract_uploaded_datasheet(_text_pdf_bytes(pages), filename=filename)
+        self.assertTrue(document["available"])
+        return document
+
+    def test_t1_electrical_characteristic_with_primary_evidence_and_suggestions(self):
+        from src.datasheet_qa import primary_evidence_line, suggest_datasheet_follow_ups
+
+        document = self._doc(
+            ["Absolute maximum supply voltage VCC is 5.5 V for this regulator."]
+        )
+        result = answer_datasheet_question(
+            document, "What is the absolute maximum supply voltage?"
+        )
+        self.assertTrue(result["ok"])
+        self.assertNotEqual(result["answer"], NOT_FOUND_ANSWER)
+        self.assertTrue(result.get("citations"))
+        self.assertTrue(result.get("evidence"))
+        primary = primary_evidence_line(result["evidence"])
+        self.assertIsNotNone(primary)
+        self.assertIn("Page", primary["citation"])
+        self.assertTrue(primary["excerpt"])
+        session = {}
+        store_document_in_session(session, document)
+        append_thread_turn(
+            session,
+            question="What is the absolute maximum supply voltage?",
+            result=result,
+            document=document,
+        )
+        turn = session[DATASHEET_QA_THREAD_KEY][0]
+        self.assertTrue(turn.get("primary_evidence"))
+        suggestions = turn.get("suggestions") or suggest_datasheet_follow_ups(
+            question="What is the absolute maximum supply voltage?",
+            answer=result["answer"],
+            answer_kind=result.get("answer_kind") or "supported",
+            evidence=result.get("evidence"),
+            document=document,
+        )
+        self.assertGreaterEqual(len(suggestions), 3)
+        self.assertLessEqual(len(suggestions), 5)
+        joined = " ".join(suggestions).casefold()
+        self.assertNotIn("ranked first", joined)
+        self.assertNotIn("engineering owner", joined)
+        self.assertNotIn("portfolio", joined)
+
+    def test_t2_package_pinout_question(self):
+        document = self._doc(
+            ["This device is offered in an SOIC-8 package. Pin 1 is ENABLE."]
+        )
+        result = answer_datasheet_question(document, "What package is this in?")
+        self.assertTrue(result["ok"])
+        self.assertIn("SOIC", result["answer"].upper() + str(result.get("evidence")))
+
+    def test_t3_operating_limit_question(self):
+        document = self._doc(
+            [
+                "Absolute maximum VCC is 6.0 V.",
+                "Recommended operating temperature range is -40 C to 85 C.",
+            ]
+        )
+        result = answer_datasheet_question(
+            document, "What is the recommended operating temperature range?"
+        )
+        self.assertTrue(result["ok"])
+        blob = (result["answer"] + " " + str(result.get("evidence"))).casefold()
+        self.assertTrue("-40" in blob or "85" in blob or "temperature" in blob)
+
+    def test_t4_ambiguous_or_not_found_stays_honest(self):
+        document = self._doc(["This page describes package outline dimensions only."])
+        result = answer_datasheet_question(
+            document, "Is this part ready for production release?"
+        )
+        self.assertTrue(result["ok"])
+        # Must not invent a production-readiness rating.
+        lowered = str(result["answer"]).casefold()
+        self.assertNotIn("approved for production", lowered)
+        self.assertNotIn("fully equivalent", lowered)
+
+    def test_t5_missing_evidence_and_unavailable_datasheet(self):
+        missing = answer_datasheet_question(
+            {"available": False, "reason": "Upload a PDF first.", "chunks": []},
+            "What is VCC?",
+        )
+        self.assertFalse(missing["ok"])
+        document = self._doc(["Package outline only. No electrical ratings table."])
+        result = answer_datasheet_question(
+            document, "What is the cosmic radiation hardness rating?"
+        )
+        self.assertTrue(result["ok"])
+        if result["answer"] == NOT_FOUND_ANSWER:
+            self.assertEqual(result.get("answer_kind"), "insufficient_evidence")
+            self.assertEqual(result.get("evidence") or [], [])
+
+    def test_t6_multiple_follow_ups_reuse_document_without_restore(self):
+        from src.datasheet_qa import (
+            DATASHEET_QA_STORE_COUNT_KEY,
+            queue_datasheet_follow_up,
+            suggest_datasheet_follow_ups,
+        )
+
+        session = {}
+        document = self._doc(
+            [
+                "Absolute maximum VCC is 5.5 V.",
+                "Operating temperature range is -40 C to 85 C.",
+                "Package is SOIC-8.",
+            ]
+        )
+        store_document_in_session(session, document)
+        stores = int(session.get(DATASHEET_QA_STORE_COUNT_KEY) or 0)
+        fingerprint = document["content_fingerprint"]
+
+        first = answer_datasheet_question(document, "What is the absolute maximum VCC?")
+        append_thread_turn(
+            session, question="What is the absolute maximum VCC?", result=first, document=document
+        )
+        suggestions = session[DATASHEET_QA_THREAD_KEY][0]["suggestions"]
+        self.assertGreaterEqual(len(suggestions), 3)
+
+        self.assertTrue(queue_datasheet_follow_up(session, suggestions[0], now=50.0))
+        second_q = session["datasheet_qa_pending_question"]
+        second = answer_datasheet_question(
+            document,
+            second_q,
+            history=compact_datasheet_history(session[DATASHEET_QA_THREAD_KEY]),
+        )
+        append_thread_turn(session, question=second_q, result=second, document=document)
+        session["datasheet_qa_status"] = "ready"
+
+        third_suggestions = suggest_datasheet_follow_ups(
+            question=second_q,
+            answer=second["answer"],
+            answer_kind=second.get("answer_kind") or "supported",
+            evidence=second.get("evidence"),
+            document=document,
+        )
+        self.assertTrue(queue_datasheet_follow_up(session, third_suggestions[0], now=60.0))
+        third_q = session["datasheet_qa_pending_question"]
+        third = answer_datasheet_question(document, third_q)
+        append_thread_turn(session, question=third_q, result=third, document=document)
+
+        self.assertEqual(len(session[DATASHEET_QA_THREAD_KEY]), 3)
+        self.assertEqual(session[DATASHEET_QA_DOC_KEY]["content_fingerprint"], fingerprint)
+        self.assertEqual(int(session.get(DATASHEET_QA_STORE_COUNT_KEY) or 0), stores)
+
+    def test_t7_switching_documents_isolates_threads(self):
+        session = {}
+        doc_a = self._doc(
+            ["Part A unique marker ALPHA-ONLY-RATING 12.3 V absolute maximum."],
+            filename="alpha.pdf",
+        )
+        store_document_in_session(session, doc_a)
+        result_a = answer_datasheet_question(doc_a, "What is the absolute maximum voltage?")
+        append_thread_turn(
+            session,
+            question="What is the absolute maximum voltage?",
+            result=result_a,
+            document=doc_a,
+        )
+        fp_a = doc_a["content_fingerprint"]
+        self.assertEqual(session["datasheet_qa_active_fingerprint"], fp_a)
+
+        doc_b = self._doc(
+            ["Part B unique marker BETA-ONLY-PACKAGE QFN-16 with no ALPHA text."],
+            filename="beta.pdf",
+        )
+        store_document_in_session(session, doc_b)
+        self.assertEqual(session[DATASHEET_QA_THREAD_KEY], [])
+        self.assertEqual(session["datasheet_qa_active_fingerprint"], doc_b["content_fingerprint"])
+        self.assertNotEqual(doc_b["content_fingerprint"], fp_a)
+
+        result_b = answer_datasheet_question(doc_b, "What package is listed?")
+        append_thread_turn(
+            session, question="What package is listed?", result=result_b, document=doc_b
+        )
+        blob = str(session[DATASHEET_QA_THREAD_KEY]).casefold()
+        self.assertNotIn("alpha-only", blob)
+        self.assertNotIn("12.3", blob)
+        for turn in session[DATASHEET_QA_THREAD_KEY]:
+            for item in turn.get("evidence") or []:
+                self.assertNotIn("ALPHA-ONLY", str(item.get("excerpt") or ""))
+            self.assertEqual(turn.get("document_fingerprint"), doc_b["content_fingerprint"])
+
+    def test_t8_session_preserves_thread_across_simulated_navigation(self):
+        session = {}
+        document = self._doc(
+            ["Absolute maximum VCC is 5.5 V.", "Package is SOIC-8."]
+        )
+        store_document_in_session(session, document)
+        result = answer_datasheet_question(document, "What is VCC max?")
+        append_thread_turn(
+            session, question="What is VCC max?", result=result, document=document
+        )
+        # Simulate leaving the page and returning: same session_state mapping.
+        restored_doc = session[DATASHEET_QA_DOC_KEY]
+        restored_thread = session[DATASHEET_QA_THREAD_KEY]
+        self.assertEqual(restored_doc["filename"], "part.pdf")
+        self.assertEqual(len(restored_thread), 1)
+        self.assertTrue(restored_thread[0].get("suggestions"))
+        self.assertEqual(
+            session["datasheet_qa_active_fingerprint"],
+            restored_doc["content_fingerprint"],
+        )
 
 
 if __name__ == "__main__":
