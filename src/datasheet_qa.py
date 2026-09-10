@@ -24,6 +24,8 @@ DATASHEET_QA_STATUS_KEY = "datasheet_qa_status"
 DATASHEET_QA_QUESTION_WIDGET_KEY = "datasheet_qa_question"
 DATASHEET_QA_CLEAR_QUESTION_KEY = "datasheet_qa_clear_question"
 DATASHEET_QA_PENDING_QUESTION_KEY = "datasheet_qa_pending_question"
+DATASHEET_QA_ACTIVE_FINGERPRINT_KEY = "datasheet_qa_active_fingerprint"
+DATASHEET_QA_STORE_COUNT_KEY = "datasheet_qa_store_count"
 
 STATUS_IDLE = "idle"
 STATUS_PROCESSING = "processing"
@@ -39,8 +41,61 @@ MAX_CHUNK_CHARS = 1200
 MAX_RETRIEVED_CHUNKS = 6
 MAX_IDENTITY_ANCHOR_CHUNKS = 2
 MAX_QUESTION_CHARS = 800
+MAX_FOLLOW_UPS = 5
+MIN_FOLLOW_UPS = 3
+PRIMARY_EXCERPT_CHARS = 220
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9.+/-]{1,24}", re.IGNORECASE)
+
+# Datasheet-only follow-up banks (never BOM-risk / portfolio prompts).
+_FOLLOW_UP_BANK: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "voltage",
+        (
+            "What is the absolute maximum supply voltage?",
+            "What is the recommended operating supply voltage?",
+            "Are there separate analog and digital supply limits?",
+        ),
+    ),
+    (
+        "current",
+        (
+            "What is the absolute maximum output or load current?",
+            "What continuous current rating is specified?",
+            "Is there a short-circuit or peak current limit?",
+        ),
+    ),
+    (
+        "temperature",
+        (
+            "What is the recommended operating temperature range?",
+            "What is the absolute maximum junction or storage temperature?",
+            "Is thermal derating specified?",
+        ),
+    ),
+    (
+        "package",
+        (
+            "What package options are listed?",
+            "What is the pinout or pin 1 function?",
+            "What are the package outline dimensions?",
+        ),
+    ),
+    (
+        "timing",
+        (
+            "What switching or response times are specified?",
+            "Is there a startup or enable timing requirement?",
+        ),
+    ),
+    (
+        "identity",
+        (
+            "What device type or family does page 1 describe?",
+            "What is the manufacturer part marking or ordering information?",
+        ),
+    ),
+)
 
 # Customer-facing device families used only for wrong-premise grounding.
 _DEVICE_FAMILIES: dict[str, frozenset[str]] = {
@@ -149,9 +204,151 @@ def clear_datasheet_document(session_state: MutableMapping[str, Any]) -> None:
     """Remove uploaded document, chunks, and Q&A thread from the session."""
     session_state.pop(DATASHEET_QA_DOC_KEY, None)
     session_state.pop(DATASHEET_QA_THREAD_KEY, None)
+    session_state.pop(DATASHEET_QA_ACTIVE_FINGERPRINT_KEY, None)
+    session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
     session_state[DATASHEET_QA_STATUS_KEY] = STATUS_IDLE
     session_state.pop(DATASHEET_QA_LAST_SUBMIT_KEY, None)
     session_state.pop(DATASHEET_QA_LAST_SUBMIT_AT_KEY, None)
+
+
+def document_fingerprint(document: Mapping[str, Any] | None) -> str:
+    """Stable identity for the active datasheet conversation."""
+    if not isinstance(document, Mapping):
+        return ""
+    return str(document.get("content_fingerprint") or "").strip()
+
+
+def primary_evidence_line(evidence: list[Mapping[str, Any]] | None) -> dict[str, str] | None:
+    """One inline page + excerpt line for supported answers."""
+    for item in evidence or []:
+        if not isinstance(item, Mapping):
+            continue
+        citation = str(item.get("citation") or "").strip()
+        page = item.get("page")
+        if not citation and page:
+            citation = f"Page {int(page)}"
+        excerpt = str(item.get("excerpt") or "").strip()
+        if citation and excerpt:
+            return {
+                "citation": citation,
+                "excerpt": excerpt[:PRIMARY_EXCERPT_CHARS],
+            }
+    return None
+
+
+def suggest_datasheet_follow_ups(
+    *,
+    question: str,
+    answer: str,
+    answer_kind: str,
+    evidence: list[Mapping[str, Any]] | None = None,
+    document: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """Deterministic datasheet follow-ups — no LLM call, never BOM-risk prompts."""
+    kind = str(answer_kind or "").strip().lower()
+    asked = str(question or "").strip()
+    asked_cf = asked.casefold()
+    corpus_parts = [asked, str(answer or "")]
+    for item in evidence or []:
+        if isinstance(item, Mapping):
+            corpus_parts.append(str(item.get("excerpt") or ""))
+    if isinstance(document, Mapping):
+        for chunk in list(document.get("chunks") or [])[:8]:
+            if isinstance(chunk, Mapping):
+                corpus_parts.append(str(chunk.get("text") or "")[:400])
+    corpus = " ".join(corpus_parts).casefold()
+
+    suggestions: list[str] = []
+
+    def _add(candidate: str) -> None:
+        text = str(candidate or "").strip()
+        if not text or len(text) > MAX_QUESTION_CHARS:
+            return
+        if text.casefold() == asked_cf:
+            return
+        if any(text.casefold() == existing.casefold() for existing in suggestions):
+            return
+        # Hard ban BOM / portfolio phrasing.
+        banned = (
+            "ranked first",
+            "engineering owner",
+            "bom",
+            "portfolio",
+            "risk score",
+            "recommendation change",
+        )
+        lowered = text.casefold()
+        if any(token in lowered for token in banned):
+            return
+        suggestions.append(text)
+
+    if kind == "insufficient_evidence":
+        for item in (
+            "What absolute maximum ratings are listed?",
+            "What package options are specified?",
+            "What is the recommended operating temperature range?",
+            "What device type or description appears on the first pages?",
+            "What supply voltage limits are stated?",
+        ):
+            _add(item)
+    elif kind == "wrong_premise":
+        for item in (
+            "What device type does this datasheet describe?",
+            "What are the absolute maximum ratings?",
+            "What package options are listed?",
+            "What is the recommended operating temperature range?",
+        ):
+            _add(item)
+    else:
+        topic_hits = [
+            topic
+            for topic, _prompts in _FOLLOW_UP_BANK
+            if topic in corpus
+            or any(token in corpus for token in (topic, topic[:4]))
+        ]
+        if not topic_hits:
+            topic_hits = ["voltage", "temperature", "package", "identity"]
+        for topic in topic_hits:
+            for prompt in dict(_FOLLOW_UP_BANK).get(topic, ()):
+                _add(prompt)
+                if len(suggestions) >= MAX_FOLLOW_UPS:
+                    break
+            if len(suggestions) >= MAX_FOLLOW_UPS:
+                break
+        # Ensure package/identity coverage when evidence mentions pins/packages.
+        if "pin" in corpus or "package" in corpus:
+            _add("What is the pinout or pin 1 function?")
+            _add("What package options are listed?")
+
+    # Pad to minimum with safe datasheet prompts.
+    for fallback in (
+        "What is the absolute maximum supply voltage?",
+        "What is the recommended operating temperature range?",
+        "What package options are listed?",
+        "What device type does page 1 describe?",
+        "What continuous current rating is specified?",
+    ):
+        if len(suggestions) >= MIN_FOLLOW_UPS:
+            break
+        _add(fallback)
+
+    return suggestions[:MAX_FOLLOW_UPS]
+
+
+def queue_datasheet_follow_up(
+    session_state: MutableMapping[str, Any],
+    suggestion: str,
+    *,
+    now: float | None = None,
+) -> bool:
+    """Queue a chip click through the same claim path as the composer submit."""
+    question = str(suggestion or "").strip()
+    if not claim_datasheet_question_submit(session_state, question, now=now):
+        return False
+    session_state[DATASHEET_QA_PENDING_QUESTION_KEY] = question
+    session_state[DATASHEET_QA_QUESTION_WIDGET_KEY] = question
+    session_state[DATASHEET_QA_STATUS_KEY] = STATUS_PROCESSING
+    return True
 
 
 def _tokenize(text: str) -> list[str]:
@@ -744,9 +941,22 @@ def store_document_in_session(
     session_state: MutableMapping[str, Any],
     document: Mapping[str, Any],
 ) -> None:
-    """Persist extracted text/chunks only — never raw PDF bytes."""
+    """Persist extracted text/chunks only — never raw PDF bytes.
+
+    Replaces any prior document identity and clears the conversation so two
+    datasheets cannot mix evidence in one thread.
+    """
     session_state[DATASHEET_QA_DOC_KEY] = dict(document)
     session_state[DATASHEET_QA_THREAD_KEY] = []
+    session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
+    fingerprint = document_fingerprint(document)
+    if fingerprint:
+        session_state[DATASHEET_QA_ACTIVE_FINGERPRINT_KEY] = fingerprint
+    else:
+        session_state.pop(DATASHEET_QA_ACTIVE_FINGERPRINT_KEY, None)
+    session_state[DATASHEET_QA_STORE_COUNT_KEY] = (
+        int(session_state.get(DATASHEET_QA_STORE_COUNT_KEY) or 0) + 1
+    )
     session_state[DATASHEET_QA_STATUS_KEY] = (
         STATUS_READY if document.get("available") else STATUS_FAILED
     )
@@ -757,20 +967,50 @@ def append_thread_turn(
     *,
     question: str,
     result: Mapping[str, Any],
+    document: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     thread = list(session_state.get(DATASHEET_QA_THREAD_KEY) or [])
+    evidence = list(result.get("evidence") or [])[:MAX_RETRIEVED_CHUNKS]
+    answer = str(result.get("answer") or "")
+    answer_kind = str(result.get("answer_kind") or "")
+    primary = None
+    if answer_kind == "supported" or (
+        answer
+        and answer != NOT_FOUND_ANSWER
+        and answer_kind != "insufficient_evidence"
+    ):
+        primary = primary_evidence_line(evidence)
+    active_doc = document if isinstance(document, Mapping) else session_state.get(
+        DATASHEET_QA_DOC_KEY
+    )
+    suggestions = list(result.get("suggestions") or [])
+    if not suggestions:
+        suggestions = suggest_datasheet_follow_ups(
+            question=question,
+            answer=answer,
+            answer_kind=answer_kind or (
+                "insufficient_evidence" if answer == NOT_FOUND_ANSWER else "supported"
+            ),
+            evidence=evidence,
+            document=active_doc if isinstance(active_doc, Mapping) else None,
+        )
     thread.append(
         {
             "question": str(question or "")[:MAX_QUESTION_CHARS],
-            "answer": str(result.get("answer") or ""),
+            "answer": answer,
             "citations": list(result.get("citations") or []),
-            "evidence": list(result.get("evidence") or [])[:MAX_RETRIEVED_CHUNKS],
+            "evidence": evidence,
+            "primary_evidence": primary,
+            "suggestions": suggestions[:MAX_FOLLOW_UPS],
             "ok": bool(result.get("ok")),
             "error": str(result.get("error") or ""),
             "notice": str(result.get("notice") or ""),
             "assisted_fallback": bool(result.get("assisted_fallback")),
-            "answer_kind": str(result.get("answer_kind") or ""),
+            "answer_kind": answer_kind,
             "provider": str(result.get("provider") or ""),
+            "document_fingerprint": document_fingerprint(
+                active_doc if isinstance(active_doc, Mapping) else None
+            ),
         }
     )
     session_state[DATASHEET_QA_THREAD_KEY] = thread[-20:]
