@@ -166,27 +166,28 @@ def _assert_counters_first_admit(counters: Path, label: str) -> dict:
     data = _read_counters(counters)
     paints = int(data.get("render_unified_shell") or 0)
     resyncs = int(data.get("shell_admin_resync_rerun") or 0)
-    checks = int(data.get("shell_admin_resync_check") or 0)
-    # Per Streamlit run: exactly one shell paint (unit-tested). Across first admit,
-    # Streamlit may run twice when entitlement resyncs once — never more than one
-    # resync rerun, and never unbounded shell remounts.
+    role_lookups = int(data.get("shell_admin_role_lookup") or 0)
+    admin_paints = int(data.get("shell_paint_is_admin_true") or 0)
+    # Pre-shell verified role: no entitlement-resync rerun; role lookup must run;
+    # first durable shell paint must already be admin for admin users.
     if paints < 1:
         raise AssertionError(f"{label}: expected >=1 render_unified_shell, got {paints}")
-    if resyncs > 1:
+    if resyncs != 0:
         raise AssertionError(
-            f"{label}: entitlement resync rerun exceeded once (got {resyncs})"
-        )
-    if checks < 1:
-        raise AssertionError(
-            f"{label}: admin entitlement resync path never ran (checks={checks})"
+            f"{label}: admin entitlement resync rerun must not run (got {resyncs})"
         )
     role = str(os.environ.get("CADIVOR_SMOKE_ROLE") or "user").lower()
-    if role == "admin" and resyncs < 1:
-        # Cold empty cache + users.role=admin must one-shot resync.
-        raise AssertionError(
-            f"{label}: expected one entitlement-resync rerun on admin first admit "
-            f"(resyncs={resyncs}, paints={paints}, checks={checks})"
-        )
+    if role == "admin":
+        if role_lookups < 1:
+            raise AssertionError(
+                f"{label}: expected public.users.role lookup before shell "
+                f"(lookups={role_lookups})"
+            )
+        if admin_paints < 1:
+            raise AssertionError(
+                f"{label}: first shell paint(s) never received is_admin=True "
+                f"(admin_paints={admin_paints}, paints={paints})"
+            )
     return data
 
 
