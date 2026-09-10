@@ -267,6 +267,12 @@ def render_retryable_profile_error(*, message: str) -> None:
         except Exception:
             st.session_state.pop("cadivor_verified_profile", None)
             st.session_state.pop("cadivor_workspace_admit_cache", None)
+        try:
+            from src.shell_admin_entitlement import clear_verified_users_role
+
+            clear_verified_users_role(st.session_state)
+        except Exception:
+            st.session_state.pop("cadivor_verified_users_role", None)
         st.rerun()
     stop_authenticated_page()
 

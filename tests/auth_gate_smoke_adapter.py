@@ -459,7 +459,8 @@ def install_production_path_smoke_patches() -> None:
     runtime_mod.load_user_data = smoke_load_user_data
     runtime_mod.supabase = smoke_sb
 
-    # Count shell paints + admin entitlement resyncs for first-admit proofs.
+    # Count shell paints for first-admit proofs. Role lookups self-instrument via
+    # CADIVOR_SMOKE_IO_COUNTERS inside shell_admin_entitlement (real boundary).
     try:
         import src.ui.unified_shell as shell_mod
 
@@ -467,30 +468,28 @@ def install_production_path_smoke_patches() -> None:
 
         def smoke_render_unified_shell(*args: Any, **kwargs: Any):
             _bump_smoke_io("render_unified_shell")
+            # Capture whether Admin Console entitlement reached the first paint.
+            if bool(kwargs.get("is_admin")):
+                _bump_smoke_io("shell_paint_is_admin_true")
+            else:
+                _bump_smoke_io("shell_paint_is_admin_false")
             return _orig_render_shell(*args, **kwargs)
 
         shell_mod.render_unified_shell = smoke_render_unified_shell
         runtime_mod.render_unified_shell = smoke_render_unified_shell
     except Exception:
         pass
+    # Ensure the post-profile admin resync path is gone (no entitlement rerun).
     try:
         import src.shell_admin_entitlement as entitlement_mod
 
-        _orig_resync = entitlement_mod.maybe_resync_shell_admin_after_profile
-
-        def smoke_maybe_resync_shell_admin_after_profile(*args: Any, **kwargs: Any):
-            invoked = _orig_resync(*args, **kwargs)
-            if invoked:
-                _bump_smoke_io("shell_admin_resync_rerun")
-            _bump_smoke_io("shell_admin_resync_check")
-            return invoked
-
-        entitlement_mod.maybe_resync_shell_admin_after_profile = (
-            smoke_maybe_resync_shell_admin_after_profile
-        )
-        runtime_mod.maybe_resync_shell_admin_after_profile = (
-            smoke_maybe_resync_shell_admin_after_profile
-        )
+        if hasattr(entitlement_mod, "maybe_resync_shell_admin_after_profile"):
+            raise RuntimeError(
+                "maybe_resync_shell_admin_after_profile must be removed; "
+                "admin nav is resolved before shell paint"
+            )
+    except RuntimeError:
+        raise
     except Exception:
         pass
 

@@ -148,7 +148,7 @@ from src.components.upgrade_prompt import render_upgrade_prompt
 from src.components.first_analysis_brief import render_first_analysis_brief
 from src.shell_admin_entitlement import (
     is_admin_from_users_role,
-    maybe_resync_shell_admin_after_profile,
+    resolve_shell_admin_before_paint,
 )
 from src.onboarding_service import (
     ensure_onboarding_progress,
@@ -1964,8 +1964,35 @@ def run_authenticated_app() -> None:
     # Opening when profile + admit caches make the path sub-300ms.
     if _paint_opening:
         mount_main_transition_loading(_shell_route, paint_markup=False)
-    # Cold admit may paint before load_user_data; cache may still lack is_admin.
-    _early_shell_is_admin = bool(_shell_cache.get("is_admin"))
+    # Verified public.users.role BEFORE first shell paint — never trust a stale
+    # cadivor_shell_cache is_admin=False for Admin Console entitlement.
+    _auth_user_id = getattr(_auth_user_early, "id", None)
+    if _auth_user_id is None and isinstance(_auth_user_early, dict):
+        _auth_user_id = _auth_user_early.get("id")
+
+    def _read_users_role_for_shell(user_id: str):
+        return execute_supabase_read(
+            supabase.table("users").select("role").eq("id", user_id).limit(1),
+            operation="shell_admin_role_lookup",
+        )
+
+    _shell_is_admin, _shell_admin_diag = resolve_shell_admin_before_paint(
+        st.session_state,
+        user_id=_auth_user_id,
+        read_role=_read_users_role_for_shell,
+        shell_cache_is_admin=bool(_shell_cache.get("is_admin")),
+    )
+    try:
+        if _shell_admin_diag.get("failed"):
+            from src.auth_diagnostics import log_auth_correlation
+
+            log_auth_correlation(
+                "shell_admin_role_lookup_failed",
+                cookie_manager=cookie_manager,
+                transition_reason="shell_admin_role_lookup",
+            )
+    except Exception:
+        pass
     render_unified_shell(
         current_page=_shell_route,
         profile=_shell_profile,
@@ -1975,7 +2002,7 @@ def run_authenticated_app() -> None:
         plan_name=str(_shell_cache.get("plan_name") or "Starter"),
         usage_summary=str(_shell_cache.get("usage_summary") or "Loading workspace…"),
         saved_summary=str(_shell_cache.get("saved_summary") or "Loading saved BOMs…"),
-        is_admin=_early_shell_is_admin,
+        is_admin=bool(_shell_is_admin),
         navigate=navigate_to,
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
@@ -2032,13 +2059,18 @@ def run_authenticated_app() -> None:
         st.session_state.pop("cadivor_auth_entry_shell_message", None)
 
     is_admin = is_admin_from_users_role(current_user)
-    # Early shell may have painted without Admin Console; resync cache once.
-    maybe_resync_shell_admin_after_profile(
-        st.session_state,
-        early_shell_is_admin=_early_shell_is_admin,
-        loaded_user=current_user if isinstance(current_user, dict) else {},
-        rerun=st.rerun,
-    )
+    # Keep verified role cache aligned with the loaded users row (no shell rerun).
+    try:
+        from src.shell_admin_entitlement import remember_verified_users_role
+
+        if isinstance(current_user, dict) and current_user.get("id") is not None:
+            remember_verified_users_role(
+                st.session_state,
+                user_id=current_user.get("id"),
+                role=current_user.get("role"),
+            )
+    except Exception:
+        pass
     # Admin Console v2.1 records only a timestamped authenticated heartbeat.
     # It deliberately stores no BOM content, page history, or client metadata.
     # A short throttle avoids adding a database write to every Streamlit rerun.

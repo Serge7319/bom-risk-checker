@@ -270,6 +270,12 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     except Exception:
         st.session_state.pop("cadivor_verified_profile", None)
         st.session_state.pop("cadivor_workspace_admit_cache", None)
+    try:
+        from src.shell_admin_entitlement import clear_verified_users_role
+
+        clear_verified_users_role(st.session_state)
+    except Exception:
+        st.session_state.pop("cadivor_verified_users_role", None)
     if manual_login_success:
         # Bound the branded handoff across the authenticated startup rerun.
         # Stage=initializing so streamlit_app can paint the workspace shell
@@ -444,6 +450,12 @@ def begin_logout(supabase: Any, cookie_manager: Any) -> None:
         clear_verified_profile(st.session_state)
     except Exception:
         pass
+    try:
+        from src.shell_admin_entitlement import clear_verified_users_role
+
+        clear_verified_users_role(st.session_state)
+    except Exception:
+        st.session_state.pop("cadivor_verified_users_role", None)
     try:
         from src.services.workspace_admit_cache import clear_workspace_admit_cache
 
