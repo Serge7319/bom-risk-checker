@@ -44,7 +44,12 @@ MAX_QUESTION_CHARS = 800
 MAX_FOLLOW_UPS = 5
 VISIBLE_FOLLOW_UPS = 3
 MIN_FOLLOW_UPS = 3
-PRIMARY_EXCERPT_CHARS = 220
+PRIMARY_EXCERPT_CHARS = 160
+_BOILERPLATE_RE = re.compile(
+    r"(copyright|all rights reserved|proprietary|confidential|"
+    r"www\.|http://|https://|printed in|revision history)",
+    re.IGNORECASE,
+)
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9.+/-]{1,24}", re.IGNORECASE)
 _VCEO_RE = re.compile(
@@ -198,14 +203,15 @@ def resolve_datasheet_question(*values: Any) -> str:
 def apply_datasheet_question_clear(
     session_state: MutableMapping[str, Any],
 ) -> str:
-    """Honor deferred clear without losing an in-flight submit candidate.
+    """Honor deferred clear without losing an in-flight typed submit candidate.
 
-    Snapshots the pending/widget question *before* wiping the composer so a
-    same-run form submit (empty form return + populated session) can still
-    resolve and claim. The composer widget is cleared when the flag is set.
+    Snapshots the composer widget value *before* wiping it so a same-run form
+    submit (empty form return + populated session) can still resolve and claim.
+
+    Intentionally ignores ``datasheet_qa_pending_question`` — that key is reserved
+    for chip follow-ups and must not be mixed into the typed-composer preclear.
     """
     preclear = resolve_datasheet_question(
-        session_state.get(DATASHEET_QA_PENDING_QUESTION_KEY),
         session_state.get(DATASHEET_QA_QUESTION_WIDGET_KEY),
     )
     if session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, False):
@@ -263,6 +269,29 @@ def document_fingerprint(document: Mapping[str, Any] | None) -> str:
     return str(document.get("content_fingerprint") or "").strip()
 
 
+def clean_evidence_excerpt(excerpt: str, *, limit: int = PRIMARY_EXCERPT_CHARS) -> str:
+    """Short, scannable excerpt — drop legal/boilerplate and page-dump noise."""
+    text = re.sub(r"\s+", " ", str(excerpt or "")).strip()
+    if not text:
+        return ""
+    # Prefer the first sentence that looks like a rating/spec, not boilerplate.
+    sentences = [part.strip() for part in re.split(r"(?<=[.;:])\s+", text) if part.strip()]
+    chosen = ""
+    for sentence in sentences:
+        if _BOILERPLATE_RE.search(sentence):
+            continue
+        if len(sentence) < 12:
+            continue
+        chosen = sentence
+        break
+    if not chosen:
+        chosen = next((s for s in sentences if not _BOILERPLATE_RE.search(s)), text)
+    chosen = chosen.strip(" \"'")
+    if len(chosen) > limit:
+        chosen = chosen[: limit - 1].rstrip() + "…"
+    return chosen
+
+
 def primary_evidence_line(evidence: list[Mapping[str, Any]] | None) -> dict[str, str] | None:
     """One inline page + excerpt line for supported answers."""
     for item in evidence or []:
@@ -272,13 +301,67 @@ def primary_evidence_line(evidence: list[Mapping[str, Any]] | None) -> dict[str,
         page = item.get("page")
         if not citation and page:
             citation = f"Page {int(page)}"
-        excerpt = str(item.get("excerpt") or "").strip()
+        excerpt = clean_evidence_excerpt(str(item.get("excerpt") or ""))
         if citation and excerpt:
             return {
                 "citation": citation,
-                "excerpt": excerpt[:PRIMARY_EXCERPT_CHARS],
+                "excerpt": excerpt,
             }
     return None
+
+
+def format_datasheet_answer_blocks(answer: str) -> list[str]:
+    """Split a dense answer into short display blocks / bullets when useful.
+
+    Returns one lead sentence first, then additional technical clauses as
+    separate blocks so the UI can render a direct answer plus compact bullets.
+    """
+    text = str(answer or "").strip()
+    if not text:
+        return []
+    if text == NOT_FOUND_ANSWER:
+        return [text]
+    # Keep short answers as a single block.
+    if len(text) < 160 and text.count(".") <= 2:
+        return [text]
+    parts = [part.strip() for part in re.split(r"(?<=[.;])\s+", text) if part.strip()]
+    if len(parts) <= 1:
+        return [text]
+    # If multiple technical clauses, present lead + compact follow-on facts.
+    if len(parts) >= 3 or any(
+        token in text.casefold()
+        for token in ("vceo", "voltage", "current", "package", "temperature", "rating")
+    ):
+        return parts[:6]
+    return [text]
+
+
+def queue_datasheet_follow_up(
+    session_state: MutableMapping[str, Any],
+    suggestion: str = "",
+    *,
+    now: float | None = None,
+) -> bool:
+    """Queue a chip click without mutating the composer widget session key.
+
+    Safe for Streamlit ``on_click`` callbacks (runs before the script body).
+    Sets ``datasheet_qa_pending_question`` and marks status processing so the
+    page can execute the shared submit path before constructing the text-area.
+    """
+    question = str(suggestion or "").strip()
+    if not claim_datasheet_question_submit(session_state, question, now=now):
+        return False
+    session_state[DATASHEET_QA_PENDING_QUESTION_KEY] = question
+    session_state[DATASHEET_QA_STATUS_KEY] = STATUS_PROCESSING
+    return True
+
+
+def consume_datasheet_pending_question(
+    session_state: MutableMapping[str, Any],
+) -> str:
+    """Pop a queued follow-up/pending question before composer widget creation."""
+    question = str(session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, "") or "").strip()
+    return question
 
 
 def _document_corpus(document: Mapping[str, Any] | None, evidence: list[Mapping[str, Any]] | None = None) -> str:
@@ -493,34 +576,6 @@ def suggest_datasheet_follow_ups(
         _add(fallback)
 
     return suggestions[:MAX_FOLLOW_UPS]
-
-
-def queue_datasheet_follow_up(
-    session_state: MutableMapping[str, Any],
-    suggestion: str,
-    *,
-    now: float | None = None,
-) -> bool:
-    """Queue a chip click without mutating the composer widget session key.
-
-    Streamlit forbids writing ``datasheet_qa_question`` after the text-area
-    widget is instantiated. Chip clicks only store
-    ``datasheet_qa_pending_question``; the page consumes it at the start of the
-    next render, before the composer widget is constructed.
-    """
-    question = str(suggestion or "").strip()
-    if not claim_datasheet_question_submit(session_state, question, now=now):
-        return False
-    session_state[DATASHEET_QA_PENDING_QUESTION_KEY] = question
-    return True
-
-
-def consume_datasheet_pending_question(
-    session_state: MutableMapping[str, Any],
-) -> str:
-    """Pop a queued follow-up/pending question before composer widget creation."""
-    question = str(session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, "") or "").strip()
-    return question
 
 
 def _tokenize(text: str) -> list[str]:
