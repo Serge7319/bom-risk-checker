@@ -206,6 +206,23 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertIn('reveal_authenticated_page_body("Alternative Finder")', runtime)
         self.assertIn('reveal_authenticated_page_body("Compare Parts")', runtime)
         self.assertIn('reveal_authenticated_page_body("Dashboard")', runtime)
+        self.assertIn('reveal_authenticated_page_body("Engineering Decisions")', runtime)
+        ed_branch = runtime.split('if app_mode == "Engineering Decisions":', 1)[1]
+        ed_branch = ed_branch.split('if app_mode == "Reports":', 1)[0]
+        ed_reveal_at = ed_branch.find('reveal_authenticated_page_body("Engineering Decisions")')
+        ed_header_at = ed_branch.find('test_id="ed-page-hero"')
+        ed_stop_at = ed_branch.rfind("stop_authenticated_page()")
+        self.assertGreater(ed_header_at, 0)
+        self.assertGreater(ed_reveal_at, ed_header_at)
+        self.assertGreater(ed_stop_at, ed_reveal_at)
+        self.assertEqual(
+            ed_branch.count('eyebrow="Cadivor Engineering Decision Center"'),
+            1,
+        )
+        self.assertIn("ed-inline-loading", ed_branch)
+        self.assertIn("engineering_decisions_load_retry", ed_branch)
+        self.assertIn("CADIVOR_ED_LOAD_BUDGET_S", ed_branch)
+        self.assertIn("ed-load-timeout", ed_branch)
         # First admit must not skip Opening Dashboard… (empty-canvas production bug).
         early = runtime[
             runtime.find("Paint the durable foundation shell") : runtime.find(
@@ -465,9 +482,9 @@ class DatasheetQaProgressContractTests(unittest.TestCase):
     def test_visible_progress_sequence(self):
         page = (ROOT / "src" / "pages" / "datasheet_qa.py").read_text(encoding="utf-8")
         self.assertIn("Retrieving relevant pages", page)
-        self.assertIn("Ask Cadivor is analyzing the datasheet", page)
-        self.assertIn("Working on your question", page)
-        self.assertIn("disabled=status == STATUS_PROCESSING", page)
+        self.assertIn("Cadivor is reviewing the datasheet evidence…", page)
+        self.assertIn("Your answer will appear in this conversation when ready.", page)
+        self.assertIn("disabled=processing", page)
 
 
 if __name__ == "__main__":

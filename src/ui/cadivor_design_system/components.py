@@ -244,6 +244,7 @@ def render_section_header(
     eyebrow: str = "",
     icon: str = "layers",
     action_html: str = "",
+    test_id: str = "",
 ) -> None:
     """Render a page-level section header (single trusted HTML path)."""
     eyebrow_block = (
@@ -261,8 +262,9 @@ def render_section_header(
         if icon_markup
         else ""
     )
+    test_attr = f' data-testid="{escape(test_id)}"' if test_id else ""
     _render_html(
-        f'<section class="cv64-section">'
+        f'<section class="cv64-section"{test_attr}>'
         f"{icon_block}"
         f'<div class="cv64-section__copy">'
         f"{eyebrow_block}"
@@ -282,6 +284,7 @@ def cadivor_section_header(
     eyebrow: str = "",
     icon: str = "layers",
     action_html: str = "",
+    test_id: str = "",
 ) -> None:
     render_section_header(
         title,
@@ -289,6 +292,7 @@ def cadivor_section_header(
         eyebrow=eyebrow,
         icon=icon,
         action_html=action_html,
+        test_id=test_id,
     )
 
 

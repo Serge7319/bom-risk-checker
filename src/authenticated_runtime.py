@@ -28,6 +28,8 @@ from src.pages.dashboard_workspaces import (
 from src.decision_engine import build_decision_center, STATUSES
 from src.decision_dashboard import decision_card_html, packet_header_html
 from src.decision_repository import (
+    DECISION_LOAD_TIMEOUT_TOKEN,
+    DEFAULT_DECISION_LOAD_BUDGET_SECONDS,
     load_decision_state,
     save_decision_workflow,
     add_decision_note,
@@ -4250,74 +4252,205 @@ def run_authenticated_app() -> None:
 
     # ---------- Engineering Decision Center ----------
     if app_mode == "Engineering Decisions":
-        try:
-            decision_alert_response = (
-                _workspace_query(
-                    supabase.table("monitor_alerts").select("*")
-                )
-                .eq("user_id", current_user["id"])
-                .order("created_at", desc=True)
-                .limit(150)
-                .execute()
-            )
-            decision_alert_df = pd.DataFrame(decision_alert_response.data or [])
-        except Exception:
-            decision_alert_df = pd.DataFrame()
-
-        try:
-            decision_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            decision_analyses = []
-
+        # Shell-first: never hold the full-main "Opening Engineering Decisions…"
+        # overlay across unbounded Supabase IO. Paint distinctive chrome, reveal
+        # Opening immediately, then hydrate decision data behind an in-page loader
+        # so sidebar + Sign out stay usable between Streamlit runs.
         decision_scope_key = active_workspace_id or "personal"
         decision_cache_key = (
             f"engineering_decision_state_{current_user['id']}_{decision_scope_key}"
         )
-
-        if decision_cache_key not in st.session_state:
-            persistent_decision_state, decision_load_error = load_decision_state(
-                supabase,
-                user_id=current_user["id"],
-                workspace_id=active_workspace_id or None,
+        decision_alerts_key = f"{decision_cache_key}_alerts"
+        decision_analyses_key = f"{decision_cache_key}_analyses"
+        decision_load_error_key = f"{decision_cache_key}_load_error"
+        decision_hydrate_key = f"{decision_cache_key}_hydrate"
+        decision_timeout_key = f"{decision_cache_key}_timeout"
+        try:
+            ed_load_budget_s = float(
+                str(
+                    __import__("os").environ.get(
+                        "CADIVOR_ED_LOAD_BUDGET_S",
+                        DEFAULT_DECISION_LOAD_BUDGET_SECONDS,
+                    )
+                )
+                or DEFAULT_DECISION_LOAD_BUDGET_SECONDS
             )
-            st.session_state[decision_cache_key] = persistent_decision_state
-            st.session_state[
-                f"{decision_cache_key}_load_error"
-            ] = decision_load_error
+        except Exception:
+            ed_load_budget_s = float(DEFAULT_DECISION_LOAD_BUDGET_SECONDS)
+        ed_load_budget_s = max(0.5, min(ed_load_budget_s, 30.0))
+        # Browser-smoke latch: force the recoverable timeout UI without waiting on IO.
+        if str(__import__("os").environ.get("CADIVOR_ED_FORCE_TIMEOUT") or "").strip() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            st.session_state[decision_timeout_key] = True
+            for _key in (
+                decision_cache_key,
+                decision_alerts_key,
+                decision_analyses_key,
+                decision_hydrate_key,
+            ):
+                st.session_state.pop(_key, None)
 
-        decision_state = st.session_state[decision_cache_key]
+        def _clear_engineering_decision_caches() -> None:
+            for _key in (
+                decision_cache_key,
+                decision_alerts_key,
+                decision_analyses_key,
+                decision_load_error_key,
+                decision_hydrate_key,
+                decision_timeout_key,
+            ):
+                st.session_state.pop(_key, None)
 
-        decision_center = build_decision_center(
-            alert_df=decision_alert_df,
-            analyses=decision_analyses,
-            saved_state=decision_state,
+        def _render_ed_inline_loading(*, detail: str) -> None:
+            # Do not use cv56-skeleton-page — authenticated shell CSS hides it.
+            st.markdown(
+                f"""
+                <div class="cv-ed-inline-loading" data-testid="ed-inline-loading"
+                     style="margin:8px 0 16px;padding:16px 18px;border:1px solid #E2E8F0;
+                     border-radius:14px;background:#F8FAFC;color:#334155">
+                  <strong style="display:block;margin:0 0 6px;font-size:14px;color:#0F172A">
+                    Loading engineering decisions…
+                  </strong>
+                  <p style="margin:0;font-size:13px;line-height:1.45;color:#64748B">
+                    {html.escape(detail)}
+                  </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        needs_decision_hydrate = (
+            decision_cache_key not in st.session_state
+            or decision_alerts_key not in st.session_state
+            or decision_analyses_key not in st.session_state
         )
-        all_decisions = decision_center["decisions"]
 
-        focus_decision_id = _qp_value("decision_id")
-        focus_part = _qp_value("focus_part")
-        selected_decision = None
+        # Pass 2 hydrate IO runs BEFORE any page chrome. Emitting the hero and then
+        # blocking on IO stacks a second hero on top of Pass 1's still-visible UI.
+        if (
+            not st.session_state.get(decision_timeout_key)
+            and needs_decision_hydrate
+            and st.session_state.get(decision_hydrate_key) == "loading"
+        ):
+            try:
+                smoke_delay = float(
+                    str(__import__("os").environ.get("CADIVOR_ED_SMOKE_HYDRATE_DELAY_S") or "0")
+                )
+            except Exception:
+                smoke_delay = 0.0
+            load_deadline = time.monotonic() + ed_load_budget_s
+            if smoke_delay > 0:
+                time.sleep(min(smoke_delay, 30.0))
+            timed_out = time.monotonic() >= load_deadline
+            decision_alert_df = pd.DataFrame()
+            decision_analyses: list = []
+            persistent_decision_state: dict = {}
+            decision_load_error = None
+            try:
+                if not timed_out and time.monotonic() < load_deadline:
+                    try:
+                        remaining = max(0.05, load_deadline - time.monotonic())
+                        from concurrent.futures import ThreadPoolExecutor
+                        from concurrent.futures import TimeoutError as FuturesTimeout
 
-        if focus_decision_id:
-            selected_decision = next(
-                (
-                    decision
-                    for decision in all_decisions
-                    if decision["decision_id"] == focus_decision_id
-                ),
-                None,
+                        def _load_alerts():
+                            decision_alert_response = execute_supabase_read(
+                                _workspace_query(
+                                    supabase.table("monitor_alerts").select("*")
+                                )
+                                .eq("user_id", current_user["id"])
+                                .order("created_at", desc=True)
+                                .limit(150),
+                                operation="engineering_decisions.monitor_alerts",
+                                attempts=2,
+                            )
+                            return pd.DataFrame(
+                                getattr(decision_alert_response, "data", None) or []
+                            )
+
+                        with ThreadPoolExecutor(max_workers=1) as pool:
+                            future = pool.submit(_load_alerts)
+                            try:
+                                decision_alert_df = future.result(timeout=remaining)
+                            except FuturesTimeout:
+                                timed_out = True
+                                decision_alert_df = pd.DataFrame()
+                    except Exception:
+                        decision_alert_df = pd.DataFrame()
+                elif not timed_out:
+                    timed_out = True
+
+                if not timed_out and time.monotonic() < load_deadline:
+                    try:
+                        remaining = max(0.05, load_deadline - time.monotonic())
+                        from concurrent.futures import ThreadPoolExecutor
+                        from concurrent.futures import TimeoutError as FuturesTimeout
+
+                        with ThreadPoolExecutor(max_workers=1) as pool:
+                            future = pool.submit(
+                                load_analysis_history, current_user["id"]
+                            )
+                            try:
+                                decision_analyses = future.result(timeout=remaining) or []
+                            except FuturesTimeout:
+                                timed_out = True
+                                decision_analyses = []
+                    except Exception:
+                        decision_analyses = []
+                    if time.monotonic() >= load_deadline:
+                        timed_out = True
+                elif not timed_out:
+                    timed_out = True
+
+                if not timed_out and time.monotonic() < load_deadline:
+                    persistent_decision_state, decision_load_error = load_decision_state(
+                        supabase,
+                        user_id=current_user["id"],
+                        workspace_id=active_workspace_id or None,
+                        deadline=load_deadline,
+                    )
+                    if decision_load_error == DECISION_LOAD_TIMEOUT_TOKEN:
+                        timed_out = True
+                        decision_load_error = None
+                elif not timed_out:
+                    timed_out = True
+            except Exception:
+                decision_load_error = "Cadivor could not load engineering decisions right now."
+
+            if timed_out:
+                st.session_state[decision_timeout_key] = True
+                st.session_state[decision_hydrate_key] = "failed"
+                st.session_state.pop(decision_cache_key, None)
+                st.session_state.pop(decision_alerts_key, None)
+                st.session_state.pop(decision_analyses_key, None)
+                print(
+                    "ED_LOAD_TIMEOUT "
+                    f"budget_s={ed_load_budget_s} smoke_delay={smoke_delay} "
+                    f"key={decision_timeout_key}",
+                    flush=True,
+                )
+            else:
+                st.session_state[decision_alerts_key] = decision_alert_df
+                st.session_state[decision_analyses_key] = decision_analyses
+                st.session_state[decision_cache_key] = persistent_decision_state
+                st.session_state[decision_load_error_key] = decision_load_error
+                st.session_state[decision_hydrate_key] = "ready"
+                st.session_state.pop(decision_timeout_key, None)
+
+            needs_decision_hydrate = (
+                decision_cache_key not in st.session_state
+                or decision_alerts_key not in st.session_state
+                or decision_analyses_key not in st.session_state
             )
-        elif focus_part:
-            selected_decision = next(
-                (
-                    decision
-                    for decision in all_decisions
-                    if str(decision["part_number"]).upper() == str(focus_part).upper()
-                ),
-                None,
-            )
 
-        st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
+        # Single paint path: one hero, then loading / timeout / ready body below it.
+        st.markdown(
+            '<div class="cv64-page-shell" data-testid="ed-page-shell">',
+            unsafe_allow_html=True,
+        )
         cadivor_section_header(
             "Turn component intelligence into approved engineering action",
             eyebrow="Cadivor Engineering Decision Center",
@@ -4326,290 +4459,248 @@ def run_authenticated_app() -> None:
                 "document engineering notes, and move work from open review to production readiness."
             ),
             icon="clipboard-check",
+            test_id="ed-page-hero",
         )
+        reveal_authenticated_page_body("Engineering Decisions")
+        ed_body_ready = False
 
-        decision_load_error = st.session_state.get(
-            f"{decision_cache_key}_load_error"
-        )
-        if decision_load_error:
-            st.warning(
-                "Persistent decision storage is not available yet. "
-                "Run the Milestone 13.2 SQL, then refresh this page."
-            )
-        else:
-            st.caption(
-                "Decision workflow, notes, and history are saved to your Cadivor account."
-            )
-
-        if selected_decision:
-            if st.button(
-                "← Back to Engineering Decisions",
-                key="decision_packet_back",
-                type="secondary",
-            ):
-                navigate_to("Engineering Decisions")
-
+        if st.session_state.get(decision_timeout_key):
             st.markdown(
-                packet_header_html(selected_decision),
+                """
+                <div class="cv-ed-load-timeout" data-testid="ed-load-timeout"
+                     style="margin:8px 0 14px;padding:16px 18px;border:1px solid #FECACA;
+                     border-radius:14px;background:#FEF2F2;color:#7F1D1D">
+                  <strong style="display:block;margin:0 0 6px;font-size:14px">
+                    Engineering Decisions took too long to load
+                  </strong>
+                  <p style="margin:0;font-size:13px;line-height:1.45">
+                    Navigation and Sign out stayed available. Retry when ready.
+                  </p>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
-
-            summary_tab, evidence_tab, notes_tab, history_tab = st.tabs(
-                ["Decision Summary", "Evidence", "Engineering Notes", "Decision History"]
+            cadivor_button_wrap("primary")
+            if st.button("Retry", key="engineering_decisions_load_retry", type="primary"):
+                _clear_engineering_decision_caches()
+                st.rerun()
+            cadivor_button_wrap_end()
+            st.markdown("</div>", unsafe_allow_html=True)
+            stop_authenticated_page()
+        elif needs_decision_hydrate:
+            # Pass 1: paint shell + in-page loader, then defer IO to the next run.
+            st.session_state[decision_hydrate_key] = "loading"
+            _render_ed_inline_loading(
+                detail="Preparing decision data for this workspace. Sidebar and account menu remain available."
             )
+            st.markdown("</div>", unsafe_allow_html=True)
+            # st.stop() never returns — call st.rerun() directly so Pass 2 can hydrate.
+            if st.session_state.get("_cadivor_authenticated_surface_ready"):
+                inject_workspace_geometry_final()
+            st.rerun()
+        else:
+            ed_body_ready = True
 
-            decision_id = selected_decision["decision_id"]
-            state_record = decision_state.setdefault(
-                decision_id,
-                {
-                    "status": (
-                        "New"
-                        if selected_decision["status"] == "Open"
-                        else selected_decision["status"]
+        if ed_body_ready:
+            decision_alert_df = st.session_state.get(decision_alerts_key)
+            if not isinstance(decision_alert_df, pd.DataFrame):
+                decision_alert_df = pd.DataFrame()
+            decision_analyses = st.session_state.get(decision_analyses_key) or []
+            decision_state = st.session_state.get(decision_cache_key) or {}
+
+            decision_center = build_decision_center(
+                alert_df=decision_alert_df,
+                analyses=decision_analyses,
+                saved_state=decision_state,
+            )
+            all_decisions = decision_center["decisions"]
+
+            focus_decision_id = _qp_value("decision_id")
+            focus_part = _qp_value("focus_part")
+            selected_decision = None
+
+            if focus_decision_id:
+                selected_decision = next(
+                    (
+                        decision
+                        for decision in all_decisions
+                        if decision["decision_id"] == focus_decision_id
                     ),
-                    "owner": selected_decision["assigned_owner"],
-                    "notes": selected_decision.get("notes", []),
-                    "history": [
-                        {
-                            "event": "Decision created",
-                            "time": selected_decision["detected_at"],
-                        }
-                    ],
-                },
-            )
-
-            with summary_tab:
-                render_kpi_row_safe(
-                    [
-                        MetricCard(label="Component / BOM", value=str(selected_decision["part_number"]), tone="info", icon="package"),
-                        MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="triangle-alert"),
-                        MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="gauge"),
-                        MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="clock-3"),
-                    ],
-                    columns=4,
+                    None,
+                )
+            elif focus_part:
+                selected_decision = next(
+                    (
+                        decision
+                        for decision in all_decisions
+                        if str(decision["part_number"]).upper() == str(focus_part).upper()
+                    ),
+                    None,
                 )
 
-                st.markdown("### Cadivor Recommendation")
-                st.info(selected_decision["recommended_action"])
-                st.caption(selected_decision["expected_impact"])
-
-                st.markdown("### Decision Priority Matrix")
-                priority_breakdown = selected_decision.get("priority_breakdown", {})
-                st.markdown(
-                    """
-                    <div class="cv131-breakdown">
-                    """
-                    + "".join(
-                        f"<div><span>{html.escape(str(label))}</span><strong>{int(value)}</strong></div>"
-                        for label, value in priority_breakdown.items()
-                    )
-                    + "</div>",
-                    unsafe_allow_html=True,
+            decision_load_error = st.session_state.get(decision_load_error_key)
+            if decision_load_error:
+                st.warning(
+                    "Persistent decision storage is not available yet. "
+                    "Run the Milestone 13.2 SQL, then refresh this page."
+                )
+            else:
+                st.caption(
+                    "Decision workflow, notes, and history are saved to your Cadivor account."
                 )
 
-                st.markdown("### AI Confidence")
-                confidence_cols = st.columns([1, 3])
-                confidence_cols[0].metric(
-                    "Decision Confidence",
-                    f"{selected_decision['confidence']}%",
-                )
-                with confidence_cols[1]:
-                    for reason in selected_decision.get("confidence_reasons", []):
-                        st.markdown(f"✓ {reason}")
-
-                impact = selected_decision
-                st.markdown(
-                    f"""
-                    <div class="cv130-impact">
-                      <div><span>Current Health</span><strong>{impact['current_health']}/100</strong></div>
-                      <div><span>Projected Health</span><strong>{impact['projected_health']}/100</strong></div>
-                      <div><span>Health Improvement</span><strong>+{impact['health_gain']}</strong></div>
-                      <div><span>Supply Risk Reduction</span><strong>-{impact['supply_risk_reduction']}</strong></div>
-                      <div><span>Lifecycle Issues Removed</span><strong>{impact['lifecycle_exposure_reduction']}</strong></div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                workflow_cols = st.columns(3)
-                with workflow_cols[0]:
-                    current_workflow_status = state_record.get("status", "New")
-                    if current_workflow_status == "Open":
-                        current_workflow_status = "New"
-                    elif current_workflow_status == "Awaiting Approval":
-                        current_workflow_status = "Manager Approval"
-                    elif current_workflow_status in ("Approved", "Production Ready"):
-                        current_workflow_status = "Production Approved"
-                    status_index = (
-                        STATUSES.index(current_workflow_status)
-                        if current_workflow_status in STATUSES
-                        else 0
-                    )
-                    new_status = st.selectbox(
-                        "Decision status",
-                        STATUSES,
-                        index=status_index,
-                        key=f"decision_status_{decision_id}",
-                    )
-                with workflow_cols[1]:
-                    new_owner = st.text_input(
-                        "Assigned owner",
-                        value=state_record.get("owner", selected_decision["owner"]),
-                        key=f"decision_owner_{decision_id}",
-                    )
-                with workflow_cols[2]:
-                    st.text_input(
-                        "Target date",
-                        value=selected_decision["due_date"],
-                        key=f"decision_due_{decision_id}",
-                        disabled=True,
-                    )
-
+            if selected_decision:
                 if st.button(
-                    "Save Decision Workflow",
-                    key=f"save_decision_{decision_id}",
-                    type="primary",
+                    "← Back to Engineering Decisions",
+                    key="decision_packet_back",
+                    type="secondary",
                 ):
-                    previous_status = state_record.get("status", "New")
-                    saved_owner = (
-                        new_owner.strip()
-                        or selected_decision["owner"]
-                    )
-                    save_error = save_decision_workflow(
-                        supabase,
-                        user_id=current_user["id"],
-                        workspace_id=active_workspace_id or None,
-                        decision=selected_decision,
-                        status=new_status,
-                        assigned_owner=saved_owner,
-                        due_date=selected_decision.get("due_date"),
-                        actor_name=(
-                            profile_for_shell.get("full_name")
-                            or shell_name
+                    navigate_to("Engineering Decisions")
+
+                st.markdown(
+                    packet_header_html(selected_decision),
+                    unsafe_allow_html=True,
+                )
+
+                summary_tab, evidence_tab, notes_tab, history_tab = st.tabs(
+                    ["Decision Summary", "Evidence", "Engineering Notes", "Decision History"]
+                )
+
+                decision_id = selected_decision["decision_id"]
+                state_record = decision_state.setdefault(
+                    decision_id,
+                    {
+                        "status": (
+                            "New"
+                            if selected_decision["status"] == "Open"
+                            else selected_decision["status"]
                         ),
-                        previous_status=previous_status,
+                        "owner": selected_decision["assigned_owner"],
+                        "notes": selected_decision.get("notes", []),
+                        "history": [
+                            {
+                                "event": "Decision created",
+                                "time": selected_decision["detected_at"],
+                            }
+                        ],
+                    },
+                )
+
+                with summary_tab:
+                    render_kpi_row_safe(
+                        [
+                            MetricCard(label="Component / BOM", value=str(selected_decision["part_number"]), tone="info", icon="package"),
+                            MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="triangle-alert"),
+                            MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="gauge"),
+                            MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="clock-3"),
+                        ],
+                        columns=4,
                     )
 
-                    if save_error:
-                        st.error(
-                            "The decision could not be saved. "
-                            "Confirm the Milestone 13.2 SQL was applied."
+                    st.markdown("### Cadivor Recommendation")
+                    st.info(selected_decision["recommended_action"])
+                    st.caption(selected_decision["expected_impact"])
+
+                    st.markdown("### Decision Priority Matrix")
+                    priority_breakdown = selected_decision.get("priority_breakdown", {})
+                    st.markdown(
+                        """
+                        <div class="cv131-breakdown">
+                        """
+                        + "".join(
+                            f"<div><span>{html.escape(str(label))}</span><strong>{int(value)}</strong></div>"
+                            for label, value in priority_breakdown.items()
                         )
-                    else:
-                        refreshed_state, refresh_error = load_decision_state(
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    st.markdown("### AI Confidence")
+                    confidence_cols = st.columns([1, 3])
+                    confidence_cols[0].metric(
+                        "Decision Confidence",
+                        f"{selected_decision['confidence']}%",
+                    )
+                    with confidence_cols[1]:
+                        for reason in selected_decision.get("confidence_reasons", []):
+                            st.markdown(f"✓ {reason}")
+
+                    impact = selected_decision
+                    st.markdown(
+                        f"""
+                        <div class="cv130-impact">
+                          <div><span>Current Health</span><strong>{impact['current_health']}/100</strong></div>
+                          <div><span>Projected Health</span><strong>{impact['projected_health']}/100</strong></div>
+                          <div><span>Health Improvement</span><strong>+{impact['health_gain']}</strong></div>
+                          <div><span>Supply Risk Reduction</span><strong>-{impact['supply_risk_reduction']}</strong></div>
+                          <div><span>Lifecycle Issues Removed</span><strong>{impact['lifecycle_exposure_reduction']}</strong></div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    workflow_cols = st.columns(3)
+                    with workflow_cols[0]:
+                        current_workflow_status = state_record.get("status", "New")
+                        if current_workflow_status == "Open":
+                            current_workflow_status = "New"
+                        elif current_workflow_status == "Awaiting Approval":
+                            current_workflow_status = "Manager Approval"
+                        elif current_workflow_status in ("Approved", "Production Ready"):
+                            current_workflow_status = "Production Approved"
+                        status_index = (
+                            STATUSES.index(current_workflow_status)
+                            if current_workflow_status in STATUSES
+                            else 0
+                        )
+                        new_status = st.selectbox(
+                            "Decision status",
+                            STATUSES,
+                            index=status_index,
+                            key=f"decision_status_{decision_id}",
+                        )
+                    with workflow_cols[1]:
+                        new_owner = st.text_input(
+                            "Assigned owner",
+                            value=state_record.get("owner", selected_decision["owner"]),
+                            key=f"decision_owner_{decision_id}",
+                        )
+                    with workflow_cols[2]:
+                        st.text_input(
+                            "Target date",
+                            value=selected_decision["due_date"],
+                            key=f"decision_due_{decision_id}",
+                            disabled=True,
+                        )
+
+                    if st.button(
+                        "Save Decision Workflow",
+                        key=f"save_decision_{decision_id}",
+                        type="primary",
+                    ):
+                        previous_status = state_record.get("status", "New")
+                        saved_owner = (
+                            new_owner.strip()
+                            or selected_decision["owner"]
+                        )
+                        save_error = save_decision_workflow(
                             supabase,
                             user_id=current_user["id"],
                             workspace_id=active_workspace_id or None,
-                        )
-                        if refresh_error:
-                            state_record["status"] = new_status
-                            state_record["owner"] = saved_owner
-                        else:
-                            st.session_state[decision_cache_key] = refreshed_state
-                        st.success("Decision workflow saved.")
-                        st.rerun()
-
-                navigation_cols = st.columns(4)
-                with navigation_cols[0]:
-                    internal_nav_button(
-                        "Find Alternative",
-                        "Alternative Finder",
-                        key=f"decision_find_alt_{decision_id}",
-                        use_container_width=True,
-                        original_part=selected_decision["part_number"],
-                        analysis_id=str(selected_decision.get("analysis_id") or ""),
-                        source_page="engineering_decisions",
-                    )
-                with navigation_cols[1]:
-                    internal_nav_button(
-                        "Open Monitoring",
-                        "Monitoring",
-                        key=f"decision_monitor_{decision_id}",
-                        use_container_width=True,
-                    )
-                with navigation_cols[2]:
-                    internal_nav_button(
-                        "Generate Report",
-                        "Reports",
-                        key=f"decision_report_{decision_id}",
-                        use_container_width=True,
-                    )
-                with navigation_cols[3]:
-                    if selected_decision.get("analysis_id"):
-                        internal_nav_button(
-                            "Open Saved BOM",
-                            "Analysis Details",
-                            key=f"decision_analysis_{decision_id}",
-                            use_container_width=True,
-                            analysis_id=selected_decision["analysis_id"],
-                        )
-                    else:
-                        st.caption("No saved BOM is linked to this decision.")
-
-            with evidence_tab:
-                st.markdown("### Evidence used by Cadivor")
-                for evidence in selected_decision.get("evidence", []):
-                    st.markdown(f"- {evidence}")
-                st.markdown("### Decision context")
-                context_df = pd.DataFrame(
-                    [
-                        {
-                            "Field": "Source",
-                            "Value": selected_decision["source"],
-                        },
-                        {
-                            "Field": "Decision Type",
-                            "Value": selected_decision["decision_type"],
-                        },
-                        {
-                            "Field": "Supporting Team",
-                            "Value": selected_decision["supporting_team"],
-                        },
-                        {
-                            "Field": "Estimated Cost Impact",
-                            "Value": selected_decision["estimated_cost_impact"],
-                        },
-                    ]
-                )
-                cadivor_engineering_dataframe(context_df)
-
-            with notes_tab:
-                note = st.text_area(
-                    "Add an engineering note",
-                    placeholder="Record validation findings, supplier feedback, approval conditions, or next steps.",
-                    key=f"decision_note_{decision_id}",
-                )
-                if st.button(
-                    "Add Note",
-                    key=f"decision_add_note_{decision_id}",
-                    type="primary",
-                ):
-                    if not note.strip():
-                        st.warning("Enter a note before saving.")
-                    else:
-                        note_author = (
-                            profile_for_shell.get("full_name")
-                            or shell_name
-                        )
-                        note_error = add_decision_note(
-                            supabase,
-                            user_id=current_user["id"],
-                            workspace_id=active_workspace_id or None,
-                            decision={
-                                **selected_decision,
-                                "status": state_record.get("status", "New"),
-                                "assigned_owner": state_record.get(
-                                    "owner",
-                                    selected_decision["owner"],
-                                ),
-                            },
-                            author_name=note_author,
-                            note_text=note.strip(),
+                            decision=selected_decision,
+                            status=new_status,
+                            assigned_owner=saved_owner,
+                            due_date=selected_decision.get("due_date"),
+                            actor_name=(
+                                profile_for_shell.get("full_name")
+                                or shell_name
+                            ),
+                            previous_status=previous_status,
                         )
 
-                        if note_error:
+                        if save_error:
                             st.error(
-                                "The note could not be saved. "
+                                "The decision could not be saved. "
                                 "Confirm the Milestone 13.2 SQL was applied."
                             )
                         else:
@@ -4618,337 +4709,451 @@ def run_authenticated_app() -> None:
                                 user_id=current_user["id"],
                                 workspace_id=active_workspace_id or None,
                             )
-                            if not refresh_error:
-                                st.session_state[
-                                    decision_cache_key
-                                ] = refreshed_state
-                            st.success("Engineering note saved.")
+                            if refresh_error:
+                                state_record["status"] = new_status
+                                state_record["owner"] = saved_owner
+                            else:
+                                st.session_state[decision_cache_key] = refreshed_state
+                            st.success("Decision workflow saved.")
                             st.rerun()
 
-                notes = state_record.get("notes", [])
-                if not notes:
-                    st.info("No engineering notes have been added yet.")
-                else:
-                    for item in reversed(notes):
-                        with st.container(border=True):
-                            st.markdown(f"**{item.get('author', 'Engineer')}**")
-                            st.caption(item.get("time", ""))
-                            st.write(item.get("text", ""))
-
-            with history_tab:
-                history = state_record.get("history", [])
-                if not history:
-                    st.info("No decision history is available.")
-                else:
-                    history_df = pd.DataFrame(history).rename(
-                        columns={"event": "Event", "time": "Time"}
-                    )
-                    cadivor_table(
-                        history_df.iloc[::-1],
-                        caption="Decision history",
-                    )
-
-        else:
-            rejected_count = sum(
-                1 for decision in all_decisions if str(decision.get("status")) == "Rejected"
-            )
-            cadivor_metric_row(
-                [
-                    MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
-                    MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
-                    MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
-                    MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
-                    MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
-                    MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
-                ],
-                columns=3,
-            )
-
-            refresh_decision_col, persistence_scope_col = st.columns([1, 3])
-            with refresh_decision_col:
-                cadivor_button_wrap("secondary")
-                if st.button(
-                    "Refresh Decisions",
-                    key="refresh_persistent_decisions",
-                    use_container_width=True,
-                ):
-                    st.session_state.pop(decision_cache_key, None)
-                    st.session_state.pop(
-                        f"{decision_cache_key}_load_error",
-                        None,
-                    )
-                    st.rerun()
-                cadivor_button_wrap_end()
-            with persistence_scope_col:
-                st.caption(
-                    f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
-                )
-
-            queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
-                [
-                    "Needs Review",
-                    "Team Workload",
-                    "Decision Analytics",
-                    "Completed",
-                ]
-            )
-
-            with queue_tab:
-                filter_cols = st.columns(3)
-                with filter_cols[0]:
-                    priority_filter = st.selectbox(
-                        "Priority",
-                        ["All", "Critical", "High", "Medium", "Routine"],
-                        key="decision_priority_filter",
-                    )
-                with filter_cols[1]:
-                    status_filter = st.selectbox(
-                        "Status",
-                        ["All"] + STATUSES,
-                        key="decision_status_filter",
-                    )
-                with filter_cols[2]:
-                    search_decisions = st.text_input(
-                        "Search decisions",
-                        placeholder="Component, project, owner, or action",
-                        key="decision_search",
-                    )
-
-                visible = all_decisions
-                if priority_filter != "All":
-                    visible = [
-                        decision
-                        for decision in visible
-                        if decision["priority"] == priority_filter
-                    ]
-                if status_filter != "All":
-                    visible = [
-                        decision
-                        for decision in visible
-                        if decision["status"] == status_filter
-                    ]
-                if search_decisions.strip():
-                    query = search_decisions.strip().lower()
-                    visible = [
-                        decision
-                        for decision in visible
-                        if query
-                        in " ".join(
-                            [
-                                str(decision["part_number"]),
-                                str(decision["title"]),
-                                str(decision["assigned_owner"]),
-                                str(decision["reason"]),
-                            ]
-                        ).lower()
-                    ]
-
-                st.caption(f"Showing {len(visible)} of {len(all_decisions)} engineering decision(s).")
-
-                if not visible:
-                    st.info("No engineering decisions match the selected filters.")
-                else:
-                    for decision in visible[:40]:
-                        st.markdown(
-                            decision_card_html(decision),
-                            unsafe_allow_html=True,
+                    navigation_cols = st.columns(4)
+                    with navigation_cols[0]:
+                        internal_nav_button(
+                            "Find Alternative",
+                            "Alternative Finder",
+                            key=f"decision_find_alt_{decision_id}",
+                            use_container_width=True,
+                            original_part=selected_decision["part_number"],
+                            analysis_id=str(selected_decision.get("analysis_id") or ""),
+                            source_page="engineering_decisions",
                         )
-                        render_decision_card_actions(
-                            decision,
-                            navigate_to=navigate_to,
-                            internal_nav_button=internal_nav_button,
-                            key_prefix=f"queue_{decision['decision_id']}",
+                    with navigation_cols[1]:
+                        internal_nav_button(
+                            "Open Monitoring",
+                            "Monitoring",
+                            key=f"decision_monitor_{decision_id}",
+                            use_container_width=True,
                         )
+                    with navigation_cols[2]:
+                        internal_nav_button(
+                            "Generate Report",
+                            "Reports",
+                            key=f"decision_report_{decision_id}",
+                            use_container_width=True,
+                        )
+                    with navigation_cols[3]:
+                        if selected_decision.get("analysis_id"):
+                            internal_nav_button(
+                                "Open Saved BOM",
+                                "Analysis Details",
+                                key=f"decision_analysis_{decision_id}",
+                                use_container_width=True,
+                                analysis_id=selected_decision["analysis_id"],
+                            )
+                        else:
+                            st.caption("No saved BOM is linked to this decision.")
 
-            with workload_tab:
-                st.markdown("### Team Workload")
-                active = [
-                    decision
-                    for decision in all_decisions
-                    if decision["status"] not in ("Closed", "Rejected")
-                ]
-                if not active:
-                    st.success("No open engineering workload remains.")
-                else:
-                    workload_rows = []
-                    owners = sorted(set(decision["assigned_owner"] for decision in active))
-                    for owner in owners:
-                        owner_decisions = [
-                            decision for decision in active if decision["assigned_owner"] == owner
-                        ]
-                        workload_rows.append(
+                with evidence_tab:
+                    st.markdown("### Evidence used by Cadivor")
+                    for evidence in selected_decision.get("evidence", []):
+                        st.markdown(f"- {evidence}")
+                    st.markdown("### Decision context")
+                    context_df = pd.DataFrame(
+                        [
                             {
-                                "Owner": owner,
-                                "Open Decisions": len(owner_decisions),
-                                "Critical": sum(
-                                    1 for decision in owner_decisions
-                                    if decision["priority_score"] >= 85
-                                ),
-                                "Estimated Hours": sum(
-                                    decision["estimated_effort_hours"]
-                                    for decision in owner_decisions
-                                ),
-                                "Average Confidence": round(
-                                    sum(decision["confidence"] for decision in owner_decisions)
-                                    / len(owner_decisions)
-                                ),
-                            }
-                        )
-                    cadivor_table(
-                        pd.DataFrame(workload_rows),
-                        caption="Team workload by owner",
-                        numeric_columns=["Open Decisions", "Critical", "Estimated Hours", "Average Confidence"],
-                        align={
-                            "Open Decisions": "right",
-                            "Critical": "right",
-                            "Estimated Hours": "right",
-                            "Average Confidence": "right",
-                        },
+                                "Field": "Source",
+                                "Value": selected_decision["source"],
+                            },
+                            {
+                                "Field": "Decision Type",
+                                "Value": selected_decision["decision_type"],
+                            },
+                            {
+                                "Field": "Supporting Team",
+                                "Value": selected_decision["supporting_team"],
+                            },
+                            {
+                                "Field": "Estimated Cost Impact",
+                                "Value": selected_decision["estimated_cost_impact"],
+                            },
+                        ]
                     )
+                    cadivor_engineering_dataframe(context_df)
 
-            with analytics_tab:
-                cadivor_section_header(
-                    "Decision Analytics",
-                    description="Portfolio impact from open and closed engineering decisions.",
-                    icon="chart-no-axes-combined",
+                with notes_tab:
+                    note = st.text_area(
+                        "Add an engineering note",
+                        placeholder="Record validation findings, supplier feedback, approval conditions, or next steps.",
+                        key=f"decision_note_{decision_id}",
+                    )
+                    if st.button(
+                        "Add Note",
+                        key=f"decision_add_note_{decision_id}",
+                        type="primary",
+                    ):
+                        if not note.strip():
+                            st.warning("Enter a note before saving.")
+                        else:
+                            note_author = (
+                                profile_for_shell.get("full_name")
+                                or shell_name
+                            )
+                            note_error = add_decision_note(
+                                supabase,
+                                user_id=current_user["id"],
+                                workspace_id=active_workspace_id or None,
+                                decision={
+                                    **selected_decision,
+                                    "status": state_record.get("status", "New"),
+                                    "assigned_owner": state_record.get(
+                                        "owner",
+                                        selected_decision["owner"],
+                                    ),
+                                },
+                                author_name=note_author,
+                                note_text=note.strip(),
+                            )
+
+                            if note_error:
+                                st.error(
+                                    "The note could not be saved. "
+                                    "Confirm the Milestone 13.2 SQL was applied."
+                                )
+                            else:
+                                refreshed_state, refresh_error = load_decision_state(
+                                    supabase,
+                                    user_id=current_user["id"],
+                                    workspace_id=active_workspace_id or None,
+                                )
+                                if not refresh_error:
+                                    st.session_state[
+                                        decision_cache_key
+                                    ] = refreshed_state
+                                st.success("Engineering note saved.")
+                                st.rerun()
+
+                    notes = state_record.get("notes", [])
+                    if not notes:
+                        st.info("No engineering notes have been added yet.")
+                    else:
+                        for item in reversed(notes):
+                            with st.container(border=True):
+                                st.markdown(f"**{item.get('author', 'Engineer')}**")
+                                st.caption(item.get("time", ""))
+                                st.write(item.get("text", ""))
+
+                with history_tab:
+                    history = state_record.get("history", [])
+                    if not history:
+                        st.info("No decision history is available.")
+                    else:
+                        history_df = pd.DataFrame(history).rename(
+                            columns={"event": "Event", "time": "Time"}
+                        )
+                        cadivor_table(
+                            history_df.iloc[::-1],
+                            caption="Decision history",
+                        )
+
+            else:
+                rejected_count = sum(
+                    1 for decision in all_decisions if str(decision.get("status")) == "Rejected"
                 )
                 cadivor_metric_row(
                     [
-                        MetricCard(
-                            label="Projected Health Gain",
-                            value=f"+{decision_center['projected_health_gain']}",
-                            tone="success",
-                            icon="gauge",
-                        ),
-                        MetricCard(
-                            label="Supply Risk Reduction",
-                            value=f"-{decision_center['projected_risk_reduction']}",
-                            tone="monitoring",
-                            icon="radar",
-                        ),
-                        MetricCard(
-                            label="Closed / Rejected",
-                            value=str(decision_center["closed_count"]),
-                            tone="neutral",
-                            icon="circle-x",
-                        ),
-                        MetricCard(
-                            label="Average Open Age",
-                            value=f"{decision_center['average_age_days']} days",
-                            tone="warning",
-                            icon="clock",
-                        ),
+                        MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
+                        MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
+                        MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
+                        MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
+                        MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
+                        MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
                     ],
+                    columns=3,
                 )
 
-                if all_decisions:
-                    status_counts = (
-                        pd.DataFrame(all_decisions)["status"]
-                        .value_counts()
-                        .rename_axis("Workflow Stage")
-                        .reset_index(name="Decisions")
+                refresh_decision_col, persistence_scope_col = st.columns([1, 3])
+                with refresh_decision_col:
+                    cadivor_button_wrap("secondary")
+                    if st.button(
+                        "Refresh Decisions",
+                        key="refresh_persistent_decisions",
+                        use_container_width=True,
+                    ):
+                        _clear_engineering_decision_caches()
+                        st.rerun()
+                    cadivor_button_wrap_end()
+                with persistence_scope_col:
+                    st.caption(
+                        f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
                     )
-                    owner_hours = (
-                        pd.DataFrame(
-                            [
-                                {
-                                    "Owner": decision["assigned_owner"],
-                                    "Estimated Hours": decision["estimated_effort_hours"],
-                                    "Priority Score": decision["priority_score"],
-                                }
-                                for decision in all_decisions
-                                if decision["status"] not in ("Closed", "Rejected")
+
+                queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
+                    [
+                        "Needs Review",
+                        "Team Workload",
+                        "Decision Analytics",
+                        "Completed",
+                    ]
+                )
+
+                with queue_tab:
+                    filter_cols = st.columns(3)
+                    with filter_cols[0]:
+                        priority_filter = st.selectbox(
+                            "Priority",
+                            ["All", "Critical", "High", "Medium", "Routine"],
+                            key="decision_priority_filter",
+                        )
+                    with filter_cols[1]:
+                        status_filter = st.selectbox(
+                            "Status",
+                            ["All"] + STATUSES,
+                            key="decision_status_filter",
+                        )
+                    with filter_cols[2]:
+                        search_decisions = st.text_input(
+                            "Search decisions",
+                            placeholder="Component, project, owner, or action",
+                            key="decision_search",
+                        )
+
+                    visible = all_decisions
+                    if priority_filter != "All":
+                        visible = [
+                            decision
+                            for decision in visible
+                            if decision["priority"] == priority_filter
+                        ]
+                    if status_filter != "All":
+                        visible = [
+                            decision
+                            for decision in visible
+                            if decision["status"] == status_filter
+                        ]
+                    if search_decisions.strip():
+                        query = search_decisions.strip().lower()
+                        visible = [
+                            decision
+                            for decision in visible
+                            if query
+                            in " ".join(
+                                [
+                                    str(decision["part_number"]),
+                                    str(decision["title"]),
+                                    str(decision["assigned_owner"]),
+                                    str(decision["reason"]),
+                                ]
+                            ).lower()
+                        ]
+
+                    st.caption(f"Showing {len(visible)} of {len(all_decisions)} engineering decision(s).")
+
+                    if not visible:
+                        st.info("No engineering decisions match the selected filters.")
+                    else:
+                        for decision in visible[:40]:
+                            st.markdown(
+                                decision_card_html(decision),
+                                unsafe_allow_html=True,
+                            )
+                            render_decision_card_actions(
+                                decision,
+                                navigate_to=navigate_to,
+                                internal_nav_button=internal_nav_button,
+                                key_prefix=f"queue_{decision['decision_id']}",
+                            )
+
+                with workload_tab:
+                    st.markdown("### Team Workload")
+                    active = [
+                        decision
+                        for decision in all_decisions
+                        if decision["status"] not in ("Closed", "Rejected")
+                    ]
+                    if not active:
+                        st.success("No open engineering workload remains.")
+                    else:
+                        workload_rows = []
+                        owners = sorted(set(decision["assigned_owner"] for decision in active))
+                        for owner in owners:
+                            owner_decisions = [
+                                decision for decision in active if decision["assigned_owner"] == owner
                             ]
-                        )
-                        .groupby("Owner", as_index=False)
-                        .agg(
-                            {
-                                "Estimated Hours": "sum",
-                                "Priority Score": "mean",
-                            }
-                        )
-                        .rename(columns={"Priority Score": "Average Priority"})
-                    )
-                    analytics_left, analytics_right = st.columns(2)
-                    with analytics_left:
-                        st.markdown("#### Decisions by Workflow Stage")
+                            workload_rows.append(
+                                {
+                                    "Owner": owner,
+                                    "Open Decisions": len(owner_decisions),
+                                    "Critical": sum(
+                                        1 for decision in owner_decisions
+                                        if decision["priority_score"] >= 85
+                                    ),
+                                    "Estimated Hours": sum(
+                                        decision["estimated_effort_hours"]
+                                        for decision in owner_decisions
+                                    ),
+                                    "Average Confidence": round(
+                                        sum(decision["confidence"] for decision in owner_decisions)
+                                        / len(owner_decisions)
+                                    ),
+                                }
+                            )
                         cadivor_table(
-                            status_counts,
-                            badge_columns=["Workflow Stage"],
-                            numeric_columns=["Decisions"],
-                            align={"Decisions": "right"},
-                        )
-                    with analytics_right:
-                        st.markdown("#### Open Workload Impact")
-                        cadivor_table(
-                            owner_hours,
-                            numeric_columns=["Estimated Hours", "Average Priority"],
-                            align={"Estimated Hours": "right", "Average Priority": "right"},
+                            pd.DataFrame(workload_rows),
+                            caption="Team workload by owner",
+                            numeric_columns=["Open Decisions", "Critical", "Estimated Hours", "Average Confidence"],
+                            align={
+                                "Open Decisions": "right",
+                                "Critical": "right",
+                                "Estimated Hours": "right",
+                                "Average Confidence": "right",
+                            },
                         )
 
-            with archive_tab:
-                st.markdown("### Searchable Decision Archive")
-                archive_search = st.text_input(
-                    "Search archived decisions",
-                    placeholder="Project, component, owner, type, or outcome",
-                    key="decision_archive_search",
-                )
-                archived = [
-                    decision
-                    for decision in all_decisions
-                    if decision["status"] in ("Closed", "Rejected", "Production Approved")
-                ]
-                if archive_search.strip():
-                    archive_query = archive_search.strip().lower()
+                with analytics_tab:
+                    cadivor_section_header(
+                        "Decision Analytics",
+                        description="Portfolio impact from open and closed engineering decisions.",
+                        icon="chart-no-axes-combined",
+                    )
+                    cadivor_metric_row(
+                        [
+                            MetricCard(
+                                label="Projected Health Gain",
+                                value=f"+{decision_center['projected_health_gain']}",
+                                tone="success",
+                                icon="gauge",
+                            ),
+                            MetricCard(
+                                label="Supply Risk Reduction",
+                                value=f"-{decision_center['projected_risk_reduction']}",
+                                tone="monitoring",
+                                icon="radar",
+                            ),
+                            MetricCard(
+                                label="Closed / Rejected",
+                                value=str(decision_center["closed_count"]),
+                                tone="neutral",
+                                icon="circle-x",
+                            ),
+                            MetricCard(
+                                label="Average Open Age",
+                                value=f"{decision_center['average_age_days']} days",
+                                tone="warning",
+                                icon="clock",
+                            ),
+                        ],
+                    )
+
+                    if all_decisions:
+                        status_counts = (
+                            pd.DataFrame(all_decisions)["status"]
+                            .value_counts()
+                            .rename_axis("Workflow Stage")
+                            .reset_index(name="Decisions")
+                        )
+                        owner_hours = (
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "Owner": decision["assigned_owner"],
+                                        "Estimated Hours": decision["estimated_effort_hours"],
+                                        "Priority Score": decision["priority_score"],
+                                    }
+                                    for decision in all_decisions
+                                    if decision["status"] not in ("Closed", "Rejected")
+                                ]
+                            )
+                            .groupby("Owner", as_index=False)
+                            .agg(
+                                {
+                                    "Estimated Hours": "sum",
+                                    "Priority Score": "mean",
+                                }
+                            )
+                            .rename(columns={"Priority Score": "Average Priority"})
+                        )
+                        analytics_left, analytics_right = st.columns(2)
+                        with analytics_left:
+                            st.markdown("#### Decisions by Workflow Stage")
+                            cadivor_table(
+                                status_counts,
+                                badge_columns=["Workflow Stage"],
+                                numeric_columns=["Decisions"],
+                                align={"Decisions": "right"},
+                            )
+                        with analytics_right:
+                            st.markdown("#### Open Workload Impact")
+                            cadivor_table(
+                                owner_hours,
+                                numeric_columns=["Estimated Hours", "Average Priority"],
+                                align={"Estimated Hours": "right", "Average Priority": "right"},
+                            )
+
+                with archive_tab:
+                    st.markdown("### Searchable Decision Archive")
+                    archive_search = st.text_input(
+                        "Search archived decisions",
+                        placeholder="Project, component, owner, type, or outcome",
+                        key="decision_archive_search",
+                    )
                     archived = [
                         decision
-                        for decision in archived
-                        if archive_query
-                        in " ".join(
-                            [
-                                str(decision["title"]),
-                                str(decision["part_number"]),
-                                str(decision["assigned_owner"]),
-                                str(decision["decision_type"]),
-                                str(decision["status"]),
-                            ]
-                        ).lower()
+                        for decision in all_decisions
+                        if decision["status"] in ("Closed", "Rejected", "Production Approved")
                     ]
-
-                if not archived:
-                    st.info("No archived or production-approved decisions match the search.")
-                else:
-                    archive_df = pd.DataFrame(
-                        [
-                            {
-                                "Updated": decision["updated_at"],
-                                "Project / Component": decision["part_number"],
-                                "Decision": decision["title"],
-                                "Owner": decision["assigned_owner"],
-                                "Decision Type": decision["decision_type"],
-                                "Outcome": decision["status"],
-                                "Confidence": f"{decision['confidence']}%",
-                            }
+                    if archive_search.strip():
+                        archive_query = archive_search.strip().lower()
+                        archived = [
+                            decision
                             for decision in archived
+                            if archive_query
+                            in " ".join(
+                                [
+                                    str(decision["title"]),
+                                    str(decision["part_number"]),
+                                    str(decision["assigned_owner"]),
+                                    str(decision["decision_type"]),
+                                    str(decision["status"]),
+                                ]
+                            ).lower()
                         ]
-                    )
-                    cadivor_table(
-                        archive_df,
-                        caption="Archived and production-approved decisions",
-                        monospace_columns=["Project / Component"],
-                        badge_columns=["Outcome"],
-                        align={"Confidence": "right"},
-                    )
-                    st.download_button(
-                        "Export Decision Archive CSV",
-                        data=archive_df.to_csv(index=False).encode("utf-8"),
-                        file_name="cadivor_decision_archive.csv",
-                        mime="text/csv",
-                        key="decision_archive_csv",
-                        type="primary",
-                    )
 
-        st.markdown("</div>", unsafe_allow_html=True)
+                    if not archived:
+                        st.info("No archived or production-approved decisions match the search.")
+                    else:
+                        archive_df = pd.DataFrame(
+                            [
+                                {
+                                    "Updated": decision["updated_at"],
+                                    "Project / Component": decision["part_number"],
+                                    "Decision": decision["title"],
+                                    "Owner": decision["assigned_owner"],
+                                    "Decision Type": decision["decision_type"],
+                                    "Outcome": decision["status"],
+                                    "Confidence": f"{decision['confidence']}%",
+                                }
+                                for decision in archived
+                            ]
+                        )
+                        cadivor_table(
+                            archive_df,
+                            caption="Archived and production-approved decisions",
+                            monospace_columns=["Project / Component"],
+                            badge_columns=["Outcome"],
+                            align={"Confidence": "right"},
+                        )
+                        st.download_button(
+                            "Export Decision Archive CSV",
+                            data=archive_df.to_csv(index=False).encode("utf-8"),
+                            file_name="cadivor_decision_archive.csv",
+                            mime="text/csv",
+                            key="decision_archive_csv",
+                            type="primary",
+                        )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+            stop_authenticated_page()
 
 
     def _mark_first_report_complete() -> None:
