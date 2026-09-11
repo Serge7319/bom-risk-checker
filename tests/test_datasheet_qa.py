@@ -306,6 +306,11 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn("Ask next", page)
         self.assertIn("Private session", page)
         self.assertNotIn("datasheet_qa_form", page)
+        # Composer visibility hotfix: bare st.text_area collapses without these rules.
+        self.assertIn(".st-key-datasheet_qa_question", page)
+        self.assertIn("stTextAreaRootElement", page)
+        self.assertIn("min-height:84px!important", page)
+        self.assertIn("Example: What are the absolute maximum ratings?", page)
 
 class ConversationalDatasheetQaV1Tests(unittest.TestCase):
     """Acceptance coverage T1–T8 for Conversational Datasheet Q&A v1."""
