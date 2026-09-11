@@ -299,8 +299,11 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn("suggest_datasheet_follow_ups", (root / "src" / "datasheet_qa.py").read_text())
         self.assertIn("queue_datasheet_follow_up", page)
         self.assertIn("consume_datasheet_pending_question", page)
+        self.assertIn("on_click=_chip_click", page)
         self.assertIn("dq-evidence", page)
         self.assertIn("dq-composer", page)
+        self.assertIn("Ask next", page)
+        self.assertIn("Private session", page)
 
 class ConversationalDatasheetQaV1Tests(unittest.TestCase):
     """Acceptance coverage T1–T8 for Conversational Datasheet Q&A v1."""
@@ -517,13 +520,12 @@ class ConversationalDatasheetQaV1Tests(unittest.TestCase):
 class DatasheetQaFollowUpLifecycleTests(unittest.TestCase):
     """Prove chip clicks never mutate an instantiated composer widget key."""
 
-    def test_queue_follow_up_does_not_write_composer_widget_key(self):
-        from src.datasheet_qa import queue_datasheet_follow_up
+    def test_queue_follow_up_marks_processing_without_widget_write(self):
+        from src.datasheet_qa import STATUS_PROCESSING, queue_datasheet_follow_up
 
         session = {
             DATASHEET_QA_QUESTION_WIDGET_KEY: "original composer text",
         }
-        # Simulate Streamlit: widget already instantiated → key is locked.
         locked = {"datasheet_qa_question"}
 
         class _GuardedSession(dict):
@@ -545,6 +547,7 @@ class DatasheetQaFollowUpLifecycleTests(unittest.TestCase):
             guarded["datasheet_qa_pending_question"],
             "What package options are listed?",
         )
+        self.assertEqual(guarded["datasheet_qa_status"], STATUS_PROCESSING)
         self.assertEqual(guarded[DATASHEET_QA_QUESTION_WIDGET_KEY], "original composer text")
 
     def test_consume_pending_then_one_turn_without_widget_mutation(self):

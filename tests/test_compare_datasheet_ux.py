@@ -122,6 +122,16 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
         )
         self.assertTrue(claim_datasheet_question_submit(session, preclear, now=250.0))
 
+    def test_deferred_clear_ignores_chip_pending_key(self):
+        session = {
+            DATASHEET_QA_CLEAR_QUESTION_KEY: True,
+            DATASHEET_QA_QUESTION_WIDGET_KEY: "typed question",
+            DATASHEET_QA_PENDING_QUESTION_KEY: "chip follow-up",
+        }
+        preclear = apply_datasheet_question_clear(session)
+        self.assertEqual(preclear, "typed question")
+        self.assertEqual(session.get(DATASHEET_QA_PENDING_QUESTION_KEY), "chip follow-up")
+
     def test_page_submit_gate_orders_resolve_before_claim(self):
         self.assertIn("apply_datasheet_question_clear", DATASHEET_PAGE)
         self.assertIn("preclear_question", DATASHEET_PAGE)
@@ -203,43 +213,43 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
 
     def test_product_language_and_normal_ask_button(self):
         self.assertIn("Ask Cadivor", DATASHEET_PAGE)
-        self.assertIn("Session-private", DATASHEET_PAGE)
+        self.assertIn("Private session", DATASHEET_PAGE)
         self.assertIn("View supporting passages", DATASHEET_PAGE)
         self.assertIn(">You<", DATASHEET_PAGE)
         self.assertIn(">Cadivor<", DATASHEET_PAGE)
-        self.assertIn("Suggested follow-ups", DATASHEET_PAGE)
+        self.assertIn("Ask next", DATASHEET_PAGE)
         self.assertIn("dq-evidence", DATASHEET_PAGE)
-        self.assertIn("dq-turn-user", DATASHEET_PAGE)
-        self.assertIn("dq-turn-cadivor", DATASHEET_PAGE)
+        self.assertIn("dq-assistant", DATASHEET_PAGE)
         self.assertIn("dq-composer", DATASHEET_PAGE)
-        self.assertIn("More questions", DATASHEET_PAGE)
-        self.assertIn("VISIBLE_FOLLOW_UPS", DATASHEET_PAGE)
+        self.assertIn("dq-docbar", DATASHEET_PAGE)
+        self.assertIn("on_click=_chip_click", DATASHEET_PAGE)
         self.assertIn("consume_datasheet_pending_question", DATASHEET_PAGE)
-        self.assertIn("Retrieving relevant pages", DATASHEET_PAGE)
-        self.assertIn("Ask Cadivor is analyzing the datasheet", DATASHEET_PAGE)
+        self.assertIn("Cadivor is reviewing the datasheet evidence", DATASHEET_PAGE)
         self.assertIn("NOT_FOUND_ANSWER", DATASHEET_PAGE)
         self.assertEqual(NOT_FOUND_ANSWER, "Not found in this datasheet.")
         self.assertIn('st.form_submit_button(\n                "Ask Cadivor"', DATASHEET_PAGE)
         self.assertIn("use_container_width=False", DATASHEET_PAGE)
-        self.assertIn("dq-workspace", DATASHEET_PAGE)
+        self.assertIn("dq-shell", DATASHEET_PAGE)
+        self.assertIn("dq-marker", DATASHEET_PAGE)
+        self.assertIn("max-width:1120px", DATASHEET_PAGE)
+        self.assertIn("st.html", DATASHEET_PAGE)
         self.assertIn("DATASHEET_QA_CLEAR_QUESTION_KEY", DATASHEET_PAGE)
         self.assertIn("DATASHEET_QA_QUESTION_WIDGET_KEY", DATASHEET_PAGE)
         self.assertIn("resolve_datasheet_question", DATASHEET_PAGE)
         self.assertIn("queue_datasheet_follow_up", DATASHEET_PAGE)
         self.assertIn("disabled=processing", DATASHEET_PAGE)
-        # Composer remains in-flow under the thread (not fixed overlay).
         self.assertNotIn("position:fixed", DATASHEET_PAGE)
         self.assertNotIn("position: fixed", DATASHEET_PAGE)
-        # Chip click must rerun after queue — never assign widget key post-instantiate.
-        self.assertIn("queue_datasheet_follow_up(st.session_state, suggestion_clicked)", DATASHEET_PAGE)
-        self.assertIn("st.rerun()", DATASHEET_PAGE)
+        self.assertNotIn("Continuing conversation for this datasheet", DATASHEET_PAGE)
+        self.assertNotIn("Page references:", DATASHEET_PAGE)
+        self.assertNotIn("Session-private", DATASHEET_PAGE)
+        # Never assign the composer widget key from a chip click handler.
         self.assertNotIn(
             "DATASHEET_QA_QUESTION_WIDGET_KEY] = suggestion",
             DATASHEET_PAGE,
         )
-        self.assertNotIn("Continuing conversation for this datasheet", DATASHEET_PAGE)
-        self.assertNotIn("Page references:", DATASHEET_PAGE)
-        self.assertIn("max-width:min(1040px", DATASHEET_PAGE)
+        self.assertIn("show_follow_ups=(turn_index == last_index", DATASHEET_PAGE)
+
     def test_chronological_thread_not_reversed(self):
         self.assertIn("for turn_index, turn in enumerate(thread):", DATASHEET_PAGE)
         self.assertNotIn("reversed(thread)", DATASHEET_PAGE)
