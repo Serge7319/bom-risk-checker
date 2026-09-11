@@ -1,7 +1,16 @@
 """Cadivor Milestone 13.2 — persistent engineering decision records."""
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List, Tuple
+
+from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
+
+# Wall-clock budget for the three sequential decision-table reads. Callers may
+# pass a tighter deadline; this is the default ceiling so Opening/nav never
+# wait unboundedly on PostgREST.
+DEFAULT_DECISION_LOAD_BUDGET_SECONDS = 8.0
+DECISION_LOAD_TIMEOUT_TOKEN = "decision_load_budget_exceeded"
 
 
 def _scope_key(workspace_id: str | None) -> str:
@@ -14,40 +23,84 @@ def _safe_rows(response: Any) -> List[Dict[str, Any]]:
     return list(rows or [])
 
 
+def _budget_exceeded(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= float(deadline)
+
+
 def load_decision_state(
     supabase: Any,
     *,
     user_id: str,
     workspace_id: str | None,
+    deadline: float | None = None,
+    budget_seconds: float | None = None,
 ) -> Tuple[Dict[str, Dict[str, Any]], str | None]:
-    """Load workflow state, notes, and history for the active decision scope."""
+    """Load workflow state, notes, and history for the active decision scope.
+
+    Reads are scoped by ``user_id`` + ``scope_key`` (workspace or personal).
+    Optional ``deadline`` / ``budget_seconds`` abort with a recoverable timeout
+    instead of hanging the Engineering Decisions page indefinitely.
+    """
     scope = _scope_key(workspace_id)
+    if deadline is None and budget_seconds is not None:
+        deadline = time.monotonic() + max(0.1, float(budget_seconds))
+    elif deadline is None:
+        deadline = time.monotonic() + DEFAULT_DECISION_LOAD_BUDGET_SECONDS
+
+    # Test-only hydrate delay (browser smoke). Production leaves this unset.
     try:
+        import os
+
+        smoke_delay = float(os.environ.get("CADIVOR_ED_SMOKE_HYDRATE_DELAY_S") or "0")
+    except Exception:
+        smoke_delay = 0.0
+    if smoke_delay > 0:
+        time.sleep(min(smoke_delay, 30.0))
+
+    try:
+        if _budget_exceeded(deadline):
+            return {}, DECISION_LOAD_TIMEOUT_TOKEN
+
         decision_rows = _safe_rows(
-            supabase.table("engineering_decisions")
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("scope_key", scope)
-            .execute()
+            execute_supabase_read(
+                supabase.table("engineering_decisions")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("scope_key", scope),
+                operation="engineering_decisions.select",
+                attempts=2,
+            )
         )
+        if _budget_exceeded(deadline):
+            return {}, DECISION_LOAD_TIMEOUT_TOKEN
 
         note_rows = _safe_rows(
-            supabase.table("engineering_decision_notes")
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("scope_key", scope)
-            .order("created_at", desc=False)
-            .execute()
+            execute_supabase_read(
+                supabase.table("engineering_decision_notes")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("scope_key", scope)
+                .order("created_at", desc=False),
+                operation="engineering_decision_notes.select",
+                attempts=2,
+            )
         )
+        if _budget_exceeded(deadline):
+            return {}, DECISION_LOAD_TIMEOUT_TOKEN
 
         event_rows = _safe_rows(
-            supabase.table("engineering_decision_events")
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("scope_key", scope)
-            .order("created_at", desc=False)
-            .execute()
+            execute_supabase_read(
+                supabase.table("engineering_decision_events")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("scope_key", scope)
+                .order("created_at", desc=False),
+                operation="engineering_decision_events.select",
+                attempts=2,
+            )
         )
+    except SupabaseReadTransportError as exc:
+        return {}, str(exc)
     except Exception as exc:
         return {}, str(exc)
 
