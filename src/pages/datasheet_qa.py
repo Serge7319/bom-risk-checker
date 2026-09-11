@@ -11,6 +11,7 @@ from src.datasheet_qa import (
     DATASHEET_QA_ACTIVE_FINGERPRINT_KEY,
     DATASHEET_QA_CLEAR_QUESTION_KEY,
     DATASHEET_QA_DOC_KEY,
+    DATASHEET_QA_EMPTY_ASK_KEY,
     DATASHEET_QA_PENDING_QUESTION_KEY,
     DATASHEET_QA_QUESTION_WIDGET_KEY,
     DATASHEET_QA_STATUS_KEY,
@@ -23,7 +24,6 @@ from src.datasheet_qa import (
     append_thread_turn,
     apply_datasheet_question_clear,
     build_datasheet_ai_client,
-    claim_datasheet_question_submit,
     clean_evidence_excerpt,
     clear_datasheet_document,
     compact_datasheet_history,
@@ -246,6 +246,23 @@ def _chip_click(suggestion: str) -> None:
     queue_datasheet_follow_up(st.session_state, suggestion)
 
 
+def _typed_ask_click() -> None:
+    """Queue a typed Ask Cadivor click on the shared pending path.
+
+    Runs as a Streamlit ``on_click`` callback after widget values are written to
+    session state and before the script body — same lifecycle as suggestion chips.
+    Never mutates the composer widget key here.
+    """
+    question = resolve_datasheet_question(
+        st.session_state.get(DATASHEET_QA_QUESTION_WIDGET_KEY),
+    )
+    if not question:
+        st.session_state[DATASHEET_QA_EMPTY_ASK_KEY] = True
+        return
+    st.session_state.pop(DATASHEET_QA_EMPTY_ASK_KEY, None)
+    queue_datasheet_follow_up(st.session_state, question)
+
+
 def _answer_html(answer: str) -> str:
     blocks = format_datasheet_answer_blocks(answer)
     if not blocks:
@@ -388,7 +405,7 @@ def render_datasheet_qa_page() -> None:
     """Render the conversational Datasheet Q&A workspace."""
     _inject_datasheet_qa_styles()
     # Composer clear must run before the text-area widget is constructed.
-    preclear_question = apply_datasheet_question_clear(st.session_state)
+    apply_datasheet_question_clear(st.session_state)
 
     document = st.session_state.get(DATASHEET_QA_DOC_KEY)
     ready_document = isinstance(document, dict) and bool(document.get("available"))
@@ -537,43 +554,35 @@ def render_datasheet_qa_page() -> None:
         if thread
         else "Ask about ratings, package, limits, or device identity."
     )
-    _html(
-        '<div class="dq-composer">'
+    # Use markdown (not a preceding st.html card) so the composer chrome cannot
+    # overlap the textarea and swallow the first Ask click.
+    st.markdown(
         '<p class="dq-composer-title">Ask Cadivor</p>'
-        f'<p class="dq-composer-hint">{_esc(ask_hint)}</p>'
-        "</div>"
+        f'<p class="dq-composer-hint">{_esc(ask_hint)}</p>',
+        unsafe_allow_html=True,
     )
-    with st.form("datasheet_qa_form", clear_on_submit=False, border=False):
-        question_form = st.text_area(
-            "Question",
-            key=DATASHEET_QA_QUESTION_WIDGET_KEY,
-            placeholder="Example: What are the absolute maximum ratings?",
-            height=84,
-            label_visibility="collapsed",
+    # Non-form composer: button on_click shares the chip queue path. Forms were
+    # losing the first typed submit (empty form return / delayed session sync).
+    st.text_area(
+        "Question",
+        key=DATASHEET_QA_QUESTION_WIDGET_KEY,
+        placeholder="Example: What are the absolute maximum ratings?",
+        height=84,
+        label_visibility="collapsed",
+        disabled=processing,
+    )
+    ask_cols = st.columns([1, 4])
+    with ask_cols[0]:
+        cadivor_button_wrap("primary")
+        st.button(
+            "Ask Cadivor",
+            key="datasheet_qa_ask_button",
+            type="primary",
+            use_container_width=False,
             disabled=processing,
+            on_click=_typed_ask_click,
         )
-        ask_cols = st.columns([1, 4])
-        with ask_cols[0]:
-            cadivor_button_wrap("primary")
-            asked = st.form_submit_button(
-                "Ask Cadivor",
-                type="primary",
-                use_container_width=False,
-                disabled=processing,
-            )
-            cadivor_button_wrap_end()
+        cadivor_button_wrap_end()
 
-    if asked and not processing:
-        question = resolve_datasheet_question(
-            preclear_question,
-            st.session_state.get(DATASHEET_QA_QUESTION_WIDGET_KEY),
-            question_form,
-        )
-        if not question:
-            st.warning("Enter a question about this datasheet.")
-        elif claim_datasheet_question_submit(st.session_state, question):
-            # Typed path: widgets already exist, so queue + rerun to execute
-            # on the next run before the composer is constructed again.
-            st.session_state[DATASHEET_QA_PENDING_QUESTION_KEY] = question
-            st.session_state[DATASHEET_QA_STATUS_KEY] = STATUS_PROCESSING
-            st.rerun()
+    if st.session_state.pop(DATASHEET_QA_EMPTY_ASK_KEY, False):
+        st.warning("Enter a question about this datasheet.")

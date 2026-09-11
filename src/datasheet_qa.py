@@ -26,6 +26,7 @@ DATASHEET_QA_CLEAR_QUESTION_KEY = "datasheet_qa_clear_question"
 DATASHEET_QA_PENDING_QUESTION_KEY = "datasheet_qa_pending_question"
 DATASHEET_QA_ACTIVE_FINGERPRINT_KEY = "datasheet_qa_active_fingerprint"
 DATASHEET_QA_STORE_COUNT_KEY = "datasheet_qa_store_count"
+DATASHEET_QA_EMPTY_ASK_KEY = "datasheet_qa_empty_ask"
 
 STATUS_IDLE = "idle"
 STATUS_PROCESSING = "processing"
@@ -47,7 +48,15 @@ MIN_FOLLOW_UPS = 3
 PRIMARY_EXCERPT_CHARS = 160
 _BOILERPLATE_RE = re.compile(
     r"(copyright|all rights reserved|proprietary|confidential|"
-    r"www\.|http://|https://|printed in|revision history)",
+    r"www\.|http://|https://|\.com\b|\.net\b|\.org\b|"
+    r"printed in|revision history|document number|data sheet|"
+    r"datasheet|preliminary|not for new designs)",
+    re.IGNORECASE,
+)
+_PAGE_HEADER_RE = re.compile(
+    r"^(?:page\s+\d+\b[\s/|-]*|\d+\s*/\s*\d+\b[\s/|-]*|"
+    r"diodes\s+incorporated\b[\s/|-]*|"
+    r"[a-z0-9._%-]+@[a-z0-9.-]+\.[a-z]{2,}\b[\s/|-]*)+",
     re.IGNORECASE,
 )
 
@@ -270,23 +279,57 @@ def document_fingerprint(document: Mapping[str, Any] | None) -> str:
 
 
 def clean_evidence_excerpt(excerpt: str, *, limit: int = PRIMARY_EXCERPT_CHARS) -> str:
-    """Short, scannable excerpt — drop legal/boilerplate and page-dump noise."""
+    """Short, scannable excerpt — drop headers, footers, legal, and page-dump noise."""
     text = re.sub(r"\s+", " ", str(excerpt or "")).strip()
+    if not text:
+        return ""
+    # Strip URLs/hosts and repeated leading page/header fragments.
+    text = re.sub(r"(?i)\b(?:https?://|www\.)\S+", " ", text)
+    text = re.sub(r"(?i)\b[\w.-]+\.(?:com|net|org|io)\b", " ", text)
+    text = re.sub(r"(?i)\bdiodes\s+incorporated\b", " ", text)
+    for _ in range(3):
+        cleaned = _PAGE_HEADER_RE.sub("", text).strip(" -/|")
+        if cleaned == text:
+            break
+        text = cleaned
+    text = re.sub(r"(?i)\bPage\s+\d+\b", " ", text)
+    text = re.sub(r"(?i)\bcopyright\b.*$", " ", text)
+    text = re.sub(r"(?i)\ball rights reserved\b.*$", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" -/|")
     if not text:
         return ""
     # Prefer the first sentence that looks like a rating/spec, not boilerplate.
     sentences = [part.strip() for part in re.split(r"(?<=[.;:])\s+", text) if part.strip()]
     chosen = ""
+    tech_re = re.compile(
+        r"\b(\d+(\.\d+)?\s*(V|mA|A|°?C|Hz|kHz|MHz|Ω|ohm)|voltage|current|"
+        r"package|temperature|rating|maximum|minimum|typical)\b",
+        re.IGNORECASE,
+    )
     for sentence in sentences:
         if _BOILERPLATE_RE.search(sentence):
             continue
         if len(sentence) < 12:
             continue
-        chosen = sentence
-        break
+        if tech_re.search(sentence):
+            chosen = sentence
+            break
+        if not chosen:
+            chosen = sentence
     if not chosen:
-        chosen = next((s for s in sentences if not _BOILERPLATE_RE.search(s)), text)
-    chosen = chosen.strip(" \"'")
+        chosen = next((s for s in sentences if not _BOILERPLATE_RE.search(s)), "")
+    if not chosen:
+        # Last resort: pull a technical clause out of the noise.
+        match = re.search(
+            r"((?:Absolute|Recommended|Operating|Collector|Package|Maximum)[^.]{8,160}?\d[^.]{0,40})",
+            text,
+            re.IGNORECASE,
+        )
+        chosen = match.group(1).strip() if match else text
+    chosen = _PAGE_HEADER_RE.sub("", chosen).strip(" \"'-/|")
+    chosen = re.sub(r"(?i)\b(?:https?://|www\.)\S+", " ", chosen)
+    chosen = re.sub(r"(?i)\b[\w.-]+\.(?:com|net|org|io)\b", " ", chosen)
+    chosen = re.sub(r"\s+", " ", chosen).strip(" \"'-/|")
     if len(chosen) > limit:
         chosen = chosen[: limit - 1].rstrip() + "…"
     return chosen
@@ -308,6 +351,55 @@ def primary_evidence_line(evidence: list[Mapping[str, Any]] | None) -> dict[str,
                 "excerpt": excerpt,
             }
     return None
+
+
+def supporting_citations(
+    evidence: list[Mapping[str, Any]] | None,
+    *,
+    answer: str = "",
+    primary: Mapping[str, Any] | None = None,
+    limit: int = 3,
+) -> list[str]:
+    """Page chips that actually support the answer — prefer primary + overlapping excerpts."""
+    citations: list[str] = []
+    primary_citation = ""
+    if isinstance(primary, Mapping):
+        primary_citation = str(primary.get("citation") or "").strip()
+        if primary_citation:
+            citations.append(primary_citation)
+    answer_tokens = set(_tokenize(answer)) - {
+        "based",
+        "uploaded",
+        "datasheet",
+        "page",
+        "pages",
+        "the",
+        "and",
+        "for",
+        "this",
+        "from",
+        "with",
+    }
+    for item in evidence or []:
+        if not isinstance(item, Mapping):
+            continue
+        citation = str(item.get("citation") or "").strip()
+        page = item.get("page")
+        if not citation and page:
+            citation = f"Page {int(page)}"
+        if not citation or citation in citations:
+            continue
+        excerpt = clean_evidence_excerpt(str(item.get("excerpt") or ""))
+        if not excerpt:
+            continue
+        if answer_tokens and not (answer_tokens & set(_tokenize(excerpt))):
+            continue
+        citations.append(citation)
+        if len(citations) >= max(1, int(limit)):
+            break
+    if not citations and primary_citation:
+        return [primary_citation]
+    return citations[: max(1, int(limit))]
 
 
 def format_datasheet_answer_blocks(answer: str) -> list[str]:
@@ -1251,6 +1343,13 @@ def append_thread_turn(
         and answer_kind != "insufficient_evidence"
     ):
         primary = primary_evidence_line(evidence)
+    citations = supporting_citations(
+        evidence,
+        answer=answer,
+        primary=primary,
+    )
+    if not citations:
+        citations = list(result.get("citations") or [])
     active_doc = document if isinstance(document, Mapping) else session_state.get(
         DATASHEET_QA_DOC_KEY
     )
@@ -1269,7 +1368,7 @@ def append_thread_turn(
         {
             "question": str(question or "")[:MAX_QUESTION_CHARS],
             "answer": answer,
-            "citations": list(result.get("citations") or []),
+            "citations": citations,
             "evidence": evidence,
             "primary_evidence": primary,
             "suggestions": suggestions[:MAX_FOLLOW_UPS],
