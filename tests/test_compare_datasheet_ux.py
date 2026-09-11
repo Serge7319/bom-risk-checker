@@ -134,12 +134,17 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
 
     def test_page_submit_gate_orders_resolve_before_claim(self):
         self.assertIn("apply_datasheet_question_clear", DATASHEET_PAGE)
-        self.assertIn("preclear_question", DATASHEET_PAGE)
-        resolve_idx = DATASHEET_PAGE.find("resolve_datasheet_question(")
-        claim_idx = DATASHEET_PAGE.find("claim_datasheet_question_submit(")
-        self.assertGreater(resolve_idx, 0)
-        self.assertGreater(claim_idx, resolve_idx)
-        self.assertIn("DATASHEET_QA_PENDING_QUESTION_KEY", DATASHEET_PAGE)
+        self.assertIn("on_click=_typed_ask_click", DATASHEET_PAGE)
+        self.assertIn("queue_datasheet_follow_up", DATASHEET_PAGE)
+        # Typed Ask shares the chip queue path — no end-of-script form claim/rerun.
+        self.assertNotIn("st.form_submit_button", DATASHEET_PAGE)
+        self.assertNotIn("datasheet_qa_form", DATASHEET_PAGE)
+        typed_idx = DATASHEET_PAGE.find("def _typed_ask_click")
+        resolve_idx = DATASHEET_PAGE.find("resolve_datasheet_question(", typed_idx)
+        queue_idx = DATASHEET_PAGE.find("queue_datasheet_follow_up(", typed_idx)
+        self.assertGreater(typed_idx, 0)
+        self.assertGreater(resolve_idx, typed_idx)
+        self.assertGreater(queue_idx, resolve_idx)
 
     def test_upload_then_two_sequential_questions_without_reupload(self):
         session = {}
@@ -223,11 +228,13 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
         self.assertIn("dq-composer", DATASHEET_PAGE)
         self.assertIn("dq-docbar", DATASHEET_PAGE)
         self.assertIn("on_click=_chip_click", DATASHEET_PAGE)
+        self.assertIn("on_click=_typed_ask_click", DATASHEET_PAGE)
         self.assertIn("consume_datasheet_pending_question", DATASHEET_PAGE)
         self.assertIn("Cadivor is reviewing the datasheet evidence", DATASHEET_PAGE)
         self.assertIn("NOT_FOUND_ANSWER", DATASHEET_PAGE)
         self.assertEqual(NOT_FOUND_ANSWER, "Not found in this datasheet.")
-        self.assertIn('st.form_submit_button(\n                "Ask Cadivor"', DATASHEET_PAGE)
+        self.assertIn('st.button(\n            "Ask Cadivor"', DATASHEET_PAGE)
+        self.assertNotIn("st.form_submit_button", DATASHEET_PAGE)
         self.assertIn("use_container_width=False", DATASHEET_PAGE)
         self.assertIn("dq-shell", DATASHEET_PAGE)
         self.assertIn("dq-marker", DATASHEET_PAGE)

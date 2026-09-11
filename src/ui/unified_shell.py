@@ -11,7 +11,7 @@ from typing import Callable
 
 import streamlit as st
 
-from src.ui.navigation import navigate_to
+from src.ui.navigation import inject_nav_scroll_reset_if_needed, navigate_to
 
 
 NAV_GROUPS = (
@@ -334,3 +334,6 @@ def render_unified_shell(
             use_container_width=True,
         ):
             clear_analysis()
+
+    # After chrome paints: reset scroll only when sidebar navigation changed pages.
+    inject_nav_scroll_reset_if_needed()

@@ -16,6 +16,8 @@ ALT_FINDER_RETURN_SECTION_KEY = "cadivor_alt_finder_return_analysis_section"
 ALT_FINDER_RETURN_PAGE_KEY = "cadivor_alt_finder_return_page"
 ALT_FINDER_RETURN_MPN_KEY = "cadivor_alt_finder_return_mpn"
 ALT_FINDER_INTENT = "find_alternatives"
+NAV_SCROLL_RESET_PENDING_KEY = "cadivor_nav_scroll_reset_pending"
+NAV_SCROLL_RESET_TOKEN_KEY = "cadivor_nav_scroll_reset_token"
 
 _ALT_NAV_KEYS = (
     "original_part",
@@ -51,6 +53,15 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
             ) + 1
         st.session_state.pop("bom81_pending_delete_ids", None)
 
+    if current_page != page:
+        # Reset main scroll only on real page changes — never on in-page reruns.
+        try:
+            token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0) + 1
+        except (TypeError, ValueError):
+            token = 1
+        st.session_state[NAV_SCROLL_RESET_TOKEN_KEY] = token
+        st.session_state[NAV_SCROLL_RESET_PENDING_KEY] = True
+
     st.session_state["cadivor_route"] = page
     st.session_state["app_mode"] = page
     nav_params = {"page": page}
@@ -80,6 +91,69 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
         pass
     if _rerun:
         st.rerun()
+
+
+def inject_nav_scroll_reset_if_needed() -> bool:
+    """Scroll the main workspace to top once after a sidebar page change.
+
+    No-op for ordinary question submit/reruns. Safe to call from the shell on
+    every authenticated render.
+    """
+    if not st.session_state.pop(NAV_SCROLL_RESET_PENDING_KEY, False):
+        return False
+    try:
+        token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0)
+    except (TypeError, ValueError):
+        token = 0
+    import streamlit.components.v1 as components
+
+    components.html(
+        f"""
+        <script>
+        (function () {{
+          const token = {token};
+          const parentWindow = window.parent;
+          const doc = parentWindow.document;
+          try {{ parentWindow.history.scrollRestoration = 'manual'; }} catch (error) {{}}
+
+          const resetTop = () => {{
+            const marked = doc.querySelector('[data-cadivor-nav-scroll-token="' + token + '"]');
+            if (marked && marked.getAttribute('data-cadivor-nav-scroll-done') === '1') {{
+              return;
+            }}
+            const candidates = [
+              doc.querySelector('[data-testid="stMain"]'),
+              doc.querySelector('section.main'),
+              doc.querySelector('[data-testid="stAppViewContainer"]'),
+              doc.scrollingElement,
+              doc.documentElement,
+              doc.body
+            ].filter(Boolean);
+            for (const element of candidates) {{
+              try {{
+                element.scrollTop = 0;
+                if (typeof element.scrollTo === 'function') {{
+                  element.scrollTo({{ top: 0, left: 0, behavior: 'auto' }});
+                }}
+              }} catch (error) {{}}
+            }}
+            try {{ parentWindow.scrollTo({{ top: 0, left: 0, behavior: 'auto' }}); }} catch (error) {{}}
+            if (marked) {{
+              try {{ marked.setAttribute('data-cadivor-nav-scroll-done', '1'); }} catch (error) {{}}
+            }}
+          }};
+
+          [0, 40, 120, 280, 600, 1100].forEach((delay) => {{
+            parentWindow.setTimeout(resetTop, delay);
+          }});
+        }})();
+        </script>
+        <div data-cadivor-nav-scroll-token="{token}" style="display:none"></div>
+        """,
+        height=0,
+        width=0,
+    )
+    return True
 
 
 # Re-export transition keys/helpers so existing imports keep working.

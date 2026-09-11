@@ -290,7 +290,8 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn('"Datasheet Q&A"', shell)
         self.assertIn('"Datasheet Q&A"', runtime)
         self.assertIn("render_datasheet_qa_page", runtime)
-        self.assertIn("datasheet_qa_form", page)
+        self.assertIn("datasheet_qa_ask_button", page)
+        self.assertIn("on_click=_typed_ask_click", page)
         self.assertIn("Ask Cadivor", page)
         self.assertIn("Remove", page)
         self.assertIn("datasheet_qa_remove", page)
@@ -304,6 +305,7 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn("dq-composer", page)
         self.assertIn("Ask next", page)
         self.assertIn("Private session", page)
+        self.assertNotIn("datasheet_qa_form", page)
 
 class ConversationalDatasheetQaV1Tests(unittest.TestCase):
     """Acceptance coverage T1–T8 for Conversational Datasheet Q&A v1."""
@@ -651,6 +653,30 @@ class DatasheetQaFollowUpLifecycleTests(unittest.TestCase):
             or "obsolete" in joined
             or "electrical" in joined
         )
+
+    def test_clean_evidence_drops_headers_and_site_boilerplate(self):
+        from src.datasheet_qa import clean_evidence_excerpt, supporting_citations
+
+        raw = (
+            "Page 1 www.diodes.com Diodes Incorporated "
+            "Absolute maximum supply voltage is 5.5 V for continuous operation. "
+            "Copyright All rights reserved."
+        )
+        cleaned = clean_evidence_excerpt(raw)
+        lowered = cleaned.casefold()
+        self.assertIn("absolute maximum supply voltage is 5.5", lowered)
+        self.assertNotIn("www.diodes.com", lowered)
+        self.assertNotIn("copyright", lowered)
+        self.assertFalse(cleaned.casefold().startswith("page "))
+        citations = supporting_citations(
+            [
+                {"citation": "Page 1", "excerpt": raw},
+                {"citation": "Page 7", "excerpt": "www.diodes.com revision history only"},
+            ],
+            answer="Absolute maximum supply voltage is 5.5 V.",
+            primary={"citation": "Page 1", "excerpt": cleaned},
+        )
+        self.assertEqual(citations, ["Page 1"])
 
 
 if __name__ == "__main__":
