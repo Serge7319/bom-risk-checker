@@ -171,6 +171,30 @@ def _inject_datasheet_qa_styles() -> None:
         }
         .dq-composer-title{margin:0;font-size:14px;font-weight:800;color:#0F172A}
         .dq-composer-hint{margin:4px 0 10px;font-size:12px;line-height:1.4;color:#64748B}
+        /* Production hotfix: bare st.text_area (outside st.form) collapses under
+           Emotion layout — stTextArea / RootElement hit height 0–2px with
+           overflow:hidden, so Ask Cadivor shows with no visible composer.
+           Same pattern as analysis_detail form textarea un-collapse. */
+        section[data-testid="stMain"] .st-key-datasheet_qa_question,
+        section[data-testid="stMain"] .st-key-datasheet_qa_question[data-testid="stElementContainer"],
+        section[data-testid="stMain"] .st-key-datasheet_qa_question [data-testid="stTextArea"],
+        section[data-testid="stMain"] .st-key-datasheet_qa_question [data-testid="stTextAreaRootElement"],
+        section[data-testid="stMain"] .st-key-datasheet_qa_question [data-baseweb="textarea"],
+        section[data-testid="stMain"] [data-testid="stForm"] .st-key-datasheet_qa_question,
+        section[data-testid="stMain"] [data-testid="stForm"] [data-testid="stTextArea"],
+        section[data-testid="stMain"] [data-testid="stForm"] [data-testid="stTextAreaRootElement"]{
+          display:flex!important;flex-direction:column!important;
+          visibility:visible!important;opacity:1!important;
+          height:auto!important;min-height:84px!important;max-height:none!important;
+          overflow:visible!important;flex:1 1 auto!important;align-self:stretch!important
+        }
+        section[data-testid="stMain"] .st-key-datasheet_qa_question textarea,
+        section[data-testid="stMain"] [data-testid="stForm"] .st-key-datasheet_qa_question textarea,
+        section[data-testid="stMain"] [data-testid="stForm"] [data-testid="stTextArea"] textarea{
+          display:block!important;visibility:visible!important;opacity:1!important;
+          width:100%!important;min-height:84px!important;height:84px!important;
+          overflow:auto!important;resize:vertical!important;pointer-events:auto!important
+        }
         section[data-testid="stMain"] [class*="st-key-dq_chip_"] button{
           min-height:32px!important;width:auto!important;max-width:100%!important;
           border-radius:999px!important;border:1px solid #BFDBFE!important;
@@ -181,6 +205,7 @@ def _inject_datasheet_qa_styles() -> None:
         section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has([class*="st-key-dq_chip_"]){
           gap:.45rem .55rem!important;flex-wrap:wrap!important
         }
+        section[data-testid="stMain"] .st-key-datasheet_qa_ask_button button,
         section[data-testid="stMain"] .stFormSubmitButton>button{
           min-width:148px!important;width:auto!important;max-width:220px!important
         }
