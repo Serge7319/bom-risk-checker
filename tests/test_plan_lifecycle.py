@@ -350,6 +350,34 @@ class GrandfatherMigrationContractTests(unittest.TestCase):
         self.assertIn("existing canceled Starter record", sql)
         self.assertIn("Reverse", sql)
 
+    def test_plan_check_expands_before_grandfather_update(self):
+        sql = (
+            ROOT / "supabase" / "migrations" / "20260912_grandfather_unpaid_starter.sql"
+        ).read_text(encoding="utf-8")
+        update_at = sql.index("plan = 'Grandfathered beta'")
+        before_update = sql[:update_at]
+        self.assertLess(before_update.index("users_plan_check"), update_at)
+        self.assertIn("drop constraint if exists users_plan_check", before_update)
+        self.assertIn("add constraint users_plan_check", before_update)
+        self.assertLess(
+            before_update.lower().index("add column if not exists plan_grandfather_source"),
+            update_at,
+        )
+        for value in (
+            "Trial expired",
+            "Grandfathered beta",
+            "Subscription inactive",
+            "Free",
+        ):
+            self.assertIn(f"quote_literal('{value}')", before_update)
+        self.assertIn("plan is null", before_update)
+        self.assertIn("coalesce(btrim(stripe_customer_id), '') = ''", sql)
+        self.assertIn("coalesce(btrim(stripe_subscription_id), '') = ''", sql)
+        self.assertIn("coalesce(btrim(stripe_price_id), '') = ''", sql)
+        self.assertIn("coalesce(btrim(stripe_subscription_status), '') = ''", sql)
+        self.assertIn("in ('starter', 'free')", sql)
+        self.assertIn("plan_grandfather_source is null", sql)
+
 
 class PortalAndFailureRegressionTests(unittest.TestCase):
     def test_portal_still_excludes_admins_and_does_not_mutate_plan(self):
