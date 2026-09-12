@@ -6999,6 +6999,18 @@ def run_authenticated_app() -> None:
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) .stLinkButton>a{min-height:48px!important;font-size:16px!important;font-weight:850!important;border-radius:11px!important;padding:11px 18px!important;transition:transform .18s ease,box-shadow .18s ease!important}
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) .stButton>button:hover,
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) .stLinkButton>a:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(37,99,235,.20)!important}
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) [data-testid="stElementContainer"]:has(.stButton),
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card) [data-testid="stElementContainer"]:has(.stLinkButton){padding-left:16px!important;padding-right:16px!important}
+            .cv311-checkout-confirm{margin:2px 16px 10px;padding:14px 16px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff}
+            .cv311-checkout-confirm__plan{color:#0f172a!important;font-size:16px;font-weight:850;line-height:1.35}
+            .cv311-checkout-confirm__help{margin:6px 0 0;color:#475569!important;font-size:13px;font-weight:650;line-height:1.45}
+            section[data-testid="stMain"] .stVerticalBlock:has(.cv311-contact-sales):not(:has(.cv311-checkout-confirm)) .stLinkButton,
+            section[data-testid="stMain"] .stVerticalBlock:has(.cv311-contact-sales):not(:has(.cv311-checkout-confirm)) .stLinkButton>div{width:100%!important}
+            section[data-testid="stMain"] .stVerticalBlock:has(.cv311-contact-sales):not(:has(.cv311-checkout-confirm)) .stLinkButton>a,
+            section[data-testid="stMain"] .stVerticalBlock:has(.cv311-contact-sales):not(:has(.cv311-checkout-confirm)) a[data-testid="stBaseLinkButton-secondary"],
+            section[data-testid="stMain"] .stVerticalBlock:has(.cv311-contact-sales):not(:has(.cv311-checkout-confirm)) a[data-testid="stLinkButton"]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:100%!important;min-height:44px!important;padding:10px 16px!important;border:1px solid #b8c8df!important;border-radius:11px!important;background:#FFFFFF!important;color:#1e3a5f!important;box-shadow:none!important;text-decoration:none!important;font-weight:750!important}
+            section[data-testid="stMain"] .stVerticalBlock:has(.cv311-contact-sales):not(:has(.cv311-checkout-confirm)) .stLinkButton>a:hover,
+            section[data-testid="stMain"] .stVerticalBlock:has(.cv311-contact-sales):not(:has(.cv311-checkout-confirm)) a[data-testid="stLinkButton"]:hover{background:#f4f8ff!important;border-color:#94a3b8!important;color:#1e3a5f!important;text-decoration:none!important}
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-featured) .cv311-tag{background:#2563eb;color:#fff!important;border-color:#2563eb;box-shadow:0 7px 18px rgba(37,99,235,.24)}
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card):hover .cv311-tag{transform:translateY(-1px)}
             .cv311-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
@@ -7044,39 +7056,80 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
-        def _start_plan_checkout(plan_name: str, secret_key: str, button_key: str) -> None:
-            state_key = f"pricing_checkout_url_{plan_name.lower().replace(' ', '_')}"
-            if st.button(
+        @st.fragment
+        def _render_plan_checkout_confirm(
+            plan_name: str,
+            secret_key: str,
+            button_key: str,
+            price_label: str,
+            user_email: str,
+            user_id: str,
+        ) -> None:
+            """In-card Stripe handoff. Ready state is painted only after the URL exists."""
+            plan_slug = plan_name.lower().replace(" ", "_")
+            state_key = f"pricing_checkout_url_{plan_slug}"
+            checkout_url = str(st.session_state.get(state_key) or "").strip()
+            if checkout_url:
+                # One ready state only: confirmation panel + one primary link button.
+                # The keyed box is styled in global CSS so it cannot flash as a text link.
+                with st.container(key=f"cv311_checkout_{plan_slug}"):
+                    st.markdown(
+                        f"""
+                        <div class="cv311-checkout-confirm" data-testid="cv311-checkout-confirm" data-plan="{html.escape(plan_slug)}">
+                          <div class="cv311-checkout-confirm__plan">{html.escape(price_label)}</div>
+                          <p class="cv311-checkout-confirm__help">You'll be redirected to Stripe to complete your subscription.</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    st.link_button(
+                        "Continue to secure checkout →",
+                        checkout_url,
+                        type="primary",
+                        use_container_width=True,
+                    )
+                return
+
+            if not st.button(
                 f"Upgrade to {plan_name}",
                 key=button_key,
                 type="primary",
                 use_container_width=True,
             ):
-                try:
-                    price_id = get_secret(secret_key, required=True)
-                    from src.stripe_helper import create_checkout_session
-                    st.session_state[state_key] = create_checkout_session(
+                return
+            try:
+                price_id = get_secret(secret_key, required=True)
+                from src.stripe_helper import create_checkout_session
+
+                created_url = str(
+                    create_checkout_session(
                         price_id,
-                        current_user["email"],
-                        current_user["id"],
+                        user_email,
+                        user_id,
                         success_url=app_checkout_url(page="Pricing", checkout="success"),
                         cancel_url=app_checkout_url(page="Pricing", checkout="cancel"),
                     )
-                except KeyError:
-                    st.error(f"{plan_name} checkout is not configured in Streamlit secrets.")
-                except Exception:
+                    or ""
+                ).strip()
+                if not created_url:
                     st.error(
                         f"Secure {plan_name} checkout could not be started. "
                         "Please try again or contact support."
                     )
-
-            checkout_url = st.session_state.get(state_key)
-            if checkout_url:
-                st.link_button(
-                    "Continue to secure checkout →",
-                    checkout_url,
-                    use_container_width=True,
+                    return
+                st.session_state[state_key] = created_url
+            except KeyError:
+                st.error(f"{plan_name} checkout is not configured in Streamlit secrets.")
+                return
+            except Exception:
+                st.error(
+                    f"Secure {plan_name} checkout could not be started. "
+                    "Please try again or contact support."
                 )
+                return
+            # Do not paint the handoff in this run. A fragment rerun replaces the
+            # upgrade button with the single styled confirmation.
+            st.rerun(scope="fragment")
 
         education_plans = [
             {
@@ -7257,6 +7310,51 @@ def run_authenticated_app() -> None:
                             + (f'<div class="cv311-info-note">{display_annual_price} / year · Save 15%</div>' if display_annual_price else "")
                             + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
                             f'<div class="cv311-for">{plan["audience"]}</div>'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        checkout_user_email = str(current_user.get("email") or "")
+                        checkout_user_id = str(current_user.get("id") or "")
+                        if is_current:
+                            st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
+                        elif plan_key == "professional" and normalized_current_plan not in {"professional", "business", "enterprise"}:
+                            _render_plan_checkout_confirm(
+                                "Professional",
+                                "STRIPE_PRO_PRICE_ID",
+                                "pricing_311_upgrade_professional",
+                                "Professional — $99/month",
+                                checkout_user_email,
+                                checkout_user_id,
+                            )
+                        elif plan_key == "business" and normalized_current_plan not in {"business", "enterprise"}:
+                            _render_plan_checkout_confirm(
+                                "Business",
+                                "STRIPE_BUSINESS_PRICE_ID",
+                                "pricing_311_upgrade_business",
+                                "Business — $299/month",
+                                checkout_user_email,
+                                checkout_user_id,
+                            )
+                        elif plan_key == "enterprise":
+                            st.markdown(
+                                '<span class="cv311-contact-sales" data-testid="cv311-contact-sales"></span>',
+                                unsafe_allow_html=True,
+                            )
+                            st.link_button(
+                                "Contact Sales",
+                                "mailto:info@cadivor.com?subject=Cadivor%20Enterprise%20Inquiry",
+                                type="secondary",
+                                use_container_width=True,
+                            )
+                        elif plan_key == "starter" and normalized_current_plan != "starter":
+                            st.markdown(
+                                '<div class="cv311-info-note">Contact support to move an existing paid subscription to Starter.</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        st.markdown(
+                            '<div class="cv311-card-inner cv311-card-features">'
                             '<div class="cv311-features">'
                             + "".join(
                                 f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
@@ -7267,24 +7365,6 @@ def run_authenticated_app() -> None:
                             + '</div>',
                             unsafe_allow_html=True,
                         )
-
-                        if is_current:
-                            st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
-                        elif plan_key == "professional" and normalized_current_plan not in {"professional", "business", "enterprise"}:
-                            _start_plan_checkout("Professional", "STRIPE_PRO_PRICE_ID", "pricing_311_upgrade_professional")
-                        elif plan_key == "business" and normalized_current_plan not in {"business", "enterprise"}:
-                            _start_plan_checkout("Business", "STRIPE_BUSINESS_PRICE_ID", "pricing_311_upgrade_business")
-                        elif plan_key == "enterprise":
-                            st.link_button(
-                                "Contact Sales",
-                                "mailto:info@cadivor.com?subject=Cadivor%20Enterprise%20Inquiry",
-                                use_container_width=True,
-                            )
-                        elif plan_key == "starter" and normalized_current_plan != "starter":
-                            st.markdown(
-                                '<div class="cv311-info-note">Contact support to move an existing paid subscription to Starter.</div>',
-                                unsafe_allow_html=True,
-                            )
 
         feature_rows = [
             ("BOM Analysis", "✓", "✓", "Unlimited", "Unlimited", "Unlimited"),
@@ -7709,40 +7789,137 @@ def run_authenticated_app() -> None:
                 text-transform:uppercase;
                 margin:0 0 12px;
             }
-            /* Stateful Settings nav — compact keyed tab buttons (no radio circles). */
+            /* Stateful Settings nav — one compact left-aligned segmented group. */
+            .st-key-cv_settings_nav,
+            .st-key-cv_settings_setup_actions{
+                width:max-content!important;
+                max-width:100%!important;
+                margin:0 0 14px!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav,
+            section[data-testid="stMain"] .st-key-cv_settings_nav *,
+            section[data-testid="stMain"] .st-key-cv_settings_setup_actions,
+            section[data-testid="stMain"] .st-key-cv_settings_setup_actions *{
+                flex-wrap:nowrap!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav div,
+            section[data-testid="stMain"] .st-key-cv_settings_setup_actions div{
+                width:auto!important;
+                min-width:0!important;
+                max-width:none!important;
+                flex:0 0 auto!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav{
+                width:max-content!important;
+                max-width:100%!important;
+                gap:0!important;
+                flex-wrap:nowrap!important;
+                flex-direction:row!important;
+                justify-content:flex-start!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab"]{
+                width:auto!important;
+                flex:0 0 auto!important;
+                min-width:0!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled),
+            section[data-testid="stMain"] .st-key-cv_settings_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled),
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_profile button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_preferences button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_workspace button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_security button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button{
+                margin:0!important;
+                width:auto!important;
+                min-width:0!important;
+                padding:10px 14px!important;
+                min-height:40px!important;
+                border-radius:0!important;
+                border:0!important;
+                border-right:1px solid #e2e8f0!important;
+                box-shadow:none!important;
+                background:#fff!important;
+                color:#475569!important;
+                font-size:13px!important;
+                font-weight:700!important;
+                white-space:nowrap!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing .stButton:not(.st-key-cv_foundation_navigation .stButton) > button{
+                border-right:0!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled),
+            section[data-testid="stMain"] .st-key-cv_settings_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled):hover,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_profile button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_preferences button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_workspace button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_security button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button[kind="primary"]{
+                color:#FFFFFF!important;
+                font-weight:800!important;
+                background:#2563EB!important;
+                border-right-color:#1d4ed8!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton),
+            section[data-testid="stMain"] .st-key-cv_settings_setup_actions div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton){
+                flex-wrap:nowrap!important;
+                width:fit-content!important;
+                justify-content:flex-start!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton) > div,
+            section[data-testid="stMain"] .st-key-cv_settings_setup_actions div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton) > div,
+            section[data-testid="stMain"] .st-key-cv_settings_nav [data-testid="stElementContainer"],
+            section[data-testid="stMain"] .st-key-cv_settings_setup_actions [data-testid="stElementContainer"]{
+                min-width:0!important;
+                width:auto!important;
+                flex:0 0 auto!important;
+            }
+            .st-key-cv_settings_nav{
+                border:1px solid #d7e0eb;
+                border-radius:12px;
+                overflow:hidden;
+                background:#fff;
+            }
             .st-key-settings_tab_profile,
             .st-key-settings_tab_preferences,
             .st-key-settings_tab_workspace,
             .st-key-settings_tab_security,
             .st-key-settings_tab_billing{
                 margin:0!important;
+                width:auto!important;
             }
-            .st-key-settings_tab_profile [data-testid="stButton"] > button,
-            .st-key-settings_tab_preferences [data-testid="stButton"] > button,
-            .st-key-settings_tab_workspace [data-testid="stButton"] > button,
-            .st-key-settings_tab_security [data-testid="stButton"] > button,
-            .st-key-settings_tab_billing [data-testid="stButton"] > button{
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_profile button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_preferences button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_workspace button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_security button,
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button{
                 margin:0!important;
-                padding:10px 12px 12px!important;
-                min-height:42px!important;
-                border-radius:10px 10px 0 0!important;
+                width:auto!important;
+                min-width:0!important;
+                padding:10px 14px!important;
+                min-height:40px!important;
+                border-radius:0!important;
                 border:0!important;
-                border-bottom:2px solid transparent!important;
+                border-right:1px solid #e2e8f0!important;
                 box-shadow:none!important;
-                background:transparent!important;
+                background:#fff!important;
                 color:#475569!important;
-                font-size:14px!important;
-                font-weight:650!important;
+                font-size:13px!important;
+                font-weight:700!important;
+                white-space:nowrap!important;
             }
-            .st-key-settings_tab_profile [data-testid="stButton"] > button[kind="primary"],
-            .st-key-settings_tab_preferences [data-testid="stButton"] > button[kind="primary"],
-            .st-key-settings_tab_workspace [data-testid="stButton"] > button[kind="primary"],
-            .st-key-settings_tab_security [data-testid="stButton"] > button[kind="primary"],
-            .st-key-settings_tab_billing [data-testid="stButton"] > button[kind="primary"]{
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button{
+                border-right:0!important;
+            }
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_profile button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_preferences button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_workspace button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_security button[kind="primary"],
+            section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button[kind="primary"]{
                 color:#FFFFFF!important;
                 font-weight:800!important;
-                border-bottom-color:#2563EB!important;
                 background:#2563EB!important;
+                border-right-color:#1d4ed8!important;
             }
             /* Billing portal CTA — full-width Cadivor primary (Streamlit 1.37 forms). */
             [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-billing-actions__label) .stLinkButton,
@@ -7810,14 +7987,26 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
+        _settings_hero_tab = str(st.session_state.get("settings_active_tab") or "Profile")
+        if _settings_hero_tab == "Billing":
+            _settings_hero_title = "Plan & billing"
+            _settings_hero_copy = (
+                "Review this account's subscription and continue to secure checkout "
+                "when the team is ready to upgrade."
+            )
+        else:
+            _settings_hero_title = "Profile & preferences"
+            _settings_hero_copy = (
+                "Manage the personal identity, display defaults, and notification "
+                "preferences Cadivor uses across engineering workspaces and reports."
+            )
         st.markdown(
-            """
+            f"""
             <section class="cv-customer-hero">
               <div class="cv-customer-kicker">Customer account</div>
-              <h1 class="cv-customer-title">Profile & preferences</h1>
+              <h1 class="cv-customer-title">{html.escape(_settings_hero_title)}</h1>
               <p class="cv-customer-copy">
-                Manage the personal identity, display defaults, and notification
-                preferences Cadivor uses across engineering workspaces and reports.
+                {html.escape(_settings_hero_copy)}
               </p>
             </section>
             """,
@@ -7875,15 +8064,18 @@ def run_authenticated_app() -> None:
                 """,
                 unsafe_allow_html=True,
             )
-            setup_cols = st.columns([1, 1, 2])
-            with setup_cols[0]:
+            with st.container(
+                key="cv_settings_setup_actions",
+                horizontal=True,
+                horizontal_alignment="left",
+                gap="small",
+            ):
                 internal_nav_button(
                     "Continue Customer Setup",
                     "Onboarding",
                     key="settings_open_onboarding",
                     type="secondary",
                 )
-            with setup_cols[1]:
                 if st.button(
                     "Dismiss setup",
                     key="settings_dismiss_onboarding",
@@ -7931,10 +8123,15 @@ def run_authenticated_app() -> None:
         def _set_settings_active_tab(tab_label: str) -> None:
             st.session_state["settings_active_tab"] = tab_label
 
-        # Five compact tab columns + flexible spacer so labels sit adjacent, not spread.
-        settings_tab_cols = st.columns([1, 1, 1, 1, 1, 8], gap="small")
-        for tab_col, tab_label in zip(settings_tab_cols[:5], _settings_tab_options):
-            with tab_col:
+        # One compact left-aligned segmented group. Keyed buttons keep Billing
+        # selected after portal session creation — do not use st.tabs or st.radio.
+        with st.container(
+            key="cv_settings_nav",
+            horizontal=True,
+            horizontal_alignment="left",
+            gap=None,
+        ):
+            for tab_label in _settings_tab_options:
                 is_active_tab = (
                     str(st.session_state.get("settings_active_tab") or "") == tab_label
                 )
@@ -7942,7 +8139,7 @@ def run_authenticated_app() -> None:
                     tab_label,
                     key=_settings_tab_keys[tab_label],
                     type="primary" if is_active_tab else "secondary",
-                    use_container_width=True,
+                    width="content",
                     on_click=_set_settings_active_tab,
                     args=(tab_label,),
                 )

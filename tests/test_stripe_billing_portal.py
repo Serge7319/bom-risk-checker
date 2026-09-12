@@ -203,13 +203,20 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
         self.assertIn("key=_settings_tab_keys[tab_label]", settings_block)
         self.assertIn("on_click=_set_settings_active_tab", settings_block)
         self.assertIn('type="primary" if is_active_tab else "secondary"', settings_block)
-        # Compact left-aligned row: five small columns + flexible spacer.
-        self.assertIn("st.columns([1, 1, 1, 1, 1, 8], gap=\"small\")", settings_block)
-        self.assertIn("zip(settings_tab_cols[:5], _settings_tab_options)", settings_block)
+        # Compact left-aligned segmented group; keyed buttons persist Billing.
+        self.assertIn('key="cv_settings_nav"', settings_block)
+        self.assertIn('horizontal=True', settings_block)
+        self.assertIn('horizontal_alignment="left"', settings_block)
+        self.assertIn('width="content"', settings_block)
+        self.assertNotIn(
+            'st.columns([1, 1, 1, 1, 1, 8], gap="small")',
+            settings_block,
+        )
         self.assertNotIn(
             "st.columns(len(_settings_tab_options), gap=\"small\")",
             settings_block,
         )
+        self.assertNotIn("use_container_width=True,\n                    on_click=_set_settings_active_tab", settings_block)
         for label in (
             "Profile",
             "Preferences",
@@ -220,8 +227,8 @@ class StripeBillingPortalUiContractTests(unittest.TestCase):
             self.assertIn(f'"{label}"', settings_block)
 
         # No radio navigation or radio-circle CSS/markup path in Settings.
+        # horizontal=True is the compact segmented tab group, not st.radio.
         self.assertNotIn("st.radio(", settings_block)
-        self.assertNotIn("horizontal=True", settings_block)
         self.assertNotIn("stRadio", settings_block)
         self.assertNotIn('data-baseweb="radio"', settings_block)
         self.assertNotIn("role=\"radiogroup\"", settings_block)
