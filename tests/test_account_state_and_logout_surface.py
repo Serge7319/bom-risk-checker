@@ -119,11 +119,31 @@ class SetupContinuationGatingTests(unittest.TestCase):
 
 
 class PlanLabelCanonicalOwnerTests(unittest.TestCase):
-    def test_starter_user_starter_workspace_effective_plan(self):
-        from src.plans import resolve_effective_plan
+    def test_unpaid_starter_is_beta_only_with_grandfather_marker(self):
+        from src.plans import PLAN_GRANDFATHERED_BETA, PLAN_SUBSCRIPTION_INACTIVE, resolve_effective_plan
 
-        name, expired = resolve_effective_plan({"plan": "Starter", "role": "user"})
-        self.assertEqual(name, "Starter")
+        unmarked, expired = resolve_effective_plan({"plan": "Starter", "role": "user"})
+        self.assertEqual(unmarked, PLAN_SUBSCRIPTION_INACTIVE)
+        self.assertFalse(expired)
+        marked, marked_expired = resolve_effective_plan(
+            {"plan": "Starter", "role": "user", "plan_grandfather_source": "Starter"}
+        )
+        self.assertEqual(marked, PLAN_GRANDFATHERED_BETA)
+        self.assertFalse(marked_expired)
+
+    def test_paid_starter_requires_stripe_confirmation(self):
+        from src.plans import PLAN_STARTER, resolve_effective_plan
+
+        name, expired = resolve_effective_plan(
+            {
+                "plan": "Starter",
+                "role": "user",
+                "stripe_customer_id": "cus_paid",
+                "stripe_subscription_id": "sub_paid",
+                "stripe_subscription_status": "active",
+            }
+        )
+        self.assertEqual(name, PLAN_STARTER)
         self.assertFalse(expired)
 
     def test_resolve_effective_plan_admin_is_enterprise(self):
@@ -142,7 +162,13 @@ class PlanLabelCanonicalOwnerTests(unittest.TestCase):
         """Product allows distinct entities: users.plan vs workspaces.plan stamp."""
         from src.plans import resolve_effective_plan
 
-        user_plan, _ = resolve_effective_plan({"plan": "Professional", "role": "user"})
+        user_plan, _ = resolve_effective_plan(
+            {
+                "plan": "Professional",
+                "role": "user",
+                "stripe_subscription_status": "active",
+            }
+        )
         workspace_plan_stamp = "Starter"  # create-time org stamp, not enforcement
         self.assertEqual(user_plan, "Professional")
         self.assertNotEqual(user_plan, workspace_plan_stamp)

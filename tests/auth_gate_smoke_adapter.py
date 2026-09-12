@@ -10,6 +10,8 @@ import sys
 import time
 import types
 import uuid
+import json
+from pathlib import Path
 from typing import Any
 
 SMOKE_EMAIL = "auth-smoke@cadivor.test"
@@ -288,6 +290,25 @@ def install_smoke_auth_patches() -> None:
 def _smoke_user_row(*, email: str = SMOKE_EMAIL) -> dict[str, Any]:
     role = str(os.environ.get("CADIVOR_SMOKE_ROLE") or "user").strip().lower() or "user"
     plan = str(os.environ.get("CADIVOR_SMOKE_PLAN") or "Starter").strip() or "Starter"
+    trial_ends_at = str(os.environ.get("CADIVOR_SMOKE_TRIAL_ENDS_AT") or "").strip() or None
+    stripe_customer_id = str(os.environ.get("CADIVOR_SMOKE_STRIPE_CUSTOMER_ID") or "").strip()
+    stripe_subscription_id = str(os.environ.get("CADIVOR_SMOKE_STRIPE_SUBSCRIPTION_ID") or "").strip()
+    stripe_subscription_status = str(os.environ.get("CADIVOR_SMOKE_STRIPE_STATUS") or "").strip()
+    stripe_price_id = str(os.environ.get("CADIVOR_SMOKE_STRIPE_PRICE_ID") or "").strip()
+    state_path = str(os.environ.get("CADIVOR_SMOKE_STATE_FILE") or "").strip()
+    if state_path:
+        try:
+            overlay = json.loads(Path(state_path).read_text(encoding="utf-8"))
+        except Exception:
+            overlay = {}
+        if isinstance(overlay, dict):
+            plan = str(overlay.get("plan") or plan)
+            if "trial_ends_at" in overlay:
+                trial_ends_at = str(overlay.get("trial_ends_at") or "").strip() or None
+            stripe_customer_id = str(overlay.get("stripe_customer_id") or "")
+            stripe_subscription_id = str(overlay.get("stripe_subscription_id") or "")
+            stripe_subscription_status = str(overlay.get("stripe_subscription_status") or "")
+            stripe_price_id = str(overlay.get("stripe_price_id") or "")
     return {
         "id": "auth-smoke-user",
         "email": email,
@@ -297,6 +318,11 @@ def _smoke_user_row(*, email: str = SMOKE_EMAIL) -> dict[str, Any]:
         "role": role,
         "role_title": "Engineer",
         "plan": plan,
+        "trial_ends_at": trial_ends_at,
+        "stripe_customer_id": stripe_customer_id,
+        "stripe_subscription_id": stripe_subscription_id,
+        "stripe_subscription_status": stripe_subscription_status,
+        "stripe_price_id": stripe_price_id,
         "monthly_upload_count": 0,
         "profile_completed": True,
         "workspace_completed": True,

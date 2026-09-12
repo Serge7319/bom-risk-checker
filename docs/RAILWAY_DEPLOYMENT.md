@@ -68,10 +68,13 @@ Do not set `CADIVOR_APP_ORIGIN` to `https://app.cadivor.com` until the Railway d
 | Variable | Purpose |
 |----------|---------|
 | `STRIPE_SECRET_KEY` | Stripe API secret |
+| `STRIPE_STARTER_PRICE_ID` | Paid Starter plan price ID. Already configured in Live with the Professional and Business price variables. Do not change the existing value. |
 | `STRIPE_PRO_PRICE_ID` | Professional plan price ID |
 | `STRIPE_BUSINESS_PRICE_ID` | Business plan price ID |
 
 Use Stripe test mode for Railway verification. Update Stripe callback URLs only after the Railway domain is known.
+
+Checkout does not activate a Cadivor plan. Versioned source is `supabase/functions/stripe-webhook/index.ts`. It is not deployed. No real payment activates Starter, Professional, or Business until that function is deployed with Stripe-compatible JWT verification disabled and proven end-to-end against a sandbox destination. Do not change the Active Live webhook destination, Price IDs, or secrets from this work. Beta access requires a non-null `users.plan_grandfather_source`. Until `supabase/migrations/20260912_grandfather_unpaid_starter.sql` is applied, unpaid Starter/free rows are not Beta access. A later cancellation restores beta only when that marker is present; a new paid plan without it becomes Subscription inactive. That migration and `supabase/migrations/20260912_stripe_webhook_event_lease.sql` are unapplied files only.
 
 ### Email alerts
 

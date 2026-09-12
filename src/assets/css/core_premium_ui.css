@@ -208,8 +208,10 @@ section[data-testid="stMain"] a[data-testid="stBaseLinkButton-secondary"]:hover 
 }
 
 /* Checkout confirmation must never inherit the tertiary text-link treatment. */
+section[data-testid="stMain"] .st-key-cv311_checkout_starter .stLinkButton > a,
 section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > a,
 section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > a,
+section[data-testid="stMain"] .st-key-cv311_checkout_starter a[data-testid^="stBaseLinkButton"],
 section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid^="stBaseLinkButton"],
 section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid^="stBaseLinkButton"] {
   display: inline-flex !important;
@@ -227,8 +229,10 @@ section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid^="st
   font-weight: 850 !important;
 }
 
+section[data-testid="stMain"] .st-key-cv311_checkout_starter .stLinkButton > a:hover,
 section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > a:hover,
 section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > a:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_starter a[data-testid^="stBaseLinkButton"]:hover,
 section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid^="stBaseLinkButton"]:hover,
 section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid^="stBaseLinkButton"]:hover {
   background: #1D4ED8 !important;

@@ -48,6 +48,8 @@ class BillingPlanEnforcementTests(unittest.TestCase):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text()
         self.assertIn('"Professional": "STRIPE_PRO_PRICE_ID"', source)
         self.assertIn('"Business": "STRIPE_BUSINESS_PRICE_ID"', source)
+        self.assertIn('"Starter": "STRIPE_STARTER_PRICE_ID"', source)
+        self.assertIn("cadivor_plan=CHECKOUT_PLAN_TOKENS[upgrade_plan]", source)
         self.assertIn('and not is_admin', source)
 
     def test_checkout_errors_do_not_expose_provider_details(self):

@@ -36,7 +36,22 @@ from src.decision_repository import (
 )
 from src.procurement_advisor import build_procurement_advisor
 from src.engineering_overview import build_engineering_overview
-from src.plans import PLANS, get_plan, validate_bom_against_plan, resolve_effective_plan, format_limit
+from src.plans import (
+    PLANS,
+    PLAN_TRIAL,
+    PLAN_TRIAL_EXPIRED,
+    PLAN_GRANDFATHERED_BETA,
+    PLAN_SUBSCRIPTION_INACTIVE,
+    get_plan,
+    validate_bom_against_plan,
+    resolve_effective_plan,
+    format_limit,
+    plan_display_label,
+    trial_days_remaining,
+    may_self_serve_checkout,
+    annual_price_line,
+    CHECKOUT_PLAN_TOKENS,
+)
 from src.auth_bootstrap import get_supabase_client, log_startup_phase, qp_value as _qp_value
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
 from src.auth_state import (
@@ -1938,6 +1953,10 @@ def run_authenticated_app() -> None:
     }
 
     def _early_shell_clear_analysis() -> None:
+        if _shell_cache.get("can_create_analyses") is False:
+            st.session_state["cadivor_access_notice"] = "trial_expired"
+            navigate_to("Pricing")
+            return
         for _key in (
             "cadivor_active_analysis_id",
             "cadivor_active_analysis_tab",
@@ -2001,7 +2020,7 @@ def run_authenticated_app() -> None:
         workspace_name=str(
             _shell_cache.get("workspace_name") or "Cadivor Workspace"
         ),
-        plan_name=str(_shell_cache.get("plan_name") or "Starter"),
+        plan_name=str(_shell_cache.get("plan_name") or "Account"),
         usage_summary=str(_shell_cache.get("usage_summary") or "Loading workspace…"),
         saved_summary=str(_shell_cache.get("saved_summary") or "Loading saved BOMs…"),
         is_admin=bool(_shell_is_admin),
@@ -2116,11 +2135,14 @@ def run_authenticated_app() -> None:
         effective_plan_name, trial_expired = resolve_effective_plan(current_user)
         if trial_expired:
             try:
-                supabase.table("users").update({"plan": "Starter"}).eq("id", current_user["id"]).execute()
-                current_user["plan"] = "Starter"
+                supabase.table("users").update({"plan": "Trial expired"}).eq("id", current_user["id"]).execute()
+                current_user["plan"] = "Trial expired"
             except Exception:
                 pass
-            st.info("Your 14-day Cadivor trial has ended. Your workspace is now on Starter; saved analyses remain available.")
+            st.info(
+                "Your 14-day Cadivor trial has ended. Saved analyses remain available to view and download. "
+                "Choose a paid plan to create new analyses."
+            )
 
 
     @st.cache_data(ttl=3600, show_spinner=False)
@@ -2969,13 +2991,17 @@ def run_authenticated_app() -> None:
     # call render_unified_shell again — duplicate Streamlit widget keys would crash
     # and a second paint is what allowed blank/gate flash between route content.
     # Refresh the cache so the next rerun's early shell has accurate labels.
-    _usage_summary = (
-        f"{monthly_upload_count:,} / "
-        f"{format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month"
-    )
+    if selected_plan.get("can_create_analyses") is False:
+        _usage_summary = "New analyses paused"
+    else:
+        _usage_summary = (
+            f"{monthly_upload_count:,} / "
+            f"{format_limit(selected_plan['monthly_bom_limit'], 'BOM analysis', 'BOM analyses')} this month"
+        )
     _saved_summary = (
         f"{saved_bom_count:,} / {format_limit(selected_plan['max_saved_boms'], 'saved BOM')}"
     )
+    _resolved_shell_plan = plan_display_label(selected_plan_name)
     st.session_state["cadivor_shell_cache"] = {
         "full_name": shell_name,
         "email": shell_email,
@@ -2984,12 +3010,25 @@ def run_authenticated_app() -> None:
         "company_name": shell_company,
         "role_title": profile_for_shell.get("role_title") or "",
         "workspace_name": shell_company,
-        "plan_name": selected_plan_name,
+        "plan_name": _resolved_shell_plan,
+        "can_create_analyses": selected_plan.get("can_create_analyses") is not False,
         "usage_summary": _usage_summary,
         "saved_summary": _saved_summary,
         "is_admin": is_admin,
     }
     st.session_state["cadivor_foundation_shell_mounted"] = True
+    # Native route links (View Plans) reload the browser and drop session cache.
+    # The rail already painted the empty-cache fallback on this run. Rerun once
+    # so Trial / Trial expired / Beta access is visible before page content.
+    _painted_shell_plan = str(_shell_cache.get("plan_name") or "")
+    if (
+        _resolved_shell_plan
+        and _painted_shell_plan != _resolved_shell_plan
+        and not st.session_state.get("cadivor_shell_label_resync")
+    ):
+        st.session_state["cadivor_shell_label_resync"] = True
+        st.rerun()
+    st.session_state.pop("cadivor_shell_label_resync", None)
 
     inject_premium_css()
     st.markdown(readability_css(), unsafe_allow_html=True)
@@ -3046,6 +3085,36 @@ def run_authenticated_app() -> None:
         app_mode,
         reveal_body=not bool(st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)),
     )
+
+    _TRIAL_EXPIRED_BLOCKED_PAGES = {
+        "Alternative Finder",
+        "Compare Parts",
+        "Datasheet Q&A",
+        "Design Impact Analyzer",
+        "Procurement Advisor",
+        "Cost Optimization",
+        "Supply Risk Scenario",
+        "Monitoring",
+        "Onboarding",
+    }
+    if (
+        not is_admin
+        and selected_plan_name in {PLAN_TRIAL_EXPIRED, PLAN_SUBSCRIPTION_INACTIVE}
+        and app_mode in _TRIAL_EXPIRED_BLOCKED_PAGES
+    ):
+        if selected_plan_name == PLAN_TRIAL_EXPIRED:
+            st.warning(
+                "Your trial has ended. Saved analyses and reports remain available. "
+                "Choose Starter, Professional, or Business to use this workspace again."
+            )
+        else:
+            st.warning(
+                "This subscription is not active. Saved analyses and reports remain available. "
+                "Choose Starter, Professional, or Business to use this workspace again."
+            )
+        if st.button("Choose a paid plan", key=f"trial_expired_block_{app_mode}"):
+            navigate_to("Pricing")
+        stop_authenticated_page()
 
     if app_mode == "Onboarding":
         progress = onboarding_progress or {}
@@ -3466,6 +3535,16 @@ def run_authenticated_app() -> None:
                     )
 
             reveal_authenticated_page_body("Dashboard")
+            if not is_admin and selected_plan_name == PLAN_TRIAL_EXPIRED:
+                st.info(
+                    "Your trial has ended. Open a saved analysis or report to review existing work, "
+                    "then choose a paid plan before starting a new analysis."
+                )
+            elif not is_admin and selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
+                st.info(
+                    "This subscription is not active. Open a saved analysis or report to review existing work, "
+                    "then choose a paid plan before starting a new analysis."
+                )
             render_engineering_overview_workspace(
                 overview=overview,
                 metrics=dashboard_metrics,
@@ -6920,7 +6999,7 @@ def run_authenticated_app() -> None:
     # ---------- Pricing ----------
     if app_mode == "Pricing":
         # Sprint 31.3.1 — launch pricing polish patch.
-        current_plan_key = str(selected_plan_name or "Starter").strip().lower()
+        current_plan_key = str(selected_plan_name or PLAN_GRANDFATHERED_BETA).strip().lower()
         plan_aliases = {
             "pro": "professional",
             "professional": "professional",
@@ -6929,16 +7008,28 @@ def run_authenticated_app() -> None:
             "student": "student",
             "trial": "free trial",
             "free trial": "free trial",
+            "trial expired": "trial expired",
+            "grandfathered beta": "grandfathered beta",
+            "beta access": "grandfathered beta",
             "starter": "starter",
-            "free": "starter",
+            "free": "grandfathered beta",
         }
         normalized_current_plan = plan_aliases.get(current_plan_key, current_plan_key)
         used_boms = int(monthly_upload_count or 0)
-        included_boms = int(selected_plan.get("monthly_bom_limit", 0) or 0)
-        usage_percent = min(100, round((used_boms / included_boms) * 100)) if included_boms else 0
+        included_boms = selected_plan.get("monthly_bom_limit")
+        if selected_plan.get("can_create_analyses") is False:
+            analysis_limit_text = "Paused"
+        elif included_boms is None:
+            analysis_limit_text = "Unlimited"
+        else:
+            analysis_limit_text = f"{int(included_boms):,}"
+        usage_percent = (
+            min(100, round((used_boms / int(included_boms)) * 100))
+            if included_boms
+            else 0
+        )
         monitored_limit = selected_plan.get("monitored_parts_limit")
         monitored_limit_text = "Unlimited" if monitored_limit is None else f"{int(monitored_limit):,}"
-        analysis_limit_text = "Unlimited" if not included_boms else f"{included_boms:,}"
         component_limit = selected_plan.get("max_parts_per_bom")
         component_limit_text = "Unlimited" if component_limit is None else f"{int(component_limit):,} per BOM"
         reports_text = "Student Edition watermark" if selected_plan.get("student_watermark") else "Included"
@@ -7032,16 +7123,49 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
+        _pricing_status = plan_display_label(selected_plan_name)
+        _pricing_copy = "Your included Cadivor capabilities and current monthly usage."
+        _remaining_trial_days = trial_days_remaining(current_user)
+        if selected_plan_name == PLAN_TRIAL and _remaining_trial_days is not None:
+            _day_word = "day" if _remaining_trial_days == 1 else "days"
+            _pricing_status = f"Trial · {_remaining_trial_days} {_day_word} remaining"
+            _pricing_copy = (
+                "No card is required during the trial. Choose Starter, Professional, "
+                "or Business when the team is ready to continue."
+            )
+        elif selected_plan_name == PLAN_TRIAL_EXPIRED:
+            _pricing_status = "Trial expired"
+            _pricing_copy = (
+                "Saved analyses remain available to view and download. Choose a paid "
+                "plan to create new analyses."
+            )
+        elif selected_plan_name == PLAN_GRANDFATHERED_BETA:
+            _pricing_status = "Beta access"
+            _pricing_copy = (
+                "This account is on grandfathered beta access, not a paid Starter subscription. "
+                "Beta access stays usable until the founder ends it."
+            )
+        elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
+            _pricing_status = "Subscription inactive"
+            _pricing_copy = (
+                "The last recorded subscription status is not active or trialing. "
+                "Saved work remains available. Choose a paid plan to create new analyses."
+            )
+        if st.session_state.pop("cadivor_access_notice", None) == "trial_expired":
+            st.warning(
+                "Your trial has ended. Saved work remains available. Choose a paid plan to create a new analysis."
+            )
+
         st.markdown(
             f"""
             <section class="cv311-current">
               <div class="cv311-current-head">
                 <div>
-                  <div class="cv311-current-title">{html.escape(str(selected_plan_name))} Workspace</div>
-                  <div class="cv311-active"><span class="cv311-active-dot"></span>Active plan</div>
-                  <div class="cv311-current-copy">Your included Cadivor capabilities and current monthly usage.</div>
+                  <div class="cv311-current-title">{html.escape(_pricing_status)}</div>
+                  <div class="cv311-active"><span class="cv311-active-dot"></span>Current access</div>
+                  <div class="cv311-current-copy">{html.escape(_pricing_copy)}</div>
                 </div>
-                <div class="cv311-plan-badge">{html.escape(str(selected_plan_name))}</div>
+                <div class="cv311-plan-badge">{html.escape(plan_display_label(selected_plan_name))}</div>
               </div>
               <div class="cv311-summary-grid">
                 <div class="cv311-summary-item"><div class="cv311-summary-label">BOM analyses</div><div class="cv311-summary-value">{used_boms:,} / {analysis_limit_text}</div></div>
@@ -7064,6 +7188,7 @@ def run_authenticated_app() -> None:
             price_label: str,
             user_email: str,
             user_id: str,
+            cadivor_plan: str,
         ) -> None:
             """In-card Stripe handoff. Ready state is painted only after the URL exists."""
             plan_slug = plan_name.lower().replace(" ", "_")
@@ -7108,6 +7233,7 @@ def run_authenticated_app() -> None:
                         user_id,
                         success_url=app_checkout_url(page="Pricing", checkout="success"),
                         cancel_url=app_checkout_url(page="Pricing", checkout="cancel"),
+                        cadivor_plan=cadivor_plan,
                     )
                     or ""
                 ).strip()
@@ -7161,7 +7287,7 @@ def run_authenticated_app() -> None:
                     "Team workflow evaluation",
                     "Saved work remains available after trial",
                 ],
-                "note": "At trial end, upgrade or continue on Starter.",
+                "note": "At trial end, saved work stays available. Choose a paid plan to create new analyses.",
             },
         ]
 
@@ -7210,7 +7336,6 @@ def run_authenticated_app() -> None:
             {
                 "name": "Starter",
                 "price": "$29",
-                "annual_price": "$296",
                 "tag": "Individual",
                 "outcome": "Analyze prototype BOMs before production.",
                 "audience": "Hobbyists, freelancers, makers, and small prototype companies.",
@@ -7226,7 +7351,6 @@ def run_authenticated_app() -> None:
             {
                 "name": "Professional",
                 "price": "$99",
-                "annual_price": "$1,010",
                 "tag": "Most popular",
                 "outcome": "Make engineering decisions with confidence using AI-powered lifecycle intelligence.",
                 "audience": "Professional hardware engineers, startups, and small engineering companies.",
@@ -7247,7 +7371,6 @@ def run_authenticated_app() -> None:
             {
                 "name": "Business",
                 "price": "$299",
-                "annual_price": "$3,050",
                 "tag": "Teams",
                 "outcome": "Standardize engineering decisions across your organization.",
                 "audience": "Growing companies, electronics manufacturers, and cross-functional teams.",
@@ -7296,7 +7419,10 @@ def run_authenticated_app() -> None:
                     with st.container(border=True):
                         marker = " cv311-featured" if featured else ""
                         display_price = html.escape(plan["price"]).replace("$", "&#36;")
-                        display_annual_price = html.escape(plan.get("annual_price", "")).replace("$", "&#36;")
+                        annual_line = annual_price_line(plan["name"])
+                        display_annual = (
+                            html.escape(annual_line).replace("$", "&#36;") if annual_line else ""
+                        )
                         st.markdown(
                             f'<span class="cv311-card{marker}"></span>'
                             '<div class="cv311-card-inner">'
@@ -7307,7 +7433,7 @@ def run_authenticated_app() -> None:
                             f'<div class="cv311-price">{display_price}'
                             + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
                             + '</div>'
-                            + (f'<div class="cv311-info-note">{display_annual_price} / year · Save 15%</div>' if display_annual_price else "")
+                            + (f'<div class="cv311-info-note">{display_annual}</div>' if display_annual else "")
                             + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
                             f'<div class="cv311-for">{plan["audience"]}</div>'
                             '</div>',
@@ -7318,23 +7444,27 @@ def run_authenticated_app() -> None:
                         checkout_user_id = str(current_user.get("id") or "")
                         if is_current:
                             st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
-                        elif plan_key == "professional" and normalized_current_plan not in {"professional", "business", "enterprise"}:
+                        elif may_self_serve_checkout(selected_plan_name, plan["name"]) and plan_key in {
+                            "starter",
+                            "professional",
+                            "business",
+                        }:
                             _render_plan_checkout_confirm(
-                                "Professional",
-                                "STRIPE_PRO_PRICE_ID",
-                                "pricing_311_upgrade_professional",
-                                "Professional — $99/month",
+                                plan["name"],
+                                {
+                                    "starter": "STRIPE_STARTER_PRICE_ID",
+                                    "professional": "STRIPE_PRO_PRICE_ID",
+                                    "business": "STRIPE_BUSINESS_PRICE_ID",
+                                }[plan_key],
+                                f"pricing_311_upgrade_{plan_key}",
+                                {
+                                    "starter": "Starter — $29/month",
+                                    "professional": "Professional — $99/month",
+                                    "business": "Business — $299/month",
+                                }[plan_key],
                                 checkout_user_email,
                                 checkout_user_id,
-                            )
-                        elif plan_key == "business" and normalized_current_plan not in {"business", "enterprise"}:
-                            _render_plan_checkout_confirm(
-                                "Business",
-                                "STRIPE_BUSINESS_PRICE_ID",
-                                "pricing_311_upgrade_business",
-                                "Business — $299/month",
-                                checkout_user_email,
-                                checkout_user_id,
+                                CHECKOUT_PLAN_TOKENS[plan["name"]],
                             )
                         elif plan_key == "enterprise":
                             st.markdown(
@@ -7402,7 +7532,7 @@ def run_authenticated_app() -> None:
         )
 
         st.caption(
-            "Stripe handles Professional and Business payments securely. Plan activation is applied through the existing Cadivor subscription webhook."
+            "Stripe handles Starter, Professional, and Business payments securely. Plan activation is applied through the existing Cadivor subscription webhook."
         )
         stop_authenticated_page()
 
@@ -7990,10 +8120,32 @@ def run_authenticated_app() -> None:
         _settings_hero_tab = str(st.session_state.get("settings_active_tab") or "Profile")
         if _settings_hero_tab == "Billing":
             _settings_hero_title = "Plan & billing"
-            _settings_hero_copy = (
-                "Review this account's subscription and continue to secure checkout "
-                "when the team is ready to upgrade."
-            )
+            _billing_days = trial_days_remaining(current_user)
+            if selected_plan_name == PLAN_TRIAL and _billing_days is not None:
+                _day_word = "day" if _billing_days == 1 else "days"
+                _settings_hero_copy = (
+                    f"Trial access has {_billing_days} {_day_word} remaining. "
+                    "No card is required until you choose Starter, Professional, or Business."
+                )
+            elif selected_plan_name == PLAN_TRIAL_EXPIRED:
+                _settings_hero_copy = (
+                    "This trial has ended. Saved work remains available. "
+                    "Choose a paid plan to create new analyses."
+                )
+            elif selected_plan_name == PLAN_GRANDFATHERED_BETA:
+                _settings_hero_copy = (
+                    "This account has grandfathered beta access. It is not a paid Starter subscription."
+                )
+            elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
+                _settings_hero_copy = (
+                    "This subscription is not active. Saved work remains available. "
+                    "Choose a paid plan to create new analyses."
+                )
+            else:
+                _settings_hero_copy = (
+                    "Review this account's subscription and continue to secure checkout "
+                    "when the team is ready to upgrade."
+                )
         else:
             _settings_hero_title = "Profile & preferences"
             _settings_hero_copy = (
@@ -8193,7 +8345,7 @@ def run_authenticated_app() -> None:
                         </div>
                         <div class="cv-profile-fact">
                           <span>Your subscription</span>
-                          <strong>{html.escape(str(selected_plan_name or profile.get("plan", "Starter")))}</strong>
+                          <strong>{html.escape(plan_display_label(selected_plan_name or profile.get("plan", "Starter")))}</strong>
                         </div>
                       </div>
                     </div>
@@ -8492,12 +8644,31 @@ def run_authenticated_app() -> None:
                 <div class="cv-profile-card">
                   <div class="cv-profile-fact">
                     <span>Your subscription</span>
-                    <strong>{html.escape(str(selected_plan_name or profile.get("plan", "Starter")))}</strong>
+                    <strong>{html.escape(plan_display_label(selected_plan_name or profile.get("plan", "Starter")))}</strong>
                   </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+            if selected_plan_name == PLAN_TRIAL_EXPIRED:
+                st.warning(
+                    "Trial expired. View and download saved work from Dashboard, BOM Analyzer, and Reports. "
+                    "New analyses stay locked until a paid plan is confirmed."
+                )
+            elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
+                st.warning(
+                    "Subscription inactive. A price or subscription id is not paid access. "
+                    "View and download saved work until the webhook records active or trialing."
+                )
+            elif selected_plan_name == PLAN_GRANDFATHERED_BETA:
+                st.caption(
+                    "Beta access is grandfathered. A missing Stripe customer ID does not end this access."
+                )
+            elif selected_plan_name in {"Starter", "Professional", "Business"}:
+                st.caption(
+                    f"Paid {selected_plan_name} is active because the webhook recorded "
+                    "this subscription as active or trialing."
+                )
 
             # Customer self-service portal: Stripe remains the source of truth.
             # Admins bypass checkout/limits and never receive a billing portal action.
@@ -14044,6 +14215,20 @@ def run_authenticated_app() -> None:
             """,
             unsafe_allow_html=True,
         )
+        if not is_admin and selected_plan.get("can_create_analyses") is False:
+            if selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
+                st.warning(
+                    "This subscription is not active. Saved analyses above remain available to open and download. "
+                    "Choose a paid plan to create a new analysis."
+                )
+            else:
+                st.warning(
+                    "Your trial has ended. Saved analyses above remain available to open and download. "
+                    "Choose a paid plan to create a new analysis."
+                )
+            if st.button("Choose a paid plan", type="primary", key="bom_trial_expired_choose_plan"):
+                navigate_to("Pricing")
+            stop_authenticated_page()
 
         analysis_in_progress = bool(
             st.session_state.get("bom8_analysis_future")
@@ -14552,10 +14737,11 @@ def run_authenticated_app() -> None:
                 if st.button(f"🚀 Upgrade to {upgrade_plan}", key="upgrade_button_main"):
                     try:
                         price_secret = {
+                            "Starter": "STRIPE_STARTER_PRICE_ID",
                             "Professional": "STRIPE_PRO_PRICE_ID",
                             "Business": "STRIPE_BUSINESS_PRICE_ID",
                         }.get(upgrade_plan)
-                        if not price_secret:
+                        if not price_secret or upgrade_plan not in CHECKOUT_PLAN_TOKENS:
                             raise ValueError("Unsupported checkout plan")
                         checkout_url = create_checkout_session(
                             get_secret(price_secret, required=True),
@@ -14563,6 +14749,7 @@ def run_authenticated_app() -> None:
                             current_user["id"],
                             success_url=app_checkout_url(checkout="success"),
                             cancel_url=app_checkout_url(checkout="cancel"),
+                            cadivor_plan=CHECKOUT_PLAN_TOKENS[upgrade_plan],
                         )
 
                         st.session_state["checkout_url"] = checkout_url
