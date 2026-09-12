@@ -615,7 +615,7 @@ def _solutions() -> None:
 
 
 def _pricing() -> None:
-    _page_hero("pricing", "Transparent pricing", "Start with full access. Scale when the workflow proves its value.", "Every new workspace receives a 14-day full-access trial with no feature restrictions. After the trial, upgrade or automatically continue on Starter.")
+    _page_hero("pricing", "Transparent pricing", "Start with full access. Scale when the workflow proves its value.", "Every new workspace receives a 14-day full-access trial with no feature restrictions and no credit card. After the trial, saved work remains available. Choose a paid plan to create new analyses.")
     _html("""
     <section class="mk-section"><div class="mk-wrap"><div class="mk-pricing">
       <div class="mk-price-card"><span class="mk-plan-label">Academic adoption</span><div class="mk-price-name">Student</div><div class="mk-price">$0</div><p>For university students, engineering clubs, and capstone teams.</p><ul><li>3 BOM analyses/month</li><li>25 components/BOM</li><li>Basic risk analysis and health score</li><li>Limited alternative search</li><li>Student Edition PDF watermark</li><li>Community support</li></ul><a class="mk-btn mk-btn-light" href="#" aria-disabled="true">Coming Soon</a></div>
@@ -706,7 +706,7 @@ def _legal_page(kind: str) -> None:
         <p>Cadivor may use distributor APIs, supplier records, public sources, third-party data, software rules, and AI-assisted analysis. Availability, lifecycle status, pricing, stock, lead times, risk scores, compatibility assessments, and alternative recommendations may be incomplete, delayed, inaccurate, or unsuitable for a particular design.</p>
         <p>You are responsible for confirming component specifications, fit, form, function, regulatory status, sourcing terms, and supplier information before purchasing, qualifying, or releasing a component.</p>
         <h2>5. Plans, trials, billing, and changes</h2>
-        <p>Plan features and usage limits are described on the Pricing page and may vary by subscription. Trial access may automatically continue on the Starter plan unless the customer upgrades or cancels as described during registration. Paid subscriptions, renewal, taxes, refunds, and cancellation terms will be presented during checkout and in the final commercial agreement.</p>
+        <p>Plan features and usage limits are described on the Pricing page and may vary by subscription. A new account receives a 14-day trial with no card required. When that trial ends, saved work remains available, and creating new analyses requires a paid plan. Existing grandfathered beta access continues until Cadivor ends it. Paid subscriptions, renewal, taxes, refunds, and cancellation terms will be presented during checkout and in the final commercial agreement.</p>
         <h2>6. Availability and service changes</h2>
         <p>Cadivor may modify features, integrations, limits, or availability to improve the service, address security or legal requirements, or respond to third-party service changes. We will use reasonable efforts to communicate material changes that affect paid customers.</p>
         <h2>7. Suspension and termination</h2>

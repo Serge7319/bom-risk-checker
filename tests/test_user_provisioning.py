@@ -30,6 +30,11 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertEqual(row["plan"], "Trial")
         self.assertEqual(row["monthly_upload_count"], 0)
         self.assertTrue(row["trial_ends_at"])
+        self.assertNotIn("stripe_customer_id", row)
+        end = datetime.fromisoformat(row["trial_ends_at"])
+        delta = end - datetime.now(timezone.utc)
+        self.assertGreater(delta.total_seconds(), 13 * 24 * 3600)
+        self.assertLess(delta.total_seconds(), 15 * 24 * 3600)
 
     def test_existing_user_row_is_not_overwritten(self):
         supabase = MagicMock()

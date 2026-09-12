@@ -2265,7 +2265,10 @@
     $$('.billing-toggle button').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     const annual = b.dataset.billing === 'annual';
+    // Annual prices render only when a real annual Price ID supplied data-annual-price.
+    // The Live catalog is monthly-only, so those attributes are absent and this is a no-op.
     $$('.pricing-grid [data-monthly-price][data-annual-price]').forEach(price => {
+      if (!price.dataset.annualPrice) return;
       price.textContent = annual ? price.dataset.annualPrice : price.dataset.monthlyPrice;
       const period = document.createElement('small');
       period.textContent = annual ? '/year' : '/month';

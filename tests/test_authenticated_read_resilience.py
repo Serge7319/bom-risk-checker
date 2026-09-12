@@ -35,7 +35,7 @@ class AuthenticatedReadResilienceTests(unittest.TestCase):
 
     def test_trial_downgrade_update_not_using_read_helper(self) -> None:
         source = _runtime_source()
-        trial_block_start = source.index('supabase.table("users").update({"plan": "Starter"})')
+        trial_block_start = source.index('supabase.table("users").update({"plan": "Trial expired"})')
         trial_block = source[trial_block_start : trial_block_start + 180]
         self.assertNotIn("execute_supabase_read", trial_block)
 
@@ -81,8 +81,8 @@ class AuthenticatedReadResilienceTests(unittest.TestCase):
         start = source.index("saved_bom_count_response = execute_supabase_read")
         block = source[start : start + 320]
         self.assertIn('operation="saved_bom_count"', block)
-        self.assertIn("except SupabaseReadTransportError:", source[start : start + 420])
-        self.assertIn("saved_bom_count = 0", source[start : start + 420])
+        self.assertIn("except SupabaseReadTransportError:", source[start : start + 520])
+        self.assertIn("saved_bom_count = 0", source[start : start + 520])
 
     def test_successful_analysis_save_reruns_after_persistence(self) -> None:
         source = _runtime_source()

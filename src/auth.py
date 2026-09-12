@@ -75,7 +75,7 @@ Cadivor may use distributor APIs, supplier records, public sources, third-party 
 You are responsible for confirming component specifications, fit, form, function, regulatory status, sourcing terms, and supplier information before purchasing, qualifying, or releasing a component.
 
 #### 5. Plans, trials, billing, and changes
-Plan features and usage limits are described on the Pricing page and may vary by subscription. Trial access may automatically continue on the Starter plan unless the customer upgrades or cancels as described during registration. Paid subscriptions, renewal, taxes, refunds, and cancellation terms will be presented during checkout and in the final commercial agreement.
+Plan features and usage limits are described on the Pricing page and may vary by subscription. A new account receives a 14-day trial with no card required. When that trial ends, saved work remains available, and creating new analyses requires a paid plan. Existing grandfathered beta access continues until Cadivor ends it. Paid subscriptions, renewal, taxes, refunds, and cancellation terms will be presented during checkout and in the final commercial agreement.
 
 #### 6. Availability and service changes
 Cadivor may modify features, integrations, limits, or availability to improve the service, address security or legal requirements, or respond to third-party service changes. We will use reasonable efforts to communicate material changes that affect paid customers.

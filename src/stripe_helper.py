@@ -1,6 +1,7 @@
 import stripe
 from typing import Optional
 
+from src.plans import checkout_metadata
 from src.secrets import get_secret
 
 
@@ -10,7 +11,26 @@ def _ensure_stripe_api_key() -> None:
     stripe.api_key = get_secret("STRIPE_SECRET_KEY", required=True)
 
 
-def create_checkout_session(price_id, user_email, user_id, success_url, cancel_url):
+def create_checkout_session(
+    price_id,
+    user_email,
+    user_id,
+    success_url,
+    cancel_url,
+    *,
+    cadivor_plan: str,
+):
+    """Create a subscription Checkout session for Starter, Professional, or Business.
+
+    ``cadivor_plan`` is the Cadivor target plan. Both the session and the
+    subscription carry user_id and the normalized cadivor_plan token. This
+    helper does not write users.plan; the webhook remains the source of truth.
+    The deployed stripe-webhook Edge Function is not in this repository. A
+    Checkout success page does not activate Starter, Professional, or Business
+    until that function is exported, updated, deployed with Stripe-compatible
+    JWT verification disabled, and proven end-to-end.
+    """
+    metadata = checkout_metadata(user_id, cadivor_plan)
     _ensure_stripe_api_key()
     session = stripe.checkout.Session.create(
         mode="subscription",
@@ -24,13 +44,9 @@ def create_checkout_session(price_id, user_email, user_id, success_url, cancel_u
         ],
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata={
-            "user_id": user_id,
-        },
+        metadata=metadata,
         subscription_data={
-            "metadata": {
-                "user_id": user_id,
-            }
+            "metadata": dict(metadata),
         },
     )
 

@@ -325,7 +325,16 @@ def render_unified_shell(
             f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>Your subscription</span><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
             unsafe_allow_html=True,
         )
-        if str(plan_name).lower() in {"starter", "free", "trial", "student"}:
+        if str(plan_name).lower() in {
+            "starter",
+            "free",
+            "trial",
+            "student",
+            "beta access",
+            "trial expired",
+            "grandfathered beta",
+            "subscription inactive",
+        }:
             st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
         if st.button(
             "＋ New BOM analysis",

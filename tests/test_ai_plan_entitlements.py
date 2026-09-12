@@ -14,7 +14,10 @@ class AIPlanEntitlementTests(unittest.TestCase):
             self.assertFalse(status.can_use)
 
     def test_paid_plan_uses_the_canonical_plan_allowance(self):
-        status = get_ai_usage_status({}, {"id": "pro", "plan": "Professional"})
+        status = get_ai_usage_status(
+            {},
+            {"id": "pro", "plan": "Professional", "stripe_subscription_status": "active"},
+        )
         self.assertEqual(status.allowance, 500)
         self.assertTrue(status.can_use)
 
@@ -23,7 +26,7 @@ class AIPlanEntitlementTests(unittest.TestCase):
         status = get_ai_usage_status(
             {}, {"id": "expired-trial", "plan": "Trial", "trial_ends_at": expired}
         )
-        self.assertEqual(status.plan, "Starter")
+        self.assertEqual(status.plan, "Trial expired")
         self.assertEqual(status.allowance, 0)
 
     def test_admin_bypasses_ai_credits_without_consuming_them(self):

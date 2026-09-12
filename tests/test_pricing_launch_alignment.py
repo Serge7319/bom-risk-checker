@@ -17,7 +17,7 @@ class MarketingPricingParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        if "data-monthly-price" in attrs:
+        if "data-monthly-price" in attrs and "data-annual-price" in attrs:
             self.annual_prices[attrs["data-monthly-price"]] = attrs["data-annual-price"]
         if "data-billing" in attrs:
             self.billing_modes.add(attrs["data-billing"])
@@ -37,12 +37,33 @@ class PricingLaunchAlignmentTests(unittest.TestCase):
         cls.plans_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.plans_module)
 
-    def test_approved_monthly_and_annual_marketing_prices(self):
+    def test_monthly_catalog_does_not_advertise_unpublished_annual_prices(self):
+        pricing = self.marketing.split('data-page="pricing"', 1)[1].split("</section>", 1)[0]
+        self.assertNotIn("Save 15%", pricing)
+        self.assertNotIn("data-annual-price", pricing)
+        self.assertNotIn("data-billing=\"annual\"", pricing)
+        self.assertIn("$29<small>/month</small>", pricing)
+        self.assertIn("$99<small>/month</small>", pricing)
+        self.assertIn("$299<small>/month</small>", pricing)
+        self.assertNotIn('annual_price": "$296"', self.runtime)
+        self.assertNotIn("Save 15%", self.runtime)
+        self.assertNotIn("$1,010", self.runtime)
+        self.assertNotIn("$3,050", self.runtime)
+
+    def test_annual_line_requires_a_configured_price_id_and_amount(self):
+        from src.plans import annual_price_line
+
+        self.assertEqual(annual_price_line("Starter"), "")
+        self.assertEqual(annual_price_line("Professional", price_id="price_annual_pro"), "")
+        self.assertEqual(annual_price_line("Business", price_id="", amount="$3,050"), "")
         self.assertEqual(
-            self.parser.annual_prices,
-            {"$29": "$296", "$99": "$1,010", "$299": "$3,050"},
+            annual_price_line("Professional", price_id="price_annual_pro", amount="$1,010"),
+            "$1,010 / year",
         )
-        self.assertEqual(self.parser.billing_modes, {"monthly", "annual"})
+        self.assertEqual(
+            annual_price_line("Starter", price_id="price_annual_starter", amount="Save 15%"),
+            "",
+        )
 
     def test_student_marketing_and_enforcement_match(self):
         student = self.plans_module.PLANS["Student"]
@@ -61,16 +82,13 @@ class PricingLaunchAlignmentTests(unittest.TestCase):
         self.assertIn("10 BOM analyses/month", self.marketing)
         self.assertIn("100 components/BOM", self.marketing)
 
-    def test_application_lists_every_approved_annual_price(self):
-        for annual_price in ("$296", "$1,010", "$3,050"):
-            self.assertIn(f'"annual_price": "{annual_price}"', self.runtime)
-
     def test_application_escapes_currency_before_markdown_rendering(self):
         paid_rendering = self.runtime.split("paid_plans = [", 1)[1]
         self.assertIn('display_price = html.escape(plan["price"]).replace("$", "&#36;")', self.runtime)
-        self.assertIn('display_annual_price = html.escape(plan.get("annual_price", "")).replace("$", "&#36;")', self.runtime)
+        self.assertIn("annual_price_line(plan[\"name\"])", paid_rendering)
         self.assertIn('<div class="cv311-price">{display_price}', self.runtime)
-        self.assertIn('<div class="cv311-info-note">{display_annual_price}', self.runtime)
+        self.assertNotIn("Save 15%", paid_rendering)
+        self.assertNotIn('"annual_price"', paid_rendering)
         self.assertNotIn('<div class="cv311-price">{plan["price"]}', paid_rendering)
 
     def test_higher_tiers_explicitly_include_lower_tiers(self):
@@ -85,10 +103,10 @@ class PricingLaunchAlignmentTests(unittest.TestCase):
         self.assertIn('styles.css?v=1.0-pricing-layout2', self.marketing)
         self.assertIn('.pricing-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr))', self.styles)
 
-    def test_annual_toggle_updates_displayed_prices(self):
-        self.assertIn("b.dataset.billing === 'annual'", self.javascript)
-        self.assertIn("price.dataset.annualPrice", self.javascript)
-        self.assertIn("price.dataset.monthlyPrice", self.javascript)
+    def test_annual_toggle_is_inert_without_a_configured_annual_price(self):
+        self.assertIn("if (!price.dataset.annualPrice) return;", self.javascript)
+        self.assertNotIn("data-annual-price", self.marketing)
+        self.assertNotIn("Save 15%", self.marketing)
 
     def test_five_plan_layout_and_comparison(self):
         self.assertIn('grid-template-columns: repeat(5, minmax(0, 1fr))', self.styles)
