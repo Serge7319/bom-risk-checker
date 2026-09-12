@@ -653,3 +653,18 @@ class StripeWebhookSourceAlignmentTests(unittest.TestCase):
         self.assertIn("Subscription inactive", sql)
         self.assertNotIn("v_next_plan := 'Starter'", sql)
         self.assertNotIn("plan = 'Starter'", sql)
+
+    def test_processed_event_replay_cannot_rewrite_user_id(self):
+        sql = (
+            ROOT / "supabase" / "migrations" / "20260912_stripe_webhook_event_lease.sql"
+        ).read_text(encoding="utf-8")
+        complete = sql.split(
+            "create or replace function public.cadivor_complete_stripe_webhook_event",
+            1,
+        )[1].split("create or replace function public.cadivor_release_stripe_webhook_event", 1)[0]
+        update = complete.split("update public.stripe_webhook_events", 1)[1]
+        self.assertEqual(complete.count("update public.stripe_webhook_events"), 1)
+        self.assertIn("user_id = %s", update)
+        self.assertIn("processing_status = ''processed''", update)
+        self.assertIn("processing_status <> ''processed''", update)
+        self.assertNotIn("set user_id = %s where event_id", complete)

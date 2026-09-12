@@ -197,31 +197,35 @@ security definer
 set search_path = public
 as $$
 declare
-  v_outcome text;
+  v_user_id_sql text;
 begin
   if p_outcome not in ('applied', 'skipped_stale', 'admin_untouched', 'ignored') then
     raise exception 'unexpected stripe webhook outcome';
   end if;
-  v_outcome := p_outcome;
 
-  update public.stripe_webhook_events
-  set
-    processing_status = 'processed',
-    lease_expires_at = null,
-    stripe_customer_id = p_stripe_customer_id,
-    stripe_subscription_id = p_stripe_subscription_id,
-    apply_outcome = v_outcome,
-    last_error = null
-  where event_id = p_event_id
-    and processing_status <> 'processed';
+  -- One guarded update. A quoted user_id literal assigns to uuid or text.
+  -- A row that is already processed must not change user_id, outcome, or timestamps.
+  v_user_id_sql := case
+    when p_user_id is null or btrim(p_user_id) = '' then 'null'
+    else quote_literal(p_user_id)
+  end;
 
-  -- user_id may be uuid or text. A quoted literal assigns to either.
   execute format(
-    'update public.stripe_webhook_events set user_id = %s where event_id = %L',
-    case
-      when p_user_id is null or btrim(p_user_id) = '' then 'null'
-      else quote_literal(p_user_id)
-    end,
+    'update public.stripe_webhook_events
+     set
+       processing_status = ''processed'',
+       lease_expires_at = null,
+       stripe_customer_id = %L,
+       stripe_subscription_id = %L,
+       apply_outcome = %L,
+       last_error = null,
+       user_id = %s
+     where event_id = %L
+       and processing_status <> ''processed''',
+    p_stripe_customer_id,
+    p_stripe_subscription_id,
+    p_outcome,
+    v_user_id_sql,
     p_event_id
   );
 end;
