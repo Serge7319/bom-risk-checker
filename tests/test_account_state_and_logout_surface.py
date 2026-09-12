@@ -119,12 +119,17 @@ class SetupContinuationGatingTests(unittest.TestCase):
 
 
 class PlanLabelCanonicalOwnerTests(unittest.TestCase):
-    def test_unpaid_starter_stays_usable_as_grandfathered_beta(self):
-        from src.plans import PLAN_GRANDFATHERED_BETA, resolve_effective_plan
+    def test_unpaid_starter_is_beta_only_with_grandfather_marker(self):
+        from src.plans import PLAN_GRANDFATHERED_BETA, PLAN_SUBSCRIPTION_INACTIVE, resolve_effective_plan
 
-        name, expired = resolve_effective_plan({"plan": "Starter", "role": "user"})
-        self.assertEqual(name, PLAN_GRANDFATHERED_BETA)
+        unmarked, expired = resolve_effective_plan({"plan": "Starter", "role": "user"})
+        self.assertEqual(unmarked, PLAN_SUBSCRIPTION_INACTIVE)
         self.assertFalse(expired)
+        marked, marked_expired = resolve_effective_plan(
+            {"plan": "Starter", "role": "user", "plan_grandfather_source": "Starter"}
+        )
+        self.assertEqual(marked, PLAN_GRANDFATHERED_BETA)
+        self.assertFalse(marked_expired)
 
     def test_paid_starter_requires_stripe_confirmation(self):
         from src.plans import PLAN_STARTER, resolve_effective_plan

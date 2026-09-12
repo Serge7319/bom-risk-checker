@@ -2,7 +2,9 @@
 --
 -- Marks existing unpaid Starter/free beta accounts as Grandfathered beta.
 -- Does not touch rows that already have a Stripe customer, subscription,
--- price, or subscription status. Idempotent: a second run changes nothing.
+-- price, or subscription status. The existing canceled Starter record has a
+-- recorded subscription status, so it is excluded and remains Subscription
+-- inactive. Idempotent: a second run changes nothing.
 -- Reversible from plan_grandfather_source, which is written only by this
 -- migration.
 --
@@ -20,7 +22,7 @@ alter table public.users
   add column if not exists plan_grandfather_source text;
 
 comment on column public.users.plan_grandfather_source is
-  'Prior users.plan captured when an unpaid Starter/free row was marked Grandfathered beta. Null means this migration did not change the row.';
+  'Durable beta-eligibility marker. Written only for unpaid starter/free rows this migration grandfathered. Null means not grandfathered. Later paid purchases must retain it; do not infer beta from users.plan or Stripe ids.';
 
 update public.users
 set

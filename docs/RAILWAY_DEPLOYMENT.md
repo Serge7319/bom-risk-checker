@@ -74,7 +74,7 @@ Do not set `CADIVOR_APP_ORIGIN` to `https://app.cadivor.com` until the Railway d
 
 Use Stripe test mode for Railway verification. Update Stripe callback URLs only after the Railway domain is known.
 
-Checkout does not activate a Cadivor plan. The deployed `stripe-webhook` Edge Function is not in this repository. No real payment activates Starter, Professional, or Business until that function's source is exported, updated to write `users.plan` and `stripe_customer_id` only when the webhook records `active` or `trialing`, deployed with Stripe-compatible JWT verification disabled, and proven end-to-end. Do not change the Active Live webhook destination, Price IDs, or secrets from this work. `supabase/migrations/20260912_grandfather_unpaid_starter.sql` is an unapplied file only.
+Checkout does not activate a Cadivor plan. Versioned source is `supabase/functions/stripe-webhook/index.ts`. It is not deployed. No real payment activates Starter, Professional, or Business until that function is deployed with Stripe-compatible JWT verification disabled and proven end-to-end against a sandbox destination. Do not change the Active Live webhook destination, Price IDs, or secrets from this work. Beta access requires a non-null `users.plan_grandfather_source`. Until `supabase/migrations/20260912_grandfather_unpaid_starter.sql` is applied, unpaid Starter/free rows are not Beta access. A later cancellation restores beta only when that marker is present; a new paid plan without it becomes Subscription inactive. That migration and `supabase/migrations/20260912_stripe_webhook_event_lease.sql` are unapplied files only.
 
 ### Email alerts
 

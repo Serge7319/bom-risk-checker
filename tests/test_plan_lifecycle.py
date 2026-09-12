@@ -82,10 +82,20 @@ class PlanLifecycleTests(unittest.TestCase):
         self.assertEqual(name, "Trial")
         self.assertFalse(persist)
 
-    def test_grandfathered_beta_remains_usable_without_stripe_customer(self):
+    def test_grandfathered_beta_requires_the_durable_marker(self):
         for stored in ("Starter", "free", "Grandfathered beta", ""):
-            name, persist = self.plans.resolve_effective_plan(
+            unmarked, _persist = self.plans.resolve_effective_plan(
                 {"plan": stored, "role": "user"},
+                self.now,
+            )
+            self.assertEqual(unmarked, "Subscription inactive", stored)
+            self.assertFalse(self.plans.has_grandfather_marker({"plan": stored}))
+            name, persist = self.plans.resolve_effective_plan(
+                {
+                    "plan": stored,
+                    "role": "user",
+                    "plan_grandfather_source": "Starter",
+                },
                 self.now,
             )
             self.assertEqual(name, "Grandfathered beta", stored)
@@ -101,7 +111,7 @@ class PlanLifecycleTests(unittest.TestCase):
             {"plan": "Starter", "stripe_customer_id": "cus_only"},
             self.now,
         )
-        self.assertEqual(name, "Grandfathered beta")
+        self.assertEqual(name, "Subscription inactive")
 
     def test_confirmed_subscription_shows_paid_starter(self):
         name, _persist = self.plans.resolve_effective_plan(
@@ -122,7 +132,7 @@ class PlanLifecycleTests(unittest.TestCase):
             "stripe_subscription_id": "sub_old",
             "stripe_price_id": "price_old",
         }
-        for stored in ("Starter", "Professional", "Business"):
+        for stored in ("Professional", "Business"):
             name, persist = self.plans.resolve_effective_plan(
                 {"plan": stored, **stale_ids},
                 self.now,
@@ -131,10 +141,16 @@ class PlanLifecycleTests(unittest.TestCase):
             self.assertFalse(persist)
             self.assertFalse(self.plans.get_plan(name)["can_create_analyses"])
             self.assertFalse(self.plans.stripe_subscription_confirmed({"plan": stored, **stale_ids}))
+        starter_name, _persist = self.plans.resolve_effective_plan(
+            {"plan": "Starter", **stale_ids},
+            self.now,
+        )
+        self.assertEqual(starter_name, "Subscription inactive")
+        self.assertFalse(self.plans.get_plan(starter_name)["can_create_analyses"])
 
     def test_canceled_unpaid_and_incomplete_are_not_paid_access(self):
         for status in ("canceled", "cancelled", "unpaid", "incomplete", "incomplete_expired"):
-            for stored in ("Starter", "Professional", "Business"):
+            for stored in ("Professional", "Business"):
                 user = {
                     "plan": stored,
                     "stripe_customer_id": "cus_lapsed",
@@ -146,6 +162,18 @@ class PlanLifecycleTests(unittest.TestCase):
                 self.assertEqual(name, "Subscription inactive", f"{stored}/{status}")
                 self.assertFalse(self.plans.paid_status_entitles(status))
                 self.assertFalse(self.plans.get_plan(name)["can_create_analyses"])
+            starter_name, _persist = self.plans.resolve_effective_plan(
+                {
+                    "plan": "Starter",
+                    "stripe_customer_id": "cus_lapsed",
+                    "stripe_subscription_id": "sub_lapsed",
+                    "stripe_price_id": "price_lapsed",
+                    "stripe_subscription_status": status,
+                },
+                self.now,
+            )
+            self.assertEqual(starter_name, "Subscription inactive", status)
+            self.assertFalse(self.plans.get_plan(starter_name)["can_create_analyses"])
 
     def test_past_due_has_no_grace_period(self):
         self.assertIsNone(self.plans.PAST_DUE_GRACE_PERIOD)
@@ -192,6 +220,7 @@ class PlanLifecycleTests(unittest.TestCase):
         name, persist = self.plans.resolve_effective_plan(
             {
                 "plan": "Grandfathered beta",
+                "plan_grandfather_source": "Starter",
                 "stripe_customer_id": "",
                 "stripe_subscription_id": "",
                 "stripe_price_id": "",
@@ -202,6 +231,24 @@ class PlanLifecycleTests(unittest.TestCase):
         self.assertEqual((name, persist), ("Grandfathered beta", False))
         self.assertTrue(self.plans.get_plan(name)["can_create_analyses"])
         self.assertEqual(self.plans.plan_display_label(name), "Beta access")
+
+    def test_failed_checkout_stripe_fields_do_not_end_beta_access(self):
+        for status in ("canceled", "past_due", "unpaid", "incomplete", "incomplete_expired", ""):
+            name, persist = self.plans.resolve_effective_plan(
+                {
+                    "plan": "Grandfathered beta",
+                    "plan_grandfather_source": "free",
+                    "stripe_customer_id": "cus_failed",
+                    "stripe_subscription_id": "sub_failed",
+                    "stripe_price_id": "price_starter",
+                    "stripe_subscription_status": status,
+                },
+                self.now,
+            )
+            self.assertEqual(name, "Grandfathered beta", status)
+            self.assertFalse(persist)
+            self.assertTrue(self.plans.get_plan(name)["can_create_analyses"])
+            self.assertEqual(self.plans.plan_display_label(name), "Beta access")
 
     def test_admin_bypass_is_unchanged(self):
         name, persist = self.plans.resolve_effective_plan(
@@ -299,6 +346,8 @@ class GrandfatherMigrationContractTests(unittest.TestCase):
         self.assertIn("stripe_subscription_id", sql)
         self.assertIn("in ('starter', 'free')", sql)
         self.assertIn("plan_grandfather_source is null", sql)
+        self.assertIn("coalesce(btrim(stripe_subscription_status), '') = ''", sql)
+        self.assertIn("existing canceled Starter record", sql)
         self.assertIn("Reverse", sql)
 
 

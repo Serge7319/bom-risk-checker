@@ -1,8 +1,9 @@
 """Cadivor plan and access source of truth.
 
-Starter is the paid $29 plan only. Unpaid accounts that still say Starter are
-resolved to grandfathered beta so a missing Stripe customer id never locks them
-out. Trial expiry is a distinct view-only state, not a downgrade to Starter.
+Starter is the paid $29 plan only. Beta access is reserved for rows the
+grandfather migration marked with a non-null ``plan_grandfather_source``.
+Plan text and Stripe ids do not confer that eligibility. Trial expiry is a
+distinct view-only state, not a downgrade to Starter.
 """
 from __future__ import annotations
 
@@ -230,10 +231,11 @@ _ALIASES = {
 
 
 def normalize_plan_name(plan_name: str | None) -> str:
-    """Map a stored label to a canonical plan.
+    """Map a stored label to a canonical plan name.
 
-    Unknown and empty labels stay usable as grandfathered beta. They are never
-    treated as a paid Starter subscription.
+    This does not decide beta eligibility. Unknown and empty labels are not a
+    paid Starter subscription; access still comes from
+    ``resolve_effective_plan``.
     """
     key = str(plan_name or "").strip().lower()
     if not key:
@@ -255,6 +257,16 @@ def paid_status_entitles(status: str | None) -> bool:
     return normalized in PAID_ENTITLING_STATUSES
 
 
+def has_grandfather_marker(user: dict | None) -> bool:
+    """True only when the grandfather migration recorded this account.
+
+    A non-null ``plan_grandfather_source`` is the durable beta marker. The
+    ``plan`` string and any Stripe ids are not a substitute. Later paid
+    purchases must retain the marker so a later cancellation can restore beta.
+    """
+    return bool(str((user or {}).get("plan_grandfather_source") or "").strip())
+
+
 def stripe_subscription_confirmed(user: dict | None) -> bool:
     """True only when the webhook-recorded status currently entitles paid access.
 
@@ -265,22 +277,6 @@ def stripe_subscription_confirmed(user: dict | None) -> bool:
     if not isinstance(user, dict):
         return False
     return paid_status_entitles(user.get("stripe_subscription_status"))
-
-
-def _stored_billing_identity(user: dict) -> bool:
-    """True when a subscription id, price id, or status was recorded.
-
-    A customer id is excluded. It does not prove a subscription and must not
-    end grandfathered beta access.
-    """
-    return any(
-        str(user.get(key) or "").strip()
-        for key in (
-            "stripe_subscription_id",
-            "stripe_price_id",
-            "stripe_subscription_status",
-        )
-    )
 
 
 def _parse_timestamp(value: Any):
@@ -316,20 +312,17 @@ def resolve_effective_plan(user: dict | None, now: datetime | None = None) -> tu
         return PLAN_TRIAL, False
     if name == PLAN_TRIAL_EXPIRED:
         return PLAN_TRIAL_EXPIRED, False
-    if name == PLAN_GRANDFATHERED_BETA:
+    if name in _PAID_PLAN_NAMES and stripe_subscription_confirmed(record):
+        return name, False
+    # Beta is the grandfather marker, not the stored plan label and not the
+    # absence of Stripe ids. A canceled paid Starter with no marker is inactive.
+    if has_grandfather_marker(record):
         return PLAN_GRANDFATHERED_BETA, False
-    if name in _PAID_PLAN_NAMES:
-        if stripe_subscription_confirmed(record):
-            return name, False
-        # Unpaid Starter/free rows have no subscription identity. Keep them
-        # usable as grandfathered beta. A leftover price or subscription id,
-        # or a non-entitling status, is not that case and is not paid access.
-        if name == PLAN_STARTER and not _stored_billing_identity(record):
-            return PLAN_GRANDFATHERED_BETA, False
+    if name in _PAID_PLAN_NAMES or name in {PLAN_GRANDFATHERED_BETA, PLAN_SUBSCRIPTION_INACTIVE}:
         return PLAN_SUBSCRIPTION_INACTIVE, False
     if name == PLAN_ENTERPRISE:
         return PLAN_ENTERPRISE, False
-    return PLAN_GRANDFATHERED_BETA, False
+    return PLAN_SUBSCRIPTION_INACTIVE, False
 
 
 def get_plan(plan_name: str | None) -> dict:
