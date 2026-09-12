@@ -326,14 +326,14 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   box-shadow: none !important;
 }
 
-/* Action groups — wrap on laptop */
-section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton) {
+/* Action groups — wrap on laptop. Settings tabs and setup actions stay compact. */
+section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *) {
   flex-wrap: wrap !important;
   gap: 10px 12px !important;
   align-items: stretch !important;
 }
 
-section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton) > div {
+section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *) > div {
   min-width: min(180px, 100%) !important;
 }
 

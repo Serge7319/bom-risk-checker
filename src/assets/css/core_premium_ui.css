@@ -207,6 +207,36 @@ section[data-testid="stMain"] a[data-testid="stBaseLinkButton-secondary"]:hover 
   text-decoration: underline !important;
 }
 
+/* Checkout confirmation must never inherit the tertiary text-link treatment. */
+section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > a,
+section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > a,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid^="stBaseLinkButton"],
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid^="stBaseLinkButton"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-height: 48px !important;
+  padding: 12px 18px !important;
+  border: 1px solid #2563EB !important;
+  border-radius: 12px !important;
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22) !important;
+  text-decoration: none !important;
+  font-weight: 850 !important;
+}
+
+section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > a:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > a:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid^="stBaseLinkButton"]:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid^="stBaseLinkButton"]:hover {
+  background: #1D4ED8 !important;
+  border-color: #1D4ED8 !important;
+  color: #FFFFFF !important;
+  text-decoration: none !important;
+}
+
 /* Destructive (keyed actions only) */
 section[data-testid="stMain"] [class*="st-key-"][class*="delete"] .stButton > button,
 section[data-testid="stMain"] [class*="st-key-"][class*="remove"] .stButton > button,

@@ -54,6 +54,44 @@ section[data-testid="stMain"] .stLinkButton > a{
   border:0!important;background:transparent!important;color:#2563eb!important;box-shadow:none!important;text-decoration:none!important;font-weight:780!important;
 }
 section[data-testid="stMain"] .stLinkButton > a:hover{background:#eff6ff!important;color:#1d4ed8!important}
+/* Checkout confirmation is the only self-service handoff. Style it here so the
+   global text-link rule cannot flash an unstyled anchor first. */
+section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton,
+section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > div,
+section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > div,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional [data-testid="stElementContainer"]:has(.stLinkButton),
+section[data-testid="stMain"] .st-key-cv311_checkout_business [data-testid="stElementContainer"]:has(.stLinkButton){
+  width:100%!important;max-width:100%!important;
+}
+section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > a,
+section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > a,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid="stBaseLinkButton-primary"],
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid="stBaseLinkButton-primary"],
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid="stBaseLinkButton-secondary"],
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid="stBaseLinkButton-secondary"],
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid="stLinkButton"],
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid="stLinkButton"]{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  width:100%!important;min-height:48px!important;padding:12px 18px!important;
+  border:1px solid #2563EB!important;border-radius:12px!important;background:#2563EB!important;
+  color:#FFFFFF!important;box-shadow:0 10px 22px rgba(37,99,235,.22)!important;
+  text-decoration:none!important;font-weight:850!important;font-size:16px!important;
+}
+section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > a:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > a:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid="stBaseLinkButton-primary"]:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid="stBaseLinkButton-primary"]:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid="stLinkButton"]:hover,
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid="stLinkButton"]:hover{
+  background:#1D4ED8!important;border-color:#1D4ED8!important;color:#FFFFFF!important;text-decoration:none!important;
+}
+section[data-testid="stMain"] .st-key-cv311_checkout_professional .stLinkButton > a *,
+section[data-testid="stMain"] .st-key-cv311_checkout_business .stLinkButton > a *,
+section[data-testid="stMain"] .st-key-cv311_checkout_professional a[data-testid="stLinkButton"] *,
+section[data-testid="stMain"] .st-key-cv311_checkout_business a[data-testid="stLinkButton"] *{
+  color:#FFFFFF!important;text-decoration:none!important;
+}
 
 /* Premium focus behavior for keyboard users. */
 section[data-testid="stMain"] button:focus-visible,
