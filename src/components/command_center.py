@@ -72,9 +72,9 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
           root.id = ROOT_ID;
           root.innerHTML = `
             <div class="cvcc-backdrop"></div>
-            <section class="cvcc-panel" role="dialog" aria-modal="true" aria-label="Engineering Intelligence Command Center">
+            <section class="cvcc-panel" role="dialog" aria-modal="true" aria-label="Cadivor search">
               <header class="cvcc-header">
-                <div class="cvcc-brand-row"><div class="cvcc-brand"><span class="cvcc-mark">C</span>Engineering Intelligence</div><div class="cvcc-context">${{CONTEXT.currentPage}}</div></div>
+                <div class="cvcc-brand-row"><div class="cvcc-brand"><span class="cvcc-mark">C</span>Cadivor</div><div class="cvcc-context">${{CONTEXT.currentPage}}</div></div>
                 <div class="cvcc-search-wrap"><span class="cvcc-search-icon">⌕</span><input aria-label="Search Cadivor" autocomplete="off" placeholder="Search components, BOMs, alerts, reports, decisions, or actions…"><kbd>ESC</kbd></div>
               </header>
               <main class="cvcc-body"></main>

@@ -10,8 +10,21 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button, navigate_to, alternative_finder_href
-from src.urls import internal_app_href
+from src.ui.bom_navigation import (
+    ENGINEERING_DECISION_BRIEF,
+    MORE_MENU,
+    PRIMARY_AREAS,
+    primary_review_action,
+    section_for_choice,
+    visible_area_for_section,
+)
+from src.ui.navigation import (
+    ALTERNATIVE_FINDER_PAGE,
+    internal_nav_button,
+    navigate_to,
+    navigate_to_alternative_finder,
+    return_to_saved_bom_list,
+)
 from src.ai_advisor import build_engineering_supply_advisor
 from src.ui.performance_cache import (
     cached_engineering_advisor,
@@ -92,6 +105,7 @@ ANALYSIS_SECTIONS = (
     "Timeline",
     "Reports",
     "Ask Cadivor",
+    "Engineering Decisions",
 )
 
 FUNCTIONAL_WORK_ROLES = (
@@ -187,30 +201,97 @@ def _commit_analysis_section_selection(*, analysis_id: str, selected: str) -> st
     if clean not in ANALYSIS_SECTIONS:
         clean = "Engineering Intelligence"
     st.session_state["cadivor_active_analysis_tab"] = clean
+    try:
+        st.query_params["analysis_tab"] = clean
+    except Exception:
+        pass
     return clean
 
 
 def _render_analysis_section_navigation(*, analysis_id: str) -> str:
-    """Deterministic server-side section selection (replaces st.tabs + delayed JS restore)."""
+    """Four primary areas plus More. Legacy section keys still resolve."""
     _consume_pending_analysis_section(analysis_id=analysis_id)
     nav_key = _analysis_section_nav_key(analysis_id)
-    if nav_key not in st.session_state:
-        st.session_state[nav_key] = _safe(
-            st.session_state.get("cadivor_active_analysis_tab"),
-            "Engineering Intelligence",
+    stored = _safe(
+        st.session_state.get(nav_key)
+        or st.session_state.get("cadivor_active_analysis_tab"),
+        "Engineering Intelligence",
+    )
+    area_key = f"cadivor_bom_area_{analysis_id}"
+    more_key = f"cadivor_bom_more_{analysis_id}"
+    visible = visible_area_for_section(stored)
+    if area_key not in st.session_state:
+        st.session_state[area_key] = (
+            visible if visible in PRIMARY_AREAS else ENGINEERING_DECISION_BRIEF
         )
+    more_default = {
+        "Discussions": "Discussion",
+        "Timeline": "History",
+        "Reports": "Report",
+        "Ask Cadivor": "Ask Cadivor",
+    }.get(stored, "More")
+    if more_key not in st.session_state:
+        st.session_state[more_key] = more_default
 
+    widget = getattr(st, "pills", None) or getattr(st, "radio", None)
     with st.container(key="cv_analysis_section_nav"):
-        selected = st.pills(
-            "Analysis section",
-            ANALYSIS_SECTIONS,
-            selection_mode="single",
-            key=nav_key,
-            label_visibility="collapsed",
+        if callable(widget):
+            try:
+                selected_area = widget(
+                    "BOM section",
+                    list(PRIMARY_AREAS),
+                    selection_mode="single",
+                    key=area_key,
+                    label_visibility="collapsed",
+                )
+            except TypeError:
+                selected_area = widget(
+                    "BOM section",
+                    list(PRIMARY_AREAS),
+                    key=area_key,
+                    label_visibility="collapsed",
+                )
+        else:
+            selected_area = st.session_state.get(area_key)
+        selectbox = getattr(st, "selectbox", None)
+        more_choice = (
+            selectbox("More", ["More", *MORE_MENU], key=more_key)
+            if callable(selectbox)
+            else st.session_state.get(more_key, "More")
         )
+    more_choice = str(more_choice or "More")
+    if more_choice == "Watch this BOM":
+        navigate_to(
+            "Monitoring",
+            analysis_id=analysis_id,
+            return_analysis_id=analysis_id,
+            arm_opening=False,
+        )
+        more_choice = "More"
+    elif more_choice == "Datasheet Q&A":
+        navigate_to("Datasheet Q&A", arm_opening=False)
+        more_choice = "More"
+    elif more_choice == "Compare parts":
+        navigate_to("Compare Parts", arm_opening=False)
+        more_choice = "More"
+    elif more_choice == "Design Impact":
+        navigate_to(
+            "Design Impact Analyzer",
+            analysis_id=analysis_id,
+            return_analysis_id=analysis_id,
+            arm_opening=False,
+        )
+        more_choice = "More"
+    if more_choice != "More":
+        section = section_for_choice(more_choice)
+    else:
+        section = section_for_choice(str(selected_area or ENGINEERING_DECISION_BRIEF))
+    st.session_state["cadivor_stack_decision_brief"] = section == "Engineering Intelligence"
+    st.session_state["cadivor_decision_focus"] = section == "Engineering Decisions"
+    st.session_state[nav_key] = section
     return _commit_analysis_section_selection(
         analysis_id=analysis_id,
-        selected=selected or _safe(st.session_state.get("cadivor_active_analysis_tab"), "Engineering Intelligence"),
+        selected=section,
     )
 
 
@@ -404,23 +485,6 @@ def _risk_label(part: dict[str, Any]) -> str:
     return _safe(
         _part_value(part, "risk_level", "Risk Level", "risk_level_display"),
         "Low",
-    )
-
-
-def _monitor_url(mpn: str, analysis_id: str) -> str:
-    return (
-        "?page=Monitoring"
-        f"&mpn={str(mpn).replace(' ', '%20')}"
-        f"&analysis_id={str(analysis_id).replace(' ', '%20')}"
-    )
-
-
-def _alternative_url(mpn: str, analysis_id: str, manufacturer: str = "") -> str:
-    return alternative_finder_href(
-        mpn=mpn,
-        analysis_id=analysis_id,
-        manufacturer=manufacturer,
-        source_page="analysis_detail",
     )
 
 
@@ -1040,11 +1104,10 @@ def render_analysis_detail(
     st.markdown(
         f"""
         <div class="cv-analysis-workspace">
-          <a class="cv-analysis-back" href="{html.escape(internal_app_href('BOM Analyzer', new_analysis='1'), quote=True)}" target="_self">{_lucide('arrow-left',16)} Back to BOM Analyzer</a>
           <div class="cv-analysis-detail-page">
             <header class="cv-analysis-header">
               <div class="cv-analysis-header-main">
-                <div class="cv-analysis-eyebrow">{_lucide('layers',14)} Analysis</div>
+                <div class="cv-analysis-eyebrow">{_lucide('layers',14)} Engineering Decision Brief</div>
                 <h1 class="cv-analysis-title">{html.escape(project)}</h1>
                 <p class="cv-analysis-sub">
                   <span>{html.escape(filename)}</span>
@@ -1067,43 +1130,8 @@ def render_analysis_detail(
         unsafe_allow_html=True,
     )
     with st.container(key="cv_analysis_hero_actions"):
-        hero_actions = st.columns(4, gap="small")
-        with hero_actions[0]:
-            internal_nav_button(
-                "Open BOM Analyzer",
-                "BOM Analyzer",
-                key="analysis_hero_bom_analyzer",
-                use_container_width=True,
-                analysis_id=analysis_id,
-                show_saved_analyses="1",
-            )
-        with hero_actions[1]:
-            internal_nav_button(
-                "Find Alternatives",
-                ALTERNATIVE_FINDER_PAGE,
-                key="analysis_hero_alternative_finder",
-                use_container_width=True,
-                analysis_id=analysis_id,
-                return_analysis_id=analysis_id,
-                source_page="analysis_detail",
-            )
-        with hero_actions[2]:
-            internal_nav_button(
-                "Monitor Components",
-                "Monitoring",
-                key="analysis_hero_monitoring",
-                use_container_width=True,
-                analysis_id=analysis_id,
-            )
-        with hero_actions[3]:
-            internal_nav_button(
-                "Reports Center",
-                "Reports",
-                key="analysis_hero_reports",
-                use_container_width=True,
-                analysis_id=analysis_id,
-            )
-
+        if st.button("Back to BOMs", key="analysis_back_to_boms", type="secondary"):
+            return_to_saved_bom_list(arm_opening=False)
     _sync_cadivor_active_analysis_tab(analysis_id=analysis_id)
     active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
 
@@ -1208,7 +1236,17 @@ def render_analysis_detail(
     )
     top_ranked_part = ranked_parts[0] if ranked_parts else None
 
+    stack_brief = False
+    brief_or_decisions = False
     if active_tab == "Engineering Intelligence":
+        brief_or_decisions = True
+    elif active_tab == "Engineering Decisions":
+        brief_or_decisions = True
+    if brief_or_decisions:
+        stack_brief = bool(st.session_state.get("cadivor_stack_decision_brief")) and active_tab == "Engineering Intelligence"
+        decision_focus = active_tab == "Engineering Decisions" or bool(
+            st.session_state.get("cadivor_decision_focus")
+        )
         brief_cache_key = decision_brief_cache_key(analysis_id=analysis_id)
         decision_brief = get_cached_decision_brief(brief_cache_key)
         if decision_brief is None:
@@ -1225,36 +1263,122 @@ def render_analysis_detail(
             cache_decision_brief(brief_cache_key, decision_brief)
 
         st.markdown('<div class="cv672-workspace-root"></div>', unsafe_allow_html=True)
+        if stack_brief:
+            selected_mpn = _safe(st.session_state.get("cadivor_review_mpn"), "")
+            try:
+                query_component = st.query_params.get("component", "")
+                if isinstance(query_component, list):
+                    query_component = query_component[0] if query_component else ""
+                if str(query_component or "").strip():
+                    selected_mpn = str(query_component).strip()
+            except Exception:
+                pass
+            replacement_chosen = False
+            if selected_mpn:
+                for alt in alternatives or []:
+                    original = _safe(
+                        alt.get("original_part") or alt.get("original_mpn") or alt.get("mpn"),
+                        "",
+                    )
+                    if original == selected_mpn and _safe(
+                        alt.get("alternative_part") or alt.get("alternative_mpn"),
+                        "",
+                    ):
+                        replacement_chosen = True
+                        break
+            queue_clear = high == 0 and not any(
+                _num(row.get("risk_score"), 0) > 0 for row in ranked_parts
+            )
+            action = primary_review_action(
+                ranked_parts,
+                selected_mpn=selected_mpn,
+                replacement_chosen=replacement_chosen,
+                review_queue_clear=queue_clear,
+            )
+            st.markdown(
+                f'<p class="cv-analysis-sub">Next: {html.escape(action["label"])}</p>',
+                unsafe_allow_html=True,
+            )
+            if action["kind"] == "review_part" and action.get("mpn"):
+                if st.button(action["label"], key=f"brief_review_{analysis_id}", type="primary"):
+                    st.session_state["cadivor_review_mpn"] = action["mpn"]
+                    st.session_state["cadivor_active_analysis_tab"] = "Components"
+                    st.session_state[_analysis_section_nav_key(analysis_id)] = "Components"
+                    st.rerun()
+            elif action["kind"] in {"review_part", "review_parts"}:
+                if st.button(action["label"], key=f"brief_review_fallback_{analysis_id}", type="primary"):
+                    st.session_state["cadivor_active_analysis_tab"] = "Components"
+                    st.session_state[_analysis_section_nav_key(analysis_id)] = "Components"
+                    st.rerun()
+            elif action["kind"] == "replacement":
+                if st.button(
+                    "Find a replacement",
+                    key=f"brief_find_replacement_{analysis_id}",
+                    type="primary",
+                ):
+                    navigate_to_alternative_finder(
+                        mpn=action["mpn"],
+                        analysis_id=analysis_id,
+                        return_analysis_id=analysis_id,
+                        source_page="analysis_detail",
+                        arm_opening=False,
+                    )
+            elif action["kind"] == "decision":
+                if st.button("Record decision", key=f"brief_record_{analysis_id}", type="primary"):
+                    st.session_state["cadivor_active_analysis_tab"] = "Engineering Decisions"
+                    st.session_state[_analysis_section_nav_key(analysis_id)] = "Engineering Decisions"
+                    st.session_state["cadivor_decision_focus"] = True
+                    st.session_state["cadivor_stack_decision_brief"] = False
+                    st.rerun()
+            report_kwargs = {
+                "key": f"brief_report_{analysis_id}",
+                "type": "primary" if action["kind"] == "report" else "secondary",
+            }
+            if st.button("Generate report", **report_kwargs):
+                navigate_to("Reports", analysis_id=analysis_id, arm_opening=False)
         render_engineering_workspace_strip(decision_brief)
         workspace_nav_key = f"cv672_workspace_pills_{analysis_id}"
         ws_state_key = f"engineering_workspace_tab_{analysis_id}"
 
-        # Migrate an in-session selection from the earlier radio control while
-        # rendering the same underline-style pills used elsewhere in Cadivor.
         prior_radio_key = f"cv672_workspace_radio_{analysis_id}"
         if workspace_nav_key not in st.session_state and prior_radio_key in st.session_state:
             st.session_state[workspace_nav_key] = st.session_state[prior_radio_key]
 
-        workspace_category = st.pills(
-            "Engineering workspace category",
-            WORKSPACE_CATEGORIES,
-            selection_mode="single",
-            key=workspace_nav_key,
-            label_visibility="collapsed",
-        )
-        workspace_category = workspace_category or "Decision Overview"
+        if stack_brief:
+            categories_to_render = [
+                "Decision Overview",
+                "Critical Findings",
+                "Recommended Actions",
+                "Evidence",
+                "Business Impact",
+                "Risk Analytics",
+            ]
+            workspace_category = "Critical Findings"
+        elif decision_focus:
+            categories_to_render = ["Recommended Actions"]
+            workspace_category = "Recommended Actions"
+        else:
+            workspace_category = st.pills(
+                "Engineering workspace category",
+                WORKSPACE_CATEGORIES,
+                selection_mode="single",
+                key=workspace_nav_key,
+                label_visibility="collapsed",
+            )
+            workspace_category = workspace_category or "Decision Overview"
+            categories_to_render = [workspace_category]
         st.session_state[ws_state_key] = workspace_category
 
-        if workspace_category == "Decision Overview":
+        if "Decision Overview" in categories_to_render:
             render_engineering_workspace_overview(decision_brief)
-        elif workspace_category == "Critical Findings":
+        if "Critical Findings" in categories_to_render:
             render_engineering_workspace_findings(decision_brief)
-        elif workspace_category == "Business Impact":
+        if "Business Impact" in categories_to_render and not stack_brief:
             render_engineering_workspace_impact(decision_brief)
-        elif workspace_category == "Evidence":
+        if "Evidence" in categories_to_render and not stack_brief:
             render_engineering_workspace_evidence(decision_brief)
 
-        elif workspace_category == "Recommended Actions":
+        if "Recommended Actions" in categories_to_render:
             render_engineering_workspace_actions(decision_brief)
             if st.session_state.get("cv26_priority_action_return_analysis") == analysis_id:
                 def _return_to_risk_analytics() -> None:
@@ -1410,9 +1534,11 @@ def render_analysis_detail(
 
                 if total_review_items == 0:
                     st.markdown(
-                        f'''<section class="cv28-empty"><h4>No engineering review queue has been generated</h4><p>Cadivor creates review items from component-level risk, lifecycle, supplier, inventory, lead-time, and alternative evidence. Reopen this BOM in the Analyzer and rerun or save the analysis to attach component records.</p><a class="cv28-link" href="?page=BOM%20Analyzer&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Open BOM Analyzer</a></section>''',
+                        '''<section class="cv28-empty"><h4>No engineering review queue has been generated</h4><p>Cadivor creates review items from component-level risk, lifecycle, supplier, inventory, lead-time, and alternative evidence. Reopen this BOM in the Analyzer and rerun or save the analysis to attach component records.</p></section>''',
                         unsafe_allow_html=True,
                     )
+                    if st.button("Open BOM Analyzer", key=f"cv28_open_bom_{analysis_id}"):
+                        return_to_saved_bom_list(arm_opening=False)
 
                 member_options = [("Unassigned", "", "")]
                 for member in workspace_members:
@@ -1493,9 +1619,35 @@ def render_analysis_detail(
                         supplier_value = _num(part.get("sources"), 0)
                         due_badge_class = "bad" if saved.get("due_date") and str(saved.get("due_date"))[:10] < today.isoformat() and status_label not in {"Approve", "Reject", "Skip"} else "warn"
                         st.markdown(
-                            f'''<div class="cv28-review-head"><div class="cv28-review-main"><span>Component Under Review</span><strong>{html.escape(mpn)}</strong><p>{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))}</p><div class="cv28-badge-row"><span class="cv28-badge {risk_class}">{html.escape(_safe(part.get("risk_level"), "Low"))} risk</span><span class="cv28-badge">{html.escape(saved_priority)} priority</span><span class="cv28-badge {"good" if status_label == "Approve" else "bad" if status_label == "Reject" else "warn"}">{html.escape(status_label)}</span></div></div><div class="cv28-review-stat"><span>Assignee</span><strong>{html.escape(saved_assignee)}</strong><small>{html.escape(_safe(saved.get("assignee_email"), "No member assigned"))}</small></div><div class="cv28-review-stat"><span>Due</span><strong>{html.escape(saved_due)}</strong><small>{html.escape(_date(saved.get("due_date"))) if saved.get("due_date") else "No calendar deadline"}</small></div><div class="cv28-review-stat"><span>Last Saved</span><strong>{html.escape(updated_label)}</strong><small>{html.escape(_safe(saved.get("reviewer_name"), "Not reviewed"))}</small></div><div class="cv28-review-stat"><span>Decision</span><strong>{html.escape(status_label)}</strong><small>Persistent audit record</small></div></div><div class="cv28-confidence"><div class="cv28-confidence-top"><div><span>Cadivor Recommendation</span><strong>{html.escape(suggested)}</strong></div><strong>{recommendation_confidence}%</strong></div><p>{html.escape(rec_reason)}</p></div><div class="cv28-evidence-grid"><div class="cv28-evidence-card"><span>Lifecycle Evidence</span><strong>{html.escape(lifecycle_value)}</strong><small>{"Lifecycle action is required." if any(x in lifecycle_value.lower() for x in ("obsolete","replacement","eol","nrnd")) else "No severe lifecycle state recorded."}</small></div><div class="cv28-evidence-card"><span>Inventory Evidence</span><strong>{stock_value:,} available</strong><small>{"No recorded stock is available." if stock_value <= 0 else "Recorded inventory is available."}</small></div><div class="cv28-evidence-card"><span>Supplier Coverage</span><strong>{supplier_value} source(s)</strong><small>{"Single-source exposure requires validation." if supplier_value <= 1 else "Multiple recorded sources improve resilience."}</small></div><div class="cv28-evidence-card"><span>Risk Score</span><strong>{risk_score}/100</strong><small>Component-level release exposure.</small></div><div class="cv28-evidence-card"><span>Alternative Evidence</span><strong>{"Available" if alternatives else "Not linked"}</strong><small>Open Alternative Finder to evaluate candidates.</small></div><div class="cv28-evidence-card"><span>Monitoring Evidence</span><strong>{len([a for a in alerts if _safe(a.get("mpn") or a.get("part_number"), "") == mpn])} alert(s)</strong><small>Recorded monitoring changes for this component.</small></div></div><div class="cv28-link-row"><a class="cv28-link" href="{html.escape(_alternative_url(mpn, analysis_id), quote=True)}" target="_self">Compare Alternatives</a><a class="cv28-link" href="{html.escape(_monitor_url(mpn, analysis_id), quote=True)}" target="_self">Open Monitoring</a></div>''',
+                            f'''<div class="cv28-review-head"><div class="cv28-review-main"><span>Component Under Review</span><strong>{html.escape(mpn)}</strong><p>{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))}</p><div class="cv28-badge-row"><span class="cv28-badge {risk_class}">{html.escape(_safe(part.get("risk_level"), "Low"))} risk</span><span class="cv28-badge">{html.escape(saved_priority)} priority</span><span class="cv28-badge {"good" if status_label == "Approve" else "bad" if status_label == "Reject" else "warn"}">{html.escape(status_label)}</span></div></div><div class="cv28-review-stat"><span>Assignee</span><strong>{html.escape(saved_assignee)}</strong><small>{html.escape(_safe(saved.get("assignee_email"), "No member assigned"))}</small></div><div class="cv28-review-stat"><span>Due</span><strong>{html.escape(saved_due)}</strong><small>{html.escape(_date(saved.get("due_date"))) if saved.get("due_date") else "No calendar deadline"}</small></div><div class="cv28-review-stat"><span>Last Saved</span><strong>{html.escape(updated_label)}</strong><small>{html.escape(_safe(saved.get("reviewer_name"), "Not reviewed"))}</small></div><div class="cv28-review-stat"><span>Decision</span><strong>{html.escape(status_label)}</strong><small>Persistent audit record</small></div></div><div class="cv28-confidence"><div class="cv28-confidence-top"><div><span>Cadivor Recommendation</span><strong>{html.escape(suggested)}</strong></div><strong>{recommendation_confidence}%</strong></div><p>{html.escape(rec_reason)}</p></div><div class="cv28-evidence-grid"><div class="cv28-evidence-card"><span>Lifecycle Evidence</span><strong>{html.escape(lifecycle_value)}</strong><small>{"Lifecycle action is required." if any(x in lifecycle_value.lower() for x in ("obsolete","replacement","eol","nrnd")) else "No severe lifecycle state recorded."}</small></div><div class="cv28-evidence-card"><span>Inventory Evidence</span><strong>{stock_value:,} available</strong><small>{"No recorded stock is available." if stock_value <= 0 else "Recorded inventory is available."}</small></div><div class="cv28-evidence-card"><span>Supplier Coverage</span><strong>{supplier_value} source(s)</strong><small>{"Single-source exposure requires validation." if supplier_value <= 1 else "Multiple recorded sources improve resilience."}</small></div><div class="cv28-evidence-card"><span>Risk Score</span><strong>{risk_score}/100</strong><small>Component-level release exposure.</small></div><div class="cv28-evidence-card"><span>Alternative Evidence</span><strong>{"Available" if alternatives else "Not linked"}</strong><small>Open Alternative Finder to evaluate candidates.</small></div><div class="cv28-evidence-card"><span>Monitoring Evidence</span><strong>{len([a for a in alerts if _safe(a.get("mpn") or a.get("part_number"), "") == mpn])} alert(s)</strong><small>Recorded monitoring changes for this component.</small></div></div>''',
                             unsafe_allow_html=True,
                         )
+                        alt_col, monitor_col = st.columns(2)
+                        with alt_col:
+                            if st.button(
+                                "Compare Alternatives",
+                                key=f"cv28_compare_{analysis_id}_{review_index}",
+                            ):
+                                navigate_to_alternative_finder(
+                                    mpn=mpn,
+                                    analysis_id=analysis_id,
+                                    return_analysis_id=analysis_id,
+                                    manufacturer=_safe(part.get("manufacturer"), ""),
+                                    source_page="analysis_detail",
+                                    arm_opening=False,
+                                )
+                        with monitor_col:
+                            if st.button(
+                                "Open Monitoring",
+                                key=f"cv28_monitor_{analysis_id}_{review_index}",
+                            ):
+                                navigate_to(
+                                    "Monitoring",
+                                    mpn=mpn,
+                                    analysis_id=analysis_id,
+                                    return_analysis_id=analysis_id,
+                                    arm_opening=False,
+                                )
                         col_decision, col_owner, col_due = st.columns([1.15, 1, 1])
                         options = ["Approve", "Needs Investigation", "Reject", "Skip"]
                         current_decision = saved.get("decision") if saved.get("decision") in options else suggested
@@ -1723,7 +1875,12 @@ def render_analysis_detail(
                         else:
                             st.rerun()
 
-        elif workspace_category == "Risk Analytics":
+        if stack_brief:
+            with st.expander("Evidence", expanded=False):
+                render_engineering_workspace_evidence(decision_brief)
+            render_engineering_workspace_impact(decision_brief)
+
+        if "Risk Analytics" in categories_to_render:
             st.markdown('<section class="cv672-category"><h3 class="cv671-heading">BOM Risk Dashboard</h3></section>', unsafe_allow_html=True)
             assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
             confidence = _num(advisor.get("confidence"), 0)
@@ -1903,7 +2060,10 @@ def render_analysis_detail(
                             internal_nav_button("Open monitoring", "Monitoring", key=f"cv26_action_monitor_{analysis_id}_{index}", use_container_width=True, mpn=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id)
                         else:
                             internal_nav_button("Review component", "Analysis Details", key=f"cv26_action_component_{analysis_id}_{index}", use_container_width=True, analysis_id=analysis_id, analysis_tab="Components", component=part_number, focus="component-risk")
+    render_overview = active_tab == "Overview" or stack_brief
     if active_tab == "Overview":
+        render_overview = True
+    if render_overview:
         _section_header("Decision Brief", "The most important engineering signals for this saved BOM.")
         context_score = context_coverage.score
         context_badge_class = "" if context_score >= 65 else " warn"
@@ -1998,6 +2158,12 @@ def render_analysis_detail(
             st.markdown(f'<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Risk Breakdown</span><div class="cv-analysis-icon">{_lucide("alert",18)}</div></div><div class="cv-analysis-row-list">{risk_html}</div></div>', unsafe_allow_html=True)
 
     if active_tab == "Intelligence":
+        _render_intelligence = True
+    elif st.session_state.get("cadivor_stack_decision_brief") and active_tab == "Engineering Intelligence":
+        _render_intelligence = True
+    else:
+        _render_intelligence = False
+    if _render_intelligence:
         _section_header("Lifecycle & Replacement Intelligence", "Operational readiness, stock health, supplier alerts, and replacement signals.")
         total = max(1, total_parts)
         active_count = sum(1 for p in parts if "active" in str(p.get("lifecycle_status") or p.get("Lifecycle Status") or "").lower())
@@ -2066,8 +2232,8 @@ def render_analysis_detail(
     if active_tab == "Components":
         st.markdown('<div id="component-risk-report"></div>', unsafe_allow_html=True)
         _section_header(
-            "Component Risk Report",
-            "Search, filter, and inspect the saved component intelligence for this analysis.",
+            "Parts & Risk",
+            "Filter the saved parts. Select a part, then find a replacement.",
         )
         if component_focus_requested and requested_component:
             st.markdown(
@@ -2524,7 +2690,7 @@ def render_analysis_detail(
     if active_tab == "Alternatives":
         _section_header(
             "Replacement Readiness",
-            "Review linked alternatives, pending validation, and components that still need replacement work.",
+            "Linked replacements for this BOM. Find a replacement from the selected part.",
         )
 
         validated_count = len(alternatives)

@@ -38,8 +38,26 @@ def _number(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _set_dashboard_detail_view(view: str) -> None:
+    """Drill into Home without a hard reload that re-arms Opening."""
+    clean = str(view or "").strip().lower()
+    if clean not in {"ready", "actions", "blocked"}:
+        clean = ""
+    st.session_state["cadivor_dashboard_view"] = clean
+    try:
+        if clean:
+            st.query_params["dashboard_view"] = clean
+        elif "dashboard_view" in st.query_params:
+            del st.query_params["dashboard_view"]
+    except Exception:
+        pass
+
+
 def _dashboard_detail_view() -> str:
     """Read a validated Dashboard detail selection without widget state."""
+    session_value = str(st.session_state.get("cadivor_dashboard_view") or "").strip().lower()
+    if session_value in {"ready", "actions", "blocked"}:
+        return session_value
     try:
         value = st.query_params.get("dashboard_view", "")
     except Exception:
@@ -386,12 +404,10 @@ def compute_dashboard_summary_metrics(overview: Dict[str, Any]) -> Dict[str, Any
 def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
     """Engineering Overview — daily brief and primary KPI row."""
     render_section_header(
-        "Your Engineering Brief",
-        eyebrow="Engineering Overview",
+        "What needs attention",
+        eyebrow="Home",
         description=(
-            f"{_text(overview.get('summary'))} "
-            f"The most important next step is to {metrics['brief_action'].lower()} "
-            f"for {metrics['brief_item']}."
+            f"Next: {metrics['brief_action']} for {metrics['brief_item']}."
         ),
         icon="briefcase-business",
     )
@@ -411,8 +427,6 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
                 detail="Projects cleared for release",
                 tone="success",
                 icon="badge-check",
-                href="?page=Dashboard&dashboard_view=ready",
-                action_label="Showing details" if selected_drilldown == "ready" else "View ready projects",
                 active=selected_drilldown == "ready",
             ),
             MetricCard(
@@ -421,8 +435,6 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
                 detail="Prioritized engineering tasks",
                 tone="info",
                 icon="clipboard-list",
-                href="?page=Dashboard&dashboard_view=actions",
-                action_label="Showing details" if selected_drilldown == "actions" else "View today's actions",
                 active=selected_drilldown == "actions",
             ),
             MetricCard(
@@ -431,13 +443,38 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
                 detail="Require immediate review" if metrics["blocked_projects"] else "No blockers recorded",
                 tone="danger" if metrics["blocked_projects"] else "success",
                 icon="octagon-alert",
-                href="?page=Dashboard&dashboard_view=blocked",
-                action_label="Showing details" if selected_drilldown == "blocked" else "View blocked projects",
                 active=selected_drilldown == "blocked",
             ),
         ],
         columns=4,
     )
+    drill_ready, drill_actions, drill_blocked = st.columns(3)
+    with drill_ready:
+        if st.button(
+            "Showing ready projects" if selected_drilldown == "ready" else "View ready projects",
+            key="dashboard_view_ready",
+            use_container_width=True,
+        ):
+            _set_dashboard_detail_view("" if selected_drilldown == "ready" else "ready")
+            st.rerun()
+    with drill_actions:
+        if st.button(
+            "Showing today's actions" if selected_drilldown == "actions" else "View today's actions",
+            key="dashboard_view_actions",
+            use_container_width=True,
+        ):
+            _set_dashboard_detail_view("" if selected_drilldown == "actions" else "actions")
+            st.rerun()
+    with drill_blocked:
+        if st.button(
+            "Showing blocked projects" if selected_drilldown == "blocked" else "View blocked projects",
+            key="dashboard_view_blocked",
+            use_container_width=True,
+        ):
+            _set_dashboard_detail_view("" if selected_drilldown == "blocked" else "blocked")
+            st.rerun()
+
+
 def render_dashboard_summary_strip(*, overview: Dict[str, Any], metrics: Dict[str, Any]) -> None:
     """Backward-compatible alias — Engineering Overview only."""
     render_engineering_overview_brief_and_kpis(overview=overview, metrics=metrics)
@@ -471,10 +508,12 @@ def render_engineering_overview_workspace(
             f'<section class="cv6723-section cv6723-dashboard-detail-panel"><div class="cv6723-section-head">'
             f'<div><div class="cv6723-section-title">{detail_titles[selected_drilldown]}</div>'
             f'<div class="cv6723-section-copy">Directly related records from your workspace.</div></div>'
-            f'<a class="cv6723-quick-action cv-card-interactive" href="?page=Dashboard" target="_self">Clear detail view</a>'
             f'</div></section>',
             unsafe_allow_html=True,
         )
+        if st.button("Clear detail view", key="dashboard_clear_detail_view"):
+            _set_dashboard_detail_view("")
+            st.rerun()
         if selected_drilldown == "actions":
             st.html(_full_work_queue_table_html(overview.get("action_today", []) or actions))
         else:
@@ -503,14 +542,10 @@ def render_engineering_overview_workspace(
         description="Cadivor-ranked actions based on saved evidence and open workflow.",
         icon="sparkles",
     )
-    st.markdown(
-        '<div class="cv6723-recommendations-route">'
-        '<a class="cv6723-quick-action" href="?page=Engineering%20Decisions" target="_self">'
-        'Open Engineering Decisions</a>'
-        '<span>Review and record the decision behind each recommendation.</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    if st.button("Open Engineering Decisions", key="dashboard_open_decisions"):
+        from src.ui.navigation import navigate_to
+
+        navigate_to("Engineering Decisions", arm_opening=False)
     st.markdown(
         f'<div class="cv6723-section">{_compact_recommendations_html(recommendations)}</div>',
         unsafe_allow_html=True,
@@ -534,16 +569,23 @@ def render_engineering_overview_workspace(
         description="Jump to the most common engineering workflows.",
         icon="zap",
     )
-    st.html(
-        """
-        <nav class="cv6723-action-toolbar cv6723-quick-actions cv-dashboard-quick-actions" aria-label="Quick engineering actions">
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Engineering%20Decisions" target="_self">Engineering Decisions</a>
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Procurement%20Advisor" target="_self">Procurement Advisor</a>
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Monitoring" target="_self">Monitoring</a>
-          <a class="cv6723-quick-action cv-card-interactive" href="?page=Reports" target="_self">Reports</a>
-        </nav>
-        """
+    st.markdown(
+        '<nav class="cv6723-action-toolbar cv6723-quick-actions cv-dashboard-quick-actions" aria-label="Quick engineering actions"></nav>',
+        unsafe_allow_html=True,
     )
+    from src.ui.navigation import navigate_to
+
+    action_cols = st.columns(4)
+    quick_actions = (
+        ("Engineering Decisions", "Engineering Decisions", "dashboard_quick_decisions"),
+        ("Procurement Advisor", "Procurement Advisor", "dashboard_quick_procurement"),
+        ("Alerts & Monitoring", "Monitoring", "dashboard_quick_monitoring"),
+        ("Reports", "Reports", "dashboard_quick_reports"),
+    )
+    for column, (label, destination, key) in zip(action_cols, quick_actions):
+        with column:
+            if st.button(label, key=key, use_container_width=True):
+                navigate_to(destination, arm_opening=False)
 
     if activation_hook:
         activation_hook()
@@ -575,12 +617,6 @@ def render_portfolio_project_summaries(
 
     summary_rows = []
     for project in project_list[:8]:
-        project_id = str(project.get("id") or "")
-        href = (
-            f"?page=Analysis%20Details&analysis_id={html.escape(project_id, quote=True)}"
-            if project_id
-            else "?page=BOM%20Analyzer"
-        )
         summary_rows.append(
             {
                 "Project": _text(project.get("name"), "Saved BOM"),
@@ -588,7 +624,7 @@ def render_portfolio_project_summaries(
                 "Components": int(_number(project.get("parts"), 0)),
                 "High-Risk": int(_number(project.get("high"), 0)),
                 "Status": _text(project.get("status"), "Needs Review"),
-                "Open": href,
+                "analysis_id": str(project.get("id") or "").strip(),
             }
         )
 
@@ -596,7 +632,7 @@ def render_portfolio_project_summaries(
     table_html.append(
         "<thead><tr>"
         "<th>Project</th><th>Health</th><th>Components</th>"
-        "<th>High-Risk</th><th>Status</th><th>Open</th>"
+        "<th>High-Risk</th><th>Status</th>"
         "</tr></thead><tbody>"
     )
     for row in summary_rows:
@@ -607,11 +643,22 @@ def render_portfolio_project_summaries(
             f"<td>{row['Components']}</td>"
             f"<td>{row['High-Risk']}</td>"
             f'<td><span class="cv6723-status-chip cv6723-status-chip--neutral">{html.escape(str(row["Status"]))}</span></td>'
-            f'<td><a class="cv6723-inline-link" href="{row["Open"]}" target="_self">Open Project</a></td>'
             "</tr>"
         )
     table_html.append("</tbody></table></div>")
     st.markdown("".join(table_html), unsafe_allow_html=True)
+    from src.ui.navigation import open_saved_bom
+
+    for index, row in enumerate(summary_rows):
+        analysis_id = row.get("analysis_id") or ""
+        label = row.get("Project") or "saved BOM"
+        st.button(
+            f"Open Project · {label}",
+            key=f"cv_home_open_project_{analysis_id or index}",
+            on_click=open_saved_bom,
+            args=(analysis_id,),
+            kwargs={"arm_opening": False, "_rerun": False},
+        )
 
 
 def render_team_workload_section(*, overview: Dict[str, Any]) -> None:
@@ -661,12 +708,13 @@ def render_dashboard_monitoring_workspace(
             <h2>Monitoring</h2>
             <p>Lifecycle, inventory, pricing, and supplier change summaries from your workspace.</p>
           </div>
-          <a class="cv6723-quick-action cv6723-monitoring-header-link" href="?page=Monitoring" target="_self">
-            Open Monitoring Center →
-          </a>
         </header>
         """
     )
+    if st.button("Open Alerts & Monitoring", key="dashboard_monitoring_open"):
+        from src.ui.navigation import navigate_to
+
+        navigate_to("Monitoring", arm_opening=False)
 
     render_kpi_row_safe(
         [

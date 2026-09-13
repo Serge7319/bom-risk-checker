@@ -16,7 +16,7 @@ import streamlit as st
 from src.components.onboarding import render_activation_strip, render_first_run_dashboard
 from src.components.upgrade_prompt import render_upgrade_prompt
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
-from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button, navigate_to
+from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button, navigate_to, open_saved_bom
 
 
 def inject_dashboard_page_styles() -> None:
@@ -1340,11 +1340,8 @@ def render_dashboard(
                 "title": str(project_name),
                 "copy": f"Analysis completed with health {health}/100 across {parts} component record(s).",
                 "created_at": item.get("created_at"),
-                "href": (
-                    f"?page=Analysis%20Details&analysis_id={html.escape(analysis_id, quote=True)}"
-                    if analysis_id
-                    else "?page=BOM%20Analyzer"
-                ),
+                "nav_page": "Analysis Details" if analysis_id else "BOM Analyzer",
+                "nav_params": {"analysis_id": analysis_id} if analysis_id else {},
                 "action": "Open project",
             }
         )
@@ -1365,7 +1362,7 @@ def render_dashboard(
                 "title": str(part_number),
                 "copy": str(message),
                 "created_at": item.get("created_at") or item.get("detected_at"),
-                "href": "?page=Monitoring",
+                "nav_page": "Monitoring",
                 "action": "Review alert",
             }
         )
@@ -1485,24 +1482,28 @@ def render_dashboard(
             """
         )
     with quick_col:
-        st.html(
+        st.markdown(
             f"""
             <div class="cv-6a-actions-card">
-              <a class="cv-6a-action-row" href="?page=BOM%20Analyzer" target="_self">
+              <div class="cv-6a-action-row">
                 <div><strong>{html.escape(next_action_title)}</strong><span>Start or continue BOM analysis</span></div>
-                <div class="cv-6a-action-arrow">→</div>
-              </a>
-              <a class="cv-6a-action-row" href="?page=Monitoring" target="_self">
+              </div>
+              <div class="cv-6a-action-row">
                 <div><strong>Review supplier alerts</strong><span>{alert_count} active · {high_alert_count} high severity</span></div>
-                <div class="cv-6a-action-arrow">→</div>
-              </a>
-              <a class="cv-6a-action-row" href="?page=Reports" target="_self">
+              </div>
+              <div class="cv-6a-action-row">
                 <div><strong>Generate engineering report</strong><span>{total_analyses} saved review(s) available</span></div>
-                <div class="cv-6a-action-arrow">→</div>
-              </a>
+              </div>
             </div>
-            """
+            """,
+            unsafe_allow_html=True,
         )
+        if st.button(str(next_action_title or "Continue BOM analysis"), key="dashboard_quick_continue_bom"):
+            navigate_to("BOM Analyzer", arm_opening=False)
+        if st.button("Review supplier alerts", key="dashboard_quick_alerts"):
+            navigate_to("Monitoring", arm_opening=False)
+        if st.button("Generate engineering report", key="dashboard_quick_report"):
+            navigate_to("Reports", arm_opening=False)
 
     st.html(
         """
@@ -1612,11 +1613,13 @@ def render_dashboard(
                 <div class="cv-v4-section-title">Portfolio Health</div>
                 <div class="cv-v4-section-meta">Latest 7 recorded days • {health_delta_label} vs previous</div>
               </div>
-              <a class="cv-v4-chip" href="?page=Reports" target="_self" style="text-decoration:none!important;">Open analyses →</a>
+              <span class="cv-v4-chip">Open analyses</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        if st.button("Open analyses →", key="dashboard_open_analyses"):
+            navigate_to("Reports", arm_opening=False)
         if analysis_data and len(analysis_data) >= 2:
             trend_df = pd.DataFrame(analysis_data)
             trend_df["created_at"] = pd.to_datetime(
@@ -1738,11 +1741,6 @@ def render_dashboard(
         latest_analysis_id = ""
         if analysis_data:
             latest_analysis_id = str(analysis_data[0].get("id") or "")
-        project_href = (
-            f"?page=Analysis%20Details&analysis_id={html.escape(latest_analysis_id, quote=True)}"
-            if latest_analysis_id
-            else "?page=BOM%20Analyzer"
-        )
         st.markdown(
             """
             <div class="cv-6b-column-heading">
@@ -1776,12 +1774,16 @@ def render_dashboard(
                 <span class="cv241-status-dot">Active engineering review</span>
                 <span>Updated {html.escape(str(latest_date))}</span>
               </div>
-              <a class="cv-6b-project-link" href="{project_href}" target="_self">
-                <span>Continue analysis</span><span>→</span>
-              </a>
             </div>
             """,
             unsafe_allow_html=True,
+        )
+        st.button(
+            "Continue analysis →",
+            key="dashboard_continue_analysis",
+            on_click=open_saved_bom,
+            args=(latest_analysis_id,),
+            kwargs={"arm_opening": False, "_rerun": False},
         )
 
     analytics_col, activity_col = st.columns([1.08, 0.92], gap="medium")
@@ -1794,11 +1796,13 @@ def render_dashboard(
                 <div class="cv-v4-section-title">Risk Movement</div>
                 <div class="cv-v4-section-meta">High- and medium-risk movement over the latest recorded days.</div>
               </div>
-              <a class="cv-v4-chip" href="?page=Monitoring" target="_self" style="text-decoration:none!important;">Open monitoring →</a>
+              <span class="cv-v4-chip">Open monitoring</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        if st.button("Open monitoring →", key="dashboard_open_monitoring"):
+            navigate_to("Monitoring", arm_opening=False)
 
         if len(trend_records) >= 2:
             risk_df = pd.DataFrame(trend_records)
@@ -1995,21 +1999,43 @@ def render_dashboard(
                 nav_page = str(event.get("nav_page") or "").strip()
                 nav_params = dict(event.get("nav_params") or {})
                 href = str(event.get("href") or "").strip()
-                if nav_page:
-                    internal_nav_button(
+                saved_analysis_id = str(nav_params.get("analysis_id") or "").strip()
+                if nav_page == "Analysis Details" or saved_analysis_id:
+                    st.button(
                         f"{event['action']} →",
-                        nav_page,
                         key=f"dashboard_activity_nav_{index}",
-                        **nav_params,
+                        use_container_width=False,
+                        on_click=open_saved_bom,
+                        args=(saved_analysis_id,),
+                        kwargs={"arm_opening": False, "_rerun": False},
                     )
-                elif href.startswith("?page="):
-                    page_name = href.split("?page=", 1)[1].split("&", 1)[0].replace("%20", " ")
+                elif nav_page:
                     if st.button(
+                        f"{event['action']} →",
+                        key=f"dashboard_activity_nav_{index}",
+                        use_container_width=False,
+                    ):
+                        navigate_to(nav_page, arm_opening=False, **nav_params)
+                elif href.startswith("?page="):
+                    page_name = href.split("?page=", 1)[1].split("&", 1)[0].replace("%20", " ").replace("+", " ")
+                    analysis_id = ""
+                    if "analysis_id=" in href:
+                        analysis_id = href.split("analysis_id=", 1)[1].split("&", 1)[0]
+                    if page_name == "Analysis Details" or analysis_id:
+                        st.button(
+                            f"{event['action']} →",
+                            key=f"dashboard_activity_href_{index}",
+                            use_container_width=False,
+                            on_click=open_saved_bom,
+                            args=(analysis_id,),
+                            kwargs={"arm_opening": False, "_rerun": False},
+                        )
+                    elif st.button(
                         f"{event['action']} →",
                         key=f"dashboard_activity_href_{index}",
                         use_container_width=False,
                     ):
-                        navigate_to(page_name)
+                        navigate_to(page_name, arm_opening=False)
                 elif href:
                     st.link_button(f"{event['action']} →", href, use_container_width=False)
         else:

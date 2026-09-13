@@ -17,6 +17,7 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.streamlit.session_state = {}
         self.streamlit.query_params = {}
         self.streamlit.rerun = lambda: None
+        self.streamlit.html = lambda *args, **kwargs: None
         sys.modules["streamlit"] = self.streamlit
         normalizer = types.ModuleType("src.normalizer")
         normalizer.normalize_part_number = lambda value: str(value).strip().upper()
@@ -64,7 +65,10 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         runtime = (ROOT / "src/authenticated_runtime.py").read_text()
         detail = (ROOT / "src/pages/analysis_detail.py").read_text()
         self.assertIn('not _show_saved_analyses', runtime)
-        self.assertEqual(detail.count('show_saved_analyses="1"'), 2)
+        self.assertIn("cadivor_show_saved_boms", runtime)
+        self.assertIn("return_to_saved_bom_list", detail)
+        self.assertNotIn("new_analysis", detail)
+        self.assertIn("Back to BOMs", detail)
 
     def test_missing_lead_time_does_not_display_not_available_weeks(self):
         detail = (ROOT / "src/pages/analysis_detail.py").read_text()
@@ -72,38 +76,28 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertNotIn("html.escape(selected_lead_time)} weeks", detail)
 
     def test_internal_navigation_commits_destination_in_widget_callback(self):
+        rendered = []
+        self.streamlit.html = lambda markup, **kwargs: rendered.append(markup)
         reruns = []
         self.streamlit.rerun = lambda: reruns.append(True)
 
-        def click_button(label, **kwargs):
-            self.assertEqual(label, "Reports Center")
-            kwargs["on_click"]()
-            return True
-
-        self.streamlit.button = click_button
         clicked = self.navigation.internal_nav_button(
             "Reports Center", "Reports", key="reports-test", analysis_id="bom-42"
         )
 
-        self.assertTrue(clicked)
-        self.assertEqual(self.streamlit.session_state["cadivor_route"], "Reports")
-        self.assertEqual(self.streamlit.session_state["app_mode"], "Reports")
-        self.assertEqual(
-            self.streamlit.session_state["cadivor_nav_params"],
-            {"page": "Reports", "analysis_id": "bom-42"},
-        )
+        self.assertFalse(clicked)
         self.assertEqual(reruns, [])
+        self.assertTrue(rendered)
+        self.assertIn("reports-test", rendered[0])
+        self.assertIn("Reports Center", rendered[0])
 
     def test_alternative_navigation_callback_preserves_return_context(self):
+        rendered = []
+        self.streamlit.html = lambda markup, **kwargs: rendered.append(markup)
         reruns = []
         self.streamlit.rerun = lambda: reruns.append(True)
         self.streamlit.session_state["cadivor_active_analysis_tab"] = "Components"
 
-        def click_button(label, **kwargs):
-            kwargs["on_click"]()
-            return True
-
-        self.streamlit.button = click_button
         self.navigation.internal_nav_button(
             "Find Alternatives",
             self.navigation.ALTERNATIVE_FINDER_PAGE,
@@ -113,12 +107,10 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             return_analysis_id="bom-42",
         )
 
-        self.assertEqual(self.streamlit.session_state["cadivor_route"], "Alternative Finder")
-        self.assertEqual(
-            self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY],
-            "bom-42",
-        )
         self.assertEqual(reruns, [])
+        self.assertTrue(rendered)
+        self.assertIn("Find Alternatives", rendered[0])
+        self.assertIn("alternatives-test", rendered[0])
 
     def test_direct_navigation_still_requests_one_rerun(self):
         reruns = []
@@ -213,15 +205,15 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertIn('_rerun=False', handler)
         self.assertIn('on_click=_return_to_saved_bom', handler)
 
-    def test_dashboard_drilldowns_are_module_local_and_query_driven(self):
+    def test_dashboard_drilldowns_stay_in_session(self):
         workspace = (ROOT / "src/living_workspace.py").read_text()
         runtime = (ROOT / "src/authenticated_runtime.py").read_text()
-        self.assertIn('def _dashboard_detail_view()', workspace)
-        self.assertIn('dashboard_view=ready', workspace)
-        self.assertIn('dashboard_view=actions', workspace)
-        self.assertIn('dashboard_view=blocked', workspace)
-        self.assertNotIn('cadivor_dashboard_drilldown', workspace)
-        self.assertNotIn('dashboard_drilldown', runtime)
+        self.assertIn("def _dashboard_detail_view()", workspace)
+        self.assertIn("def _set_dashboard_detail_view", workspace)
+        self.assertIn('st.query_params["dashboard_view"]', workspace)
+        self.assertNotIn('href="?page=Dashboard&dashboard_view=', workspace)
+        self.assertNotIn("cadivor_dashboard_drilldown", workspace)
+        self.assertNotIn("dashboard_drilldown", runtime)
 
 
 if __name__ == "__main__":

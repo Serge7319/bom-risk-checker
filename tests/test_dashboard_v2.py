@@ -78,7 +78,7 @@ class DashboardV2Tests(unittest.TestCase):
         self.assertIn('if app_mode == "Dashboard":', self.runtime_source)
         self.assertIn("inject_dashboard_workspace_styles()", self.runtime_source)
         self.assertIn("render_dashboard_page_heading()", self.runtime_source)
-        self.assertIn("render_dashboard_workspace_navigation(", self.runtime_source)
+        self.assertNotIn("render_dashboard_workspace_navigation(", self.runtime_source)
         self.assertIn("render_engineering_overview_workspace(", self.runtime_source)
         self.assertIn("render_portfolio_intelligence_workspace(", self.runtime_source)
 

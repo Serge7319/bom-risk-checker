@@ -259,12 +259,10 @@ def render_portfolio_intelligence(
     st.markdown(
         f"""
         <section class="cv19-hero">
-          <div class="cv19-eyebrow">Cross-Project Intelligence</div>
+          <div class="cv19-eyebrow">Across BOMs</div>
           <div class="cv19-title">Portfolio Intelligence</div>
           <div class="cv19-copy">
-            Understand which components, suppliers, and lifecycle risks affect multiple projects.
-            Cadivor uses your saved BOM records to identify portfolio-wide exposure and the actions
-            that can reduce risk across more than one design.
+            Parts, suppliers, and lifecycle risks that show up on more than one saved BOM.
           </div>
         </section>
         """,

@@ -98,7 +98,7 @@ def render_topbar(current_user=None, app_mode="Dashboard"):
                 <div class="cadivor-logo-mark">C</div>
                 <div>
                     <div class="cadivor-logo-text">Cadivor</div>
-                    <div class="cadivor-logo-subtitle">Engineering Intelligence</div>
+                    <div class="cadivor-logo-subtitle">Engineering Decision Intelligence</div>
                 </div>
             </div>
             <div class="cadivor-topbar-center">
@@ -121,7 +121,7 @@ def render_topbar(current_user=None, app_mode="Dashboard"):
                     <div class="cadivor-user-menu-divider"></div>
                     <a href="?page=Settings" target="_self">My Profile <span>→</span></a>
                     <a href="?page=Workspace" target="_self">Workspace <span>→</span></a>
-                    <a href="?page=Pricing" target="_self">Billing <span>→</span></a>
+                    <a href="?page=Settings&settings_tab=Billing" target="_self">Billing <span>→</span></a>
                     <a href="?page=Notifications" target="_self">Notifications <span>→</span></a>
                     <a href="?page=Help" target="_self">Help <span>→</span></a>
                     <div class="cadivor-user-menu-divider"></div>

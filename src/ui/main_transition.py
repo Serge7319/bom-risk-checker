@@ -12,6 +12,7 @@ sidebar must stay fully sharp and normal-opacity for the entire transition.
 from __future__ import annotations
 
 import html
+import time
 from typing import Any, MutableMapping
 
 import streamlit as st
@@ -23,6 +24,8 @@ MAIN_TRANSITION_ROUTE_KEY = "cadivor_main_transition_route"
 MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
 # Opening is skipped when warm session caches make nav cheaper than this budget.
 FAST_CACHED_NAV_OPENING_MS = 300
+OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
+OPENING_ROUTE_KEY = "cadivor_opening_route"
 
 
 def get_presented_route(session_state: MutableMapping[str, Any] | None = None) -> str:
@@ -305,11 +308,18 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
         """
 
 
+def mark_opening_started(route: str) -> None:
+    """Record when Opening became the visible frame. Route only; no user data."""
+    st.session_state[OPENING_STARTED_AT_KEY] = time.perf_counter()
+    st.session_state[OPENING_ROUTE_KEY] = str(route or "").strip()
+
+
 def prepare_main_transition(target_route: str) -> int:
     """Arm session keys + stylesheet; return the transition generation."""
     route = str(target_route or "").strip()
     if not route:
         return int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
+    mark_opening_started(route)
     gen = _next_transition_gen()
     inject_main_transition_css(gen)
     st.session_state[MAIN_TRANSITION_ACTIVE_KEY] = True
@@ -376,6 +386,18 @@ def reveal_main_transition(route: str = "") -> None:
         st.session_state[PRESENTED_ROUTE_KEY] = safe_route
     st.session_state[MAIN_TRANSITION_ACTIVE_KEY] = False
     st.session_state.pop(DELAY_ROUTE_BODY_REVEAL_KEY, None)
+    try:
+        started = st.session_state.pop(OPENING_STARTED_AT_KEY, None)
+        logged_route = st.session_state.pop(OPENING_ROUTE_KEY, None) or safe_route
+        if started is not None:
+            from src.performance_timing import log_opening_reveal
+
+            log_opening_reveal(
+                logged_route or safe_route,
+                (time.perf_counter() - float(started)) * 1000.0,
+            )
+    except Exception:
+        pass
     escaped = html.escape(safe_route or "1")
     try:
         gen = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)

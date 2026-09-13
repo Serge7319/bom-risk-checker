@@ -348,8 +348,8 @@ def render_supply_scenario(
     st.markdown(
         """
         <section class="cv22-hero">
-          <div class="cv22-eyebrow">Supply Continuity Intelligence</div>
-          <div class="cv22-title">Supply Risk Scenario Planner</div>
+          <div class="cv22-eyebrow">Supply</div>
+          <div class="cv22-title">Supply Scenario</div>
           <div class="cv22-copy">
             Test how demand growth, stock loss, supplier loss, or a lifecycle event could affect
             saved projects before the disruption occurs. Cadivor converts the scenario into

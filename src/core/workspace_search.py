@@ -76,7 +76,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
 
     analyses = _rows(
         supabase.table("analyses")
-        .select("*")
+        .select("id,project_name,filename,total_parts,health_score,high_risk_count,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit_per_source)
@@ -125,7 +125,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
         try:
             parts = _rows(
                 supabase.table("analysis_parts")
-                .select("*")
+                .select("analysis_id,mpn,part_number,manufacturer_part_number,manufacturer,risk_level,risk,lifecycle_status,lifecycle")
                 .in_("analysis_id", analysis_ids)
                 .order("created_at", desc=True)
                 .limit(max(limit_per_source * 5, 300))
@@ -138,7 +138,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
     if not parts:
         parts = _rows(
             supabase.table("analysis_parts")
-            .select("*")
+            .select("analysis_id,mpn,part_number,manufacturer_part_number,manufacturer,risk_level,risk,lifecycle_status,lifecycle,user_id")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(max(limit_per_source * 5, 300))
@@ -199,7 +199,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
 
     alerts = _rows(
         supabase.table("monitor_alerts")
-        .select("*")
+        .select("id,part_number,mpn,alert_type,change_type,event_type,message,alert_message,summary,status,analysis_id,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit_per_source)
@@ -226,7 +226,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
 
     decisions = _rows(
         supabase.table("engineering_decisions")
-        .select("*")
+        .select("id,part_number,original_part,mpn,decision,status,decision_status,rationale,reason,notes,updated_at")
         .eq("user_id", user_id)
         .order("updated_at", desc=True)
         .limit(limit_per_source)
@@ -251,7 +251,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
 
     alternatives = _rows(
         supabase.table("alternative_recommendations")
-        .select("*")
+        .select("id,original_part,original_mpn,alternative_part,alternative_mpn,supplier,recommendation_score,score,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit_per_source)

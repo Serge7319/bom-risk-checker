@@ -353,6 +353,19 @@ def timed_phase(
                 pass
 
 
+def log_opening_reveal(route: Any, duration_ms: float) -> None:
+    """Always log opening-to-reveal time. Route slug and milliseconds only."""
+    try:
+        safe_route = normalize_route(route)
+        try:
+            elapsed = round(max(0.0, float(duration_ms)), 1)
+        except (TypeError, ValueError):
+            elapsed = 0.0
+        print(f"CADIVOR_OPENING route={safe_route} duration_ms={elapsed}", flush=True)
+    except Exception:
+        return
+
+
 def supplier_outcome_from_status(provider_status: Any) -> str:
     text = str(provider_status or "").strip().lower()
     if text in {"available", "ok", "success"}:

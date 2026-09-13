@@ -148,12 +148,9 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
     _inject_compare_parts_styles()
     st.markdown('<div class="cv64-page-shell"><div class="cp-workspace">', unsafe_allow_html=True)
     cadivor_section_header(
-        "Compare any two parts on shared engineering evidence",
-        eyebrow="Compare Parts",
-        description=(
-            "Enter two manufacturer part numbers for a neutral, family-aware attribute "
-            "comparison. This is not an Alternative Finder recommendation."
-        ),
+        "Compare two parts",
+        eyebrow="Compare parts",
+        description="Enter two manufacturer part numbers. Missing attributes stay missing.",
         icon="git-compare",
     )
     st.markdown(

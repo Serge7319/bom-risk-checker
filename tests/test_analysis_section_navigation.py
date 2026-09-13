@@ -47,6 +47,8 @@ def _install_analysis_detail_import_stubs() -> None:
     navigation.ALTERNATIVE_FINDER_PAGE = "Alternative Finder"
     navigation.internal_nav_button = lambda *args, **kwargs: None
     navigation.navigate_to = lambda *args, **kwargs: None
+    navigation.navigate_to_alternative_finder = lambda *args, **kwargs: None
+    navigation.return_to_saved_bom_list = lambda *args, **kwargs: None
     navigation.alternative_finder_href = lambda *args, **kwargs: "?"
     sys.modules["src.ui.navigation"] = navigation
 
@@ -108,9 +110,10 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         )
         detail._sync_cadivor_active_analysis_tab(analysis_id="a-1")
         active = detail._render_analysis_section_navigation(analysis_id="a-1")
-        self.assertEqual(active, "Overview")
-        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Overview")
-        self.assertEqual(st.query_params["analysis_tab"], "Overview")
+        self.assertEqual(active, "Engineering Intelligence")
+        self.assertTrue(st.session_state.get("cadivor_stack_decision_brief"))
+        self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Engineering Intelligence")
+        self.assertEqual(st.query_params["analysis_tab"], "Engineering Intelligence")
 
     def test_components_selection_commits_state_and_url(self):
         st, detail = self._load(
@@ -140,6 +143,9 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         with open(source_path, encoding="utf-8") as handle:
             source = handle.read()
         for section in detail.ANALYSIS_SECTIONS:
+            if section == "Engineering Decisions":
+                self.assertIn('active_tab == "Engineering Decisions"', source)
+                continue
             self.assertIn(f'if active_tab == "{section}":', source)
 
     def test_pending_section_consumed_before_widget_render(self):
@@ -195,12 +201,28 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
 def tearDownModule():
     import importlib
 
-    navigation = sys.modules.get("src.ui.navigation")
-    navigate = getattr(navigation, "navigate_to", None) if navigation is not None else None
-    if inspect.isfunction(navigate) and navigate.__module__ != "src.ui.navigation":
-        sys.modules.pop("src.ui.navigation", None)
-        importlib.import_module("src.ui.navigation")
-    sys.modules.pop("src.pages.analysis_detail", None)
+    for name in list(sys.modules):
+        if name == "streamlit" or name.startswith("streamlit."):
+            sys.modules.pop(name, None)
+    for name in (
+        "src.urls",
+        "src.ui.navigation",
+        "src.engineering_decision_engine",
+        "src.components.engineering_assistant",
+        "src.ai_advisor",
+        "src.ui.performance_cache",
+        "src.services.engineering_context",
+        "src.services.knowledge_graph",
+        "src.components.review",
+        "src.engineering_review_service",
+        "src.discussion_service",
+        "src.pages.analysis_detail",
+        "pandas",
+    ):
+        sys.modules.pop(name, None)
+    importlib.import_module("streamlit")
+    importlib.import_module("src.ui.navigation")
+    importlib.import_module("src.urls")
 
 
 if __name__ == "__main__":

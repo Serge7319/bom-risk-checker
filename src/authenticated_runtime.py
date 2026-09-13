@@ -22,7 +22,6 @@ from src.pages.dashboard_workspaces import (
     load_portfolio_dashboard_context,
     render_dashboard_analytics_workspace,
     render_dashboard_page_heading,
-    render_dashboard_workspace_navigation,
     render_portfolio_intelligence_workspace,
 )
 from src.decision_engine import build_decision_center, STATUSES
@@ -101,6 +100,7 @@ from src.ui.navigation import (
     mount_main_transition_loading,
     navigate_to,
     navigate_to_alternative_finder,
+    open_high_risk_component_review,
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
     reveal_authenticated_page_body,
@@ -3017,18 +3017,25 @@ def run_authenticated_app() -> None:
         "is_admin": is_admin,
     }
     st.session_state["cadivor_foundation_shell_mounted"] = True
-    # Native route links (View Plans) reload the browser and drop session cache.
-    # The rail already painted the empty-cache fallback on this run. Rerun once
-    # so Trial / Trial expired / Beta access is visible before page content.
+    # Do not rerun while Opening is armed. A rerun commits the overlay and
+    # starts another full boot. The resolved label is already in the shell cache
+    # for the next run; this run continues and reveals the page.
+    from src.ui.main_transition import MAIN_TRANSITION_ACTIVE_KEY
+
+    _opening_armed = bool(st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)) or bool(
+        st.session_state.get(MAIN_TRANSITION_ACTIVE_KEY)
+    )
     _painted_shell_plan = str(_shell_cache.get("plan_name") or "")
     if (
         _resolved_shell_plan
         and _painted_shell_plan != _resolved_shell_plan
+        and not _opening_armed
         and not st.session_state.get("cadivor_shell_label_resync")
     ):
         st.session_state["cadivor_shell_label_resync"] = True
         st.rerun()
-    st.session_state.pop("cadivor_shell_label_resync", None)
+    if not _opening_armed:
+        st.session_state.pop("cadivor_shell_label_resync", None)
 
     inject_premium_css()
     st.markdown(readability_css(), unsafe_allow_html=True)
@@ -3047,10 +3054,17 @@ def run_authenticated_app() -> None:
     # Retiring here (shell-only) caused empty main during the handoff.
 
     with timed_phase("runtime.workspace_commands", operation="workspace_commands") as cmd_meta:
+        _defer_workspace_commands = app_mode in {"Dashboard", "Pricing"}
         try:
-            _workspace_command_records = build_workspace_commands(
-                supabase, current_user["id"], limit_per_source=60,
-            )
+            if _defer_workspace_commands:
+                _workspace_command_records = list(
+                    st.session_state.get("cadivor_workspace_command_cache") or []
+                )
+            else:
+                _workspace_command_records = build_workspace_commands(
+                    supabase, current_user["id"], limit_per_source=60,
+                )
+                st.session_state["cadivor_workspace_command_cache"] = _workspace_command_records
             cmd_meta["row_count"] = len(_workspace_command_records or [])
         except Exception:
             _workspace_command_records = []
@@ -3336,9 +3350,21 @@ def run_authenticated_app() -> None:
     # ---------- Dashboard ----------
     if app_mode == "Dashboard":
         inject_dashboard_workspace_styles()
-        # Keep Opening Dashboard… through workspace IO. Heading alone must not
-        # collapse the main transition owner (production empty-canvas gap).
         render_dashboard_page_heading()
+        reveal_authenticated_page_body("Dashboard")
+        try:
+            if not st.session_state.get("cadivor_workspace_command_cache"):
+                from src.boot_read_budget import run_with_read_budget as _budget_commands
+
+                _commands, _command_status = _budget_commands(
+                    lambda: build_workspace_commands(
+                        supabase, current_user["id"], limit_per_source=40,
+                    )
+                )
+                if _command_status == "ok" and _commands is not None:
+                    st.session_state["cadivor_workspace_command_cache"] = _commands
+        except Exception:
+            pass
 
         if should_show_setup_continuation(onboarding_progress):
             onboarding_done = completion_count(onboarding_progress)
@@ -3400,39 +3426,68 @@ def run_authenticated_app() -> None:
             ):
                 navigate_to("Onboarding")
 
-        try:
-            overview_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            overview_analyses = []
-        try:
-            overview_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
-                .eq("user_id", current_user["id"])
-                .limit(5000)
-                .execute()
-            )
-            overview_parts = overview_parts_response.data or []
-        except Exception:
-            overview_parts = []
-        try:
-            overview_alert_response = (
-                _workspace_query(supabase.table("monitor_alerts").select("*"))
+        from src.boot_read_budget import (
+            mark_secondary_data_delayed,
+            run_with_read_budget,
+            secondary_data_delayed,
+        )
+
+        def _load_dashboard_secondary():
+            analyses_response = execute_supabase_read(
+                _workspace_query(
+                    supabase.table("analyses").select(
+                        "id,filename,project_name,total_parts,health_score,created_at,high_risk_count,medium_risk_count,low_risk_count"
+                    )
+                )
                 .eq("user_id", current_user["id"])
                 .order("created_at", desc=True)
-                .limit(100)
-                .execute()
+                .limit(40),
+                operation="dashboard_analyses",
             )
-            overview_alerts = overview_alert_response.data or []
-        except Exception:
-            overview_alerts = []
-        try:
-            overview_state, _ = load_decision_state(
+            parts_response = execute_supabase_read(
+                _workspace_query(
+                    supabase.table("analysis_parts").select(
+                        "id,analysis_id,mpn,risk_level,risk_score,lifecycle_status,manufacturer"
+                    )
+                )
+                .eq("user_id", current_user["id"])
+                .limit(200),
+                operation="dashboard_parts",
+            )
+            alerts_response = execute_supabase_read(
+                _workspace_query(
+                    supabase.table("monitor_alerts").select(
+                        "id,part_number,mpn,alert_type,created_at,status,severity"
+                    )
+                )
+                .eq("user_id", current_user["id"])
+                .order("created_at", desc=True)
+                .limit(40),
+                operation="dashboard_alerts",
+            )
+            decision_state, _decision_error = load_decision_state(
                 supabase,
                 user_id=current_user["id"],
                 workspace_id=active_workspace_id or None,
             )
-        except Exception:
-            overview_state = {}
+            return (
+                analyses_response.data or [],
+                parts_response.data or [],
+                alerts_response.data or [],
+                decision_state or {},
+            )
+
+        _dashboard_loaded, _dashboard_status = run_with_read_budget(_load_dashboard_secondary)
+        if _dashboard_status != "ok" or not _dashboard_loaded:
+            mark_secondary_data_delayed(st.session_state, True)
+            overview_analyses, overview_parts, overview_alerts, overview_state = [], [], [], {}
+        else:
+            mark_secondary_data_delayed(st.session_state, False)
+            overview_analyses, overview_parts, overview_alerts, overview_state = _dashboard_loaded
+        if secondary_data_delayed(st.session_state):
+            st.info("Some details are still loading.")
+            if st.button("Try again", key="dashboard_secondary_retry"):
+                st.rerun()
 
         overview_decisions = build_decision_center(
             alert_df=pd.DataFrame(overview_alerts),
@@ -3507,12 +3562,9 @@ def run_authenticated_app() -> None:
             stop_authenticated_page()
 
         dashboard_nav_key = "cv672_dashboard_workspace_radio"
-        if "dashboard_workspace_initialized" not in st.session_state:
-            st.session_state["dashboard_workspace_initialized"] = True
-            st.session_state["dashboard_workspace_tab"] = "Engineering Overview"
-            st.session_state[dashboard_nav_key] = "Engineering Overview"
-
-        workspace_category = render_dashboard_workspace_navigation(radio_key=dashboard_nav_key)
+        st.session_state[dashboard_nav_key] = "What needs attention"
+        show_analytics = bool(st.session_state.get("cadivor_home_show_analytics"))
+        workspace_category = "Analytics" if show_analytics else "Engineering Overview"
         st.session_state["dashboard_workspace_tab"] = workspace_category
 
         portfolio_cache_key = f"dashboard_portfolio_ctx_{current_user['id']}_{active_workspace_id or 'none'}"
@@ -3550,6 +3602,9 @@ def run_authenticated_app() -> None:
                 metrics=dashboard_metrics,
                 activation_hook=_render_engineering_activation,
             )
+            if st.button("Show analytics", key="dashboard_show_analytics", type="secondary"):
+                st.session_state["cadivor_home_show_analytics"] = True
+                st.rerun()
         elif workspace_category == "Portfolio Intelligence":
             if portfolio_cache_key not in st.session_state:
                 st.session_state[portfolio_cache_key] = load_portfolio_dashboard_context(
@@ -3576,6 +3631,9 @@ def run_authenticated_app() -> None:
                     fallback_analyses=real_overview_analyses,
                 )
             reveal_authenticated_page_body("Dashboard")
+            if st.button("Back to what needs attention", key="dashboard_hide_analytics"):
+                st.session_state["cadivor_home_show_analytics"] = False
+                st.rerun()
             render_dashboard_analytics_workspace(
                 ctx=st.session_state[portfolio_cache_key],
                 light_plotly_layout=light_plotly_layout,
@@ -3590,17 +3648,14 @@ def run_authenticated_app() -> None:
 
         # Existing customers can revisit the first-time experience without creating
         # a disposable account. This is a preview only and never changes saved data.
-        st.html(
-            """
-            <p class="cv672-dashboard-preview-wrap">
-              <a class="cv6723-quick-action cv672-dashboard-preview-link"
-                 href="?page=Dashboard&amp;preview_onboarding=1"
-                 target="_self">
-                Preview onboarding
-              </a>
-            </p>
-            """
-        )
+        if st.button("Preview onboarding", key="dashboard_preview_onboarding", type="secondary"):
+            try:
+                st.query_params["preview_onboarding"] = "1"
+                st.query_params["page"] = "Dashboard"
+            except Exception:
+                pass
+            st.session_state["preview_onboarding"] = "1"
+            navigate_to("Dashboard", arm_opening=False)
 
         inject_workspace_consistency_css()
         st.session_state.pop("cadivor_route_transition", None)
@@ -3732,8 +3787,8 @@ def run_authenticated_app() -> None:
         monitor_usage = 0 if monitoring_limit in (None, 0) or is_admin else min(100, round(monitored_count / int(monitoring_limit) * 100))
 
         cadivor_section_header(
-            str(monitoring_center["posture"]),
-            eyebrow="Monitoring Intelligence Center",
+            "Alerts & Monitoring",
+            eyebrow="Alerts",
             description=str(monitoring_center["summary"]),
             icon="radar",
         )
@@ -4058,11 +4113,10 @@ def run_authenticated_app() -> None:
         st.markdown(
             """
             <section class="cv21-hero">
-              <div class="cv21-eyebrow">Engineering & Procurement Intelligence</div>
+              <div class="cv21-eyebrow">Cost</div>
               <div class="cv21-title">Cost Optimization</div>
               <div class="cv21-copy">
-                Model production cost using supplier pricing saved during BOM analysis.
-                Change the build quantity to see total modeled spend and estimated savings update.
+                Set a build quantity. Modeled spend uses prices already saved on the BOM.
               </div>
             </section>
             """,
@@ -4237,8 +4291,8 @@ def run_authenticated_app() -> None:
         st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
         cadivor_section_header(
             "Procurement Advisor",
-            eyebrow="Sourcing & Purchasing",
-            description=advisor["summary"],
+            eyebrow="Buy list",
+            description="Parts that need a sourcing decision.",
             icon="shopping-cart",
         )
         reveal_authenticated_page_body("Procurement Advisor")
@@ -4531,12 +4585,9 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
         cadivor_section_header(
-            "Turn component intelligence into approved engineering action",
-            eyebrow="Cadivor Engineering Decision Center",
-            description=(
-                "Review prioritized decisions, assign ownership, simulate expected impact, "
-                "document engineering notes, and move work from open review to production readiness."
-            ),
+            "Engineering Decisions",
+            eyebrow="Decisions",
+            description="Open reviews waiting on you.",
             icon="clipboard-check",
             test_id="ed-page-hero",
         )
@@ -5678,13 +5729,9 @@ def run_authenticated_app() -> None:
         )
 
         cadivor_section_header(
-            "Turn BOM intelligence into decisions.",
-            eyebrow="Cadivor Report Library",
-            description=(
-                "Select a saved BOM, preview the engineering story, and generate the right "
-                "deliverable for leadership, design review, sourcing, lifecycle management, "
-                "or replacement planning."
-            ),
+            "Reports",
+            eyebrow="Reports",
+            description="Choose a saved BOM, then generate a report.",
             icon="file-text",
         )
 
@@ -7115,13 +7162,27 @@ def run_authenticated_app() -> None:
             @media(max-width:560px){.cv311-summary-grid{grid-template-columns:1fr}.cv311-current{padding:22px 20px}}
             </style>
             <section class="cv311-hero">
-              <div class="cv311-eyebrow">Cadivor plans</div>
-              <div class="cv311-title">Choose the engineering workflow your team is ready for.</div>
-              <div class="cv311-copy">Start with education or prototype work, unlock the full platform during a 14-day trial, then scale from individual engineering decisions to organization-wide lifecycle intelligence.</div>
+              <div class="cv311-eyebrow">Plans</div>
+              <div class="cv311-title">Compare plans</div>
+              <div class="cv311-copy">Student stays free. Trial is 14 days. Paid plans start after Stripe confirms the subscription.</div>
             </section>
             """,
             unsafe_allow_html=True,
         )
+        reveal_authenticated_page_body("Pricing")
+        try:
+            if not st.session_state.get("cadivor_workspace_command_cache"):
+                from src.boot_read_budget import run_with_read_budget as _budget_pricing_commands
+
+                _pricing_commands, _pricing_command_status = _budget_pricing_commands(
+                    lambda: build_workspace_commands(
+                        supabase, current_user["id"], limit_per_source=40,
+                    )
+                )
+                if _pricing_command_status == "ok" and _pricing_commands is not None:
+                    st.session_state["cadivor_workspace_command_cache"] = _pricing_commands
+        except Exception:
+            pass
 
         _pricing_status = plan_display_label(selected_plan_name)
         _pricing_copy = "Your included Cadivor capabilities and current monthly usage."
@@ -7778,6 +7839,15 @@ def run_authenticated_app() -> None:
 
     # ---------- Settings ----------
     if app_mode == "Settings":
+        _incoming_settings_tab = str(_qp_value("settings_tab", "") or "").strip()
+        if _incoming_settings_tab in {
+            "Profile",
+            "Preferences",
+            "Workspace",
+            "Security",
+            "Billing",
+        }:
+            st.session_state["settings_active_tab"] = _incoming_settings_tab
         profile = get_user_profile(current_user)
         auth_user = st.session_state.get("user")
         user_id = _safe_text(
@@ -8636,9 +8706,10 @@ def run_authenticated_app() -> None:
         elif settings_tab == "Billing":
             st.subheader("Plan & billing")
             st.caption(
-                "Review Cadivor plans and upgrade the current account when the team "
-                "requires higher BOM, monitoring, report, or member limits."
+                "Review the current plan. Compare plans only if the workspace is paused or you want to see other options."
             )
+            if st.button("Compare plans", key="billing_compare_plans_btn"):
+                navigate_to("Pricing", arm_opening=False)
             st.markdown(
                 f"""
                 <div class="cv-profile-card">
@@ -11215,12 +11286,9 @@ def run_authenticated_app() -> None:
 
         with st.container(border=True, key="af62_hero"):
             cadivor_section_header(
-                "Choose a better replacement with confidence.",
-                eyebrow="Alternative Component Finder",
-                description=(
-                    "Search the original part, compare compatibility, lifecycle, availability, and cost, "
-                    "then document a defensible engineering decision in one guided workflow."
-                ),
+                "Find a replacement",
+                eyebrow="Replacement Intelligence",
+                description="Search the original part, then compare the candidates already returned.",
                 icon="arrow-right-left",
             )
             # Collapse in-shell loading only after distinctive AF content has painted.
@@ -13183,8 +13251,13 @@ def run_authenticated_app() -> None:
         )
         _show_saved_analyses = _safe_text(_qp_value("show_saved_analyses", ""), "").lower() in {
             "1", "true", "yes", "on"
-        }
-        if _resume_analysis_id and not _new_analysis_requested and not _show_saved_analyses:
+        } or bool(st.session_state.get("cadivor_show_saved_boms"))
+        if (
+            _resume_analysis_id
+            and not _new_analysis_requested
+            and not _show_saved_analyses
+            and not st.session_state.get("bom81_high_risk_review")
+        ):
             navigate_to("Analysis Details", analysis_id=_resume_analysis_id)
 
         st.markdown(
@@ -13649,13 +13722,9 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
         cadivor_section_header(
-            "Turn a parts list into an engineering risk decision",
-            eyebrow="BOM intelligence workspace",
-            description=(
-                "Upload a CSV or Excel BOM to evaluate lifecycle exposure, sourcing risk, "
-                "component availability, and portfolio health. Cadivor converts the file "
-                "into a prioritized engineering review rather than another raw spreadsheet."
-            ),
+            "Upload a BOM",
+            eyebrow="BOMs",
+            description="Upload a CSV or Excel file. Review starts after the file is valid.",
             icon="cpu",
         )
         # Collapse in-shell loading only after distinctive BOM content has painted.
@@ -13684,8 +13753,6 @@ def run_authenticated_app() -> None:
                     detail="Components requiring engineering review",
                     tone="danger" if total_high_risk else "success",
                     icon="triangle-alert",
-                    href="?page=BOM%20Analyzer&high_risk_review=1#high-risk-components",
-                    action_label="Review high-risk components",
                 ),
                 MetricCard(
                     label="Best recorded health",
@@ -13696,6 +13763,15 @@ def run_authenticated_app() -> None:
                 ),
             ]
         )
+        _risk_spacer_left, _risk_spacer_mid, _risk_action_col, _risk_spacer_right = st.columns(4)
+        with _risk_action_col:
+            if st.button(
+                "Review high-risk components",
+                key="bom81_review_high_risk_components",
+                type="primary",
+                use_container_width=True,
+            ):
+                open_high_risk_component_review(arm_opening=False)
 
         if st.session_state.get("bom81_high_risk_review"):
             st.markdown('<div id="high-risk-components"></div>', unsafe_allow_html=True)
@@ -13915,11 +13991,18 @@ def run_authenticated_app() -> None:
                     if manager_df.empty:
                         st.info("No saved analyses match the current search.")
                     else:
+                        # Keep this id until the user clears it or opens the BOM.
+                        # Popping it after one paint lets the next click rerun
+                        # rebuild the editor with every checkbox false.
+                        preselect_id = str(
+                            st.session_state.get("cadivor_preselect_saved_bom_id", "") or ""
+                        ).strip()
                         editor_df = pd.DataFrame(
                             {
                                 # Keep the editor input stable: feeding its selected
                                 # rows back into the input remounts the widget and
                                 # loses the selection on the following interaction.
+                                # A one-shot preselect uses a new editor key below.
                                 "Select": False,
                                 "Project": manager_df["project_name"].astype(str),
                                 "Source File": manager_df["filename"].astype(str),
@@ -13930,13 +14013,37 @@ def run_authenticated_app() -> None:
                                 "_analysis_id": manager_df["id"].astype(str),
                             }
                         ).reset_index(drop=True)
-
                         editor_revision = int(
                             st.session_state.get("bom81_saved_analysis_editor_revision", 0)
                         )
                         editor_key = "bom81_saved_analysis_editor"
                         if editor_revision:
                             editor_key = f"{editor_key}_{editor_revision}"
+                        if preselect_id and preselect_id in set(editor_df["_analysis_id"].astype(str)):
+                            match = editor_df["_analysis_id"].astype(str) == preselect_id
+                            row_index = int(editor_df.index[match][0])
+                            widget_state = st.session_state.get(editor_key)
+                            edited_rows = {}
+                            if isinstance(widget_state, dict):
+                                edited_rows = widget_state.get("edited_rows") or {}
+                            row_edit = edited_rows.get(row_index) or edited_rows.get(str(row_index)) or {}
+                            user_cleared = isinstance(row_edit, dict) and row_edit.get("Select") is False
+                            if user_cleared:
+                                st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                st.session_state["bom81_selected_analysis_ids"] = []
+                            else:
+                                editor_df.loc[match, "Select"] = True
+                                st.session_state["bom81_selected_analysis_ids"] = [preselect_id]
+                                applied_key = str(
+                                    st.session_state.get("cadivor_preselect_applied_editor_key") or ""
+                                )
+                                if applied_key != editor_key:
+                                    editor_revision += 1
+                                    st.session_state["bom81_saved_analysis_editor_revision"] = editor_revision
+                                    editor_key = f"bom81_saved_analysis_editor_{editor_revision}"
+                                    st.session_state["cadivor_preselect_applied_editor_key"] = editor_key
+                        elif preselect_id:
+                            st.session_state["cadivor_preselect_saved_bom_id"] = preselect_id
 
                         edited_manager = st.data_editor(
                             editor_df,
@@ -13996,15 +14103,34 @@ def run_authenticated_app() -> None:
                             edited_manager["Select"] == True
                         ]
                         selected_ids = selected_rows["_analysis_id"].astype(str).tolist()
+                        if (
+                            not selected_ids
+                            and preselect_id
+                            and preselect_id in set(editor_df["_analysis_id"].astype(str))
+                        ):
+                            # The click rerun can drop the canvas checkbox before
+                            # this handler reads it. The list request still names
+                            # the BOM the user came from.
+                            selected_ids = [preselect_id]
+                            selected_rows = editor_df[
+                                editor_df["_analysis_id"].astype(str) == preselect_id
+                            ]
                         st.session_state["bom81_selected_analysis_ids"] = selected_ids
 
                         selected_count = len(selected_ids)
                         selection_label = "analysis" if selected_count == 1 else "analyses"
+                        selected_project = ""
+                        if selected_count == 1 and "Project" in selected_rows.columns:
+                            selected_project = str(selected_rows.iloc[0]["Project"] or "").strip()
 
                         selection_copy = (
                             "Select one checkbox to enable Open Analysis."
                             if selected_count == 0
-                            else "One analysis selected. Open Analysis is ready."
+                            else (
+                                f"Selected: {selected_project}. Open Analysis is ready."
+                                if selected_project
+                                else "One analysis selected. Open Analysis is ready."
+                            )
                             if selected_count == 1
                             else "Multiple analyses selected. Use bulk delete or clear the selection; analyses open one at a time."
                         )
@@ -14032,10 +14158,21 @@ def run_authenticated_app() -> None:
                                 disabled=selected_count != 1,
                                 key="bom81_open_selected",
                             ):
-                                selected_saved_id = selected_ids[0]
+                                if not selected_ids:
+                                    selected_ids = []
+                                selected_saved_id = selected_ids[0] if selected_ids else ""
+                                if not selected_saved_id:
+                                    st.stop()
+                                st.session_state.pop("cadivor_show_saved_boms", None)
+                                st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                st.session_state.pop("cadivor_preselect_applied_editor_key", None)
                                 st.session_state["cadivor_active_analysis_id"] = str(selected_saved_id)
                                 st.session_state["analysis_id"] = str(selected_saved_id)
-                                navigate_to("Analysis Details", analysis_id=selected_saved_id)
+                                navigate_to(
+                                    "Analysis Details",
+                                    analysis_id=selected_saved_id,
+                                    arm_opening=False,
+                                )
 
                         with delete_col:
                             if st.button(
@@ -14057,6 +14194,8 @@ def run_authenticated_app() -> None:
                             ):
                                 st.session_state["bom81_selected_analysis_ids"] = []
                                 st.session_state.pop("bom81_pending_delete_ids", None)
+                                st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                st.session_state.pop("cadivor_preselect_applied_editor_key", None)
                                 st.session_state["bom81_saved_analysis_editor_revision"] = (
                                     editor_revision + 1
                                 )

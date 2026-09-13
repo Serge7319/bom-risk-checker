@@ -527,7 +527,10 @@ def _usage_banner(status) -> None:
             "Your monthly AI allowance has been reached. Your saved engineering data is safe. "
             "Upgrade your plan to continue using the Engineering Assistant now."
         )
-        st.link_button("Compare plans", "?page=Pricing", use_container_width=False)
+        from src.ui.navigation import navigate_to
+
+        if st.button("Compare plans", key="cv35_compare_plans"):
+            navigate_to("Pricing", arm_opening=False)
 
 
 def _render_error(exc: EngineeringAIError) -> None:

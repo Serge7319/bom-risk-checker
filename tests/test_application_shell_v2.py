@@ -18,6 +18,8 @@ EXPECTED_NAV_OPTIONS = [
     "Dashboard",
     "BOM Analyzer",
     "Alternative Finder",
+    "Compare Parts",
+    "Datasheet Q&A",
     "Monitoring",
     "Engineering Decisions",
     "Procurement Advisor",
@@ -30,22 +32,23 @@ EXPECTED_NAV_OPTIONS = [
     "Settings",
     "Workspace",
     "Notifications",
-    "Help",
     "About",
 ]
 
 EXPECTED_NAV_DESTINATIONS = [
     "Dashboard",
     "BOM Analyzer",
-    "Alternative Finder",
-    "Design Impact Analyzer",
     "Engineering Decisions",
+    "Monitoring",
+    "Reports",
+    "Alternative Finder",
+    "Compare Parts",
+    "Datasheet Q&A",
+    "Design Impact Analyzer",
     "Procurement Advisor",
     "Cost Optimization",
     "Supply Risk Scenario",
-    "Monitoring",
     "Portfolio Intelligence",
-    "Reports",
     "Settings",
     "Help",
 ]
@@ -120,17 +123,15 @@ class ApplicationShellV2Tests(unittest.TestCase):
         from src.ui.unified_shell import NAV_GROUPS
 
         group_names = [name for name, _ in NAV_GROUPS]
-        self.assertEqual(group_names, ["Analyze", "Decide", "Monitor", "Workspace"])
-        self.assertEqual(len(NAV_GROUPS), 4)
+        self.assertEqual(group_names, ["", "Decision Tools", "Workspace"])
+        self.assertEqual(len(NAV_GROUPS), 3)
 
     def test_commit_navigation_logic_unchanged(self) -> None:
         from src.ui import unified_shell
 
         source = inspect.getsource(unified_shell._commit_navigation)
-        self.assertIn('st.session_state["cadivor_route"] = page', source)
-        self.assertIn('st.session_state["app_mode"] = page', source)
-        self.assertIn('st.session_state["cadivor_nav_params"] = {"page": page}', source)
-        self.assertNotIn("navigate_to", source)
+        self.assertIn("navigate_to(page, _rerun=False, arm_opening=arm_opening)", source)
+        self.assertIn('st.session_state.pop("cadivor_route_transition", None)', source)
 
     def test_navigate_to_behavior_unchanged(self) -> None:
         source = inspect.getsource(__import__("src.ui.navigation", fromlist=["navigate_to"]).navigate_to)

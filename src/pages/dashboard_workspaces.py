@@ -17,7 +17,7 @@ from src.living_workspace import (
     render_team_workload_section,
 )
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
-from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, internal_nav_button, navigate_to
+from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, navigate_to
 
 DASHBOARD_WORKSPACES: tuple[str, ...] = (
     "Engineering Overview",
@@ -27,7 +27,7 @@ DASHBOARD_WORKSPACES: tuple[str, ...] = (
 )
 
 WORKSPACE_HEADERS: Dict[str, tuple[str, str]] = {
-    "Engineering Overview": ("Engineering Overview", "What should engineering do today?"),
+    "Engineering Overview": ("What needs attention", "Open the highest-risk BOM, or upload a new one."),
     "Portfolio Intelligence": (
         "Portfolio Intelligence",
         "Review portfolio health, readiness, and recent engineering activity.",
@@ -43,9 +43,9 @@ def render_dashboard_page_heading() -> None:
         <div class="cv-page cv-dashboard-page">
           <header class="cv-page-header cv672-dashboard-heading">
             <div>
-              <h1 class="cv-page-title cv672-dashboard-title">Dashboard</h1>
+              <h1 class="cv-page-title cv672-dashboard-title">What needs attention</h1>
               <p class="cv-page-subtitle cv672-dashboard-subtitle">
-                Monitor portfolio health, prioritize engineering work, and continue active analyses.
+                Open the highest-risk BOM, or upload a new one.
               </p>
             </div>
           </header>
@@ -53,32 +53,6 @@ def render_dashboard_page_heading() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-
-def render_dashboard_workspace_navigation(*, radio_key: str) -> str:
-    """Clean, URL-backed workspace navigation without Streamlit radio chrome."""
-    raw_workspace = str(st.query_params.get("dashboard_workspace", "")).strip()
-    workspace = raw_workspace if raw_workspace in DASHBOARD_WORKSPACES else st.session_state.get(
-        radio_key, DASHBOARD_WORKSPACES[0]
-    )
-    if workspace not in DASHBOARD_WORKSPACES:
-        workspace = DASHBOARD_WORKSPACES[0]
-    st.session_state[radio_key] = workspace
-    nav_items = []
-    for item in DASHBOARD_WORKSPACES:
-        active = " cv672-dashboard-nav__link--active" if item == workspace else ""
-        current = ' aria-current="page"' if item == workspace else ""
-        nav_items.append(
-            f'<a class="cv672-dashboard-nav__link{active}" href="?page=Dashboard&amp;dashboard_workspace='
-            f'{html.escape(item, quote=True)}" target="_self"{current}>{html.escape(item)}</a>'
-        )
-    st.markdown(
-        '<nav class="cv672-dashboard-nav" aria-label="Workspace navigation">'
-        + "".join(nav_items)
-        + "</nav>",
-        unsafe_allow_html=True,
-    )
-    return workspace
 
 
 def render_workspace_section_header(title: str, description: str) -> None:
@@ -243,13 +217,7 @@ def _activity_relative(value: Any) -> str:
 
 
 def _activity_card_html(event: Mapping[str, Any], *, include_link: bool = True) -> str:
-    link_html = ""
-    if include_link and not event.get("nav_page"):
-        link_html = (
-            f'<a class="cv6723-inline-link" href="{html.escape(str(event.get("href") or "?page=Dashboard"), quote=True)}" target="_self">'
-            f"{html.escape(str(event.get('action') or 'Review'))} →"
-            f"</a>"
-        )
+    del include_link
     return (
         f'<section class="cv6723-activity-card cv-card cv-card-interactive cv-dashboard-activity-card">'
         f'<div class="cv6723-activity-top">'
@@ -258,22 +226,35 @@ def _activity_card_html(event: Mapping[str, Any], *, include_link: bool = True) 
         f"</div>"
         f"<strong>{html.escape(str(event.get('title') or ''))}</strong>"
         f"<p>{html.escape(str(event.get('copy') or ''))}</p>"
-        f"{link_html}"
         f"</section>"
     )
 
 
 def _render_activity_cards(events: Iterable[Mapping[str, Any]]) -> None:
+    from src.ui.navigation import open_saved_bom
+
     for index, event in enumerate(events):
         nav_page = str(event.get("nav_page") or "").strip()
-        st.html(_activity_card_html(event, include_link=not bool(nav_page)))
-        if nav_page:
-            internal_nav_button(
-                f"{event.get('action') or 'Review'} →",
-                nav_page,
-                key=f"dashboard_ws_activity_{index}_{nav_page.replace(' ', '_')}",
-                **dict(event.get("nav_params") or {}),
+        nav_params = dict(event.get("nav_params") or {})
+        analysis_id = str(nav_params.pop("analysis_id", "") or "").strip()
+        st.html(_activity_card_html(event, include_link=False))
+        label = f"{event.get('action') or 'Review'} →"
+        if nav_page == "Analysis Details" or analysis_id:
+            st.button(
+                label,
+                key=f"dashboard_ws_open_bom_{index}_{analysis_id or 'none'}",
+                on_click=open_saved_bom,
+                args=(analysis_id,),
+                kwargs={"arm_opening": False, "_rerun": False},
             )
+            continue
+        if not nav_page:
+            continue
+        if st.button(
+            label,
+            key=f"dashboard_ws_activity_{index}_{nav_page.replace(' ', '_')}",
+        ):
+            navigate_to(nav_page, arm_opening=False, _rerun=False, **nav_params)
 
 
 def build_portfolio_dashboard_context(
@@ -420,11 +401,8 @@ def build_portfolio_dashboard_context(
                 "title": str(project_name),
                 "copy": f"Analysis completed with health {health}/100 across {parts} component record(s).",
                 "created_at": item.get("created_at"),
-                "href": (
-                    f"?page=Analysis%20Details&analysis_id={html.escape(analysis_id, quote=True)}"
-                    if analysis_id
-                    else "?page=BOM%20Analyzer"
-                ),
+                "nav_page": "Analysis Details" if analysis_id else "BOM Analyzer",
+                "nav_params": {"analysis_id": analysis_id} if analysis_id else {},
                 "action": "Open project",
             }
         )
@@ -445,7 +423,7 @@ def build_portfolio_dashboard_context(
                 "title": str(part_number),
                 "copy": str(message),
                 "created_at": item.get("created_at") or item.get("detected_at"),
-                "href": "?page=Monitoring",
+                "nav_page": "Monitoring",
                 "action": "Review alert",
             }
         )
@@ -659,8 +637,6 @@ def render_portfolio_intelligence_workspace(
                 detail="Saved engineering analyses",
                 tone="info",
                 icon="folder-archive",
-                href="?page=BOM%20Analyzer",
-                action_label="Open saved projects",
             ),
             MetricCard(
                 label="Critical Components",
@@ -668,8 +644,6 @@ def render_portfolio_intelligence_workspace(
                 detail="Require engineering review",
                 tone="danger" if ctx.get("total_high_risk") else "success",
                 icon="triangle-alert",
-                href="?page=Portfolio%20Intelligence",
-                action_label="Review critical components",
             ),
             MetricCard(
                 label="Portfolio Alerts",
@@ -677,12 +651,22 @@ def render_portfolio_intelligence_workspace(
                 detail=f"{ctx.get('high_alert_count')} high severity",
                 tone="warning" if ctx.get("alert_count") else "neutral",
                 icon="calendar-clock",
-                href="?page=Monitoring",
-                action_label="Open portfolio alerts",
             ),
         ],
         columns=4,
     )
+    from src.ui.navigation import return_to_saved_bom_list
+
+    saved_col, critical_col, alerts_col = st.columns(3)
+    with saved_col:
+        if st.button("Open saved projects", key="dashboard_ws_open_saved_projects"):
+            return_to_saved_bom_list(arm_opening=False)
+    with critical_col:
+        if st.button("Review critical components", key="dashboard_ws_review_critical"):
+            navigate_to("Portfolio Intelligence", arm_opening=False)
+    with alerts_col:
+        if st.button("Open portfolio alerts", key="dashboard_ws_open_alerts"):
+            navigate_to("Monitoring", arm_opening=False)
 
     declining_projects = ctx.get("declining_projects") or []
 
@@ -757,11 +741,6 @@ def render_portfolio_intelligence_workspace(
     analysis_data = ctx.get("analysis_data") or []
     if analysis_data:
         latest_analysis_id = str(analysis_data[0].get("id") or "")
-    project_href = (
-        f"?page=Analysis%20Details&analysis_id={html.escape(latest_analysis_id, quote=True)}"
-        if latest_analysis_id
-        else "?page=BOM%20Analyzer"
-    )
     render_subsection_header(
         "Current working BOM",
         description="Continue the most recently saved engineering review.",
@@ -787,11 +766,19 @@ def render_portfolio_intelligence_workspace(
               <span>Medium {ctx.get('total_medium_risk')}</span>
               <span>Critical {ctx.get('total_high_risk')}</span>
             </div>
-            <a class="cv6723-inline-link" href="{project_href}" target="_self">Continue analysis →</a>
           </div>
         </section>
         """,
         unsafe_allow_html=True,
+    )
+    from src.ui.navigation import open_saved_bom
+
+    st.button(
+        "Continue analysis →",
+        key="dashboard_ws_continue_analysis",
+        on_click=open_saved_bom,
+        args=(latest_analysis_id,),
+        kwargs={"arm_opening": False, "_rerun": False},
     )
 
     recent_activity = ctx.get("recent_activity") or []

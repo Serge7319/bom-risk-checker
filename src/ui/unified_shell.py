@@ -15,30 +15,47 @@ from src.ui.navigation import inject_nav_scroll_reset_if_needed, navigate_to
 
 
 NAV_GROUPS = (
-    ("Analyze", (
-        ("Dashboard", "dashboard", "Dashboard"),
-        ("BOM Analyzer", "bom", "BOM Analyzer"),
-        ("Alternative Finder", "alternatives", "Alternative Finder"),
-        ("Compare Parts", "compare", "Compare Parts"),
+    ("", (
+        ("Home", "dashboard", "Dashboard"),
+        ("BOMs", "bom", "BOM Analyzer"),
+        ("Engineering Decisions", "decisions", "Engineering Decisions"),
+        ("Alerts & Monitoring", "monitoring", "Monitoring"),
+        ("Reports", "reports", "Reports"),
+    )),
+    ("Decision Tools", (
+        ("Find a replacement", "alternatives", "Alternative Finder"),
+        ("Compare parts", "compare", "Compare Parts"),
         ("Datasheet Q&A", "datasheet-qa", "Datasheet Q&A"),
         ("Design Impact", "impact", "Design Impact Analyzer"),
-    )),
-    ("Decide", (
-        ("Engineering Decisions", "decisions", "Engineering Decisions"),
         ("Procurement Advisor", "procurement", "Procurement Advisor"),
         ("Cost Optimization", "cost", "Cost Optimization"),
         ("Supply Scenario", "scenario", "Supply Risk Scenario"),
-    )),
-    ("Monitor", (
-        ("Monitoring", "monitoring", "Monitoring"),
         ("Portfolio Intelligence", "portfolio", "Portfolio Intelligence"),
-        ("Reports", "reports", "Reports"),
     )),
     ("Workspace", (
         ("Settings", "settings", "Settings"),
         ("Resources", "help", "Help"),
     )),
 )
+
+ROUTE_DISPLAY = {
+    "Dashboard": "Home",
+    "BOM Analyzer": "BOMs",
+    "Engineering Decisions": "Engineering Decisions",
+    "Monitoring": "Alerts & Monitoring",
+    "Reports": "Reports",
+    "Analysis Details": "Engineering Decision Brief",
+    "Alternative Finder": "Find a replacement",
+    "Compare Parts": "Compare parts",
+    "Datasheet Q&A": "Datasheet Q&A",
+    "Design Impact Analyzer": "Design Impact",
+    "Procurement Advisor": "Procurement Advisor",
+    "Cost Optimization": "Cost Optimization",
+    "Supply Risk Scenario": "Supply Scenario",
+    "Portfolio Intelligence": "Portfolio Intelligence",
+    "Pricing": "Compare plans",
+    "Settings": "Settings",
+}
 
 
 def workspace_nav_rows(*, is_admin: bool) -> tuple[tuple[str, str, str], ...]:
@@ -112,7 +129,7 @@ def paint_authenticated_continuity_shell(*, page: str = "Dashboard") -> None:
           <div class="cv-foundation-brand">
             <span class="cv-foundation-brand-mark">C</span>
             <span class="cv-foundation-brand-copy">
-              <strong>Cadivor</strong><small>Engineering Intelligence</small>
+              <strong>Cadivor</strong><small>Engineering Decision Intelligence</small>
             </span>
           </div>
           <div class="cv-foundation-page-context">
@@ -164,15 +181,26 @@ def _escape(value: object) -> str:
     return html.escape(str(value or ""))
 
 
-def _commit_navigation(page: str) -> None:
+def _commit_navigation(page: str, *, arm_opening: bool = True) -> None:
     """Commit the route before Streamlit performs the widget rerun.
 
     Using a widget callback avoids the former click -> rerun -> explicit rerun
     sequence that could briefly expose an incomplete/public render.
     """
-    navigate_to(page, _rerun=False)
+    navigate_to(page, _rerun=False, arm_opening=arm_opening)
     st.session_state.pop("cadivor_route_transition", None)
     st.session_state["cadivor_profile_menu_open"] = False
+
+
+def _open_plan_and_billing() -> None:
+    """Account billing lives on Settings → Billing, not the pricing catalog."""
+    st.session_state["settings_active_tab"] = "Billing"
+    _commit_navigation("Settings", arm_opening=False)
+
+
+def _open_compare_plans() -> None:
+    """In-session Pricing hop. Does not discard session or arm Opening."""
+    _commit_navigation("Pricing", arm_opening=False)
 
 
 def render_unified_shell(
@@ -227,11 +255,11 @@ def render_unified_shell(
           <div class="cv-foundation-brand">
             <span class="cv-foundation-brand-mark">C</span>
             <span class="cv-foundation-brand-copy">
-              <strong>Cadivor</strong><small>Engineering Intelligence</small>
+              <strong>Cadivor</strong><small>Engineering Decision Intelligence</small>
             </span>
           </div>
           <div class="cv-foundation-page-context">
-            <strong>{_escape(current_page)}</strong>
+            <strong>{_escape(ROUTE_DISPLAY.get(current_page, current_page))}</strong>
             <span class="cv-foundation-search cadivor-search-pill" role="button" tabindex="0" aria-label="Open Search Cadivor command center">Search Cadivor <kbd>⌘K</kbd></span>
           </div>
           <div class="cv-foundation-profile-copy">
@@ -256,7 +284,7 @@ def render_unified_shell(
             )
             st.markdown('<div class="cv-profile-menu-group">Account</div>', unsafe_allow_html=True)
             st.button("Profile & preferences", key="cv_foundation_profile", use_container_width=True, on_click=_commit_navigation, args=("Settings",))
-            st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
+            st.button("Plan & billing", key="cv_foundation_billing", use_container_width=True, on_click=_open_plan_and_billing)
             st.markdown('<div class="cv-profile-menu-group">Workspace</div>', unsafe_allow_html=True)
             st.button("Workspace settings", key="cv_foundation_workspace", use_container_width=True, on_click=_commit_navigation, args=("Settings",))
             if is_admin:
@@ -304,10 +332,11 @@ def render_unified_shell(
                 if group_name == "Workspace"
                 else configured_rows
             )
-            st.markdown(
-                f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
-                unsafe_allow_html=True,
-            )
+            if group_name:
+                st.markdown(
+                    f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
+                    unsafe_allow_html=True,
+                )
             for label, slug, destination in rows:
                 # Session navigation only — raw ?page= hrefs hard-reload the app and
                 # briefly clear the authenticated shell (blank white/black frames).
@@ -325,17 +354,8 @@ def render_unified_shell(
             f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>Your subscription</span><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
             unsafe_allow_html=True,
         )
-        if str(plan_name).lower() in {
-            "starter",
-            "free",
-            "trial",
-            "student",
-            "beta access",
-            "trial expired",
-            "grandfathered beta",
-            "subscription inactive",
-        }:
-            st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True, on_click=_commit_navigation, args=("Pricing",))
+        if str(plan_name).lower() in {"trial expired", "subscription inactive"}:
+            st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True, on_click=_open_compare_plans)
         if st.button(
             "＋ New BOM analysis",
             key="cv_foundation_new_analysis",

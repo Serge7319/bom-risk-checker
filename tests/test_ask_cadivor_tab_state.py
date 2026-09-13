@@ -33,7 +33,7 @@ def _install_streamlit_stub(session_state: dict | None = None, query_params: dic
     st.columns = MagicMock(return_value=(MagicMock(), MagicMock()))
     st.button = MagicMock(return_value=False)
     st.caption = MagicMock()
-    st.rerun = MagicMock(side_effect=RuntimeError("rerun"))
+    st.rerun = lambda: None
 
     components = types.ModuleType("streamlit.components.v1")
     components.html = MagicMock()
@@ -88,6 +88,8 @@ class AskCadivorTabStateTests(unittest.TestCase):
         navigation = types.ModuleType("src.ui.navigation")
         navigation.alternative_finder_href = lambda *a, **k: "?"
         navigation.internal_nav_button = MagicMock()
+        navigation.navigate_to = MagicMock()
+        navigation.return_to_saved_bom_list = MagicMock()
         navigation.ALTERNATIVE_FINDER_PAGE = "Alternative Finder"
         sys.modules["src.ui.navigation"] = navigation
 
@@ -317,8 +319,9 @@ class AskCadivorTabStateTests(unittest.TestCase):
         detail._sync_cadivor_active_analysis_tab(analysis_id="a-preserve")
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Engineering Intelligence")
         active = detail._render_analysis_section_navigation(analysis_id="a-preserve")
-        self.assertEqual(active, "Overview")
-        self.assertEqual(st.query_params["analysis_tab"], "Overview")
+        self.assertEqual(active, "Engineering Intelligence")
+        self.assertTrue(st.session_state.get("cadivor_stack_decision_brief"))
+        self.assertEqual(st.query_params["analysis_tab"], "Engineering Intelligence")
 
     def test_analysis_detail_uses_deterministic_section_render(self):
         from pathlib import Path
