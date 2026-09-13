@@ -347,7 +347,6 @@ def render_analysis_success(*, project_name: str, total_parts: int, high_count: 
         "Complete a focused review before release." if medium_count else
         "No elevated component risks were detected."
     )
-    detail_url = f"?page=Analysis%20Detail&analysis_id={html.escape(str(analysis_id), quote=True)}"
     st.markdown(
         f"""
         <style id="cadivor-analysis-success-29b">
@@ -365,7 +364,24 @@ def render_analysis_success(*, project_name: str, total_parts: int, high_count: 
         .cv29b-success-btn.secondary{{background:#FFFFFF;color:#047857!important;border-color:#A7F3D0}}
         @media(max-width:780px){{.cv29b-success-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.cv29b-success-top{{display:block}}}}
         </style>
-        <section class="cv29b-success"><div class="cv29b-success-top"><div><div class="cv29b-success-kicker">Analysis complete</div><h2>{html.escape(str(project_name or 'BOM analysis'))}</h2><p>{html.escape(recommendation)}</p></div></div><div class="cv29b-success-grid"><div class="cv29b-success-stat"><span>Health</span><strong>{int(health_score or 0)}/100</strong></div><div class="cv29b-success-stat"><span>Components</span><strong>{int(total_parts or 0)}</strong></div><div class="cv29b-success-stat"><span>Needs review</span><strong>{review_count}</strong></div><div class="cv29b-success-stat"><span>Estimated review</span><strong>{estimated_minutes} min</strong></div></div><div class="cv29b-success-actions"><a class="cv29b-success-btn" href="{detail_url}" target="_self">Open engineering review →</a><a class="cv29b-success-btn secondary" href="?page=Reports&analysis_id={html.escape(str(analysis_id), quote=True)}" target="_self">Generate report</a></div></section>
+        <section class="cv29b-success"><div class="cv29b-success-top"><div><div class="cv29b-success-kicker">Analysis complete</div><h2>{html.escape(str(project_name or 'BOM analysis'))}</h2><p>{html.escape(recommendation)}</p></div></div><div class="cv29b-success-grid"><div class="cv29b-success-stat"><span>Health</span><strong>{int(health_score or 0)}/100</strong></div><div class="cv29b-success-stat"><span>Components</span><strong>{int(total_parts or 0)}</strong></div><div class="cv29b-success-stat"><span>Needs review</span><strong>{review_count}</strong></div><div class="cv29b-success-stat"><span>Estimated review</span><strong>{estimated_minutes} min</strong></div></div></section>
         """,
         unsafe_allow_html=True,
     )
+    from src.ui.navigation import open_saved_bom
+
+    review_col, report_col = st.columns(2)
+    with review_col:
+        if st.button(
+            "Open engineering review →",
+            key="cv29b_open_engineering_review",
+            type="primary",
+        ):
+            open_saved_bom(str(analysis_id or ""), arm_opening=False, _rerun=True)
+    with report_col:
+        if st.button("Generate report", key="cv29b_generate_report"):
+            navigate_to(
+                "Reports",
+                analysis_id=str(analysis_id or ""),
+                arm_opening=False,
+            )

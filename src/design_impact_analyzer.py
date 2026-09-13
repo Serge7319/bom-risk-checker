@@ -358,12 +358,9 @@ def render_design_impact(
 
     st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
     cadivor_section_header(
-        "Design Impact Analyzer",
-        eyebrow="Engineering Change Intelligence",
-        description=(
-            "See where a component is used, how a sourcing or lifecycle change may affect saved projects, "
-            "and which engineering reviews should happen before approving a replacement."
-        ),
+        "Design Impact",
+        eyebrow="Where used",
+        description="See which saved BOMs use this part before you approve a change.",
         icon="git-compare-arrows",
     )
 

@@ -17,7 +17,7 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         branch = branch.split('if app_mode == "Reports":', 1)[0]
         # Exactly one primary ED hero mount in source.
         self.assertEqual(
-            branch.count('eyebrow="Cadivor Engineering Decision Center"'),
+            branch.count('eyebrow="Decisions"'),
             1,
         )
         self.assertIn('test_id="ed-page-hero"', branch)

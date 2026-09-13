@@ -452,7 +452,7 @@ def render_datasheet_qa_page() -> None:
     _html(
         '<div class="dq-hero">'
         '<p class="dq-kicker">Datasheet Q&A</p>'
-        '<h1 class="dq-title">Ask Cadivor about your datasheet</h1>'
+        '<h1 class="dq-title">Ask a datasheet</h1>'
         '<p class="dq-sub">'
         "Upload one text-searchable PDF, then continue a grounded engineering conversation "
         "with page evidence."

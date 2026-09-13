@@ -108,8 +108,8 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
     def test_all_nine_sections_defined(self) -> None:
         from src.pages import analysis_detail
 
-        self.assertEqual(analysis_detail.ANALYSIS_SECTIONS, EXPECTED_SECTIONS)
-        self.assertEqual(len(EXPECTED_SECTIONS), 9)
+        self.assertEqual(analysis_detail.ANALYSIS_SECTIONS[:9], EXPECTED_SECTIONS)
+        self.assertIn("Engineering Decisions", analysis_detail.ANALYSIS_SECTIONS)
 
     def test_all_nine_sections_have_render_branches(self) -> None:
         for section in EXPECTED_SECTIONS:
@@ -126,7 +126,8 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
         self.assertIn("PENDING_ANALYSIS_SECTION_KEY", consume)
         self.assertIn("cadivor_active_analysis_tab", sync)
         self.assertIn('st.query_params["analysis_tab"]', commit)
-        self.assertIn("st.radio", render_nav)
+        self.assertIn("PRIMARY_AREAS", render_nav)
+        self.assertIn("selectbox", render_nav)
         self.assertIn("_commit_analysis_section_selection", render_nav)
 
     def test_pending_section_architecture_present(self) -> None:

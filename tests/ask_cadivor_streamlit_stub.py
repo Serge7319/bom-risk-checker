@@ -24,10 +24,20 @@ def _reimport_module(module_name: str) -> None:
     importlib.import_module(module_name)
 
 
+def _load_real_streamlit():
+    current = sys.modules.get("streamlit")
+    if current is not None and getattr(current, "__file__", None):
+        return current
+    for name in list(sys.modules):
+        if name == "streamlit" or name.startswith("streamlit."):
+            sys.modules.pop(name, None)
+    return importlib.import_module("streamlit")
+
+
 def restore_ask_cadivor_streamlit_modules() -> None:
     """Restore real Streamlit and commonly stubbed Cadivor modules after Ask Cadivor tests."""
-    if _REAL_STREAMLIT is not None:
-        sys.modules["streamlit"] = _REAL_STREAMLIT
+    real = _load_real_streamlit()
+    sys.modules["streamlit"] = real
 
     secrets = sys.modules.get("src.secrets")
     if secrets is not None and not getattr(secrets, "__file__", None):
@@ -42,13 +52,26 @@ def restore_ask_cadivor_streamlit_modules() -> None:
             navigate = getattr(navigation, "navigate_to", None)
             if inspect.isfunction(navigate) and navigate.__module__ != "src.ui.navigation":
                 _reimport_module("src.ui.navigation")
-            elif _REAL_STREAMLIT is not None:
-                sys.modules["src.ui.navigation"].st = _REAL_STREAMLIT
+            elif real is not None:
+                sys.modules["src.ui.navigation"].st = real
 
     for broken_module in ("src.pages.analysis_detail",):
         module = sys.modules.get(broken_module)
         if module is not None and not getattr(module, "__file__", None):
             sys.modules.pop(broken_module, None)
+
+    for mod_name in ("src.auth_cookies", "src.auth_state", "src.auth_gate"):
+        module = sys.modules.get(mod_name)
+        if module is None:
+            continue
+        if not getattr(module, "__file__", None):
+            sys.modules.pop(mod_name, None)
+            continue
+        st_binding = getattr(module, "st", None)
+        if st_binding is not None and st_binding is not real:
+            # Drop the stub-bound import. Reloading here runs outside a
+            # Streamlit script and leaves a broken session context.
+            sys.modules.pop(mod_name, None)
 
     for mod_name in list(sys.modules):
         if mod_name.startswith("src.ui.cadivor_design_system"):

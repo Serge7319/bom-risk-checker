@@ -292,6 +292,10 @@ class SupplierTimingTests(unittest.TestCase):
             agg._safe_supplier_lookup("Mouser", lookup, "ABC")
         self.assertEqual(calls, ["ABC"])
         self.assertNotIn("CADIVOR_PERF", buf.getvalue())
+        for name in list(sys.modules):
+            if name == "streamlit" or name.startswith("streamlit."):
+                sys.modules.pop(name, None)
+        importlib.import_module("streamlit")
 
 
 def _streamlit_control_exceptions():

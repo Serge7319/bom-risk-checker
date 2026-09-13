@@ -216,7 +216,7 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertGreater(ed_reveal_at, ed_header_at)
         self.assertGreater(ed_stop_at, ed_reveal_at)
         self.assertEqual(
-            ed_branch.count('eyebrow="Cadivor Engineering Decision Center"'),
+            ed_branch.count('eyebrow="Decisions"'),
             1,
         )
         self.assertIn("ed-inline-loading", ed_branch)
@@ -244,7 +244,7 @@ class AuthGateModuleTests(unittest.TestCase):
         # Reveal must follow first distinctive content, not the import block alone.
         bom_branch = runtime.split('if app_mode == "BOM Analyzer":', 1)[1]
         bom_reveal_at = bom_branch.find('reveal_authenticated_page_body("BOM Analyzer")')
-        bom_hero_at = bom_branch.find("Turn a parts list into an engineering risk decision")
+        bom_hero_at = bom_branch.find("Upload a BOM")
         self.assertGreater(bom_reveal_at, 0)
         self.assertGreater(bom_hero_at, 0)
         self.assertGreater(bom_reveal_at, bom_hero_at)
@@ -264,7 +264,7 @@ class AuthGateModuleTests(unittest.TestCase):
         self.assertIn("_assert_in_flight_route_frame", harness)
         self.assertIn('"BOM Analyzer"', harness)
         self.assertIn("Opening", transition)
-        self.assertIn("Turn a parts list into an engineering risk decision", harness)
+        self.assertIn("Upload a BOM", harness)
         adapter = (ROOT / "tests" / "auth_gate_smoke_adapter.py").read_text(encoding="utf-8")
         self.assertIn("CADIVOR_SMOKE_LOAD_USER_DELAY", adapter)
         self.assertIn("CADIVOR_SMOKE_ROUTE_DISPATCH_DELAY", adapter)

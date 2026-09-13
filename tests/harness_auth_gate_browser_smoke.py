@@ -62,18 +62,16 @@ ROUTE_NAV_SLUGS = {
 # Dashboard heading subtitle alone is NOT distinctive — production showed heading
 # + tabs with an empty canvas for several seconds after first login.
 ROUTE_CONTENT_MARKERS = {
-    "Dashboard": ("Welcome,", "What should engineering do today?"),
-    # Include the first-painted hero copy so settled/inflight checks lock as soon as
-    # real BOM body mounts (not only the later upload-path cards).
+    "Dashboard": ("What needs attention",),
     "BOM Analyzer": (
-        "Turn a parts list into an engineering risk decision",
+        "Upload a BOM",
         "Upload engineering BOM",
         "Choose how to begin",
         "Analyze your BOM",
     ),
-    "Alternative Finder": ("Choose a better replacement", "Find Alternatives"),
-    "Datasheet Q&A": ("Ask Cadivor about your datasheet", "Upload datasheet"),
-    "Compare Parts": ("Compare any two parts", "Part A"),
+    "Alternative Finder": ("Find a replacement",),
+    "Datasheet Q&A": ("Ask a datasheet", "Upload datasheet"),
+    "Compare Parts": ("Compare two parts", "Part A"),
     "Procurement Advisor": ("Procurement Advisor", "Action Needed"),
 }
 

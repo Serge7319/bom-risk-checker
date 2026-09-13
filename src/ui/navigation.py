@@ -33,7 +33,7 @@ _ALT_NAV_KEYS = (
 )
 
 
-def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
+def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **params: Any) -> None:
     """Navigate in-app while keeping the address bar and browser history truthful.
 
     Streamlit query-parameter updates are client-side state changes, so they do
@@ -71,9 +71,11 @@ def navigate_to(page: str, *, _rerun: bool = True, **params: Any) -> None:
     st.session_state["cadivor_nav_params"] = nav_params
     # Clear prior body ownership and arm the main-content transition owner before
     # chrome/URL commit on the following run — prevents target chrome + stale body.
+    # In-session Pricing hops pass arm_opening=False so they do not pin Opening.
     from src.ui.main_transition import arm_main_transition
 
-    arm_main_transition(st.session_state, page)
+    if arm_opening:
+        arm_main_transition(st.session_state, page)
     try:
         st.query_params.from_dict(nav_params)
     except Exception:
@@ -250,6 +252,7 @@ def navigate_to_alternative_finder(
     return_page: str = "",
     return_mpn: str = "",
     _rerun: bool = True,
+    arm_opening: bool = True,
 ) -> None:
     """Navigate to Alternative Finder with normalized, shared part context."""
     context = build_alternative_finder_context(
@@ -261,7 +264,7 @@ def navigate_to_alternative_finder(
         source_page=source_page,
     )
     if not context["mpn"]:
-        navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun)
+        navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, arm_opening=arm_opening)
         return
 
     st.session_state[ALT_FINDER_CONTEXT_KEY] = context
@@ -298,7 +301,89 @@ def navigate_to_alternative_finder(
     if context["source_page"]:
         nav_kwargs["source_page"] = context["source_page"]
 
-    navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, **nav_kwargs)
+    navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, arm_opening=arm_opening, **nav_kwargs)
+
+
+SHOW_SAVED_BOMS_KEY = "cadivor_show_saved_boms"
+PRESELECT_SAVED_BOM_KEY = "cadivor_preselect_saved_bom_id"
+
+
+def open_saved_bom(
+    analysis_id: str,
+    *,
+    _rerun: bool = False,
+    arm_opening: bool = False,
+) -> None:
+    """Open a saved BOM in-session and keep it selected for later return."""
+    clean = str(analysis_id or "").strip()
+    st.session_state.pop(SHOW_SAVED_BOMS_KEY, None)
+    if not clean:
+        navigate_to("BOM Analyzer", _rerun=_rerun, arm_opening=arm_opening)
+        return
+    st.session_state["cadivor_active_analysis_id"] = clean
+    st.session_state["analysis_id"] = clean
+    navigate_to(
+        "Analysis Details",
+        analysis_id=clean,
+        _rerun=_rerun,
+        arm_opening=arm_opening,
+    )
+
+
+def return_to_saved_bom_list(
+    *,
+    _rerun: bool = True,
+    arm_opening: bool = False,
+) -> None:
+    """Open the saved-BOM list without clearing or immediately reopening the BOM."""
+    analysis_id = str(
+        st.session_state.get("cadivor_active_analysis_id")
+        or st.session_state.get("analysis_id")
+        or ""
+    ).strip()
+    st.session_state[SHOW_SAVED_BOMS_KEY] = True
+    if analysis_id:
+        st.session_state["cadivor_active_analysis_id"] = analysis_id
+        st.session_state["analysis_id"] = analysis_id
+        st.session_state[PRESELECT_SAVED_BOM_KEY] = analysis_id
+        st.session_state["bom81_selected_analysis_ids"] = [analysis_id]
+    navigate_to(
+        "BOM Analyzer",
+        show_saved_analyses="1",
+        _rerun=_rerun,
+        arm_opening=arm_opening,
+    )
+
+
+def open_high_risk_component_review(
+    *,
+    _rerun: bool = True,
+    arm_opening: bool = False,
+) -> None:
+    """Open the BOM Analyzer high-risk review without a query-string reload."""
+    analysis_id = str(
+        st.session_state.get("cadivor_active_analysis_id")
+        or st.session_state.get("analysis_id")
+        or ""
+    ).strip()
+    st.session_state["bom81_high_risk_review"] = True
+    # Stay on the analyzer list so the selected BOM is not auto-resumed.
+    st.session_state[SHOW_SAVED_BOMS_KEY] = True
+    nav_kwargs: dict[str, str] = {"show_saved_analyses": "1"}
+    if analysis_id:
+        st.session_state["cadivor_active_analysis_id"] = analysis_id
+        st.session_state["analysis_id"] = analysis_id
+        if not str(st.session_state.get(PRESELECT_SAVED_BOM_KEY) or "").strip():
+            st.session_state[PRESELECT_SAVED_BOM_KEY] = analysis_id
+        if not st.session_state.get("bom81_selected_analysis_ids"):
+            st.session_state["bom81_selected_analysis_ids"] = [analysis_id]
+        nav_kwargs["analysis_id"] = analysis_id
+    navigate_to(
+        "BOM Analyzer",
+        _rerun=_rerun,
+        arm_opening=arm_opening,
+        **nav_kwargs,
+    )
 
 
 def consume_alternative_finder_context(
