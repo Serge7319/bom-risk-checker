@@ -124,18 +124,14 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
             const safeId = String(command.id || '').replace(/-/g, '_');
             const trigger = parentDoc.querySelector(`.st-key-cvcc_nav_${{safeId}} button`);
             if (trigger) {{ trigger.click(); return; }}
-            if (!command.href) return;
-
-            // Use a real link inside Streamlit's parent document. This follows the
-            // same navigation path as Cadivor's sidebar links and reliably causes
-            // Streamlit to restart with the selected ?page= route.
-            const link = parentDoc.createElement('a');
-            link.href = command.href;
-            link.target = '_self';
-            link.style.display = 'none';
-            parentDoc.body.appendChild(link);
-            link.click();
-            setTimeout(() => link.remove(), 250);
+            // Never fall back to a ?page= document reload. That reload can drop
+            // the session or appear to do nothing until the user refreshes.
+            const host = parentDoc.querySelector('.cvcc-results') || parentDoc.body;
+            const note = parentDoc.createElement('div');
+            note.setAttribute('role', 'alert');
+            note.className = 'cvcc-nav-error';
+            note.textContent = 'Couldn’t open that page. Your session is still signed in. Use the sidebar and try again.';
+            host.prepend(note);
           }};
           const highlight = (text, query) => {{
             if (!query) return text;

@@ -1,6 +1,7 @@
-"""Saved-BOM navigation labels. Relabels existing sections; does not drop them."""
+"""Saved-BOM navigation labels and the one shared section tab row."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Mapping
 
 ENGINEERING_DECISION_BRIEF = "Engineering Decision Brief"
@@ -222,3 +223,102 @@ def primary_review_action(
         "kind": "review_parts",
         "mpn": "",
     }
+
+
+SAVED_BOM_NAV_KEY = "cv_analysis_section_nav"
+SAVED_BOM_NAV_CLASS = "cv-saved-bom-nav"
+SAVED_BOM_NAV_MORE_KEY = "cv_saved_bom_nav_more"
+SAVED_BOM_TAB_KEY_PREFIX = "cadivor_bom_tab_"
+_SAVED_BOM_NAV_CSS = (
+    Path(__file__).resolve().parents[1] / "assets" / "css" / "saved_bom_nav.css"
+)
+
+
+def saved_bom_nav_css() -> str:
+    """The one underline treatment used by every saved-BOM section."""
+    try:
+        return _SAVED_BOM_NAV_CSS.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def inject_saved_bom_nav_css() -> None:
+    """Load the shared tab style after global button chrome."""
+    import streamlit as st
+
+    css = saved_bom_nav_css()
+    if css.strip():
+        st.markdown(
+            f"<style id='cadivor-saved-bom-nav'>{css}</style>",
+            unsafe_allow_html=True,
+        )
+
+
+def render_saved_bom_section_nav(
+    *,
+    analysis_id: str,
+    selected_area: str,
+    more_choice: str,
+    more_menu: tuple[str, ...] = MORE_MENU,
+    more_key: str = "",
+) -> tuple[str | None, str | None]:
+    """Render the shared tab row. Returns (area clicked, More item clicked)."""
+    import streamlit as st
+
+    inject_saved_bom_nav_css()
+    active_token = "more" if more_choice != "More" else "area"
+    st.markdown(
+        (
+            f'<div class="{SAVED_BOM_NAV_CLASS}" data-cv-saved-bom-nav="shared" '
+            f'data-cv-saved-bom-active="{active_token}" hidden></div>'
+        ),
+        unsafe_allow_html=True,
+    )
+    area_clicked = None
+    more_clicked = None
+    with st.container(key=SAVED_BOM_NAV_KEY):
+        try:
+            nav_row = st.container(horizontal=True, vertical_alignment="bottom", gap="small")
+        except TypeError:
+            nav_row = st.container()
+        with nav_row:
+            button = getattr(st, "button", None)
+            for area in list(PRIMARY_AREAS):
+                active = area == selected_area and more_choice == "More"
+                clicked = False
+                if callable(button):
+                    clicked = bool(
+                        button(
+                            area,
+                            key=f"{SAVED_BOM_TAB_KEY_PREFIX}{analysis_id}_{area}",
+                            type="primary" if active else "secondary",
+                        )
+                    )
+                if clicked:
+                    area_clicked = area
+            popover = getattr(st, "popover", None)
+            if callable(popover):
+                with st.container(key=SAVED_BOM_NAV_MORE_KEY):
+                    with popover("More ▾"):
+                        button = getattr(st, "button", None)
+                        for item in more_menu:
+                            clicked = False
+                            if callable(button):
+                                clicked = bool(
+                                    button(
+                                        item,
+                                        key=f"cadivor_bom_more_btn_{analysis_id}_{item}",
+                                    )
+                                )
+                            if clicked:
+                                more_clicked = item
+            else:
+                selectbox = getattr(st, "selectbox", None)
+                if callable(selectbox):
+                    selectbox(
+                        "More",
+                        ["More", *more_menu],
+                        key=more_key or f"cadivor_bom_more_{analysis_id}",
+                        label_visibility="collapsed",
+                    )
+    return area_clicked, more_clicked

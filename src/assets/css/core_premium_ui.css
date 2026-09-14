@@ -124,7 +124,7 @@ section[data-testid="stMain"] .cv-core-page-shell {
 /* ------------------------------------------------------------------ */
 /* Buttons — main workspace only (not nav rail or profile popover)    */
 /* ------------------------------------------------------------------ */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
 section[data-testid="stMain"] .stDownloadButton > button {
   min-height: var(--control-height) !important;
   border-radius: var(--radius-control) !important;
@@ -135,15 +135,15 @@ section[data-testid="stMain"] .stDownloadButton > button {
   transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease, border-color 0.14s ease, color 0.14s ease !important;
 }
 
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button p,
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button span,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button p,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button span,
 section[data-testid="stMain"] .stDownloadButton > button p {
   color: inherit !important;
   opacity: 1 !important;
 }
 
 /* Primary */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"],
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"],
 section[data-testid="stMain"] .stDownloadButton > button {
   background: var(--cadivor-blue) !important;
   border: 1px solid var(--cadivor-blue) !important;
@@ -151,27 +151,27 @@ section[data-testid="stMain"] .stDownloadButton > button {
   box-shadow: 0 8px 18px rgba(47, 111, 237, 0.2) !important;
 }
 
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:hover,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"]:hover,
 section[data-testid="stMain"] .stDownloadButton > button:hover {
   background: var(--cadivor-blue-dark) !important;
   border-color: var(--cadivor-blue-dark) !important;
   transform: translateY(-1px) !important;
 }
 
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:focus-visible,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"]:focus-visible,
 section[data-testid="stMain"] .stDownloadButton > button:focus-visible {
   box-shadow: var(--cadivor-focus-ring), 0 8px 18px rgba(47, 111, 237, 0.2) !important;
 }
 
 /* Secondary */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"] {
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"] {
   background: var(--cadivor-surface) !important;
   border: 1px solid var(--cadivor-border) !important;
   color: var(--cadivor-text) !important;
   box-shadow: none !important;
 }
 
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:hover {
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"]:hover {
   background: var(--cadivor-surface-soft) !important;
   border-color: #b8c9de !important;
   color: var(--cadivor-navy) !important;
@@ -179,7 +179,7 @@ section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .st
 }
 
 /* Disabled */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:disabled,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:disabled,
 section[data-testid="stMain"] .stDownloadButton > button:disabled {
   opacity: 0.55 !important;
   cursor: not-allowed !important;

@@ -91,7 +91,18 @@ def _install_streamlit_stub(session_state: dict | None = None, *, script_run_id:
 
 class AnalysisDetailsV2Tests(unittest.TestCase):
     def setUp(self):
+        self._saved_modules = {
+            name: sys.modules.get(name)
+            for name in ("streamlit", "streamlit.runtime", "streamlit.runtime.scriptrunner")
+        }
         sys.modules.pop("src.pages.analysis_detail", None)
+
+    def tearDown(self):
+        for name, module in self._saved_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
 
     def _load_detail(self):
         return importlib.import_module("src.pages.analysis_detail")
@@ -127,8 +138,13 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
         self.assertIn("cadivor_active_analysis_tab", sync)
         self.assertIn('st.query_params["analysis_tab"]', commit)
         self.assertIn("PRIMARY_AREAS", render_nav)
-        self.assertIn("selectbox", render_nav)
+        self.assertIn("render_saved_bom_section_nav", render_nav)
         self.assertIn("_commit_analysis_section_selection", render_nav)
+        from src.ui.bom_navigation import render_saved_bom_section_nav
+
+        shared = inspect.getsource(render_saved_bom_section_nav)
+        self.assertIn("selectbox", shared)
+        self.assertIn("SAVED_BOM_NAV_KEY", shared)
 
     def test_pending_section_architecture_present(self) -> None:
         self.assertIn("PENDING_ANALYSIS_SECTION_KEY", self.detail_source)
@@ -203,11 +219,11 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
 
     def test_workspace_geometry_markers_present(self) -> None:
         self.assertIn('st.container(key="cv_analysis_hero_actions")', self.detail_source)
-        self.assertIn('st.container(key="cv_analysis_section_nav")', self.detail_source)
+        self.assertIn("render_saved_bom_section_nav(", self.detail_source)
         self.assertIn("cv-analysis-workspace", self.v2_css)
         self.assertIn("var(--cv-page-max", self.v2_css)
         self.assertIn("st-key-cv_analysis_hero_actions", self.v2_css)
-        self.assertIn("st-key-cv_analysis_section_nav", self.v2_css)
+        self.assertIn("st-key-cv_analysis_section_nav", (REPO_ROOT / "src/assets/css/saved_bom_nav.css").read_text(encoding="utf-8"))
         self.assertNotIn("stElementContainer]:has(.cv-analysis-detail-page)", self.v2_css)
 
     def test_header_card_layout_in_v2_css(self) -> None:

@@ -242,7 +242,7 @@ section[data-testid="stMain"] [data-testid="stMetricDelta"] {
 /* ------------------------------------------------------------------ */
 /* Buttons — contrast and visibility                                  */
 /* ------------------------------------------------------------------ */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
 section[data-testid="stMain"] .stDownloadButton > button,
 section[data-testid="stMain"] .stFormSubmitButton > button {
   min-height: var(--cv-btn-min-height) !important;
@@ -265,7 +265,7 @@ section[data-testid="stMain"] .stDownloadButton > button p {
 }
 
 /* Primary */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled),
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"]:not(:disabled),
 section[data-testid="stMain"] .stDownloadButton > button:not(:disabled),
 section[data-testid="stMain"] .stFormSubmitButton > button:not(:disabled) {
   background: #2f6fed !important;
@@ -274,23 +274,23 @@ section[data-testid="stMain"] .stFormSubmitButton > button:not(:disabled) {
   box-shadow: 0 8px 18px rgba(47, 111, 237, 0.22) !important;
 }
 
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled):hover,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"]:not(:disabled):hover,
 section[data-testid="stMain"] .stDownloadButton > button:not(:disabled):hover {
   background: #174ea6 !important;
   border-color: #174ea6 !important;
 }
 
 /* Secondary */
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled),
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not([kind="primary"]):not(:disabled) {
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"]:not(:disabled),
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:not([kind="primary"]):not(:disabled) {
   background: #f8fbff !important;
   border: 1px solid #94a3b8 !important;
   color: var(--cv-navy) !important;
   box-shadow: none !important;
 }
 
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled):hover,
-section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not([kind="primary"]):not(:disabled):hover {
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"]:not(:disabled):hover,
+section[data-testid="stMain"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:not([kind="primary"]):not(:disabled):hover {
   background: #eff6ff !important;
   border-color: #2f6fed !important;
   color: #174ea6 !important;

@@ -15,6 +15,7 @@ from src.ui.bom_navigation import (
     MORE_MENU,
     PRIMARY_AREAS,
     primary_review_action,
+    render_saved_bom_section_nav,
     section_for_choice,
     selected_component_context,
     visible_area_for_section,
@@ -253,39 +254,21 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
         stored_area = stored_area[0] if stored_area else ENGINEERING_DECISION_BRIEF
     selected_area = str(stored_area or ENGINEERING_DECISION_BRIEF)
     more_choice = str(st.session_state.get(more_key) or "More")
-    with st.container(key="cv_analysis_section_nav"):
-        try:
-            nav_row = st.container(horizontal=True, vertical_alignment="bottom", gap="small")
-        except TypeError:
-            nav_row = st.container()
-        with nav_row:
-            for area in list(PRIMARY_AREAS):
-                active = area == selected_area and more_choice == "More"
-                if st.button(
-                    area,
-                    key=f"cadivor_bom_tab_{analysis_id}_{area}",
-                    type="primary" if active else "secondary",
-                ):
-                    st.session_state[area_key] = area
-                    st.session_state[more_key] = "More"
-                    st.rerun()
-            popover = getattr(st, "popover", None)
-            if callable(popover):
-                with popover("More ▾"):
-                    for item in MORE_MENU:
-                        if st.button(
-                            item,
-                            key=f"cadivor_bom_more_btn_{analysis_id}_{item}",
-                        ):
-                            st.session_state[more_key] = item
-                            st.rerun()
-            else:
-                selectbox = getattr(st, "selectbox", None)
-                more_choice = (
-                    selectbox("More", ["More", *MORE_MENU], key=more_key, label_visibility="collapsed")
-                    if callable(selectbox)
-                    else more_choice
-                )
+    area_clicked, more_clicked = render_saved_bom_section_nav(
+        analysis_id=analysis_id,
+        selected_area=selected_area,
+        more_choice=more_choice,
+        more_menu=MORE_MENU,
+        more_key=more_key,
+    )
+    if area_clicked:
+        st.session_state[area_key] = area_clicked
+        st.session_state[more_key] = "More"
+        st.rerun()
+    if more_clicked:
+        st.session_state[more_key] = more_clicked
+        more_choice = more_clicked
+        st.rerun()
     more_choice = str(more_choice or "More")
     if more_choice == "Watch this BOM":
         navigate_to(
@@ -602,12 +585,6 @@ def render_analysis_detail(
         button[data-baseweb="tab"][aria-selected="true"]{background:#eff6ff!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:inset 0 -3px 0 #2563eb!important}
         button[data-baseweb="tab"][aria-selected="true"] p{color:#1d4ed8!important}
         div[data-baseweb="tab-highlight"]{display:none!important}
-        .st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"]{width:100%!important;max-width:100%!important;display:flex!important;flex-wrap:nowrap!important;align-items:flex-end!important;justify-content:flex-start!important;gap:0 2px!important;height:44px!important;max-height:44px!important;overflow-x:auto!important;overflow-y:hidden!important;border-bottom:1px solid #d7e2ef!important;margin:0 0 16px!important}
-        .st-key-cv_analysis_section_nav [data-testid="stElementContainer"]{width:auto!important;flex:0 0 auto!important}
-        .st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"] .stButton > button,.st-key-cv_analysis_section_nav [data-testid="stPopover"] > button{min-height:42px!important;margin:0 0 -1px!important;padding:10px 14px 12px!important;border:0!important;border-radius:0!important;border-bottom:2px solid transparent!important;background:transparent!important;box-shadow:none!important;color:#334155!important;font-size:14px!important;font-weight:650!important;width:auto!important}
-        .st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"] .stButton > button[kind="primary"],.st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"] .stButton > button[data-testid="stBaseButton-primary"]{color:#1d4ed8!important;background:transparent!important;border-bottom-color:#2563eb!important;font-weight:700!important}
-        .st-key-cv_analysis_section_nav [data-testid="stPopover"] > button{padding-right:10px!important}
-        .st-key-cv_analysis_section_nav button:focus-visible{outline:2px solid #2563eb!important;outline-offset:2px!important;box-shadow:none!important}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
         .cv-status-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:16px;box-shadow:0 12px 30px rgba(15,23,42,.045)}
         .cv-status-card span{display:block;color:#64748b!important;font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}

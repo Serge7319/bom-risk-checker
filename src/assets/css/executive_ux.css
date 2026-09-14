@@ -46,10 +46,10 @@
 .cv-6b-kpi-copy>strong{font-size:32px!important;}
 
 /* Enforce action hierarchy inside main canvas, while excluding shell/navigation/profile. */
-[data-testid="stMainBlockContainer"] .stButton > button[kind="primary"]{box-shadow:0 7px 16px rgba(37,99,235,.14)!important;border-radius:10px!important;min-height:38px!important;}
-[data-testid="stMainBlockContainer"] .stButton > button[kind="secondary"],
+[data-testid="stMainBlockContainer"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_foundation_navigation *):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"]{box-shadow:0 7px 16px rgba(37,99,235,.14)!important;border-radius:10px!important;min-height:38px!important;}
+[data-testid="stMainBlockContainer"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_foundation_navigation *):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"],
 [data-testid="stMainBlockContainer"] .stDownloadButton > button{background:#fff!important;color:#334155!important;border:1px solid #CBD5E1!important;box-shadow:none!important;border-radius:10px!important;}
-[data-testid="stMainBlockContainer"] .stButton > button[kind="secondary"]:hover,
+[data-testid="stMainBlockContainer"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_foundation_navigation *) > button[kind="secondary"]:hover,
 [data-testid="stMainBlockContainer"] .stDownloadButton > button:hover{background:#F8FAFC!important;border-color:#94A3B8!important;}
 
 /* Guided BOM workflow. */

@@ -146,7 +146,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           overflow:auto!important;
           opacity:1!important;
           visibility:visible!important;
-          pointer-events:auto!important;
+          pointer-events:none!important;
           display:flex!important;
           align-items:center!important;
           justify-content:center!important;
@@ -261,6 +261,20 @@ def inject_main_transition_css(transition_gen: int) -> None:
           pointer-events:none so no leftover overlay intercepts the account menu.
           Never target shared st-key alone (stale gen CSS would hide the next Opening).
         */
+        /* Only the live, unrevealed generation may sit over the page.
+           Older or already-revealed Opening layers must not swallow clicks. */
+        .cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"]),
+        [data-stale="true"] .cv-main-transition.cv-route-loading,
+        [data-stale="true"][data-cadivor-main-transition="1"],
+        body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
+          .cv-main-transition.cv-route-loading {{
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          opacity:0!important;z-index:-1!important
+        }}
+        body:not(:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"]))
+          [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"] {{
+          pointer-events:auto!important
+        }}
         body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
           [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"],
         body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])

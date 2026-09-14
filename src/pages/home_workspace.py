@@ -16,10 +16,17 @@ HOME_CONTINUE = "continue"
 HOME_UNKNOWN = "unknown"
 
 SAVED_ANALYSES_CACHE_KEY = "cadivor_home_saved_analyses"
+SECONDARY_CACHE_KEY = "cadivor_home_secondary_cache"
+SECONDARY_REFRESH_REQUEST_KEY = "cadivor_secondary_refresh_requested"
+SECONDARY_REFRESH_FAILED_KEY = "cadivor_secondary_refresh_failed"
 SECONDARY_UPDATE_BANNER = (
     "We couldn’t refresh workspace updates. Your saved BOMs are still available."
 )
-RETRY_UPDATES_LABEL = "Retry updates"
+SECONDARY_UNAVAILABLE_NOTICE = "Portfolio updates aren’t available right now."
+SECONDARY_REFRESH_FAILURE = (
+    "Couldn’t refresh portfolio updates. Your saved BOMs are unchanged."
+)
+RETRY_UPDATES_LABEL = "Refresh workspace updates"
 NEW_USER_TITLE = "Start your first BOM review"
 NEW_USER_BODY = (
     "Upload a BOM to identify component risk, review evidence, and document the next engineering action."
@@ -120,26 +127,64 @@ def build_home_model(
     }
 
 
-def render_secondary_update_banner() -> None:
-    """One timeout notice and one Retry action. Replace the slot; never append."""
-    from src.boot_read_budget import SECONDARY_DATA_DELAYED_KEY
+def apply_secondary_result(
+    session_state: dict,
+    *,
+    user_id: str,
+    payload: Mapping[str, Any] | None,
+    status: str,
+) -> dict[str, Any] | None:
+    """Return last-known portfolio updates. A timeout must not wipe a cache."""
+    uid = str(user_id or "").strip()
+    cache = session_state.get(SECONDARY_CACHE_KEY)
+    cached = None
+    if isinstance(cache, dict) and str(cache.get("user_id") or "") == uid:
+        cached = cache.get("payload")
+    if status == "ok" and isinstance(payload, Mapping):
+        stored = {
+            "parts": list(payload.get("parts") or []),
+            "alerts": list(payload.get("alerts") or []),
+            "state": dict(payload.get("state") or {}),
+        }
+        session_state[SECONDARY_CACHE_KEY] = {"user_id": uid, "payload": stored}
+        return stored
+    if isinstance(cached, Mapping):
+        return {
+            "parts": list(cached.get("parts") or []),
+            "alerts": list(cached.get("alerts") or []),
+            "state": dict(cached.get("state") or {}),
+        }
+    return None
 
+
+def render_secondary_update_banner(
+    *,
+    unavailable: bool = False,
+    refresh_failed: bool = False,
+) -> None:
+    """One compact notice, only when a visible secondary section has no data.
+
+    Ordinary Home with saved BOMs does not call this. A manual refresh replaces
+    the same slot; it never appends another control.
+    """
+    if not unavailable and not refresh_failed:
+        return
     slot = st.empty()
     slot.empty()
+    message = SECONDARY_REFRESH_FAILURE if refresh_failed else SECONDARY_UNAVAILABLE_NOTICE
     with slot.container():
         st.markdown(
             f"""
-            <div class="cv-home-notice cv-home-notice--caution" data-testid="cv-home-timeout" role="status">
-              <span class="cv-home-notice-icon" aria-hidden="true">↻</span>
-              <p>{html.escape(SECONDARY_UPDATE_BANNER)}</p>
+            <div class="cv-home-notice cv-home-notice--inline" data-testid="cv-home-secondary" role="status">
+              <p>{html.escape(message)}</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
         if st.button(RETRY_UPDATES_LABEL, key="home_retry_updates"):
             slot.empty()
-            st.session_state.pop(SECONDARY_DATA_DELAYED_KEY, None)
-            st.session_state.pop("cadivor_workspace_command_cache", None)
+            st.session_state[SECONDARY_REFRESH_REQUEST_KEY] = True
+            st.session_state.pop(SECONDARY_REFRESH_FAILED_KEY, None)
             st.rerun()
 
 
@@ -149,7 +194,7 @@ def render_saved_boms_unavailable() -> None:
     slot.empty()
     with slot.container():
         st.warning("We couldn’t load your saved BOMs.")
-        if st.button(RETRY_UPDATES_LABEL, key="home_retry_saved_boms"):
+        if st.button("Retry saved BOMs", key="home_retry_saved_boms"):
             slot.empty()
             st.rerun()
 
@@ -170,8 +215,11 @@ def render_returning_home(
             """,
             unsafe_allow_html=True,
         )
-    if model.get("secondary_failed"):
-        render_secondary_update_banner()
+    if model.get("secondary_section_unavailable") or model.get("secondary_refresh_failed"):
+        render_secondary_update_banner(
+            unavailable=bool(model.get("secondary_section_unavailable")),
+            refresh_failed=bool(model.get("secondary_refresh_failed")),
+        )
     primary = model.get("primary") or {}
     with st.container(key="cv_home_next"):
         st.markdown(

@@ -25,6 +25,11 @@ def _reimport_module(module_name: str) -> None:
 
 
 def _load_real_streamlit():
+    # Keep the import-time module identity. Reimporting after a stub pop
+    # creates a second Streamlit object and makes already-imported auth
+    # modules look unbound, which then get dropped and leak into later tests.
+    if _REAL_STREAMLIT is not None and getattr(_REAL_STREAMLIT, "__file__", None):
+        return _REAL_STREAMLIT
     current = sys.modules.get("streamlit")
     if current is not None and getattr(current, "__file__", None):
         return current
@@ -68,10 +73,11 @@ def restore_ask_cadivor_streamlit_modules() -> None:
             sys.modules.pop(mod_name, None)
             continue
         st_binding = getattr(module, "st", None)
-        if st_binding is not None and st_binding is not real:
-            # Drop the stub-bound import. Reloading here runs outside a
-            # Streamlit script and leaves a broken session context.
-            sys.modules.pop(mod_name, None)
+        if st_binding is not None and st_binding is not real and real is not None:
+            # Rebind in place. Popping the module splits identity from tests
+            # that already imported it, so their monkeypatch misses the object
+            # later imports resolve.
+            module.st = real
 
     for mod_name in list(sys.modules):
         if mod_name.startswith("src.ui.cadivor_design_system"):

@@ -18,6 +18,8 @@ ALT_FINDER_RETURN_MPN_KEY = "cadivor_alt_finder_return_mpn"
 ALT_FINDER_INTENT = "find_alternatives"
 NAV_SCROLL_RESET_PENDING_KEY = "cadivor_nav_scroll_reset_pending"
 NAV_SCROLL_RESET_TOKEN_KEY = "cadivor_nav_scroll_reset_token"
+NAV_ERROR_KEY = "cadivor_nav_error"
+_LOGOUT_QUERY_KEYS = ("cadivor_signed_out", "auth", "source")
 
 _ALT_NAV_KEYS = (
     "original_part",
@@ -66,9 +68,21 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     st.session_state["app_mode"] = page
     nav_params = {"page": page}
     for key, value in params.items():
+        if key in _LOGOUT_QUERY_KEYS:
+            continue
         if value is not None and str(value).strip() != "":
             nav_params[key] = str(value)
     st.session_state["cadivor_nav_params"] = nav_params
+    # A page hop may drop a stale forced-sign-out flag only for a live login.
+    # It must never clear an explicit Sign out or invent a session from a token.
+    try:
+        from src.auth_state import authenticated_in_app_session
+
+        if authenticated_in_app_session():
+            st.session_state.pop("cadivor_force_signed_out", None)
+    except Exception:
+        pass
+    st.session_state.pop(NAV_ERROR_KEY, None)
     # Clear prior body ownership and arm the main-content transition owner before
     # chrome/URL commit on the following run — prevents target chrome + stale body.
     # In-session Pricing hops pass arm_opening=False so they do not pin Opening.
@@ -534,6 +548,37 @@ def alternative_finder_href(
     return internal_app_href(ALTERNATIVE_FINDER_PAGE, **params)
 
 
+def _commit_internal_nav(page: str, params: dict[str, Any]) -> None:
+    """Commit a route in the widget callback. Never hard-reload or sign out."""
+    destination = str(page or "").strip()
+    if not destination:
+        st.session_state[NAV_ERROR_KEY] = (
+            "Couldn’t open that page. Your session is still signed in."
+        )
+        return
+    try:
+        if destination == ALTERNATIVE_FINDER_PAGE:
+            navigate_to_alternative_finder(
+                mpn=str(params.get("original_part") or params.get("mpn") or ""),
+                manufacturer=str(params.get("manufacturer") or ""),
+                description=str(params.get("description") or ""),
+                analysis_id=str(params.get("analysis_id") or ""),
+                part_id=str(params.get("part_id") or ""),
+                source_page=str(params.get("source_page") or ""),
+                return_analysis_id=str(params.get("return_analysis_id") or ""),
+                return_page=str(params.get("return_page") or ""),
+                return_mpn=str(params.get("return_mpn") or ""),
+                _rerun=False,
+                arm_opening=False,
+            )
+            return
+        navigate_to(destination, _rerun=False, arm_opening=False, **params)
+    except Exception:
+        st.session_state[NAV_ERROR_KEY] = (
+            f"Couldn’t open {destination}. Your session is still signed in. Try again."
+        )
+
+
 def internal_nav_button(
     label: str,
     page: str,
@@ -544,23 +589,33 @@ def internal_nav_button(
     disabled: bool = False,
     **params: Any,
 ) -> bool:
-    """Render a browser-native, same-tab Cadivor route button."""
+    """Open a route in-session. A failed click shows a recoverable error, never a reload."""
     clean_label = str(label or "").strip()
     if not clean_label:
         return False
     if disabled:
         st.button(clean_label, key=key, use_container_width=use_container_width, type=type, disabled=True)
         return False
-    href = internal_app_href(page, **params)
-    width_class = " cv-native-nav-button--wide" if use_container_width else ""
-    tone_class = " cv-native-nav-button--secondary" if type == "secondary" else ""
-    st.html(
-        f'<a class="cv-native-nav-button{width_class}{tone_class}" '
-        f'href="{html.escape(href, quote=True)}" target="_self" '
-        f'data-cadivor-nav-key="{html.escape(key, quote=True)}">'
-        f'{html.escape(clean_label)}</a>'
+    payload = {
+        name: value
+        for name, value in params.items()
+        if name not in _LOGOUT_QUERY_KEYS and value is not None and str(value).strip() != ""
+    }
+    return bool(
+        st.button(
+            clean_label,
+            key=key,
+            use_container_width=use_container_width,
+            type=type,
+            on_click=_commit_internal_nav,
+            args=(page, payload),
+        )
     )
-    return False
+
+
+def consume_navigation_error() -> str:
+    """Return and clear a one-shot navigation failure message."""
+    return str(st.session_state.pop(NAV_ERROR_KEY, "") or "").strip()
 
 
 def render_command_nav_triggers(commands: list[dict]) -> None:
@@ -572,17 +627,16 @@ def render_command_nav_triggers(commands: list[dict]) -> None:
     st.markdown(
         """
         <style id="cadivor-command-nav-triggers">
-        .cvcc-nav-triggers {
+        [class*="st-key-cvcc_nav_"] {
           position: absolute !important;
           left: -10000px !important;
+          top: 0 !important;
           width: 1px !important;
           height: 1px !important;
           overflow: hidden !important;
           opacity: 0 !important;
-          pointer-events: none !important;
         }
         </style>
-        <div class="cvcc-nav-triggers" aria-hidden="true"></div>
         """,
         unsafe_allow_html=True,
     )

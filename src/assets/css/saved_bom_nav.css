@@ -1,0 +1,162 @@
+/* Shared saved-BOM section tabs.
+   One treatment for every saved-BOM route. Loaded after global button chrome.
+   Selectors outrank the workspace pill rules (including
+   `.stButton:not(.st-key-cv_foundation_navigation .stButton) > button`)
+   so no route can keep a filled pill, rounded corner, or enclosing border.
+   Inactive items are dark text on a white bar. The active item is
+   Cadivor-blue text with one straight 2px underline. The bar is white
+   with one light-gray bottom divider. The workspace canvas outside the
+   bar is unchanged. More is the same text treatment plus a caret. */
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav,
+html body section[data-testid="stMain"] [class*="st-key-cv_analysis_section_nav"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 0 16px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"],
+html body section[data-testid="stMain"] [class*="st-key-cv_analysis_section_nav"] [data-testid="stHorizontalBlock"] {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-end !important;
+  justify-content: flex-start !important;
+  gap: 0 2px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 44px !important;
+  max-height: 44px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  background: #fff !important;
+  background-color: #fff !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  scrollbar-width: thin;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"] > div,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stElementContainer"],
+html body section[data-testid="stMain"] [class*="st-key-cadivor_bom_tab_"],
+html body section[data-testid="stMain"] .st-key-cv_saved_bom_nav_more {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  background: #fff !important;
+  background-color: #fff !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_foundation_navigation *) > button,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_foundation_navigation *) > button,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_foundation_navigation *) > button,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav button:not(.st-key-cv_foundation_navigation button):not(.st-key-cv_foundation_navigation *),
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more button[data-testid="stPopoverButton"]:not(#cv-saved-bom-nav-unused),
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more [data-testid="stPopover"] > button:not(#cv-saved-bom-nav-unused) {
+  min-height: 42px !important;
+  min-width: 0 !important;
+  width: max-content !important;
+  margin: 0 0 -1px !important;
+  padding: 10px 14px 12px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:hover,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:hover,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more button[data-testid="stPopoverButton"]:hover,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"]:hover,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more button[aria-expanded="true"] {
+  background: #fff !important;
+  background-color: #fff !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-primary"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-primary"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav button[kind="primary"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav button[data-testid="stBaseButton-primary"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] button[kind="primary"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] button[data-testid="stBaseButton-primary"],
+html body section[data-testid="stMain"]:has([data-cv-saved-bom-active="more"]) .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more .stButton:not(.st-key-cv_foundation_navigation .stButton) > button,
+html body section[data-testid="stMain"]:has([data-cv-saved-bom-active="more"]) .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more button[data-testid="stPopoverButton"]:not(#cv-saved-bom-nav-unused) {
+  color: #1d4ed8 !important;
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-bottom: 2px solid #2563eb !important;
+  box-shadow: none !important;
+  font-weight: 700 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button *,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] .stButton:not(.st-key-cv_foundation_navigation .stButton) > button *,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav button *,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more button[data-testid="stPopoverButton"] *,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"] * {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  background: transparent !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav button:focus-visible,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [class*="st-key-cadivor_bom_tab_"] button:focus-visible,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"]:focus-visible {
+  outline: 2px solid #2563eb !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more [data-testid="stElementContainer"],
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more [data-testid="stPopover"] {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  max-width: max-content !important;
+  align-items: flex-end !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"] svg,
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav .st-key-cv_saved_bom_nav_more [data-testid="stPopover"] svg {
+  display: none !important;
+}
+
+html body section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stSelectbox"] {
+  display: none !important;
+}

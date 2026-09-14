@@ -141,15 +141,26 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
             <div class="cv-report-pill">▣ Reports Center</div>
             <h1 class="cv-report-title">Engineering reports</h1>
             <p class="cv-report-copy">Generate executive-ready BOM risk packages, sourcing summaries, lifecycle reviews, and exportable engineering records from saved Cadivor analyses.</p>
-            <div class="cv-report-actions">
-              <a class="cv-report-btn primary" href="?page=BOM%20Analyzer" target="_self">Generate from BOM →</a>
-              <a class="cv-report-btn secondary" href="?page=Dashboard" target="_self">Open dashboard</a>
-            </div>
+            <div class="cv-report-actions"></div>
           </div>
         </section>
         """,
         unsafe_allow_html=True,
     )
+    action_cols = st.columns(2)
+    with action_cols[0]:
+        internal_nav_button(
+            "Generate from BOM →",
+            "BOM Analyzer",
+            key="reports_generate_from_bom",
+        )
+    with action_cols[1]:
+        internal_nav_button(
+            "Open dashboard",
+            "Dashboard",
+            key="reports_open_dashboard",
+            type="secondary",
+        )
     render_kpi_row_safe(
         [
             MetricCard(label="Reports", value=str(total_reports), detail="Saved analyses ready to export", tone="info", icon="file-text"),
@@ -163,13 +174,28 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         """
         <div class="cv-report-section-head"><div><h2 class="cv-report-section-title">Report templates</h2><div class="cv-report-section-sub">Choose the report style that matches the review workflow.</div></div></div>
         <div class="cv-report-card-grid">
-          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar"></div><div class="chart"></div><div class="bar short"></div></div><div class="cv-report-icon">📄</div><div class="cv-report-card-title">Executive BOM Report</div><div class="cv-report-card-copy">Portfolio health, high-risk components, lifecycle signals, cost exposure, and recommended next actions for leadership review.</div><a class="cv-report-link" href="?page=BOM%20Analyzer" target="_self">Create executive report →</a></div>
-          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar short"></div><div class="bar"></div><div class="chart"></div></div><div class="cv-report-icon">🧪</div><div class="cv-report-card-title">Engineering Risk Review</div><div class="cv-report-card-copy">Component-level risk, lifecycle status, supplier coverage, confidence, and BOM readiness details for engineers.</div><a class="cv-report-link" href="?page=Dashboard" target="_self">Review saved analyses →</a></div>
+          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar"></div><div class="chart"></div><div class="bar short"></div></div><div class="cv-report-icon">📄</div><div class="cv-report-card-title">Executive BOM Report</div><div class="cv-report-card-copy">Portfolio health, high-risk components, lifecycle signals, cost exposure, and recommended next actions for leadership review.</div></div>
+          <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="bar short"></div><div class="bar"></div><div class="chart"></div></div><div class="cv-report-icon">🧪</div><div class="cv-report-card-title">Engineering Risk Review</div><div class="cv-report-card-copy">Component-level risk, lifecycle status, supplier coverage, confidence, and BOM readiness details for engineers.</div></div>
           <div class="cv-report-card"><div class="cv-report-preview"><div class="bar primary"></div><div class="chart"></div><div class="bar"></div><div class="bar short"></div></div><div class="cv-report-icon">📦</div><div class="cv-report-card-title">Sourcing Summary</div><div class="cv-report-card-copy">Procurement-oriented stock, supplier concentration, replacement readiness, lead-time, and sourcing risk package.</div><span class="cv-report-link">Validate alternatives below →</span></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    template_cols = st.columns(2)
+    with template_cols[0]:
+        internal_nav_button(
+            "Create executive report →",
+            "BOM Analyzer",
+            key="reports_template_executive",
+            type="secondary",
+        )
+    with template_cols[1]:
+        internal_nav_button(
+            "Review saved analyses →",
+            "Dashboard",
+            key="reports_template_engineering",
+            type="secondary",
+        )
     internal_nav_button(
         "Validate alternatives →",
         ALTERNATIVE_FINDER_PAGE,
@@ -195,9 +221,18 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
             badge_class = "good" if health >= 80 else ("bad" if health < 60 else "")
             high_class = "bad" if high else "good"
             rows_html.append(
-                f'<div class="cv-report-row"><div><div class="cv-report-name">{project}</div><div class="cv-report-meta">Ready for report package</div></div><div class="cv-report-meta">{filename}</div><div class="cv-report-meta">{date}</div><div><span class="cv-report-badge {badge_class}">{health} health</span></div><div><span class="cv-report-badge {high_class}">{high} high</span></div><div><a class="cv-report-link" href="?page=Dashboard" target="_self">Open →</a></div></div>'
+                f'<div class="cv-report-row"><div><div class="cv-report-name">{project}</div><div class="cv-report-meta">Ready for report package</div></div><div class="cv-report-meta">{filename}</div><div class="cv-report-meta">{date}</div><div><span class="cv-report-badge {badge_class}">{health} health</span></div><div><span class="cv-report-badge {high_class}">{high} high</span></div><div></div></div>'
             )
         st.markdown('<div class="cv-report-board">' + ''.join(rows_html) + '</div>', unsafe_allow_html=True)
+        for index, row in enumerate(records[:8]):
+            analysis_id = str(row.get("id") or row.get("analysis_id") or "").strip()
+            internal_nav_button(
+                "Open →",
+                "Analysis Details" if analysis_id else "Dashboard",
+                key=f"reports_open_source_{index}",
+                type="secondary",
+                analysis_id=analysis_id,
+            )
     else:
         st.markdown(
             """

@@ -253,5 +253,8 @@ body,.stApp,[data-testid="stAppViewContainer"]{font-family:Inter,Manrope,ui-sans
 .stApp, [data-testid="stAppViewContainer"] { background:var(--cv-canvas)!important; }
 [data-testid="stMainBlockContainer"] { color:#0F172A!important; }
 [data-testid="stMainBlockContainer"] .stButton>button { min-height:42px; border-radius:11px; font-weight:800; }
+/* Saved-BOM tabs and the navigation rail are excluded from these global pill rules.
+   Their appearance is owned by saved_bom_nav.css and app_shell.css respectively. */
+[data-testid="stMainBlockContainer"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not(.st-key-cv_saved_bom_nav_more .stButton) > button { min-height:42px; border-radius:11px; font-weight:800; }
 [data-testid="stMainBlockContainer"] [data-testid="stDataFrame"] { font-size:14px!important; }
 [data-testid="stMainBlockContainer"] [data-testid="stExpander"] { border-color:var(--cv-border-soft)!important; border-radius:14px!important; }
