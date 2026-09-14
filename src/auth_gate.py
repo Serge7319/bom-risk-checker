@@ -416,7 +416,9 @@ def retire_auth_gate_overlays() -> None:
           .st-key-cadivor_auth_card,
         body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
           [class*="st-key-cadivor_auth_card"],
-        /* Zero-height browser Back/Forward bridge must not leave a skeleton band. */
+        /* Keep the Back/Forward bridge mounted and scriptable. display:none can
+           detach/throttle the iframe so popstate never reaches Streamlit; clip it
+           off-screen instead so it cannot paint a skeleton band. */
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
           .st-key-cadivor_browser_navigation_bridge,
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content])
@@ -425,11 +427,12 @@ def retire_auth_gate_overlays() -> None:
           .st-key-cadivor_browser_navigation_bridge,
         body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
           [class*="st-key-cadivor_browser_navigation_bridge"]{
-          display:none!important;visibility:hidden!important;pointer-events:none!important;
-          opacity:0!important;z-index:-1!important;
-          height:0!important;min-height:0!important;max-height:0!important;
+          position:fixed!important;left:-10000px!important;top:0!important;
+          width:1px!important;min-width:1px!important;max-width:1px!important;
+          height:1px!important;min-height:1px!important;max-height:1px!important;
           margin:0!important;padding:0!important;border:0!important;
-          overflow:hidden!important
+          overflow:hidden!important;opacity:0!important;pointer-events:none!important;
+          z-index:-1!important;visibility:visible!important
         }
         </style>
         """,

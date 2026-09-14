@@ -1830,11 +1830,19 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     3. Existing session route / app_mode
     4. Dashboard
 
-    Always writes the same value to ``cadivor_route``, ``app_mode``, and
-    ``st.query_params["page"]`` so chrome and content cannot diverge in-run.
+    Session mirrors are always updated. Query writes are avoided on restore and
+    on reruns when the address bar already matches — Streamlit has no
+    replaceState, so a redundant write would create a phantom Back entry.
     """
+    from src.ui.navigation import (
+        HISTORY_RESTORE_EVENT_KEY,
+        LAST_HISTORY_PUSH_PAGE_KEY,
+        commit_navigation_query_params,
+    )
+
     browser_page = ""
     browser_params: dict[str, str] = {}
+    browser_reason = ""
     browser_event = consume_browser_navigation_event()
     previous_route = _safe_text(
         st.session_state.get("cadivor_route") or st.session_state.get("app_mode"),
@@ -1843,6 +1851,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     if browser_event:
         event_id = _safe_text(browser_event.get("event_id"), "")
         href = _safe_text(browser_event.get("href"), "")
+        browser_reason = _safe_text(browser_event.get("reason"), "")
         if (
             event_id
             and event_id != st.session_state.get("cadivor_last_browser_navigation_event_id")
@@ -1861,6 +1870,17 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
                 browser_params = {}
             browser_page = _safe_text(browser_params.get("page"), "")
             st.session_state["cadivor_last_browser_navigation_event_id"] = event_id
+            # The 350ms poll also sees in-app pushState echoes. Those are not
+            # Back/Forward restores — ignore when the URL still matches session
+            # or the page we just pushed.
+            last_push = _safe_text(st.session_state.get(LAST_HISTORY_PUSH_PAGE_KEY), "")
+            if browser_reason == "url-change" and (
+                (browser_page and browser_page == previous_route)
+                or (browser_page and browser_page == last_push)
+            ):
+                browser_page = ""
+                browser_params = {}
+                browser_reason = ""
 
     try:
         raw_qp = st.query_params.get("page", "")
@@ -1870,6 +1890,10 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         raw_qp = ""
     query_page = _safe_text(raw_qp, "")
     session_page = previous_route
+
+    history_restore = bool(browser_page) or (
+        bool(query_page) and bool(session_page) and query_page != session_page
+    )
 
     if browser_page:
         route = browser_page
@@ -1891,7 +1915,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         route = "Dashboard"
 
     route_changed = bool(previous_route) and previous_route != route
-    if route_changed and (browser_page or (query_page and query_page == route and query_page != session_page)):
+    if route_changed and history_restore:
         # Browser Back/Forward must retire prior body ownership the same way
         # in-app navigate_to does, without forcing a hard reload.
         try:
@@ -1900,6 +1924,10 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
             arm_main_transition(st.session_state, route)
         except Exception:
             st.session_state.pop("cadivor_presented_route", None)
+        st.session_state[HISTORY_RESTORE_EVENT_KEY] = {
+            "route": route,
+            "reason": browser_reason or "query-diverge",
+        }
 
     st.session_state["cadivor_route"] = route
     st.session_state["app_mode"] = route
@@ -1912,18 +1940,22 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         }
         nav_params["page"] = route
         st.session_state["cadivor_nav_params"] = nav_params
-        try:
-            st.query_params.from_dict(nav_params)
-        except Exception:
-            try:
-                st.query_params["page"] = route
-            except Exception:
-                pass
     else:
-        try:
-            st.query_params["page"] = route
-        except Exception:
-            pass
+        st.session_state["cadivor_nav_params"] = {"page": route}
+
+    if history_restore:
+        # Address bar already holds the restored route. Do not write query
+        # params — that would push a duplicate history entry.
+        st.session_state.pop(LAST_HISTORY_PUSH_PAGE_KEY, None)
+    elif not query_page:
+        # First admit with no ?page=: establish one history entry only.
+        commit_navigation_query_params({"page": route}, push=True)
+    else:
+        # Rerun/canonical sync: no-op when the bar already matches.
+        commit_navigation_query_params(
+            st.session_state.get("cadivor_nav_params") or {"page": route},
+            push=False,
+        )
     return route
 
 
@@ -3006,10 +3038,8 @@ def run_authenticated_app() -> None:
         app_mode = "Dashboard"
     st.session_state["cadivor_route"] = app_mode
     st.session_state["app_mode"] = app_mode  # compatibility mirror
-    try:
-        st.query_params["page"] = app_mode
-    except Exception:
-        pass
+    # Do not rewrite st.query_params here. Streamlit pushState-s every write;
+    # resolve_canonical_app_route / navigate_to already own history integrity.
     if st.session_state.get("cadivor_support_last_page") != app_mode:
         _quick_boot_read(
             lambda: _record_support_activity("page_viewed", {"page": app_mode}),

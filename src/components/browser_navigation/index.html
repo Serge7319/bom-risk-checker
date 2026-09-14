@@ -2,67 +2,107 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <style>html,body{display:none;margin:0;padding:0}</style>
+  <style>html,body{margin:0;padding:0;width:1px;height:1px;overflow:hidden}</style>
 </head>
 <body>
 <script>
 (() => {
+  /**
+   * Cadivor browser Back/Forward bridge.
+   *
+   * Streamlit's built-in popstate handler only reacts to multipage pathname
+   * changes — query-only history hops never rerun the script. This component
+   * emits one setComponentValue when the address bar changes so Python can
+   * restore the route without writing query params again.
+   *
+   * The listener is installed on the parent window and survives iframe remounts.
+   * The iframe only drains a pending event into Streamlit.
+   */
   let ready = false;
-  let attached = false;
-  let lastHref = "";
+  let lastEmittedId = "";
 
   function post(type, extra = {}) {
-    window.parent.postMessage({isStreamlitMessage:true,type,...extra}, "*");
+    window.parent.postMessage({isStreamlitMessage: true, type, ...extra}, "*");
   }
 
-  function hostHref() {
+  function host() {
+    return window.parent;
+  }
+
+  function ensureParentBridge() {
+    const w = host();
+    if (w.__cadivorNavBridgeV4) return w.__cadivorNavBridgeV4;
+    const state = {
+      pending: null,
+      lastHref: "",
+      seq: 0,
+    };
     try {
-      return window.parent.location.href || "";
+      state.lastHref = w.location.href || "";
     } catch (_) {
-      // Streamlit custom components normally share the app origin.  Keeping
-      // this defensive makes the bridge inert rather than breaking the page
-      // if a host later changes that embedding policy.
-      return "";
+      state.lastHref = "";
     }
-  }
-
-  function emitIfChanged(reason) {
-    if (!ready) return;
-    const href = hostHref();
-    if (!href || href === lastHref) return;
-    lastHref = href;
-    post("streamlit:setComponentValue", {
-      value: {href, reason, event_id: `${Date.now()}-${Math.random()}`},
-      dataType: "json"
-    });
-  }
-
-  function attach() {
-    if (attached) return;
-    attached = true;
-    lastHref = hostHref();
+    const queue = (reason) => {
+      let href = "";
+      try {
+        href = w.location.href || "";
+      } catch (_) {
+        return;
+      }
+      if (!href) return;
+      // Always queue on popstate/hashchange even if href matched lastHref —
+      // Streamlit may have remounted before a prior emit was delivered.
+      if (reason === "url-change" && href === state.lastHref && state.pending) {
+        return;
+      }
+      if (reason === "url-change" && href === state.lastHref) {
+        return;
+      }
+      state.lastHref = href;
+      state.seq += 1;
+      state.pending = {
+        href,
+        reason,
+        event_id: `${Date.now()}-${state.seq}-${Math.random().toString(36).slice(2, 8)}`,
+      };
+    };
     try {
-      window.parent.addEventListener("popstate", () => {
-        window.setTimeout(() => emitIfChanged("popstate"), 0);
-      });
-      window.parent.addEventListener("hashchange", () => {
-        window.setTimeout(() => emitIfChanged("hashchange"), 0);
-      });
+      w.addEventListener("popstate", () => queue("popstate"));
+      w.addEventListener("hashchange", () => queue("hashchange"));
     } catch (_) {}
-    // Some browser restoration paths do not deliver popstate to an embedded
-    // frame.  Polling only compares the URL and emits no work while unchanged.
-    window.setInterval(() => emitIfChanged("url-change"), 350);
+    // Fallback when popstate is swallowed; Python ignores in-app push echoes.
+    w.setInterval(() => queue("url-change"), 300);
+    w.__cadivorNavBridgeV4 = state;
+    return state;
+  }
+
+  function emitPending() {
+    if (!ready) return;
+    const state = ensureParentBridge();
+    const pending = state.pending;
+    if (!pending || !pending.event_id) return;
+    if (pending.event_id === lastEmittedId) return;
+    lastEmittedId = pending.event_id;
+    state.pending = null;
+    post("streamlit:setComponentValue", {
+      value: pending,
+      dataType: "json",
+    });
   }
 
   window.addEventListener("message", (event) => {
     const data = event.data || {};
     if (data.type !== "streamlit:render") return;
     ready = true;
-    attach();
+    ensureParentBridge();
+    emitPending();
   });
 
-  post("streamlit:componentReady", {apiVersion:1});
-  post("streamlit:setFrameHeight", {height:0});
+  // Drain promptly while this iframe lives.
+  window.setInterval(emitPending, 200);
+
+  post("streamlit:componentReady", {apiVersion: 1});
+  post("streamlit:setFrameHeight", {height: 0});
 })();
 </script>
 </body>
