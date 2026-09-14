@@ -125,6 +125,31 @@ BOOT_RESTORE_TIMEOUT_MESSAGE = (
 )
 
 
+def drop_stale_logout_query_for_authenticated_page_hop() -> bool:
+    """Ignore a leftover signed-out query only for a live in-app login.
+
+    Returns True only when that session is already authenticated and the stale
+    marker was dropped. Explicit Sign out and every other session leave the
+    marker in place so bootstrap still fails closed.
+    """
+    from src.auth_state import authenticated_in_app_session
+
+    if not authenticated_in_app_session():
+        return False
+    st.session_state.pop("cadivor_force_signed_out", None)
+    try:
+        if SIGNED_OUT_QUERY_KEY in st.query_params:
+            del st.query_params[SIGNED_OUT_QUERY_KEY]
+        nav_params = st.session_state.get("cadivor_nav_params")
+        if isinstance(nav_params, dict) and SIGNED_OUT_QUERY_KEY in nav_params:
+            cleaned = dict(nav_params)
+            cleaned.pop(SIGNED_OUT_QUERY_KEY, None)
+            st.session_state["cadivor_nav_params"] = cleaned
+    except Exception:
+        pass
+    return True
+
+
 def apply_signed_out_query_marker() -> bool:
     """Honor durable logout redirect marker across hard reloads (Safari-safe)."""
     marker = str(qp_value(SIGNED_OUT_QUERY_KEY, "") or "").strip()
@@ -608,6 +633,10 @@ def _ensure_authenticated_or_stop_impl() -> None:
     # Clear legacy empty-host progress flags — the gate owns paint now.
     st.session_state.pop(AUTH_PROGRESS_MOUNTED_KEY, None)
     st.session_state.pop(_AUTH_SURFACE_KIND_KEY, None)
+
+    # An already-authenticated page hop must not be treated as a logout reload.
+    # Explicit Sign out still wins: it clears tokens before the redirect.
+    drop_stale_logout_query_for_authenticated_page_hop()
 
     # Durable logout marker from hard reload (?cadivor_signed_out=1) must win
     # before any cookie peek can send the gate to boot restore.

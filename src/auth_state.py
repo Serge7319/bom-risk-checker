@@ -500,6 +500,24 @@ def explicit_logout_pending() -> bool:
     return bool(st.session_state.get("cadivor_explicit_logout"))
 
 
+def authenticated_in_app_session() -> bool:
+    """True only for a live login that may ignore a stale logout marker.
+
+    Explicit Sign out, a committed logout, and any session that is missing a
+    user or tokens do not qualify. This must not be used to accept an expired,
+    invalid, or revoked token.
+    """
+    return (
+        st.session_state.get("user") is not None
+        and bool(st.session_state.get("access_token"))
+        and bool(st.session_state.get("refresh_token"))
+        and str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED
+        and not explicit_logout_pending()
+        and not st.session_state.get("cadivor_logout_committed")
+        and not st.session_state.get("cadivor_logout_in_progress")
+    )
+
+
 def render_external_logout_redirect() -> None:
     """Redirect the browser to the external marketing homepage after sign-out.
 

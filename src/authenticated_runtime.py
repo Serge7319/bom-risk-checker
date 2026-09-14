@@ -94,6 +94,7 @@ from src.ui.navigation import (
     apply_alternative_finder_prefill,
     begin_authenticated_page,
     consume_alternative_finder_context,
+    consume_navigation_error,
     DELAY_ROUTE_BODY_REVEAL_KEY,
     get_presented_route,
     internal_nav_button,
@@ -1421,8 +1422,8 @@ def render_global_search_panel(user_id):
                 "⌕",
             )
         else:
-            for result in results:
-                page_href = str(result.get("page", "Dashboard")).replace(" ", "%20")
+            for index, result in enumerate(results):
+                page_name = str(result.get("page") or "Dashboard")
                 st.markdown(
                     f"""
                     <div class="cv-result-card">
@@ -1430,10 +1431,16 @@ def render_global_search_panel(user_id):
                         <div class="cv-result-title">{result.get('title', '')}</div>
                         <div class="cv-result-meta">{result.get('type', '')} • {result.get('meta', '')}</div>
                       </div>
-                      <a class="cv-status-pill" href="?page={page_href}" target="_self">Open</a>
                     </div>
                     """,
                     unsafe_allow_html=True,
+                )
+                internal_nav_button(
+                    "Open",
+                    page_name,
+                    key=f"global_search_open_{index}",
+                    type="secondary",
+                    analysis_id=result.get("analysis_id") or result.get("id") or "",
                 )
 
 
@@ -3176,12 +3183,12 @@ def run_authenticated_app() -> None:
             cmd_meta["row_count"] = len(_workspace_command_records or [])
         except Exception:
             _workspace_command_records = []
-    # Command-palette anchors are labeled "Open" and live in the main column.
-    # An already-open saved BOM has no object for that control, and the host
-    # is not inside the hidden trigger node, so it paints above the header.
-    # BOM Analyzer keeps its own "Open Selected Analysis" list action.
-    if app_mode != "Analysis Details":
-        render_command_nav_triggers(_workspace_command_records)
+    # Palette targets are real session buttons, parked off-screen by widget key.
+    # They must not hard-reload, and they must not paint as an Open control.
+    render_command_nav_triggers(_workspace_command_records)
+    nav_error = consume_navigation_error()
+    if nav_error:
+        st.caption(nav_error)
     render_command_center(
         current_page=app_mode,
         user_name=shell_name.split()[0] if shell_name else "Engineer",
@@ -3487,12 +3494,14 @@ def run_authenticated_app() -> None:
         from src.boot_read_budget import (
             mark_secondary_data_delayed,
             run_with_read_budget,
-            secondary_data_delayed,
         )
 
         from src.pages.home_workspace import (
             HOME_NEW,
+            SECONDARY_REFRESH_FAILED_KEY,
+            SECONDARY_REFRESH_REQUEST_KEY,
             apply_saved_analysis_result,
+            apply_secondary_result,
             build_home_model,
             render_returning_home,
             render_saved_boms_unavailable,
@@ -3568,22 +3577,53 @@ def run_authenticated_app() -> None:
                 decision_state or {},
             )
 
-        _dashboard_loaded, _dashboard_status = run_with_read_budget(_load_dashboard_secondary)
-        if _dashboard_status != "ok" or not _dashboard_loaded:
-            mark_secondary_data_delayed(st.session_state, True)
-            overview_parts, overview_alerts, overview_state = [], [], {}
-        else:
+        # Portfolio updates are not required for saved BOMs or navigation.
+        # A private budget avoids inheriting a spent first-page deadline, which
+        # was marking every Home visit delayed even when saved BOMs loaded.
+        _refreshing = bool(st.session_state.pop(SECONDARY_REFRESH_REQUEST_KEY, False))
+        _dashboard_loaded, _dashboard_status = run_with_read_budget(
+            _load_dashboard_secondary,
+            budget_seconds=2.5 if _refreshing else 1.2,
+            respect_first_page=False,
+        )
+        _secondary_payload = None
+        if _dashboard_status == "ok" and _dashboard_loaded:
+            _parts, _alerts, _state = _dashboard_loaded
+            _secondary_payload = {"parts": _parts, "alerts": _alerts, "state": _state}
+        _secondary = apply_secondary_result(
+            st.session_state,
+            user_id=current_user["id"],
+            payload=_secondary_payload,
+            status=_dashboard_status if _secondary_payload is not None else _dashboard_status,
+        )
+        if _secondary:
             mark_secondary_data_delayed(st.session_state, False)
-            overview_parts, overview_alerts, overview_state = _dashboard_loaded
+            overview_parts = list(_secondary.get("parts") or [])
+            overview_alerts = list(_secondary.get("alerts") or [])
+            overview_state = dict(_secondary.get("state") or {})
+            st.session_state.pop(SECONDARY_REFRESH_FAILED_KEY, None)
+        else:
+            overview_parts, overview_alerts, overview_state = [], [], {}
+            if _refreshing:
+                st.session_state[SECONDARY_REFRESH_FAILED_KEY] = True
+            else:
+                mark_secondary_data_delayed(st.session_state, False)
         if overview_analyses is None:
             overview_analyses_for_model = None
         else:
             overview_analyses_for_model = overview_analyses
+        # Saved-BOM Home does not render a portfolio section. A missing
+        # secondary read must not become a warning or a required retry.
+        _secondary_section_missing = False
         home = build_home_model(
             user_id=current_user["id"],
             analyses=overview_analyses_for_model,
-            parts=overview_parts,
-            secondary_failed=secondary_data_delayed(st.session_state),
+            parts=overview_parts if _secondary else None,
+            secondary_failed=False,
+        )
+        home["secondary_section_unavailable"] = _secondary_section_missing
+        home["secondary_refresh_failed"] = bool(
+            st.session_state.get(SECONDARY_REFRESH_FAILED_KEY)
         )
         overview_analyses = list(home["analyses"])
 

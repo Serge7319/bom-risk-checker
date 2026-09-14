@@ -19,8 +19,12 @@ from src.ui.main_transition import (
 )
 from src.ui.navigation import reveal_authenticated_page_body
 from src.pages.home_workspace import (
+    SECONDARY_REFRESH_FAILURE,
+    SECONDARY_UNAVAILABLE_NOTICE,
     SECONDARY_UPDATE_BANNER,
     apply_saved_analysis_result,
+    apply_secondary_result,
+    build_home_model,
     render_secondary_update_banner,
 )
 from src.pages.saved_analysis_control import (
@@ -171,7 +175,7 @@ def _reveal_home_after_bounded_hang(session: dict, monkeypatch) -> float:
     dashboard = _dashboard_source()
     heading_at = dashboard.index("render_dashboard_page_heading()")
     reveal_at = dashboard.index('reveal_authenticated_page_body("Dashboard")')
-    secondary_at = dashboard.index("run_with_read_budget(_load_dashboard_secondary)")
+    secondary_at = dashboard.index("_load_dashboard_secondary,")
     assert heading_at < reveal_at < secondary_at
     assert "Opening Dashboard" not in dashboard[heading_at:reveal_at]
     return elapsed
@@ -312,11 +316,11 @@ def test_retry_updates_replays_leave_one_banner(monkeypatch):
     monkeypatch.setattr("src.pages.home_workspace.st.container", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("keyed container would append")))
 
     for _ in range(3):
-        render_secondary_update_banner()
+        render_secondary_update_banner(unavailable=True, refresh_failed=True)
 
-    banner_hits = [item for item in notices if SECONDARY_UPDATE_BANNER in item]
+    banner_hits = [item for item in notices if "Couldn’t refresh portfolio updates" in item]
     assert len(banner_hits) == 1
-    assert buttons.count("Retry updates") == 1
+    assert buttons.count("Refresh workspace updates") == 1
     assert clears
     assert "st.container(key=\"cv_home_retry\")" not in _source("src/pages/home_workspace.py")
 
@@ -351,19 +355,20 @@ def test_same_user_timeout_keeps_selected_bom_and_part():
 
 
 def test_saved_bom_page_has_no_generic_open_button():
-    """Command-palette Open anchors must not lead the saved-BOM page."""
+    """Command-palette targets stay off-screen session buttons, not a visible Open."""
     runtime = _source("src/authenticated_runtime.py")
-    call_at = runtime.index("render_command_nav_triggers(")
-    guard = runtime[call_at - 280:call_at]
-    assert 'app_mode != "Analysis Details"' in guard
+    nav = _source("src/ui/navigation.py")
+    assert "st-key-cvcc_nav_" in nav
+    assert "left: -10000px" in nav
+    assert 'href="{html.escape(href' not in nav
     detail = _source("src/pages/analysis_detail.py")
     assert 'st.button("Open"' not in detail
     assert "internal_nav_button(\n            \"Open\"" not in detail
     assert 'class="cv-native-nav-button' not in detail
     bom = runtime.split('if app_mode == "BOM Analyzer":', 1)[1]
     assert "Open Selected Analysis" in bom
-    nav = detail.split("def _render_analysis_section_navigation", 1)[1].split("def _num", 1)[0]
-    assert nav.count("st.container(key=\"cv_analysis_section_nav\")") == 1
+    nav = _source("src/ui/bom_navigation.py").split("def render_saved_bom_section_nav", 1)[1]
+    assert nav.count('key=SAVED_BOM_NAV_KEY') == 1 or nav.count('st.container(key=SAVED_BOM_NAV_KEY)') == 1
     header_at = detail.index('class="cv-analysis-header"')
     leading = detail[detail.index("def render_analysis_detail"):header_at]
     assert "st.html(" not in leading
@@ -400,7 +405,7 @@ def test_failed_workspace_read_does_not_render_empty_saved_analysis_rows():
     assert between.index("release_saved_analysis_placeholder()") < reveal_at
     assert between.count('st.button("Back to BOMs"') == 0
     assert detail.count('st.container(key="cv_analysis_hero_actions")') == 1
-    assert detail.count('st.container(key="cv_analysis_section_nav")') == 1
+    assert detail.count("render_saved_bom_section_nav(") == 1
     saved_loader = dashboard.split("def _load_saved_analyses", 1)[1].split(
         "overview_analyses = apply_saved_analysis_result", 1
     )[0]
@@ -409,14 +414,80 @@ def test_failed_workspace_read_does_not_render_empty_saved_analysis_rows():
         "return (", 1
     )[0]
     assert "_workspace_query(" not in secondary
-    assert 'popover("More ▾")' in detail
+    assert 'popover("More ▾")' in _source("src/ui/bom_navigation.py")
     assert 'selectbox(\n            "More"' not in detail.split("else:", 1)[-1] or "popover" in detail
-    nav = detail.split("def _render_analysis_section_navigation", 1)[1].split("def _num", 1)[0]
+    nav = _source("src/ui/bom_navigation.py").split("def render_saved_bom_section_nav", 1)[1]
     assert nav.index('popover("More ▾")') < nav.index("selectbox(")
     assert "st.pills" not in nav
-    css = _source("src/assets/css/analysis_detail_v2.css")
+    css = _source("src/assets/css/saved_bom_nav.css")
     assert "border-bottom: 2px solid transparent" in css
     assert "flex-wrap: nowrap !important" in css
     assert "overflow-x: auto !important" in css
     assert "white-space: nowrap !important" in css
     assert "st-key-cv_analysis_section_nav [data-testid=\"stSelectbox\"]" in css
+
+
+def test_cached_secondary_data_is_reused_without_a_home_warning():
+    session = {}
+    apply_secondary_result(
+        session,
+        user_id="user-1",
+        payload={"parts": [{"mpn": "MAX32625ITK+"}], "alerts": [], "state": {}},
+        status="ok",
+    )
+    kept = apply_secondary_result(session, user_id="user-1", payload=None, status="timeout")
+    assert kept["parts"][0]["mpn"] == "MAX32625ITK+"
+    home = build_home_model(
+        user_id="user-1",
+        analyses=[{"id": "bom-1", "user_id": "user-1", "filename": "a.csv", "high_risk_count": 1}],
+        parts=kept["parts"],
+        secondary_failed=False,
+    )
+    assert home["kind"] != "unknown"
+    assert home["secondary_failed"] is False
+    dashboard = _source("src/authenticated_runtime.py").split('if app_mode == "Dashboard":', 1)[1]
+    assert "respect_first_page=False" in dashboard
+    assert SECONDARY_UPDATE_BANNER not in dashboard
+
+
+def test_manual_refresh_failure_is_one_message_and_keeps_saved_boms(monkeypatch):
+    notices = []
+    buttons = []
+
+    class _Slot:
+        def empty(self):
+            notices.clear()
+            buttons.clear()
+
+        def container(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    session = {
+        "cadivor_active_analysis_id": "bom-1",
+        "cadivor_selected_component_mpn": "MAX32625ITK+",
+    }
+    monkeypatch.setattr("src.pages.home_workspace.st.session_state", session)
+    monkeypatch.setattr("src.pages.home_workspace.st.empty", lambda: _Slot())
+    monkeypatch.setattr(
+        "src.pages.home_workspace.st.markdown",
+        lambda text, **_kwargs: notices.append(text),
+    )
+    monkeypatch.setattr(
+        "src.pages.home_workspace.st.button",
+        lambda label, **_kwargs: buttons.append(label) or False,
+    )
+    monkeypatch.setattr("src.pages.home_workspace.st.rerun", lambda: None)
+    for _ in range(2):
+        render_secondary_update_banner(unavailable=False, refresh_failed=True)
+    hits = [item for item in notices if SECONDARY_REFRESH_FAILURE in item]
+    assert len(hits) == 1
+    assert SECONDARY_UNAVAILABLE_NOTICE not in hits[0]
+    assert buttons == ["Refresh workspace updates"]
+    assert session["cadivor_active_analysis_id"] == "bom-1"
+    assert session["cadivor_selected_component_mpn"] == "MAX32625ITK+"

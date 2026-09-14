@@ -819,6 +819,23 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
   color: #b45309;
 }
 
+.cv-home-notice--inline {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid #d7e2ef;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.cv-home-notice--inline p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .cv-home-notice--account {
   background: #f3f7fd;
   border-color: #d6e4f7;

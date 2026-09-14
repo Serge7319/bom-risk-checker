@@ -18,6 +18,7 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.streamlit.query_params = {}
         self.streamlit.rerun = lambda: None
         self.streamlit.html = lambda *args, **kwargs: None
+        self.streamlit.button = lambda *args, **kwargs: False
         sys.modules["streamlit"] = self.streamlit
         normalizer = types.ModuleType("src.normalizer")
         normalizer.normalize_part_number = lambda value: str(value).strip().upper()
@@ -76,10 +77,19 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertNotIn("html.escape(selected_lead_time)} weeks", detail)
 
     def test_internal_navigation_commits_destination_in_widget_callback(self):
-        rendered = []
-        self.streamlit.html = lambda markup, **kwargs: rendered.append(markup)
+        captured = {}
+
+        def _button(label, **kwargs):
+            captured["label"] = label
+            captured["kwargs"] = kwargs
+            return False
+
+        self.streamlit.button = _button
         reruns = []
         self.streamlit.rerun = lambda: reruns.append(True)
+        self.streamlit.session_state["user"] = {"id": "user-1"}
+        self.streamlit.session_state["access_token"] = "token"
+        self.streamlit.session_state["refresh_token"] = "refresh"
 
         clicked = self.navigation.internal_nav_button(
             "Reports Center", "Reports", key="reports-test", analysis_id="bom-42"
@@ -87,16 +97,29 @@ class BomWorkflowNavigationTests(unittest.TestCase):
 
         self.assertFalse(clicked)
         self.assertEqual(reruns, [])
-        self.assertTrue(rendered)
-        self.assertIn("reports-test", rendered[0])
-        self.assertIn("Reports Center", rendered[0])
+        self.assertEqual(captured["label"], "Reports Center")
+        self.assertEqual(captured["kwargs"]["key"], "reports-test")
+        captured["kwargs"]["on_click"](*captured["kwargs"]["args"])
+        self.assertEqual(self.streamlit.session_state["app_mode"], "Reports")
+        self.assertEqual(self.streamlit.session_state["cadivor_nav_params"]["analysis_id"], "bom-42")
+        self.assertNotIn("cadivor_signed_out", self.streamlit.session_state["cadivor_nav_params"])
+        self.assertNotIn("cadivor_explicit_logout", self.streamlit.session_state)
+        self.assertEqual(reruns, [])
 
     def test_alternative_navigation_callback_preserves_return_context(self):
-        rendered = []
-        self.streamlit.html = lambda markup, **kwargs: rendered.append(markup)
+        captured = {}
+
+        def _button(label, **kwargs):
+            captured["label"] = label
+            captured["kwargs"] = kwargs
+            return False
+
+        self.streamlit.button = _button
         reruns = []
         self.streamlit.rerun = lambda: reruns.append(True)
         self.streamlit.session_state["cadivor_active_analysis_tab"] = "Components"
+        self.streamlit.session_state["user"] = {"id": "user-1"}
+        self.streamlit.session_state["access_token"] = "token"
 
         self.navigation.internal_nav_button(
             "Find Alternatives",
@@ -107,10 +130,15 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             return_analysis_id="bom-42",
         )
 
+        captured["kwargs"]["on_click"](*captured["kwargs"]["args"])
         self.assertEqual(reruns, [])
-        self.assertTrue(rendered)
-        self.assertIn("Find Alternatives", rendered[0])
-        self.assertIn("alternatives-test", rendered[0])
+        self.assertEqual(captured["label"], "Find Alternatives")
+        self.assertEqual(self.streamlit.session_state["app_mode"], "Alternative Finder")
+        self.assertEqual(
+            self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY],
+            "bom-42",
+        )
+        self.assertEqual(self.streamlit.session_state["access_token"], "token")
 
     def test_direct_navigation_still_requests_one_rerun(self):
         reruns = []

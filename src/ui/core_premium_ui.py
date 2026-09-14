@@ -149,6 +149,7 @@ def inject_workspace_geometry_final() -> None:
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(.cv64-page-shell):not(:has(.cv64-section)):not(:has(.cv-customer-hero)):not(:has(.cv-page-header)):not(:has(h1)):not(:has([class*="st-key-af62_hero"])),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(> [data-testid="stIFrame"]),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-core-premium-ui-final),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-saved-bom-nav),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-compact-content-inset),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-main-transition-css),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-transition-style-host]) {
@@ -178,6 +179,9 @@ def inject_workspace_geometry_final() -> None:
         """,
         unsafe_allow_html=True,
     )
+    from src.ui.bom_navigation import inject_saved_bom_nav_css
+
+    inject_saved_bom_nav_css()
 
 
 def authenticated_surface_ready() -> bool:

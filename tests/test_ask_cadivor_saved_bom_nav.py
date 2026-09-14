@@ -50,10 +50,11 @@ def test_ask_cadivor_is_visible_in_saved_bom_primary_navigation():
     assert section_for_choice("Ask Cadivor") == "Ask Cadivor"
 
     detail = (ROOT / "src/pages/analysis_detail.py").read_text(encoding="utf-8")
-    nav = detail.split("def _render_analysis_section_navigation", 1)[1].split(
-        "def _num(", 1
-    )[0]
+    nav = (ROOT / "src/ui/bom_navigation.py").read_text(encoding="utf-8").split(
+        "def render_saved_bom_section_nav", 1
+    )[1]
     assert "list(PRIMARY_AREAS)" in nav
+    assert "render_saved_bom_section_nav(" in detail
     assert 'navigate_to("Ask Cadivor"' not in nav
     assert '"Ask Cadivor": "Ask Cadivor"' not in nav
 

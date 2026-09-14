@@ -205,12 +205,9 @@ def render_first_analysis_brief(
         cadivor_button_wrap("primary")
         if st.button("Start engineering review", type="primary", use_container_width=True, key="first_brief_review"):
             if analysis_id:
-                try:
-                    st.query_params["page"] = "Analysis Detail"
-                    st.query_params["analysis_id"] = str(analysis_id)
-                except Exception:
-                    st.experimental_set_query_params(page="Analysis Detail", analysis_id=str(analysis_id))
-                st.rerun()
+                from src.ui.navigation import open_saved_bom
+
+                open_saved_bom(str(analysis_id), _rerun=True, arm_opening=False)
             else:
                 st.info("Save the analysis to begin the engineering review.")
         cadivor_button_wrap_end()

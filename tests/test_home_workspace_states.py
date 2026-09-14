@@ -127,7 +127,8 @@ def test_secondary_timeout_keeps_saved_boms_and_does_not_invent_a_part():
     assert home["show_onboarding"] is False
     assert home["recent"][0]["name"] == "Industrial Controller BOM"
     assert SECONDARY_UPDATE_BANNER.startswith("We couldn’t refresh workspace updates.")
-    assert RETRY_UPDATES_LABEL == "Retry updates"
+    assert RETRY_UPDATES_LABEL == "Refresh workspace updates"
+    assert home["secondary_failed"] is True
     ordinary = build_home_model(
         user_id="user-1",
         analyses=cached,
@@ -213,6 +214,7 @@ def test_returning_home_hides_analytics_and_onboarding_controls():
         assert label not in dashboard
     assert "render_returning_home(" in returning
     assert "Retry updates" not in returning
+    assert "Refresh workspace updates" not in returning
     home = (ROOT / "src/pages/home_workspace.py").read_text(encoding="utf-8")
     assert SECONDARY_UPDATE_BANNER in home
     assert RETRY_UPDATES_LABEL in home
@@ -249,7 +251,8 @@ def test_home_presentation_keeps_actions_and_adds_visual_hierarchy():
     )[0]
     assert "Next engineering action" in home
     assert "cv-home-chip" in home
-    assert "cv-home-notice--caution" in home
+    assert "cv-home-notice--inline" in home
+    assert "cv-home-notice--caution" in styles
     assert "cv-home-notice--account" in home
     assert SECONDARY_UPDATE_BANNER in home
     assert 'key="home_retry_updates"' in home
