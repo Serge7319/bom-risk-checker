@@ -20,6 +20,10 @@ NAV_SCROLL_RESET_PENDING_KEY = "cadivor_nav_scroll_reset_pending"
 NAV_SCROLL_RESET_TOKEN_KEY = "cadivor_nav_scroll_reset_token"
 NAV_ERROR_KEY = "cadivor_nav_error"
 _LOGOUT_QUERY_KEYS = ("cadivor_signed_out", "auth", "source")
+# Streamlit turns every query-param write into history.pushState. Track the last
+# intentional in-app push so restore/rerun paths can avoid a duplicate entry.
+LAST_HISTORY_PUSH_PAGE_KEY = "cadivor_last_history_push_page"
+HISTORY_RESTORE_EVENT_KEY = "cadivor_history_restore_event"
 
 _ALT_NAV_KEYS = (
     "original_part",
@@ -33,6 +37,65 @@ _ALT_NAV_KEYS = (
     "return_mpn",
     "intent",
 )
+
+
+def read_query_params() -> dict[str, str]:
+    """Return the current address-bar query as a flat string map."""
+    try:
+        raw = dict(st.query_params)
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for key, value in raw.items():
+        if isinstance(value, (list, tuple)):
+            value = value[-1] if value else ""
+        text = str(value or "").strip()
+        if text:
+            out[str(key)] = text
+    return out
+
+
+def query_params_match(desired: Mapping[str, Any]) -> bool:
+    """True when the address bar already equals the desired navigation params."""
+    wanted = {
+        str(key): str(value).strip()
+        for key, value in desired.items()
+        if value is not None and str(value).strip() != ""
+    }
+    current = read_query_params()
+    return current == wanted
+
+
+def commit_navigation_query_params(nav_params: Mapping[str, Any], *, push: bool) -> bool:
+    """Write query params only for an intentional in-app history push.
+
+    Streamlit has no replaceState API — every write pushes history. Restore,
+    rerun, and canonical sync must call this with ``push=False`` so they never
+    create a duplicate entry. User-initiated ``navigate_to`` uses ``push=True``
+    and still skips the write when the address bar already matches.
+    """
+    cleaned = {
+        str(key): str(value).strip()
+        for key, value in nav_params.items()
+        if key not in _LOGOUT_QUERY_KEYS
+        and value is not None
+        and str(value).strip() != ""
+    }
+    if not cleaned.get("page"):
+        return False
+    if not push:
+        return False
+    if query_params_match(cleaned):
+        return False
+    try:
+        st.query_params.from_dict(cleaned)
+    except Exception:
+        try:
+            st.query_params["page"] = cleaned["page"]
+        except Exception:
+            return False
+    st.session_state[LAST_HISTORY_PUSH_PAGE_KEY] = cleaned["page"]
+    return True
 
 
 def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **params: Any) -> None:
@@ -90,21 +153,9 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
 
     if arm_opening:
         arm_main_transition(st.session_state, page)
-    try:
-        st.query_params.from_dict(nav_params)
-    except Exception:
-        # Navigation must remain usable if a deployed Streamlit version does
-        # not expose mutable query parameters.
-        pass
-    # Ensure marketing auth intent params never survive into the authenticated
-    # workspace. from_dict replaces all params, but belt-and-suspenders removal
-    # ensures no Streamlit-version-specific quirk reintroduces them on rerun.
-    try:
-        for _intent_key in ("auth", "source"):
-            if _intent_key in st.query_params:
-                del st.query_params[_intent_key]
-    except Exception:
-        pass
+    # One intentional route change → one history entry. from_dict replaces the
+    # full query, so auth/source marketing keys cannot survive this write.
+    commit_navigation_query_params(nav_params, push=True)
     if _rerun:
         st.rerun()
 
