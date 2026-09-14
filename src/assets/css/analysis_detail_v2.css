@@ -678,15 +678,15 @@ div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="
 /* ------------------------------------------------------------------ */
 @media (max-width: 1280px) {
   .cv-analysis-detail-page .cv-analysis-header {
-    grid-template-columns: 1fr;
-    gap: var(--cv-space-4, 16px);
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    gap: 16px 20px;
   }
 
   .cv-analysis-header-kpis,
   .cv-analysis-detail-page .cv-analysis-summary {
-    justify-self: stretch;
+    justify-self: end;
     width: 100%;
-    max-width: 480px;
+    max-width: 280px;
   }
 
   .cv-kpi-grid,
@@ -717,6 +717,15 @@ div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="
 }
 
 @media (max-width: 768px) {
+  .cv-analysis-detail-page .cv-analysis-header {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-analysis-header-kpis,
+  .cv-analysis-detail-page .cv-analysis-summary {
+    justify-self: stretch;
+    max-width: 100%;
+  }
   .cv-analysis-title,
   .cv-analysis-detail-page .cv-analysis-header .cv-analysis-title {
     font-size: var(--cv-font-xl, 20px);
@@ -762,16 +771,35 @@ div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="
 
 .cv-analysis-detail-page .cv-analysis-mini {
   min-height: 0;
-  padding: 0;
+  min-width: 0;
+  padding: 8px 10px;
   border: 0;
+  border-right: 1px solid #e4ebf4;
+  border-bottom: 1px solid #e4ebf4;
   border-radius: 0;
-  background: transparent;
+  background: #fff;
   box-shadow: none;
+  overflow: hidden;
+}
+
+.cv-analysis-detail-page .cv-analysis-mini:nth-child(2n) {
+  border-right: 0;
+}
+
+.cv-analysis-detail-page .cv-analysis-mini:nth-child(n + 3) {
+  border-bottom: 0;
 }
 
 .cv-analysis-header-kpis,
 .cv-analysis-detail-page .cv-analysis-summary {
-  gap: 12px 18px;
+  justify-self: end;
+  width: 100%;
+  max-width: 280px;
+  gap: 0;
+  border: 1px solid #e4ebf4;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
 }
 
 .cv-analysis-mini--bad strong {
@@ -867,4 +895,107 @@ div.cv719-analysis-section-nav + div[data-testid="stRadio"] label[data-baseweb="
   border: 1px solid #d5deea;
   color: #334155;
   box-shadow: none;
+}
+
+/* Saved-BOM page tabs. Beat the global primary/secondary button chrome
+   (filled blue / outlined pill) with a more specific rule. Inactive items
+   are plain text. The active item is a thin Cadivor-blue underline only.
+   More stays in the same row, immediately after Ask Cadivor. */
+/* Beat the laptop action-group wrap (180px min-width + flex-wrap: wrap).
+   At 1366px the six labels stay one row. A narrower viewport scrolls. */
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *),
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stHorizontalBlock,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"] {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-end !important;
+  justify-content: flex-start !important;
+  gap: 0 2px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 44px !important;
+  max-height: 44px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  border-bottom: 1px solid #d7e2ef !important;
+  margin: 0 0 16px !important;
+  scrollbar-width: thin;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *) > div,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stHorizontalBlock > div,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stHorizontalBlock"] > div {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled):not([hidden]),
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-secondary"]:not(:disabled):not([hidden]),
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"]:not(:disabled):not([hidden]) {
+  min-height: 36px !important;
+  min-width: 0 !important;
+  margin: 0 0 -1px !important;
+  padding: 8px 8px 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  width: max-content !important;
+  white-space: nowrap !important;
+  transform: none !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:not(:disabled):hover,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"]:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #0b1f3a !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled),
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-primary"]:not(:disabled) {
+  color: #1d4ed8 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid #2563eb !important;
+  box-shadow: none !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  width: max-content !important;
+  min-width: 0 !important;
+  padding: 8px 8px 10px !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="secondary"]:not(:disabled) *,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-secondary"]:not(:disabled) *,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"] * {
+  color: #334155 !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[kind="primary"]:not(:disabled) *,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button[data-testid="stBaseButton-primary"]:not(:disabled) * {
+  color: #1d4ed8 !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav .stButton:not(.st-key-cv_foundation_navigation .stButton) > button:focus-visible,
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"]:focus-visible {
+  outline: 2px solid #2563eb !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stPopoverButton"] svg {
+  display: none !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_analysis_section_nav [data-testid="stSelectbox"] {
+  display: none !important;
 }
