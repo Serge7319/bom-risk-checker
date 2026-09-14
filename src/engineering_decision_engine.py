@@ -1508,7 +1508,7 @@ def _html_workspace_strip(brief: Mapping[str, Any]) -> str:
               <strong>{conf_score}%</strong>
             </div>
             <div class="cv671-exec-stat cv671-exec-stat--action">
-              <span>Top Engineering Action</span>
+              <span>Next engineering action</span>
               <strong>{escape(top_part)}</strong>
               <small>{escape(top_title)}</small>
             </div>
@@ -1565,8 +1565,8 @@ def render_engineering_workspace_overview(brief: Mapping[str, Any]) -> None:
             <h4 class="cv672-subheading">{_decision_icon("shield", 14)} Executive readiness score</h4>
             {_html_executive_readiness(executive_readiness)}
           </div>
-          <article class="cv672-overview-action">
-            <div class="cv672-section-label">{_decision_icon("target", 16)} Top action</div>
+          <article class="cv672-overview-action cv-brief-next">
+            <div class="cv672-section-label">Next engineering action</div>
             <strong>{escape(top_part)}</strong>
             <span>{escape(top_title)}</span>
           </article>

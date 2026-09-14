@@ -486,10 +486,12 @@ def render_engineering_overview_workspace(
     metrics: Dict[str, Any],
     after_brief_hook: Optional[Callable[[], None]] = None,
     activation_hook: Optional[Callable[[], None]] = None,
+    include_brief: bool = True,
 ) -> None:
     """Workspace 1 — brief, KPIs, release posture, recommendations, work queue, quick actions."""
     st.markdown('<div class="cv-page cv672-dashboard-workspace cv-dashboard-workspace">', unsafe_allow_html=True)
-    render_engineering_overview_brief_and_kpis(overview=overview, metrics=metrics)
+    if include_brief:
+        render_engineering_overview_brief_and_kpis(overview=overview, metrics=metrics)
     if after_brief_hook:
         after_brief_hook()
 

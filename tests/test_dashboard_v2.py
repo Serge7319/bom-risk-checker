@@ -79,7 +79,7 @@ class DashboardV2Tests(unittest.TestCase):
         self.assertIn("inject_dashboard_workspace_styles()", self.runtime_source)
         self.assertIn("render_dashboard_page_heading()", self.runtime_source)
         self.assertNotIn("render_dashboard_workspace_navigation(", self.runtime_source)
-        self.assertIn("render_engineering_overview_workspace(", self.runtime_source)
+        self.assertIn("render_returning_home(", self.runtime_source)
         self.assertIn("render_portfolio_intelligence_workspace(", self.runtime_source)
 
     def test_legacy_render_dashboard_not_used_in_production_entry(self) -> None:
@@ -143,7 +143,11 @@ class DashboardV2Tests(unittest.TestCase):
 
     def test_onboarding_empty_state_present(self) -> None:
         self.assertIn("render_first_run_dashboard", self.onboarding_source)
-        self.assertIn("Upload my first BOM", self.onboarding_source)
+        self.assertIn("Start your first BOM review", self.runtime_source)
+        self.assertIn("Upload a BOM", self.onboarding_source)
+        self.assertIn("A first review in four steps", self.onboarding_source)
+        self.assertNotIn("Upload my first BOM", self.onboarding_source)
+        self.assertNotIn("Your first decision in four steps", self.onboarding_source)
         self.assertIn('if app_mode == "Dashboard":', self.runtime_source)
         self.assertIn("render_first_run_dashboard(", self.runtime_source)
 

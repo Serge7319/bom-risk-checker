@@ -4,8 +4,6 @@ from __future__ import annotations
 import html
 from typing import Any
 
-import pandas as pd
-
 import streamlit as st
 
 from src.services.customer_progress import build_activation_progress, next_activation_action
@@ -212,89 +210,35 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
 
 
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
-    """Render the launch onboarding and a live customer-activation checklist."""
-    name = _first_name(current_user)
-    workspace = "Getting Started"
-    st.markdown(
-        """
-        <style id="cadivor-ftue-native-30a">
-        .cv30-eyebrow{display:inline-flex;border:1px solid color-mix(in srgb,var(--cv-primary,#2563eb) 24%, var(--cv-border,#e2e8f0));background:var(--cv-primary-subtle,#eff6ff);color:var(--cv-primary-hover,#1d4ed8)!important;border-radius:var(--cv-radius-pill,999px);padding:7px 11px;font-size:var(--cv-font-xs,11px);font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
-        .cv30-hero [data-testid="stVerticalBlockBorderWrapper"]{border:1px solid var(--cv-border,#e2e8f0)!important;border-radius:var(--cv-radius-xl,24px)!important;background:linear-gradient(135deg,var(--cv-surface,#fff) 0%,var(--cv-bg-subtle,#f8fbff) 58%,var(--cv-primary-subtle,#eaf3ff) 100%)!important;box-shadow:var(--cv-shadow-sm,0 20px 50px rgba(15,23,42,.07))!important;padding:18px!important}
-        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]{min-height:146px;border-radius:var(--cv-radius-lg,17px)!important;border:1px solid var(--cv-border,#e2e8f0)!important;background:var(--cv-surface,#fff)!important;transition:transform .16s ease,box-shadow .16s ease}
-        .cv30-step [data-testid="stVerticalBlockBorderWrapper"]:hover{transform:translateY(-2px);box-shadow:var(--cv-shadow-sm,0 12px 28px rgba(15,23,42,.07))}
-        .cv30-number{width:30px;height:30px;border-radius:var(--cv-radius-md,10px);background:var(--cv-primary-subtle,#eff6ff);border:1px solid color-mix(in srgb,var(--cv-primary,#2563eb) 24%, var(--cv-border,#e2e8f0));color:var(--cv-primary-hover,#1d4ed8)!important;display:flex;align-items:center;justify-content:center;font-size:var(--cv-font-sm,12px);font-weight:950;margin-bottom:10px}
-        [data-testid="stHeaderActionElements"], a.header-anchor, .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a{display:none!important}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Render the first-review guide. Navigation stays the upload action only."""
+    if st.button("Upload a BOM", type="primary", key="ftue_upload_first_bom"):
+        _go_to("BOM Analyzer", new_analysis="1")
 
-    st.markdown('<div class="cv30-hero">', unsafe_allow_html=True)
-    with st.container(border=True):
-        st.markdown('<div class="cv30-eyebrow">Engineering Decision Intelligence</div>', unsafe_allow_html=True)
-        st.title(f"Welcome, {name}.")
-        st.markdown("Upload a BOM and identify lifecycle, inventory, supplier, and engineering risks—then move directly into a guided decision workflow.")
-        primary, secondary, _ = st.columns([1.05, 1, 2.1])
-        with primary:
-            if st.button("Upload my first BOM →", type="primary", use_container_width=True, key="ftue_upload_first_bom"):
-                _go_to("BOM Analyzer", new_analysis="1")
-        with secondary:
-            if st.button("See how it works", use_container_width=True, key="ftue_explore_workflow"):
-                st.session_state["show_ftue_workflow"] = not st.session_state.get("show_ftue_workflow", False)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if st.session_state.get("show_ftue_workflow"):
-        with st.expander("Cadivor workflow", expanded=True):
-            st.write("**1. Upload** a CSV or XLSX BOM.")
-            st.write("**2. Analyze** lifecycle, stock, supplier, and lead-time evidence.")
-            st.write("**3. Review** priority components and record engineering decisions.")
-            st.write("**4. Share** an executive-ready report and enable monitoring.")
-
-    st.subheader("Your first decision in four steps")
-    steps = [
+    steps = (
         ("1", "Upload", "Import a CSV or XLSX BOM."),
         ("2", "Understand risk", "See the evidence that matters first."),
         ("3", "Make decisions", "Review alternatives and record approvals."),
         ("4", "Share the outcome", "Export an executive-ready report."),
-    ]
-    for column, (number, title, copy) in zip(st.columns(4), steps):
-        with column:
-            st.markdown('<div class="cv30-step">', unsafe_allow_html=True)
-            with st.container(border=True):
-                st.markdown(f'<div class="cv30-number">{number}</div>', unsafe_allow_html=True)
-                st.markdown(f"**{title}**")
-                st.caption(copy)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-    left, right = st.columns([1.7, 1])
-    with left:
-        with st.container(border=True):
-            st.subheader("Get your first result in under five minutes")
-            st.write("Use your production BOM or start with a small Cadivor sample. Your analysis is saved so you can return to it later.")
-            st.caption("Supported formats: CSV and XLSX · Typical first analysis: under 5 minutes")
-            primary_action, sample_action = st.columns([1.1, 1])
-            with primary_action:
-                if st.button("Upload my BOM", type="primary", key="ftue_start_analysis", use_container_width=True):
-                    _go_to("BOM Analyzer", new_analysis="1")
-            with sample_action:
-                sample_bom = pd.DataFrame([
-                    {"Part Number": "LM2596S-5.0", "Manufacturer": "Texas Instruments", "Quantity": 2},
-                    {"Part Number": "PC817", "Manufacturer": "Sharp", "Quantity": 4},
-                    {"Part Number": "MCP2551", "Manufacturer": "Microchip", "Quantity": 1},
-                    {"Part Number": "PIC18F46K22", "Manufacturer": "Microchip", "Quantity": 1},
-                    {"Part Number": "BZXS5C5V1", "Manufacturer": "Diodes Incorporated", "Quantity": 3},
-                ])
-                st.download_button(
-                    "Download sample BOM",
-                    data=sample_bom.to_csv(index=False).encode("utf-8"),
-                    file_name="cadivor_sample_bom.csv",
-                    mime="text/csv",
-                    key="ftue_download_sample_bom",
-                    use_container_width=True,
-                )
-    with right:
-        with st.container(border=True):
-            _render_setup_checklist()
+    )
+    items = "".join(
+        f"""
+        <li>
+          <span class="cv-home-step-num">{number}</span>
+          <strong>{html.escape(title)}</strong>
+          <p>{html.escape(copy)}</p>
+        </li>
+        """
+        for number, title, copy in steps
+    )
+    st.markdown(
+        f"""
+        <section class="cv-home-steps" aria-label="A first review in four steps">
+          <h2>A first review in four steps</h2>
+          <ol>{items}</ol>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_activation_strip(*, analyses_count: int, has_review: bool = False, has_report: bool = False) -> None:

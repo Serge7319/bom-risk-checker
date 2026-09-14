@@ -159,7 +159,8 @@ def test_former_analysis_destinations_remain_reachable():
     assert covered["Engineering Intelligence"] == "Engineering Decision Brief"
     assert covered["Components"] == "Parts & Risk"
     assert covered["Alternatives"] == "Replacement Intelligence"
-    assert covered["Ask Cadivor"] == "More · Ask Cadivor"
+    assert covered["Ask Cadivor"] == "Ask Cadivor"
+    assert covered["Datasheet Q&A"] == "Decision Tools · Datasheet Q&A"
     assert covered["Monitor Components"] == "More · Watch this BOM"
     assert all(covered.values())
     assert PRIMARY_AREAS == (
@@ -167,13 +168,14 @@ def test_former_analysis_destinations_remain_reachable():
         "Parts & Risk",
         "Replacement Intelligence",
         "Engineering Decisions",
+        "Ask Cadivor",
     )
+    assert "Ask Cadivor" not in MORE_MENU
     assert set(MORE_MENU) == {
         "Discussion",
         "History",
         "Report",
         "Watch this BOM",
-        "Ask Cadivor",
         "Datasheet Q&A",
         "Compare parts",
         "Design Impact",
@@ -352,8 +354,10 @@ def test_dashboard_workspace_navigation_does_not_force_query_route_reload():
     assert "open_saved_bom" in source
     window = runtime.split('dashboard_nav_key = "cv672_dashboard_workspace_radio"', 1)[1][:4000]
     assert "dashboard_workspace=" not in window
-    assert 'st.session_state["cadivor_home_show_analytics"] = True' in window
-    assert "st.rerun()" in window
+    assert "render_returning_home(" in window
+    assert "Show analytics" not in window
+    assert "Setup Progress" not in window
+    assert "Preview onboarding" not in window
 
 
 def test_remaining_package_navigation_does_not_use_hard_query_links():

@@ -1,4 +1,4 @@
-"""Authenticated Datasheet Q&A page — conversational Ask Cadivor thread."""
+"""Authenticated Datasheet Q&A page. Not the saved-BOM assistant."""
 from __future__ import annotations
 
 import html
@@ -550,7 +550,7 @@ def render_datasheet_qa_page() -> None:
         _html(
             '<div class="dq-empty">'
             "<h3>No questions yet</h3>"
-            "<p>Ask Cadivor below, or use a suggested follow-up after your first answer.</p>"
+            "<p>Ask about this datasheet below, or use a suggested follow-up after your first answer.</p>"
             "</div>"
         )
     else:
@@ -582,7 +582,7 @@ def render_datasheet_qa_page() -> None:
     # Use markdown (not a preceding st.html card) so the composer chrome cannot
     # overlap the textarea and swallow the first Ask click.
     st.markdown(
-        '<p class="dq-composer-title">Ask Cadivor</p>'
+        '<p class="dq-composer-title">Ask this datasheet</p>'
         f'<p class="dq-composer-hint">{_esc(ask_hint)}</p>',
         unsafe_allow_html=True,
     )
@@ -600,7 +600,7 @@ def render_datasheet_qa_page() -> None:
     with ask_cols[0]:
         cadivor_button_wrap("primary")
         st.button(
-            "Ask Cadivor",
+            "Ask datasheet",
             key="datasheet_qa_ask_button",
             type="primary",
             use_container_width=False,
