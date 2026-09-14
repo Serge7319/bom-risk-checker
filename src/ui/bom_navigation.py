@@ -7,12 +7,15 @@ ENGINEERING_DECISION_BRIEF = "Engineering Decision Brief"
 PARTS_AND_RISK = "Parts & Risk"
 REPLACEMENT_INTELLIGENCE = "Replacement Intelligence"
 ENGINEERING_DECISIONS = "Engineering Decisions"
+ASK_CADIVOR = "Ask Cadivor"
+DATASHEET_QA = "Datasheet Q&A"
 
 PRIMARY_AREAS: tuple[str, ...] = (
     ENGINEERING_DECISION_BRIEF,
     PARTS_AND_RISK,
     REPLACEMENT_INTELLIGENCE,
     ENGINEERING_DECISIONS,
+    ASK_CADIVOR,
 )
 
 MORE_MENU: tuple[str, ...] = (
@@ -20,8 +23,7 @@ MORE_MENU: tuple[str, ...] = (
     "History",
     "Report",
     "Watch this BOM",
-    "Ask Cadivor",
-    "Datasheet Q&A",
+    DATASHEET_QA,
     "Compare parts",
     "Design Impact",
 )
@@ -96,6 +98,54 @@ def section_for_choice(choice: str) -> str:
     return "Engineering Intelligence"
 
 
+def feature_map() -> dict[str, dict[str, str]]:
+    """Distinct locations. Ask Cadivor and Datasheet Q&A are not interchangeable."""
+    return {
+        ASK_CADIVOR: {
+            "label": ASK_CADIVOR,
+            "location": "saved BOM navigation",
+            "reach": "one click while a BOM is open",
+        },
+        DATASHEET_QA: {
+            "label": DATASHEET_QA,
+            "location": "Decision Tools",
+            "reach": "one click globally",
+            "contextual": f"More · {DATASHEET_QA}",
+        },
+    }
+
+
+def selected_component_context(
+    session: Mapping[str, Any],
+    *,
+    analysis_id: str,
+    requested_component: str = "",
+) -> dict[str, str]:
+    """BOM and selected-part context for Ask Cadivor. Does not invent a part."""
+    analysis = str(analysis_id or "").strip()
+    requested = str(requested_component or "").strip()
+    component = requested
+    if not component:
+        stored_analysis = str(session.get("cadivor_selected_component_analysis_id") or "").strip()
+        stored_mpn = str(session.get("cadivor_selected_component_mpn") or "").strip()
+        if stored_mpn and (not stored_analysis or stored_analysis == analysis):
+            component = stored_mpn
+    if not component:
+        label = str(session.get(f"analysis_component_selector_{analysis}") or "").strip()
+        if " — " in label:
+            component = label.split(" — ", 1)[0].strip()
+        elif label and label.lower() not in {"unknown", "unknown mpn"}:
+            component = label
+    if not component:
+        review = str(session.get("cadivor_review_mpn") or "").strip()
+        if review and review.lower() not in {"unknown", "unknown mpn"}:
+            component = review
+    return {
+        "analysis_id": analysis,
+        "selected_component": component,
+    }
+
+
 def former_destinations_covered() -> dict[str, str]:
     """Every previous Analysis Details destination and where it now lives."""
     return {
@@ -113,7 +163,8 @@ def former_destinations_covered() -> dict[str, str]:
         "Discussions": "More · Discussion",
         "Timeline": "More · History",
         "Reports": "More · Report",
-        "Ask Cadivor": "More · Ask Cadivor",
+        "Ask Cadivor": ASK_CADIVOR,
+        "Datasheet Q&A": f"Decision Tools · {DATASHEET_QA}",
         "Open BOM Analyzer": "Back to BOMs",
         "Find Alternatives": "Find a replacement on the selected part",
         "Monitor Components": "More · Watch this BOM",

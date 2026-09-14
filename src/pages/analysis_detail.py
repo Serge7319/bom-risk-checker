@@ -16,6 +16,7 @@ from src.ui.bom_navigation import (
     PRIMARY_AREAS,
     primary_review_action,
     section_for_choice,
+    selected_component_context,
     visible_area_for_section,
 )
 from src.ui.navigation import (
@@ -152,8 +153,21 @@ def _consume_pending_analysis_section(*, analysis_id: str) -> None:
     nav_key = _analysis_section_nav_key(analysis_id)
     st.session_state["cadivor_active_analysis_tab"] = pending
     st.session_state[nav_key] = pending
+    _sync_bom_area_widgets(analysis_id=analysis_id, section=pending)
     st.session_state.pop(PENDING_ANALYSIS_SECTION_KEY, None)
     st.session_state.pop(PENDING_ANALYSIS_SECTION_ID_KEY, None)
+
+
+def _sync_bom_area_widgets(*, analysis_id: str, section: str) -> None:
+    """Align the primary pill and More control with a section chosen outside the widgets."""
+    visible = visible_area_for_section(section)
+    area_key = f"cadivor_bom_area_{analysis_id}"
+    more_key = f"cadivor_bom_more_{analysis_id}"
+    if visible in PRIMARY_AREAS:
+        st.session_state[area_key] = visible
+        st.session_state[more_key] = "More"
+    elif visible in MORE_MENU:
+        st.session_state[more_key] = visible
 
 
 def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
@@ -209,7 +223,7 @@ def _commit_analysis_section_selection(*, analysis_id: str, selected: str) -> st
 
 
 def _render_analysis_section_navigation(*, analysis_id: str) -> str:
-    """Four primary areas plus More. Legacy section keys still resolve."""
+    """Primary areas, including Ask Cadivor, plus More. Legacy section keys still resolve."""
     _consume_pending_analysis_section(analysis_id=analysis_id)
     nav_key = _analysis_section_nav_key(analysis_id)
     stored = _safe(
@@ -228,9 +242,10 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
         "Discussions": "Discussion",
         "Timeline": "History",
         "Reports": "Report",
-        "Ask Cadivor": "Ask Cadivor",
     }.get(stored, "More")
-    if more_key not in st.session_state:
+    if more_default not in MORE_MENU:
+        more_default = "More"
+    if more_key not in st.session_state or st.session_state.get(more_key) not in ("More", *MORE_MENU):
         st.session_state[more_key] = more_default
 
     widget = getattr(st, "pills", None) or getattr(st, "radio", None)
@@ -576,8 +591,8 @@ def render_analysis_detail(
         button[data-baseweb="tab"][aria-selected="true"] p{color:#1d4ed8!important}
         div[data-baseweb="tab-highlight"]{display:none!important}
         .st-key-cv_analysis_section_nav div[data-testid="stPills"]{border-bottom:1px solid #dbe3ef;padding:0;margin:0 0 18px}
-        .st-key-cv_analysis_section_nav div[data-testid="stPills"] > div{gap:0!important}
-        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button{border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;padding:10px 14px 9px!important;font-size:12px!important;font-weight:800!important;color:#64748b!important;background:transparent!important;box-shadow:none!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] > div{gap:0!important;flex-wrap:wrap!important}
+        .st-key-cv_analysis_section_nav div[data-testid="stPills"] button{border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;padding:10px 10px 9px!important;font-size:12px!important;font-weight:800!important;color:#64748b!important;background:transparent!important;box-shadow:none!important;white-space:nowrap!important}
         .st-key-cv_analysis_section_nav div[data-testid="stPills"] button:hover{color:#1d4ed8!important;background:transparent!important;border-bottom-color:#bfdbfe!important}
         .st-key-cv_analysis_section_nav div[data-testid="stPills"] button[aria-pressed="true"],.st-key-cv_analysis_section_nav div[data-testid="stPills"] button[aria-selected="true"]{color:#1d4ed8!important;background:transparent!important;border-bottom-color:#2563eb!important}
         .cv-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
@@ -1118,9 +1133,9 @@ def render_analysis_detail(
                 </p>
               </div>
               <div class="cv-analysis-summary cv-analysis-header-kpis">
-                <div class="cv-analysis-mini"><span>Health</span><strong>{health}</strong><small>{html.escape(risk_status)}</small></div>
+                <div class="cv-analysis-mini cv-analysis-mini--{health_cls}"><span>Health</span><strong>{health}</strong><small>{html.escape(risk_status)}</small></div>
                 <div class="cv-analysis-mini"><span>Parts</span><strong>{total_parts}</strong><small>{html.escape(filename)}</small></div>
-                <div class="cv-analysis-mini"><span>High Risk</span><strong>{high}</strong><small>Components needing review</small></div>
+                <div class="cv-analysis-mini{' cv-analysis-mini--bad' if high else ''}"><span>High Risk</span><strong>{high}</strong><small>{"Components needing review" if high else "No high-risk parts"}</small></div>
                 <div class="cv-analysis-mini"><span>Updated</span><strong>{_relative_date(created)}</strong><small>{_date(created)}</small></div>
               </div>
             </header>
@@ -1295,47 +1310,48 @@ def render_analysis_detail(
                 replacement_chosen=replacement_chosen,
                 review_queue_clear=queue_clear,
             )
-            st.markdown(
-                f'<p class="cv-analysis-sub">Next: {html.escape(action["label"])}</p>',
-                unsafe_allow_html=True,
-            )
-            if action["kind"] == "review_part" and action.get("mpn"):
-                if st.button(action["label"], key=f"brief_review_{analysis_id}", type="primary"):
-                    st.session_state["cadivor_review_mpn"] = action["mpn"]
-                    st.session_state["cadivor_active_analysis_tab"] = "Components"
-                    st.session_state[_analysis_section_nav_key(analysis_id)] = "Components"
-                    st.rerun()
-            elif action["kind"] in {"review_part", "review_parts"}:
-                if st.button(action["label"], key=f"brief_review_fallback_{analysis_id}", type="primary"):
-                    st.session_state["cadivor_active_analysis_tab"] = "Components"
-                    st.session_state[_analysis_section_nav_key(analysis_id)] = "Components"
-                    st.rerun()
-            elif action["kind"] == "replacement":
-                if st.button(
-                    "Find a replacement",
-                    key=f"brief_find_replacement_{analysis_id}",
-                    type="primary",
-                ):
-                    navigate_to_alternative_finder(
-                        mpn=action["mpn"],
-                        analysis_id=analysis_id,
-                        return_analysis_id=analysis_id,
-                        source_page="analysis_detail",
-                        arm_opening=False,
-                    )
-            elif action["kind"] == "decision":
-                if st.button("Record decision", key=f"brief_record_{analysis_id}", type="primary"):
-                    st.session_state["cadivor_active_analysis_tab"] = "Engineering Decisions"
-                    st.session_state[_analysis_section_nav_key(analysis_id)] = "Engineering Decisions"
-                    st.session_state["cadivor_decision_focus"] = True
-                    st.session_state["cadivor_stack_decision_brief"] = False
-                    st.rerun()
-            report_kwargs = {
-                "key": f"brief_report_{analysis_id}",
-                "type": "primary" if action["kind"] == "report" else "secondary",
-            }
-            if st.button("Generate report", **report_kwargs):
-                navigate_to("Reports", analysis_id=analysis_id, arm_opening=False)
+            with st.container(key="cv_brief_next"):
+                st.markdown(
+                    '<p class="cv-brief-kicker">Next engineering action</p>',
+                    unsafe_allow_html=True,
+                )
+                if action["kind"] == "review_part" and action.get("mpn"):
+                    if st.button(action["label"], key=f"brief_review_{analysis_id}", type="primary"):
+                        st.session_state["cadivor_review_mpn"] = action["mpn"]
+                        st.session_state["cadivor_active_analysis_tab"] = "Components"
+                        st.session_state[_analysis_section_nav_key(analysis_id)] = "Components"
+                        st.rerun()
+                elif action["kind"] in {"review_part", "review_parts"}:
+                    if st.button(action["label"], key=f"brief_review_fallback_{analysis_id}", type="primary"):
+                        st.session_state["cadivor_active_analysis_tab"] = "Components"
+                        st.session_state[_analysis_section_nav_key(analysis_id)] = "Components"
+                        st.rerun()
+                elif action["kind"] == "replacement":
+                    if st.button(
+                        "Find a replacement",
+                        key=f"brief_find_replacement_{analysis_id}",
+                        type="primary",
+                    ):
+                        navigate_to_alternative_finder(
+                            mpn=action["mpn"],
+                            analysis_id=analysis_id,
+                            return_analysis_id=analysis_id,
+                            source_page="analysis_detail",
+                            arm_opening=False,
+                        )
+                elif action["kind"] == "decision":
+                    if st.button("Record decision", key=f"brief_record_{analysis_id}", type="primary"):
+                        st.session_state["cadivor_active_analysis_tab"] = "Engineering Decisions"
+                        st.session_state[_analysis_section_nav_key(analysis_id)] = "Engineering Decisions"
+                        st.session_state["cadivor_decision_focus"] = True
+                        st.session_state["cadivor_stack_decision_brief"] = False
+                        st.rerun()
+                report_kwargs = {
+                    "key": f"brief_report_{analysis_id}",
+                    "type": "primary" if action["kind"] == "report" else "secondary",
+                }
+                if st.button("Generate report", **report_kwargs):
+                    navigate_to("Reports", analysis_id=analysis_id, arm_opening=False)
         render_engineering_workspace_strip(decision_brief)
         workspace_nav_key = f"cv672_workspace_pills_{analysis_id}"
         ws_state_key = f"engineering_workspace_tab_{analysis_id}"
@@ -2425,10 +2441,14 @@ def render_analysis_detail(
                     key=selector_key,
                 )
                 selected_part = part_labels[selected_label]
-                selected_mpn_for_row = _safe(
+                selected_mpn_value = _safe(
                     _part_value(selected_part, "mpn", "MPN"),
                     "",
-                ).strip().lower()
+                ).strip()
+                if selected_mpn_value and selected_mpn_value.lower() not in {"unknown", "unknown mpn"}:
+                    st.session_state["cadivor_selected_component_mpn"] = selected_mpn_value
+                    st.session_state["cadivor_selected_component_analysis_id"] = str(analysis_id)
+                selected_mpn_for_row = selected_mpn_value.lower()
 
                 table_col, detail_col = st.columns([1.25, 0.75], gap="medium")
                 with table_col:
@@ -3434,10 +3454,15 @@ def render_analysis_detail(
     # top reset; component-focused navigation keeps its targeted section jump.
 
     if active_tab == "Ask Cadivor":
+        launch = selected_component_context(
+            st.session_state,
+            analysis_id=str(analysis_id or st.session_state.get("cadivor_active_analysis_id") or ""),
+            requested_component=requested_component,
+        )
         render_engineering_assistant(
             current_user=current_user,
             engineering_context=engineering_context,
-            selected_component=requested_component,
+            selected_component=launch["selected_component"],
         )
 
     if saved_bom_top_requested or (analysis_changed and not component_focus_requested):

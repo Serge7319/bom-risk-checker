@@ -3366,88 +3366,47 @@ def run_authenticated_app() -> None:
         except Exception:
             pass
 
-        if should_show_setup_continuation(onboarding_progress):
-            onboarding_done = completion_count(onboarding_progress)
-            onboarding_percent = int((onboarding_done / 5) * 100)
-            missing_setup = required_setup_missing(onboarding_progress)
-            missing_copy = (
-                "; ".join(missing_setup)
-                if missing_setup
-                else "Finish remaining Cadivor readiness steps."
-            )
-            st.markdown(
-                f"""
-                <style id="cadivor-dashboard-setup-v11a3">
-                .cv-setup-reminder{{
-                    border:1px solid #BFDBFE;border-radius:20px;background:#FFFFFF;
-                    box-shadow:0 16px 38px rgba(15,23,42,.06);padding:18px 20px;
-                    margin:0 0 18px;
-                }}
-                .cv-setup-reminder-top{{
-                    display:flex;align-items:center;justify-content:space-between;
-                    gap:14px;margin-bottom:10px;
-                }}
-                .cv-setup-reminder h3{{
-                    color:#0F172A!important;font-size:16px;font-weight:950;margin:0;
-                }}
-                .cv-setup-reminder strong{{
-                    color:#2563EB!important;font-size:12px;font-weight:950;
-                }}
-                .cv-setup-reminder p{{
-                    color:#64748B!important;font-size:11px;line-height:1.5;
-                    font-weight:720;margin:0 0 12px;
-                }}
-                .cv-setup-reminder-bar{{
-                    height:8px;border-radius:999px;background:#E2E8F0;overflow:hidden;
-                }}
-                .cv-setup-reminder-bar i{{
-                    display:block;height:100%;width:{onboarding_percent}%;
-                    background:#2563EB;border-radius:999px;
-                }}
-                </style>
-                <section class="cv-setup-reminder">
-                  <div class="cv-setup-reminder-top">
-                    <h3>Complete your Cadivor setup</h3>
-                    <strong>{onboarding_done}/5 complete</strong>
-                  </div>
-                  <p>
-                    {html.escape(missing_copy)}
-                  </p>
-                  <div class="cv-setup-reminder-bar"><i></i></div>
-                </section>
-                """,
-                unsafe_allow_html=True,
-            )
-            # New accounts already receive the full setup experience on Dashboard.
-            # Keep this reminder only after the user has made progress beyond account creation.
-            if onboarding_done > 1 and st.button(
-                "Setup Progress",
-                key="dashboard_continue_onboarding",
-            ):
-                navigate_to("Onboarding")
-
         from src.boot_read_budget import (
             mark_secondary_data_delayed,
             run_with_read_budget,
             secondary_data_delayed,
         )
 
-        def _load_dashboard_secondary():
+        from src.pages.home_workspace import (
+            HOME_NEW,
+            apply_saved_analysis_result,
+            build_home_model,
+            render_returning_home,
+            render_saved_boms_unavailable,
+        )
+
+        def _load_saved_analyses():
             analyses_response = execute_supabase_read(
                 _workspace_query(
                     supabase.table("analyses").select(
-                        "id,filename,project_name,total_parts,health_score,created_at,high_risk_count,medium_risk_count,low_risk_count"
+                        "id,user_id,filename,project_name,total_parts,health_score,created_at,high_risk_count,medium_risk_count,low_risk_count"
                     )
                 )
                 .eq("user_id", current_user["id"])
                 .order("created_at", desc=True)
                 .limit(40),
-                operation="dashboard_analyses",
+                operation="dashboard_saved_analyses",
             )
+            return analyses_response.data or []
+
+        _saved_rows, _saved_status = run_with_read_budget(_load_saved_analyses)
+        overview_analyses = apply_saved_analysis_result(
+            st.session_state,
+            user_id=current_user["id"],
+            rows=_saved_rows,
+            status=_saved_status,
+        )
+
+        def _load_dashboard_secondary():
             parts_response = execute_supabase_read(
                 _workspace_query(
                     supabase.table("analysis_parts").select(
-                        "id,analysis_id,mpn,risk_level,risk_score,lifecycle_status,manufacturer"
+                        "id,analysis_id,user_id,mpn,risk_level,risk_score,lifecycle_status,manufacturer"
                     )
                 )
                 .eq("user_id", current_user["id"])
@@ -3457,7 +3416,7 @@ def run_authenticated_app() -> None:
             alerts_response = execute_supabase_read(
                 _workspace_query(
                     supabase.table("monitor_alerts").select(
-                        "id,part_number,mpn,alert_type,created_at,status,severity"
+                        "id,part_number,mpn,alert_type,created_at,status,severity,user_id"
                     )
                 )
                 .eq("user_id", current_user["id"])
@@ -3469,9 +3428,9 @@ def run_authenticated_app() -> None:
                 supabase,
                 user_id=current_user["id"],
                 workspace_id=active_workspace_id or None,
+                budget_seconds=2,
             )
             return (
-                analyses_response.data or [],
                 parts_response.data or [],
                 alerts_response.data or [],
                 decision_state or {},
@@ -3480,14 +3439,21 @@ def run_authenticated_app() -> None:
         _dashboard_loaded, _dashboard_status = run_with_read_budget(_load_dashboard_secondary)
         if _dashboard_status != "ok" or not _dashboard_loaded:
             mark_secondary_data_delayed(st.session_state, True)
-            overview_analyses, overview_parts, overview_alerts, overview_state = [], [], [], {}
+            overview_parts, overview_alerts, overview_state = [], [], {}
         else:
             mark_secondary_data_delayed(st.session_state, False)
-            overview_analyses, overview_parts, overview_alerts, overview_state = _dashboard_loaded
-        if secondary_data_delayed(st.session_state):
-            st.info("Some details are still loading.")
-            if st.button("Try again", key="dashboard_secondary_retry"):
-                st.rerun()
+            overview_parts, overview_alerts, overview_state = _dashboard_loaded
+        if overview_analyses is None:
+            overview_analyses_for_model = None
+        else:
+            overview_analyses_for_model = overview_analyses
+        home = build_home_model(
+            user_id=current_user["id"],
+            analyses=overview_analyses_for_model,
+            parts=overview_parts,
+            secondary_failed=secondary_data_delayed(st.session_state),
+        )
+        overview_analyses = list(home["analyses"])
 
         overview_decisions = build_decision_center(
             alert_df=pd.DataFrame(overview_alerts),
@@ -3511,50 +3477,21 @@ def run_authenticated_app() -> None:
         # rendering the default Engineering Overview tab. Previously, onboarding
         # existed only inside Portfolio Dashboard, so brand-new users always saw
         # the empty overview because Streamlit opens the first tab by default.
-        preview_onboarding = False
-        try:
-            preview_value = _qp_value("preview_onboarding", "")
-            preview_onboarding = str(preview_value).strip().lower() in {
-                "1", "true", "yes", "on"
-            }
-        except Exception:
-            preview_onboarding = False
+        real_overview_analyses = list(overview_analyses)
 
-        real_overview_analyses = [
-            row for row in overview_analyses
-            if isinstance(row, dict)
-            and row.get("id")
-            and any(
-                row.get(field) not in (None, "", 0, 0.0)
-                for field in (
-                    "filename",
-                    "project_name",
-                    "total_parts",
-                    "health_score",
-                    "created_at",
-                )
-            )
-        ]
-
-        if not real_overview_analyses or preview_onboarding:
-            if preview_onboarding and real_overview_analyses:
-                preview_notice, preview_exit = st.columns([4, 1])
-                with preview_notice:
-                    st.info(
-                        "Onboarding preview is active. Your saved analyses are unchanged."
-                    )
-                with preview_exit:
-                    if st.button(
-                        "Exit preview",
-                        key="dashboard_exit_onboarding_preview",
-                        use_container_width=True,
-                    ):
-                        st.session_state.pop("preview_onboarding", None)
-                        st.query_params.pop("preview_onboarding", None)
-                        navigate_to("Dashboard")
-            # Sprint 30.4: use the normalized, persistent customer profile so
-            # onboarding and onboarding preview match the shell/dashboard identity.
+        if home["kind"] == "unknown":
             reveal_authenticated_page_body("Dashboard")
+            render_saved_boms_unavailable()
+            stop_authenticated_page()
+
+        if home["kind"] == HOME_NEW:
+            # New-user copy only. A secondary timeout must not reach this branch
+            # when saved analyses or a user-scoped cache already exist.
+            reveal_authenticated_page_body("Dashboard")
+            render_dashboard_page_heading(
+                "Start your first BOM review",
+                "Upload a BOM to identify component risk, review evidence, and document the next engineering action.",
+            )
             render_first_run_dashboard(
                 current_user=profile_for_shell,
                 workspace_name=active_workspace_name,
@@ -3563,48 +3500,47 @@ def run_authenticated_app() -> None:
 
         dashboard_nav_key = "cv672_dashboard_workspace_radio"
         st.session_state[dashboard_nav_key] = "What needs attention"
-        show_analytics = bool(st.session_state.get("cadivor_home_show_analytics"))
-        workspace_category = "Analytics" if show_analytics else "Engineering Overview"
+        # Returning Home stays the concise overview. Portfolio Intelligence
+        # remains a Decision Tools destination, not a Home action.
+        workspace_category = "Engineering Overview"
         st.session_state["dashboard_workspace_tab"] = workspace_category
 
         portfolio_cache_key = f"dashboard_portfolio_ctx_{current_user['id']}_{active_workspace_id or 'none'}"
 
         if workspace_category == "Engineering Overview":
-            dashboard_metrics = compute_dashboard_summary_metrics(overview)
-            profile = get_user_profile(current_user)
-
-            def _render_engineering_activation() -> None:
-                render_activation_strip(
-                    analyses_count=len(real_overview_analyses),
-                    has_review=False,
-                    has_report=False,
+            reveal_authenticated_page_body("Dashboard")
+            render_dashboard_page_heading(
+                home["title"],
+                "Open the highest-risk BOM, or start a new one."
+                if home["kind"] == "attention"
+                else "Pick up a saved BOM, or start a new one.",
+            )
+            pause_new = (
+                not is_admin
+                and selected_plan_name in {PLAN_TRIAL_EXPIRED, PLAN_SUBSCRIPTION_INACTIVE}
+            )
+            plan_notice = ""
+            if pause_new and selected_plan_name == PLAN_TRIAL_EXPIRED:
+                plan_notice = (
+                    "Your trial has ended. New analyses are paused. "
+                    "Your saved BOMs and reports are still available."
                 )
-                if not is_admin:
+            elif pause_new:
+                plan_notice = (
+                    "This subscription is not active. New analyses are paused. "
+                    "Your saved BOMs and reports are still available."
+                )
+            render_returning_home(
+                home,
+                plan_notice=plan_notice,
+                pause_new_analyses=pause_new,
+            )
+            if not is_admin:
                     render_upgrade_prompt(
                         plan_name=selected_plan_name,
                         monthly_used=len(real_overview_analyses),
                         monthly_limit=selected_plan.get("monthly_bom_limit"),
                     )
-
-            reveal_authenticated_page_body("Dashboard")
-            if not is_admin and selected_plan_name == PLAN_TRIAL_EXPIRED:
-                st.info(
-                    "Your trial has ended. Open a saved analysis or report to review existing work, "
-                    "then choose a paid plan before starting a new analysis."
-                )
-            elif not is_admin and selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
-                st.info(
-                    "This subscription is not active. Open a saved analysis or report to review existing work, "
-                    "then choose a paid plan before starting a new analysis."
-                )
-            render_engineering_overview_workspace(
-                overview=overview,
-                metrics=dashboard_metrics,
-                activation_hook=_render_engineering_activation,
-            )
-            if st.button("Show analytics", key="dashboard_show_analytics", type="secondary"):
-                st.session_state["cadivor_home_show_analytics"] = True
-                st.rerun()
         elif workspace_category == "Portfolio Intelligence":
             if portfolio_cache_key not in st.session_state:
                 st.session_state[portfolio_cache_key] = load_portfolio_dashboard_context(
@@ -3645,17 +3581,6 @@ def run_authenticated_app() -> None:
                 parts=overview_parts,
                 alerts=overview_alerts,
             )
-
-        # Existing customers can revisit the first-time experience without creating
-        # a disposable account. This is a preview only and never changes saved data.
-        if st.button("Preview onboarding", key="dashboard_preview_onboarding", type="secondary"):
-            try:
-                st.query_params["preview_onboarding"] = "1"
-                st.query_params["page"] = "Dashboard"
-            except Exception:
-                pass
-            st.session_state["preview_onboarding"] = "1"
-            navigate_to("Dashboard", arm_opening=False)
 
         inject_workspace_consistency_css()
         st.session_state.pop("cadivor_route_transition", None)

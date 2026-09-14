@@ -217,7 +217,9 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
             self.assertNotIn(term, joined)
 
     def test_product_language_and_normal_ask_button(self):
-        self.assertIn("Ask Cadivor", DATASHEET_PAGE)
+        self.assertIn("Datasheet Q&A", DATASHEET_PAGE)
+        self.assertIn("Ask this datasheet", DATASHEET_PAGE)
+        self.assertNotIn(">Ask Cadivor<", DATASHEET_PAGE)
         self.assertIn("Private session", DATASHEET_PAGE)
         self.assertIn("View supporting passages", DATASHEET_PAGE)
         self.assertIn(">You<", DATASHEET_PAGE)
@@ -233,7 +235,7 @@ class DatasheetQaWorkspaceUxTests(unittest.TestCase):
         self.assertIn("Cadivor is reviewing the datasheet evidence", DATASHEET_PAGE)
         self.assertIn("NOT_FOUND_ANSWER", DATASHEET_PAGE)
         self.assertEqual(NOT_FOUND_ANSWER, "Not found in this datasheet.")
-        self.assertIn('st.button(\n            "Ask Cadivor"', DATASHEET_PAGE)
+        self.assertIn('st.button(\n            "Ask datasheet"', DATASHEET_PAGE)
         self.assertNotIn("st.form_submit_button", DATASHEET_PAGE)
         self.assertIn("use_container_width=False", DATASHEET_PAGE)
         self.assertIn("dq-shell", DATASHEET_PAGE)

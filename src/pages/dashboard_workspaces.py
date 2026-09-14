@@ -37,15 +37,21 @@ WORKSPACE_HEADERS: Dict[str, tuple[str, str]] = {
 }
 
 
-def render_dashboard_page_heading() -> None:
+def render_dashboard_page_heading(
+    title: str = "",
+    subtitle: str = "",
+) -> None:
+    """Paint the Home title after identity is known. An empty title paints nothing."""
+    if not str(title or "").strip():
+        return
     st.markdown(
-        """
+        f"""
         <div class="cv-page cv-dashboard-page">
           <header class="cv-page-header cv672-dashboard-heading">
             <div>
-              <h1 class="cv-page-title cv672-dashboard-title">What needs attention</h1>
+              <h1 class="cv-page-title cv672-dashboard-title">{html.escape(title)}</h1>
               <p class="cv-page-subtitle cv672-dashboard-subtitle">
-                Open the highest-risk BOM, or upload a new one.
+                {html.escape(subtitle)}
               </p>
             </div>
           </header>
