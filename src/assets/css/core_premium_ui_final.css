@@ -690,3 +690,16 @@ section[data-testid="stMain"] [data-cadivor-route-root="1"] {
     padding-top: calc(var(--cv-foundation-top, 64px) + 16px + env(safe-area-inset-top, 0px)) !important;
   }
 }
+
+/* Empty saved-analysis hosts must not stack above Home or inside a brief. */
+.st-key-bom81_saved_manager:not(:has([data-saved-analyses="ready"])),
+.st-key-bom81_saved_manager details ~ details {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}

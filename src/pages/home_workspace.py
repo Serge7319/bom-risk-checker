@@ -121,10 +121,15 @@ def build_home_model(
 
 
 def render_secondary_update_banner() -> None:
-    with st.container(key="cv_home_retry"):
+    """One timeout notice and one Retry action. Replace the slot; never append."""
+    from src.boot_read_budget import SECONDARY_DATA_DELAYED_KEY
+
+    slot = st.empty()
+    slot.empty()
+    with slot.container():
         st.markdown(
             f"""
-            <div class="cv-home-notice cv-home-notice--caution" role="status">
+            <div class="cv-home-notice cv-home-notice--caution" data-testid="cv-home-timeout" role="status">
               <span class="cv-home-notice-icon" aria-hidden="true">↻</span>
               <p>{html.escape(SECONDARY_UPDATE_BANNER)}</p>
             </div>
@@ -132,14 +137,21 @@ def render_secondary_update_banner() -> None:
             unsafe_allow_html=True,
         )
         if st.button(RETRY_UPDATES_LABEL, key="home_retry_updates"):
+            slot.empty()
+            st.session_state.pop(SECONDARY_DATA_DELAYED_KEY, None)
+            st.session_state.pop("cadivor_workspace_command_cache", None)
             st.rerun()
 
 
 def render_saved_boms_unavailable() -> None:
     """Primary identity failed and nothing is cached. Do not show new-user onboarding."""
-    st.warning("We couldn’t load your saved BOMs.")
-    if st.button(RETRY_UPDATES_LABEL, key="home_retry_saved_boms"):
-        st.rerun()
+    slot = st.empty()
+    slot.empty()
+    with slot.container():
+        st.warning("We couldn’t load your saved BOMs.")
+        if st.button(RETRY_UPDATES_LABEL, key="home_retry_saved_boms"):
+            slot.empty()
+            st.rerun()
 
 
 def render_returning_home(
