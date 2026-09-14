@@ -109,6 +109,11 @@ from src.ui.navigation import (
     should_paint_opening_overlay,
 )
 from src.browser_navigation import consume_browser_navigation_event
+from src.ui.route_body import (
+    claim_authenticated_route_body,
+    enter_authenticated_route_body,
+    exit_authenticated_route_body,
+)
 from src.ui.unified_shell import (
     render_unified_shell,
     inject_unified_shell_css,
@@ -137,6 +142,7 @@ def stop_authenticated_page(*args, **kwargs):
                 or ""
             )
         )
+    exit_authenticated_route_body()
     return _stop_authenticated_page_impl(*args, **kwargs)
 from src.ui.executive_workspace import inject_executive_workspace_css, render_page_context
 from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
@@ -1819,15 +1825,21 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
 
     Priority:
     1. Browser Back/Forward event page (when present)
-    2. Existing session route / app_mode
-    3. ``?page=`` query value
+    2. ``?page=`` query value when it diverges from the session route
+       (address-bar history is the restore source of truth)
+    3. Existing session route / app_mode
     4. Dashboard
 
     Always writes the same value to ``cadivor_route``, ``app_mode``, and
     ``st.query_params["page"]`` so chrome and content cannot diverge in-run.
     """
     browser_page = ""
+    browser_params: dict[str, str] = {}
     browser_event = consume_browser_navigation_event()
+    previous_route = _safe_text(
+        st.session_state.get("cadivor_route") or st.session_state.get("app_mode"),
+        "",
+    )
     if browser_event:
         event_id = _safe_text(browser_event.get("event_id"), "")
         href = _safe_text(browser_event.get("href"), "")
@@ -1837,7 +1849,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
             and href
         ):
             try:
-                params = {
+                browser_params = {
                     key: values[-1]
                     for key, values in parse_qs(
                         urlparse(href).query,
@@ -1846,8 +1858,8 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
                     if values
                 }
             except Exception:
-                params = {}
-            browser_page = _safe_text(params.get("page"), "")
+                browser_params = {}
+            browser_page = _safe_text(browser_params.get("page"), "")
             st.session_state["cadivor_last_browser_navigation_event_id"] = event_id
 
     try:
@@ -1857,13 +1869,14 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     except Exception:
         raw_qp = ""
     query_page = _safe_text(raw_qp, "")
-    session_page = _safe_text(
-        st.session_state.get("cadivor_route") or st.session_state.get("app_mode"),
-        "",
-    )
+    session_page = previous_route
 
     if browser_page:
         route = browser_page
+    elif query_page and session_page and query_page != session_page:
+        # Browser history changed the address bar; prefer URL over a stale
+        # in-memory route when the Back/Forward bridge event was missed.
+        route = query_page
     elif session_page:
         route = session_page
     elif query_page:
@@ -1877,12 +1890,40 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     if route not in allow:
         route = "Dashboard"
 
+    route_changed = bool(previous_route) and previous_route != route
+    if route_changed and (browser_page or (query_page and query_page == route and query_page != session_page)):
+        # Browser Back/Forward must retire prior body ownership the same way
+        # in-app navigate_to does, without forcing a hard reload.
+        try:
+            from src.ui.main_transition import arm_main_transition
+
+            arm_main_transition(st.session_state, route)
+        except Exception:
+            st.session_state.pop("cadivor_presented_route", None)
+
     st.session_state["cadivor_route"] = route
     st.session_state["app_mode"] = route
-    try:
-        st.query_params["page"] = route
-    except Exception:
-        pass
+    if browser_params:
+        nav_params = {
+            key: value
+            for key, value in browser_params.items()
+            if key not in {"cadivor_signed_out", "auth", "source"}
+            and str(value or "").strip() != ""
+        }
+        nav_params["page"] = route
+        st.session_state["cadivor_nav_params"] = nav_params
+        try:
+            st.query_params.from_dict(nav_params)
+        except Exception:
+            try:
+                st.query_params["page"] = route
+            except Exception:
+                pass
+    else:
+        try:
+            st.query_params["page"] = route
+        except Exception:
+            pass
     return route
 
 
@@ -3219,6 +3260,10 @@ def run_authenticated_app() -> None:
         app_mode,
         reveal_body=not bool(st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)),
     )
+    # One shared main-body slot for every authenticated route. Clearing then
+    # entering replaces prior-route widgets in place (no CSS hide, no reindent).
+    claim_authenticated_route_body(app_mode)
+    enter_authenticated_route_body(app_mode)
 
     _TRIAL_EXPIRED_BLOCKED_PAGES = {
         "Alternative Finder",
@@ -15426,4 +15471,5 @@ def run_authenticated_app() -> None:
     # Authentication persistence is intentionally session scoped in this repair.
     # Re-introduce durable persistence only through a server-side/HttpOnly mechanism,
     # not a visible Streamlit component that can schedule frontend reruns.
+    exit_authenticated_route_body()
     inject_workspace_geometry_final()
