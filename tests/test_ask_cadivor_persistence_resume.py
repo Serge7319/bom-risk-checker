@@ -455,7 +455,8 @@ class AskCadivorPersistenceResumeTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "src/components/engineering_assistant.py"
         ).read_text(encoding="utf-8")
         self.assertIn("_DECISION_COLUMN_RATIO = [0.85, 1.15]", assistant_source)
-        self.assertIn("st.columns(_DECISION_COLUMN_RATIO", assistant_source)
+        self.assertNotIn("st.columns(_DECISION_COLUMN_RATIO", assistant_source)
+        self.assertIn("_render_deferred_detail_sections", assistant_source)
 
 
 def tearDownModule() -> None:

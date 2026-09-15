@@ -1,11 +1,11 @@
-"""Sprint 72.3.2 — Native Streamlit decision workspace + HTML surface tests."""
+"""Sprint 72.3.2 — Compact Streamlit conversation workspace + deferred detail tests."""
 from __future__ import annotations
 
 import re
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENGINEERING_ASSISTANT_PY = REPO_ROOT / "src/components/engineering_assistant.py"
@@ -32,45 +32,44 @@ class AskCadivorNativeWorkspaceTests(unittest.TestCase):
         cls.v2_css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
         cls.engineering_ai_source = ENGINEERING_AI_PY.read_text(encoding="utf-8")
 
-    def _render_pc817(self):
+    def _render_pc817(self, *, expand: bool = False):
         st = install_ask_cadivor_streamlit_stub()
         assistant = _load_assistant()
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                assistant._render_response(
-                    question=PC817_QUESTION,
-                    answer=PC817_ANSWER,
-                    context=PC817_CONTEXT,
-                )
+                with patch.object(assistant, "_disclosure_is_open", return_value=bool(expand)):
+                    assistant._render_response(
+                        question=PC817_QUESTION,
+                        answer=PC817_ANSWER,
+                        context=PC817_CONTEXT,
+                    )
         html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
-        left = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "left")
-        right = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "right")
-        return st, html, left, right
+        return st, html
 
-    def test_uses_native_columns_ratio(self) -> None:
-        st, _html, _left, _right = self._render_pc817()
-        ratio, gap = st.columns_calls[0]
-        self.assertEqual(ratio, [0.85, 1.15])
-        self.assertEqual(gap, "large")
+    def test_uses_single_column_workspace(self) -> None:
+        st, _html = self._render_pc817()
+        self.assertEqual(st.columns_calls, [])
 
-    def test_left_column_contains_answer_and_summary(self) -> None:
-        _st, html, left, _right = self._render_pc817()
-        self.assertIn("Review PC817 first.", left)
-        self.assertIn("cv722-summary-strip", left)
-        self.assertIn("cv722-concise-answer", left)
-        self.assertEqual(len(re.findall(r'class="cv722-summary-item', html)), 3)
+    def test_compact_answer_without_default_assessment(self) -> None:
+        _st, html = self._render_pc817()
+        self.assertIn("Review PC817 first.", html)
+        self.assertIn("cv722-concise-answer", html)
+        self.assertIn("Recommended next action", html)
+        self.assertNotIn("cv722-summary-strip", html)
+        self.assertNotIn("cv727-assessment-panel", html)
 
-    def test_right_column_contains_assessment_without_details(self) -> None:
-        _st, html, _left, _right = self._render_pc817()
-        self.assertIn("Engineering Assessment", html)
-        self.assertIn("cv727-assessment-panel", _right)
+    def test_expanded_assessment_available_on_toggle(self) -> None:
+        _st, html = self._render_pc817(expand=True)
+        self.assertIn("cv727-assessment-panel", html)
         self.assertNotIn("<details", html.lower())
 
-    def test_evidence_cards_separated(self) -> None:
-        _st, html, _left, _right = self._render_pc817()
-        self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', html)), 3)
+    def test_evidence_cards_deferred_until_expanded(self) -> None:
+        _st, collapsed = self._render_pc817(expand=False)
+        self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', collapsed)), 0)
+        _st2, expanded = self._render_pc817(expand=True)
+        self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', expanded)), 3)
         for bad in ("PC817Review", "BZX55C5V1Review", "DRV8825Review"):
-            self.assertNotIn(bad, html)
+            self.assertNotIn(bad, expanded)
 
     def test_css_uses_shell_independent_surface_classes(self) -> None:
         section = self.v2_css.split("Sprint 72.2.4", 1)[1]
@@ -83,7 +82,24 @@ class AskCadivorNativeWorkspaceTests(unittest.TestCase):
         self.assertEqual(run_full_path(), 0)
 
     def test_no_keyed_containers_in_source(self) -> None:
-        self.assertNotIn("st.container(key=", self.assistant_source)
+        # Layout-stability polish may key a small set of Ask-stage containers.
+        # Ban any other keyed containers in this module.
+        allowed_keys = {
+            'key="cv72_response_stage"',
+            'key="cv72_prior_reviews"',
+            'key=f"cv72_disc_{key}"',
+        }
+        found_keys = set()
+        for line in self.assistant_source.splitlines():
+            if "st.container(key=" not in line:
+                continue
+            for key in allowed_keys:
+                if key in line:
+                    found_keys.add(key)
+                    break
+            else:
+                self.fail(f"Unexpected keyed container: {line.strip()}")
+        self.assertEqual(found_keys, allowed_keys)
 
 
 def tearDownModule():

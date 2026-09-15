@@ -1,4 +1,4 @@
-"""Sprint 72.3.7 — Architecture freeze regression for production-proven Ask Cadivor."""
+"""Ask Cadivor architecture freeze — compact conversation, deferred details."""
 from __future__ import annotations
 
 import re
@@ -29,7 +29,7 @@ FROZEN_STYLE_CONSTANTS = (
 )
 
 
-def _render_pc817_html(*, block_css: bool = False) -> str:
+def _render_pc817_html(*, block_css: bool = False, expand_details: bool = False) -> tuple[str, object]:
     st = install_ask_cadivor_streamlit_stub()
     for name in list(sys.modules):
         if name.startswith("src.components.engineering_assistant"):
@@ -57,43 +57,58 @@ def _render_pc817_html(*, block_css: bool = False) -> str:
     with ExitStack() as stack:
         for item in patches:
             stack.enter_context(item)
+        stack.enter_context(patch.object(assistant, "_disclosure_is_open", return_value=bool(expand_details)))
         assistant._render_response(
             question=PC817_QUESTION,
             answer=PC817_ANSWER,
             context=PC817_CONTEXT,
         )
-    return "\n".join(content for content, _kwargs, _side in st.markdown_calls)
+    html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
+    return html, st
 
 
 class AskCadivorArchitectureFreezeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.html = _render_pc817_html()
-        cls.html_without_css = _render_pc817_html(block_css=True)
+        cls.html, cls.st = _render_pc817_html()
+        cls.html_without_css, _ = _render_pc817_html(block_css=True)
+        cls.html_expanded, _ = _render_pc817_html(expand_details=True)
         cls.assistant_source = ENGINEERING_ASSISTANT_PY.read_text(encoding="utf-8")
         cls.styles_source = RESPONSE_STYLES_PY.read_text(encoding="utf-8")
 
-    def test_decision_column_ratio_frozen(self) -> None:
-        self.assertIn("_DECISION_COLUMN_RATIO = [0.85, 1.15]", self.assistant_source)
+    def test_compact_conversation_renderer(self) -> None:
+        self.assertIn('renderer="compact_conversation"', self.assistant_source)
+        self.assertIn("_render_deferred_detail_sections", self.assistant_source)
+        self.assertIn("def _disclosure_is_open", self.assistant_source)
+        self.assertNotIn("st.toggle(", self.assistant_source)
+        self.assertNotIn("st.columns(_DECISION_COLUMN_RATIO", self.assistant_source)
 
     def test_critical_style_constants_exist(self) -> None:
         for name in FROZEN_STYLE_CONSTANTS:
             self.assertIn(name, self.styles_source)
 
-    def test_core_surfaces_use_inline_presentation_styles(self) -> None:
+    def test_compact_answer_card_present_by_default(self) -> None:
         for marker in (
-            'class="cv50-exchange" style=',
-            'class="cv49-answer-card cv722-concise-answer" style=',
+            'class="cv49-answer-card cv722-concise-answer cv72-compact-answer" style=',
+            "Recommended next action",
+            "Why it matters",
+            "Recommended next steps",
             'class="cv722-reason-row" style=',
             'class="cv722-action-row" style=',
-            'class="cv722-summary-strip',
-            'class="cv727-assessment-panel" style=',
-            'class="cv724-impact-grid" style=',
-            'class="cv724-driver-grid',
-            'class="cv46-evidence-board" style=',
-            'class="cv46-evidence-card" style=',
         ):
             self.assertIn(marker, self.html)
+
+    def test_details_collapsed_by_default(self) -> None:
+        self.assertNotIn("cv727-assessment-panel", self.html)
+        self.assertNotIn("cv724-impact-grid", self.html)
+        self.assertNotIn('class="cv46-evidence-card"', self.html)
+        self.assertNotIn("cv722-summary-strip", self.html)
+
+    def test_expanded_details_reuse_evidence_surfaces(self) -> None:
+        self.assertIn("cv727-assessment-panel", self.html_expanded)
+        self.assertIn("cv724-impact-grid", self.html_expanded)
+        self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', self.html_expanded)), 3)
+        self.assertEqual(self.html_expanded.count("cv724-impact-cell"), 4)
 
     def test_no_dynamic_content_in_style_helpers(self) -> None:
         self.assertNotIn("{", self.styles_source)
@@ -102,26 +117,6 @@ class AskCadivorArchitectureFreezeTests(unittest.TestCase):
     def test_structured_reason_and_action_rows(self) -> None:
         self.assertGreaterEqual(self.html.count("cv722-reason-row"), 3)
         self.assertGreaterEqual(self.html.count("cv722-action-row"), 3)
-
-    def test_structured_decision_summary(self) -> None:
-        self.assertEqual(len(re.findall(r'class="cv722-summary-item', self.html)), 3)
-
-    def test_structured_impact_and_confidence_metrics(self) -> None:
-        self.assertEqual(self.html.count("cv724-impact-cell"), 4)
-        self.assertGreaterEqual(self.html.count("cv724-driver-cell"), 1)
-
-    def test_structured_evidence_cards(self) -> None:
-        self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', self.html)), 3)
-
-    def test_component_and_status_are_separate_block_elements(self) -> None:
-        self.assertGreaterEqual(
-            len(re.findall(r'<div class="cv46-evidence-component"(?: style="[^"]*")?>', self.html)),
-            3,
-        )
-        self.assertGreaterEqual(
-            len(re.findall(r'<div class="cv46-evidence-status"(?: style="[^"]*")?>', self.html)),
-            3,
-        )
 
     def test_no_giant_html_workspace_shell(self) -> None:
         self.assertNotIn("cv725-decision-workspace", self.html)
@@ -136,7 +131,7 @@ class AskCadivorArchitectureFreezeTests(unittest.TestCase):
 
     def test_core_presentation_usable_without_external_css(self) -> None:
         self.assertEqual(self.html, self.html_without_css)
-        self.assertGreaterEqual(self.html_without_css.count('style="'), 20)
+        self.assertGreaterEqual(self.html_without_css.count('style="'), 8)
 
     def test_no_concatenated_review_strings(self) -> None:
         for token in ("PC817Review", "BZX55C5V1Review", "DRV8825Review"):

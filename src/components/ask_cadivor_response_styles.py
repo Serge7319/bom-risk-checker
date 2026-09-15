@@ -44,7 +44,7 @@ CV50_SAVED_BADGE_STYLE = (
 # Answer card (cv49/cv722)
 CV49_ANSWER_CARD_STYLE = (
     "display:grid;gap:16px;border:1px solid #e2e8f0;border-radius:20px;"
-    "background:#ffffff;padding:18px 20px;margin:12px 0;max-width:920px;min-width:0;"
+    "background:#ffffff;padding:18px 20px;margin:12px 0;max-width:1040px;min-width:0;"
 )
 CV49_ANSWER_KICKER_STYLE = (
     "display:block;font-size:11px;font-weight:700;letter-spacing:0.08em;"

@@ -15,6 +15,9 @@ class _NullContext:
     def __exit__(self, *args):
         return False
 
+    def write(self, *args, **kwargs):
+        return None
+
     def update(self, **kwargs):
         return None
 
@@ -35,6 +38,9 @@ def _install_streamlit_stub(session_state: dict | None = None):
     st.button = MagicMock(return_value=False)
     st.caption = MagicMock()
     st.container = lambda **kwargs: _NullContext()
+    st.rerun = MagicMock(side_effect=RuntimeError("rerun"))
+    st.success = MagicMock()
+    st.toggle = MagicMock(return_value=False)
 
     components = types.ModuleType("streamlit.components.v1")
     components.html = MagicMock()
@@ -213,13 +219,26 @@ class AskCadivorPendingPreservationTests(unittest.TestCase):
                 with patch.object(assistant, "_render_prompt_chip_grid"):
                     with patch.object(assistant, "_render_conversation_history"):
                         with patch.object(assistant, "_render_response"):
-                            assistant.render_engineering_assistant(
-                                current_user={"id": "user-1"},
-                                engineering_context={
-                                    "analysis_id": "a-1",
-                                    "analysis": {"analysis_id": "a-1"},
-                                },
-                            )
+                            for _ in range(4):
+                                try:
+                                    assistant.render_engineering_assistant(
+                                        current_user={"id": "user-1"},
+                                        engineering_context={
+                                            "analysis_id": "a-1",
+                                            "analysis": {"analysis_id": "a-1"},
+                                        },
+                                    )
+                                    break
+                                except RuntimeError as exc:
+                                    if str(exc) != "rerun":
+                                        raise
+                                    pending = (
+                                        st.session_state.get("cv72_provider_armed")
+                                        or st.session_state.get("cv41_pending_manual")
+                                        or st.session_state.get("cv36_pending_followup")
+                                    )
+                                    if not pending:
+                                        break
 
         self.assertNotIn("cv41_pending_manual", st.session_state)
         self.assertEqual(_WorkingAI.ask_calls, 1)
@@ -278,10 +297,23 @@ class AskCadivorPendingPreservationTests(unittest.TestCase):
                 with patch.object(assistant, "_render_prompt_chip_grid"):
                     with patch.object(assistant, "_render_conversation_history"):
                         with patch.object(assistant, "_render_response", side_effect=lambda **kwargs: rendered.append(kwargs)):
-                            assistant.render_engineering_assistant(
-                                current_user={"id": "user-1"},
-                                engineering_context={"analysis_id": "a-1", "analysis": {"analysis_id": "a-1"}},
-                            )
+                            for _ in range(4):
+                                try:
+                                    assistant.render_engineering_assistant(
+                                        current_user={"id": "user-1"},
+                                        engineering_context={"analysis_id": "a-1", "analysis": {"analysis_id": "a-1"}},
+                                    )
+                                    break
+                                except RuntimeError as exc:
+                                    if str(exc) != "rerun":
+                                        raise
+                                    pending = (
+                                        st.session_state.get("cv72_provider_armed")
+                                        or st.session_state.get("cv41_pending_manual")
+                                        or st.session_state.get("cv36_pending_followup")
+                                    )
+                                    if not pending:
+                                        break
 
         self.assertGreaterEqual(len(rendered), 2)
         self.assertEqual(rendered[0]["question"], previous_question)

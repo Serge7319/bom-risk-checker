@@ -49,7 +49,7 @@ PC817_CONTEXT = {
 }
 
 
-def render_pc817_harness() -> tuple[str, object]:
+def render_pc817_harness(*, expand_details: bool = False) -> tuple[str, object]:
     st = install_ask_cadivor_streamlit_stub()
     for name in list(sys.modules):
         if name.startswith("src.components.engineering_assistant"):
@@ -58,11 +58,12 @@ def render_pc817_harness() -> tuple[str, object]:
 
     with patch.object(assistant, "_render_response_scroll_anchor"):
         with patch.object(assistant, "_render_quick_actions"):
-            assistant._render_response(
-                question=PC817_QUESTION,
-                answer=PC817_ANSWER,
-                context=PC817_CONTEXT,
-            )
+            with patch.object(assistant, "_disclosure_is_open", return_value=bool(expand_details)):
+                assistant._render_response(
+                    question=PC817_QUESTION,
+                    answer=PC817_ANSWER,
+                    context=PC817_CONTEXT,
+                )
     html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
     return html, st
 
@@ -72,21 +73,23 @@ def _column_text(st, side: str) -> str:
 
 
 def main() -> int:
-    html, st = render_pc817_harness()
-    left = _column_text(st, "left")
-    right = _column_text(st, "right")
+    html, st = render_pc817_harness(expand_details=False)
+    expanded_html, expanded_st = render_pc817_harness(expand_details=True)
+    root = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "root")
     css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
 
     checks = {
-        "native_columns_ratio": any(call[0] == [0.85, 1.15] for call in st.columns_calls),
-        "native_columns_gap_large": any(call[1] == "large" for call in st.columns_calls if call[0] == [0.85, 1.15]),
+        "single_column_compact": st.columns_calls == [],
         "conversation_exchange_html": "cv50-exchange" in html,
         "three_reason_rows": html.count("cv722-reason-row") >= 3,
         "three_action_rows": html.count("cv722-action-row") >= 3,
-        "three_evidence_cards": html.count("cv46-evidence-card") >= 3,
-        "decision_summary_strip": len(re.findall(r'class="cv722-summary-item', html)) == 3,
-        "impact_grid_four_cells": html.count("cv724-impact-cell") == 4,
-        "direct_answer_in_left": "Review PC817 first." in left,
+        "evidence_deferred_by_default": html.count("cv46-evidence-card") == 0,
+        "evidence_available_when_expanded": expanded_html.count("cv46-evidence-card") >= 3,
+        "summary_deferred_by_default": len(re.findall(r'class="cv722-summary-item', html)) == 0,
+        "summary_available_when_expanded": len(re.findall(r'class="cv722-summary-item', expanded_html)) == 3,
+        "impact_deferred_by_default": html.count("cv724-impact-cell") == 0,
+        "impact_available_when_expanded": expanded_html.count("cv724-impact-cell") == 4,
+        "direct_answer_present": "Review PC817 first." in root or "Review PC817 first." in html,
         "question_in_exchange": PC817_QUESTION in html,
         "no_duplicate_direct_answer": html.count("Review PC817 first.") == 1,
         "no_concatenated_component_status": all(
@@ -95,11 +98,13 @@ def main() -> int:
         "exchange_badges_separate": "cv50-type" in html and "cv50-saved" in html,
         "no_giant_html_card_shell": "cv725-decision-workspace" not in html,
         "no_details_wrapper": "<details" not in html.lower(),
-        "self_contained_block_surfaces": "cv722-concise-answer" in html and "cv727-assessment-panel" in html,
+        "compact_answer_surface": "cv72-compact-answer" in html and "cv722-concise-answer" in html,
+        "assessment_deferred_by_default": "cv727-assessment-panel" not in html,
+        "assessment_available_when_expanded": "cv727-assessment-panel" in expanded_html,
         "no_runtime_style_injection": not any("<style" in content.lower() for content, _kwargs, _side in st.markdown_calls),
         "shell_independent_css_on_disk": ".cv50-exchange" in css and ".cv722-summary-strip" in css,
-        "numeric_values_preserved": all(token in html for token in ("21.4", "2 suppliers", "93", "56%")),
-        "right_has_evidence_components": all(part in html for part in ("PC817", "BZX55C5V1", "DRV8825")),
+        "numeric_values_preserved": all(token in html for token in ("21.4", "2 suppliers")),
+        "priority_part_in_compact_card": "PC817" in html,
         "no_keyed_container_calls_in_source": "st.container(key=" not in (
             REPO_ROOT / "src/components/engineering_assistant.py"
         ).read_text(encoding="utf-8"),

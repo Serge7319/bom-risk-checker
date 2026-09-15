@@ -33,7 +33,7 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
 
     def test_assessment_panel_uses_native_renderer(self) -> None:
         self.assertIn("st.container(border=True)", self.assistant_source)
-        self.assertIn("_render_native_assessment_column", self.assistant_source)
+        self.assertIn("_render_deferred_detail_sections", self.assistant_source)
         self.assertNotIn('key="cv_assessment_panel"', self.assistant_source)
 
     def test_response_renderer_emits_no_stylesheet(self) -> None:
@@ -47,9 +47,9 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
                     context=PC817_CONTEXT,
                 )
         self.assertTrue(all("<style" not in item.lower() for item, _kwargs, _side in st.markdown_calls))
-        self.assertTrue(any(call[0] == [0.85, 1.15] for call in st.columns_calls))
+        self.assertEqual(st.columns_calls, [])
         self.assertIn("reason_card", st.render_sequence)
-        self.assertIn("impact_grid", st.render_sequence)
+        self.assertNotIn("impact_grid", st.render_sequence)
 
     def test_approved_workspace_content_preserved(self) -> None:
         st = install_ask_cadivor_streamlit_stub()
@@ -62,10 +62,9 @@ class AskCadivorStreamlitRenderSequenceTests(unittest.TestCase):
                     context=PC817_CONTEXT,
                 )
         html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
-        left = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "left")
-        right = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "right")
-        self.assertIn("Engineering Assessment", right)
-        self.assertIn("Review PC817 first.", left)
+        self.assertNotIn("Engineering Assessment", html)
+        self.assertIn("Review PC817 first.", html)
+        self.assertIn("Recommended next action", html)
         self.assertIn("PC817", html)
         self.assertIn(".cv46-evidence-card-header", self.v2_css)
 

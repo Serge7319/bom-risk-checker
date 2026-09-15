@@ -49,6 +49,12 @@ class _NullContext:
     def __exit__(self, exc_type, exc, tb):
         return False
 
+    def write(self, *args, **kwargs):
+        return None
+
+    def update(self, **kwargs):
+        return None
+
     def update(self, **kwargs):
         return None
 
@@ -120,11 +126,13 @@ class AskCadivorPromptClearRegressionTests(unittest.TestCase):
     def test_deferred_clear_runs_before_text_area_not_after(self):
         _, assistant = self._load_assistant()
         source = inspect.getsource(assistant.render_engineering_assistant)
-        text_area_idx = source.index("st.text_area(")
-        post_widget = source[text_area_idx:]
-        self.assertNotIn('st.session_state[prompt_key] = ""', post_widget)
+        composer_idx = source.index("_render_composer(")
+        post_composer = source[composer_idx:]
+        self.assertNotIn('st.session_state[prompt_key] = ""', post_composer)
         clear_idx = source.index("_apply_deferred_prompt_clear(prompt_key)")
-        self.assertLess(clear_idx, text_area_idx)
+        self.assertLess(clear_idx, composer_idx)
+        composer_source = inspect.getsource(assistant._render_composer)
+        self.assertIn("st.text_area(", composer_source)
 
     def test_apply_deferred_prompt_clear_clears_before_widget_mount(self):
         st, assistant = self._load_assistant(
@@ -166,13 +174,26 @@ class AskCadivorPromptClearRegressionTests(unittest.TestCase):
                     with patch.object(assistant, "_render_conversation_history"):
                         with patch.object(assistant, "_render_response"):
                             with redirect_stdout(stdout):
-                                assistant.render_engineering_assistant(
-                                    current_user={"id": "user-1"},
-                                    engineering_context={
-                                        "analysis_id": "a-1",
-                                        "analysis": {"analysis_id": "a-1"},
-                                    },
-                                )
+                                for _ in range(4):
+                                    try:
+                                        assistant.render_engineering_assistant(
+                                            current_user={"id": "user-1"},
+                                            engineering_context={
+                                                "analysis_id": "a-1",
+                                                "analysis": {"analysis_id": "a-1"},
+                                            },
+                                        )
+                                        break
+                                    except RuntimeError as exc:
+                                        if str(exc) != "rerun":
+                                            raise
+                                        pending = (
+                                            st.session_state.get("cv72_provider_armed")
+                                            or st.session_state.get("cv41_pending_manual")
+                                            or st.session_state.get("cv36_pending_followup")
+                                        )
+                                        if not pending:
+                                            break
         output = stdout.getvalue()
         for line in output.splitlines():
             if line.startswith("ASK_CADIVOR "):
@@ -210,7 +231,7 @@ class AskCadivorPromptClearRegressionTests(unittest.TestCase):
     def test_engineering_ai_error_still_logs_provider_failed(self):
         _, assistant = self._load_assistant()
         source = inspect.getsource(assistant.render_engineering_assistant)
-        self.assertIn('except EngineeringAIError as exc:\n                _log_ask_cadivor("provider_failed"', source)
+        self.assertIn('except EngineeringAIError as exc:\n                    _log_ask_cadivor("provider_failed"', source)
         self.assertIn('_log_ask_cadivor("execution_failed"', source)
 
 

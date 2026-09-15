@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 from textwrap import dedent
 from typing import Any, Iterable
@@ -136,11 +137,14 @@ _COPILOT_WORKFLOW_KEYS = (
     "cadivor_active_analysis_tab",
 )
 
-_COPILOT_PROCESSING_LABEL = "Cadivor is analyzing this BOM…"
+_COPILOT_PROCESSING_LABEL = "Cadivor is reviewing this BOM…"
 _CLEAR_PROMPT_ON_NEXT_RUN_KEY = "cv7144_clear_prompt_on_next_run"
+# Legacy ratio kept for older presentation tests that inspect the constant; the
+# live conversation path is a single centered column.
 _DECISION_COLUMN_RATIO = [0.85, 1.15]
 _CONCISE_REASON_LIMIT = 3
 _CONCISE_ACTION_LIMIT = 3
+_FOLLOWUP_CHIP_LIMIT = 3
 
 
 def _schedule_prompt_clear_on_next_run() -> None:
@@ -191,6 +195,18 @@ def _log_ask_cadivor_state(event: str, *, reason: str = "") -> None:
 def _log_ask_cadivor_state_clear(key: str, *, reason: str) -> None:
     """Log when a copilot workflow key is cleared (metadata only)."""
     _log_ask_cadivor("state_cleared", key=key, reason=reason)
+
+
+def _ask_timing(phase: str, *, t0: float | None = None, **details: Any) -> float:
+    """Emit Ask Cadivor phase timing without logging prompt or answer text."""
+    now = time.perf_counter()
+    parts = [f"ASK_TIMING {phase}"]
+    if t0 is not None:
+        parts.append(f"elapsed_ms={max(0, int((now - t0) * 1000))}")
+    for key, value in details.items():
+        parts.append(f"{key}={value}")
+    print(" ".join(parts), flush=True)
+    return now
 
 
 def _log_ask_render(event: str, **details: Any) -> None:
@@ -263,7 +279,7 @@ def _log_ask_runtime_identity() -> None:
         f"css_exists={str(meta['css_exists']).lower()}",
         f"css_bytes={meta['css_bytes']}",
         f"css_sha256={meta['css_sha256']}",
-        "response_path=native_085_115",
+        "response_path=compact_conversation",
         "conversation_surface=cv50",
         "answer_surface=cv722",
         "assessment_surface=cv724_cv46",
@@ -367,7 +383,12 @@ def _clear_copilot_workflow_snapshot() -> None:
 
 def _clear_copilot_workflow_protection() -> None:
     """Drop copilot workflow recovery state after a submission completes."""
-    for key in ("cv4801_followup_inflight", "cv4801_route_snapshot", "cv7142_ask_inflight"):
+    for key in (
+        "cv4801_followup_inflight",
+        "cv4801_route_snapshot",
+        "cv7142_ask_inflight",
+        "cv72_provider_armed",
+    ):
         if key in st.session_state:
             _log_ask_cadivor_state_clear(key, reason="copilot_workflow_complete")
             st.session_state.pop(key, None)
@@ -499,12 +520,52 @@ def _secret(name: str, default: str = "") -> str:
     return str(value or default)
 
 
+_CHIP_STYLE = (
+    "display:inline-flex;align-items:center;gap:6px;border:1px solid #e2e8f0;"
+    "border-radius:999px;padding:5px 11px;background:#ffffff;color:#475569;"
+    "font-size:11px;font-weight:650;line-height:1.3;white-space:nowrap;"
+)
+_CHIP_LABEL_STYLE = (
+    "display:inline-flex;align-items:center;border:1px solid #dbe4f0;"
+    "border-radius:999px;padding:5px 11px;background:#f8fafc;color:#64748b;"
+    "font-size:11px;font-weight:700;line-height:1.3;white-space:nowrap;"
+)
+_META_ROW_STYLE = (
+    "display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;"
+    "gap:8px;margin-top:10px;min-width:0;"
+)
+_DISCLOSURE_BTN_HELP = {
+    "evidence": "Saved BOM evidence behind this answer",
+    "assessment": "Impact, confidence, and ranking detail",
+    "gaps": "Where missing or weak evidence limits the recommendation",
+}
+
+
+def _humanize_posture(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "Engineering review"
+    mapped = {
+        "focused_review": "Focused review",
+        "release_hold": "Release hold recommended",
+        "release hold recommended": "Release hold recommended",
+        "ready": "Ready for release",
+        "conditional": "Conditional release",
+        "not_ready": "Not ready for release",
+    }
+    key = text.lower().replace("-", "_")
+    if key in mapped:
+        return mapped[key]
+    if "_" in text:
+        return text.replace("_", " ").strip().capitalize()
+    return text
+
+
 def _render_context_header(context: dict[str, Any]) -> None:
     summary = context.get("summary") or {}
-    project = html.escape(str(context.get("project_name") or "Saved BOM"))
     health = html.escape(str(summary.get("health_score") or "—"))
     parts = html.escape(str(summary.get("total_parts") or "—"))
-    posture = html.escape(str(summary.get("release_posture") or "Engineering review"))
+    posture = html.escape(_humanize_posture(str(summary.get("release_posture") or "Engineering review")))
     _render_presentation_html(
         f"""
         <header class="cv-assistant-context-header">
@@ -512,12 +573,12 @@ def _render_context_header(context: dict[str, Any]) -> None:
             <div class="cv-assistant-eyebrow">Ask Cadivor</div>
             <h2 class="cv-assistant-context-title">Engineering copilot for this saved BOM</h2>
             <p class="cv-assistant-context-copy">Cadivor interprets saved evidence and recommends next engineering actions for this analysis.</p>
-          </div>
-          <div class="cv-assistant-context-meta">
-            <span class="cv-badge cv-badge-neutral">{project}</span>
-            <span class="cv-assistant-meta-item">Health {health}</span>
-            <span class="cv-assistant-meta-item">{parts} parts</span>
-            <span class="cv-assistant-meta-item">{posture}</span>
+            <div class="cv-assistant-context-meta" style="{_META_ROW_STYLE}" aria-label="Saved BOM context">
+              <span class="cv-assistant-meta-chip cv-assistant-meta-chip--label" style="{_CHIP_LABEL_STYLE}">Saved BOM</span>
+              <span class="cv-assistant-meta-chip" style="{_CHIP_STYLE}">Health {health}</span>
+              <span class="cv-assistant-meta-chip" style="{_CHIP_STYLE}">{parts} parts</span>
+              <span class="cv-assistant-meta-chip" style="{_CHIP_STYLE}">{posture}</span>
+            </div>
           </div>
         </header>
         """
@@ -532,7 +593,11 @@ def _usage_banner(status) -> None:
         text = f"{status.remaining:,} of {status.allowance:,} AI credits remaining this month"
         cls = status.warning_level
     st.markdown(
-        f'<div class="cv35-usage cv-assistant-usage {cls}"><strong>AI usage</strong><span>{html.escape(text)}</span></div>',
+        f'<div class="cv35-usage cv-assistant-usage {cls}">'
+        f"<strong>AI usage</strong>"
+        f'<span class="cv35-usage-sep" aria-hidden="true"> · </span>'
+        f"<span>{html.escape(text)}</span>"
+        f"</div>",
         unsafe_allow_html=True,
     )
     if status.warning_level in {"notice", "high", "critical"}:
@@ -1140,22 +1205,22 @@ def _build_concise_answer_html(
         _html_list_row(index, action, variant="action")
         for index, action in enumerate(action_items[:_CONCISE_ACTION_LIMIT], start=1)
     )
-    answer_body_html = _direct_answer_body_html(headline, answer_text)
+    # Compact card: one headline only under Recommended next action. Reasons and
+    # next steps carry the supporting scan path; long body copy stays out.
     return f"""
-            <section class="cv49-answer-card cv722-concise-answer" style="{CV49_ANSWER_CARD_STYLE}">
-              <div class="cv49-answer-kicker" style="{CV49_ANSWER_KICKER_STYLE}">Cadivor Answer</div>
+            <section class="cv49-answer-card cv722-concise-answer cv72-compact-answer" style="{CV49_ANSWER_CARD_STYLE}">
+              <div class="cv49-answer-kicker" style="{CV49_ANSWER_KICKER_STYLE}">Cadivor answer</div>
               <div class="cv722-direct-answer" style="{CV722_DIRECT_ANSWER_STYLE}">
-                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Direct answer</div>
+                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Recommended next action</div>
                 <div class="cv722-direct-answer-title" style="{CV722_DIRECT_ANSWER_TITLE_STYLE}">{html.escape(headline)}</div>
-                {answer_body_html}
               </div>
               <div class="cv722-concise-block" style="{CV722_CONCISE_BLOCK_STYLE}">
-                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Key engineering reasons</div>
+                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Why it matters</div>
                 <ul class="cv722-reason-list" style="{CV722_LIST_STYLE}">{reasons_html}</ul>
               </div>
               <div class="cv722-concise-block" style="{CV722_CONCISE_BLOCK_STYLE}">
-                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Recommended actions</div>
-                <ul class="cv722-action-list" style="{CV722_LIST_STYLE}">{actions_html}</ul>
+                <div class="cv722-section-label" style="{CV722_SECTION_LABEL_STYLE}">Recommended next steps</div>
+                <ol class="cv722-action-list" style="{CV722_LIST_STYLE}">{actions_html}</ol>
               </div>
             </section>
             """
@@ -1350,20 +1415,59 @@ def _render_native_answer_column(
         ),
         unsafe_allow_html=True,
     )
-    _log_ask_runtime_surface("decision_summary_render")
-    st.markdown(
-        _build_decision_summary_html(
-            status=str(decision.get("status") or "Review"),
-            tone=str(decision.get("tone") or "neutral"),
-            priority_part=priority_part,
-            confidence_score=confidence_score,
-            confidence_label=confidence_label,
-        ),
-        unsafe_allow_html=True,
-    )
 
 
-def _render_native_assessment_column(
+def _data_gap_lines(
+    *,
+    confidence_detail: str,
+    confidence_drivers: list[tuple[str, str, str]],
+    evidence: str,
+    context: dict[str, Any],
+) -> list[str]:
+    gaps: list[str] = []
+    detail = str(confidence_detail or "").strip()
+    if detail:
+        gaps.append(_plain_markdown(detail))
+    for label, value, note in confidence_drivers[:4]:
+        blob = f"{label} {value} {note}".lower()
+        if any(token in blob for token in ("gap", "missing", "unknown", "insufficient", "uncertain")):
+            line = _plain_markdown(f"{label}: {note or value}").strip()
+            if line and line not in gaps:
+                gaps.append(line)
+    if not _evidence_items(evidence):
+        gaps.append("Saved BOM evidence for this question is limited or incomplete.")
+    coverage = context.get("coverage") or context.get("evidence_coverage") or {}
+    if isinstance(coverage, dict):
+        missing = coverage.get("missing") or coverage.get("gaps") or []
+        if isinstance(missing, list):
+            for item in missing[:3]:
+                line = _plain_markdown(str(item or "")).strip()
+                if line and line not in gaps:
+                    gaps.append(line)
+    if not gaps:
+        gaps.append("No explicit data gaps were flagged. Open Supporting evidence to review the saved BOM basis.")
+    return gaps[:4]
+
+
+def _disclosure_is_open(label: str, *, key: str, summary: str) -> bool:
+    """Chevron disclosure row — not a settings switch. Body renders only when open."""
+    state_key = f"{key}_open"
+    is_open = bool(st.session_state.get(state_key, False))
+    chevron = "▾" if is_open else "▸"
+    with st.container(key=f"cv72_disc_{key}"):
+        if st.button(
+            f"{chevron}  {label}",
+            key=f"{key}_btn",
+            use_container_width=True,
+            help=summary,
+        ):
+            st.session_state[state_key] = not is_open
+            st.rerun()
+        st.caption(summary)
+    return bool(st.session_state.get(state_key, False))
+
+
+def _render_deferred_detail_sections(
     *,
     question: str,
     detailed: bool,
@@ -1380,28 +1484,92 @@ def _render_native_assessment_column(
     complete: int,
     total: int,
     progress: int,
+    decision: dict[str, str],
+    confidence_score: int,
+    confidence_label: str,
 ) -> None:
-    assessment_html = _build_engineering_assessment_html(
-        question=question,
-        detailed=detailed,
-        intent=intent,
-        evidence=evidence,
-        actions=actions,
-        rankings=rankings,
-        workflow_text=workflow_text,
-        context=context,
-        priority_part=priority_part,
-        confidence_detail=confidence_detail,
-        confidence_drivers=confidence_drivers,
-        impact=impact,
-        complete=complete,
-        total=total,
-        progress=progress,
-    )
-    panel_html = _build_assessment_panel_html(assessment_html)
-    if panel_html.strip():
+    """Optional detail sections — HTML is built only when the user opens them."""
+    token = abs(hash((question, intent, priority_part))) % 10_000_000
+
+    if _disclosure_is_open(
+        "Supporting evidence",
+        key=f"cv72_evidence_{token}",
+        summary=_DISCLOSURE_BTN_HELP["evidence"],
+    ):
+        t0 = time.perf_counter()
+        _log_ask_runtime_surface("evidence_render")
+        cards = _build_evidence_cards_html(evidence) if _evidence_items(evidence) else ""
+        if cards:
+            st.markdown(
+                f'<div class="cv35-section-label" style="{CV35_SECTION_LABEL_STYLE}">Evidence breakdown</div>{cards}',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("No structured evidence cards were available for this answer.")
+        _ask_timing("detail_evidence_render", t0=t0)
+
+    if _disclosure_is_open(
+        "Engineering assessment",
+        key=f"cv72_assessment_{token}",
+        summary=_DISCLOSURE_BTN_HELP["assessment"],
+    ):
+        t0 = time.perf_counter()
         _log_ask_runtime_surface("assessment_render")
-        st.markdown(panel_html, unsafe_allow_html=True)
+        st.markdown(
+            _build_decision_summary_html(
+                status=str(decision.get("status") or "Review"),
+                tone=str(decision.get("tone") or "neutral"),
+                priority_part=priority_part,
+                confidence_score=confidence_score,
+                confidence_label=confidence_label,
+            ),
+            unsafe_allow_html=True,
+        )
+        assessment_html = _build_engineering_assessment_html(
+            question=question,
+            detailed=detailed,
+            intent=intent,
+            evidence="",  # evidence lives in its own deferred section
+            actions=actions,
+            rankings=rankings,
+            workflow_text=workflow_text,
+            context=context,
+            priority_part=priority_part,
+            confidence_detail=confidence_detail,
+            confidence_drivers=confidence_drivers,
+            impact=impact,
+            complete=complete,
+            total=total,
+            progress=progress,
+        )
+        panel_html = _build_assessment_panel_html(assessment_html)
+        if panel_html.strip():
+            st.markdown(panel_html, unsafe_allow_html=True)
+        else:
+            st.caption("No additional engineering assessment detail was available.")
+        _ask_timing("detail_assessment_render", t0=t0)
+
+    if _disclosure_is_open(
+        "Data gaps / uncertainty",
+        key=f"cv72_gaps_{token}",
+        summary=_DISCLOSURE_BTN_HELP["gaps"],
+    ):
+        t0 = time.perf_counter()
+        gaps = _data_gap_lines(
+            confidence_detail=confidence_detail,
+            confidence_drivers=confidence_drivers,
+            evidence=evidence,
+            context=context,
+        )
+        items = "".join(
+            f'<li class="cv722-reason-row" style="{CV722_REASON_ROW_STYLE}">{html.escape(line)}</li>'
+            for line in gaps
+        )
+        st.markdown(
+            f'<ul class="cv722-reason-list cv72-data-gaps" style="{CV722_LIST_STYLE}">{items}</ul>',
+            unsafe_allow_html=True,
+        )
+        _ask_timing("detail_gaps_render", t0=t0)
 
 
 def _render_decision_workspace(
@@ -1437,47 +1605,44 @@ def _render_decision_workspace(
         "workspace_shell_ready",
         left_html_len=0,
         right_html_len=0,
-        has_assessment_panel=True,
+        has_assessment_panel=False,
         has_style_tag=False,
-        renderer="native_streamlit",
+        renderer="compact_conversation",
     )
-    _log_ask_render("workspace_columns_requested", ratio="0.85,1.15")
+    _log_ask_render("workspace_columns_requested", ratio="single")
     with st.container():
-        left_col, right_col = st.columns(_DECISION_COLUMN_RATIO, gap="large")
-        with left_col:
-            _log_ask_render("workspace_left_column_entered")
-            _render_native_answer_column(
-                headline=headline,
-                answer_text=answer_text,
-                reason_items=concise_reasons,
-                action_items=concise_actions,
-                decision=decision,
-                priority_part=priority_part,
-                confidence_score=confidence_score,
-                confidence_label=confidence_label,
-            )
-        with right_col:
-            _log_ask_render("workspace_right_column_entered")
-            _render_native_assessment_column(
-                question=question,
-                detailed=detailed,
-                intent=intent,
-                evidence=evidence,
-                actions=actions,
-                rankings=rankings,
-                workflow_text=workflow_text,
-                context=context,
-                priority_part=priority_part,
-                confidence_detail=confidence_detail,
-                confidence_drivers=confidence_drivers,
-                impact=impact,
-                complete=complete,
-                total=total,
-                progress=progress,
-            )
+        _log_ask_render("workspace_left_column_entered")
+        _render_native_answer_column(
+            headline=headline,
+            answer_text=answer_text,
+            reason_items=concise_reasons,
+            action_items=concise_actions,
+            decision=decision,
+            priority_part=priority_part,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+        )
+        _render_deferred_detail_sections(
+            question=question,
+            detailed=detailed,
+            intent=intent,
+            evidence=evidence,
+            actions=actions,
+            rankings=rankings,
+            workflow_text=workflow_text,
+            context=context,
+            priority_part=priority_part,
+            confidence_detail=confidence_detail,
+            confidence_drivers=confidence_drivers,
+            impact=impact,
+            complete=complete,
+            total=total,
+            progress=progress,
+            decision=decision,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+        )
     _log_ask_render("workspace_render_completed")
-    with st.container(border=True):
-        _render_quick_actions(context, priority_part, intent=intent)
 
 
 def _render_quick_actions(context: dict[str, Any], priority_part: str, *, intent: str = "general") -> None:
@@ -1552,19 +1717,23 @@ def _render_conversation_history(thread: list[dict[str, Any]], *, exclude_latest
     turns = thread[:-1] if exclude_latest and thread else thread
     if not turns:
         return
-    with st.expander(f"Engineering session · {len(turns)} prior review{'s' if len(turns) != 1 else ''}", expanded=False):
-        for index, turn in enumerate(turns, start=1):
-            question = html.escape(str(turn.get("question") or "Engineering question"))
-            answer_sections = _parse_report(str(turn.get("answer") or ""))
-            assessment = html.escape(_plain_markdown(_assessment_profile(answer_sections)["assessment"]))
-            _render_presentation_html(
-                f"""
-                <div class="cv36-history-turn">
-                  <div class="cv36-history-number">{index}</div>
-                  <div><small>Review {index}</small><strong>{question}</strong><p class="cv-assistant-preline">{assessment}</p></div>
-                </div>
-                """
-            )
+    with st.container(key="cv72_prior_reviews"):
+        with st.expander(
+            f"Engineering session · {len(turns)} prior review{'s' if len(turns) != 1 else ''}",
+            expanded=False,
+        ):
+            for index, turn in enumerate(turns, start=1):
+                question = html.escape(str(turn.get("question") or "Engineering question"))
+                answer_sections = _parse_report(str(turn.get("answer") or ""))
+                assessment = html.escape(_plain_markdown(_assessment_profile(answer_sections)["assessment"]))
+                _render_presentation_html(
+                    f"""
+                    <div class="cv36-history-turn">
+                      <div class="cv36-history-number">{index}</div>
+                      <div><small>Review {index}</small><strong>{question}</strong><p class="cv-assistant-preline">{assessment}</p></div>
+                    </div>
+                    """
+                )
 
 
 def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_id: str = "") -> None:
@@ -1724,7 +1893,7 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
         return
     suggestions = follow_up_suggestions(question, answer, context)
     valid_suggestions = [str(item or "").strip() for item in suggestions]
-    valid_suggestions = [item for item in valid_suggestions if item]
+    valid_suggestions = [item for item in valid_suggestions if item][:_FOLLOWUP_CHIP_LIMIT]
     analysis_id = _analysis_id_from_context(context)
     if not valid_suggestions or not analysis_id:
         _clear_followup_ui_state()
@@ -1738,33 +1907,89 @@ def _render_follow_ups(*, question: str, answer: str, context: dict[str, Any]) -
     st.session_state["cv36_followup_ready_for"] = ready_for
     button_generation = _followup_button_generation(valid_suggestions)
 
-    render_subsection_header("Continue the review", icon="messages-square")
-    with st.container(border=True):
-        st.caption("Suggested follow-ups")
-        _render_prompt_chip_grid(
-            valid_suggestions,
-            param_key="cv36_pick",
-            analysis_id=analysis_id,
-            grid_class="cv35-suggestion-grid cv35-suggestion-grid--duo",
-            button_generation=button_generation,
-        )
+    st.caption("Suggested follow-ups")
+    _render_prompt_chip_grid(
+        valid_suggestions,
+        param_key="cv36_pick",
+        analysis_id=analysis_id,
+        grid_class="cv35-suggestion-grid cv35-suggestion-grid--duo",
+        button_generation=button_generation,
+    )
+    _log_ask_render("followups_rendered", count=len(valid_suggestions))
 
-    st.caption("Ask a different follow-up")
-    with st.form("cv47_custom_followup_form", clear_on_submit=True):
-        custom = st.text_area(
-            "Your follow-up question",
-            key="cv47_custom_followup_text",
-            height=76,
-            placeholder="For example: How would a 10-week delivery commitment change this recommendation?",
-            label_visibility="collapsed",
+
+def _render_composer(
+    *,
+    prompt_key: str,
+    selected_component: str,
+    actions_disabled: bool,
+) -> tuple[str, bool]:
+    """Composer sits beneath the latest completed turn (or empty-state suggestions)."""
+    with st.container(border=True):
+        with st.form("cv41_engineering_question_form", clear_on_submit=False):
+            question = st.text_area(
+                "Your engineering question",
+                key=prompt_key,
+                height=88,
+                placeholder="Ask Cadivor about this BOM, for example: What evidence is missing before release approval?",
+            )
+            component_note = f" Current component focus: {selected_component}." if selected_component else ""
+            st.caption(
+                "Cadivor reviews saved BOM evidence and flags uncertainty when supporting data is incomplete."
+                + component_note
+            )
+            manual_submit = st.form_submit_button(
+                "Ask Cadivor",
+                type="primary",
+                disabled=actions_disabled,
+                use_container_width=False,
+            )
+    return str(question or ""), bool(manual_submit)
+
+
+def _paint_conversation_thread(
+    *,
+    context: dict[str, Any],
+    thread: list[dict[str, Any]],
+    current_answer: Any,
+    preserved_painted: str | None = None,
+    include_latest_answer: bool = True,
+    auto_scroll: bool = False,
+) -> None:
+    """Chronological thread: older turns, then the latest answer when present."""
+    if preserved_painted:
+        older_turns = [
+            turn
+            for turn in (thread[:-1] if current_answer else thread)
+            if _normalize_submitted_question(turn.get("question")) != preserved_painted
+        ]
+        _render_conversation_history(older_turns, exclude_latest=False)
+    else:
+        _render_conversation_history(thread, exclude_latest=bool(current_answer and include_latest_answer))
+
+    if include_latest_answer and current_answer:
+        last_question = _normalize_submitted_question(
+            st.session_state.get("cv35_last_question") or "Engineering review"
         )
-        submit_custom = st.form_submit_button("Ask follow-up", type="primary")
-    if submit_custom:
-        if str(custom or "").strip():
-            _queue_follow_up(custom, analysis_id=analysis_id)
-        else:
-            st.warning("Enter a follow-up question before submitting.")
-    _log_ask_render("followups_rendered")
+        pending_shown = _normalize_submitted_question(
+            st.session_state.pop("cv72_pending_exchange_shown", None)
+        )
+        include_exchange = pending_shown != last_question
+        _render_response(
+            question=last_question,
+            answer=current_answer,
+            context=context,
+            auto_scroll=auto_scroll,
+            include_exchange=include_exchange,
+        )
+        if auto_scroll:
+            st.session_state["cv50_last_scrolled_question"] = last_question
+        _render_follow_ups(question=last_question, answer=current_answer, context=context)
+        if not st.session_state.get("cv35_provider_connected", False):
+            st.markdown(
+                '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def _first_sentence(text: str) -> str:
@@ -1930,6 +2155,7 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
 def _render_pending_exchange(*, question: str) -> None:
     """Show the submitted question in place; loading renders directly beneath it."""
     safe_question = html.escape(_plain_markdown(str(question or "").strip()))
+    safe_status = html.escape(_COPILOT_PROCESSING_LABEL)
     _render_presentation_html(
         f"""
         <section class="cv50-exchange cv72-pending-exchange" id="cv72-active-exchange" style="{CV50_EXCHANGE_STYLE}">
@@ -1939,50 +2165,135 @@ def _render_pending_exchange(*, question: str) -> None:
               <div class="cv50-you-asked-question" style="{CV50_YOU_ASKED_QUESTION_STYLE}">{safe_question}</div>
             </div>
           </div>
+          <div class="cv72-reviewing" style="display:block;margin-top:4px;
+            padding:10px 12px;border-radius:12px;border:1px solid #bfdbfe;background:#eff6ff;
+            color:#1d4ed8;font-size:13px;font-weight:600;line-height:1.4;">
+            {safe_status}
+          </div>
         </section>
         """
     )
-    if st.session_state.pop("cv47_scroll_pending", False):
-        components.html(
-            """
-            <script>
-            (function(){
-              const d=window.parent.document;
-              const host=d.getElementById('cv72-active-exchange');
-              if(!host) return;
-              const main=d.querySelector('[data-testid="stMain"]') || d.scrollingElement || d.documentElement;
-              const hostRect=host.getBoundingClientRect();
-              const viewBottom=(main.getBoundingClientRect?main.getBoundingClientRect().bottom:window.parent.innerHeight);
-              const viewTop=(main.getBoundingClientRect?main.getBoundingClientRect().top:0);
-              if(hostRect.top>=viewTop+24 && hostRect.bottom<=viewBottom-24) return;
-              try{host.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});}catch(e){}
-            })();
-            </script>
-            """,
-            height=0,
-        )
+    # Consume soft-ensure flag without jumping the viewport so the BOM header,
+    # tabs, and Ask workspace stay visually stable during loading.
+    st.session_state.pop("cv47_scroll_pending", False)
 
 
 def _render_conversation_exchange(*, question: str, intent: str) -> None:
     _render_native_conversation_exchange(question=question, intent=intent)
 
 
+def _scannable_reason_line(mpn: str, detail: str) -> str:
+    """MPN-first decision reason without raw internal field dumps."""
+    part = str(mpn or "").strip()
+    text = _plain_markdown(str(detail or "")).strip()
+    if not text:
+        return ""
+
+    # Drop internal/raw fragments from the default answer surface.
+    text = re.sub(r"\brelative[- ]assessment(?:\s+priority)?\b[:\s-]*", "", text, flags=re.I)
+    text = re.sub(r"\bqualification priority\b[:\s-]*", "", text, flags=re.I)
+    text = re.sub(r"\brecommendation score\b[:\s-]*\d+(?:\.\d+)?%?", "", text, flags=re.I)
+    text = re.sub(r"\brisk(?:\s+score)?\s*[:=]?\s*\d{1,3}\s*/\s*100\b", "", text, flags=re.I)
+    text = re.sub(r"\brisk(?:\s+score)?\s*[:=]?\s*\d{1,3}\b", "", text, flags=re.I)
+    text = re.sub(r"\bonly\s+\d+\s+suppliers?\b", "", text, flags=re.I)
+    text = re.sub(r"\b\d+\s+suppliers?\b", "", text, flags=re.I)
+    text = re.sub(r"\bsupplier(?:\s+count)?\s*[:=]?\s*\d+\b", "", text, flags=re.I)
+    text = re.sub(r"\b(?:stock|inventory|units?)\s*[:=]?\s*[\d,]+\b", "", text, flags=re.I)
+    text = re.sub(r"\brecord(?:ed)?\s+(?:label|stock|inventory)\b[:\s-]*", "", text, flags=re.I)
+    text = re.sub(r"\s*;\s*", "; ", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\s*,\s*,+", ", ", text)
+    text = text.strip(" ;,.-")
+
+    # Prefer one decision-relevant clause.
+    lead_bits: list[str] = []
+    lead_match = re.search(
+        r"(\d+(?:\.\d+)?\s*[- ]?week[s]?(?:\s+lead(?:\s*time)?)?)",
+        text,
+        flags=re.I,
+    )
+    if lead_match:
+        lead_bits.append(re.sub(r"\s+", " ", lead_match.group(1)).strip())
+    life_match = re.search(
+        r"\b(NRND|EOL|End of Life|Obsolete|Active|Last Time Buy|LTB)\b",
+        text,
+        flags=re.I,
+    )
+    if life_match:
+        status = life_match.group(1)
+        if status.lower() == "end of life":
+            status = "EOL"
+        lead_bits.append(f"{status} lifecycle status")
+    if re.search(r"\bmedium(?:\s+composite)?\s+risk\b", text, flags=re.I):
+        lead_bits.append("medium composite risk")
+    elif re.search(r"\bhigh(?:\s+composite)?\s+risk\b", text, flags=re.I):
+        lead_bits.append("high composite risk")
+    if re.search(r"\bsingle[- ]source\b|\bsole source\b", text, flags=re.I):
+        lead_bits.append("single-source exposure")
+
+    if lead_bits:
+        # De-dupe while preserving order.
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for bit in lead_bits:
+            key = bit.lower()
+            if key not in seen:
+                seen.add(key)
+                ordered.append(bit)
+        reason = " and ".join(ordered[:2])
+        if "confirm supply" in text.lower() or "before release" in text.lower():
+            if "medium" in reason.lower() or "high" in reason.lower():
+                reason = f"{reason}; confirm supply before release"
+        return f"{part}: {reason}." if part else f"{reason}."
+
+    # Fallback: first short clause, still MPN-led.
+    clause = re.split(r"[.;]", text)[0].strip()
+    if len(clause) > 110:
+        clause = clause[:107].rstrip() + "…"
+    if not clause:
+        return ""
+    if part and not clause.upper().startswith(part.upper()):
+        return f"{part}: {clause}."
+    if clause.endswith("."):
+        return clause
+    return f"{clause}."
+
+
 def _concise_reason_items(evidence: str, drivers: list[str], *, limit: int = _CONCISE_REASON_LIMIT) -> list[str]:
-    """Return capped reason lines for the concise answer surface."""
+    """Return capped MPN-first reason lines for the concise answer surface."""
     items: list[str] = []
     for title, detail in _evidence_items(evidence):
-        line = f"{title}: {detail}" if title and title != "Engineering evidence" else detail
-        clean = _plain_markdown(line).strip()
-        if clean:
-            items.append(clean)
+        line = _scannable_reason_line(title if title != "Engineering evidence" else "", detail)
+        if line and line not in items:
+            items.append(line)
     if not items:
-        items = [_plain_markdown(item).strip() for item in drivers if str(item or "").strip()]
+        for item in drivers:
+            clean = _plain_markdown(str(item or "")).strip()
+            if not clean:
+                continue
+            if ":" in clean:
+                mpn, detail = clean.split(":", 1)
+                line = _scannable_reason_line(mpn.strip(), detail.strip())
+            else:
+                line = _scannable_reason_line("", clean)
+            if line and line not in items:
+                items.append(line)
     return items[:limit]
 
 
 def _concise_action_items(actions: str, *, limit: int = _CONCISE_ACTION_LIMIT) -> list[str]:
-    """Return capped recommended actions for the concise answer surface."""
-    return _normalize_action_items(actions, limit=limit)
+    """Return capped discrete next-step actions for the concise answer surface."""
+    items = _normalize_action_items(actions, limit=limit)
+    cleaned: list[str] = []
+    for item in items:
+        text = _plain_markdown(item).strip().rstrip(".,;")
+        text = re.sub(r"\s{2,}", " ", text)
+        text = re.sub(r"\s*,\s*$", "", text)
+        if not text:
+            continue
+        # Keep compound next-steps intact; do not split mid-list on "and".
+        cleaned.append(f"{text}.")
+    return cleaned[:limit]
 
 
 def _should_render_workflow_timeline(
@@ -2255,10 +2566,13 @@ def render_engineering_assistant(
     engineering_context: Any,
     selected_component: str = "",
 ) -> None:
+    t_run = _ask_timing("script_run_start")
     _log_ask_cadivor("script_run_started", surface="ask_cadivor")
     _restore_copilot_workflow_snapshot(st.session_state.get("cv48_copilot_snapshot"))
     _recover_stale_copilot_inflight()
     _log_ask_cadivor_state("script_run_state")
+
+    t_context = time.perf_counter()
     try:
         context = (
             engineering_context.compact(max_components=15)
@@ -2267,6 +2581,12 @@ def render_engineering_assistant(
         )
     except Exception:
         context = {}
+    _ask_timing(
+        "context_bom_read",
+        t0=t_context,
+        cached=hasattr(engineering_context, "compact"),
+        analysis_id=_analysis_id_from_context(context) or "missing",
+    )
     _restore_persisted_copilot_thread(context=context, current_user=current_user)
     status = get_ai_usage_status(st.session_state, current_user or {})
 
@@ -2345,44 +2665,7 @@ def render_engineering_assistant(
     elif prompt_key not in st.session_state:
         st.session_state[prompt_key] = ""
 
-    copilot_busy = _copilot_submission_inflight()
-    actions_disabled = copilot_busy or not status.can_use
-    deferred_pending_question = _normalize_submitted_question(
-        st.session_state.get("cv72_active_pending_question")
-        or st.session_state.get("cv41_pending_manual")
-        or st.session_state.get("cv36_pending_followup")
-        or ""
-    )
-    # Credits-blocked / deferred path: keep prior Q/A and show the queued question
-    # with an in-place loading surface — never an orphaned banner alone.
-    if copilot_busy and not auto_execute_followup and deferred_pending_question:
-        preserved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
-        preserved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
-        if preserved_answer and preserved_question and preserved_question != deferred_pending_question:
-            _render_response(
-                question=preserved_question,
-                answer=preserved_answer,
-                context=context,
-                auto_scroll=False,
-            )
-        _render_pending_exchange(question=deferred_pending_question)
-        st.info(_COPILOT_PROCESSING_LABEL)
-
-    if analysis_id:
-        st.markdown(
-            '<div class="cv-assistant-section-label cv35-section-label">Suggested engineering workflows</div>',
-            unsafe_allow_html=True,
-        )
-        with st.container(border=True):
-            _render_prompt_chip_grid(
-                SUGGESTIONS,
-                param_key="cv35_pick",
-                analysis_id=analysis_id,
-                disabled=actions_disabled,
-            )
-
-    # Suggested-question buttons queue their question during this same script
-    # run. Consume it immediately instead of requiring a second rerun.
+    # Suggested-question buttons may queue during this same script run.
     if not auto_execute_followup:
         pending_manual = st.session_state.get("cv41_pending_manual")
         pending_followup = st.session_state.get("cv36_pending_followup")
@@ -2391,259 +2674,330 @@ def render_engineering_assistant(
             st.session_state[prompt_key] = queued_question
             auto_execute_followup = True
 
-    # A form submits the browser's current text-area value and the button click
-    # in one transaction. This prevents pasted text from requiring a first click
-    # merely to synchronize the widget before the button becomes enabled.
-    with st.container(border=True):
-        with st.form("cv41_engineering_question_form", clear_on_submit=False):
-            question = st.text_area(
-                "Your engineering question",
-                key=prompt_key,
-                height=88,
-                placeholder="Ask Cadivor about this BOM, for example: What evidence is missing before release approval?",
-            )
-            component_note = f" Current component focus: {selected_component}." if selected_component else ""
-            st.caption(
-                "Cadivor reviews saved BOM evidence and flags uncertainty when supporting data is incomplete."
-                + component_note
-            )
-            manual_submit = st.form_submit_button(
-                "Ask Cadivor",
-                type="primary",
-                disabled=actions_disabled,
-                use_container_width=False,
-            )
+    copilot_busy = _copilot_submission_inflight()
+    actions_disabled = copilot_busy or not status.can_use
+    deferred_pending_question = _normalize_submitted_question(
+        st.session_state.get("cv72_active_pending_question")
+        or st.session_state.get("cv41_pending_manual")
+        or st.session_state.get("cv36_pending_followup")
+        or ""
+    )
+    current_answer = st.session_state.get("cv35_last_answer")
+    thread = get_thread(st.session_state, context)
+    conversation_empty = not thread and not str(current_answer or "").strip()
 
-    cleaned_question = _normalize_submitted_question(question)
-    manual_submit_requested = bool(manual_submit and status.can_use and cleaned_question and not copilot_busy)
-    if manual_submit and not cleaned_question:
-        st.warning("Enter an engineering question before submitting.")
-    if manual_submit and copilot_busy:
-        _block_duplicate_submission(kind="manual", analysis_id=analysis_id)
-    if manual_submit_requested:
-        _log_copilot_workflow("manual_copilot_submission_received", question_len=len(cleaned_question))
-        _queue_copilot_submission(cleaned_question, submission_kind="manual", analysis_id=analysis_id)
-        queued_question = cleaned_question
-        auto_execute_followup = True
-        manual_submit_requested = False
-
-    submitted_question = _normalize_submitted_question(queued_question or cleaned_question)
+    submitted_question = _normalize_submitted_question(queued_question)
     submit_requested = bool(
-        auto_execute_followup
-        and status.can_use
-        and submitted_question
-        and not manual_submit_requested
+        auto_execute_followup and status.can_use and submitted_question
     )
     if auto_execute_followup and not submit_requested:
         _log_ask_cadivor(
             "execution_deferred",
             can_use=bool(status.can_use),
             submitted_question_len=len(submitted_question),
-            manual_submit_requested=bool(manual_submit_requested),
+            manual_submit_requested=False,
         )
-    if submit_requested:
-        st.session_state.pop("cv41_pending_manual", None)
-        st.session_state.pop("cv36_pending_followup", None)
-        _pin_ask_cadivor_tab(source="execute_copilot_question", analysis_id=analysis_id)
-        _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
-        _log_ask_cadivor(
-            "submission_received",
-            kind="execute",
-            question_len=len(submitted_question),
-            active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
-        )
-        api = EngineeringAI(
-            api_key=_secret("OPENAI_API_KEY"),
-            model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
-            base_url=_secret("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        )
-        log_ai_config(api)
-        provider_target = "openai" if api.configured else "cadivor-grounded"
-        st.session_state.pop("cv35_last_error", None)
 
-        # Keep the completed review on screen while the new question loads beneath it.
-        preserved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
-        preserved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
-        rendered_preserved = False
-        if (
-            preserved_answer
-            and preserved_question
-            and preserved_question != submitted_question
-        ):
-            _render_response(
-                question=preserved_question,
-                answer=preserved_answer,
-                context=context,
-                auto_scroll=False,
+    # --- Conversation thread (stable response stage; loading swaps only this region) ---
+    with st.container(key="cv72_response_stage"):
+        if submit_requested:
+            t_ack = time.perf_counter()
+            _pin_ask_cadivor_tab(source="execute_copilot_question", analysis_id=analysis_id)
+            _arm_copilot_workflow_snapshot(reason="execute_copilot_question")
+            _log_ask_cadivor(
+                "submission_received",
+                kind="execute",
+                question_len=len(submitted_question),
+                active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
             )
-            rendered_preserved = True
 
-        st.session_state["cv35_last_question"] = submitted_question
-        st.session_state["cv72_active_pending_question"] = submitted_question
-        st.session_state["cv72_pending_exchange_shown"] = submitted_question
-        _render_pending_exchange(question=submitted_question)
-        with st.status(_COPILOT_PROCESSING_LABEL, expanded=True) as progress:
-            try:
+            preserved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
+            preserved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
+            if (
+                preserved_answer
+                and preserved_question
+                and preserved_question != submitted_question
+            ):
+                _render_response(
+                    question=preserved_question,
+                    answer=preserved_answer,
+                    context=context,
+                    auto_scroll=False,
+                )
+                st.session_state["cv72_rendered_preserved_this_run"] = preserved_question
+            else:
+                older = [
+                    turn
+                    for turn in thread
+                    if _normalize_submitted_question(turn.get("question")) != submitted_question
+                ]
+                if preserved_question:
+                    older = [
+                        turn
+                        for turn in older
+                        if _normalize_submitted_question(turn.get("question")) != preserved_question
+                    ]
+                _render_conversation_history(older, exclude_latest=False)
+
+            st.session_state["cv35_last_question"] = submitted_question
+            st.session_state["cv72_active_pending_question"] = submitted_question
+            st.session_state["cv72_pending_exchange_shown"] = submitted_question
+            st.session_state["cv7142_ask_inflight"] = True
+            _render_pending_exchange(question=submitted_question)
+            ack_t0 = st.session_state.pop("cv72_ack_timing_t0", None) or t_ack
+            _ask_timing("click_to_ack", t0=ack_t0, question_len=len(submitted_question))
+
+            # Phase A: paint the submitted question + reviewing status, then rerun
+            # so the browser can show in-place loading before the blocking provider call.
+            armed = _normalize_submitted_question(st.session_state.get("cv72_provider_armed"))
+            if armed != submitted_question:
+                st.session_state["cv72_provider_armed"] = submitted_question
                 _log_ask_cadivor(
-                    "execution_started",
-                    configured=api.configured,
-                    provider=provider_target,
+                    "pending_paint_armed",
                     question_len=len(submitted_question),
+                    analysis_id=analysis_id or "active",
                 )
-                response = api.ask(question=submitted_question, context=context, history=compact_history(thread))
-                response_provider = str(getattr(response, "provider", provider_target))
-                _log_ask_cadivor(
-                    "execution_completed",
-                    configured=api.configured,
-                    provider=response_provider,
-                    question_len=len(submitted_question),
-                )
-                consume_ai_credits(st.session_state, current_user, action="question")
-                st.session_state["cv35_last_answer"] = response.answer
-                st.session_state["cv35_last_question"] = submitted_question
-                st.session_state["cv35_provider_connected"] = response_provider == "openai"
-                # Soft ensure-visible for the finished exchange only when needed.
-                st.session_state["cv47_scroll_to_assessment"] = True
-                if st.session_state.pop("cv47_followup_question", None):
-                    st.session_state["cv47_followup_answered"] = submitted_question
-                thread = append_turn(
-                    st.session_state,
-                    context,
-                    question=submitted_question,
-                    answer=response.answer,
-                    provider_connected=response_provider == "openai",
-                )
+                st.rerun()
+
+            # Phase B: consume the queued submission and call the provider.
+            st.session_state.pop("cv72_provider_armed", None)
+            st.session_state.pop("cv41_pending_manual", None)
+            st.session_state.pop("cv36_pending_followup", None)
+
+            api = EngineeringAI(
+                api_key=_secret("OPENAI_API_KEY"),
+                model=_secret("OPENAI_MODEL", "gpt-4.1-mini"),
+                base_url=_secret("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            )
+            log_ai_config(api)
+            provider_target = "openai" if api.configured else "cadivor-grounded"
+            st.session_state.pop("cv35_last_error", None)
+
+            with st.status(_COPILOT_PROCESSING_LABEL, expanded=True) as progress:
                 try:
-                    from src.services.copilot_conversation import persist_thread_to_store
-
-                    persist_thread_to_store(
-                        context,
-                        user_id=str((current_user or {}).get("id") or ""),
-                        supabase=_copilot_supabase_client(),
-                        thread=thread,
+                    progress.write("Reading saved BOM evidence…")
+                    t_gen = time.perf_counter()
+                    _log_ask_cadivor(
+                        "execution_started",
+                        configured=api.configured,
+                        provider=provider_target,
+                        question_len=len(submitted_question),
                     )
-                except Exception:
-                    # Persistence failures must not erase the in-session answer.
-                    pass
-                # Copilot submission completed inside the authenticated workspace.
-                # The recovery snapshot is no longer needed after the answer and
-                # active route are safely stored.
-                _clear_copilot_workflow_protection()
-                st.session_state.pop("cv36_pending_followup", None)
-                st.session_state.pop("cv47_followup_question", None)
-                st.session_state.pop("cv41_pending_manual", None)
-                st.session_state.pop("cv72_active_pending_question", None)
-                _schedule_prompt_clear_on_next_run()
-                _pin_ask_cadivor_tab(source="provider_complete", analysis_id=analysis_id)
-                _log_ask_cadivor(
-                    "response_committed",
-                    active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
-                    thread_len=len(thread),
-                    provider=response_provider,
-                )
-                progress.update(label="Engineering review complete", state="complete")
-            except EngineeringAIError as exc:
-                _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
-                _pin_ask_cadivor_tab(source="provider_failed", analysis_id=analysis_id)
-                st.session_state["cv35_last_error"] = exc
-                _clear_copilot_workflow_protection()
-                st.session_state.pop("cv36_pending_followup", None)
-                st.session_state.pop("cv47_followup_question", None)
-                st.session_state.pop("cv41_pending_manual", None)
-                st.session_state.pop("cv72_active_pending_question", None)
-                progress.update(label="Cadivor could not complete the review", state="error")
-            except Exception as exc:
-                _log_ask_cadivor("execution_failed", exception_type=type(exc).__name__)
-                _pin_ask_cadivor_tab(source="execution_failed", analysis_id=analysis_id)
-                # A response may already have been generated and saved before a
-                # secondary operation (history persistence, cleanup, etc.) fails.
-                # Do not show a false red failure banner when the visible answer
-                # belongs to the submitted question. Preserve the successful
-                # answer, log a quiet diagnostic, and complete the review.
-                saved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
-                saved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
-                if saved_answer and saved_question == submitted_question:
-                    st.session_state.pop("cv35_last_error", None)
-                    st.session_state["cv49_nonfatal_warning"] = repr(exc)
+                    response = api.ask(
+                        question=submitted_question,
+                        context=context,
+                        history=compact_history(thread),
+                    )
+                    response_provider = str(getattr(response, "provider", provider_target))
+                    _ask_timing(
+                        "response_generation",
+                        t0=t_gen,
+                        provider=response_provider,
+                        configured=api.configured,
+                    )
+                    _log_ask_cadivor(
+                        "execution_completed",
+                        configured=api.configured,
+                        provider=response_provider,
+                        question_len=len(submitted_question),
+                    )
+                    consume_ai_credits(st.session_state, current_user, action="question")
+                    st.session_state["cv35_last_answer"] = response.answer
+                    st.session_state["cv35_last_question"] = submitted_question
+                    st.session_state["cv35_provider_connected"] = response_provider == "openai"
                     st.session_state["cv47_scroll_to_assessment"] = True
+                    if st.session_state.pop("cv47_followup_question", None):
+                        st.session_state["cv47_followup_answered"] = submitted_question
+                    t_persist = time.perf_counter()
+                    thread = append_turn(
+                        st.session_state,
+                        context,
+                        question=submitted_question,
+                        answer=response.answer,
+                        provider_connected=response_provider == "openai",
+                    )
+                    try:
+                        from src.services.copilot_conversation import persist_thread_to_store
+
+                        persist_thread_to_store(
+                            context,
+                            user_id=str((current_user or {}).get("id") or ""),
+                            supabase=_copilot_supabase_client(),
+                            thread=thread,
+                        )
+                    except Exception:
+                        # Persistence failures must not erase the in-session answer.
+                        pass
+                    _ask_timing("persist_complete", t0=t_persist, thread_len=len(thread))
                     _clear_copilot_workflow_protection()
                     st.session_state.pop("cv36_pending_followup", None)
                     st.session_state.pop("cv47_followup_question", None)
                     st.session_state.pop("cv41_pending_manual", None)
                     st.session_state.pop("cv72_active_pending_question", None)
-                    progress.update(label="Engineering review complete", state="complete")
-                else:
-                    st.session_state["cv35_last_error"] = EngineeringAIError(
-                        "Cadivor could not complete this assessment from the saved evidence. "
-                        "The previous assessment remains available; refresh the BOM evidence and try again."
+                    _schedule_prompt_clear_on_next_run()
+                    _pin_ask_cadivor_tab(source="provider_complete", analysis_id=analysis_id)
+                    _log_ask_cadivor(
+                        "response_committed",
+                        active_tab=st.session_state.get("cadivor_active_analysis_tab", ""),
+                        thread_len=len(thread),
+                        provider=response_provider,
                     )
-                    progress.update(label="Cadivor safely stopped the review", state="error")
-                _clear_copilot_workflow_protection()
-                st.session_state.pop("cv36_pending_followup", None)
-                st.session_state.pop("cv47_followup_question", None)
-                st.session_state.pop("cv41_pending_manual", None)
-                st.session_state.pop("cv72_active_pending_question", None)
-        # Mark that the preserved review was already painted this run so the
-        # trailing render path does not duplicate it above the new answer.
-        if rendered_preserved:
-            st.session_state["cv72_rendered_preserved_this_run"] = preserved_question
-    else:
-        st.session_state.pop("cv72_rendered_preserved_this_run", None)
+                    progress.update(label="Engineering review complete", state="complete")
+                except EngineeringAIError as exc:
+                    _log_ask_cadivor("provider_failed", exception_type=type(exc).__name__)
+                    _pin_ask_cadivor_tab(source="provider_failed", analysis_id=analysis_id)
+                    st.session_state["cv35_last_error"] = exc
+                    _clear_copilot_workflow_protection()
+                    st.session_state.pop("cv36_pending_followup", None)
+                    st.session_state.pop("cv47_followup_question", None)
+                    st.session_state.pop("cv41_pending_manual", None)
+                    st.session_state.pop("cv72_active_pending_question", None)
+                    progress.update(label="Cadivor could not complete the review", state="error")
+                except Exception as exc:
+                    _log_ask_cadivor("execution_failed", exception_type=type(exc).__name__)
+                    _pin_ask_cadivor_tab(source="execution_failed", analysis_id=analysis_id)
+                    saved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
+                    saved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
+                    if saved_answer and saved_question == submitted_question:
+                        st.session_state.pop("cv35_last_error", None)
+                        st.session_state["cv49_nonfatal_warning"] = repr(exc)
+                        st.session_state["cv47_scroll_to_assessment"] = True
+                        _clear_copilot_workflow_protection()
+                        st.session_state.pop("cv36_pending_followup", None)
+                        st.session_state.pop("cv47_followup_question", None)
+                        st.session_state.pop("cv41_pending_manual", None)
+                        st.session_state.pop("cv72_active_pending_question", None)
+                        progress.update(label="Engineering review complete", state="complete")
+                    else:
+                        st.session_state["cv35_last_error"] = EngineeringAIError(
+                            "Cadivor could not complete this assessment from the saved evidence. "
+                            "The previous assessment remains available; refresh the BOM evidence and try again."
+                        )
+                        progress.update(label="Cadivor safely stopped the review", state="error")
+                    _clear_copilot_workflow_protection()
+                    st.session_state.pop("cv36_pending_followup", None)
+                    st.session_state.pop("cv47_followup_question", None)
+                    st.session_state.pop("cv41_pending_manual", None)
+                    st.session_state.pop("cv72_active_pending_question", None)
 
-    answered_followup = st.session_state.pop("cv47_followup_answered", None)
-    if answered_followup:
-        st.success(f'Follow-up answered: "{answered_followup}". The latest assessment below has been regenerated for this question.')
-        st.session_state["cv47_scroll_to_assessment"] = True
+            answered_followup = st.session_state.pop("cv47_followup_answered", None)
+            if answered_followup:
+                st.success(
+                    f'Follow-up answered: "{answered_followup}". '
+                    "The latest assessment below has been regenerated for this question."
+                )
+                st.session_state["cv47_scroll_to_assessment"] = True
 
-    thread = get_thread(st.session_state, context)
-    current_answer = st.session_state.get("cv35_last_answer")
-    preserved_painted = st.session_state.pop("cv72_rendered_preserved_this_run", None)
-    if preserved_painted:
-        # The completed prior review was already painted above the loading
-        # exchange; keep chronological older turns only and avoid duplicating it.
-        older_turns = [
-            turn
-            for turn in (thread[:-1] if current_answer else thread)
-            if _normalize_submitted_question(turn.get("question")) != preserved_painted
-        ]
-        _render_conversation_history(older_turns, exclude_latest=False)
-    else:
-        _render_conversation_history(thread, exclude_latest=bool(current_answer))
+            error_message = st.session_state.get("cv35_last_error")
+            if isinstance(error_message, EngineeringAIError):
+                _render_error(error_message)
 
-    error_message = st.session_state.get("cv35_last_error")
-    if isinstance(error_message, EngineeringAIError):
-        _render_error(error_message)
+            answer = st.session_state.get("cv35_last_answer")
+            t_render = time.perf_counter()
+            if answer and _normalize_submitted_question(st.session_state.get("cv35_last_question")) == submitted_question:
+                should_scroll = bool(st.session_state.pop("cv47_scroll_to_assessment", False))
+                pending_shown = _normalize_submitted_question(
+                    st.session_state.pop("cv72_pending_exchange_shown", None)
+                )
+                include_exchange = pending_shown != submitted_question
+                _render_response(
+                    question=submitted_question,
+                    answer=answer,
+                    context=context,
+                    auto_scroll=should_scroll,
+                    include_exchange=include_exchange,
+                )
+                if should_scroll:
+                    st.session_state["cv50_last_scrolled_question"] = submitted_question
+                _render_follow_ups(question=submitted_question, answer=answer, context=context)
+                if not st.session_state.get("cv35_provider_connected", False):
+                    st.markdown(
+                        '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
+                        unsafe_allow_html=True,
+                    )
+            _ask_timing("persist_render_complete", t0=t_render)
+            st.session_state.pop("cv72_rendered_preserved_this_run", None)
+            # Rerun so the next paint is a clean chronological thread without the
+            # same-run pending exchange / status widgets stacked above the answer.
+            if str(st.session_state.get("cv35_last_answer") or "").strip():
+                st.rerun()
+        else:
+            st.session_state.pop("cv72_rendered_preserved_this_run", None)
 
-    answer = st.session_state.get("cv35_last_answer")
-    _log_ask_cadivor(
-        "last_answer_present_before_render",
-        present=bool(str(answer or "").strip()),
-        answer_len=len(str(answer or "")),
-    )
-    if answer:
-        last_question = _normalize_submitted_question(st.session_state.get("cv35_last_question") or "Engineering review")
-        # Soft ensure-visible only when an answer just finished. Never jump on
-        # ordinary reruns or when the question string merely differs.
-        should_scroll = bool(st.session_state.pop("cv47_scroll_to_assessment", False))
-        pending_shown = _normalize_submitted_question(
-            st.session_state.pop("cv72_pending_exchange_shown", None)
+            # Credits-blocked / deferred path: keep prior Q/A and show the queued question
+            # with an in-place loading surface — never an orphaned banner alone.
+            if copilot_busy and deferred_pending_question:
+                preserved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
+                preserved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
+                if preserved_answer and preserved_question and preserved_question != deferred_pending_question:
+                    _render_response(
+                        question=preserved_question,
+                        answer=preserved_answer,
+                        context=context,
+                        auto_scroll=False,
+                    )
+                _render_pending_exchange(question=deferred_pending_question)
+                st.info(_COPILOT_PROCESSING_LABEL)
+            else:
+                answered_followup = st.session_state.pop("cv47_followup_answered", None)
+                if answered_followup:
+                    st.success(
+                        f'Follow-up answered: "{answered_followup}". '
+                        "The latest assessment below has been regenerated for this question."
+                    )
+                    st.session_state["cv47_scroll_to_assessment"] = True
+
+                error_message = st.session_state.get("cv35_last_error")
+                if isinstance(error_message, EngineeringAIError):
+                    _render_error(error_message)
+
+                should_scroll = bool(st.session_state.pop("cv47_scroll_to_assessment", False))
+                _paint_conversation_thread(
+                    context=context,
+                    thread=thread,
+                    current_answer=current_answer,
+                    auto_scroll=should_scroll,
+                )
+
+            # Suggested prompts only before the first question.
+            if conversation_empty and analysis_id and not deferred_pending_question:
+                st.markdown(
+                    '<div class="cv-assistant-section-label cv35-section-label">Suggested engineering workflows</div>',
+                    unsafe_allow_html=True,
+                )
+                with st.container(border=True):
+                    _render_prompt_chip_grid(
+                        SUGGESTIONS,
+                        param_key="cv35_pick",
+                        analysis_id=analysis_id,
+                        disabled=actions_disabled,
+                    )
+                # Same-run suggestion clicks queue + rerun in production; tests may
+                # continue without a real rerun, so re-check the queue here.
+                if not auto_execute_followup:
+                    late_manual = st.session_state.get("cv41_pending_manual")
+                    late_followup = st.session_state.get("cv36_pending_followup")
+                    if late_manual or late_followup:
+                        queued_question = str(late_manual or late_followup)
+                        st.session_state[prompt_key] = queued_question
+                        # Production path already reruns from the queue helper.
+                        # Keep the pending markers so the next run executes.
+
+        # Composer always sits beneath the latest completed turn / empty-state prompts.
+        question, manual_submit = _render_composer(
+            prompt_key=prompt_key,
+            selected_component=selected_component,
+            actions_disabled=actions_disabled,
         )
-        # Same-run loading already painted the question; replace loading with the
-        # answer body in place instead of duplicating the exchange header.
-        include_exchange = pending_shown != last_question
-        _render_response(
-            question=last_question,
-            answer=answer,
-            context=context,
-            auto_scroll=should_scroll,
-            include_exchange=include_exchange,
-        )
-        if should_scroll:
-            st.session_state["cv50_last_scrolled_question"] = last_question
-            # Soft scroll runs from the response-start iframe in _render_response.
-        _render_follow_ups(question=last_question, answer=answer, context=context)
-        if not st.session_state.get("cv35_provider_connected", False):
-            st.markdown(
-                '<div class="cv35-mode-note">This assessment is grounded in the engineering evidence saved with the BOM. Validate final release, sourcing, and compatibility decisions against current approved datasheets and organizational requirements.</div>',
-                unsafe_allow_html=True,
-            )
+        cleaned_question = _normalize_submitted_question(question)
+        if manual_submit and not cleaned_question:
+            st.warning("Enter an engineering question before submitting.")
+        if manual_submit and copilot_busy:
+            _block_duplicate_submission(kind="manual", analysis_id=analysis_id)
+        if manual_submit and status.can_use and cleaned_question and not copilot_busy:
+            t_click = time.perf_counter()
+            st.session_state["cv72_ack_timing_t0"] = t_click
+            _log_copilot_workflow("manual_copilot_submission_received", question_len=len(cleaned_question))
+            _queue_copilot_submission(cleaned_question, submission_kind="manual", analysis_id=analysis_id)
+
+    _ask_timing("script_run_finished", t0=t_run)

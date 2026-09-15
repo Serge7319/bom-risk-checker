@@ -54,16 +54,17 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
 
         return assistant
 
-    def _render(self, *, question: str, answer: str = SAMPLE_ANSWER, context: dict | None = None):
+    def _render(self, *, question: str, answer: str = SAMPLE_ANSWER, context: dict | None = None, expand: bool = False):
         st = install_ask_cadivor_streamlit_stub()
         assistant = self._load_assistant()
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                assistant._render_response(
-                    question=question,
-                    answer=answer,
-                    context=context or SAMPLE_CONTEXT,
-                )
+                with patch.object(assistant, "_disclosure_is_open", return_value=bool(expand)):
+                    assistant._render_response(
+                        question=question,
+                        answer=answer,
+                        context=context or SAMPLE_CONTEXT,
+                    )
         html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
         return assistant, html, st
 
@@ -71,11 +72,13 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         _, html, _st = self._render(question="What should I review first in this BOM?")
         self.assertIn("cv50-exchange", html)
         self.assertIn("cv722-concise-answer", html)
+        self.assertIn("cv72-compact-answer", html)
         self.assertNotIn("<details", html.lower())
 
     def test_direct_answer_visible_outside_expander(self) -> None:
         _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertIn("Review U0 first because lifecycle exposure is highest.", html)
+        self.assertIn("Review U0 first.", html)
+        self.assertIn("Recommended next action", html)
 
     def test_concise_reasons_capped_at_three(self) -> None:
         assistant = self._load_assistant()
@@ -92,30 +95,33 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         )
         self.assertEqual(len(actions), 3)
 
-    def test_full_assessment_visible_for_normal_questions(self) -> None:
-        _, html, st = self._render(question="What should I review first in this BOM?")
+    def test_full_assessment_deferred_for_normal_questions(self) -> None:
+        _, collapsed, _ = self._render(question="What should I review first in this BOM?", expand=False)
+        self.assertNotIn("Engineering Assessment", collapsed)
+        _, html, _ = self._render(question="What should I review first in this BOM?", expand=True)
         self.assertIn("Engineering Assessment", html)
 
-    def test_detailed_question_keeps_assessment_visible(self) -> None:
-        _, html, st = self._render(question="Give me a comprehensive analysis of this BOM.")
+    def test_detailed_question_keeps_assessment_available(self) -> None:
+        _, html, _ = self._render(question="Give me a comprehensive analysis of this BOM.", expand=True)
         self.assertIn("Engineering Assessment", html)
 
     def test_direct_answer_not_duplicated_in_detailed_assessment(self) -> None:
-        _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertEqual(html.count("Review U0 first because lifecycle exposure is highest."), 1)
+        _, html, _ = self._render(question="What should I review first in this BOM?", expand=True)
+        # Compact card keeps a single headline; long body copy is deferred out of the default card.
+        self.assertEqual(html.count("Review U0 first."), 1)
 
     def test_evidence_not_rendered_three_times(self) -> None:
-        _, html, _ = self._render(question="What should I review first in this BOM?")
-        self.assertIn("key engineering reasons", html.lower())
+        _, html, _ = self._render(question="What should I review first in this BOM?", expand=True)
+        self.assertIn("why it matters", html.lower())
         self.assertIn("evidence breakdown", html.lower())
 
     def test_confidence_not_duplicated_in_full_assessment(self) -> None:
-        _, html, _ = self._render(question="What should I review first in this BOM?")
+        _, html, _ = self._render(question="What should I review first in this BOM?", expand=True)
         self.assertIn("72%", html)
         self.assertNotIn("Evidence confidence", html)
 
     def test_timeline_not_synthesized_for_normal_review_question(self) -> None:
-        assistant, html, _ = self._render(question="What should I review first in this BOM?")
+        assistant, html, _ = self._render(question="What should I review first in this BOM?", expand=True)
         self.assertFalse(
             assistant._should_render_workflow_timeline(
                 "What should I review first in this BOM?",
@@ -127,7 +133,10 @@ class AskCadivorResponseDepthTests(unittest.TestCase):
         self.assertNotIn("Priority Timeline", html)
 
     def test_workflow_oriented_question_can_render_timeline(self) -> None:
-        assistant, html, _ = self._render(question="What workflow steps should the engineering owner take next?")
+        assistant, html, _ = self._render(
+            question="What workflow steps should the engineering owner take next?",
+            expand=True,
+        )
         self.assertTrue(
             assistant._should_render_workflow_timeline(
                 "What workflow steps should the engineering owner take next?",
@@ -177,10 +186,10 @@ class AskCadivorResponseDepthIntegrationMarkers(unittest.TestCase):
     def test_render_response_uses_native_decision_workspace(self) -> None:
         source = ENGINEERING_ASSISTANT_PY.read_text(encoding="utf-8")
         self.assertIn("_DECISION_COLUMN_RATIO", source)
-        self.assertIn("st.columns(_DECISION_COLUMN_RATIO", source)
+        self.assertNotIn("st.columns(_DECISION_COLUMN_RATIO", source)
         self.assertIn("_render_decision_workspace", source)
         self.assertIn("_render_native_answer_column", source)
-        self.assertIn("_render_native_assessment_column", source)
+        self.assertIn("_render_deferred_detail_sections", source)
         self.assertIn("_normalize_action_items", source)
         self.assertNotIn("_build_decision_workspace_html", source)
 
