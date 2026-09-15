@@ -93,7 +93,7 @@ class AskCadivorHtmlRenderingTests(unittest.TestCase):
     def test_decision_workspace_rendered_via_native_columns(self) -> None:
         self.assertIn("_render_presentation_html(", self.assistant_source)
         self.assertIn("_render_decision_workspace(", self.assistant_source)
-        self.assertIn("st.columns(_DECISION_COLUMN_RATIO", self.assistant_source)
+        self.assertNotIn("st.columns(_DECISION_COLUMN_RATIO", self.assistant_source)
         self.assertIn("_normalize_presentation_html(", self.assistant_source)
 
     def test_native_workspace_css_contract_present(self) -> None:

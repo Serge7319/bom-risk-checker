@@ -34,12 +34,13 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
 
         return assistant
 
-    def _render(self, *, question: str = PC817_QUESTION, answer: str = PC817_ANSWER):
+    def _render(self, *, question: str = PC817_QUESTION, answer: str = PC817_ANSWER, expand: bool = True):
         st = install_ask_cadivor_streamlit_stub()
         assistant = self._load_assistant()
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                assistant._render_response(question=question, answer=answer, context=PC817_CONTEXT)
+                with patch.object(assistant, "_disclosure_is_open", return_value=bool(expand)):
+                    assistant._render_response(question=question, answer=answer, context=PC817_CONTEXT)
         html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
         return assistant, html, st
 
@@ -64,10 +65,11 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
         self.assertRegex(self.harness_html, r'cv722-list-index" aria-hidden="true"[^>]*>03')
 
     def test_decision_summary_and_impact_surfaces_present(self) -> None:
-        self.assertIn("decision_summary", self.harness_st.render_sequence)
-        self.assertIn("impact_grid", self.harness_st.render_sequence)
-        self.assertIn("cv722-summary-strip", self.harness_html)
-        self.assertEqual(self.harness_html.count("cv724-impact-cell"), 4)
+        _, html, st = self._render(expand=True)
+        self.assertIn("decision_summary", st.render_sequence)
+        self.assertIn("impact_grid", st.render_sequence)
+        self.assertIn("cv722-summary-strip", html)
+        self.assertEqual(html.count("cv724-impact-cell"), 4)
 
     def test_shell_independent_css_present(self) -> None:
         section = self.v2_css.split("Sprint 72.2.4", 1)[1]
@@ -104,22 +106,25 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
         self.assertNotIn('st.container(key="cv725_workflow_actions")', self.assistant_source)
 
     def test_followups_use_border_container(self) -> None:
-        self.assertIn("Continue the review", self.assistant_source)
+        self.assertIn("Suggested follow-ups", self.assistant_source)
         self.assertNotIn('st.container(key="cv725_followups")', self.assistant_source)
+        self.assertIn("_FOLLOWUP_CHIP_LIMIT", self.assistant_source)
 
-    def test_normal_question_assessment_visible_without_details(self) -> None:
-        _, html, _st = self._render()
+    def test_normal_question_assessment_deferred_until_expanded(self) -> None:
+        _, collapsed, _st = self._render(expand=False)
+        self.assertNotIn("cv727-assessment-panel", collapsed)
+        _, html, _st = self._render(expand=True)
         self.assertIn("cv727-assessment-panel", html)
         self.assertIn("Engineering Assessment", html)
         self.assertNotIn("<details", html.lower())
 
-    def test_detailed_question_keeps_assessment_visible(self) -> None:
-        _, html, _st = self._render(question="Give me a comprehensive analysis of this BOM.")
+    def test_detailed_question_keeps_assessment_available(self) -> None:
+        _, html, _st = self._render(question="Give me a comprehensive analysis of this BOM.", expand=True)
         self.assertIn("Engineering Assessment", html)
         self.assertIn("cv727-assessment-panel", html)
 
     def test_native_decision_workspace_present(self) -> None:
-        self.assertTrue(any(call[0] == [0.85, 1.15] for call in self.harness_st.columns_calls))
+        self.assertEqual(self.harness_st.columns_calls, [])
         self.assertIn("cv722-concise-answer", self.harness_html)
         self.assertNotIn("cv725-decision-workspace", self.harness_html)
 
@@ -149,7 +154,7 @@ class AskCadivorPresentationRecoveryTests(unittest.TestCase):
 
     def test_no_giant_html_card_shell_in_production_path(self) -> None:
         self.assertIn("_render_native_answer_column", self.assistant_source)
-        self.assertIn("_render_native_assessment_column", self.assistant_source)
+        self.assertIn("_render_deferred_detail_sections", self.assistant_source)
         self.assertIn("_build_concise_answer_html", self.assistant_source)
         self.assertNotIn("_render_presentation_html(primary_html)", self.assistant_source)
 

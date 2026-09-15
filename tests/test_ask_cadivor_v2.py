@@ -241,7 +241,16 @@ class AskCadivorV2Tests(unittest.TestCase):
         self.assertIn("_render_context_header", self.assistant_source)
         self.assertIn("st.container(border=True)", self.assistant_source)
         self.assertIn("_build_concise_answer_html", self.assistant_source)
-        self.assertNotIn("st.container(key=", self.assistant_source)
+        allowed_keys = {
+            'key="cv72_response_stage"',
+            'key="cv72_prior_reviews"',
+            'key=f"cv72_disc_{key}"',
+        }
+        for line in self.assistant_source.splitlines():
+            if "st.container(key=" not in line:
+                continue
+            if not any(key in line for key in allowed_keys):
+                self.fail(f"Unexpected keyed container: {line.strip()}")
         self.assertNotIn('<div class="cv-assistant-shell">', self.assistant_source)
 
     def test_protected_state_functions_present(self) -> None:

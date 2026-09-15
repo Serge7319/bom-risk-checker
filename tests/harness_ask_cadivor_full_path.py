@@ -88,35 +88,38 @@ def main() -> int:
     left = "\n".join(content for content, _kwargs, side in markdown_calls if side == "left")
     right = "\n".join(content for content, _kwargs, side in markdown_calls if side == "right")
     checks = {
-        "columns_ratio": any(call[0] == [0.85, 1.15] for call in st.columns_calls),
+        "single_column_compact": not any(call[0] == [0.85, 1.15] for call in st.columns_calls),
         "conversation_exchange_html": "cv50-exchange" in html,
-        "direct_answer_present": "Review PC817 first." in left,
+        "direct_answer_present": "Review PC817 first." in html,
         "three_reason_rows": html.count("cv722-reason-row") >= 3,
         "three_action_rows": html.count("cv722-action-row") >= 3,
-        "three_evidence_cards": html.count("cv46-evidence-card") >= 3,
-        "decision_summary_strip": len(re.findall(r'class="cv722-summary-item', html)) == 3,
-        "impact_grid_four_cells": html.count("cv724-impact-cell") == 4,
-        "followups_after_columns": (
-            "columns_created" in st.render_sequence
-            and (
-                st.render_sequence.index("columns_created")
-                < st.render_sequence.index("reason_card")
-                if "reason_card" in st.render_sequence
-                else True
-            )
-        ),
-        "self_contained_block_surfaces": "cv722-concise-answer" in html and "cv727-assessment-panel" in html,
+        "evidence_deferred_by_default": html.count("cv46-evidence-card") == 0,
+        "decision_summary_deferred": len(re.findall(r'class="cv722-summary-item', html)) == 0,
+        "impact_deferred_by_default": html.count("cv724-impact-cell") == 0,
+        "compact_answer_surface": "cv72-compact-answer" in html and "cv722-concise-answer" in html,
+        "assessment_deferred_by_default": "cv727-assessment-panel" not in html,
         "no_details_wrapper": "<details" not in html.lower(),
         "no_openai_calls": st._blocked_ai_calls == 0,
         "no_fake_shell_wrapper": "<div class=\"cv-assistant-shell\">" not in html,
         "review_pc817_present": "Review PC817 first." in html,
-        "evidence_components_present": all(part in html for part in ("PC817", "BZX55C5V1", "DRV8825")),
+        "priority_part_present": "PC817" in html,
         "no_concatenated_component_status": all(
             token not in html for token in ("PC817Review", "BZX55C5V1Review", "DRV8825Review")
         ),
-        "no_keyed_container_calls_in_source": "st.container(key=" not in (
-            REPO_ROOT / "src/components/engineering_assistant.py"
-        ).read_text(encoding="utf-8"),
+        "keyed_containers_are_layout_polish_only": (
+            lambda src: all(
+                any(
+                    key in line
+                    for key in (
+                        'key="cv72_response_stage"',
+                        'key="cv72_prior_reviews"',
+                        'key=f"cv72_disc_{key}"',
+                    )
+                )
+                for line in src.splitlines()
+                if "st.container(key=" in line
+            )
+        )((REPO_ROOT / "src/components/engineering_assistant.py").read_text(encoding="utf-8")),
     }
 
     print("=== Ask Cadivor full-path harness (native renderer) ===")

@@ -128,8 +128,8 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
             action_items=["Action one"],
         )
         self.assertIn('class="cv722-section-label"', html)
-        self.assertIn("Key engineering reasons", html)
-        self.assertIn("Recommended actions", html)
+        self.assertIn("Why it matters", html)
+        self.assertIn("Recommended next steps", html)
 
     def test_ranking_rows_use_separate_title_and_detail_classes(self) -> None:
         assistant = self._load_assistant()
@@ -155,7 +155,7 @@ class AskCadivorStructuredResponseTests(unittest.TestCase):
 
     def test_native_renderer_present_in_production_path(self) -> None:
         self.assertIn("_render_native_answer_column", self.assistant_source)
-        self.assertIn("_render_native_assessment_column", self.assistant_source)
+        self.assertIn("_render_deferred_detail_sections", self.assistant_source)
 
 
 if __name__ == "__main__":

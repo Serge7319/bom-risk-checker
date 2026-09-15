@@ -15,7 +15,7 @@ from tests.ask_cadivor_streamlit_stub import install_ask_cadivor_streamlit_stub,
 from tests.harness_ask_cadivor_presentation import PC817_ANSWER, PC817_CONTEXT, PC817_QUESTION
 
 
-def _render_pc817_html(*, block_css: bool = False) -> str:
+def _render_pc817_html(*, block_css: bool = False, expand_details: bool = True) -> str:
     st = install_ask_cadivor_streamlit_stub()
     for name in list(sys.modules):
         if name.startswith("src.components.engineering_assistant"):
@@ -25,6 +25,7 @@ def _render_pc817_html(*, block_css: bool = False) -> str:
     patches = [
         patch.object(assistant, "_render_response_scroll_anchor"),
         patch.object(assistant, "_render_quick_actions"),
+        patch.object(assistant, "_disclosure_is_open", return_value=bool(expand_details)),
     ]
     if block_css:
         patches.append(
@@ -122,6 +123,14 @@ class AskCadivorInlinePresentationTests(unittest.TestCase):
 
     def test_native_column_ratio_preserved(self) -> None:
         self.assertIn("_DECISION_COLUMN_RATIO = [0.85, 1.15]", self.assistant_source)
+        self.assertNotIn("st.columns(_DECISION_COLUMN_RATIO", self.assistant_source)
+        self.assertIn("_render_deferred_detail_sections", self.assistant_source)
+
+    def test_collapsed_default_omits_heavy_detail_html(self) -> None:
+        collapsed = _render_pc817_html(expand_details=False)
+        self.assertIn("cv72-compact-answer", collapsed)
+        self.assertNotIn("cv727-assessment-panel", collapsed)
+        self.assertNotIn("cv724-impact-cell", collapsed)
 
     def test_static_style_helpers_have_no_dynamic_interpolation(self) -> None:
         self.assertNotIn("{", self.styles_source)

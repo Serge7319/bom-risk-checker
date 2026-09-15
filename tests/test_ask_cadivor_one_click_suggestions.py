@@ -48,6 +48,9 @@ class _NullContext:
     def __exit__(self, exc_type, exc, tb):
         return False
 
+    def write(self, *args, **kwargs):
+        return None
+
     def update(self, **kwargs):
         return None
 
@@ -167,20 +170,32 @@ class AskCadivorOneClickSuggestionTests(unittest.TestCase):
         _WorkingAI.ask_calls = 0
         with patch.object(assistant, "EngineeringAI", _WorkingAI):
             with patch.object(assistant, "_usage_banner"):
-                with patch.object(assistant, "_render_prompt_chip_grid") as grid:
+                with patch.object(assistant, "_render_prompt_chip_grid"):
                     with patch.object(assistant, "_render_conversation_history"):
                         with patch.object(assistant, "_render_response"):
-                            assistant.render_engineering_assistant(
-                                current_user={"id": "user-1"},
-                                engineering_context={"analysis_id": "a-1", "analysis": {"analysis_id": "a-1"}},
-                            )
-                    grid.assert_called_once()
-                    self.assertTrue(grid.call_args.kwargs.get("disabled"))
+                            for _ in range(4):
+                                try:
+                                    assistant.render_engineering_assistant(
+                                        current_user={"id": "user-1"},
+                                        engineering_context={"analysis_id": "a-1", "analysis": {"analysis_id": "a-1"}},
+                                    )
+                                    break
+                                except RuntimeError as exc:
+                                    if str(exc) != "rerun":
+                                        raise
+                                    pending = (
+                                        st.session_state.get("cv72_provider_armed")
+                                        or st.session_state.get("cv41_pending_manual")
+                                        or st.session_state.get("cv36_pending_followup")
+                                    )
+                                    if not pending:
+                                        break
 
         self.assertEqual(_WorkingAI.ask_calls, 1)
         self.assertEqual(st.session_state["cv35_last_question"], suggestion)
         self.assertNotIn("cv7142_ask_inflight", st.session_state)
         self.assertTrue(st.session_state.get(assistant._CLEAR_PROMPT_ON_NEXT_RUN_KEY))
+        self.assertTrue(st.session_state.get("cv35_last_answer"))
 
     def test_processing_label_and_disabled_controls_present(self):
         _, assistant = self._load_assistant()

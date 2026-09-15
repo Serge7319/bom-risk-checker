@@ -30,29 +30,30 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         cls.assistant_source = ENGINEERING_ASSISTANT_PY.read_text(encoding="utf-8")
         cls.v2_css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
 
-    def _render_pc817(self):
+    def _render_pc817(self, *, expand: bool = False):
         st = install_ask_cadivor_streamlit_stub()
         assistant = _load_assistant()
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                assistant._render_response(
-                    question=PC817_QUESTION,
-                    answer=PC817_ANSWER,
-                    context=PC817_CONTEXT,
-                )
+                with patch.object(assistant, "_disclosure_is_open", return_value=bool(expand)):
+                    assistant._render_response(
+                        question=PC817_QUESTION,
+                        answer=PC817_ANSWER,
+                        context=PC817_CONTEXT,
+                    )
         html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
-        left = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "left")
-        right = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "right")
-        return html, left, right, st
+        return html, st
 
-    def test_assessment_visible_without_details_wrapper(self) -> None:
-        html, _, right, _st = self._render_pc817()
-        self.assertIn("cv727-assessment-panel", right)
-        self.assertIn("Engineering Assessment", right)
+    def test_assessment_available_when_expanded(self) -> None:
+        collapsed, _ = self._render_pc817(expand=False)
+        self.assertNotIn("cv727-assessment-panel", collapsed)
+        html, _st = self._render_pc817(expand=True)
+        self.assertIn("cv727-assessment-panel", html)
+        self.assertIn("Engineering Assessment", html)
         self.assertNotIn("<details", html.lower())
 
     def test_response_markup_has_no_runtime_stylesheet(self) -> None:
-        html, _, _, _ = self._render_pc817()
+        html, _ = self._render_pc817()
         self.assertNotIn("<style", html.lower())
         self.assertIn(".cv46-evidence-card-header", self.v2_css)
 
@@ -62,17 +63,18 @@ class AskCadivorDesktopAssessmentRecoveryTests(unittest.TestCase):
         self.assertIn(".cv46-evidence-card-header", section)
 
     def test_evidence_breakdown_structurally_separated(self) -> None:
-        html, _, right, _ = self._render_pc817()
+        html, _ = self._render_pc817(expand=True)
         for component in ("PC817", "BZX55C5V1", "DRV8825"):
             self.assertIn(component, html)
-        self.assertIn("evidence breakdown", right.lower())
+        self.assertIn("evidence breakdown", html.lower())
         self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', html)), 3)
 
-    def test_native_workspace_columns_present(self) -> None:
-        html, left, right, st = self._render_pc817()
-        self.assertTrue(any(call[0] == [0.85, 1.15] for call in st.columns_calls))
-        self.assertIn("projected engineering impact", right.lower())
-        self.assertIn("Review PC817 first.", left)
+    def test_native_workspace_is_single_column_compact(self) -> None:
+        html, st = self._render_pc817(expand=False)
+        self.assertEqual(st.columns_calls, [])
+        self.assertIn("Review PC817 first.", html)
+        self.assertIn("cv72-compact-answer", html)
+        self.assertNotIn("projected engineering impact", html.lower())
         self.assertNotIn("cv725-decision-workspace", html)
 
 

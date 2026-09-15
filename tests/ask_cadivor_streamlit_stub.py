@@ -93,6 +93,12 @@ class _NullContext:
     def __exit__(self, *args):
         return False
 
+    def write(self, *args, **kwargs):
+        return None
+
+    def update(self, **kwargs):
+        return None
+
 
 class _StatusContext:
     def __enter__(self):
@@ -100,6 +106,9 @@ class _StatusContext:
 
     def __exit__(self, *args):
         return False
+
+    def write(self, *args, **kwargs):
+        return None
 
     def update(self, **kwargs):
         return None
@@ -220,11 +229,12 @@ def install_ask_cadivor_streamlit_stub(
                 "LayoutsMixin.container() got an unexpected keyword argument "
                 + repr(unsupported[0])
             )
+        key = str(kwargs.get("key") or "")
         if kwargs.get("border"):
-            st.container_calls.append("border")
+            st.container_calls.append(f"border:{key}" if key else "border")
             st.render_sequence.append("container_border")
         else:
-            st.container_calls.append("plain")
+            st.container_calls.append(key or "plain")
             st.render_sequence.append("container_plain")
         return _NullContext()
 
@@ -236,6 +246,7 @@ def install_ask_cadivor_streamlit_stub(
     st.columns = _columns
     st.container = _container
     st.expander = lambda *args, **kwargs: _NullContext()
+    st.toggle = MagicMock(return_value=False)
     st.form = lambda *args, **kwargs: _NullContext()
     st.text_area = MagicMock(return_value="")
     st.form_submit_button = MagicMock(return_value=False)
@@ -247,6 +258,9 @@ def install_ask_cadivor_streamlit_stub(
     st.status = lambda *args, **kwargs: _StatusContext()
     st.link_button = MagicMock()
     st.error = lambda *args, **kwargs: None
+    st.rerun = MagicMock()
+    st.success = MagicMock()
+    st.toggle = MagicMock(return_value=False)
 
     scriptrunner = types.ModuleType("streamlit.runtime.scriptrunner")
     scriptrunner.get_script_run_ctx = lambda *args, **kwargs: script_ctx

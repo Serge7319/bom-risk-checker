@@ -53,7 +53,7 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
 
     def test_production_renderer_uses_native_workspace(self) -> None:
         self.assertIn("_render_native_answer_column", self.assistant_source)
-        self.assertIn("_render_native_assessment_column", self.assistant_source)
+        self.assertIn("_render_deferred_detail_sections", self.assistant_source)
         self.assertIn("_render_decision_workspace", self.assistant_source)
         self.assertNotIn("_build_decision_workspace_html", self.assistant_source)
 
@@ -93,13 +93,16 @@ class AskCadivorResponseReadabilityTests(unittest.TestCase):
         }
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                assistant._render_response(
-                    question="What should I review first?",
-                    answer=sample_answer,
-                    context=context,
-                )
+                with patch.object(assistant, "_disclosure_is_open", return_value=False):
+                    assistant._render_response(
+                        question="What should I review first?",
+                        answer=sample_answer,
+                        context=context,
+                    )
         markdown_html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
-        self.assertIn("First paragraph line one.", markdown_html)
+        self.assertIn("Recommended next action", markdown_html)
+        self.assertIn("U1:", markdown_html)
+        self.assertIn("lifecycle risk", markdown_html.lower())
         self.assertNotIn('<article class="cv-assistant-response">', markdown_html)
         self.assertNotIn("<style", markdown_html.lower())
 

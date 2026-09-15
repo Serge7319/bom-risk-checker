@@ -28,20 +28,20 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
             if name.startswith("src.components.engineering_assistant"):
                 sys.modules.pop(name, None)
 
-    def _render_pc817(self):
+    def _render_pc817(self, *, expand: bool = False):
         st = install_ask_cadivor_streamlit_stub()
         assistant = __import__("src.components.engineering_assistant", fromlist=["*"])
         with patch.object(assistant, "_render_response_scroll_anchor"):
             with patch.object(assistant, "_render_quick_actions"):
-                assistant._render_response(
-                    question=PC817_QUESTION,
-                    answer=PC817_ANSWER,
-                    context=PC817_CONTEXT,
-                )
+                with patch.object(assistant, "_disclosure_is_open", return_value=bool(expand)):
+                    assistant._render_response(
+                        question=PC817_QUESTION,
+                        answer=PC817_ANSWER,
+                        context=PC817_CONTEXT,
+                    )
         html = "\n".join(content for content, _kwargs, _side in st.markdown_calls)
-        left = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "left")
-        right = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "right")
-        return assistant, html, left, right, st
+        root = "\n".join(content for content, _kwargs, side in st.markdown_calls if side == "root")
+        return assistant, html, root, root, st
 
     def test_answer_uses_self_contained_block_surface(self) -> None:
         _, html, _, _, _ = self._render_pc817()
@@ -56,7 +56,7 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertIn("Investigate alternative suppliers or parts for PC817", html)
 
     def test_decision_summary_kpi_labels(self) -> None:
-        _, html, left, _, _ = self._render_pc817()
+        _, html, left, _, _ = self._render_pc817(expand=True)
         for label in ("Status", "Priority component", "Confidence"):
             self.assertIn(label, left)
         self.assertIn("PC817", left)
@@ -74,7 +74,9 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
             self.assertIn(selector, section)
 
     def test_assessment_visible_without_details_wrapper(self) -> None:
-        _, html, _, right, _ = self._render_pc817()
+        _, collapsed, _, _, _ = self._render_pc817(expand=False)
+        self.assertNotIn("cv727-assessment-panel", collapsed)
+        _, html, _, right, _ = self._render_pc817(expand=True)
         self.assertIn("cv727-assessment-panel", right)
         self.assertIn("Projected engineering impact", right)
         self.assertNotIn("<details", html.lower())
@@ -102,13 +104,15 @@ class AskCadivorResponsePresentationTests(unittest.TestCase):
         self.assertNotIn("Priority timeline", html.lower())
 
     def test_mock_pc817_deterministic_render_contract(self) -> None:
-        _, html, left, right, st = self._render_pc817()
-        self.assertIn("Cadivor Answer", html)
-        self.assertIn("Direct answer", left)
-        self.assertIn("Key engineering reasons", left)
-        self.assertIn("Recommended actions", left)
+        _, collapsed, left, _, st = self._render_pc817(expand=False)
+        self.assertIn("Cadivor answer", collapsed)
+        self.assertIn("Recommended next action", left)
+        self.assertIn("Why it matters", left)
+        self.assertIn("Recommended next steps", left)
+        self.assertEqual(st.columns_calls, [])
+        self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', collapsed)), 0)
+        _, html, _, right, _ = self._render_pc817(expand=True)
         self.assertIn("evidence breakdown", right.lower())
-        self.assertTrue(any(call[0] == [0.85, 1.15] for call in st.columns_calls))
         self.assertEqual(len(re.findall(r'<article class="cv46-evidence-card"', html)), 3)
 
     def test_workflow_actions_use_border_containers(self) -> None:
