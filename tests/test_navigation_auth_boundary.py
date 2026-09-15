@@ -28,15 +28,27 @@ class _FakeUser:
 
 
 def _patch(monkeypatch, session, query):
+    import sys
+
     fake = types.SimpleNamespace(
         session_state=session,
         query_params=query,
         markdown=lambda *_args, **_kwargs: None,
         components=types.SimpleNamespace(html=lambda *_args, **_kwargs: None),
     )
+    # Ask Cadivor stubs can leave a ctx-less Streamlit runtime or replace
+    # ``src.auth_state`` in ``sys.modules``. Keep fail-closed checks on the
+    # explicit fake session used by this module.
     monkeypatch.setattr(auth_state, "st", fake)
     monkeypatch.setattr(bootstrap, "st", fake)
     monkeypatch.setattr(auth_cookies, "st", fake)
+    monkeypatch.setitem(sys.modules, "src.auth_state", auth_state)
+    try:
+        import streamlit.runtime.scriptrunner as scriptrunner
+
+        monkeypatch.setattr(scriptrunner, "get_script_run_ctx", lambda *a, **k: None)
+    except Exception:
+        pass
     return fake
 
 

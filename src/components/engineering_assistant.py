@@ -299,9 +299,13 @@ def _pin_ask_cadivor_tab(*, source: str = "unknown", analysis_id: str = "") -> N
 
 
 def _log_copilot_workflow(event: str, **details: Any) -> None:
-    from src.auth_state import log_auth_diagnostic
+    try:
+        from src.auth_state import log_auth_diagnostic
 
-    log_auth_diagnostic(event, **details)
+        log_auth_diagnostic(event, **details)
+    except Exception:
+        # Diagnostics must never interrupt an in-flight Ask Cadivor submission.
+        pass
 
 
 def _capture_copilot_workflow_snapshot() -> dict[str, Any]:
@@ -408,16 +412,30 @@ def _arm_copilot_workflow_snapshot(*, reason: str) -> None:
 
 
 def _clear_review_state() -> None:
-    """Clear the prior copilot result when the user starts a new question."""
+    """Clear the visible review — used for New conversation, not ordinary submits."""
     for key in (
         "cv35_last_answer",
         "cv35_last_question",
         "cv35_last_error",
         "cv35_provider_connected",
+        "cv72_active_pending_question",
+        "cv50_last_scrolled_question",
+        "cv47_scroll_to_assessment",
+        "cv47_scroll_pending",
     ):
         if key in st.session_state:
-            _log_ask_cadivor_state_clear(key, reason="new_question_queued")
+            _log_ask_cadivor_state_clear(key, reason="review_state_cleared")
             st.session_state.pop(key, None)
+    _clear_followup_ui_state()
+
+
+def _prepare_review_for_new_submission() -> None:
+    """Keep the completed Q/A visible while a new question loads in place."""
+    # Errors and follow-up chips belong to the prior answer; drop them so the
+    # loading exchange is not confused with a stale failure or orphaned chips.
+    if "cv35_last_error" in st.session_state:
+        _log_ask_cadivor_state_clear("cv35_last_error", reason="new_question_queued")
+        st.session_state.pop("cv35_last_error", None)
     _clear_followup_ui_state()
 
 
@@ -1578,11 +1596,13 @@ def _queue_copilot_submission(question: str, *, submission_kind: str, analysis_i
         st.session_state["cv47_followup_question"] = clean
 
     st.session_state["cv7142_ask_inflight"] = True
+    st.session_state["cv72_active_pending_question"] = clean
+    # Soft ensure-visible only — never force-jump away from the conversation.
     st.session_state["cv47_scroll_pending"] = True
     _pin_ask_cadivor_tab(source=f"queue_{submission_kind}", analysis_id=analysis_id)
     _log_ask_cadivor("question_queued", kind=submission_kind, question_len=len(clean))
     _arm_copilot_workflow_snapshot(reason=f"queue_{submission_kind}")
-    _clear_review_state()
+    _prepare_review_for_new_submission()
     _log_ask_cadivor("question_ready", kind=submission_kind, source="queue_copilot_submission")
     st.rerun()
 
@@ -1859,13 +1879,11 @@ def _response_type_meta(intent: str) -> tuple[str, str]:
 
 
 def _render_response_scroll_anchor(*, response_token: str) -> None:
-    """Scroll the real Streamlit viewport to the newest response start.
+    """Keep the active exchange in view without jumping the page.
 
-    Streamlit scrolls inside ``[data-testid="stMain"]`` on current builds rather
-    than on ``window``.  Sprint 50.1 only moved ``window``, which left the visible
-    app viewport unchanged.  This controller resolves the actual scroll owner,
-    positions the response immediately below the sticky header, and repeats the
-    placement while the answer layout stabilizes.
+    Scrolls only when the exchange is outside the visible main viewport, and
+    only enough to bring it on-screen (``block: 'nearest'``). No MutationObserver
+    retries or multi-second scroll storms.
     """
     safe_token = html.escape(str(response_token or "response"))
     components.html(
@@ -1876,88 +1894,73 @@ def _render_response_scroll_anchor(*, response_token: str) -> None:
           const doc = parentWindow.document;
           const frame = window.frameElement;
           if (!frame) return;
-
           const host = frame.closest('[data-testid="stElementContainer"]') || frame.parentElement || frame;
-          const OFFSET = 70;
-          let attempts = 0;
-          let stable = 0;
-          let observer = null;
 
           function scrollOwner(){{
             const explicit = doc.querySelector('[data-testid="stMain"]');
             if (explicit) return explicit;
-            let node = host.parentElement;
-            while (node && node !== doc.body) {{
-              try {{
-                const style = parentWindow.getComputedStyle(node);
-                const overflowY = style.overflowY;
-                if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight + 2) return node;
-              }} catch (_) {{}}
-              node = node.parentElement;
-            }}
             return doc.scrollingElement || doc.documentElement;
           }}
 
-          function blurInput(){{
+          function ensureVisible(){{
+            if (!host || host.getClientRects().length === 0) return;
+            const owner = scrollOwner();
+            const hostRect = host.getBoundingClientRect();
+            const ownerRect = owner === doc.scrollingElement || owner === doc.documentElement || owner === doc.body
+              ? {{ top: 0, bottom: parentWindow.innerHeight || doc.documentElement.clientHeight }}
+              : owner.getBoundingClientRect();
+            const pad = 24;
+            const fullyVisible = hostRect.top >= ownerRect.top + pad && hostRect.bottom <= ownerRect.bottom - pad;
+            if (fullyVisible) return;
             try {{
-              const active = doc.activeElement;
-              if (active && typeof active.blur === 'function') active.blur();
+              host.scrollIntoView({{ block: 'nearest', inline: 'nearest', behavior: 'smooth' }});
             }} catch (_) {{}}
           }}
 
-          function currentTop(owner){{
-            const hostRect = host.getBoundingClientRect();
-            if (owner === doc.scrollingElement || owner === doc.documentElement || owner === doc.body) return hostRect.top;
-            const ownerRect = owner.getBoundingClientRect();
-            return hostRect.top - ownerRect.top;
-          }}
-
-          function place(){{
-            attempts += 1;
-            if (!host || host.getClientRects().length === 0) {{
-              if (attempts < 70) parentWindow.setTimeout(place, 90);
-              return;
-            }}
-
-            blurInput();
-            const owner = scrollOwner();
-            const hostRect = host.getBoundingClientRect();
-
-            try {{
-              if (owner === doc.scrollingElement || owner === doc.documentElement || owner === doc.body) {{
-                const desired = Math.max(0, hostRect.top + (parentWindow.pageYOffset || owner.scrollTop || 0) - OFFSET);
-                parentWindow.scrollTo({{ top: desired, left: 0, behavior: attempts <= 2 ? 'smooth' : 'auto' }});
-                owner.scrollTop = desired;
-              }} else {{
-                const ownerRect = owner.getBoundingClientRect();
-                const desired = Math.max(0, owner.scrollTop + hostRect.top - ownerRect.top - OFFSET);
-                owner.scrollTo({{ top: desired, left: 0, behavior: attempts <= 2 ? 'smooth' : 'auto' }});
-              }}
-            }} catch (_) {{
-              try {{ host.scrollIntoView({{ block: 'start', inline: 'nearest', behavior: 'auto' }}); }} catch (_) {{}}
-            }}
-
-            const top = Math.round(currentTop(owner));
-            stable = Math.abs(top - OFFSET) <= 16 ? stable + 1 : 0;
-            if (stable >= 4 || attempts >= 70) {{
-              if (observer) observer.disconnect();
-              return;
-            }}
-            parentWindow.setTimeout(place, attempts < 16 ? 90 : 170);
-          }}
-
-          try {{
-            observer = new MutationObserver(function(){{ parentWindow.requestAnimationFrame(place); }});
-            observer.observe(doc.body, {{ childList: true, subtree: true, attributes: true }});
-          }} catch (_) {{}}
-
-          parentWindow.requestAnimationFrame(function(){{ parentWindow.requestAnimationFrame(place); }});
-          [120, 260, 480, 800, 1250, 1900, 2800, 4000].forEach(ms => parentWindow.setTimeout(place, ms));
+          parentWindow.requestAnimationFrame(function(){{
+            parentWindow.requestAnimationFrame(ensureVisible);
+          }});
         }})();
         </script>
         """,
         height=0,
     )
+
+
+def _render_pending_exchange(*, question: str) -> None:
+    """Show the submitted question in place; loading renders directly beneath it."""
+    safe_question = html.escape(_plain_markdown(str(question or "").strip()))
+    _render_presentation_html(
+        f"""
+        <section class="cv50-exchange cv72-pending-exchange" id="cv72-active-exchange" style="{CV50_EXCHANGE_STYLE}">
+          <div class="cv50-exchange-top" style="{CV50_EXCHANGE_TOP_STYLE}">
+            <div class="cv50-you-asked" style="{CV50_YOU_ASKED_STYLE}">
+              <div class="cv50-you-asked-label" style="{CV50_YOU_ASKED_LABEL_STYLE}">You asked</div>
+              <div class="cv50-you-asked-question" style="{CV50_YOU_ASKED_QUESTION_STYLE}">{safe_question}</div>
+            </div>
+          </div>
+        </section>
+        """
+    )
+    if st.session_state.pop("cv47_scroll_pending", False):
+        components.html(
+            """
+            <script>
+            (function(){
+              const d=window.parent.document;
+              const host=d.getElementById('cv72-active-exchange');
+              if(!host) return;
+              const main=d.querySelector('[data-testid="stMain"]') || d.scrollingElement || d.documentElement;
+              const hostRect=host.getBoundingClientRect();
+              const viewBottom=(main.getBoundingClientRect?main.getBoundingClientRect().bottom:window.parent.innerHeight);
+              const viewTop=(main.getBoundingClientRect?main.getBoundingClientRect().top:0);
+              if(hostRect.top>=viewTop+24 && hostRect.bottom<=viewBottom-24) return;
+              try{host.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});}catch(e){}
+            })();
+            </script>
+            """,
+            height=0,
+        )
 
 
 def _render_conversation_exchange(*, question: str, intent: str) -> None:
@@ -2180,7 +2183,14 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
     )
 
 
-def _render_response(*, question: str, answer: str, context: dict[str, Any], auto_scroll: bool = False) -> None:
+def _render_response(
+    *,
+    question: str,
+    answer: str,
+    context: dict[str, Any],
+    auto_scroll: bool = False,
+    include_exchange: bool = True,
+) -> None:
     _log_ask_render("response_entered")
     _log_ask_runtime_identity()
     detailed = _wants_detailed_response(question)
@@ -2209,8 +2219,9 @@ def _render_response(*, question: str, answer: str, context: dict[str, Any], aut
         response_token = f"{abs(hash((question, answer))) :x}"
         _render_response_scroll_anchor(response_token=response_token)
 
-    _render_conversation_exchange(question=question, intent=intent)
-    _log_ask_render("exchange_rendered")
+    if include_exchange:
+        _render_conversation_exchange(question=question, intent=intent)
+        _log_ask_render("exchange_rendered")
 
     _render_decision_workspace(
         question=question,
@@ -2336,7 +2347,25 @@ def render_engineering_assistant(
 
     copilot_busy = _copilot_submission_inflight()
     actions_disabled = copilot_busy or not status.can_use
-    if copilot_busy and not auto_execute_followup:
+    deferred_pending_question = _normalize_submitted_question(
+        st.session_state.get("cv72_active_pending_question")
+        or st.session_state.get("cv41_pending_manual")
+        or st.session_state.get("cv36_pending_followup")
+        or ""
+    )
+    # Credits-blocked / deferred path: keep prior Q/A and show the queued question
+    # with an in-place loading surface — never an orphaned banner alone.
+    if copilot_busy and not auto_execute_followup and deferred_pending_question:
+        preserved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
+        preserved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
+        if preserved_answer and preserved_question and preserved_question != deferred_pending_question:
+            _render_response(
+                question=preserved_question,
+                answer=preserved_answer,
+                context=context,
+                auto_scroll=False,
+            )
+        _render_pending_exchange(question=deferred_pending_question)
         st.info(_COPILOT_PROCESSING_LABEL)
 
     if analysis_id:
@@ -2431,10 +2460,28 @@ def render_engineering_assistant(
         log_ai_config(api)
         provider_target = "openai" if api.configured else "cadivor-grounded"
         st.session_state.pop("cv35_last_error", None)
+
+        # Keep the completed review on screen while the new question loads beneath it.
+        preserved_question = _normalize_submitted_question(st.session_state.get("cv35_last_question"))
+        preserved_answer = str(st.session_state.get("cv35_last_answer") or "").strip()
+        rendered_preserved = False
+        if (
+            preserved_answer
+            and preserved_question
+            and preserved_question != submitted_question
+        ):
+            _render_response(
+                question=preserved_question,
+                answer=preserved_answer,
+                context=context,
+                auto_scroll=False,
+            )
+            rendered_preserved = True
+
         st.session_state["cv35_last_question"] = submitted_question
-        st.markdown('<div id="cv47-processing-anchor"></div>', unsafe_allow_html=True)
-        if st.session_state.pop("cv47_scroll_pending", False):
-            components.html("""<script>(function(){const d=window.parent.document,w=window.parent;function go(){const e=d.getElementById('cv47-processing-anchor');if(e){w.scrollTo({top:Math.max(0,e.getBoundingClientRect().top+w.pageYOffset-92),behavior:'auto'});}}go();setTimeout(go,80);setTimeout(go,240);</script>""", height=0)
+        st.session_state["cv72_active_pending_question"] = submitted_question
+        st.session_state["cv72_pending_exchange_shown"] = submitted_question
+        _render_pending_exchange(question=submitted_question)
         with st.status(_COPILOT_PROCESSING_LABEL, expanded=True) as progress:
             try:
                 _log_ask_cadivor(
@@ -2455,6 +2502,7 @@ def render_engineering_assistant(
                 st.session_state["cv35_last_answer"] = response.answer
                 st.session_state["cv35_last_question"] = submitted_question
                 st.session_state["cv35_provider_connected"] = response_provider == "openai"
+                # Soft ensure-visible for the finished exchange only when needed.
                 st.session_state["cv47_scroll_to_assessment"] = True
                 if st.session_state.pop("cv47_followup_question", None):
                     st.session_state["cv47_followup_answered"] = submitted_question
@@ -2474,7 +2522,8 @@ def render_engineering_assistant(
                         supabase=_copilot_supabase_client(),
                         thread=thread,
                     )
-                except ImportError:
+                except Exception:
+                    # Persistence failures must not erase the in-session answer.
                     pass
                 # Copilot submission completed inside the authenticated workspace.
                 # The recovery snapshot is no longer needed after the answer and
@@ -2483,6 +2532,7 @@ def render_engineering_assistant(
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
+                st.session_state.pop("cv72_active_pending_question", None)
                 _schedule_prompt_clear_on_next_run()
                 _pin_ask_cadivor_tab(source="provider_complete", analysis_id=analysis_id)
                 _log_ask_cadivor(
@@ -2500,6 +2550,7 @@ def render_engineering_assistant(
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
+                st.session_state.pop("cv72_active_pending_question", None)
                 progress.update(label="Cadivor could not complete the review", state="error")
             except Exception as exc:
                 _log_ask_cadivor("execution_failed", exception_type=type(exc).__name__)
@@ -2519,6 +2570,7 @@ def render_engineering_assistant(
                     st.session_state.pop("cv36_pending_followup", None)
                     st.session_state.pop("cv47_followup_question", None)
                     st.session_state.pop("cv41_pending_manual", None)
+                    st.session_state.pop("cv72_active_pending_question", None)
                     progress.update(label="Engineering review complete", state="complete")
                 else:
                     st.session_state["cv35_last_error"] = EngineeringAIError(
@@ -2530,15 +2582,33 @@ def render_engineering_assistant(
                 st.session_state.pop("cv36_pending_followup", None)
                 st.session_state.pop("cv47_followup_question", None)
                 st.session_state.pop("cv41_pending_manual", None)
+                st.session_state.pop("cv72_active_pending_question", None)
+        # Mark that the preserved review was already painted this run so the
+        # trailing render path does not duplicate it above the new answer.
+        if rendered_preserved:
+            st.session_state["cv72_rendered_preserved_this_run"] = preserved_question
+    else:
+        st.session_state.pop("cv72_rendered_preserved_this_run", None)
 
     answered_followup = st.session_state.pop("cv47_followup_answered", None)
     if answered_followup:
         st.success(f'Follow-up answered: "{answered_followup}". The latest assessment below has been regenerated for this question.')
-        st.session_state['cv47_scroll_to_assessment'] = True
+        st.session_state["cv47_scroll_to_assessment"] = True
 
     thread = get_thread(st.session_state, context)
     current_answer = st.session_state.get("cv35_last_answer")
-    _render_conversation_history(thread, exclude_latest=bool(current_answer))
+    preserved_painted = st.session_state.pop("cv72_rendered_preserved_this_run", None)
+    if preserved_painted:
+        # The completed prior review was already painted above the loading
+        # exchange; keep chronological older turns only and avoid duplicating it.
+        older_turns = [
+            turn
+            for turn in (thread[:-1] if current_answer else thread)
+            if _normalize_submitted_question(turn.get("question")) != preserved_painted
+        ]
+        _render_conversation_history(older_turns, exclude_latest=False)
+    else:
+        _render_conversation_history(thread, exclude_latest=bool(current_answer))
 
     error_message = st.session_state.get("cv35_last_error")
     if isinstance(error_message, EngineeringAIError):
@@ -2552,13 +2622,25 @@ def render_engineering_assistant(
     )
     if answer:
         last_question = _normalize_submitted_question(st.session_state.get("cv35_last_question") or "Engineering review")
-        question_changed = st.session_state.get("cv50_last_scrolled_question") != last_question
-        should_scroll = st.session_state.pop("cv47_scroll_to_assessment", False) or question_changed
-        _render_response(question=last_question, answer=answer, context=context, auto_scroll=should_scroll)
+        # Soft ensure-visible only when an answer just finished. Never jump on
+        # ordinary reruns or when the question string merely differs.
+        should_scroll = bool(st.session_state.pop("cv47_scroll_to_assessment", False))
+        pending_shown = _normalize_submitted_question(
+            st.session_state.pop("cv72_pending_exchange_shown", None)
+        )
+        # Same-run loading already painted the question; replace loading with the
+        # answer body in place instead of duplicating the exchange header.
+        include_exchange = pending_shown != last_question
+        _render_response(
+            question=last_question,
+            answer=answer,
+            context=context,
+            auto_scroll=should_scroll,
+            include_exchange=include_exchange,
+        )
         if should_scroll:
             st.session_state["cv50_last_scrolled_question"] = last_question
-            # Sprint 50.1 scrolls from the exact response-start iframe mounted
-            # inside _render_response; no document-wide id lookup is required.
+            # Soft scroll runs from the response-start iframe in _render_response.
         _render_follow_ups(question=last_question, answer=answer, context=context)
         if not st.session_state.get("cv35_provider_connected", False):
             st.markdown(

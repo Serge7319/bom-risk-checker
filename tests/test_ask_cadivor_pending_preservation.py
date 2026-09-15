@@ -52,8 +52,25 @@ class AskCadivorPendingPreservationTests(unittest.TestCase):
 
     def tearDown(self):
         from tests.secrets_module_isolation import ensure_real_src_secrets_module
+        from tests.ask_cadivor_streamlit_stub import restore_ask_cadivor_streamlit_modules
 
         ensure_real_src_secrets_module()
+        for name in list(sys.modules):
+            if name == "streamlit" or name.startswith("streamlit."):
+                sys.modules.pop(name, None)
+            if name.startswith("src.components.engineering_assistant"):
+                sys.modules.pop(name, None)
+            if name in {
+                "src.urls",
+                "src.ui.navigation",
+                "src.services.ai_entitlements",
+                "src.services.copilot_conversation",
+                "src.services.engineering_ai",
+            }:
+                sys.modules.pop(name, None)
+        restore_ask_cadivor_streamlit_modules()
+        importlib.import_module("src.auth_state")
+        importlib.import_module("src.auth_bootstrap")
 
     def _load_assistant(self, session_state=None, *, can_use: bool = True):
         st = _install_streamlit_stub(session_state)
@@ -65,9 +82,11 @@ class AskCadivorPendingPreservationTests(unittest.TestCase):
         )
         self.addCleanup(restore_secrets)
 
-        auth_state = types.ModuleType("src.auth_state")
-        auth_state.log_auth_diagnostic = lambda *args, **kwargs: None
-        sys.modules["src.auth_state"] = auth_state
+        import src.auth_state as auth_state_mod
+
+        original_log = auth_state_mod.log_auth_diagnostic
+        auth_state_mod.log_auth_diagnostic = lambda *args, **kwargs: None
+        self.addCleanup(lambda: setattr(auth_state_mod, "log_auth_diagnostic", original_log))
 
         urls = types.ModuleType("src.urls")
         urls.internal_app_href = lambda *args, **kwargs: "?"
