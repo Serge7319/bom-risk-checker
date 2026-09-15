@@ -83,10 +83,20 @@ def append_turn(
     threads = session_state.setdefault("cv36_threads", {})
     key = _analysis_key(context)
     thread = list(threads.get(key) or [])
+    clean_question = str(question or "").strip()
+    clean_answer = str(answer or "").strip()
+    # Delayed reruns / snapshot restores must not duplicate the same completed turn.
+    if thread:
+        latest = thread[-1]
+        if (
+            str(latest.get("question") or "").strip() == clean_question
+            and str(latest.get("answer") or "").strip() == clean_answer
+        ):
+            return list(thread)
     thread.append(
         CopilotTurn(
-            question=str(question or "").strip(),
-            answer=str(answer or "").strip(),
+            question=clean_question,
+            answer=clean_answer,
             provider_connected=bool(provider_connected),
         ).to_dict()
     )
