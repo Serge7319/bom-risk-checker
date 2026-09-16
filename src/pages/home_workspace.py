@@ -278,7 +278,7 @@ def render_returning_home(
                         "Open BOM",
                         key=f"home_continue_{card['id']}",
                     ):
-                        open_saved_bom(card["id"], arm_opening=False, _rerun=True)
+                        open_saved_bom(card["id"], arm_opening=True, _rerun=True)
 
 
 def _run_primary(primary: Mapping[str, Any]) -> None:
@@ -299,7 +299,7 @@ def _run_primary(primary: Mapping[str, Any]) -> None:
         )
         return
     if analysis_id:
-        open_saved_bom(analysis_id, arm_opening=False, _rerun=True)
+        open_saved_bom(analysis_id, arm_opening=True, _rerun=True)
 
 
 def _looks_saved(row: Mapping[str, Any]) -> bool:
