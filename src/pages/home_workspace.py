@@ -106,7 +106,11 @@ def build_home_model(
     if not scoped:
         kind = HOME_NEW
         title = NEW_USER_TITLE
-        primary = {"kind": "upload", "label": "Upload a BOM"}
+        primary = {
+            "kind": "upload",
+            "label": "Upload a BOM",
+            "action_label": "Upload BOM",
+        }
     elif urgent:
         kind = HOME_ATTENTION
         title = ATTENTION_TITLE
@@ -238,7 +242,7 @@ def render_returning_home(
         action_col, new_col = st.columns([1.6, 1])
         with action_col:
             if st.button(
-                str(primary.get("label") or "Continue"),
+                str(primary.get("action_label") or primary.get("label") or "Continue"),
                 key="home_primary_action",
                 type="primary",
             ):
@@ -338,6 +342,7 @@ def _priority_action(
             "analysis_id": analysis_id,
             "bom_name": _bom_name(analysis or {}),
             "context": "High-risk component requires engineering review",
+            "action_label": "Review component",
         }
     return _continue_action(_most_recent(analyses))
 
@@ -369,13 +374,19 @@ def _highest_risk_part(parts: list[dict[str, Any]]) -> tuple[str, str]:
 
 def _continue_action(row: Mapping[str, Any] | None) -> dict[str, str]:
     if not row:
-        return {"kind": "continue", "label": "Continue", "analysis_id": ""}
+        return {
+            "kind": "continue",
+            "label": "Continue",
+            "analysis_id": "",
+            "action_label": "Open BOM",
+        }
     return {
         "kind": "continue",
         "label": f"Continue {_bom_name(row)}",
         "analysis_id": str(row.get("id") or "").strip(),
         "bom_name": _bom_name(row),
         "context": "Resume the latest saved engineering review",
+        "action_label": "Open BOM",
     }
 
 
