@@ -195,6 +195,8 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertIn("Compact identity switcher, not a decorative card.", self.app_shell_css)
         self.assertIn("The account panel uses menu rows.", self.app_shell_css)
         self.assertIn(".st-key-cv_foundation_profile_panel .stButton>button", self.app_shell_css)
+        self.assertIn("Account panel scope correction", self.app_shell_css)
+        self.assertIn("outline:0!important;", self.app_shell_css)
         self.assertIn("border:0!important;", self.app_shell_css)
 
 
