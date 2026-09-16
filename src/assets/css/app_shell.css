@@ -582,3 +582,60 @@ section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button{
 section[data-testid="stMain"] .cv-foundation-nav-group{font-size:9.5px!important;letter-spacing:.14em!important}
 section[data-testid="stMain"] .cv-foundation-profile-copy strong{font-size:12.5px!important}
 section[data-testid="stMain"] .cv-foundation-profile-copy em{font-size:10px!important}
+
+
+/* Release navigation: light, quiet, and scannable.  Blue identifies the active
+   destination only; the rail is not a competing visual surface. */
+:root{
+  --cv-foundation-rail-bg:#ffffff;
+  --cv-foundation-rail-text:#475569;
+  --cv-foundation-rail-text-active:#1d4ed8;
+  --cv-foundation-rail-active-bg:#ffffff;
+}
+.st-key-cv_foundation_navigation{
+  background:#ffffff!important;
+  border-right:1px solid #e2e8f0!important;
+  box-shadow:none!important;
+}
+.st-key-cv_foundation_navigation::-webkit-scrollbar-thumb{background:#cbd5e1!important}
+.cv-foundation-workspace{
+  background:#f8fafc!important;
+  border-color:#e2e8f0!important;
+}
+.cv-foundation-workspace:hover{background:#f1f5f9!important;border-color:#cbd5e1!important}
+.cv-foundation-workspace-copy small,.cv-foundation-workspace-chevron{color:#64748b!important}
+.cv-foundation-workspace-copy strong{color:#1e293b!important}
+.cv-foundation-workspace-copy em{color:#64748b!important}
+.cv-foundation-nav-group{color:#64748b!important}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="secondary"]{
+  color:#334155!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button:hover,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="secondary"]:hover{
+  background:#f8fafc!important;
+  border-color:#e2e8f0!important;
+  color:#0f172a!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"],
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"]:hover{
+  background:#ffffff!important;
+  border-color:#93c5fd!important;
+  color:#1d4ed8!important;
+  box-shadow:inset 3px 0 0 #2563eb!important;
+}
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"] p{color:#1d4ed8!important}
+.cv-foundation-plan-card{
+  background:#f8fafc!important;
+  border-color:#e2e8f0!important;
+}
+.cv-foundation-plan-card strong{color:#334155!important}
+.cv-foundation-plan-card span{color:#64748b!important}
+section[data-testid="stMain"] .st-key-cv_foundation_compare_plans .stButton>button{
+  border-color:#cbd5e1!important;color:#475569!important;background:#ffffff!important;
+}
+/* Slightly larger hit area makes the account menu reliable without changing its
+   visual footprint. */
+.st-key-cv_foundation_profile_trigger{top:8px!important;right:12px!important;width:48px!important;height:48px!important}
+.st-key-cv_foundation_profile_trigger>div{width:48px!important}
+.st-key-cv_foundation_profile_trigger button{width:44px!important;height:44px!important;min-height:44px!important}
