@@ -12,7 +12,6 @@ from typing import Any
 import streamlit as st
 from supabase import create_client
 
-from src.auth import show_auth_ui
 from src.auth_cookies import (
     _MANAGER_FALLBACK_HYDRATION_WAIT_SECONDS,
     _MAX_HYDRATION_ATTEMPTS,
@@ -79,6 +78,13 @@ def log_startup_phase(label: str) -> None:
 
 def startup_phase_summary() -> str:
     return ", ".join(f"{label}={elapsed:.2f}s" for label, elapsed in _STARTUP_PHASES)
+
+
+def show_auth_ui(supabase, cookie_manager=None):
+    """Load the full auth surface only when a signed-out route needs it."""
+    from src.auth import show_auth_ui as render_auth_ui
+
+    return render_auth_ui(supabase, cookie_manager)
 
 
 @st.cache_resource(show_spinner=False)
@@ -615,9 +621,11 @@ def _ensure_authenticated_or_stop_impl() -> None:
     log_startup_phase("bootstrap_begin")
     log_auth_restore("bootstrap_started")
 
-    log_startup_phase("supabase_client")
-    with timed_phase("auth.supabase_client", operation="init"):
-        supabase = get_supabase_client()
+    # Do not create the API client before the first Login form is painted.
+    # A cold, signed-out visit does not use it until the user submits a
+    # credential form.  Creating it here also meant that the loading gate was
+    # painted twice before the real form could take ownership of the page.
+    supabase = None
     cookie_manager = None
 
     # Clear legacy empty-host progress flags — the gate owns paint now.
@@ -678,8 +686,6 @@ def _ensure_authenticated_or_stop_impl() -> None:
         )
         return
 
-    # FIRST paint for signed-out / restore / credential flows only.
-    paint_auth_gate(gate_state)
     log_auth_correlation(
         "bootstrap_entry",
         cookie_manager=None,
@@ -698,6 +704,37 @@ def _ensure_authenticated_or_stop_impl() -> None:
 
     with timed_phase("auth.intent_apply", operation="resolve"):
         apply_auth_intent_from_query()
+
+    # A clean login or signup visit has no session to recover and no provider
+    # work to do.  Render the native form directly instead of first mounting
+    # the generic gate (twice) and then replacing it.  The form only queues a
+    # Login submission; the Supabase client is created on the following run
+    # when credentials are actually exchanged.  Signup obtains the client at
+    # submit time (see ``_render_auth_page``).
+    _auth_callback_keys = {"code", "type", "error", "error_code", "token_hash"}
+    _has_auth_callback = any(bool(str(qp_value(key, "") or "").strip()) for key in _auth_callback_keys)
+    if (
+        get_auth_gate_state() == "login"
+        and not has_pending_credentials()
+        and not login_handoff_active()
+        and not manual_login_in_flight()
+        and not has_restore_candidate
+        and not _has_auth_callback
+    ):
+        show_auth_ui(None, None)
+        if has_pending_credentials():
+            set_auth_gate_state("authenticating", reason="credentials_stashed")
+            st.rerun()
+        st.stop()
+
+    # Provider recovery and session restoration require a client.  Keep this
+    # below the direct-login fast path so it is not part of first paint.
+    log_startup_phase("supabase_client")
+    with timed_phase("auth.supabase_client", operation="init"):
+        supabase = get_supabase_client()
+
+    # FIRST paint for restore, callback, and credential flows only.
+    paint_auth_gate(gate_state)
 
     from src.auth_recovery import apply_password_recovery_from_query, password_recovery_active
     from src.auth_signup_confirmation import (
@@ -720,8 +757,9 @@ def _ensure_authenticated_or_stop_impl() -> None:
         show_auth_ui(supabase, cookie_manager)
         st.stop()
 
-    # Cold signed-out visitors: show final Login immediately — never wait on
-    # resolve_auth_state network I/O with only a blank #F5F7FB body.
+    # Cold signed-out visitors that carried a callback marker reach this
+    # fallback after the callback is handled above.  Ordinary fresh visits
+    # returned through the direct-form fast path before client initialization.
     if (
         get_auth_gate_state() == "login"
         and not has_pending_credentials()
