@@ -2138,17 +2138,10 @@ def run_authenticated_app() -> None:
         )
     except Exception:
         pass
-    # The authenticated shell is now mounted.  Always release the sign-in
-    # gate here: first-login route state can legitimately report neither a
-    # transition nor an Opening overlay, and the old conditional left the
-    # full-screen “Signing you in” layer on top of a working workspace.
-    try:
-        from src.auth_gate import mark_page_content_ready, retire_auth_gate_overlays
-
-        mark_page_content_ready(_shell_route)
-        retire_auth_gate_overlays()
-    except Exception:
-        pass
+    # Do not release the sign-in surface on shell mount alone. Profile and
+    # workspace reads still follow, and retiring the gate here exposed a blank
+    # main panel between Login and Home. ``begin_authenticated_page`` releases
+    # it only when the target route owns a visible surface below.
 
     log_startup_phase("authenticated_runtime_begin")
     from src.performance_timing import emit_timing, timed_phase
