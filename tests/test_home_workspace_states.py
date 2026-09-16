@@ -100,10 +100,11 @@ def test_returning_user_without_urgent_risk_continues_most_recent_bom():
     )
     assert home["kind"] == HOME_CONTINUE
     assert home["title"] == "Continue your engineering work"
-    assert home["primary"]["label"] == "Continue Sensor Board BOM"
+    assert home["primary"]["label"] == "Open Sensor Board BOM"
     assert home["primary"]["analysis_id"] == "bom-new"
     assert home["primary"]["bom_name"] == "Sensor Board BOM"
     assert home["primary"]["action_label"] == "Open BOM"
+    assert home["primary"]["context"] == "Open the latest saved engineering review."
     assert [card["name"] for card in home["recent"]] == ["Sensor Board BOM", "Older Board"]
     assert home["show_onboarding"] is False
 
@@ -126,8 +127,10 @@ def test_secondary_timeout_keeps_saved_boms_and_does_not_invent_a_part():
     )
     assert home["kind"] == HOME_ATTENTION
     assert home["title"] == "What needs attention"
-    assert home["primary"]["label"] == "Continue Industrial Controller BOM"
+    assert home["primary"]["label"] == "Open Industrial Controller BOM"
     assert "Review " not in home["primary"]["label"]
+    assert "2 high-risk components need review" in home["primary"]["context"]
+    assert "choose a component" in home["primary"]["context"]
     assert home["secondary_failed"] is True
     assert home["show_onboarding"] is False
     assert home["recent"][0]["name"] == "Industrial Controller BOM"
