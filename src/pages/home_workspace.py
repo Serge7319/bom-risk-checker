@@ -275,7 +275,7 @@ def render_returning_home(
                     )
                 with right:
                     if st.button(
-                        "Continue",
+                        "Open BOM",
                         key=f"home_continue_{card['id']}",
                     ):
                         open_saved_bom(card["id"], arm_opening=False, _rerun=True)
@@ -373,19 +373,30 @@ def _highest_risk_part(parts: list[dict[str, Any]]) -> tuple[str, str]:
 
 
 def _continue_action(row: Mapping[str, Any] | None) -> dict[str, str]:
+    """Describe the saved-BOM action in terms of where it goes, not a vague resume."""
     if not row:
         return {
             "kind": "continue",
-            "label": "Continue",
+            "label": "Open saved BOM",
             "analysis_id": "",
             "action_label": "Open BOM",
         }
+    bom_name = _bom_name(row)
+    high_risk_count = _int(row.get("high_risk_count"))
+    if high_risk_count:
+        context = (
+            f"{high_risk_count} high-risk component"
+            f"{'s' if high_risk_count != 1 else ''} need review. "
+            "Open this BOM to choose a component."
+        )
+    else:
+        context = "Open the latest saved engineering review."
     return {
         "kind": "continue",
-        "label": f"Continue {_bom_name(row)}",
+        "label": f"Open {bom_name}",
         "analysis_id": str(row.get("id") or "").strip(),
-        "bom_name": _bom_name(row),
-        "context": "Resume the latest saved engineering review",
+        "bom_name": bom_name,
+        "context": context,
         "action_label": "Open BOM",
     }
 
