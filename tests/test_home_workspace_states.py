@@ -265,6 +265,8 @@ def test_home_presentation_keeps_actions_and_adds_visual_hierarchy():
     assert SECONDARY_UPDATE_BANNER in home
     assert 'key="home_retry_updates"' in home
     assert 'key="home_primary_action"' in home
+    assert 'open_saved_bom(card["id"], arm_opening=True, _rerun=True)' in home
+    assert 'open_saved_bom(analysis_id, arm_opening=True, _rerun=True)' in home
     assert "A first review in four steps" in first_run
     assert "cv-home-step-num" in first_run
     assert 'key="ftue_upload_first_bom"' in first_run
