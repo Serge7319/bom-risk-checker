@@ -1,4 +1,4 @@
-"""Regression guards for atomic manual Login and viewport-stable auth."""
+"""Regression guards for native manual Login and viewport-stable auth."""
 from __future__ import annotations
 
 import unittest
@@ -6,20 +6,17 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 AUTH = (REPO / "src" / "auth.py").read_text(encoding="utf-8")
-HTML = (REPO / "src" / "components" / "atomic_login" / "index.html").read_text(encoding="utf-8")
-
-
-class ManualLoginAtomicComponentTests(unittest.TestCase):
-    def test_login_uses_atomic_component_and_no_callback_latch(self):
-        self.assertIn("render_atomic_login(", AUTH)
+class ManualLoginNativeFormTests(unittest.TestCase):
+    def test_login_uses_native_form_without_callback_latch(self):
+        self.assertIn('with st.form("cadivor_login_form"', AUTH)
+        self.assertNotIn("render_atomic_login(", AUTH)
         self.assertNotIn("_request_manual_login_submit", AUTH)
         self.assertNotIn("AUTH_LOGIN_SUBMIT_REQUESTED_KEY", AUTH)
 
-    def test_component_uses_real_submit_without_click_replay(self):
-        self.assertIn('button id="submit" type="submit"', HTML)
-        self.assertIn('form.addEventListener("submit"', HTML)
-        for removed in ("pointerdown", "button.click()", "cadivorCommitThenSubmit"):
-            self.assertNotIn(removed, HTML)
+    def test_native_submit_has_no_browser_click_replay(self):
+        self.assertIn('key="cadivor_login_submit"', AUTH)
+        self.assertNotIn("button.click()", AUTH)
+        self.assertNotIn("cadivorCommitThenSubmit", AUTH)
 
 
 class AuthViewportContractTests(unittest.TestCase):

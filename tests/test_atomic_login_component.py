@@ -1,4 +1,4 @@
-"""Regression guards for the atomic one-click Login component."""
+"""Regression guards for the native one-click Login form."""
 from __future__ import annotations
 
 import unittest
@@ -7,93 +7,30 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTH = (ROOT / "src" / "auth.py").read_text(encoding="utf-8")
-BRIDGE = (ROOT / "src" / "auth_atomic_login.py").read_text(encoding="utf-8")
-HTML = (ROOT / "src" / "components" / "atomic_login" / "index.html").read_text(encoding="utf-8")
-
-
-class AtomicLoginComponentContractTests(unittest.TestCase):
-    def test_login_uses_component_not_streamlit_credential_widgets(self):
+class NativeLoginFormContractTests(unittest.TestCase):
+    def test_login_uses_one_native_streamlit_form(self):
         login = AUTH[AUTH.index("if auth_mode == AUTH_MODE_LOGIN:"):AUTH.index('with st.form("cadivor_auth_form"')]
-        self.assertIn("render_atomic_login(", login)
-        self.assertNotIn("st.text_input(", login)
-        self.assertNotIn("st.form_submit_button(", login)
+        self.assertIn('with st.form("cadivor_login_form"', login)
+        self.assertIn('st.text_input(\n                "Email"', login)
+        self.assertIn('st.text_input(\n                "Password"', login)
+        self.assertIn("st.form_submit_button(", login)
+        self.assertNotIn("render_atomic_login(", login)
 
-    def test_native_browser_form_emits_one_atomic_payload(self):
-        self.assertIn('<form id="login"', HTML)
-        self.assertIn('form.addEventListener("submit"', HTML)
-        self.assertIn("email:emailValue", HTML)
-        self.assertIn("password:passwordValue", HTML)
-        self.assertIn("request_id:requestId()", HTML)
-        self.assertIn('post("streamlit:setComponentValue"', HTML)
-        self.assertIn("if (submitted || button.disabled) return", HTML)
-        self.assertIn("button.disabled = Boolean(isBusy) || submitted", HTML)
-        self.assertIn('button.textContent = "Signing in…"', HTML)
-
-    def test_invalid_credentials_error_is_inline_with_password_refocus(self):
-        self.assertIn('data-login-error', HTML)
-        self.assertIn("function applyServerError(message)", HTML)
-        self.assertIn('password.value = ""', HTML)
-        self.assertIn("password.focus()", HTML)
-        self.assertIn("setBusy(false, idleSubmitLabel)", HTML)
-        self.assertIn("args.error_message", HTML)
-        self.assertIn("args.error_epoch", HTML)
-        self.assertIn("ATOMIC_LOGIN_ERROR_KEY", AUTH)
+    def test_login_error_is_visible_above_the_native_form(self):
+        self.assertIn("if auth_error:", AUTH)
+        self.assertIn("st.error(auth_error)", AUTH)
         self.assertIn(
             '"Email or password is incorrect. Please try again."',
             AUTH,
         )
-        self.assertIn("error_epoch=error_epoch", AUTH)
-        self.assertIn("error_epoch: int = 0", BRIDGE)
-
-    def test_first_submit_waits_for_streamlit_render_handshake(self):
-        self.assertIn("let streamlitRenderReady = false", HTML)
-        self.assertIn("let pendingSubmitValue = null", HTML)
-        self.assertIn("streamlitRenderReady = true", HTML)
-        self.assertIn("sendPendingSubmitWhenReady();", HTML)
-        self.assertIn("if (!streamlitRenderReady || !pendingSubmitValue) return", HTML)
-        self.assertIn("pendingSubmitValue = {", HTML)
-        self.assertIn("value:pendingSubmitValue", HTML)
-        self.assertIn("pendingSubmitValue = null", HTML)
-
-    def test_password_manager_contract_is_native_and_no_browser_storage(self):
-        self.assertIn('autocomplete="email"', HTML)
-        self.assertIn('autocomplete="current-password"', HTML)
-        self.assertIn('type="submit"', HTML)
-        for forbidden in ("localStorage", "sessionStorage", "location.search", "URLSearchParams"):
-            self.assertNotIn(forbidden, HTML)
-
-    def test_python_persists_only_replay_id(self):
-        self.assertIn("AUTH_ATOMIC_LOGIN_CONSUMED_KEY", AUTH)
-        self.assertIn("request_id != consumed_id", AUTH)
-        self.assertIn('payload.get("password")', AUTH)
+        self.assertNotIn("cadivor_atomic_login", AUTH)
         self.assertNotIn('st.session_state["cadivor_auth_password"] =', AUTH)
         self.assertIn("supabase.auth.sign_in_with_password", AUTH)
 
-    def test_login_component_remains_visible_while_frame_height_is_zero(self):
-        self.assertIn(
-            ".st-key-cadivor_auth_card .st-key-cadivor_atomic_login{",
-            AUTH,
-        )
-        self.assertIn("display:block!important;", AUTH)
-        self.assertIn("min-height:244px!important;", AUTH)
-        self.assertIn(
-            'iframe[title="src.auth_atomic_login.cadivor_atomic_login"]',
-            AUTH,
-        )
-
-    def test_visibility_override_does_not_unhide_cookie_manager(self):
-        css_start = AUTH.index(
-            ".st-key-cadivor_auth_card .st-key-cadivor_atomic_login{"
-        )
-        css_end = AUTH.index("        .st-key-cadivor_auth_card .cadivor-back-home", css_start)
-        override = AUTH[css_start:css_end]
-        self.assertNotIn("cadivor_auth_cookie_manager", override)
-        self.assertNotIn('.element-container:has(iframe[height="0"])', override)
-
-    def test_component_is_local_and_requires_no_frontend_build(self):
-        self.assertIn("declare_component(", BRIDGE)
-        self.assertIn("path=str(_COMPONENT_DIR)", BRIDGE)
-        self.assertNotIn("npm", BRIDGE.lower())
+    def test_submit_uses_the_form_values_once(self):
+        login = AUTH[AUTH.index("if auth_mode == AUTH_MODE_LOGIN:\n        if submit:"):AUTH.index("    elif submit:")]
+        self.assertIn("if submit:", login)
+        self.assertIn("_submit_manual_login(supabase, cookie_manager, email, password)", login)
 
 
 if __name__ == "__main__":

@@ -499,16 +499,6 @@ def fail_login_handoff(
     st.session_state["cadivor_root_state"] = APP_LOGIN
     st.session_state["cadivor_force_signed_out"] = True
     st.session_state["cadivor_auth_error"] = str(message or LOGIN_HANDOFF_TIMEOUT_MESSAGE)
-    # Mirror into the atomic Login error channel so invalid-password (and other
-    # Login failures) render inside the iframe, not only Streamlit session state.
-    st.session_state["cadivor_atomic_login_error"] = str(
-        message or LOGIN_HANDOFF_TIMEOUT_MESSAGE
-    )
-    try:
-        epoch = int(st.session_state.get("cadivor_atomic_login_error_epoch") or 0)
-    except (TypeError, ValueError):
-        epoch = 0
-    st.session_state["cadivor_atomic_login_error_epoch"] = epoch + 1
     if draft:
         st.session_state[LOGIN_HANDOFF_EMAIL_KEY] = draft
     set_auth_gate_state(
@@ -766,7 +756,7 @@ def _ensure_authenticated_or_stop_impl() -> None:
                     "login",
                     reason="provider_login_failed",
                     error_message=str(
-                        st.session_state.get("cadivor_atomic_login_error")
+                        st.session_state.get("cadivor_auth_error")
                         or "Email or password is incorrect. Please try again."
                     ),
                 )

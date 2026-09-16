@@ -18,7 +18,6 @@ from src.auth_state import (
     render_auth_transition,
 )
 from src.config import CADIVOR_MARKETING_URL
-from src.auth_atomic_login import render_atomic_login
 from src.ui.core_premium_ui import inject_core_premium_ui_auth
 
 
@@ -100,7 +99,6 @@ Questions about these Terms may be sent to **info@cadivor.com** with “Terms”
 AUTH_MODE_WIDGET_KEY = "cadivor_auth_mode"
 AUTH_EMAIL_WIDGET_KEY = "cadivor_auth_email"
 AUTH_PASSWORD_WIDGET_KEY = "cadivor_auth_password"
-AUTH_ATOMIC_LOGIN_CONSUMED_KEY = "cadivor_atomic_login_consumed_request_id"
 AUTH_MODE_LOGIN = "Login"
 AUTH_MODE_SIGNUP = "Create Account"
 AUTH_CARD_CONTAINER_KEY = "cadivor_auth_card"
@@ -223,20 +221,6 @@ def _auth_css():
         .st-key-cadivor_auth_card [data-testid="stForm"]{
             width:100%!important;
             max-width:100%!important;
-        }
-        /* CookieManager hides zero-height component iframes globally. The
-           atomic Login iframe also begins at height zero, so explicitly keep
-           only its keyed container visible until its resize handshake lands. */
-        .st-key-cadivor_auth_card .st-key-cadivor_atomic_login{
-            display:block!important;
-            width:100%!important;
-            min-height:244px!important;
-        }
-        .st-key-cadivor_auth_card .st-key-cadivor_atomic_login
-        iframe[title="src.auth_atomic_login.cadivor_atomic_login"]{
-            display:block!important;
-            width:100%!important;
-            min-height:244px!important;
         }
         .st-key-cadivor_auth_card .cadivor-back-home{
             display:flex!important;
@@ -388,40 +372,23 @@ MANUAL_LOGIN_FAILURE_MESSAGE = (
 MANUAL_LOGIN_NO_SESSION_MESSAGE = (
     "Cadivor could not complete sign-in. Please try again."
 )
-ATOMIC_LOGIN_ERROR_KEY = "cadivor_atomic_login_error"
-ATOMIC_LOGIN_ERROR_EPOCH_KEY = "cadivor_atomic_login_error_epoch"
-
-
 def _set_manual_login_error(message: str, *, email: str = "") -> None:
-    """Persist a user-visible Login error for the atomic component remount."""
+    """Persist a user-visible Login error for the next native form paint."""
     text = str(message or MANUAL_LOGIN_FAILURE_MESSAGE).strip() or MANUAL_LOGIN_FAILURE_MESSAGE
     st.session_state["cadivor_auth_error"] = text
-    st.session_state[ATOMIC_LOGIN_ERROR_KEY] = text
-    try:
-        epoch = int(st.session_state.get(ATOMIC_LOGIN_ERROR_EPOCH_KEY) or 0)
-    except (TypeError, ValueError):
-        epoch = 0
-    st.session_state[ATOMIC_LOGIN_ERROR_EPOCH_KEY] = epoch + 1
     if email:
         st.session_state["cadivor_login_email_draft"] = str(email).strip()
 
 
 def _consume_manual_login_error() -> str:
-    """Return the Login error for this paint and keep it available to the component."""
-    # Prefer the atomic-login copy so a Streamlit st.error pop cannot erase it
-    # before the iframe receives args.
-    message = str(
-        st.session_state.get(ATOMIC_LOGIN_ERROR_KEY)
-        or st.session_state.get("cadivor_auth_error")
-        or ""
-    ).strip()
+    """Return the Login error for the next native form paint."""
+    message = str(st.session_state.get("cadivor_auth_error") or "").strip()
     st.session_state.pop("cadivor_auth_error", None)
     return message
 
 
 def _clear_manual_login_error() -> None:
     st.session_state.pop("cadivor_auth_error", None)
-    st.session_state.pop(ATOMIC_LOGIN_ERROR_KEY, None)
 
 
 def _fail_manual_login_and_rerun(
@@ -987,33 +954,36 @@ def _render_auth_page(
     _sync_root_state_from_auth_mode(auth_mode)
 
     if auth_mode == AUTH_MODE_LOGIN:
-        # The Login component owns one native browser form and emits the email,
-        # password, and a unique request id together on the physical submit.
-        # This avoids Streamlit's separate password-commit and button reruns.
-        from src.auth_state import manual_login_in_flight
-
-        login_in_flight = manual_login_in_flight()
+        # Keep the credentials and explicit Login action in one native Streamlit
+        # form. A custom iframe previously owned this surface; when that iframe
+        # failed to bootstrap, fresh visitors were left with permanent skeletons.
+        # Streamlit commits both fields as one form submission, so one physical
+        # click reaches the existing handoff without a browser bridge.
         draft_email = str(st.session_state.get("cadivor_login_email_draft") or "").strip()
-        component_error = "" if login_in_flight else str(
-            st.session_state.get(ATOMIC_LOGIN_ERROR_KEY)
-            or auth_error
-            or ""
-        ).strip()
-        try:
-            error_epoch = int(st.session_state.get(ATOMIC_LOGIN_ERROR_EPOCH_KEY) or 0)
-        except (TypeError, ValueError):
-            error_epoch = 0
-        login_payload = render_atomic_login(
-            key="cadivor_atomic_login",
-            disabled=login_in_flight,
-            submit_label="Sign in again" if session_expired else "Login",
-            prefill_email=draft_email,
-            error_message=component_error,
-            error_epoch=error_epoch,
-        )
-        email = ""
-        password = ""
-        submit = False
+        if draft_email and not st.session_state.get(AUTH_EMAIL_WIDGET_KEY):
+            st.session_state[AUTH_EMAIL_WIDGET_KEY] = draft_email
+        if auth_error:
+            st.error(auth_error)
+        with st.form("cadivor_login_form", clear_on_submit=False, border=False):
+            email = st.text_input(
+                "Email",
+                placeholder="you@company.com",
+                key=AUTH_EMAIL_WIDGET_KEY,
+                autocomplete="email",
+            )
+            password = st.text_input(
+                "Password",
+                type="password",
+                placeholder="Enter your password",
+                key=AUTH_PASSWORD_WIDGET_KEY,
+                autocomplete="current-password",
+            )
+            submit = st.form_submit_button(
+                "Sign in again" if session_expired else AUTH_MODE_LOGIN,
+                key="cadivor_login_submit",
+                type="primary",
+                use_container_width=True,
+            )
         accepted_terms = True
     else:
         with st.form("cadivor_auth_form", clear_on_submit=False, border=False):
@@ -1046,17 +1016,9 @@ def _render_auth_page(
             )
 
     if auth_mode == AUTH_MODE_LOGIN:
-        payload = login_payload if isinstance(login_payload, dict) else {}
-        request_id = str(payload.get("request_id") or "").strip()
-        consumed_id = str(
-            st.session_state.get(AUTH_ATOMIC_LOGIN_CONSUMED_KEY) or ""
-        )
-        if request_id and request_id != consumed_id:
-            # Consume before provider I/O so component rerenders cannot replay a
-            # physical click. Only the non-sensitive request id is persisted.
-            st.session_state[AUTH_ATOMIC_LOGIN_CONSUMED_KEY] = request_id
-            email = str(payload.get("email") or "").strip()
-            password = str(payload.get("password") or "")
+        if submit:
+            email = str(email or "").strip()
+            password = str(password or "")
             if not email or not password:
                 st.warning("Please enter your email and password.")
                 return
