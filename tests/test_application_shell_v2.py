@@ -177,6 +177,13 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertIn("--cv-foundation-rail-active-accent", self.app_shell_css)
         self.assertIn(":focus-visible", self.app_shell_css)
 
+    def test_navigation_uses_a_light_rail_and_outline_active_state(self) -> None:
+        self.assertIn("Release navigation: light, quiet, and scannable.", self.app_shell_css)
+        self.assertIn("background:#ffffff!important;", self.app_shell_css)
+        self.assertIn("border-color:#93c5fd!important;", self.app_shell_css)
+        self.assertIn("box-shadow:inset 3px 0 0 #2563eb!important;", self.app_shell_css)
+        self.assertIn("width:48px!important;height:48px!important", self.app_shell_css)
+
 
 if __name__ == "__main__":
     unittest.main()
