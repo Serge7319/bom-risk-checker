@@ -731,3 +731,44 @@ section[data-testid="stMain"] .st-key-cv_foundation_profile_panel .st-key-cv_fou
   background:#fff1f0!important;
   color:#912018!important;
 }
+
+
+/* Account panel scope correction: the fixed panel is a shell sibling, not a
+   descendant of stMain. These rules deliberately avoid that descendant scope. */
+.st-key-cv_foundation_profile_panel .stButton,
+.st-key-cv_foundation_profile_panel .stButton>div{
+  margin:0!important;
+}
+.st-key-cv_foundation_profile_panel .stButton>button,
+.st-key-cv_foundation_profile_panel .stButton>button[kind="secondary"]{
+  width:100%!important;
+  min-height:36px!important;
+  height:36px!important;
+  padding:0 10px!important;
+  border:0!important;
+  outline:0!important;
+  border-radius:7px!important;
+  background:transparent!important;
+  color:#334155!important;
+  box-shadow:none!important;
+  transform:none!important;
+  text-align:left!important;
+}
+.st-key-cv_foundation_profile_panel .stButton>button p{
+  color:inherit!important;
+}
+.st-key-cv_foundation_profile_panel .stButton>button:hover{
+  background:#f1f5f9!important;
+  color:#0f172a!important;
+  border-color:transparent!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.st-key-cv_foundation_profile_panel .st-key-cv_foundation_signout button,
+.st-key-cv_foundation_profile_panel .st-key-cv_foundation_signout button p{
+  color:#b42318!important;
+}
+.st-key-cv_foundation_profile_panel .st-key-cv_foundation_signout button:hover{
+  background:#fff1f0!important;
+  color:#912018!important;
+}
