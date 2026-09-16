@@ -121,7 +121,7 @@ def build_home_model(
         "title": title,
         "analyses": scoped,
         "primary": primary,
-        "recent": [_recent_card(row) for row in _sorted_recent(scoped)[:5]],
+        "recent": [_recent_card(row) for row in _sorted_recent(scoped)[:3]],
         "secondary_failed": bool(secondary_failed and scoped),
         "show_onboarding": kind == HOME_NEW,
     }
@@ -222,8 +222,17 @@ def render_returning_home(
         )
     primary = model.get("primary") or {}
     with st.container(key="cv_home_next"):
+        primary_label = html.escape(str(primary.get("label") or "Continue"))
+        primary_bom = html.escape(str(primary.get("bom_name") or ""))
+        primary_context = html.escape(
+            str(primary.get("context") or "Open the saved BOM and continue the review.")
+        )
         st.markdown(
-            '<p class="cv-home-kicker">Next engineering action</p>',
+            f'''<div class="cv-home-priority-copy">
+              <p class="cv-home-kicker">Next engineering action</p>
+              <h2>{primary_label}</h2>
+              <p>{primary_context}{f" · {primary_bom}" if primary_bom else ""}</p>
+            </div>''',
             unsafe_allow_html=True,
         )
         action_col, new_col = st.columns([1.6, 1])
@@ -318,11 +327,17 @@ def _priority_action(
         urgent = [row for row in analyses if _int(row.get("high_risk_count")) > 0]
         analysis_id = str((_most_recent(urgent) or {}).get("id") or "").strip()
     if mpn:
+        analysis = next(
+            (row for row in analyses if str(row.get("id") or "").strip() == analysis_id),
+            None,
+        )
         return {
             "kind": "review",
             "label": f"Review {mpn}",
             "mpn": mpn,
             "analysis_id": analysis_id,
+            "bom_name": _bom_name(analysis or {}),
+            "context": "High-risk component requires engineering review",
         }
     return _continue_action(_most_recent(analyses))
 
@@ -359,6 +374,8 @@ def _continue_action(row: Mapping[str, Any] | None) -> dict[str, str]:
         "kind": "continue",
         "label": f"Continue {_bom_name(row)}",
         "analysis_id": str(row.get("id") or "").strip(),
+        "bom_name": _bom_name(row),
+        "context": "Resume the latest saved engineering review",
     }
 
 

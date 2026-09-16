@@ -63,6 +63,8 @@ def test_returning_user_with_urgent_risk_reviews_highest_risk_mpn():
     assert home["title"] == "What needs attention"
     assert home["primary"]["label"] == "Review MAX32625ITK+"
     assert home["primary"]["analysis_id"] == "bom-1"
+    assert home["primary"]["bom_name"] == "Industrial Controller BOM"
+    assert "engineering review" in home["primary"]["context"].lower()
     assert home["show_onboarding"] is False
     card = home["recent"][0]
     assert card["name"] == "Industrial Controller BOM"
@@ -99,6 +101,7 @@ def test_returning_user_without_urgent_risk_continues_most_recent_bom():
     assert home["title"] == "Continue your engineering work"
     assert home["primary"]["label"] == "Continue Sensor Board BOM"
     assert home["primary"]["analysis_id"] == "bom-new"
+    assert home["primary"]["bom_name"] == "Sensor Board BOM"
     assert [card["name"] for card in home["recent"]] == ["Sensor Board BOM", "Older Board"]
     assert home["show_onboarding"] is False
 
