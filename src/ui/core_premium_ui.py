@@ -139,7 +139,8 @@ def inject_workspace_geometry_final() -> None:
         }
         /* Root flex siblings only — removes Streamlit row-gap above route content. */
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_navigation"]),
-        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_menu"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_trigger"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_panel"]),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cadivor_main_transition_owner"]),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-topbar-flow-host="1"]),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(.cv-foundation-topbar),
@@ -169,8 +170,10 @@ def inject_workspace_geometry_final() -> None:
         }
         section[data-testid="stMain"] [class*="st-key-cv_foundation_navigation"],
         section[data-testid="stMain"] [class*="st-key-cv_foundation_navigation"] *,
-        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_menu"],
-        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_menu"] *,
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_trigger"],
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_trigger"] *,
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_panel"],
+        section[data-testid="stMain"] [class*="st-key-cv_foundation_profile_panel"] *,
         section[data-testid="stMain"] .cv-foundation-topbar,
         section[data-testid="stMain"] .cv-foundation-topbar * {
           pointer-events: auto !important;

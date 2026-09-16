@@ -146,7 +146,18 @@ class ApplicationShellV2Tests(unittest.TestCase):
 
     def test_profile_dropdown_container_present(self) -> None:
         self.assertIn('key="cv_foundation_profile_menu"', self.unified_shell_source)
-        self.assertIn("st.popover", self.unified_shell_source)
+        self.assertIn('key="cv_foundation_profile_trigger"', self.unified_shell_source)
+        self.assertIn('key="cv_foundation_profile_panel"', self.unified_shell_source)
+        self.assertIn("on_click=_toggle_profile_menu", self.unified_shell_source)
+        render_source = self.unified_shell_source.split("def render_unified_shell", 1)[1]
+        self.assertNotIn("with st.popover", render_source)
+
+    def test_profile_menu_uses_native_first_click_toggle(self) -> None:
+        self.assertIn("def _toggle_profile_menu", self.unified_shell_source)
+        self.assertIn('"cadivor_profile_menu_open"', self.unified_shell_source)
+        self.assertIn("not bool", self.unified_shell_source)
+        self.assertIn("cv_foundation_profile_trigger", self.app_shell_css)
+        self.assertIn("cv_foundation_profile_panel", self.app_shell_css)
 
     def test_search_chip_wired_to_command_center(self) -> None:
         self.assertIn("cv-foundation-search", self.unified_shell_source)

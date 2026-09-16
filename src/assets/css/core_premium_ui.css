@@ -85,9 +85,11 @@ section[data-testid="stMain"] .main .block-container .block-container {
 /* Fixed shell chrome must not reserve vertical space in the main column. */
 section[data-testid="stMain"] .stMarkdown:has(.cv-foundation-topbar),
 section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_navigation),
-section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_menu),
+section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_trigger),
+section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_panel),
 section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_navigation),
-section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_menu) {
+section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_trigger),
+section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_panel) {
   height: 0 !important;
   min-height: 0 !important;
   overflow: visible !important;
