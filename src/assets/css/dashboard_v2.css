@@ -748,11 +748,11 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
 }
 
 .st-key-cv_home_next {
-  margin: 0 0 22px;
-  padding: 16px 18px 14px;
-  border: 1px solid #d6e4f7;
-  border-radius: 14px;
-  background: #f3f7fd;
+  margin: 0 0 24px;
+  padding: 20px;
+  border: 1px solid #cfe0f7;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f7faff 0%, #edf5ff 100%);
 }
 
 .cv-home-kicker {
@@ -762,6 +762,23 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.cv-home-priority-copy h2 {
+  margin: 0 0 5px;
+  color: #0f172a;
+  font-size: 21px;
+  font-weight: 720;
+  letter-spacing: -0.028em;
+  line-height: 1.2;
+}
+
+.cv-home-priority-copy > p:last-child {
+  margin: 0 0 16px;
+  max-width: 62ch;
+  color: #475569;
+  font-size: 13.5px;
+  line-height: 1.45;
 }
 
 .st-key-cv_home_next [data-testid="stHorizontalBlock"] {
@@ -854,7 +871,7 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
 }
 
 .cv-home-recent-title {
-  margin: 6px 0 10px;
+  margin: 0 0 10px;
   color: #0f172a;
   font-size: 15px;
   font-weight: 700;
