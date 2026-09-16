@@ -302,7 +302,8 @@ def retire_authenticated_shell_hosts() -> None:
         body:has([data-cadivor-signed-out-surface="1"]) [data-testid="cadivor-continuity-shell"],
         body:has([data-cadivor-signed-out-surface="1"]) [data-cadivor-topbar-flow-host],
         body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_navigation"],
-        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_profile_menu"],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_profile_trigger"],
+        body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_profile_panel"],
         body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_nav_"],
         body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_compare_plans"],
         body:has([data-cadivor-signed-out-surface="1"]) [class*="st-key-cv_foundation_new_analysis"],
@@ -338,7 +339,9 @@ def retire_authenticated_shell_hosts() -> None:
         body:has([data-cadivor-signed-out-surface="1"])
           div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_navigation"]),
         body:has([data-cadivor-signed-out-surface="1"])
-          div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_menu"]),
+          div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_trigger"]),
+        body:has([data-cadivor-signed-out-surface="1"])
+          div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_profile_panel"]),
         body:has([data-cadivor-signed-out-surface="1"])
           div[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cadivor_main_transition"]) {
           display:none!important;visibility:hidden!important;pointer-events:none!important;
