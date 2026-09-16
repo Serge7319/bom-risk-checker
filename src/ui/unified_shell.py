@@ -203,6 +203,19 @@ def _open_compare_plans() -> None:
     _commit_navigation("Pricing", arm_opening=False)
 
 
+def _toggle_profile_menu() -> None:
+    """Open or close the account panel without relying on a client popover.
+
+    The foundation shell is fixed outside Streamlit's normal document flow.
+    ``st.popover`` can lose its trigger in that layout after a rerun, which made
+    the only Sign out path unreachable.  A normal keyed button gives Streamlit
+    an unambiguous click callback; the panel is rendered on the following run.
+    """
+    st.session_state["cadivor_profile_menu_open"] = not bool(
+        st.session_state.get("cadivor_profile_menu_open")
+    )
+
+
 def render_unified_shell(
     *,
     current_page: str,
@@ -276,8 +289,16 @@ def render_unified_shell(
 
         paint_prepared_main_transition(loading_route)
 
-    with st.container(key="cv_foundation_profile_menu"):
-        with st.popover(initials, use_container_width=False):
+    with st.container(key="cv_foundation_profile_trigger"):
+        st.button(
+            initials,
+            key="cv_foundation_profile_menu",
+            help="Open account menu",
+            on_click=_toggle_profile_menu,
+        )
+
+    if st.session_state.get("cadivor_profile_menu_open"):
+        with st.container(key="cv_foundation_profile_panel"):
             st.markdown(
                 f"""<div class="cv-foundation-account-head"><b>{_escape(full_name)}</b><span>{_escape(email)}</span><small>{_escape(workspace_name)}</small></div>""",
                 unsafe_allow_html=True,
@@ -290,10 +311,8 @@ def render_unified_shell(
             if is_admin:
                 st.button("Resources", key="cv_foundation_help", use_container_width=True, on_click=_commit_navigation, args=("Help",))
             st.divider()
+
             def _commit_signout() -> None:
-                # Streamlit runs on_click callbacks before the widget rerun.  By
-                # committing logout here, the first click cannot be consumed by
-                # the popover closing before authentication state changes.
                 if st.session_state.get("cadivor_logout_in_progress"):
                     return
                 st.session_state["cadivor_logout_in_progress"] = True
