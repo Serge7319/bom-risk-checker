@@ -184,6 +184,19 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertIn("box-shadow:inset 3px 0 0 #2563eb!important;", self.app_shell_css)
         self.assertIn("width:48px!important;height:48px!important", self.app_shell_css)
 
+    def test_navigation_icons_and_hover_follow_label_hierarchy(self) -> None:
+        self.assertIn("Navigation polish — icons, hover, workspace, and account menu", self.app_shell_css)
+        self.assertIn("%23475569", self.app_shell_css)
+        self.assertIn("opacity:1!important;", self.app_shell_css)
+        self.assertIn("background:#f8fafc!important;", self.app_shell_css)
+        self.assertIn("color:#1d4ed8!important;", self.app_shell_css)
+
+    def test_workspace_and_profile_actions_are_quiet_menu_surfaces(self) -> None:
+        self.assertIn("Compact identity switcher, not a decorative card.", self.app_shell_css)
+        self.assertIn("The account panel uses menu rows.", self.app_shell_css)
+        self.assertIn(".st-key-cv_foundation_profile_panel .stButton>button", self.app_shell_css)
+        self.assertIn("border:0!important;", self.app_shell_css)
+
 
 if __name__ == "__main__":
     unittest.main()
