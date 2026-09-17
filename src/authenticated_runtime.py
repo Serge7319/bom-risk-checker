@@ -13812,6 +13812,20 @@ def run_authenticated_app() -> None:
                 min-height:38px!important;
                 border-radius:10px!important;
             }
+            .st-key-bom81_review_high_risk_components button{
+                min-height:40px!important;
+                border:1px solid #f59e0b!important;
+                border-radius:10px!important;
+                background:#f59e0b!important;
+                color:#422006!important;
+                font-weight:850!important;
+                box-shadow:0 5px 14px rgba(217,119,6,.18)!important;
+            }
+            .st-key-bom81_review_high_risk_components button:hover{
+                background:#d97706!important;
+                border-color:#d97706!important;
+                color:#fff!important;
+            }
             .st-key-bom81_saved_manager details{
                 border:1px solid #dbe3ef!important;
                 border-radius:18px!important;
