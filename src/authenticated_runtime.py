@@ -13981,11 +13981,11 @@ def run_authenticated_app() -> None:
             st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
             if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
                 cadivor_panel(
-                    title=f"Saved BOM Manager ({saved_analysis_count})",
+                    title=f"Saved BOMs ({saved_analysis_count})",
                     subtitle=(
                         "Showing saved analyses with high-risk components."
                         if st.session_state.get("bom81_high_risk_review")
-                        else "Search, sort, open, or select multiple analyses for bulk deletion."
+                        else "Open, search, or manage saved analyses."
                     ),
                     tone="soft",
                 )
@@ -14470,7 +14470,21 @@ def run_authenticated_app() -> None:
             else:
                 release_saved_analysis_placeholder()
 
-        # Keep the primary task together: workflow, form, and File readiness
+            if total_high_risk:
+                st.markdown(
+                    f"<div class=\"bom8-secondary-card bom8-secondary-card--attention\"><strong>Review queue</strong><span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span></div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    f"Review {total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''}",
+                    key="bom81_review_high_risk_components",
+                    type="secondary",
+                    use_container_width=False,
+                    help="Open the saved components that need engineering review.",
+                ):
+                    open_high_risk_component_review(arm_opening=False)
+
+        # Keep the primary task together: workflow and form occupy the reserved top slot
         # occupy the reserved top slot; saved analyses remain below it.
         _bom_new_analysis_context = bom_new_analysis_slot.container()
         _bom_new_analysis_context.__enter__()
@@ -14509,7 +14523,7 @@ def run_authenticated_app() -> None:
         )
         if st.session_state.pop("bom8_analysis_cancelled_notice", False):
             st.success("Analysis canceled. No BOM analysis was saved.")
-        input_col, guidance_col, saved_manager_col = st.columns([0.42, 0.25, 0.33], gap="large")
+        input_col = st.container()
 
         with input_col:
             st.markdown(
@@ -14633,72 +14647,7 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-        with guidance_col:
-            st.markdown(
-                """
-                <div class="bom8-path-guide">
-                  <div class="bom8-path-guide-title">Choose how to begin</div>
-                  <div class="bom8-path-choice"><div class="bom8-path-icon">1</div><div><strong>Explore with the sample</strong><span>Use the included 10-part BOM to see Cadivor's analysis without sharing your own data.</span></div></div>
-                  <div class="bom8-path-choice"><div class="bom8-path-icon">2</div><div><strong>Analyze your own BOM</strong><span>Upload a CSV or XLSX when you are ready to review a real project.</span></div></div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                """
-                <div class="bom8-upload-card">
-                  <div class="bom8-upload-title">File readiness</div>
-                  <div class="bom8-upload-copy">
-                    A clean source file creates a stronger and more defensible analysis.
-                  </div>
-                  <div class="bom8-checklist">
-                    <div class="bom8-check">
-                      <div class="bom8-check-icon">1</div>
-                      <div>
-                        <strong>Manufacturer part number</strong>
-                        <span>Include an <b>mpn</b> column or a recognized part-number equivalent.</span>
-                      </div>
-                    </div>
-                    <div class="bom8-check">
-                      <div class="bom8-check-icon">2</div>
-                      <div>
-                        <strong>Quantity</strong>
-                        <span>Include a numeric <b>quantity</b> or <b>qty</b> column.</span>
-                      </div>
-                    </div>
-                    <div class="bom8-check">
-                      <div class="bom8-check-icon">3</div>
-                      <div>
-                        <strong>Clear BOM identity</strong>
-                        <span>BOM Name is required; Project Name is optional for grouping related BOMs.</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                f"<div class=\"bom8-secondary-card\"><strong>Saved analyses</strong><span>{saved_analysis_count} saved BOM{'s' if saved_analysis_count != 1 else ''} in this workspace.</span><a href=\"#saved-bom-manager\">Manage saved analyses</a></div>",
-                unsafe_allow_html=True,
-            )
-            if total_high_risk:
-                st.markdown(
-                    f"<div class=\"bom8-secondary-card bom8-secondary-card--attention\"><strong>Review queue</strong><span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span></div>",
-                    unsafe_allow_html=True,
-                )
-                if st.button(
-                    f"Review {total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''}",
-                    key="bom81_review_high_risk_components",
-                    type="secondary",
-                    use_container_width=True,
-                    help="Shows the affected saved BOMs and opens the selected component review.",
-                ):
-                    open_high_risk_component_review(arm_opening=False)
-
-        with saved_manager_col:
-            _render_saved_bom_manager()
+        _render_saved_bom_manager()
 
         sample_mode = bool(st.session_state.get("bom8_sample_mode"))
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
