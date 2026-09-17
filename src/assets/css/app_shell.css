@@ -780,3 +780,18 @@ section[data-testid="stMain"] .st-key-cv_foundation_profile_panel .st-key-cv_fou
 .cv-analysis-decision-summary .cv-analysis-mini strong{font-size:18px!important;line-height:1.2!important}
 /* The account panel is always an overlay; prevent an intermediate flow layout. */
 .st-key-cv_foundation_profile_panel{contain:layout paint!important;overflow:hidden!important;animation:none!important}
+
+
+/* Workspace and account-menu refinement: use a recognizable workspace mark
+   and plain menu rows—only the panel itself is a surface. */
+.cv-foundation-workspace-mark{display:grid!important;place-items:center!important}
+.cv-foundation-workspace-mark svg{width:16px!important;height:16px!important;fill:none!important;stroke:currentColor!important;stroke-width:1.8!important;stroke-linecap:round!important;stroke-linejoin:round!important}
+.st-key-cv_foundation_profile_panel button,
+.st-key-cv_foundation_profile_panel button[kind="secondary"]{
+  width:100%!important;min-height:36px!important;padding:0 10px!important;
+  border:0!important;border-radius:0!important;background:transparent!important;
+  box-shadow:none!important;color:#334155!important;text-align:left!important;
+}
+.st-key-cv_foundation_profile_panel button:hover{background:#f1f5f9!important;color:#0f172a!important}
+.st-key-cv_foundation_profile_panel .st-key-cv_foundation_signout button{color:#b42318!important}
+.st-key-cv_foundation_profile_panel .st-key-cv_foundation_signout button:hover{background:#fff1f0!important;color:#912018!important}
