@@ -14523,7 +14523,7 @@ def run_authenticated_app() -> None:
         )
         if st.session_state.pop("bom8_analysis_cancelled_notice", False):
             st.success("Analysis canceled. No BOM analysis was saved.")
-        input_col = st.container()
+        input_col, saved_manager_col = st.columns([0.46, 0.54], gap="large")
 
         with input_col:
             st.markdown(
@@ -14647,7 +14647,8 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-        _render_saved_bom_manager()
+        with saved_manager_col:
+            _render_saved_bom_manager()
 
         sample_mode = bool(st.session_state.get("bom8_sample_mode"))
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (

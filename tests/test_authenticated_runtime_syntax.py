@@ -14,9 +14,9 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
     def test_bom_workspace_keeps_only_primary_analysis_and_saved_manager(self) -> None:
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
 
-        self.assertIn('input_col = st.container()', source)
+        self.assertIn('input_col, saved_manager_col = st.columns([0.46, 0.54], gap="large")', source)
         self.assertIn('def _render_saved_bom_manager()', source)
-        self.assertIn('_render_saved_bom_manager()\n\n        sample_mode', source)
+        self.assertIn('with saved_manager_col:\n            _render_saved_bom_manager()', source)
         self.assertNotIn('guidance_col, saved_manager_col = st.columns', source)
 
 
