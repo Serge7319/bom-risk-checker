@@ -13556,6 +13556,32 @@ def run_authenticated_app() -> None:
             }
             .bom8-saved-card{margin-bottom:14px;}
             .bom8-upload-card{margin-bottom:12px;}
+            /* Compact form rhythm: clear structure without decorative clutter. */
+            .st-key-bom8_project_name, .st-key-bom8_bom_name{
+                margin-bottom:4px;
+            }
+            .st-key-bom8_project_name label, .st-key-bom8_bom_name label,
+            .st-key-bom_file_uploader label{
+                color:#334155!important;
+                font-size:12px!important;
+                font-weight:750!important;
+            }
+            .st-key-bom8_project_name input, .st-key-bom8_bom_name input{
+                min-height:42px!important;
+                border-radius:10px!important;
+                border-color:#d7e1ee!important;
+                background:#fff!important;
+            }
+            .st-key-bom_file_uploader [data-testid="stFileUploaderDropzone"]{
+                min-height:72px!important;
+                border:1px dashed #b9c8da!important;
+                border-radius:12px!important;
+                background:#fbfdff!important;
+            }
+            .st-key-bom_file_uploader [data-testid="stFileUploaderDropzone"]:hover{
+                border-color:#2563eb!important;
+                background:#f6f9ff!important;
+            }
             .bom8-checklist{
                 display:grid;
                 gap:10px;
@@ -14705,16 +14731,6 @@ def run_authenticated_app() -> None:
                 disabled=analysis_in_progress,
             )
 
-            st.markdown(
-                """
-                <div class="bom8-trust-strip">
-                  <div class="bom8-trust">CSV/XLSX files accepted</div>
-                  <div class="bom8-trust">Duplicate part numbers combined</div>
-                  <div class="bom8-trust">Lifecycle and sourcing risk scored</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
 
         with saved_manager_col:
             _render_saved_bom_manager()
@@ -14725,12 +14741,6 @@ def run_authenticated_app() -> None:
         )
 
         if uploaded_file is None and not sample_mode:
-            if history_data:
-                st.info(
-                    "Open a saved BOM analysis above, or upload a new CSV or Excel BOM."
-                )
-            else:
-                st.info("Upload a CSV or Excel BOM to begin.")
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
