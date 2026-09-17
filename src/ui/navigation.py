@@ -671,7 +671,7 @@ def consume_navigation_error() -> str:
 
 def render_command_nav_triggers(commands: list[dict]) -> None:
     """Mount hidden session-state navigation buttons for the command palette."""
-    triggers = [command for command in commands if command.get("nav_page")]
+    triggers = [command for command in commands if command.get("nav_page") or command.get("page")]
     if not triggers:
         return
 
@@ -693,7 +693,7 @@ def render_command_nav_triggers(commands: list[dict]) -> None:
     )
     for command in triggers[:60]:
         safe_key = str(command.get("id") or "").replace("-", "_")
-        page = str(command.get("nav_page") or "")
+        page = str(command.get("nav_page") or command.get("page") or "")
         params = dict(command.get("nav_params") or {})
         internal_nav_button(
             "Open",

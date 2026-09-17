@@ -114,6 +114,11 @@ def render_command_center(*, current_page: str = "Dashboard", user_name: str = "
             // Prefer the existing Streamlit shell button so navigation remains
             // session-state driven and does not reload the public application.
             const aliases = {{
+              'Dashboard':'Home',
+              'BOM Analyzer':'BOMs',
+              'Alternative Finder':'Find a replacement',
+              'Compare Parts':'Compare parts',
+              'Monitoring':'Alerts & Monitoring',
               'Design Impact Analyzer':'Design Impact',
               'Supply Risk Scenario':'Supply Scenario'
             }};

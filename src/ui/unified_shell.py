@@ -289,15 +289,18 @@ def render_unified_shell(
 
         paint_prepared_main_transition(loading_route)
 
-    with st.container(key="cv_foundation_profile_trigger"):
-        st.button(
-            initials,
-            key="cv_foundation_profile_menu",
-            help="Open account menu",
-            on_click=_toggle_profile_menu,
-        )
+    # Do not mount account widgets into a route-loading rerun. Rendering them
+    # while Streamlit retires the previous body briefly put the panel in flow.
+    if not loading_route:
+        with st.container(key="cv_foundation_profile_trigger"):
+            st.button(
+                initials,
+                key="cv_foundation_profile_menu",
+                help="Open account menu",
+                on_click=_toggle_profile_menu,
+            )
 
-    if st.session_state.get("cadivor_profile_menu_open"):
+    if not loading_route and st.session_state.get("cadivor_profile_menu_open"):
         with st.container(key="cv_foundation_profile_panel"):
             st.markdown(
                 f"""<div class="cv-foundation-account-head"><b>{_escape(full_name)}</b><span>{_escape(email)}</span><small>{_escape(workspace_name)}</small></div>""",
