@@ -17,6 +17,7 @@ from src.ui.main_transition import DELAY_ROUTE_BODY_REVEAL_KEY, MAIN_TRANSITION_
 from src.ui.navigation import (
     navigate_to,
     open_high_risk_component_review,
+    open_component_in_saved_bom,
     open_saved_bom,
     return_to_saved_bom_list,
 )
@@ -292,6 +293,44 @@ def test_home_saved_bom_open_does_not_force_query_route_reload(monkeypatch):
     assert MAIN_TRANSITION_ACTIVE_KEY not in state
     assert "reran" not in recorded
 
+
+
+def test_high_risk_component_opens_exact_saved_bom_component(monkeypatch):
+    recorded: dict = {}
+    state: dict = {"cadivor_route": "BOM Analyzer"}
+
+    class _Params:
+        def from_dict(self, payload):
+            recorded["params"] = dict(payload)
+
+        def __contains__(self, key):
+            return False
+
+    monkeypatch.setattr("src.ui.navigation.st.session_state", state)
+    monkeypatch.setattr("src.ui.navigation.st.rerun", lambda: recorded.setdefault("reran", True))
+    monkeypatch.setattr("src.ui.navigation.st.query_params", _Params())
+
+    open_component_in_saved_bom(
+        "saved-bom-42",
+        "MCP2551-I/SN",
+        _rerun=False,
+        arm_opening=False,
+    )
+
+    assert state["app_mode"] == "Analysis Details"
+    assert state["cadivor_active_analysis_id"] == "saved-bom-42"
+    assert state["analysis_id"] == "saved-bom-42"
+    assert state["cadivor_active_analysis_tab"] == "Components"
+    assert state["cadivor_pending_analysis_section"] == "Components"
+    assert state["cadivor_pending_analysis_section_id"] == "saved-bom-42"
+    assert recorded["params"] == {
+        "page": "Analysis Details",
+        "analysis_id": "saved-bom-42",
+        "tab": "components",
+        "component": "MCP2551-I/SN",
+        "focus": "component-risk",
+    }
+    assert "cadivor_show_saved_boms" not in state
 
 def test_high_risk_component_review_stays_in_session(monkeypatch):
     runtime = _source("src/authenticated_runtime.py")
