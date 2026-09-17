@@ -1122,10 +1122,6 @@ def render_analysis_detail(
                   <span class="cv-badge cv-badge-{badge_tone}">{html.escape(risk_status)}</span>
                 </p>
               </div>
-              <div class="cv-analysis-summary cv-analysis-header-kpis cv-analysis-decision-summary">
-                <div class="cv-analysis-mini cv-analysis-mini--{health_cls}"><span>Decision status</span><strong>{html.escape(risk_status)}</strong><small>Health {health}/100</small></div>
-                <div class="cv-analysis-mini{' cv-analysis-mini--bad' if high else ''}"><span>Review queue</span><strong>{high if high else "Clear"}</strong><small>{"parts need review" if high else "No high-risk parts"}</small></div>
-              </div>
             </header>
           </div>
         </div>

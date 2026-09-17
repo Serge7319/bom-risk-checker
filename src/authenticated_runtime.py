@@ -13890,45 +13890,14 @@ def run_authenticated_app() -> None:
         # Revealing after imports (before this header) left BOM chrome with neither
         # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
         reveal_authenticated_page_body("BOM Analyzer")
-        cadivor_metric_row(
-            [
-                MetricCard(
-                    label="Saved analyses",
-                    value=str(saved_analysis_count),
-                    detail="Previous BOM engineering reviews",
-                    tone="info",
-                    icon="folder-archive",
-                ),
-                MetricCard(
-                    label="Average health",
-                    value=str(average_health),
-                    status="Portfolio baseline",
-                    tone="success" if average_health >= 85 else "warning",
-                    icon="gauge",
-                ),
-                MetricCard(
-                    label="High-risk findings",
-                    value=str(total_high_risk),
-                    detail="Components requiring engineering review",
-                    tone="danger" if total_high_risk else "success",
-                    icon="triangle-alert",
-                ),
-                MetricCard(
-                    label="Best recorded health",
-                    value=str(best_health),
-                    detail="Highest-performing saved BOM",
-                    tone="success",
-                    icon="trophy",
-                ),
-            ]
-        )
-        _risk_spacer_left, _risk_spacer_mid, _risk_action_col, _risk_spacer_right = st.columns(4)
-        with _risk_action_col:
+        # The BOM landing page is an entry point, not a portfolio dashboard.
+        # Keep the only useful cross-BOM action visible without a row of
+        # non-actionable KPIs that duplicate the saved-analysis table below.
+        if total_high_risk:
             if st.button(
-                "Review high-risk components",
+                f"Review {total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''}",
                 key="bom81_review_high_risk_components",
                 type="primary",
-                use_container_width=True,
             ):
                 open_high_risk_component_review(arm_opening=False)
 
