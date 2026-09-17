@@ -1033,13 +1033,6 @@ def _render_auth_page(
         if not accepted_terms:
             st.warning("Please accept the Terms of Service and Privacy Policy to create an account.")
             return
-        # The cold Login surface intentionally avoids client construction until
-        # an action needs it.  Create Account is the one action that contacts
-        # the provider in the same form run.
-        if supabase is None:
-            from src.auth_bootstrap import get_supabase_client
-
-            supabase = get_supabase_client()
         _submit_manual_signup(supabase, cookie_manager, email, password)
         return
 
